@@ -17,7 +17,20 @@ pub(super) fn extract_user_authored_text(text: &str) -> String {
     } else {
         text
     };
-    strip_generated_context_blocks(request_text)
+    unwrap_user_query(&strip_generated_context_blocks(request_text))
+}
+
+fn unwrap_user_query(text: &str) -> String {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    const OPEN: &str = "<userquery>";
+    const CLOSE: &str = "</userquery>";
+    if lower.starts_with(OPEN) && lower.ends_with(CLOSE) {
+        return trimmed[OPEN.len()..trimmed.len() - CLOSE.len()]
+            .trim()
+            .to_string();
+    }
+    text.to_string()
 }
 
 pub(in crate::domain::conversation::history) fn extract_user_image_attachments(
@@ -151,6 +164,7 @@ fn generated_context_block_close_marker(lower_line: &str) -> Option<&'static str
         ("<plugins_instructions", "</plugins_instructions>"),
         ("<recommended_plugins", "</recommended_plugins>"),
         ("<additional_metadata", "</additional_metadata>"),
+        ("<timestamp", "</timestamp>"),
         ("<collaboration_mode", "</collaboration_mode>"),
         ("<permissions instructions", "</permissions instructions>"),
         ("<system", "</system>"),
@@ -224,6 +238,93 @@ pub(in crate::domain::conversation::history) fn generated_control_text(text: &st
         || lower.starts_with("<plugins_instructions")
         || background_context_prompt_text(text)
         || (lower.contains("<local-command-caveat>") && lower.contains("do not respond"))
+}
+
+pub(in crate::domain::conversation::history) fn normalize_generated_metadata_message(
+    message: &mut Value,
+) -> bool {
+    let role = message.get("role").and_then(Value::as_str).unwrap_or("");
+    if !matches!(role, "user" | "human") {
+        return false;
+    }
+    let Some((title, detail)) = message
+        .get("text")
+        .and_then(Value::as_str)
+        .and_then(generated_metadata_envelope)
+    else {
+        return false;
+    };
+    let detail = super::structured_privacy::sanitize_structured_event_text(&detail)
+        .unwrap_or_else(|| "Recorded by the native agent runtime.".to_string());
+    let Some(object) = message.as_object_mut() else {
+        return false;
+    };
+    object.insert("role".to_string(), Value::String("metadata".to_string()));
+    object.insert("text".to_string(), Value::String(detail));
+    object.insert(
+        "cardType".to_string(),
+        Value::String("metadata".to_string()),
+    );
+    object.insert("cardTitle".to_string(), Value::String(title.to_string()));
+    object.insert(
+        "cardSubtitle".to_string(),
+        Value::String("Agent runtime metadata".to_string()),
+    );
+    object.insert("collapsed".to_string(), Value::Bool(true));
+    object.insert(
+        "sourceItemType".to_string(),
+        Value::String("generated-metadata".to_string()),
+    );
+    crate::domain::conversation_semantic::annotate_message_layer(
+        message,
+        crate::domain::conversation_semantic::SemanticLayer::Execution,
+    );
+    true
+}
+
+fn generated_metadata_envelope(text: &str) -> Option<(&'static str, String)> {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for (tag, title) in [
+        ("task-notification", "Task notification"),
+        ("task-result", "Task result"),
+        ("system-reminder", "System reminder"),
+        ("ide-opened-file", "IDE context"),
+        ("ide_opened_file", "IDE context"),
+    ] {
+        let open = format!("<{tag}>");
+        let close = format!("</{tag}>");
+        if lower.starts_with(&open) && lower.ends_with(&close) {
+            let detail = if tag == "task-notification" || tag == "task-result" {
+                task_metadata_summary(trimmed)
+            } else {
+                "Recorded by the native agent runtime.".to_string()
+            };
+            return Some((title, detail));
+        }
+    }
+    None
+}
+
+fn task_metadata_summary(text: &str) -> String {
+    let status = generated_tag_value(text, "status");
+    let summary = generated_tag_value(text, "summary");
+    match (status, summary) {
+        (Some(status), Some(summary)) => format!("Status: {status}\n{summary}"),
+        (Some(status), None) => format!("Status: {status}"),
+        (None, Some(summary)) => summary,
+        (None, None) => "Recorded by the native agent runtime.".to_string(),
+    }
+}
+
+fn generated_tag_value(text: &str, tag: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = lower.find(&open)? + open.len();
+    let end = lower[start..].find(&close)? + start;
+    let value = text[start..end].trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 fn find_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {

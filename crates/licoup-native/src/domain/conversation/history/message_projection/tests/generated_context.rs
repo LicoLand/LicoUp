@@ -15,6 +15,12 @@ fn generated_context_blocks_are_removed_without_dropping_trailing_user_text() {
         extract_user_authored_text("## My request:\nRender the screenshot"),
         "\nRender the screenshot"
     );
+    assert_eq!(
+        extract_user_authored_text(
+            "<timestamp>Saturday</timestamp>\n<userquery>Keep the real question</userquery>"
+        ),
+        "Keep the real question"
+    );
 }
 
 #[test]
