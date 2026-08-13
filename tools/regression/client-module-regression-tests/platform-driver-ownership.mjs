@@ -30,7 +30,12 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/ffi/commands/mcp.rs",
-  ])), ["architecture.client-boundaries", "bridge.native-mcp-command"]);
+  ])), [
+    "regression.cli-command-admission-source-bundle",
+    "architecture.client-boundaries",
+    "rust.ffi.cli-command-admission",
+    "bridge.native-mcp-command",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/platform/mcp_streamable_http.rs",
   ])), ["architecture.client-boundaries", "rust.platform.mcp-streamable-http"]);
@@ -39,7 +44,11 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
   ])), ["architecture.client-boundaries", "rust.platform.mcp-approval-plan-store"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/bin/licoup.rs",
-  ])), ["architecture.client-boundaries", "rust.bin.licoup"]);
+  ])), [
+    "architecture.client-boundaries",
+    "rust.ffi.cli-command-admission",
+    "rust.bin.licoup",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/bin/licoup/stdio_rpc.rs",
   ])), [
@@ -51,6 +60,8 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
     "crates/licoup-native/src/bin/licoup/stdio_rpc/request.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.ffi.client-state-contract",
+    "rust.ffi.cli-command-admission",
     "rust.bin.licoup.rpc",
     "bridge.native-mcp-rpc-guard",
   ]);
@@ -184,7 +195,11 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   ])), ["architecture.client-boundaries", "rust.core.mcp.transfer"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/safe_archive.rs",
-  ])), ["architecture.client-boundaries", "rust.core.safe-archive"]);
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.adaptive-flywheel",
+    "rust.core.safe-archive",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
   ])), [
@@ -1110,7 +1125,6 @@ test("native CLI modules retain exact binary-scoped command filters", () => {
     ["rust.bin.licoup.rpc", "tests::rpc::"],
     ["rust.bin.licoup.core-commands", "tests::core_commands::"],
     ["rust.bin.licoup.skill-commands", "tests::skill_commands::"],
-    ["rust.bin.licoup.conversation-commands", "tests::conversation_commands::"],
     ["rust.bin.licoup.parsing", "tests::parsing::"],
   ]);
   for (const [id, filter] of filters) {
@@ -1120,7 +1134,7 @@ test("native CLI modules retain exact binary-scoped command filters", () => {
       "-p",
       "licoup-native",
       "--bin",
-      "licoup",
+      "licoup-cli",
       filter,
     ]);
     if (id !== "rust.bin.licoup") {

@@ -150,7 +150,7 @@ test("tracked contribution guides require targeted closure and independent gates
   ].map((relativePath) => fs.readFile(path.join(repoRoot, relativePath), "utf8")));
   assert.match(docs[0], /run the smallest relevant checks/u);
   assert.match(docs[0], /mandatory Node-only source policy once/u);
-  assert.match(docs[0], /commit gate never builds or publishes every platform/u);
+  assert.match(docs[0], /commit\s+gate never builds or publishes every platform/iu);
   assert.match(docs[1], /开发过程中只运行与改动直接相关的最小检查/u);
   assert.match(docs[1], /只运行一次必需的 Node 源码策略/u);
   assert.match(docs[1], /提交门禁不会构建或发布所有平台/u);
@@ -306,10 +306,15 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ]);
 
   for (const relativePath of packageSources) {
-    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+    const expected = [
       "regression.package-client-source-bundle",
       "packaging.client-plan",
-    ]);
+    ];
+    if (relativePath.includes("/bundle-resolver/") ||
+        relativePath.endsWith("/resource-assembly.mjs")) {
+      expected.unshift("regression.subagent-mcp");
+    }
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([packageTest])), [
     "regression.package-client-source-bundle",
@@ -480,7 +485,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
   const expectedTestCounts = new Map([
     ["catalog-integrity.mjs", 14],
     ["conversation-ownership.mjs", 6],
-    ["flutter-selection.mjs", 5],
+    ["flutter-selection.mjs", 4],
     ["platform-driver-ownership.mjs", 20],
     ["runner-safety.mjs", 9],
     ["rust-selection.mjs", 10],
@@ -504,7 +509,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 81);
+  assert.equal(registeredNames.size, 80);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

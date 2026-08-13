@@ -290,7 +290,6 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "apps/desktop/scripts/package-client/resource-assembly.mjs",
         "apps/desktop/scripts/package-client/source-staging.mjs",
         "apps/desktop/scripts/package-client/windows-manifest.mjs",
-        "tools/client-runtime/**",
         "tools/client-release-targets.json",
         "tools/client-support-matrix.json",
         "tools/client-version.json",
