@@ -1,4 +1,7 @@
 import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   rmSync,
@@ -62,13 +65,19 @@ export function buildFlutterApp(options) {
     mkdirSync(symbolsDir, { recursive: true });
     args.push(`--split-debug-info=${symbolsDir}`);
   }
-  const flutterBuildEnv =
+  let flutterBuildEnv =
     options.platform === "macos"
       ? {
           ...flutterEnv,
           LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE: "1",
         }
       : flutterEnv;
+  if (options.platform === "macos") {
+    flutterBuildEnv = seedMacosCocoaPodsForStagedBuild(
+      stagedRoot,
+      flutterBuildEnv,
+    );
+  }
   runFlutterProcess(args, {
     cwd: stagedRoot,
     env: flutterBuildEnv,
@@ -76,6 +85,63 @@ export function buildFlutterApp(options) {
     stage: "flutter-build",
   });
   return true;
+}
+
+/**
+ * Clean staging excludes macos/Pods so Flutter re-resolves CocoaPods from CDN.
+ * When CDN/TLS is unavailable but the workspace already has a resolved Pods tree,
+ * seed that lock+checkout into the staged macOS project and force `pod install
+ * --deployment` so packaging does not depend on a live CocoaPods CDN.
+ */
+function seedMacosCocoaPodsForStagedBuild(stagedRoot, flutterEnv) {
+  const workspaceMacos = path.join(
+    packageClientRuntime.flutterClientRoot,
+    "macos",
+  );
+  const stagedMacos = path.join(stagedRoot, "macos");
+  const workspacePods = path.join(workspaceMacos, "Pods");
+  const workspaceLock = path.join(workspaceMacos, "Podfile.lock");
+  if (!existsSync(workspacePods) || !existsSync(workspaceLock)) {
+    return flutterEnv;
+  }
+  rmSync(path.join(stagedMacos, "Pods"), { recursive: true, force: true });
+  cpSync(workspacePods, path.join(stagedMacos, "Pods"), { recursive: true });
+  copyFileSync(workspaceLock, path.join(stagedMacos, "Podfile.lock"));
+  const wrapperDir = path.join(stagedRoot, ".licoup-packaging", "bin");
+  mkdirSync(wrapperDir, { recursive: true });
+  const wrapperPath = path.join(wrapperDir, "pod");
+  writeFileSync(
+    wrapperPath,
+    `#!/bin/sh
+set -eu
+wrapper_dir="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+path_without_wrapper="$(printf '%s' "\${PATH:-}" | tr ':' '\\n' | grep -v "^\${wrapper_dir}$" | paste -sd ':' -)"
+real_pod="$(PATH="$path_without_wrapper" command -v pod 2>/dev/null || true)"
+if [ -z "\${real_pod:-}" ]; then
+  for candidate in /opt/homebrew/bin/pod /usr/local/bin/pod; do
+    if [ -x "$candidate" ]; then
+      real_pod="$candidate"
+      break
+    fi
+  done
+fi
+if [ -z "\${real_pod:-}" ]; then
+  echo "pod executable not found" >&2
+  exit 127
+fi
+if [ "\${1:-}" = "install" ]; then
+  shift
+  exec "$real_pod" install --deployment "$@"
+fi
+exec "$real_pod" "$@"
+`,
+    { encoding: "utf8" },
+  );
+  chmodSync(wrapperPath, 0o755);
+  return {
+    ...flutterEnv,
+    PATH: `${wrapperDir}${path.delimiter}${flutterEnv.PATH || process.env.PATH || ""}`,
+  };
 }
 
 export function generateMacosAppIcons(options) {

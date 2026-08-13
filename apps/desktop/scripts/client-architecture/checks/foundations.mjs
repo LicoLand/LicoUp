@@ -13,6 +13,9 @@ const requiredFutureModules = [
   "activity-snapshots",
   "settings",
   "subagents-mcp",
+  "conversations-mcp",
+  "gateway-sidecar",
+  "lico-agent-sidecar",
   "codex-plugin"
 ];
 const allFutureModules = [...requiredFutureModules];

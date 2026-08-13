@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -16,10 +16,10 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conve
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -214,34 +214,77 @@ class _CreateCanonicalGroupConversationDialogState
   }
 }
 
-class CanonicalGroupConversationPane extends StatelessWidget {
+class CanonicalGroupConversationPane extends StatefulWidget {
   const CanonicalGroupConversationPane({
     super.key,
     required this.controller,
     required this.targets,
     required this.onCopyText,
+    this.onOpenAgentConversations,
     this.framed = true,
   });
 
   final ClientConversationController controller;
   final List<TargetCandidate> targets;
   final Future<void> Function(String) onCopyText;
+  final ValueChanged<String>? onOpenAgentConversations;
   final bool framed;
+
+  @override
+  State<CanonicalGroupConversationPane> createState() =>
+      _CanonicalGroupConversationPaneState();
+}
+
+class _CanonicalGroupConversationPaneState
+    extends State<CanonicalGroupConversationPane> {
+  bool _rosterVisible = true;
+
+  Future<void> _mentionAgent(
+    ClientConversation conversation,
+    TargetCandidate target,
+  ) async {
+    var membership = _agentMembership(conversation, target);
+    if (membership == null) {
+      final joined = await widget.controller.ensureSelectedAgentMembership(
+        agentId: target.target,
+        displayName: agentConversationTargetDisplayName(target),
+      );
+      if (!mounted || !joined) return;
+      final refreshed = widget.controller.selectedConversation;
+      if (refreshed == null) return;
+      membership = _agentMembership(refreshed, target);
+      if (membership == null) return;
+    }
+    final label = membership.principal.displayName.trim().isEmpty
+        ? agentConversationTargetDisplayName(target)
+        : membership.principal.displayName.trim();
+    final draft = widget.controller.draft;
+    final separator = draft.isEmpty || RegExp(r'\s$').hasMatch(draft)
+        ? ''
+        : ' ';
+    widget.controller.updateDraft('$draft$separator@$label ');
+  }
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
+    final controller = widget.controller;
     final conversation = controller.selectedConversation;
     if (conversation == null) {
       return _CanonicalGroupLoadingOrEmpty(loading: controller.loading);
     }
     final participantTargets = resolveCanonicalGroupParticipantTargets(
       conversation,
-      targets,
+      widget.targets,
     );
     if (participantTargets.isEmpty) {
       return _CanonicalGroupLoadingOrEmpty(loading: controller.loading);
     }
+    final rosterTargets = resolveCanonicalGroupOrderedParticipantTargets(
+      conversation,
+      [...participantTargets, ...widget.targets],
+      controller.recentParticipantAgentIds,
+    );
     final session = canonicalGroupConversationSession(
       conversation,
       controller.events,
@@ -290,7 +333,7 @@ class CanonicalGroupConversationPane extends StatelessWidget {
       onDraftChanged: controller.updateDraft,
       onSend: controller.postMessage,
       onSelectSession: (_) {},
-      onCopyText: onCopyText,
+      onCopyText: widget.onCopyText,
     );
     final pane = AgentConversationActivePane(
       key: const Key('canonical-group-conversation-pane'),
@@ -298,7 +341,8 @@ class CanonicalGroupConversationPane extends StatelessWidget {
       actions: actions,
       header: CanonicalGroupConversationHeader(
         conversation: conversation,
-        onArchive: controller.archiveSelected,
+        rosterVisible: _rosterVisible,
+        onToggleRoster: () => setState(() => _rosterVisible = !_rosterVisible),
       ),
       framed: false,
     );
@@ -327,16 +371,34 @@ class CanonicalGroupConversationPane extends StatelessWidget {
                 children: [
                   pane,
                   Positioned(
-                    right: -MessagingDesktopMetrics.groupRosterTrailingBleed,
+                    right:
+                        MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
                     top: topInset,
                     bottom: bottomInset,
-                    width:
-                        MessagingDesktopMetrics.groupRosterExtent +
-                        MessagingDesktopMetrics.groupRosterTrailingBleed,
-                    child: CanonicalGroupRosterSurface(
-                      child: CanonicalGroupRoster(
-                        conversation: conversation,
-                        targets: participantTargets,
+                    width: MessagingDesktopMetrics.groupRosterExtent,
+                    child: _CanonicalGroupRosterReveal(
+                      visible: _rosterVisible,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: math.min(
+                            visibleExtent,
+                            MessagingDesktopMetrics.groupRosterMaxVisibleExtent,
+                          ),
+                        ),
+                        child: CanonicalGroupRosterSurface(
+                          child: CanonicalGroupRoster(
+                            conversation: conversation,
+                            targets: rosterTargets,
+                            onMentionAgent: (target) =>
+                                unawaited(_mentionAgent(conversation, target)),
+                            onOpenAgentConversations:
+                                widget.onOpenAgentConversations == null
+                                ? null
+                                : (target) => widget.onOpenAgentConversations!(
+                                    target.id,
+                                  ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -348,10 +410,17 @@ class CanonicalGroupConversationPane extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: pane),
-              CanonicalGroupRoster(
-                conversation: conversation,
-                targets: participantTargets,
-              ),
+              if (_rosterVisible)
+                CanonicalGroupRoster(
+                  conversation: conversation,
+                  targets: rosterTargets,
+                  onMentionAgent: (target) =>
+                      unawaited(_mentionAgent(conversation, target)),
+                  onOpenAgentConversations:
+                      widget.onOpenAgentConversations == null
+                      ? null
+                      : (target) => widget.onOpenAgentConversations!(target.id),
+                ),
             ],
           );
     final body = Column(
@@ -364,7 +433,7 @@ class CanonicalGroupConversationPane extends StatelessWidget {
         Expanded(child: conversationBody),
       ],
     );
-    return framed ? PanelFrame(child: body) : body;
+    return widget.framed ? PanelFrame(child: body) : body;
   }
 }
 
@@ -537,11 +606,13 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
   const CanonicalGroupConversationHeader({
     super.key,
     required this.conversation,
-    required this.onArchive,
+    required this.rosterVisible,
+    required this.onToggleRoster,
   });
 
   final ClientConversation conversation;
-  final VoidCallback onArchive;
+  final bool rosterVisible;
+  final VoidCallback onToggleRoster;
 
   @override
   Widget build(BuildContext context) {
@@ -553,10 +624,11 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
     final identity = Row(
       children: [
         Container(
+          key: const Key('canonical-group-header-avatar'),
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: colors.primary.withAlpha(colors.isDark ? 48 : 34),
+            color: ConversationVisualTokens.circularIdentityWellFill(colors),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -608,21 +680,25 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
         ),
       ],
     );
-    final menu = _CanonicalGroupHeaderMenuButton(onArchive: onArchive);
+    final rosterToggle = _CanonicalGroupRosterToggleButton(
+      rosterVisible: rosterVisible,
+      onPressed: onToggleRoster,
+    );
     if (isMobileClientPlatform(context)) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
             Expanded(child: identity),
-            menu,
+            rosterToggle,
           ],
         ),
       );
     }
-    final radius = BorderRadius.circular(
+    final identityRadius = BorderRadius.circular(
       MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
     );
+    final controlRadius = BorderRadius.circular(999);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
@@ -630,91 +706,186 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetV,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: MessagingConversationOverlayGlass(
-              borderRadius: radius,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal:
-                      MessagingDesktopMetrics.conversationHeaderCapsulePadH,
-                  vertical:
-                      MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: MessagingConversationOverlayGlass(
+                borderRadius: identityRadius,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal:
+                        MessagingDesktopMetrics.conversationHeaderCapsulePadH,
+                    vertical:
+                        MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+                  ),
+                  child: identity,
                 ),
-                child: identity,
               ),
             ),
-          ),
-          const SizedBox(
-            width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
-          ),
-          MessagingConversationOverlayGlass(borderRadius: radius, child: menu),
-        ],
+            const SizedBox(
+              width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
+            ),
+            AspectRatio(
+              aspectRatio: 1,
+              child: MessagingConversationOverlayGlass(
+                key: const Key('canonical-group-roster-toggle-capsule'),
+                borderRadius: controlRadius,
+                child: Center(child: rosterToggle),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-final class _CanonicalGroupHeaderMenuButton extends StatefulWidget {
-  const _CanonicalGroupHeaderMenuButton({required this.onArchive});
+final class _CanonicalGroupRosterToggleButton extends StatelessWidget {
+  const _CanonicalGroupRosterToggleButton({
+    required this.rosterVisible,
+    required this.onPressed,
+  });
 
-  final VoidCallback onArchive;
+  final bool rosterVisible;
+  final VoidCallback onPressed;
 
   @override
-  State<_CanonicalGroupHeaderMenuButton> createState() =>
-      _CanonicalGroupHeaderMenuButtonState();
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    return LicoIconButton(
+      key: const Key('canonical-group-roster-toggle'),
+      tooltip: rosterVisible
+          ? strings.collapseAgentsSidebar
+          : strings.expandAgentsSidebar,
+      onPressed: onPressed,
+      size: LicoIconButtonSize.large,
+      shape: LicoIconButtonShape.circle,
+      tone: LicoIconButtonTone.ghost,
+      icon: AnimatedSwitcher(
+        duration: context.motion(LicoMotion.short),
+        switchInCurve: LicoMotion.standard,
+        switchOutCurve: LicoMotion.standard,
+        child: Icon(
+          rosterVisible
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.keyboard_arrow_down_rounded,
+          key: ValueKey<bool>(rosterVisible),
+        ),
+      ),
+    );
+  }
 }
 
-final class _CanonicalGroupHeaderMenuButtonState
-    extends State<_CanonicalGroupHeaderMenuButton> {
-  bool _open = false;
+final class _CanonicalGroupRosterReveal extends StatefulWidget {
+  const _CanonicalGroupRosterReveal({
+    required this.visible,
+    required this.child,
+  });
 
-  Future<void> _showMenu() async {
-    if (_open) return;
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final origin = box.localToGlobal(Offset.zero);
-    setState(() => _open = true);
-    final action = await showMessagingGlassMenu<String>(
-      context: context,
-      globalPosition: Offset(origin.dx, origin.dy + box.size.height + 4),
-      menuKey: const Key('canonical-group-header-menu'),
-      minWidth: 152,
-      actions: [
-        MessagingGlassMenuAction(
-          value: 'archive',
-          label: LicoStrings.of(context).archiveGroupConversation,
-          leading: Icon(
-            Icons.archive_outlined,
-            size: 17,
-            color: context.licoColors.textMuted,
-          ),
-        ),
-      ],
+  final bool visible;
+  final Widget child;
+
+  @override
+  State<_CanonicalGroupRosterReveal> createState() =>
+      _CanonicalGroupRosterRevealState();
+}
+
+final class _CanonicalGroupRosterRevealState
+    extends State<_CanonicalGroupRosterReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _reveal;
+  late bool _renderChild;
+
+  @override
+  void initState() {
+    super.initState();
+    _renderChild = widget.visible;
+    _controller = AnimationController(
+      vsync: this,
+      duration: LicoMotion.medium,
+      value: widget.visible ? 1 : 0,
     );
-    if (!mounted) return;
-    setState(() => _open = false);
-    if (action == 'archive') widget.onArchive();
+    _reveal = CurvedAnimation(
+      parent: _controller,
+      curve: LicoMotion.decelerate,
+      reverseCurve: LicoMotion.accelerate,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _CanonicalGroupRosterReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible == widget.visible) return;
+    _syncVisibility();
+  }
+
+  void _syncVisibility() {
+    final duration = context.motion(LicoMotion.medium);
+    _controller.duration = duration;
+    _controller.reverseDuration = duration;
+    if (widget.visible) {
+      if (!_renderChild) {
+        setState(() => _renderChild = true);
+      }
+      if (duration == Duration.zero) {
+        _controller.value = 1;
+      } else {
+        _controller.forward();
+      }
+      return;
+    }
+    if (duration == Duration.zero) {
+      _controller.value = 0;
+      if (_renderChild) {
+        setState(() => _renderChild = false);
+      }
+      return;
+    }
+    _controller.reverse().whenCompleteOrCancel(() {
+      if (!mounted || widget.visible || !_controller.isDismissed) return;
+      setState(() => _renderChild = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Tooltip(
-      message: LicoStrings.of(context).moreActions,
-      waitDuration: LicoMotion.tooltipWait,
-      child: IconButton(
-        key: const Key('canonical-group-menu'),
-        onPressed: _showMenu,
-        icon: AnimatedRotation(
-          turns: _open ? 0.5 : 0,
-          duration: context.motion(LicoMotion.short),
-          curve: LicoMotion.standard,
-          child: const Icon(Icons.expand_more_rounded, size: 20),
-        ),
-        color: colors.textMuted,
-      ),
+    if (!_renderChild) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _reveal,
+      child: widget.child,
+      builder: (context, child) {
+        final reveal = _reveal.value;
+        return IgnorePointer(
+          ignoring: !widget.visible,
+          child: ExcludeSemantics(
+            excluding: !widget.visible,
+            child: Align(
+              key: const Key('canonical-group-roster-alignment'),
+              alignment: Alignment.lerp(
+                Alignment.topCenter,
+                Alignment.center,
+                reveal,
+              )!,
+              child: ClipRect(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: reveal,
+                  child: Opacity(opacity: reveal, child: child),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -724,35 +895,84 @@ class CanonicalGroupRoster extends StatelessWidget {
     super.key,
     required this.conversation,
     required this.targets,
+    required this.onMentionAgent,
+    this.onOpenAgentConversations,
   });
 
   final ClientConversation conversation;
   final List<TargetCandidate> targets;
+  final ValueChanged<TargetCandidate> onMentionAgent;
+  final ValueChanged<TargetCandidate>? onOpenAgentConversations;
+
+  Future<void> _showAgentMenu({
+    required BuildContext context,
+    required TargetCandidate target,
+    required String label,
+    required Offset globalPosition,
+  }) async {
+    final strings = LicoStrings.of(context);
+    final action = await showMessagingGlassMenu<_CanonicalGroupRosterAction>(
+      context: context,
+      globalPosition: globalPosition,
+      menuKey: Key('canonical-group-roster-menu-${target.target}'),
+      actions: [
+        MessagingGlassMenuAction(
+          value: _CanonicalGroupRosterAction.mention,
+          label: strings.mentionAgent(label),
+          leading: const Icon(Icons.alternate_email_rounded, size: 17),
+        ),
+        if (onOpenAgentConversations != null)
+          MessagingGlassMenuAction(
+            value: _CanonicalGroupRosterAction.openConversations,
+            label: strings.openAgentConversations(label),
+            leading: const Icon(Icons.forum_outlined, size: 17),
+          ),
+      ],
+    );
+    switch (action) {
+      case _CanonicalGroupRosterAction.mention:
+        onMentionAgent(target);
+        break;
+      case _CanonicalGroupRosterAction.openConversations:
+        onOpenAgentConversations?.call(target);
+        break;
+      case null:
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final agents = conversation.activeAgentMemberships;
+    final membershipsByAgentId = {
+      for (final membership in conversation.activeAgentMemberships)
+        membership.principal.agentId: membership,
+    };
     return SizedBox(
       key: const Key('canonical-group-roster'),
       width: MessagingDesktopMetrics.groupRosterExtent,
       child: ScrollConfiguration(
         behavior: const _CanonicalGroupRosterScrollBehavior(),
         child: ListView.separated(
+          shrinkWrap: true,
           padding: const EdgeInsets.symmetric(
             horizontal: MessagingDesktopMetrics.groupRosterContentInset,
-            vertical: 8,
+            vertical: MessagingDesktopMetrics.groupRosterVerticalInset,
           ),
-          itemCount: agents.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemCount: targets.length,
+          separatorBuilder: (_, _) => const SizedBox(
+            height: MessagingDesktopMetrics.groupRosterMemberGap,
+          ),
           itemBuilder: (context, index) {
-            final membership = agents[index];
-            final target = targets.firstWhere(
-              (candidate) => candidate.target == membership.principal.agentId,
-            );
-            final fullLabel = membership.principal.displayName.trim().isEmpty
+            final target = targets[index];
+            final membership =
+                membershipsByAgentId[target.target] ??
+                membershipsByAgentId[target.id];
+            final membershipLabel =
+                membership?.principal.displayName.trim() ?? '';
+            final fullLabel = membershipLabel.isEmpty
                 ? agentConversationTargetDisplayName(target)
-                : membership.principal.displayName.trim();
+                : membershipLabel;
             final compactLabel = agentConversationTargetCompactDisplayName(
               target,
             );
@@ -761,38 +981,62 @@ class CanonicalGroupRoster extends StatelessWidget {
               waitDuration: LicoMotion.tooltipWait,
               child: Column(
                 children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      MessagingAgentAvatar(
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      key: Key('canonical-group-roster-agent-${target.target}'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onMentionAgent(target),
+                      onDoubleTap: onOpenAgentConversations == null
+                          ? null
+                          : () => onOpenAgentConversations!(target),
+                      onSecondaryTapDown: (details) => _showAgentMenu(
+                        context: context,
                         target: target,
-                        size: 38,
-                        iconSize: 21,
+                        label: compactLabel,
+                        globalPosition: details.globalPosition,
                       ),
-                      Positioned(
-                        right: -1,
-                        bottom: -1,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: target.canRelayRuntime
-                                ? colors.success
-                                : colors.textDisabled,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: colors.surface, width: 2),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          MessagingAgentAvatar(
+                            target: target,
+                            size: 42,
+                            iconSize: 24,
                           ),
-                        ),
+                          Positioned(
+                            right: -1,
+                            bottom: -1,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: target.canRelayRuntime
+                                    ? colors.success
+                                    : colors.textDisabled,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: colors.surface,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     compactLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: colors.textMuted, fontSize: 10),
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 9,
+                      height: 1.1,
+                    ),
                   ),
                 ],
               ),
@@ -803,6 +1047,8 @@ class CanonicalGroupRoster extends StatelessWidget {
     );
   }
 }
+
+enum _CanonicalGroupRosterAction { mention, openConversations }
 
 final class _CanonicalGroupRosterScrollBehavior extends MaterialScrollBehavior {
   const _CanonicalGroupRosterScrollBehavior();
@@ -822,9 +1068,8 @@ final class _CanonicalGroupRosterScrollBehavior extends MaterialScrollBehavior {
   );
 }
 
-/// The group-only participant rail grows out of the right shell edge. The
-/// header and composer stay outside this middle-band surface and therefore
-/// retain their full conversation width.
+/// Detached group-member capsule, centered in the right transcript band and
+/// styled with the same glass and width as the header visibility control.
 class CanonicalGroupRosterSurface extends StatelessWidget {
   const CanonicalGroupRosterSurface({super.key, required this.child});
 
@@ -832,104 +1077,19 @@ class CanonicalGroupRosterSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.layoutPalette;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final curve = MessagingDesktopMetrics.groupRosterCurveForHeight(
-          constraints.maxHeight,
-        );
-        return ClipPath(
-          key: const Key('canonical-group-roster-surface'),
-          clipper: CanonicalGroupRosterClipper(curveExtent: curve),
-          clipBehavior: Clip.antiAlias,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: MessagingDesktopMetrics.groupRosterGlassBlurSigma,
-              sigmaY: MessagingDesktopMetrics.groupRosterGlassBlurSigma,
-            ),
-            child: ColoredBox(
-              key: const Key('canonical-group-roster-glass'),
-              color: MessagingDesktopMetrics.groupRosterGlassFill(
-                isDark: palette.isDark,
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: curve),
-                child: child,
-              ),
-            ),
-          ),
-        );
-      },
+    final radius = BorderRadius.circular(
+      MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
+    );
+    return SizedBox(
+      key: const Key('canonical-group-roster-surface'),
+      width: MessagingDesktopMetrics.groupRosterExtent,
+      child: MessagingConversationOverlayGlass(
+        key: const Key('canonical-group-roster-glass'),
+        borderRadius: radius,
+        child: child,
+      ),
     );
   }
-}
-
-/// Mirrored normalized-logistic shoulders keep the right edge continuous
-/// while the inner edge eases into the transcript without a rim or box.
-class CanonicalGroupRosterClipper extends CustomClipper<Path> {
-  CanonicalGroupRosterClipper({required this.curveExtent})
-    : _sigmoid = CanonicalGroupRosterSigmoidCurve(
-        steepness: MessagingDesktopMetrics.groupRosterSigmoidSteepness,
-      );
-
-  final double curveExtent;
-  final CanonicalGroupRosterSigmoidCurve _sigmoid;
-
-  @override
-  Path getClip(Size size) {
-    if (size.isEmpty) return Path();
-    final curve = curveExtent.clamp(0.0, size.height / 2).toDouble();
-    if (curve == 0) return Path()..addRect(Offset.zero & size);
-    final width = size.width + MessagingDesktopMetrics.groupRosterTrailingBleed;
-    final height = size.height;
-    final path = Path()..moveTo(width, 0);
-    for (
-      var sample = 1;
-      sample <= MessagingDesktopMetrics.groupRosterSigmoidSampleCount;
-      sample += 1
-    ) {
-      final progress =
-          sample / MessagingDesktopMetrics.groupRosterSigmoidSampleCount;
-      path.lineTo(width * (1 - _sigmoid.transform(progress)), curve * progress);
-    }
-    path.lineTo(0, height - curve);
-    for (
-      var sample = 1;
-      sample <= MessagingDesktopMetrics.groupRosterSigmoidSampleCount;
-      sample += 1
-    ) {
-      final progress =
-          sample / MessagingDesktopMetrics.groupRosterSigmoidSampleCount;
-      path.lineTo(
-        width * _sigmoid.transform(progress),
-        height - curve + curve * progress,
-      );
-    }
-    return path..close();
-  }
-
-  @override
-  bool shouldReclip(CanonicalGroupRosterClipper oldClipper) =>
-      oldClipper.curveExtent != curveExtent;
-}
-
-/// A normalized logistic S-curve: exact 0/1 endpoints, symmetric around 0.5,
-/// and substantially flatter shoulders than the middle transition.
-final class CanonicalGroupRosterSigmoidCurve extends Curve {
-  CanonicalGroupRosterSigmoidCurve({required this.steepness})
-    : assert(steepness > 0),
-      _minimum = _logistic(-steepness / 2),
-      _span = _logistic(steepness / 2) - _logistic(-steepness / 2);
-
-  final double steepness;
-  final double _minimum;
-  final double _span;
-
-  static double _logistic(double value) => 1 / (1 + math.exp(-value));
-
-  @override
-  double transformInternal(double t) =>
-      (_logistic(steepness * (t - 0.5)) - _minimum) / _span;
 }
 
 List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
@@ -963,6 +1123,61 @@ List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
     );
   }
   return List<TargetCandidate>.unmodifiable(resolved);
+}
+
+List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
+  ClientConversation conversation,
+  List<TargetCandidate> targets,
+  List<String> orderedAgentIds, {
+  int limit = MessagingDesktopMetrics.groupRosterVisibleMemberCount,
+}) {
+  if (limit <= 0 || orderedAgentIds.isEmpty) return const [];
+  final targetByAgentId = {
+    for (final target in targets) target.target: target,
+    for (final target in targets) target.id: target,
+  };
+  final membershipByAgentId = {
+    for (final membership in conversation.activeAgentMemberships)
+      membership.principal.agentId: membership,
+  };
+  final resolved = <TargetCandidate>[];
+  for (final agentId in orderedAgentIds) {
+    final target = targetByAgentId[agentId];
+    if (target != null) {
+      resolved.add(target);
+    } else {
+      final membership = membershipByAgentId[agentId];
+      if (membership != null) {
+        resolved.add(
+          TargetCandidate(
+            target: agentId,
+            label: membership.principal.displayName.trim().isEmpty
+                ? agentId
+                : membership.principal.displayName.trim(),
+            kind: 'conversation-member',
+            status: 'detected',
+            configured: false,
+            confidence: 1,
+            adapterStatus: 'runtime-unavailable',
+            scanSource: 'canonical-conversation',
+          ),
+        );
+      }
+    }
+    if (resolved.length == limit) break;
+  }
+  return List<TargetCandidate>.unmodifiable(resolved);
+}
+
+ClientConversationMembership? _agentMembership(
+  ClientConversation conversation,
+  TargetCandidate target,
+) {
+  for (final membership in conversation.activeAgentMemberships) {
+    final agentId = membership.principal.agentId;
+    if (agentId == target.target || agentId == target.id) return membership;
+  }
+  return null;
 }
 
 AgentConversationSession canonicalGroupConversationSession(

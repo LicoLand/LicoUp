@@ -8,7 +8,7 @@
 
 [English（规范语言）](README.md) · 简体中文（本地化语言）
 
-[![许可证：GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![许可证：AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![版本：0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.zh-CN.md)
 [![平台：macOS · Windows · Linux · Android · iOS](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux_%C2%B7_Android_%C2%B7_iOS-24292f?style=flat-square)](docs/COMPATIBILITY.zh-CN.md)
 
@@ -40,8 +40,8 @@ LicoUp 是一个开源的桌面与移动客户端，用于发现、操作并连�
   端使用智能体官方 stdio 协议。OpenClaw 使用 ACP；Hermes 在可选 ACP 包
   已安装时使用 ACP，否则自动使用内置 TUI Gateway JSON-RPC。必须预先具备
   SSH 认证和主机校验；LicoUp 不保存 SSH 密码或私钥。
-- **跨智能体技能管理** — 列出、安装、从显式配置的镜像或 GitHub 仓库更
-  新、删除技能，并按时间窗口聚合用量计数。
+- **跨智能体展示本机技能** — 发现智能体本机目录中已有的技能、查看用量计数，
+  并把用户选中的技能移入系统废纸篓。LicoUp 不下载、安装、更新或同步技能。
 - **对话备份** — 浏览原生对话历史，将全部或按关键词选中的对话备份到你选
   择的本地目录。
 - **令牌用量报告** — 按智能体或模型统计，默认最近三十天，可选择时间窗
@@ -87,7 +87,8 @@ flowchart LR
 ```
 
 **明确的外部确认。** 可选的外部 MCP 请求只能发送本次用户直接确认中展示的
-准确请求或选中文件；传输由 HTTPS 保护，但指定的外部服务可以读取用户明确
+准确请求或选中文件；每次传输都需要一次新的、受保护的用户确认。传输由 HTTPS
+保护，但指定的外部服务可以读取用户明确
 批准的内容。如果没有针对外部服务的准确确认，受保护的用户内容只能在用户
 确认后，以端到端密文形式从一个客户端发给另一个客户端。
 
@@ -95,15 +96,6 @@ flowchart LR
 加密接收方。对话页会持续显示 SSH 目标；用户点击“发送”时，只授权把该条准确
 提示发给该虚拟机。SSH 负责保护传输，虚拟机内的 OpenClaw 或 Hermes 会读取
 对话内容以生成回复。
-
-## 可选的 Meshrix 协作
-
-Meshrix 协作能力不会随默认客户端加载。只有在你主动选择 GitHub 的不可变
-提交、通过独立渠道导入其可信签名公钥，并手动安装和启用插件之后，它才可用。
-本地部署还需要一次独立的手动操作，并且只能通过固定、已签名的外部运行器启
-动。本仓库不捆绑该服务端运行器，因此只构建 LicoUp 不能证明已经部署
-Meshrix。安装、启用和启动都不等于授权对外传输数据：每个将要离开设备的准
-确请求或选中的本地文件，都必须取得一次新的、受保护的用户确认。
 
 ## 从源码构建
 
@@ -145,6 +137,7 @@ npm run client:test
 | 架构 | [Architecture](docs/architecture/README.md) | [架构](docs/architecture/README.zh-CN.md) |
 | 联邦运输 | [Lico Arc candidate station adapter](docs/protocols/licoarc-station-adapter.md) | [Lico Arc 候选通讯站 Adapter](docs/protocols/licoarc-station-adapter.zh-CN.md) |
 | 兼容性 | [Compatibility](docs/COMPATIBILITY.md) | [兼容性](docs/COMPATIBILITY.zh-CN.md) |
+| 发布包 | [Release packages](docs/RELEASE-PACKAGES.md) | [发布包结构](docs/RELEASE-PACKAGES.zh-CN.md) |
 | 安全 | [Security](SECURITY.md) | [安全](SECURITY.zh-CN.md) |
 | 参与贡献 | [Contributing](CONTRIBUTING.md) | [参与贡献](CONTRIBUTING.zh-CN.md) |
 
@@ -153,4 +146,4 @@ npm run client:test
 
 ## 许可证
 
-LicoUp 使用 `GPL-3.0-or-later` 许可证。详见 [LICENSE](LICENSE)。
+LicoUp 使用 `AGPL-3.0-or-later` 许可证。详见 [LICENSE](LICENSE)。

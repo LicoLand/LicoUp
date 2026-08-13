@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::core::secure_mesh_mls::SecureMeshMlsParticipant;
+use crate::core::secure_mesh_mls::{SecureMeshMlsDurableStore, SecureMeshMlsParticipant};
 use crate::core::secure_mesh_mls_product::{
     SecureMeshMlsSecurityLedger, participant_from_device_identity,
 };
@@ -30,6 +30,7 @@ pub(super) struct LocalParticipantRuntime<'a> {
     pub(super) authorization: &'a SecretStoreAuthorizationSession,
     pub(super) snapshot_handle: &'a SecretStoreHandle,
     pub(super) participant: &'a mut SecureMeshMlsParticipant,
+    pub(super) group_store: &'a mut Option<SecureMeshMlsDurableStore>,
 }
 
 impl LocalParticipantRuntime<'_> {
@@ -66,27 +67,29 @@ pub(super) fn with_local_participant(
         4,
         |config, identity, signing_key, secret_store, authorization, namespace| {
             let handle = participant_snapshot_handle(namespace, identity)?;
-            let exists = SecureMeshMlsParticipant::secret_store_snapshot_exists_with_session(
-                secret_store.as_ref(),
-                &handle,
-                authorization,
-            )?;
-            let mut participant = if exists {
-                SecureMeshMlsParticipant::load_from_secret_store_with_optional_session(
+            let mut group_store: Option<SecureMeshMlsDurableStore> = None;
+            let mut participant =
+                match SecureMeshMlsParticipant::load_from_secret_store_optional_with_session(
                     crate::core::secure_mesh_mls_product::mls_credential_identity_bytes(identity)?,
                     identity.signing_public_key,
                     secret_store.as_ref(),
                     &handle,
-                    Some(authorization),
-                )?
-            } else {
-                handle_missing_participant_snapshot(identity, secret_store.backend())?;
-                ensure!(
-                    matches!(requirement, ParticipantRequirement::CreateIfMissing),
-                    "secure mesh MLS participant state is unavailable in selected custody"
-                );
-                participant_from_device_identity(identity, signing_key)?
-            };
+                    authorization,
+                )? {
+                    Some(participant) => participant,
+                    None => {
+                        handle_missing_participant_snapshot(
+                            &mut group_store,
+                            identity,
+                            secret_store.backend(),
+                        )?;
+                        ensure!(
+                            matches!(requirement, ParticipantRequirement::CreateIfMissing),
+                            "secure mesh MLS participant state is unavailable in selected custody"
+                        );
+                        participant_from_device_identity(identity, signing_key)?
+                    }
+                };
             let mut runtime = LocalParticipantRuntime {
                 config,
                 identity,
@@ -95,8 +98,13 @@ pub(super) fn with_local_participant(
                 authorization,
                 snapshot_handle: &handle,
                 participant: &mut participant,
+                group_store: &mut group_store,
             };
-            recover_incomplete_writer_operations(runtime.participant, runtime.identity)?;
+            recover_incomplete_writer_operations(
+                &mut *runtime.group_store,
+                runtime.participant,
+                runtime.identity,
+            )?;
             let (response, persist) = operation(&mut runtime)?;
             if persist {
                 participant.save_secret_store_with_session(
@@ -111,12 +119,16 @@ pub(super) fn with_local_participant(
 }
 
 pub(super) fn handle_missing_participant_snapshot(
+    group_store: &mut Option<SecureMeshMlsDurableStore>,
     identity: &DeviceTrustPublicIdentity,
     selected_backend: &str,
 ) -> Result<()> {
-    let state_dir = crate::domain::mobile_relay::secure_mesh_mls_state_dir()?;
-    let mut group_store =
-        crate::platform::secure_mesh_mls_store::open(state_dir.join("group-state.sqlite3"))?;
+    if group_store.is_none() {
+        *group_store = Some(open_group_state_store()?);
+    }
+    let group_store = group_store
+        .as_mut()
+        .expect("secure mesh MLS durable group-state store opened above");
     let participant_scope = identity.fingerprint()?;
     let has_group_state = group_store.has_records_for_participant(&participant_scope)?;
     if selected_backend == "memory-only-ephemeral" {
@@ -128,6 +140,23 @@ pub(super) fn handle_missing_participant_snapshot(
         "secure mesh MLS persistent participant snapshot is missing while durable group state exists"
     );
     Ok(())
+}
+
+pub(super) fn group_state_store(
+    group_store: &mut Option<SecureMeshMlsDurableStore>,
+) -> Result<&mut SecureMeshMlsDurableStore> {
+    if group_store.is_none() {
+        *group_store = Some(open_group_state_store()?);
+    }
+    Ok(group_store
+        .as_mut()
+        .expect("secure mesh MLS durable group-state store opened above"))
+}
+
+fn open_group_state_store() -> Result<SecureMeshMlsDurableStore> {
+    crate::platform::secure_mesh_mls_store::open(
+        crate::domain::mobile_relay::secure_mesh_mls_state_dir()?.join("group-state.sqlite3"),
+    )
 }
 
 fn participant_snapshot_handle(

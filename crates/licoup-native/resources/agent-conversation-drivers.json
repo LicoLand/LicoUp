@@ -126,7 +126,7 @@
         "cancel": false,
         "structuredEvents": true,
         "approvals": false,
-        "multimodal": false,
+        "multimodal": true,
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": true

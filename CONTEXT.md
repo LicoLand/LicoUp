@@ -23,8 +23,24 @@ _Avoid_: station account, relay client
 
 **Conversation**:
 The durable interaction context in which visible human and Agent participants
-exchange authorized events.
+exchange authorized events. One-to-one and group chat are the same model; only
+the admitted Membership set differs.
 _Avoid_: provider thread, transport session
+
+**Membership**:
+One Human or Agent Principal's explicit participation, access, and lifecycle in
+one Conversation.
+_Avoid_: hidden runtime, implicit role
+
+**Conversation Role**:
+A named collaboration responsibility inside one Conversation, with an ordered
+pool of eligible Agent Memberships and optional runtime preferences.
+_Avoid_: hard-coded worker lane, global agent type
+
+**Adaptive Flywheel**:
+An ordered sequence of Conversation Roles resolved at run start from immutable
+role and candidate snapshots. It has no built-in team topology.
+_Avoid_: fixed workflow, global orchestration preset
 
 **Local Agent Target**:
 An Agent reached through a user-controlled local or explicitly configured
@@ -87,3 +103,34 @@ _Avoid_: privileged trust root, mandatory backend
 A user-approved action that discloses exact content to a named external
 destination or produces an external effect.
 _Avoid_: plugin permission, background authorization
+
+**Gateway Runtime**:
+The single local process that hosts the LLM Gateway layer and the Communication
+Channel layer.
+_Avoid_: separate Telegram gateway, dual sidecars for the same runtime
+
+**LLM Gateway**:
+The lower Gateway Runtime layer: loopback HTTP model-protocol routing and
+credential handoff to upstream providers.
+_Avoid_: messaging channel, Bot API poller
+
+**Communication Channel**:
+An upper Gateway Runtime messaging adapter that admits an external chat surface
+into local Agent conversations. Telegram is the first channel.
+_Avoid_: Lico Arc peer, independent Telegram gateway product
+
+**Telegram channel**:
+The Telegram Bot API Communication Channel inside the Gateway Runtime (paired
+DMs, slash commands, conversation-lane bridge).
+_Avoid_: Telegram Gateway, OpenClaw channel clone claim, Flutter long-poller
+
+**Planning Metric**:
+A snapshot-derived model price, capability, or value ratio used to predict and
+plan model selection without reading current token usage or representing a
+current bill.
+_Avoid_: usage measurement, live charge, billing receipt
+
+**Planning Ranking**:
+An ordered set of Agent, Model, and Thinking options evaluated through one
+comparable measurement path without exposing an internal value score.
+_Avoid_: mixed-source score list, normalized-score API

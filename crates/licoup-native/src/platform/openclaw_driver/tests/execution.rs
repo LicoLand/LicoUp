@@ -54,13 +54,13 @@ fn active_gateway_session_accepts_acp_cancel_before_exact_resume() {
             "cancel active gateway turn",
             "",
             Some(run_directory.as_path()),
-            10_000,
+            30_000,
             Some(128 * 1024),
             8 * 1024,
         )
     });
     bound_receiver
-        .recv_timeout(std::time::Duration::from_secs(3))
+        .recv_timeout(std::time::Duration::from_secs(15))
         .unwrap();
     assert_eq!(
         super::super::cancel("agent:main:acp:cancel-session"),

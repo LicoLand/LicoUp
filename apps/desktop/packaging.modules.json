@@ -194,8 +194,8 @@
         "native-sidecar"
       ]
     },
-    "llm-gateway-sidecar": {
-      "label": "LicoUp loopback model protocol and provider routing gateway",
+    "conversations-mcp": {
+      "label": "LicoUp canonical Conversation MCP",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -205,7 +205,23 @@
         "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "lico-llm-gateway",
+      "cargoBin": "lico-conversation-mcp",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "gateway-sidecar": {
+      "label": "LicoUp Gateway Runtime (LLM Gateway + Communication Channels)",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-gateway",
       "requires": [
         "native-sidecar"
       ]
@@ -224,7 +240,7 @@
       "cargoBin": "lico-agent",
       "requires": [
         "native-sidecar",
-        "llm-gateway-sidecar"
+        "gateway-sidecar"
       ]
     },
     "codex-plugin": {

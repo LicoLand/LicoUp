@@ -166,7 +166,6 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "mcp http preview|execute",
     "mobile relay",
     "skill list",
-    "skill update",
     "skill delete",
     "skill usage"
   ]) {
@@ -174,22 +173,39 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   }
   assert(!cliSource.includes("agent message send"),
     "licoup usage must not expose the retired agent message send entry point");
+  assert(!cliSource.includes("skill update"),
+    "licoup usage must not expose the retired skill update entry point");
 
-  const reviewedRustUnsafeFiles = new Set([
-    "crates/licoup-native/src/core/safe_archive.rs",
-    "crates/licoup-native/src/ffi/android_ffi.rs",
-    "crates/licoup-native/src/ffi/ios_ffi.rs",
-    "crates/licoup-native/src/domain/collaboration_plugin/package/writer.rs",
-    "crates/licoup-native/src/domain/collaboration_plugin/workflow/commit.rs",
-    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/immutable_file.rs",
-    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/unix.rs",
-    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs",
-    "crates/licoup-native/src/domain/agent_resource_usage/process_snapshot.rs",
-    "crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs",
-    "crates/licoup-native/src/platform/user_presence.rs",
-    "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
-    "crates/licoup-native/src/platform/antigravity_driver/tests.rs"
+  const reviewedRustUnsafeResponsibilities = new Map([
+    ["crates/licoup-native/src/core/safe_archive.rs", "bounded archive FFI"],
+    ["crates/licoup-native/src/ffi/android_ffi.rs", "Android ABI boundary"],
+    ["crates/licoup-native/src/ffi/ios_ffi.rs", "iOS ABI boundary"],
+    ["crates/licoup-native/src/domain/collaboration_plugin/package/writer.rs", "atomic package filesystem ownership"],
+    ["crates/licoup-native/src/domain/collaboration_plugin/workflow/commit.rs", "atomic workflow filesystem ownership"],
+    ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/immutable_file.rs", "immutable runtime file flags"],
+    ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/unix.rs", "Unix child process identity"],
+    ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs", "Windows child process identity"],
+    ["crates/licoup-native/src/domain/agent_resource_usage/process_snapshot.rs", "platform process metrics"],
+    ["crates/licoup-native/src/domain/client_update/native_runner/plan.rs", "parent process identity and Windows process enumeration"],
+    ["crates/licoup-native/src/bin/lico-gateway.rs", "inherited readiness file descriptor"],
+    ["crates/licoup-native/src/bin/lico-llm-gateway.rs", "inherited readiness file descriptor"],
+    ["crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs", "macOS Keychain FFI"],
+    ["crates/licoup-native/src/platform/user_presence.rs", "platform presence authorization"],
+    ["crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs", "macOS presence authorization"],
+    ["crates/licoup-native/src/platform/antigravity_driver/tests.rs", "isolated process environment fixture"],
+    ["crates/licoup-native/src/platform/client_autostart.rs", "launchd user identity"],
+    ["crates/licoup-native/src/platform/cursor_driver/tests.rs", "isolated process environment fixtures"],
+    ["crates/licoup-native/src/platform/gateway_runtime/channels/telegram/credentials.rs", "isolated credential environment fixture"],
+    ["crates/licoup-native/src/platform/lico_agent_driver/tests.rs", "isolated process environment fixtures"],
+    ["crates/licoup-native/src/platform/llm_gateway_autostart.rs", "launchd user identity"],
+    ["crates/licoup-native/src/platform/llm_gateway_credentials_control.rs", "Unix peer credential verification"],
+    ["crates/licoup-native/src/platform/llm_gateway_inventory_control.rs", "Unix peer credential verification"],
+    ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],
+    ["crates/licoup-native/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
   ]);
+  const reviewedRustUnsafeFiles = new Set(reviewedRustUnsafeResponsibilities.keys());
+  assert([...reviewedRustUnsafeResponsibilities.values()].every((value) => value.length > 0),
+    "every reviewed unsafe owner must retain one explicit responsibility");
   const rustCliUnsafeFiles = (await collectRustUnsafeFiles(rustCliRoot))
     .filter((relativePath) => !reviewedRustUnsafeFiles.has(relativePath));
   assert(

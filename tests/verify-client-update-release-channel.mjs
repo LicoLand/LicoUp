@@ -46,7 +46,7 @@ const androidPhysicalInstallLaunchReportPath = path.join(
 
 const releaseTargetCatalog = loadClientReleaseTargetCatalog();
 const productionTargets = Object.freeze(clientReleaseTargets(releaseTargetCatalog, {
-  includeUnsupported: false,
+  includeBuildUnsupported: false,
   includeReleaseUnsupported: false
 }));
 const { createSecureClientGitHubReleaseClosure } = await loadSecureClientContract();
@@ -175,7 +175,8 @@ function artifactMatchesTarget(artifact, target) {
   return (
     artifact.targetId === target.id &&
     artifact.platform === target.platform &&
-    artifact.osFamily === target.osFamily &&
+    artifact.channel === target.channel &&
+    artifact.packageFormat === target.packageFormat &&
     artifact.arch === target.arch
   );
 }
@@ -574,23 +575,21 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
 }
 
 function createArtifact(target) {
-  const fileName = `${target.id}${target.installerStrategy === "app-bundle-replacement" ? ".tar.gz" : ".bin"}`;
+  const fileName = `${target.id}.${target.packageFormat}`;
   const filePath = path.join(artifactRoot, fileName);
   const payload = Buffer.from(`LicoMesh update artifact ${target.id} ${randomUUID()}\n`, "utf8");
   writeFileSync(filePath, payload);
   return {
     targetId: target.id,
     platform: target.platform,
-    osFamily: target.osFamily,
+    channel: target.channel,
+    packageFormat: target.packageFormat,
     arch: target.arch,
-    installerStrategy: target.installerStrategy,
+    updateAuthority: target.updateAuthority,
     url: pathToFileURL(filePath).href,
     fileName,
     size: payload.length,
-    sha256: sha256Buffer(payload),
-    ...(target.installerStrategy === "app-bundle-replacement"
-      ? { applicationName: "LicoUp.app", bundleId: "land.lico.licoup" }
-      : {})
+    sha256: sha256Buffer(payload)
   };
 }
 
@@ -612,9 +611,10 @@ function createDryRunInstallerPlans(artifacts) {
   return artifacts.map((artifact) => ({
     targetId: artifact.targetId,
     platform: artifact.platform,
-    osFamily: artifact.osFamily,
+    channel: artifact.channel,
+    packageFormat: artifact.packageFormat,
     arch: artifact.arch,
-    installerStrategy: artifact.installerStrategy,
+    updateAuthority: artifact.updateAuthority,
     preUpdateStateRecord: `${artifact.targetId}.pre-update.json`,
     rollback:
       artifact.platform === "android"
@@ -723,7 +723,8 @@ function buildProductionClosureStatus({
 }) {
   const dryRunPlansCoverTargetLabels =
     dryRunInstallerPlans.length === productionTargets.length &&
-    dryRunInstallerPlans.every((plan) => plan.installerStrategy && plan.preUpdateStateRecord && plan.rollback);
+    dryRunInstallerPlans.every((plan) =>
+      plan.packageFormat && plan.updateAuthority && plan.preUpdateStateRecord && plan.rollback);
   const localAdHocBundleVerified =
     macosReleaseBundleEvidence.ok === true &&
     macosReleaseBundleEvidence.artifactKind === "actual-release-bundle" &&
@@ -790,67 +791,57 @@ function main() {
   const onlineChannelKeyId = "online-channel-test-vector";
   const publicationAuthorityKeyId = "release-publication-test-vector";
   const artifacts = productionTargets.map(createArtifact);
-  const macosSingleTargetIds = ["macos-arm64"];
-  const linuxArmSingleTargetIds = ["linux-glibc-arm64"];
-  const macosAndroidTargetIds = ["macos-arm64", "android-arm64"];
-  const macosSingleTrain = reduceClientGitHubReleaseClosure({
+  const selectedTargetIds = productionTargets.map((target) => target.id);
+  ensure(selectedTargetIds.length > 0, "canonical release target catalog has no releasable targets");
+  const unselectedTarget = releaseTargetCatalog.targets.find(
+    (target) => !selectedTargetIds.includes(target.id)
+  );
+  ensure(unselectedTarget, "canonical release target catalog has no unselected target fixture");
+  const selectedTrain = reduceClientGitHubReleaseClosure({
     catalog: releaseTargetCatalog,
-    selectedTargetIds: macosSingleTargetIds,
-    artifacts: artifactsForTargets(artifacts, macosSingleTargetIds),
+    selectedTargetIds,
+    artifacts: artifactsForTargets(artifacts, selectedTargetIds),
     targetReadiness: [
-      ...readyTargetEvidence(macosSingleTargetIds),
+      ...readyTargetEvidence(selectedTargetIds),
       {
-        targetId: "windows-x64",
+        targetId: unselectedTarget.id,
         githubReleaseReady: false,
         blockers: ["unselected_platform_evidence_missing"]
       }
     ]
   });
-  const linuxArmSingleTrain = reduceClientGitHubReleaseClosure({
+  const blockedSelectedTrain = reduceClientGitHubReleaseClosure({
     catalog: releaseTargetCatalog,
-    selectedTargetIds: linuxArmSingleTargetIds,
-    artifacts: artifactsForTargets(artifacts, linuxArmSingleTargetIds),
-    targetReadiness: readyTargetEvidence(linuxArmSingleTargetIds)
-  });
-  const macosAndroidTrain = reduceClientGitHubReleaseClosure({
-    catalog: releaseTargetCatalog,
-    selectedTargetIds: macosAndroidTargetIds,
-    artifacts: artifactsForTargets(artifacts, macosAndroidTargetIds),
-    targetReadiness: readyTargetEvidence(macosAndroidTargetIds)
-  });
-  const blockedMacosTrain = reduceClientGitHubReleaseClosure({
-    catalog: releaseTargetCatalog,
-    selectedTargetIds: macosSingleTargetIds,
-    artifacts: artifactsForTargets(artifacts, macosSingleTargetIds),
+    selectedTargetIds,
+    artifacts: artifactsForTargets(artifacts, selectedTargetIds),
     targetReadiness: [{
-      targetId: "macos-arm64",
+      targetId: selectedTargetIds[0],
       githubReleaseReady: false,
       blockers: ["platform_signing_evidence_missing"]
     }]
   });
-  for (const [label, train] of [
-    ["macOS single-target GitHub Release closure", macosSingleTrain],
-    ["Linux glibc ARM64 single-target GitHub Release closure", linuxArmSingleTrain],
-    ["macOS and Android GitHub Release subset", macosAndroidTrain]
-  ]) {
-    strictAssert.equal(train.githubReleaseReady, true, `${label} must be independently ready`);
-    strictAssert.equal(train.productionReady, false, `${label} must not imply product production readiness`);
-    strictAssert.equal(train.productionReleaseReady, false, `${label} must not imply product release readiness`);
-  }
+  strictAssert.equal(selectedTrain.githubReleaseReady, true,
+    "canonical GitHub Release target selection must be independently ready");
+  strictAssert.equal(selectedTrain.productionReady, false,
+    "target release closure must not imply product production readiness");
+  strictAssert.equal(selectedTrain.productionReleaseReady, false,
+    "target release closure must not imply product release readiness");
   strictAssert.equal(
-    macosSingleTrain.githubReleaseReadiness.find((entry) => entry.targetId === "windows-x64")?.githubReleaseReady,
+    selectedTrain.githubReleaseReadiness.find(
+      (entry) => entry.targetId === unselectedTarget.id
+    )?.githubReleaseReady,
     false,
-    "unselected Windows readiness must remain false"
+    "unselected target readiness must remain false"
   );
   strictAssert.deepEqual(
-    macosSingleTrain.githubReleaseReadiness.find((entry) => entry.targetId === "windows-x64")?.blockers,
-    [
-      "windows_github_release_consumer_verification_pending",
-      "windows_native_host_receipt_pending",
-    ],
+    selectedTrain.githubReleaseReadiness.find(
+      (entry) => entry.targetId === unselectedTarget.id
+    )?.blockers,
+    unselectedTarget.releaseBlockers,
     "unselected release-unsupported platform blockers must remain visible without affecting the selected train"
   );
-  strictAssert.equal(blockedMacosTrain.githubReleaseReady, false, "selected target blocker must fail the GitHub Release closure");
+  strictAssert.equal(blockedSelectedTrain.githubReleaseReady, false,
+    "selected target blocker must fail the GitHub Release closure");
   const dryRunInstallerPlans = createDryRunInstallerPlans(artifacts);
   const releaseVersion = nextReleaseVersion(currentClientVersion);
   const manifest = signManifest(
@@ -927,15 +918,21 @@ function main() {
   ]);
   const positiveChecks = [];
   positiveChecks.push(
-    { name: "macOS single-target GitHub Release closure is independently ready", ok: macosSingleTrain.githubReleaseReady },
-    { name: "Linux glibc ARM64 GitHub Release closure is independently ready", ok: linuxArmSingleTrain.githubReleaseReady },
-    { name: "macOS and Android GitHub Release subset is independently ready", ok: macosAndroidTrain.githubReleaseReady },
+    {
+      name: "canonical GitHub Release target selection is independently ready",
+      ok: selectedTrain.githubReleaseReady
+    },
     {
       name: "unselected target readiness does not block selected GitHub Release",
-      ok: macosSingleTrain.githubReleaseReady &&
-        macosSingleTrain.githubReleaseReadiness.find((entry) => entry.targetId === "windows-x64")?.githubReleaseReady === false
+      ok: selectedTrain.githubReleaseReady &&
+        selectedTrain.githubReleaseReadiness.find(
+          (entry) => entry.targetId === unselectedTarget.id
+        )?.githubReleaseReady === false
     },
-    { name: "selected target blocker fails GitHub Release closed", ok: blockedMacosTrain.githubReleaseReady === false }
+    {
+      name: "selected target blocker fails GitHub Release closed",
+      ok: blockedSelectedTrain.githubReleaseReady === false
+    }
   );
   const selected = verifyManifest(manifest, publicKeysById, {
     currentVersion: currentClientVersion,
@@ -993,7 +990,8 @@ function main() {
   }
   ensure(
     dryRunInstallerPlans.length === productionTargets.length &&
-      dryRunInstallerPlans.every((plan) => plan.installerStrategy && plan.preUpdateStateRecord && plan.rollback),
+      dryRunInstallerPlans.every((plan) =>
+        plan.packageFormat && plan.updateAuthority && plan.preUpdateStateRecord && plan.rollback),
     "installer dry-run plan is incomplete"
   );
   positiveChecks.push({ name: "platform installer dry-run plan covers production target labels", ok: true });
@@ -1068,15 +1066,19 @@ function main() {
     expectFailure("duplicate GitHub Release target selection is rejected", () =>
       reduceClientGitHubReleaseClosure({
         catalog: releaseTargetCatalog,
-        selectedTargetIds: ["macos-arm64", "macos-arm64"],
-        artifacts: artifactsForTargets(artifacts, ["macos-arm64"])
+        selectedTargetIds: [selectedTargetIds[0], selectedTargetIds[0]],
+        artifacts: artifactsForTargets(artifacts, [selectedTargetIds[0]])
       })
     ),
     expectFailure("unknown GitHub Release target is rejected", () =>
       reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["freebsd-x64"], artifacts: [] })
     ),
     expectFailure("unsupported iOS release target is explicit and rejected", () =>
-      reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["ios-arm64"], artifacts: [] })
+      reduceClientGitHubReleaseClosure({
+        catalog: releaseTargetCatalog,
+        selectedTargetIds: ["ios-app-store-arm64"],
+        artifacts: []
+      })
     ),
     expectFailure("iOS simulator adaptation cannot be selected as a distribution artifact", () =>
       reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["ios-simulator-arm64"], artifacts: [] })
@@ -1084,13 +1086,12 @@ function main() {
     expectFailure("artifact outside selected GitHub Release targets is rejected", () =>
       reduceClientGitHubReleaseClosure({
         catalog: releaseTargetCatalog,
-        selectedTargetIds: macosSingleTargetIds,
+        selectedTargetIds,
         artifacts: [
-          ...artifactsForTargets(artifacts, ["macos-arm64"]),
-          createArtifact(releaseTargetCatalog.targets.find((target) =>
-            target.id === "windows-x64"))
+          ...artifactsForTargets(artifacts, selectedTargetIds),
+          createArtifact(unselectedTarget)
         ],
-        targetReadiness: readyTargetEvidence(macosSingleTargetIds)
+        targetReadiness: readyTargetEvidence(selectedTargetIds)
       })
     )
   ];
@@ -1193,11 +1194,11 @@ function main() {
       targetCount: releaseTargetCatalog.targets.length,
       releaseSupportedTargetCount: productionTargets.length,
       buildSupportedTargetCount: releaseTargetCatalog.targets
-        .filter((target) => target.supported)
+        .filter((target) => target.packageBuildSupported)
         .length,
       unsupportedTargets: releaseTargetCatalog.targets
-        .filter((target) => !target.supported)
-        .map((target) => ({ targetId: target.id, blockers: target.blockers })),
+        .filter((target) => !target.packageBuildSupported)
+        .map((target) => ({ targetId: target.id, blockers: target.packageBlockers })),
       releaseUnsupportedTargets: releaseTargetCatalog.targets
         .filter((target) => !target.releaseSupported)
         .map((target) => ({
@@ -1209,10 +1210,9 @@ function main() {
       testVectorOnly: true,
       productionReady: false,
       productionReleaseReady: false,
-      macosSingleTrain,
-      linuxArmSingleTrain,
-      macosAndroidTrain,
-      blockedMacosTrain
+      selectedTrain,
+      blockedSelectedTrain,
+      unselectedTargetId: unselectedTarget.id
     },
     positiveChecks,
     negativeChecks,

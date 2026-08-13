@@ -118,7 +118,11 @@ void registerClientHistoryRuntimeSessionSelectionScenarios() {
         'agent': 'codex',
         'text': 'Fresh prompt',
         'streamEvents': true,
-        'workingDirectory': '/workspace/codex',
+        'timeoutMs': 0,
+        'permissionMode': 'bypassPermissions',
+        'workingDirectory': localConversationWorkingDirectoryFallback(
+          agentId: 'codex',
+        ),
         'binaryPath': '/synthetic/bin/codex',
       });
       expect(controller.selectedConversationSession?.id, 'native-codex-new');

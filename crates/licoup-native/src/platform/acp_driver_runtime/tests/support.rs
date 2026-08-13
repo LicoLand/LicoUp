@@ -139,6 +139,13 @@ assert!(third.contains("\"method\":\"session/prompt\""));
 if third.contains("SELFTEST_HARD_DEADLINE") { park_forever(); }
 println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
 io::stdout().flush().unwrap();
+if third.contains("SELFTEST_FLOOD") {
+for i in 0..70 {
+println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"native-fake-session\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"chunk-{}\"}}}}}}}}", i);
+}
+io::stdout().flush().unwrap();
+park_forever();
+}
 if third.contains("SELFTEST_PROCESS_LOSS") { return; }
 if third.contains("SELFTEST_OUTPUT_LIMIT") {
 let text = "x".repeat(65536);

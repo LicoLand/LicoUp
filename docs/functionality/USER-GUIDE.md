@@ -76,45 +76,17 @@ a one-time handoff: the IDE composer id, `state.vscdb` path/key prefixes, and
 the last IDE assistant return, followed by your message. Later sends on that
 CLI session resume normally without repeating the handoff.
 
-The top contact **Lico** opens a LicoUp-owned **group Conversation** where each
-agent is a peer participant. The composer shows the workspace capsule, a
-Flywheel capsule for **Current Conversation**, and a circular edit control.
-Hover the Flywheel capsule to pick an agent and that agent's model (Gateway
-providers A–Z for Lico Agent; native catalogs for third-party agents). Click the
-capsule or the edit control to open the full Adaptive Flywheel editor.
+The unified group-Conversation foundation remains separate from the direct
+Agent entry point. Adaptive Flywheel has its own desktop strategy surface: it
+starts with one automatically available LicoUp basic strategy and accepts
+immutable JSON Graph strategy packages. See
+[Adaptive Flywheel strategies](ADAPTIVE-FLYWHEEL.md) for strategy import, the
+capsule role editor, background runtime detection, and the workflow diagram.
 
 **Lico Agent** is a separate first-party runtime in the agent list (not the
 group entry itself). When chatting with it, choose Agent or Plan mode; Plan
 mode may only write the bound local plan file under OS sandbox. See
 [Lico Agent](../protocols/lico-agent.md).
-
-Open **Adaptive Flywheel** to choose everyday conversation agents and configure
-code-engineering roles. **Assistant** is the configured priority list; the first
-capsule is the default dispatch owner, and list order is also the automatic
-fallback chain when a Lico group Current Conversation send hits quota, credit,
-rate-limit, or provider-capacity limits. A successful fallback updates Current
-Conversation to the capsule that worked without reordering the Assistant list.
-On the Lico group composer, the flywheel **Current Conversation** picker uses
-the same agent/model choice and becomes the live dispatch owner when it differs
-from that first capsule. Saving Adaptive Flywheel again re-syncs Current
-Conversation from the first Assistant capsule. Assistant starts from a circular
-plus control that expands into a capsule search field and three horizontal
-floating cards — agent, that agent’s models, and reasoning effort plus a Fast
-switch; confirmed combinations become capsules. Remove a capsule only with its
-trailing close control; long-press and drag to reorder — list order is the
-effective priority. **Code Engineering** uses the same multi-capsule picker for
-Designer, Worker, and Reviewer (without Fast).
-Designer capsules are shared across the project; list order is priority. Worker
-and Reviewer project to backend/frontend lanes:
-the first capsule is the backend assignment, the second is frontend, and a
-single capsule covers both lanes. The saved assignments are stored in the
-private client-state file `adaptive-flywheel.toml` and projected to the local
-Subagent MCP without exposing executable paths or the raw file. Every role
-picker uses the same live target scan: a detected runnable agent is selectable
-in any role, and its model picker is populated from that agent's native model
-directory when available, then verified local configuration or cache. A static
-catalog only annotates known models and never replaces a successful native
-directory response.
 
 ## Connect OpenClaw or Hermes in your VM
 
@@ -176,12 +148,11 @@ for conversation.
 
 ## Manage local data
 
-- Skills are installed and managed on the device. Updates use only a source the
-  user configured, such as a mirror or GitHub repository. Automatic checks run
-  only after that schedule is explicitly enabled. Deletion always names one or
-  more target agents.
+- Skill Hub only discovers skills already present in local agent directories.
+  It does not download, install, update, or synchronize skill packages. Removing
+  a selected local skill moves its exact directory to the system Trash.
 - Skill usage counts come from actual local invocation events and can be viewed
-  by time window; browsing or installing a skill does not count as use.
+  by time window; browsing a skill does not count as use.
 - Conversation backups go to a directory chosen by the user. Choose all
   conversations or an exact keyword filter before previewing and starting the
   local backup job.
@@ -192,36 +163,6 @@ for conversation.
   copy.
 
 Do not attach raw logs, histories, paths, or device details to a public issue.
-
-## Enable optional collaboration
-
-Meshrix collaboration is a separate plugin. The default client does not load
-or query it.
-
-1. Open **Plugin Management** and choose the collaboration plugin area.
-2. Choose a GitHub repository and an exact immutable commit.
-3. In a separate action, import and authenticate the expected signing key.
-4. Review the signed runner, complete package inventory, components, and local
-   target; then install and enable the plugin manually.
-5. For a local deployment, assemble the selected components and start the fixed
-   signed external runner with a separate manual action. Assembly does not start
-   the server automatically. Stop or remove it from the same area.
-6. For MCP installation, select one or more plugins and one or more local
-   agents, then review the exact local changes before applying them.
-
-The LicoUp source tree does not contain the Meshrix server runner. A client
-build therefore proves neither that a server artifact was obtained nor that a
-deployment was started.
-
-Installation or enablement never grants continuing transfer permission. If an
-MCP operation would reach an external service, its bridge first creates a
-non-transmitting preview. Review the destination, purpose, exact request, and
-each selected file in LicoUp, complete the platform authentication prompt,
-and approve only that operation. The matching preview can be claimed exactly
-once. Changing the file, destination, purpose, request body, or session makes
-the digest mismatch; cancellation, expiry, or reuse also fails closed. If
-protected platform authentication is unavailable, external transfer remains
-disabled.
 
 ## Preview a protected transfer to another client
 

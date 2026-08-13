@@ -95,6 +95,9 @@ fn absorb_session_metadata(kept: &mut Value, discarded: &Value) {
     {
         object.insert("delegatedSubagent".to_string(), Value::Bool(true));
     }
+    if discarded.get("running").and_then(Value::as_bool) == Some(true) {
+        object.insert("running".to_string(), Value::Bool(true));
+    }
 }
 
 pub(crate) fn paged_history_sessions(sessions: Vec<Value>, page: &HistoryPageConfig) -> Vec<Value> {

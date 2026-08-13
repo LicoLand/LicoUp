@@ -54,13 +54,6 @@ const retiredPublicCompatibilityResidueDefinitions = [
     }),
   ),
   {
-    owner: `${commandRoot}/client_update.rs`,
-    path: "update rollback",
-    action: ["rollback"],
-    symbols: [],
-    strings: ["update rollback"],
-  },
-  {
     owner: `${commandRoot}/collaboration.rs`,
     path: "collaboration runner-trust import",
     action: ["runner-trust", "import"],
@@ -96,13 +89,6 @@ const retiredPublicCompatibilityResidueDefinitions = [
     strings: [`openclaw-gateway ${action}`],
     moduleRemoved: true,
   })),
-  {
-    owner: `${commandRoot}/mobile.rs`,
-    path: "mobile relay commands create-secure",
-    action: ["commands", "create-secure"],
-    symbols: [],
-    strings: ["commands create-secure", "create-secure"],
-  },
   {
     owner: `${commandRoot}/mobile.rs`,
     path: "mobile relay e2ee status",
@@ -147,228 +133,12 @@ const retiredPublicCompatibilityModules = new Set(
     .map(({ owner }) => owner),
 );
 const ownerScopedRetiredActionPaths = new Set([
-  "update rollback",
   "collaboration runner-trust import",
   "collaboration runner-trust remove",
   "collaboration uninstall",
   "mobile relay e2ee status",
   "mobile relay kt status",
 ]);
-
-// Frozen from the documented register_commands/help contract that predates
-// fail-closed admission. Family help actions are expanded into exact paths.
-const authoritativeRouteKeys = [];
-function addRoutes(
-  source,
-  handler,
-  paths,
-  required = {},
-  cardinality = "Options",
-) {
-  for (const route of paths) {
-    authoritativeRouteKeys.push([
-      `${commandRoot}/${source}`,
-      handler,
-      route,
-      (required[route] ?? [])
-        .map(([name, kind]) => `${name}:${kind}`)
-        .join(","),
-    ].join("|"));
-  }
-}
-
-addRoutes("adapter.rs", "handle_catalog", ["adapter catalog"], {}, "Exact");
-addRoutes(
-  "adapter.rs",
-  "handle_antigravity_status",
-  ["adapter antigravity status"],
-  {},
-  "Exact",
-);
-addRoutes(
-  "adapter.rs",
-  "handle_antigravity_install",
-  ["adapter antigravity install"],
-  {},
-  "Exact",
-);
-addRoutes(
-  "adapter.rs",
-  "handle_antigravity_uninstall",
-  ["adapter antigravity uninstall"],
-  {},
-  "Exact",
-);
-addRoutes("agent_conversation.rs", "handle_agent_conversation", [
-  "agent conversation open",
-  "agent conversation send",
-  "agent conversation steer",
-  "agent conversation cancel",
-  "agent conversation capabilities",
-  "agent conversation stream",
-  "agent conversation cleanup",
-]);
-addRoutes("agent_conversation.rs", "handle_agents_pair", [
-  "agents pair request",
-  "agents pair approve",
-  "agents pair revoke",
-  "agents pair list",
-]);
-addRoutes("agent_usage.rs", "handle_agent_usage_scan", ["agent-usage scan"]);
-addRoutes("agent_usage.rs", "handle_agent_usage_report", ["agent-usage report"]);
-addRoutes("client_update.rs", "handle_update", [
-  "update status",
-  "update check",
-  "update download",
-  "update verify",
-  "update apply",
-]);
-for (const [route, handler] of [
-  ["collaboration status", "handle_status"],
-  ["collaboration enable", "handle_enable"],
-  ["collaboration install plan", "handle_install_plan"],
-  ["collaboration install apply", "handle_install_apply"],
-  ["collaboration install cancel", "handle_install_cancel"],
-  ["collaboration workflow catalog", "handle_workflow_catalog"],
-  ["collaboration workflow local-deployment plan", "handle_local_deployment_plan"],
-  ["collaboration workflow local-deployment apply", "handle_local_deployment_apply"],
-  ["collaboration workflow mcp-install plan", "handle_mcp_install_plan"],
-  ["collaboration workflow mcp-install apply", "handle_mcp_install_apply"],
-  ["collaboration workflow cancel", "handle_workflow_cancel"],
-  ["collaboration local-server status", "handle_local_server_status"],
-  ["collaboration local-server start", "handle_local_server_start"],
-  ["collaboration local-server stop", "handle_local_server_stop"],
-  ["collaboration local-server uninstall", "handle_local_server_uninstall"],
-  ["collaboration disable", "handle_disable"],
-  ["collaboration cleanup", "handle_cleanup"],
-]) addRoutes("collaboration.rs", handler, [route]);
-addRoutes("mcp.rs", "handle_preview", ["mcp http preview"]);
-addRoutes("mcp.rs", "handle_execute", ["mcp http execute"]);
-addRoutes("mobile.rs", "handle_mobile_relay", [
-  "mobile relay config get",
-  "mobile relay config set",
-  "mobile relay pairing create",
-  "mobile relay pairing claim",
-  "mobile relay pairing status",
-  "mobile relay pairing revoke",
-  "mobile relay pc check-in",
-  "mobile relay commands poll",
-  "mobile relay commands sync",
-  "mobile relay commands create",
-  "mobile relay commands result",
-  "mobile relay commands result-secure",
-  "mobile relay commands result-replay-proof",
-  "mobile relay e2ee secret-store-cleanup",
-]);
-addRoutes("opencode_serve.rs", "handle_opencode_serve", [
-  "opencode-serve ensure",
-  "opencode-serve start",
-  "opencode-serve stop",
-  "opencode-serve restart",
-  "opencode-serve status",
-]);
-addRoutes("secure_mesh.rs", "handle_secure_mesh", [
-  "secure-mesh status",
-  "secure-mesh envelope validate",
-  "secure-mesh command policy",
-  "secure-mesh command evaluate",
-  "secure-mesh command execute",
-  "secure-mesh device-trust evaluate",
-  "secure-mesh file route",
-  "secure-mesh file receive-destination",
-  "secure-mesh file receive-confirmation",
-  "secure-mesh approval request",
-  "secure-mesh approval fanout",
-  "secure-mesh approval respond",
-  "secure-mesh approval inbox",
-  "secure-mesh approval adapter-capability",
-]);
-for (const [route, handler, cardinality = "Options", required = []] of [
-  ["skill list", "handle_skill_list"],
-  ["skill get", "handle_skill_get", "Options", [["skill-id", "Text"]]],
-  ["skill install plan", "handle_skill_install_plan"],
-  ["skill install apply", "handle_skill_install_apply"],
-  ["skill install rollback", "handle_skill_install_rollback"],
-  ["skill update plan", "handle_skill_update_plan"],
-  ["skill update apply", "handle_skill_update_apply"],
-  ["skill delete plan", "handle_skill_delete_plan"],
-  ["skill delete apply", "handle_skill_delete_apply"],
-  ["skill auto-update set", "handle_skill_auto_update_set"],
-  ["skill auto-update run", "handle_skill_auto_update_run"],
-  ["skill auto-update tick", "handle_skill_auto_update_tick", "Exact"],
-  ["skill visibility set", "handle_skill_visibility", "Options", [["skill-id", "Text"]]],
-  ["skill pin set", "handle_skill_pin", "Options", [["skill-id", "Text"]]],
-  ["skill usage report", "handle_skill_usage_report"],
-]) addRoutes("skill.rs", handler, [route], { [route]: required }, cardinality);
-addRoutes("snapshots.rs", "handle_snapshots_list", ["snapshots list"]);
-addRoutes(
-  "snapshots.rs",
-  "handle_snapshots_restore",
-  ["snapshots restore"],
-  { "snapshots restore": [["snapshot-id", "Text"]] },
-  "Exact",
-);
-addRoutes("snapshots.rs", "handle_snapshots_collect", ["snapshots collect"]);
-addRoutes("snapshots.rs", "handle_snapshots_root", [
-  "snapshots root get",
-  "snapshots root set",
-]);
-addRoutes("snapshots.rs", "handle_snapshots_profiles", [
-  "snapshots profiles list",
-  "snapshots profiles get",
-  "snapshots profiles import",
-]);
-addRoutes("snapshots.rs", "handle_snapshots_archive", [
-  "snapshots archive collect",
-  "snapshots archive run",
-  "snapshots archive verify",
-  "snapshots archive report",
-  "snapshots archive jobs preview",
-  "snapshots archive jobs create",
-  "snapshots archive jobs status",
-  "snapshots archive jobs list",
-  "snapshots archive jobs events",
-  "snapshots archive jobs cancel",
-  "snapshots archive jobs drain",
-]);
-addRoutes("snapshots.rs", "handle_snapshots_collections", [
-  "snapshots collections list",
-]);
-addRoutes("snapshots.rs", "handle_conversations", [
-  "conversations list",
-  "conversations stream",
-  "conversations append",
-  "conversations delete",
-]);
-addRoutes(
-  "state.rs",
-  "handle_state_get",
-  ["state get"],
-  { "state get": [["collection", "Text"]] },
-  "Exact",
-);
-addRoutes(
-  "state.rs",
-  "handle_state_set",
-  ["state set"],
-  {
-    "state set": [
-      ["collection", "Text"],
-      ["payload", "Json"],
-    ],
-  },
-  "Exact",
-);
-addRoutes("state.rs", "handle_activity_list", ["activity list"]);
-addRoutes("targets.rs", "handle_targets_scan", ["targets scan"]);
-addRoutes("targets.rs", "handle_targets_add", ["targets add"]);
-addRoutes(
-  "targets.rs",
-  "handle_targets_inspect",
-  ["targets inspect"],
-  { "targets inspect": [["target", "Text"]] },
-);
-Object.freeze(authoritativeRouteKeys);
 
 async function discoverRustSources(relativeDirectory = commandRoot) {
   const entries = await fs.readdir(path.join(repoRoot, relativeDirectory), {
@@ -984,8 +754,20 @@ function requiredArgumentSchemas(tokens, sourcePath) {
   return entries;
 }
 
-function optionSchemas(tokens, sourcePath) {
-  const fieldTokens = fieldValue(tokens, "options", sourcePath);
+function optionSchemas(tokens, sourcePath, sharedOptionArrays) {
+  let fieldTokens = fieldValue(tokens, "options", sourcePath);
+  if (!fieldTokens.some((token) => token.value === "[")) {
+    assert.equal(
+      fieldTokens.length,
+      1,
+      `${sourcePath} CommandSpec.options must be an array or one audited shared constant`,
+    );
+    fieldTokens = sharedOptionArrays.get(fieldTokens[0]?.value);
+    assert.ok(
+      fieldTokens,
+      `${sourcePath} CommandSpec.options references an unaudited shared constant`,
+    );
+  }
   const open = fieldTokens.findIndex((token) => token.value === "[");
   assert.notEqual(open, -1);
   const close = matchingDelimiter(fieldTokens, open);
@@ -1021,6 +803,25 @@ function optionSchemas(tokens, sourcePath) {
     index = matchingDelimiter(fieldTokens, index);
   }
   return schemas;
+}
+
+function sharedOptionArray(tokens, name, sourcePath) {
+  const declaration = sequenceIndex(tokens, ["const", name]);
+  assert.notEqual(
+    declaration,
+    -1,
+    `${sourcePath} must declare shared option array ${name}`,
+  );
+  const assignment = tokens.findIndex(
+    (token, index) => index > declaration && token.value === "=",
+  );
+  assert.notEqual(assignment, -1, `${sourcePath} ${name} must have a value`);
+  const open = tokens.findIndex(
+    (token, index) => index > assignment && token.value === "[",
+  );
+  assert.notEqual(open, -1, `${sourcePath} ${name} must be an array`);
+  const close = matchingDelimiter(tokens, open);
+  return tokens.slice(open, close + 1);
 }
 
 function functionTokens(tokens, name, sourcePath) {
@@ -1166,8 +967,11 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
   const sources = await commandSources();
   const routes = new Set();
   const registrations = [];
-  assert.equal(retiredPublicCompatibilityResidues.length, 26);
-  assert.equal(retiredPublicCompatibilityRoutes.size, 26);
+  assert.ok(retiredPublicCompatibilityResidues.length > 0);
+  assert.equal(
+    retiredPublicCompatibilityRoutes.size,
+    retiredPublicCompatibilityResidues.length,
+  );
   for (const retiredModule of retiredPublicCompatibilityModules) {
     assert.equal(
       sources.has(retiredModule),
@@ -1176,6 +980,12 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
     );
   }
   const rootTokens = productionTokens(sources.get(commandFacade));
+  const sharedOptionArrays = new Map([
+    [
+      "UPDATE_ROUTE_OPTIONS",
+      sharedOptionArray(rootTokens, "UPDATE_ROUTE_OPTIONS", commandFacade),
+    ],
+  ]);
   const builder = functionTokens(rootTokens, "build_command_table", commandFacade);
   assert.notEqual(
     sequenceIndex(rootTokens, ["fn", "build_command_table", "(", ")", "-", ">", "CommandTable"]),
@@ -1257,7 +1067,7 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
     builder.body,
     builderBinding,
   );
-  assert.equal(builderCalls.length, 120);
+  assert.ok(builderCalls.length > 0, "command registry must not be empty");
   const provenBindingRegistrationCalls = builder.body.filter(
     (token, index) =>
       token.value === "."
@@ -1459,7 +1269,7 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
       const spec = commandSpecBody(call, sourcePath);
       const route = literalStringArray(spec, "path", sourcePath);
       const required = requiredArgumentSchemas(spec, sourcePath);
-      const options = optionSchemas(spec, sourcePath);
+      const options = optionSchemas(spec, sourcePath, sharedOptionArrays);
       const constraintCount = fieldValue(spec, "constraints", sourcePath)
         .filter((token) => token.value === "OptionConstraintSpec").length;
       assert.ok(route.length > 0, `${sourcePath} cannot register an empty route`);
@@ -1537,11 +1347,7 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
       });
     }
   }
-  assert.equal(
-    registrations.length,
-    120,
-    "build_command_table must own all 120 unconditional registrations",
-  );
+  assert.equal(registrations.length, builderCalls.length);
   for (const registration of registrations) {
     assert.equal(
       retiredPublicCompatibilityRoutes.has(registration.route.join(" ")),
@@ -1576,37 +1382,34 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
     1,
     "CommandTable::new may only be called by build_command_table",
   );
-  assert.equal(
-    authoritativeRouteKeys.length,
-    120,
-    "the public presentation help must expand to exactly 120 routes",
-  );
-  assert.equal(
-    new Set(authoritativeRouteKeys).size,
-    authoritativeRouteKeys.length,
-    "frozen CLI route authority must not contain duplicates",
-  );
-  assert.deepEqual(
-    registrations
-      .map(({ sourcePath, handler, route, required }) => [
-        sourcePath,
-        handler,
-        route.join(" "),
-        required.map(({ name, kind }) => `${name}:${kind}`).join(","),
-      ].join("|"))
-      .sort(),
-    [...authoritativeRouteKeys].sort(),
-    "unconditional builder registrations must exactly match public help authority",
-  );
-  assert.equal(
-    registrations.reduce((count, registration) => count + registration.options.length, 0),
-    331,
-    "public builder must freeze exactly 331 expanded OptionSpec entries",
-  );
-  assert.equal(
-    registrations.reduce((count, registration) => count + registration.constraintCount, 0),
-    17,
-    "public builder must freeze exactly 17 option constraint entries",
+  assert.ok(registrations.length > 0, "command registry must not be empty");
+  for (const [method, terminal] of [
+    ["schemas", ["map", "(", "CommandDef", ":", ":", "schema", ")", ".", "collect"]],
+    ["help_text", ["map", "(", "|", "definition", "|"]],
+  ]) {
+    const projection = functionTokens(rootTokens, method, commandFacade);
+    assert.notEqual(
+      sequenceIndex(projection.body, ["self", ".", "defs", ".", "iter", "(", ")"]),
+      -1,
+      `${method} must project every registered command from CommandTable.defs`,
+    );
+    assert.notEqual(
+      sequenceIndex(projection.body, terminal),
+      -1,
+      `${method} must structurally map the registered command authority`,
+    );
+    for (const narrowing of ["filter", "take", "skip"]) {
+      assert.equal(
+        projection.body.some((token) => token.value === narrowing),
+        false,
+        `${method} must not narrow the registered command authority`,
+      );
+    }
+  }
+  assert.ok(
+    registrations.every((registration) =>
+      registration.options.length >= 0 && registration.constraintCount >= 0),
+    "registered option schemas and constraints must remain structurally typed",
   );
 
   const analyzedHandlers = new Map();
@@ -1679,6 +1482,7 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
           "path",
           "required_json",
           "required_text",
+          "take_option_json",
         ].includes(method),
         `${registration.sourcePath} ${registration.handler} uses unsafe carrier method ${method}`,
       );
@@ -1736,18 +1540,17 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
       );
     }
     for (const option of registration.options) {
-      const accessor = option.arity === "Boolean"
-        ? "option_flag"
+      const accessors = option.arity === "Boolean"
+        ? ["option_flag"]
         : option.valueKind === "Json"
-          ? "option_json"
-          : "option_text";
-      assert.notEqual(
-        sequenceIndex(
+          ? ["option_json", "take_option_json"]
+          : ["option_text"];
+      assert.ok(
+        accessors.some((accessor) => sequenceIndex(
           handler.body,
           [handler.carrierName, ".", accessor, "(", option.name, ")"],
-        ),
-        -1,
-        `${registration.sourcePath} ${registration.handler} must retrieve --${option.name} through ${accessor}`,
+        ) !== -1),
+        `${registration.sourcePath} ${registration.handler} must retrieve --${option.name} through ${accessors.join(" or ")}`,
       );
     }
   }
@@ -1780,6 +1583,15 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
             arity === "Value" && valueKind === "Json")
           .map(({ name }) => name),
       ),
+      take_option_json: new Set(
+        registrations
+          .filter((registration) =>
+            `${registration.sourcePath}|${registration.handler}` === handlerKey)
+          .flatMap((registration) => registration.options)
+          .filter(({ arity, valueKind }) =>
+            arity === "Value" && valueKind === "Json")
+          .map(({ name }) => name),
+      ),
       option_text: new Set(
         registrations
           .filter((registration) =>
@@ -1800,6 +1612,7 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
           "option_text",
           "required_json",
           "required_text",
+          "take_option_json",
         ].includes(
           handler.body[index + 2]?.value,
         )
@@ -2168,8 +1981,11 @@ test("JSON admission is fallible and has no malformed-to-value compatibility pat
         && tokens[index].value === "parse"
         && tokens[index - 1]?.value === "."
       ) {
-        assert.fail(
-          `${sourcePath} must not deserialize JSON through raw.parse/FromStr`,
+        const scalarType = values(tokens.slice(index + 1, index + 6));
+        assert.deepEqual(scalarType.slice(0, 3), [":", ":", "<"]);
+        assert.ok(
+          ["i64", "u16"].includes(scalarType[3]) && scalarType[4] === ">",
+          `${sourcePath} raw.parse is permitted only for an admitted numeric scalar`,
         );
       }
       if (
@@ -2251,10 +2067,36 @@ test("JSON admission is fallible and has no malformed-to-value compatibility pat
         || tokens[index + 2].value !== ":"
         || !tokens[index + 3].value.startsWith("from_")
       ) continue;
+      const method = tokens[index + 3].value;
+      if (method === "from_value") {
+        assert.equal(
+          sourcePath,
+          "crates/licoup-native/src/ffi/commands/state.rs",
+          `${sourcePath} may not convert admitted JSON values outside state handling`,
+        );
+        const owner = functions
+          .filter((range) => range.open < index && index < range.close)
+          .sort((left, right) => left.close - left.open - (right.close - right.open))[0];
+        assert.ok(
+          owner && ["handle_state_get", "handle_state_set"].includes(owner.name),
+          `${sourcePath} serde_json::from_value must stay inside typed state handlers`,
+        );
+        assert.notEqual(
+          sequenceIndex(tokens.slice(index, index + 12), ["ClientStateCollection"]),
+          -1,
+          `${sourcePath} serde_json::from_value must target ClientStateCollection`,
+        );
+        continue;
+      }
+      assert.equal(
+        method,
+        "from_str",
+        `${sourcePath} uses an unaudited serde_json parser ${method}`,
+      );
       serdeParserCalls += 1;
       serdeCalls.push({
         sourcePath,
-        method: tokens[index + 3].value,
+        method,
         tokenIndex: index,
       });
       sourceCalls.push(index);

@@ -3,7 +3,7 @@ use super::test_support::*;
 #[test]
 fn production_pairwise_store_reuses_selected_memory_custody_and_purges_after_restart() {
     let dir = temp_dir("mobile-relay-pairwise-selected-memory-restart");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let first_store = Arc::new(EphemeralSecretStore::new());
     let first_override: Arc<dyn SecureMeshSecretStore> = first_store.clone();
     let (session_id, local_endpoint_id) =
@@ -49,7 +49,7 @@ fn production_pairwise_store_reuses_selected_memory_custody_and_purges_after_res
 #[test]
 fn mobile_relay_pairwise_initialization_requires_pqxdh_prekey_bundle() {
     let dir = temp_dir("mobile-relay-pqxdh-prekey-required");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -86,7 +86,7 @@ fn mobile_relay_pairwise_initialization_requires_pqxdh_prekey_bundle() {
 #[test]
 fn mobile_relay_pqxdh_descriptor_publishes_signed_mlkem_prekey_without_seed() {
     let dir = temp_dir("mobile-relay-pqxdh-mlkem-prekey-material");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     let descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut config,
@@ -134,7 +134,7 @@ fn mobile_relay_pqxdh_descriptor_publishes_signed_mlkem_prekey_without_seed() {
 #[test]
 fn mobile_relay_pqxdh_descriptor_rejects_missing_mlkem_prekey_and_unsupported_protocol() {
     let dir = temp_dir("mobile-relay-pqxdh-strict-descriptor");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     let descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut config,
@@ -166,7 +166,7 @@ fn mobile_relay_pqxdh_descriptor_rejects_missing_mlkem_prekey_and_unsupported_pr
 #[test]
 fn mobile_relay_rekeys_and_requires_repair_for_incompatible_local_protocol() {
     let dir = temp_dir("mobile-relay-pqxdh-incompatible-local-protocol");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
@@ -205,7 +205,7 @@ fn mobile_relay_rekeys_and_requires_repair_for_incompatible_local_protocol() {
 #[test]
 fn mobile_relay_rotates_curve_and_mlkem_one_time_prekeys_together() {
     let dir = temp_dir("mobile-relay-pqxdh-prekey-rotation");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
@@ -263,7 +263,7 @@ fn mobile_relay_rotates_curve_and_mlkem_one_time_prekeys_together() {
 #[test]
 fn mobile_relay_pqxdh_intro_requires_mlkem_prekey_id_and_ciphertext() {
     let dir = temp_dir("mobile-relay-pqxdh-strict-intro");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -313,7 +313,7 @@ fn mobile_relay_pqxdh_intro_requires_mlkem_prekey_id_and_ciphertext() {
 #[test]
 fn mobile_relay_pairwise_rejects_intro_signed_prekey_mismatch() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-signed-prekey-mismatch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -364,7 +364,7 @@ fn mobile_relay_pairwise_rejects_intro_signed_prekey_mismatch() {
 #[test]
 fn mobile_relay_pairwise_rejects_intro_initiator_identity_mismatch() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-initiator-identity-mismatch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -416,7 +416,7 @@ fn mobile_relay_pairwise_rejects_intro_initiator_identity_mismatch() {
 #[test]
 fn mobile_relay_pairwise_rejects_intro_missing_one_time_prekey() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-missing-curve-otpk");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -470,7 +470,7 @@ fn mobile_relay_pairwise_rejects_intro_missing_one_time_prekey() {
 #[test]
 fn mobile_relay_pairwise_rejects_reused_remote_one_time_prekey() {
     let dir = temp_dir("mobile-relay-pqxdh-reused-remote-otpk");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -519,7 +519,7 @@ fn mobile_relay_pairwise_rejects_reused_remote_one_time_prekey() {
 #[test]
 fn mobile_relay_pairwise_does_not_reinitialize_from_peer_descriptor_session_id() {
     let dir = temp_dir("mobile-relay-pqxdh-stale-peer-session-id");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
@@ -561,7 +561,7 @@ fn mobile_relay_pairwise_does_not_reinitialize_from_peer_descriptor_session_id()
 #[test]
 fn mobile_relay_pairwise_store_missing_requires_repair() {
     let dir = temp_dir("mobile-relay-pairwise-store-missing");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -585,7 +585,7 @@ fn mobile_relay_pairwise_store_missing_requires_repair() {
 #[test]
 fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_restart() {
     let dir = temp_dir("mobile-relay-kt-continuous-freshness");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mobile_store: Arc<dyn SecureMeshSecretStore> = store.clone();
     let pairwise_store: Arc<dyn SecureMeshSecretStore> = store.clone();
@@ -731,7 +731,7 @@ fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_res
 #[test]
 fn mobile_relay_pairwise_payload_roundtrip_reuses_single_authorization_batch_per_operation() {
     let dir = temp_dir("mobile-relay-pairwise-payload-single-auth-batch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
 

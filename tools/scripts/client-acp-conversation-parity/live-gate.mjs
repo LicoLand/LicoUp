@@ -72,7 +72,7 @@ export function printLiveGateChecklist() {
           : sameSession
             ? "core-only --strict without same-session gate write"
             : "core-only --strict without --release-ui",
-        agentId === "codex" ? "npm run client:verify:codex-conversation:live" : null,
+        agentId === "codex" ? "npm run client:demo:device:macos:codex-parity" : null,
       ].filter(Boolean),
     };
   });

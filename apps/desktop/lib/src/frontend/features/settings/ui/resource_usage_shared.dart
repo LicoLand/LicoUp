@@ -4,138 +4,155 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+/// One named slice of the memory ring. Values are absolute byte counts; the
+/// painter scales them against [MemoryUsageRingPainter.totalBytes].
+final class MemoryUsageRingSegment {
+  const MemoryUsageRingSegment({
+    required this.id,
+    required this.label,
+    required this.bytes,
+    required this.color,
+  });
+
+  final String id;
+  final String label;
+  final int bytes;
+  final Color color;
+}
+
 String formatRssBytes(int bytes) {
   if (bytes <= 0) {
     return '0';
   }
   final megaBytes = bytes / (1024 * 1024);
+  if (megaBytes < 10) {
+    return megaBytes.toStringAsFixed(1);
+  }
   if (megaBytes < 1024) {
     return megaBytes.toStringAsFixed(0);
   }
   return (megaBytes / 1024).toStringAsFixed(1);
 }
 
-String formatRateKbPerSec(double kbPerSec) {
-  if (kbPerSec < 0.05) {
-    return '0';
+/// Formats a capacity figure for the ring center and legend (MB / GB).
+String formatMemoryCapacity(int bytes) {
+  if (bytes <= 0) {
+    return '0 B';
   }
-  if (kbPerSec < 1024) {
-    return kbPerSec.toStringAsFixed(0);
-  }
-  return (kbPerSec / 1024).toStringAsFixed(1);
-}
-
-String formatBytes(int bytes) {
-  if (bytes < 1024) {
-    return '$bytes B';
-  }
-  final kiloBytes = bytes / 1024;
-  if (kiloBytes < 1024) {
-    return '${kiloBytes.toStringAsFixed(0)} KB';
-  }
-  final megaBytes = kiloBytes / 1024;
+  final megaBytes = bytes / (1024 * 1024);
   if (megaBytes < 1024) {
-    return '${megaBytes.toStringAsFixed(1)} MB';
+    if (megaBytes < 10) {
+      return '${megaBytes.toStringAsFixed(1)} MB';
+    }
+    return '${megaBytes.toStringAsFixed(0)} MB';
   }
-  return '${(megaBytes / 1024).toStringAsFixed(2)} GB';
+  final gigaBytes = megaBytes / 1024;
+  if (gigaBytes < 10) {
+    return '${gigaBytes.toStringAsFixed(1)} GB';
+  }
+  return '${gigaBytes.toStringAsFixed(0)} GB';
 }
 
-/// A compact time-series line: grid baseline, filled area, and a stroked
-/// curve spanning the full available width.
-final class ResourceUsageSparklinePainter extends CustomPainter {
-  const ResourceUsageSparklinePainter({
-    required this.values,
-    required this.color,
+/// Stable segment palette for LicoUp plus running agents.
+List<Color> memoryUsageSegmentPalette(LicoThemeColors colors) {
+  return [
+    colors.accent,
+    colors.success,
+    colors.warning,
+    colors.accentStrong,
+    colors.primaryStrong,
+    colors.error,
+  ];
+}
+
+/// Full-circle ring whose arc length is machine capacity. Filled segments are
+/// LicoUp and each running agent; the remainder of the track stays dim.
+final class MemoryUsageRingPainter extends CustomPainter {
+  const MemoryUsageRingPainter({
+    required this.segments,
+    required this.totalBytes,
     required this.colors,
+    this.strokeWidth = 18,
   });
 
-  final List<double> values;
-  final Color color;
+  final List<MemoryUsageRingSegment> segments;
+  final int totalBytes;
   final LicoThemeColors colors;
+  final double strokeWidth;
 
-  static const double _padding = 2;
-  static const double _topInset = 6;
+  static const double _startAngle = -math.pi / 2;
+  static const double _fullCircle = math.pi * 2;
+  static const double _gapRadians = 0.018;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 || size.height <= 0) {
+    if (size.width <= 0 || size.height <= 0 || totalBytes <= 0) {
       return;
     }
-    final baseline = size.height - _padding;
-    canvas.drawLine(
-      Offset(0, baseline),
-      Offset(size.width, baseline),
-      Paint()
-        ..color = colors.line.withValues(alpha: 0.5)
-        ..strokeWidth = 1,
-    );
-    if (values.length < 2) {
+    final side = math.min(size.width, size.height);
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (side - strokeWidth) / 2;
+    if (radius <= 0) {
       return;
     }
-    final maxValue = math.max(1.0, values.reduce(math.max));
-    final chartHeight = math.max(1.0, baseline - _topInset);
-    final xStep = (size.width - 2 * _padding) / (values.length - 1);
-    final points = [
-      for (var index = 0; index < values.length; index += 1)
-        Offset(
-          _padding + xStep * index,
-          baseline - chartHeight * (values[index] / maxValue),
-        ),
+    final trackPaint = Paint()
+      ..color = colors.line.withValues(alpha: colors.isDark ? 0.55 : 0.7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    final positive = [
+      for (final segment in segments)
+        if (segment.bytes > 0) segment,
     ];
-    final areaPath = Path()..moveTo(points.first.dx, baseline);
-    for (final point in points) {
-      areaPath.lineTo(point.dx, point.dy);
+    if (positive.isEmpty) {
+      return;
     }
-    areaPath.lineTo(points.last.dx, baseline);
-    areaPath.close();
-    canvas.drawPath(
-      areaPath,
-      Paint()
-        ..color = color.withValues(alpha: 0.18)
-        ..style = PaintingStyle.fill,
-    );
-    final linePath = Path()..moveTo(points.first.dx, points.first.dy);
-    for (var index = 1; index < points.length; index += 1) {
-      final previous = points[index - 1];
-      final current = points[index];
-      final controlX = (previous.dx + current.dx) / 2;
-      linePath.cubicTo(
-        controlX,
-        previous.dy,
-        controlX,
-        current.dy,
-        current.dx,
-        current.dy,
+    final usedBytes = positive.fold<int>(0, (sum, s) => sum + s.bytes);
+    final scaleBytes = math.max(totalBytes, usedBytes);
+    var angle = _startAngle;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    for (final segment in positive) {
+      final sweep = _fullCircle * (segment.bytes / scaleBytes);
+      final drawable = math.max(0.0, sweep - _gapRadians);
+      if (drawable <= 0) {
+        angle += sweep;
+        continue;
+      }
+      canvas.drawArc(
+        rect,
+        angle,
+        drawable,
+        false,
+        Paint()
+          ..color = segment.color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.butt,
       );
+      angle += sweep;
     }
-    canvas.drawPath(
-      linePath,
-      Paint()
-        ..color = color.withValues(alpha: 0.92)
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke,
-    );
-    canvas.drawCircle(
-      points.last,
-      2.6,
-      Paint()
-        ..color = colors.surface
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      points.last,
-      2,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill,
-    );
   }
 
   @override
-  bool shouldRepaint(covariant ResourceUsageSparklinePainter oldDelegate) {
-    return oldDelegate.values != values ||
-        oldDelegate.color != color ||
-        oldDelegate.colors != colors;
+  bool shouldRepaint(covariant MemoryUsageRingPainter oldDelegate) {
+    if (oldDelegate.totalBytes != totalBytes ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.colors != colors ||
+        oldDelegate.segments.length != segments.length) {
+      return true;
+    }
+    for (var index = 0; index < segments.length; index += 1) {
+      final current = segments[index];
+      final previous = oldDelegate.segments[index];
+      if (current.id != previous.id ||
+          current.bytes != previous.bytes ||
+          current.color != previous.color ||
+          current.label != previous.label) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -192,10 +192,10 @@ pub(crate) fn add_product_member_prepared(
         activated_at_epoch: group.epoch().saturating_add(1),
         previous_extension_digest,
         committer_endpoint_id: owner_identity.endpoint_id.clone(),
-        roster_transition: SecureMeshMlsRosterTransition::MemberAdded {
+        roster_transition: Box::new(SecureMeshMlsRosterTransition::MemberAdded {
             member_endpoint_id: member_identity.endpoint_id.clone(),
             pair_binding,
-        },
+        }),
         member_capability_proofs,
         group_negotiated_protocol_capabilities,
     };
@@ -313,9 +313,9 @@ pub(crate) fn remove_product_member_prepared(
             &current_extension,
         )?),
         committer_endpoint_id: remover_identity.endpoint_id.clone(),
-        roster_transition: SecureMeshMlsRosterTransition::MemberRemoved {
+        roster_transition: Box::new(SecureMeshMlsRosterTransition::MemberRemoved {
             member_endpoint_id: removed_member_identity.endpoint_id.clone(),
-        },
+        }),
         member_capability_proofs: next_member_capability_proofs,
         group_negotiated_protocol_capabilities: next_group_capabilities,
     };
@@ -581,7 +581,7 @@ pub(crate) fn process_product_commit_prepared(
                     );
                     ensure!(
                         matches!(
-                            roster_transition,
+                            roster_transition.as_ref(),
                             SecureMeshMlsRosterTransition::MemberRemoved { member_endpoint_id }
                                 if member_endpoint_id == &removed_member_identity.endpoint_id
                         ),

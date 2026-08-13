@@ -11,6 +11,7 @@ import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart'
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _eagerProfileOptionLimit = 12;
@@ -326,7 +327,7 @@ final class _LayoutProfileOption extends StatelessWidget {
             decoration: BoxDecoration(
               color: selected ? colors.surface : colors.surfaceLow,
               border: Border.all(color: borderColor, width: selected ? 2 : 1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
             clipBehavior: Clip.antiAlias,
             child: Material(

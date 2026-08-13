@@ -147,8 +147,13 @@ class AgentConversationActivePane extends StatelessWidget {
         ? AgentConversationRecentSessions(
             sessions: state.recentSessions,
             loading: state.loading,
+            hasMore: state.recentSessionsHasMore,
+            loadingMore: state.recentSessionsLoadingMore,
+            onNewConversation: actions.onNewConversation ?? () {},
             onSelectSession: actions.onSelectSession,
+            onLoadMore: actions.onLoadMoreRecentSessions,
             topOverlayInset: headerOverlayInset,
+            bottomOverlayInset: composerOverlayInset,
           )
         : AgentConversationMessageList(
             loading: state.loading,

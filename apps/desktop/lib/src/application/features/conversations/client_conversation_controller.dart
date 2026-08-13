@@ -3,18 +3,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/backend/features/conversations/services/client_conversation_service.dart';
+import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 final class ClientConversationController extends ChangeNotifier {
   ClientConversationController({
     required AgentCommandRunner runner,
     ClientConversationService service = const ClientConversationService(),
+    void Function(String conversationId)? onSelectionChanged,
   }) : _runner = runner,
-       _service = service;
+       _service = service,
+       _onSelectionChanged = onSelectionChanged;
 
   final AgentCommandRunner _runner;
   final ClientConversationService _service;
+  final void Function(String conversationId)? _onSelectionChanged;
 
   bool _initialized = false;
   bool _disposed = false;
@@ -30,6 +35,9 @@ final class ClientConversationController extends ChangeNotifier {
   List<ClientConversationSummary> _archivedSummaries = const [];
   ClientConversation? _selectedConversation;
   List<ClientConversationEvent> _events = const [];
+  final ClientConversationRecentParticipants _recentParticipants =
+      ClientConversationRecentParticipants();
+  List<String> _availableConversationAgentIds = const [];
 
   bool get loading => _loading;
   bool get sending => _sending;
@@ -39,6 +47,7 @@ final class ClientConversationController extends ChangeNotifier {
   String get failureCode => _failureCode;
   ClientConversation? get selectedConversation => _selectedConversation;
   List<ClientConversationEvent> get events => _events;
+  List<String> get recentParticipantAgentIds => _recentParticipants.agentIds;
   List<ClientConversationSummary> get archivedConversations =>
       _archivedSummaries;
 
@@ -93,8 +102,10 @@ final class ClientConversationController extends ChangeNotifier {
         _clearSelection();
         return;
       }
+      final changed = _selectedConversationId != normalized;
       _selectedConversationId = normalized;
       _draft = '';
+      if (changed) _onSelectionChanged?.call(normalized);
       await _loadSelected();
     });
   }
@@ -109,6 +120,72 @@ final class ClientConversationController extends ChangeNotifier {
     if (_draft == value) return;
     _draft = value;
     _notifyListeners();
+  }
+
+  /// Reconciles background Agent discovery without changing group membership.
+  /// Newly discovered Agents join the Local roster at the queue tail.
+  void syncAvailableConversationAgents(Iterable<TargetCandidate> targets) {
+    final next = <String>[];
+    final seen = <String>{};
+    for (final target in targets) {
+      final agentId = target.target.trim();
+      if (target.isConversationAgent &&
+          agentId.isNotEmpty &&
+          seen.add(agentId)) {
+        next.add(agentId);
+      }
+    }
+    if (_sameStringList(_availableConversationAgentIds, next)) return;
+    _availableConversationAgentIds = List<String>.unmodifiable(next);
+    final conversation = _selectedConversation;
+    if (conversation == null) return;
+    final changed = _recentParticipants.applySnapshot(
+      conversation: conversation,
+      events: _events,
+      availableLocalAgentIds: _availableConversationAgentIds,
+    );
+    if (changed) _notifyListeners();
+  }
+
+  /// A Local-roster Agent discovered after group creation becomes a durable
+  /// member only after the user's explicit @ action.
+  Future<bool> ensureSelectedAgentMembership({
+    required String agentId,
+    required String displayName,
+  }) async {
+    final normalizedAgentId = agentId.trim();
+    final conversation = _selectedConversation;
+    if (conversation == null || normalizedAgentId.isEmpty) return false;
+    if (conversation.activeAgentMemberships.any(
+      (membership) => membership.principal.agentId == normalizedAgentId,
+    )) {
+      return true;
+    }
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null || selected.id != conversation.id) return false;
+    if (selected.activeAgentMemberships.any(
+      (membership) => membership.principal.agentId == normalizedAgentId,
+    )) {
+      return true;
+    }
+    return _guard('member-add', () async {
+      await _service.execute(_runner, {
+        'action': 'conversation.membership.add',
+        'conversationId': selected.id,
+        'principal': {
+          'id': 'agent:$normalizedAgentId',
+          'kind': 'agent',
+          'displayName': displayName.trim().isEmpty
+              ? normalizedAgentId
+              : displayName.trim(),
+          'agentId': normalizedAgentId,
+        },
+        'access': 'member',
+      });
+      await _refreshCatalogWithoutGuard();
+      await _loadSelected();
+    });
   }
 
   Future<bool> postMessage(String text) async {
@@ -195,6 +272,7 @@ final class ClientConversationController extends ChangeNotifier {
       final conversationId = (created['id'] ?? '').toString();
       await _refreshCatalogWithoutGuard();
       _selectedConversationId = conversationId;
+      _onSelectionChanged?.call(conversationId);
       await _loadSelected();
     });
   }
@@ -300,6 +378,11 @@ final class ClientConversationController extends ChangeNotifier {
     );
     _selectedConversation = conversation;
     _events = page.events;
+    _recentParticipants.applySnapshot(
+      conversation: conversation,
+      events: _events,
+      availableLocalAgentIds: _availableConversationAgentIds,
+    );
   }
 
   List<String> _mentionedMembershipIds(
@@ -362,10 +445,13 @@ final class ClientConversationController extends ChangeNotifier {
   }
 
   void _clearSelection() {
+    final changed = _selectedConversationId.isNotEmpty;
     _selectedConversationId = '';
     _selectedConversation = null;
     _events = const [];
+    _recentParticipants.clear();
     _draft = '';
+    if (changed) _onSelectionChanged?.call('');
   }
 
   void _notifyListeners() {
@@ -393,3 +479,11 @@ List<ClientConversationSummary> _summaryList(Object? value) => value is List
 
 Map<String, dynamic> _objectMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : const <String, dynamic>{};
+
+bool _sameStringList(List<String> left, List<String> right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index += 1) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}

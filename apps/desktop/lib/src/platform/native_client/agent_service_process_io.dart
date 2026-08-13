@@ -73,6 +73,21 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         request,
       );
     }
+    if (_persistentStdioRpcEnabled && _isClientConversationExecute(args)) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      return _stdioRpcTransport.executeStructured(
+        'client.conversation.execute',
+        request,
+      );
+    }
     late Process process;
     try {
       final cli = await _processContext.resolveCliBinary();
@@ -274,6 +289,13 @@ String? _conversationControlOperation(List<String> args) {
   };
   return controls.contains(args[2]) ? args[2] : null;
 }
+
+bool _isClientConversationExecute(List<String> args) =>
+    args.length == 4 &&
+    args[0] == 'conversation' &&
+    args[1] == 'execute' &&
+    args[2] == '--stdin-json' &&
+    args[3] == 'true';
 
 Future<_BoundedProcessOutput> _collectBoundedProcessOutput(
   Stream<List<int>> stream,

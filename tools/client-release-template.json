@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "licoup.client-release-template.v2",
+  "versionAuthority": {
+    "path": "tools/client-version.json"
+  },
+  "promotion": {
+    "branches": ["nightly", "stable", "release"],
+    "mergeMethod": "merge",
+    "rulesetMutation": "forbidden",
+    "linearHistory": false
+  },
+  "requiredPullRequestChecks": [
+    "Branch flow",
+    "Commit identity",
+    "Client required",
+    "Auditor"
+  ],
+  "pullRequestPreflight": {
+    "command": "npm run client:pr:preflight -- --base origin/nightly --targets <target[,target...]> --full-target",
+    "receiptSchema": "licoup.release-pre-pr-receipt.v3",
+    "receiptPath": "build/reports/release-pre-pr-receipt.json",
+    "remoteMutation": "forbidden",
+    "prePushMode": "receipt-only"
+  },
+  "candidatePreflight": {
+    "refPrefix": "release-candidate/",
+    "targets": {
+      "macos-direct-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "macos-direct-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "macos-app-store-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "windows-direct-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "windows-store-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-deb-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-deb-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-rpm-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-rpm-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-pacman-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-pacman-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-alpine-apk-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-alpine-apk-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-appimage-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-appimage-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "android-direct-arm64-v8a": ["source", "flutter", "rust", "android", "dependencies", "release-policy"],
+      "android-play-arm64-v8a": ["source", "flutter", "rust", "android", "dependencies", "release-policy"],
+      "ios-app-store-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"]
+    }
+  },
+  "publication": {
+    "workflow": ".github/workflows/client-release.yml",
+    "ref": "release",
+    "draftOnlyUntilVerified": true,
+    "exactAssetSetRequired": true,
+    "publishOnce": true,
+    "remoteValidity": {
+      "strategyGroup": "tools/client-remote-release-strategies.json",
+      "activeStrategyIds": ["build-success"]
+    }
+  }
+}

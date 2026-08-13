@@ -37,7 +37,7 @@ test("every leaf imports without side effects and owns its fixture family", asyn
 test("shared file reader accepts repository fixtures and rejects traversal", async () => {
   const files = createPlanFileReader(repoRoot);
   const packageJson = await files.readJson("package.json");
-  assert.equal(packageJson.license, "GPL-3.0-or-later");
+  assert.equal(packageJson.license, "AGPL-3.0-or-later");
   await assert.rejects(
     files.readText("../outside.json"),
     /escapes the repository root/u,

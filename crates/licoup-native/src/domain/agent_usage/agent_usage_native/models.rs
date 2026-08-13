@@ -1,7 +1,10 @@
 use super::super::contract::HistoryUsageSummary;
+use super::watermark::WatermarkProjection;
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SourceMetadata {
     pub(super) modified_ns: u64,
     pub(super) size: u64,
@@ -31,7 +34,7 @@ impl CumulativeTotals {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct CachedSource {
     pub(super) modified_ns: u64,
     pub(super) size: u64,
@@ -61,6 +64,40 @@ pub(super) struct ParseResult {
     pub(super) session_increment: u64,
 }
 
+/// Immutable two-phase refresh plan. Built entirely outside any database
+/// lease; the apply transaction only revalidates and writes it.
+#[derive(Clone, Debug)]
+pub(super) struct RefreshPlan {
+    pub(super) previous: BTreeMap<String, CachedSource>,
+    pub(super) compaction_targets: BTreeSet<String>,
+    pub(super) compactions: Vec<(String, u64)>,
+    pub(super) sources: Vec<PlannedSource>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PlannedSource {
+    pub(super) key: String,
+    pub(super) path: PathBuf,
+    pub(super) metadata: SourceMetadata,
+    pub(super) action: PlannedSourceAction,
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum PlannedSourceAction {
+    Reuse,
+    ReuseSeal {
+        session_count: u64,
+    },
+    Refresh {
+        append: bool,
+        append_format: bool,
+        previous_session_count: u64,
+        parsed: Box<ParseResult>,
+        projection: WatermarkProjection,
+        append_guard: String,
+    },
+}
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct ScanStats {
     pub(super) discovered_sources: u64,
@@ -72,6 +109,10 @@ pub(super) struct ScanStats {
     pub(super) parsed_bytes: u64,
     pub(super) cache_fresh: bool,
     pub(super) rebuilt: bool,
+    pub(super) opened_connections: u64,
+    pub(super) leases: u64,
+    pub(super) statements: u64,
+    pub(super) transaction_millis: u64,
 }
 
 impl ScanStats {
@@ -87,7 +128,11 @@ impl ScanStats {
             "sealedSources": self.sealed_sources,
             "compactedDays": self.compacted_days,
             "parsedBytes": self.parsed_bytes,
-            "rebuilt": self.rebuilt
+            "rebuilt": self.rebuilt,
+            "connectionOpens": self.opened_connections,
+            "leases": self.leases,
+            "statements": self.statements,
+            "transactionMillis": self.transaction_millis
         })
     }
 }

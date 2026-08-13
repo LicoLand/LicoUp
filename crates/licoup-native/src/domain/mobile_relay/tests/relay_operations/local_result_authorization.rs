@@ -27,7 +27,7 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
     let sv_idem_mobile_relay_local_ = synthetic_value("idem_mobile_relay_local_effect");
     let sv_local_effect_body_canary = synthetic_value("local-effect-body-canary");
     let dir = temp_dir("mobile-relay-local-effect-confirmation");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -97,7 +97,7 @@ fn command_result_secure_consumes_canonical_sync_and_acks_after_open() {
     let sv_encrypted_result_canary = synthetic_value("encrypted-result-canary");
     let sv_mobile_synthetic_canonic = synthetic_value("mobile-synthetic-canonical-result-sync");
     let dir = temp_dir("mobile-relay-secure-result-canonical-sync");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
     let result_envelope = seal_mobile_relay_payload(
         &pc_config,
@@ -180,7 +180,7 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
     let sv_mobile_synthetic_secure_ = synthetic_value("mobile-synthetic-secure-result-single-auth");
     let sv_single_auth_result_canar = synthetic_value("single-auth-result-canary");
     let dir = temp_dir("mobile-relay-secure-result-single-operation-auth-batch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -257,7 +257,7 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
 fn command_result_secure_returns_typed_pending_when_station_has_no_result() {
     let sv_idem_pending_result = synthetic_value("idem-pending-result");
     let dir = temp_dir("mobile-relay-secure-result-pending");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (_pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
     let station = CanonicalStation::start(4, Vec::new());
     mobile_config["pairingId"] = json!("pair_secure_result_pending");
@@ -291,7 +291,7 @@ fn command_result_secure_caches_unmatched_results_without_head_of_line_blocking(
     let sv_idem_out_of_order_11 = synthetic_value("idem-out-of-order-11");
     let sv_idem_out_of_order_0 = synthetic_value("idem-out-of-order-0");
     let dir = temp_dir("mobile-relay-secure-result-out-of-order-inbox");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
     let mut results = Vec::new();
     for index in 0..12 {
@@ -358,9 +358,8 @@ fn command_result_secure_caches_unmatched_results_without_head_of_line_blocking(
 fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal() {
     let sv_single_auth_create_canar = synthetic_value("single-auth-create-canary");
     let sv_mobile_synthetic_single_ = synthetic_value("mobile-synthetic-single-auth-create");
-    let station = CanonicalStation::start(1, Vec::new());
     let dir = temp_dir("mobile-relay-secure-command-create-single-auth-batch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -373,13 +372,14 @@ fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal
             mobile_config["pairingId"] = json!("pair_secure_command_create_single_auth_batch");
             mobile_config["mobileToken"] = json!(sv_mobile_synthetic_single_.as_str());
             mobile_config["relayEnabled"] = json!(true);
-            mobile_config["stationBaseUrl"] = json!(station.url());
             persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
                 MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
             )?;
+            let station = CanonicalStation::start(1, Vec::new());
+            mobile_config["stationBaseUrl"] = json!(station.url());
             save_config(&mut mobile_config)?;
             let baseline_session_count = secret_store.authorization_session_count();
 
@@ -464,9 +464,8 @@ fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal
 #[test]
 fn command_create_secure_retries_the_exact_pending_envelope_after_lost_response() {
     let sv_exact_pending_retry_cana = synthetic_value("exact-pending-retry-canary");
-    let station = CanonicalStation::start_with_first_send_response_dropped(2);
     let dir = temp_dir("mobile-relay-secure-command-exact-pending-retry");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -478,13 +477,14 @@ fn command_create_secure_retries_the_exact_pending_envelope_after_lost_response(
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
             mobile_config["pairingId"] = json!("pair_secure_command_exact_pending_retry");
             mobile_config["relayEnabled"] = json!(true);
-            mobile_config["stationBaseUrl"] = json!(station.url());
             persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
                 MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
             )?;
+            let station = CanonicalStation::start_with_first_send_response_dropped(2);
+            mobile_config["stationBaseUrl"] = json!(station.url());
             save_config(&mut mobile_config)?;
             let params = secure_command_create_test_params(
                 "intent_exact_pending_retry",
@@ -516,9 +516,8 @@ fn command_create_secure_retries_the_exact_pending_envelope_after_lost_response(
 
 #[test]
 fn command_create_secure_never_substitutes_a_different_pending_intent() {
-    let station = CanonicalStation::start_with_first_send_response_dropped(1);
     let dir = temp_dir("mobile-relay-secure-command-distinct-pending-intent");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -530,13 +529,14 @@ fn command_create_secure_never_substitutes_a_different_pending_intent() {
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
             mobile_config["pairingId"] = json!("pair_secure_command_distinct_pending_intent");
             mobile_config["relayEnabled"] = json!(true);
-            mobile_config["stationBaseUrl"] = json!(station.url());
             persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
                 MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
             )?;
+            let station = CanonicalStation::start_with_first_send_response_dropped(1);
+            mobile_config["stationBaseUrl"] = json!(station.url());
             save_config(&mut mobile_config)?;
 
             let first_error = command_create_secure(&secure_command_create_test_params(
@@ -567,7 +567,7 @@ fn command_create_secure_never_substitutes_a_different_pending_intent() {
 fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_replay_check() {
     let sv_mobile_synthetic_result_ = synthetic_value("mobile-synthetic-result-replay-single-auth");
     let dir = temp_dir("mobile-relay-result-replay-proof-single-operation-auth-batch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -819,7 +819,7 @@ fn commands_sync_recovers_the_exact_result_outbox_after_lost_station_response() 
 fn mobile_relay_secure_command_execute_reuses_single_operation_auth_batch_for_open_and_result_seal()
 {
     let dir = temp_dir("mobile-relay-secure-command-single-operation-auth-batch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
 

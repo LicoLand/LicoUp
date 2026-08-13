@@ -2,6 +2,7 @@
 
 use super::agent_usage_codex;
 use super::agent_usage_native;
+use super::agent_usage_native::runtime::CacheRuntime;
 use super::contract::{
     AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE,
     HistoryUsageSummary, MAX_REPORTS, REPORT_COLLECTION, SUPPORTED_AGENTS, normalize_agent_id,
@@ -13,8 +14,15 @@ use crate::domain::targets;
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+static CACHE_RUNTIME: OnceLock<CacheRuntime> = OnceLock::new();
+
+fn cache_runtime() -> &'static CacheRuntime {
+    CACHE_RUNTIME.get_or_init(CacheRuntime::new)
+}
 
 pub fn scan(params: &Value) -> Result<Value> {
     let generated_at = timestamp_rfc3339();
@@ -119,7 +127,8 @@ fn summarize_agent_history(
     if def.id == "codex" {
         return agent_usage_codex::summarize(params, window, warnings).unwrap_or_default();
     }
-    agent_usage_native::summarize(def, params, window, warnings).unwrap_or_default()
+    agent_usage_native::summarize(def, params, window, warnings, cache_runtime())
+        .unwrap_or_default()
 }
 
 fn target_status_map(params: &Value, warnings: &mut Vec<Value>) -> BTreeMap<String, String> {

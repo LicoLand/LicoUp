@@ -7,6 +7,7 @@ use super::scan_merge::scan_target_with_manual;
 use super::support::client_state_store;
 use super::target_cache::{persist_discovery_cache, upsert_discovery_cache};
 use super::virtual_machine_discovery::{AutomaticVmTarget, discover_virtual_machine_targets};
+use crate::platform::client_state::ClientStateStore;
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -26,7 +27,11 @@ pub(super) fn scan_targets() -> Result<Value> {
 
 pub(super) fn scan_targets_with_params(params: &Value) -> Result<Value> {
     let store = client_state_store(params)?;
-    let manual_targets = manual_targets(&store)?;
+    scan_targets_with_store(params, &store)
+}
+
+pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) -> Result<Value> {
+    let manual_targets = manual_targets(store)?;
     let manual_by_target = manual_targets
         .into_iter()
         .map(|target| (target.target.clone(), target))
@@ -55,7 +60,7 @@ pub(super) fn scan_targets_with_params(params: &Value) -> Result<Value> {
             &probe.params,
         )
     })?;
-    persist_discovery_cache(&store, &candidates)?;
+    persist_discovery_cache(store, &candidates)?;
     let mut scan_scopes = vec![
         "application-store",
         "package-manager",

@@ -3,8 +3,7 @@ import { digestPattern } from "../constants.mjs";
 import { requireValue, text } from "../util.mjs";
 
 export function distributionLineageReady(spec, manifest, context) {
-  const commonReady = manifest?.targetId ===
-      (spec.platform === "macos" ? "macos-arm64" : "linux-glibc-arm64") &&
+  const commonReady = manifest?.targetId === spec.evidenceTargetId &&
     manifest?.platform === spec.platform &&
     manifest?.architecture === "arm64" &&
     manifest?.archive === path.basename(context.artifactPath) &&
@@ -22,7 +21,5 @@ export function distributionLineageReady(spec, manifest, context) {
       manifest.installArtifactDigest === context.evidenceArtifactDigest &&
       digestPattern.test(text(manifest.bundleManifestDigest));
   }
-  return manifest.schemaVersion === "v0.0.1:client-linux:distribution-1" &&
-    manifest.mode === "release" &&
-    digestPattern.test(text(manifest.bundleManifestDigest));
+  return false;
 }

@@ -1,6 +1,5 @@
 import { ANDROID_APK_RESOURCE_LIMITS } from "../lib/android-apk-facts.mjs";
 import { stableReadFile } from "../lib/client-release-artifact-digest.mjs";
-import { LINUX_TAR_RESOURCE_LIMITS } from "../lib/linux-tar-resource-bounds.mjs";
 import { maxJsonBytes, maxMacosArchiveBytes } from "./constants.mjs";
 
 export function artifactFileByteLimit(spec) {
@@ -8,8 +7,6 @@ export function artifactFileByteLimit(spec) {
     ? ANDROID_APK_RESOURCE_LIMITS.maxApkBytes
     : spec?.artifactKind === "macos-distribution-archive"
       ? maxMacosArchiveBytes
-    : spec?.artifactKind === "linux-tar-archive"
-      ? LINUX_TAR_RESOURCE_LIMITS.maxCompressedBytes
       : maxJsonBytes;
 }
 

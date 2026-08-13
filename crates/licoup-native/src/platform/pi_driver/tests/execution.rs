@@ -6,7 +6,7 @@ fn fake_child_completes_rpc_with_bounded_stderr_and_native_session() {
     let result = execute(
         executable.to_string_lossy().as_ref(),
         &json!({}),
-        "private-pi-prompt",
+        "shielded-pi-prompt",
         "",
         Some(directory.as_path()),
         10_000,
@@ -97,6 +97,26 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
     assert_eq!(result.output, "pi-guided");
     assert_eq!(result.session_id, session_id);
     assert_eq!(result.turn_id, turn_id);
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn provider_credential_error_is_not_reported_as_missing_final_message() {
+    let (directory, executable) = compile_fake_pi("lico-pi-rpc-credential");
+    let result = execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "credential-case",
+        "",
+        Some(directory.as_path()),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(!result.ok);
+    let error = result.error.expect("typed failure");
+    assert_eq!(error.code, "pi_gateway_credentials_unavailable");
+    assert!(error.message.contains("authorized API keys"));
     let _ = fs::remove_dir_all(directory);
 }
 

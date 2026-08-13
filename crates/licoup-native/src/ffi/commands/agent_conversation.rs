@@ -154,15 +154,6 @@ mod tests {
         let store = ClientStateStore::portable().unwrap();
         crate::domain::skill_hub::pair_request(&json!({"agent": "codex"})).unwrap();
         crate::domain::skill_hub::pair_approve(&json!({"agent": "codex"})).unwrap();
-        let mut skills = store.read_collection("skills").unwrap();
-        skills["items"].as_array_mut().unwrap().push(json!({
-            "kind": "skill",
-            "agentId": "codex",
-            "skillId": "review-helper",
-            "installer": "github-skill-installer"
-        }));
-        store.write_collection("skills", skills).unwrap();
-
         observe_skill_invocations(
             &json!({"agent": "codex"}),
             &json!({

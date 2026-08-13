@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -49,11 +48,7 @@ void main() {
       'gpt-5.6-sol · Medium',
     );
     expect(
-      composeRuntimeCapsuleLabel(
-        model: 'gpt-5.6-sol',
-        effort: '高',
-        fast: true,
-      ),
+      composeRuntimeCapsuleLabel(model: 'gpt-5.6-sol', effort: '高', fast: true),
       'gpt-5.6-sol · 高 · Fast',
     );
     expect(
@@ -61,32 +56,6 @@ void main() {
       'gpt-5.6-sol',
     );
   });
-
-  test(
-    'composeOrchestrationAssignmentCapsuleLabel joins agent model effort Fast',
-    () {
-      expect(
-        composeOrchestrationAssignmentCapsuleLabel(
-          agentLabel: 'Antigravity',
-          modelName: 'claude-opus-4-6-thinking',
-          reasoningEffort: 'high',
-          fast: true,
-          effortLabel: (effort) => effort == 'high' ? '高' : effort,
-        ),
-        'Antigravity · claude-opus-4-6-thinking · 高 · Fast',
-      );
-      expect(
-        composeOrchestrationAssignmentCapsuleLabel(
-          agentLabel: 'Codex',
-          modelName: '',
-          reasoningEffort: '',
-          fast: false,
-          effortLabel: (effort) => effort,
-        ),
-        'Codex',
-      );
-    },
-  );
 
   test('formatComposerReasoningEffortLabel title-cases effort tokens', () {
     expect(formatComposerReasoningEffortLabel('high'), 'High');
@@ -168,57 +137,7 @@ void main() {
     expect(find.text('gpt-5.6-sol · Medium'), findsOneWidget);
   });
 
-  testWidgets(
-    'ComposerRuntimeCapsule omits effort when no model is resolved',
-    (tester) async {
-      _useComposerPopoverViewport(tester);
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('zh'),
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ComposerRuntimeCapsule(
-                  modelOptions: const ['composer-2.5'],
-                  selectedModel: '',
-                  defaultModel: '',
-                  enabled: true,
-                  onModelChanged: (_) {},
-                  reasoningEffortOptions: const ['low', 'max'],
-                  selectedReasoningEffort: 'max',
-                  defaultReasoningEffort: 'max',
-                  onReasoningEffortChanged: (_) {},
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(find.text('未检测到默认模型'), findsOneWidget);
-      expect(find.textContaining('Max'), findsNothing);
-      expect(find.textContaining('·'), findsNothing);
-
-      await tester.tap(find.byKey(const Key('conversation-model-button')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('conversation-runtime-effort-row')),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets('ComposerRuntimeCapsule labels an unset model with the real default', (
+  testWidgets('runtime selector opens on hover and stays pinned after click', (
     tester,
   ) async {
     _useComposerPopoverViewport(tester);
@@ -231,14 +150,13 @@ void main() {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: ComposerRuntimeCapsule(
-                modelOptions: const ['auto', 'composer-2.5'],
-                selectedModel: '',
-                defaultModel: 'auto',
+                modelOptions: const ['gpt-5.6-sol'],
+                selectedModel: 'gpt-5.6-sol',
+                defaultModel: 'gpt-5.6-sol',
                 enabled: true,
                 onModelChanged: (_) {},
-                reasoningEffortOptions: const ['low', 'high'],
-                selectedReasoningEffort: '',
-                defaultReasoningEffort: 'low',
+                reasoningEffortOptions: const ['low'],
+                selectedReasoningEffort: 'low',
                 onReasoningEffortChanged: (_) {},
               ),
             ),
@@ -248,23 +166,131 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Native default'), findsNothing);
-    expect(find.text('auto · Low'), findsOneWidget);
-    expect(find.text('composer-2.5'), findsNothing);
+    final button = find.byKey(const Key('conversation-model-button'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.moveTo(tester.getCenter(button));
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-runtime-selector-panel')),
+      findsOneWidget,
+    );
+
+    await tester.tap(button);
+    await tester.pump();
+    await mouse.moveTo(const Offset(799, 1));
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(
+      find.byKey(const Key('conversation-runtime-selector-panel')),
+      findsOneWidget,
+    );
+
+    await tester.tap(button);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('conversation-runtime-selector-panel')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('ComposerRuntimeCapsule omits effort when no model is resolved', (
+    tester,
+  ) async {
+    _useComposerPopoverViewport(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomLeft,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ComposerRuntimeCapsule(
+                modelOptions: const ['composer-2.5'],
+                selectedModel: '',
+                defaultModel: '',
+                enabled: true,
+                onModelChanged: (_) {},
+                reasoningEffortOptions: const ['low', 'max'],
+                selectedReasoningEffort: 'max',
+                defaultReasoningEffort: 'max',
+                onReasoningEffortChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('未检测到默认模型'), findsOneWidget);
+    expect(find.textContaining('Max'), findsNothing);
+    expect(find.textContaining('·'), findsNothing);
 
     await tester.tap(find.byKey(const Key('conversation-model-button')));
     await tester.pumpAndSettle();
-    await _tapRuntimeSelectorRow(
-      tester,
-      const Key('conversation-runtime-model-row'),
+    expect(
+      find.byKey(const Key('conversation-runtime-effort-row')),
+      findsNothing,
     );
-    // The default row carries the checkmark for the empty selection.
-    final defaultRow = tester.widgetList<Icon>(
-      find.byIcon(Icons.check_rounded),
-    );
-    expect(defaultRow, hasLength(1));
-    expect(find.text('auto (default)'), findsOneWidget);
   });
+
+  testWidgets(
+    'ComposerRuntimeCapsule labels an unset model with the real default',
+    (tester) async {
+      _useComposerPopoverViewport(tester);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ComposerRuntimeCapsule(
+                  modelOptions: const ['auto', 'composer-2.5'],
+                  selectedModel: '',
+                  defaultModel: 'auto',
+                  enabled: true,
+                  onModelChanged: (_) {},
+                  reasoningEffortOptions: const ['low', 'high'],
+                  selectedReasoningEffort: '',
+                  defaultReasoningEffort: 'low',
+                  onReasoningEffortChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Native default'), findsNothing);
+      expect(find.text('auto · Low'), findsOneWidget);
+      expect(find.text('composer-2.5'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('conversation-model-button')));
+      await tester.pumpAndSettle();
+      await _tapRuntimeSelectorRow(
+        tester,
+        const Key('conversation-runtime-model-row'),
+      );
+      // The default row carries the checkmark for the empty selection.
+      final defaultRow = tester.widgetList<Icon>(
+        find.byIcon(Icons.check_rounded),
+      );
+      expect(defaultRow, hasLength(1));
+      expect(find.text('auto (default)'), findsOneWidget);
+    },
+  );
 
   testWidgets('ComposerRuntimeCapsule reports effort submenu selection', (
     tester,
@@ -613,184 +639,4 @@ void main() {
 
     expect(find.byKey(const Key('conversation-model-button')), findsNothing);
   });
-
-  testWidgets(
-    'ComposerFlywheelCapsule labels the agent column Current Conversation',
-    (tester) async {
-      _useComposerPopoverViewport(tester);
-      final agents = [
-        TargetCandidate(
-          target: 'codex',
-          label: 'Codex',
-          kind: 'native-history',
-          status: 'detected',
-          configured: true,
-          confidence: 1,
-          adapterStatus: 'implemented',
-          modelCatalog: {
-            'models': [
-              {'name': 'gpt-5.4'},
-            ],
-          },
-        ),
-      ];
-
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('zh'),
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ComposerFlywheelCapsule(
-                  mainAgentLabel: 'Codex',
-                  mainAgentTarget: agents.first,
-                  agentOptions: agents,
-                  selectedAgentId: 'codex',
-                  selectedModel: 'gpt-5.4',
-                  onEdit: () {},
-                  onSelectAgent: (_) {},
-                  onSelectModel: (_, __) {},
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await gesture.addPointer(location: Offset.zero);
-      addTearDown(gesture.removePointer);
-      await tester.pump();
-      await gesture.moveTo(
-        tester.getCenter(find.byKey(const Key('conversation-flywheel-button'))),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('当前对话'), findsOneWidget);
-      expect(find.text('主智能体'), findsNothing);
-    },
-  );
-
-  testWidgets(
-    'ComposerFlywheelCapsule aligns first model option with hovered agent',
-    (tester) async {
-      _useComposerPopoverViewport(tester);
-      TargetCandidate agent({
-        required String id,
-        required String label,
-        required List<String> models,
-      }) {
-        return TargetCandidate(
-          target: id,
-          label: label,
-          kind: 'native-history',
-          status: 'detected',
-          configured: true,
-          confidence: 1,
-          adapterStatus: 'implemented',
-          modelCatalog: {
-            'models': [
-              for (final model in models) {'name': model},
-            ],
-          },
-        );
-      }
-
-      final agents = [
-        agent(id: 'codex', label: 'Codex', models: const ['gpt-5.4']),
-        agent(
-          id: 'claude-code',
-          label: 'Claude Code',
-          models: const ['deepseek-v4-flash', 'opus'],
-        ),
-        agent(id: 'antigravity', label: 'Antigravity', models: const ['a']),
-        agent(id: 'opencode', label: 'OpenCode', models: const ['kimi:k3']),
-        agent(id: 'copilot', label: 'GitHub Copilot', models: const ['c']),
-        agent(id: 'kilo-code', label: 'Kilo Code', models: const ['k']),
-        agent(
-          id: 'cursor',
-          label: 'Cursor',
-          models: const ['deepseek-v4-flash', 'opus'],
-        ),
-        agent(id: 'kimi-code', label: 'Kimi Code', models: const ['m']),
-        agent(id: 'pi', label: 'Pi Agent', models: const ['p']),
-        agent(id: 'openclaw', label: 'OpenClaw', models: const ['o']),
-      ];
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ComposerFlywheelCapsule(
-                  mainAgentLabel: 'Cursor',
-                  mainAgentTarget: agents[6],
-                  agentOptions: agents,
-                  selectedAgentId: 'cursor',
-                  selectedModel: 'deepseek-v4-flash',
-                  onEdit: () {},
-                  onSelectAgent: (_) {},
-                  onSelectModel: (_, __) {},
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await gesture.addPointer(location: Offset.zero);
-      addTearDown(gesture.removePointer);
-      await tester.pump();
-      await gesture.moveTo(
-        tester.getCenter(find.byKey(const Key('conversation-flywheel-button'))),
-      );
-      await tester.pumpAndSettle();
-
-      Future<void> expectAligned(String agentId, String firstModel) async {
-        await gesture.moveTo(
-          tester.getCenter(
-            find.byKey(Key('conversation-flywheel-agent-$agentId')),
-          ),
-        );
-        await tester.pumpAndSettle();
-        final agentTop = tester
-            .getTopLeft(find.byKey(Key('conversation-flywheel-agent-$agentId')))
-            .dy;
-        final firstModelTop = tester
-            .getTopLeft(
-              find.byKey(Key('conversation-flywheel-model-$agentId-$firstModel')),
-            )
-            .dy;
-        expect(
-          firstModelTop,
-          closeTo(agentTop, 2),
-          reason: '$firstModel should share a baseline with $agentId',
-        );
-      }
-
-      await expectAligned('claude-code', 'deepseek-v4-flash');
-      await expectAligned('cursor', 'deepseek-v4-flash');
-    },
-  );
 }

@@ -121,7 +121,7 @@ pub(super) fn verify_active_mls_capability_extension(
     let SecureMeshMlsRosterTransition::MemberAdded {
         member_endpoint_id: added_member_endpoint_id,
         pair_binding,
-    } = roster_transition
+    } = roster_transition.as_ref()
     else {
         return Err(anyhow!(
             "secure mesh MLS capability extension is not a member-add transition"
@@ -188,7 +188,7 @@ pub(super) fn active_pair_capability_proofs(
     let SecureMeshMlsRosterTransition::MemberAdded {
         member_endpoint_id: added_member_endpoint_id,
         ..
-    } = roster_transition
+    } = roster_transition.as_ref()
     else {
         return Err(anyhow!(
             "secure mesh MLS capability extension is not a member-add transition"
