@@ -59,6 +59,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   /// application root binds the platform implementation; the frontend never
   /// imports filesystem code.
   ConversationImageByteReader get conversationImageByteReader;
+
+  /// Releases only client-owned temporary attachment files. Platform
+  /// implementations ignore user-selected files.
+  ConversationAttachmentRelease get conversationAttachmentRelease;
   void agentWorkspacePublishNotification({
     required String id,
     required String messageChinese,
@@ -360,6 +364,9 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   }
 
   void clearConversationComposerAttachmentsForScope(String scopeKey) {
+    final attachments = conversationPresentationSignals.composerAttachmentsFor(
+      scopeKey,
+    );
     conversationPresentationSignals.replaceComposerAttachments(
       scopeKey,
       const <ConversationAttachment>[],
@@ -368,6 +375,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       scopeKey,
       '',
     );
+    unawaited(conversationAttachmentRelease.releaseAttachments(attachments));
     agentWorkspaceNotifyStateChanged();
   }
 
