@@ -1,6 +1,6 @@
 //! Explicitly approved installation of the released LicoUp Codex Plugin.
 
-use crate::{domain::agent_workflow_loop::CodexPluginState, platform::run_bounded_command_output};
+use crate::platform::run_bounded_command_output;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -18,6 +18,13 @@ const MARKETPLACE_REF: &str = "4b456c8fbf06591ee8907c6f86952d2bb49638e4";
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(30);
 const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_COMMAND_OUTPUT_BYTES: usize = 64 * 1024;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexPluginState {
+    Ready,
+    Missing,
+    Unavailable,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodexPluginInstallError {

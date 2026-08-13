@@ -67,10 +67,20 @@ one scenario does not reach into another scenario's storage or interface.
 | Agent conversations | New and native continued sessions for local agents remain process-local and expose wakeable progress. An active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up; discovered or explicit OpenClaw/Hermes VM sessions use SSH stdio. A local [Subagent MCP](../protocols/subagent-mcp.md) lets one selected main agent discover and directly call every other runnable agent. Agent output is never truncated or budget-limited by the client: LicoUp waits for the agent and keeps showing everything it produces. An explicit per-call `maxStdoutBytes` remains available only as the caller's own bounded request and never applies by default |
 | Skill management | Local install/update/delete workflows, configured-source scheduling, and invocation counters grouped by time window |
 | Conversation management | Local all-conversation or exact-keyword backup to a user-selected directory |
-| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
+| Usage statistics | Local token aggregation by agent, model, or native Workflow with immutable historical day/model rollups, path-free Plan/Task/dispatch rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
 | Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
 
 Optional collaboration is not part of this default composition.
+
+The Workflow peer view consumes one current-generation native report. LicoUp owns
+Plan scheduling and checkpoint progression; Adaptive Flywheel remains the sole
+agent-and-model route selector. Raw native conversation locations are private
+adapter handoffs. The report and UI retain only safe codes, localized role/state
+labels, agent/model labels, numeric prompt, cached-input, completion, total,
+exact/estimated counts, coverage, and hierarchy. Prompts, replies, tool payloads,
+summaries, compaction, cache controls, and a client-owned context projection are
+explicitly excluded; active workflows and the newest twenty terminal rollups are
+bounded by the native ledger.
 
 The current agent and platform adaptation targets are generated in
 [Compatibility](../COMPATIBILITY.md). Station-wire and operation status is
