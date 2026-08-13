@@ -31,9 +31,13 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
       "architecture.client-boundaries",
       "rust.platform.catalog-cache-store",
     ]],
-    ["crates/licoup-native/src/ffi/commands/catalog.rs", [
+    ["crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs", [
       "architecture.client-boundaries",
+      "rust.ffi.client-state-contract",
       "rust.ffi.catalog-convergence",
+      "rust.ffi.cli-command-admission",
+      "rust.bin.licoup.rpc",
+      "bridge.native-mcp-rpc-guard",
     ]],
   ]);
   for (const [changedPath, expectedIds] of selections) {
@@ -423,7 +427,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
   const clientUpdate = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "rust.domain.client-update");
   assert.equal(mobilePairing.command.args.at(-1), "pairing");
-  assert.equal(agentUsage.command.args.at(-1), "domain::agent_usage::tests::");
+  assert.equal(agentUsage.command.args.at(-1), "domain::agent_usage::");
   assert.deepEqual(agentUsageCache.command.args.slice(-3), [
     "--test",
     "agent_usage_incremental_cache",
@@ -579,8 +583,9 @@ test("Secure Mesh custody, runtime, MLS store, and schema reset select bounded c
     "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
   ])), [
     "architecture.client-boundaries",
-    "rust.platform.secure-mesh-secret-store.authorization",
-    "rust.core.secure-mesh.secret-custody-port",
+      "rust.platform.secure-mesh-secret-store.authorization",
+      "rust.core.secure-mesh.secret-custody-port",
+      "rust.core.secure-mesh.presence-authorization",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs",
@@ -787,7 +792,7 @@ test("client update leaves retain exact narrow regression filters", () => {
     ["staging/path.rs", "rust.domain.client-update.staging-paths"],
     ["revocation.rs", "rust.domain.client-update.revocation"],
     ["apply.rs", "rust.domain.client-update.workflow"],
-    ["macos_runner/archive.rs", "rust.domain.client-update.macos-runner"],
+    ["native_runner/macos_integrity.rs", "rust.domain.client-update.native-runner"],
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -808,8 +813,8 @@ test("client update leaves retain exact narrow regression filters", () => {
       "domain::client_update::tests::revocation::"],
     ["rust.domain.client-update.workflow",
       "domain::client_update::tests::workflow::"],
-    ["rust.domain.client-update.macos-runner",
-      "domain::client_update::tests::macos_runner::"],
+    ["rust.domain.client-update.native-runner",
+      "domain::client_update::tests::native_runner::"],
   ]);
   for (const [moduleId, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === moduleId);
