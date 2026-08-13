@@ -68,20 +68,20 @@ Runtime targets and release packages are intentionally different authorities. Ea
 This table projects the native driver inventory. Runtime protocol and capability fields remain owned by that inventory.
 Lifecycle evidence columns describe whether the lane can emit a native receipt for that stage. `submitted` is always a local client fact. On each turn, the UI shows only receipts actually observed; unsupported or absent stages are skipped and are never inferred from a later response or terminal result.
 
-| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| openclaw | conversation | unverified | no | openclaw-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | no |
-| claude-code | conversation | unverified | no | claude-code-cli-stream-json | stream-json | yes | yes | yes | yes | yes | yes | yes |
-| codex | conversation | unverified | no | codex-app-server-stdio-jsonrpc | app-server | yes | yes | yes | yes | yes | yes | yes |
-| antigravity | conversation | unverified | no | antigravity-cli-argv-hook-v1 | cli | yes | yes | yes | no | yes | yes | no |
-| opencode | conversation | unverified | no | opencode-serve-http-v1 | serve-http | yes | yes | yes | no | yes | yes | no |
-| copilot | conversation | unverified | no | copilot-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | no |
-| kilo-code | conversation | unverified | no | kilo-code-serve-http-v1 | serve-http | yes | yes | yes | no | yes | yes | no |
-| cursor | conversation | unverified | no | cursor-agent-cli-v1 | cli | yes | yes | yes | no | yes | yes | no |
-| hermes | conversation | unverified | no | hermes-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | no |
-| kimi-code | conversation | unverified | no | kimi-code-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | no |
-| pi | conversation | unverified | no | pi-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes |
-| lico-agent | conversation | unverified | no | lico-agent-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes |
+| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | GUI-exit survival | Active-turn reattach | Ordered cursor replay | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| openclaw | conversation | unverified | no | openclaw-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| claude-code | conversation | unverified | no | claude-code-cli-stream-json | stream-json | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| codex | conversation | unverified | no | codex-app-server-stdio-jsonrpc | app-server | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| antigravity | conversation | unverified | no | antigravity-cli-argv-hook-v1 | cli | yes | yes | yes | yes | yes | yes | no | yes | yes | no |
+| opencode | conversation | unverified | no | opencode-serve-http-v1 | serve-http | yes | yes | yes | yes | yes | yes | no | yes | yes | no |
+| copilot | conversation | unverified | no | copilot-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| kilo-code | conversation | unverified | no | kilo-code-serve-http-v1 | serve-http | yes | yes | yes | yes | yes | yes | no | yes | yes | no |
+| cursor | conversation | unverified | no | cursor-agent-cli-v1 | cli | yes | yes | yes | yes | yes | yes | no | yes | yes | no |
+| hermes | conversation | unverified | no | hermes-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| kimi-code | conversation | unverified | no | kimi-code-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| pi | conversation | unverified | no | pi-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| lico-agent | conversation | unverified | no | lico-agent-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 
 ## Native capability inventory
 

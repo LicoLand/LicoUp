@@ -1882,6 +1882,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Native client CLI composition, presentation, and shared test support",
       inputs: [
         "crates/licoup-native/src/bin/licoup.rs",
+        "crates/licoup-native/src/bin/licoup/conversation_host.rs",
         "crates/licoup-native/src/bin/licoup/presentation.rs",
         "crates/licoup-native/src/bin/licoup/tests.rs",
         "crates/licoup-native/src/bin/licoup/tests/support.rs",
