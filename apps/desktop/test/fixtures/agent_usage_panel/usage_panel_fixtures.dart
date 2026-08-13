@@ -86,10 +86,10 @@ AgentUsageReport syntheticWorkflowUsageReport({
   }) {
     return {
       'nodeId': id,
-      if (parent != null) 'parentNodeId': parent,
+      'parentNodeId': ?parent,
       'planCode': 'PLAN-TREE',
       'planRevision': 2,
-      if (task != null) 'taskCode': task,
+      'taskCode': ?task,
       'phase': role,
       'dispatchId': dispatch,
       'role': role,
