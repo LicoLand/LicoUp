@@ -2,7 +2,7 @@ use super::super::process_supervisor::{
     BoundedStdinWriter, TransportFinishFailure, finish_protocol_transport,
 };
 use super::errors::{ProtocolFailure, failure_from_response};
-use super::events::{TransportEvent, read_protocol_messages};
+use super::events::{ACP_EVENT_CHANNEL_CAPACITY, TransportEvent, read_protocol_messages};
 use super::io::{drain_stderr, write_message};
 use super::model::{AcpDriverSpec, CapabilityProbe, PROCESS_POLL_INTERVAL};
 use super::protocol::{INITIALIZE_REQUEST_ID, request_id_matches};
@@ -21,7 +21,7 @@ pub(in crate::platform) fn probe_acp(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     probe_acp_inner(driver, executable, cwd, timeout_ms, max_stdout, max_stderr)
@@ -33,7 +33,7 @@ fn probe_acp_inner(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     if !cwd.is_absolute() {
@@ -64,7 +64,7 @@ fn probe_acp_inner(
         return Err(acp_pipe_failure(&mut child));
     };
     let mut stdin = BoundedStdinWriter::new(stdin);
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = mpsc::sync_channel(ACP_EVENT_CHANNEL_CAPACITY);
     let stdout_handle =
         thread::spawn(move || read_protocol_messages(BufReader::new(stdout), max_stdout, sender));
     let stderr_truncated = Arc::new(AtomicBool::new(false));
@@ -153,6 +153,7 @@ fn probe_acp_inner(
             }
         }
     };
+    drop(receiver);
     let cleanup = finish_protocol_transport(&mut child, &mut stdin, stdout_handle, stderr_handle);
     if cleanup == Err(TransportFinishFailure::Lifecycle) {
         return Err(ProtocolFailure::new(

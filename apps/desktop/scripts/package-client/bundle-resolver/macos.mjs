@@ -33,6 +33,7 @@ export function macosBundleLayout(root) {
     executableDir: path.join(appDir, "Contents", "MacOS"),
     portableDataDir: path.join(root, "portable-data"),
     moduleResourceDir: path.join(root, "modules"),
+    pluginResourceDir: path.join(appDir, "Contents", "Resources"),
     flutterExecutable: path.join(
       appDir,
       "Contents",

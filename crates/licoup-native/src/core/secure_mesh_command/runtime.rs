@@ -156,8 +156,7 @@ pub fn execute_evaluated_secure_command(
 
 pub(crate) fn agent_sessions_list_params(payload: &SecureCommandPayload) -> Result<Value> {
     let body = filtered_body(payload.body(), AGENT_SESSIONS_LIST_PAYLOAD_FIELDS)?;
-    let agent = text_from_any(&body, &["agent", "agentId", "target"])
-        .ok_or_else(|| anyhow!("secure mesh command agent.sessions.list requires agent id"))?;
+    let agent = bound_agent_id(payload, "agent.sessions.list")?;
     let mut params = Map::new();
     params.insert("agent".to_string(), json!(agent));
     if let Some(limit) = body.get("limit").and_then(Value::as_u64) {
@@ -171,8 +170,7 @@ pub(crate) fn agent_sessions_list_params(payload: &SecureCommandPayload) -> Resu
 
 pub(crate) fn agent_sessions_describe_params(payload: &SecureCommandPayload) -> Result<Value> {
     let body = filtered_body(payload.body(), AGENT_SESSIONS_DESCRIBE_PAYLOAD_FIELDS)?;
-    let agent = text_from_any(&body, &["agent", "agentId", "target"])
-        .ok_or_else(|| anyhow!("secure mesh command agent.sessions.describe requires agent id"))?;
+    let agent = bound_agent_id(payload, "agent.sessions.describe")?;
     let session_id = text_from_any(&body, &["sessionId", "nativeSessionId"]).ok_or_else(|| {
         anyhow!("secure mesh command agent.sessions.describe requires session id")
     })?;
@@ -186,16 +184,26 @@ pub(crate) fn agent_sessions_describe_params(payload: &SecureCommandPayload) -> 
 
 pub(crate) fn agent_message_send_params(payload: &SecureCommandPayload) -> Result<Value> {
     let mut body = filtered_body(payload.body(), AGENT_MESSAGE_SEND_PAYLOAD_FIELDS)?;
-    ensure!(
-        text_from_any(&body, &["agent", "agentId", "target"]).is_some(),
-        "secure mesh command agent.message.send requires agent id"
-    );
+    let agent = bound_agent_id(payload, "agent.message.send")?;
     ensure!(
         text_from_any(&body, &["text", "message", "prompt"]).is_some(),
         "secure mesh command agent.message.send requires message text"
     );
+    body["agent"] = json!(agent);
+    body["idempotencyKey"] = json!(payload.idempotency_key);
     body["timeoutMs"] = json!(SECURE_AGENT_MESSAGE_TIMEOUT_MS);
     Ok(body)
+}
+
+fn bound_agent_id(payload: &SecureCommandPayload, command_kind: &str) -> Result<String> {
+    payload
+        .target_binding
+        .target_agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| anyhow!("secure mesh command {command_kind} requires bound agent id"))
 }
 
 fn filtered_body(body: &Value, allowed_fields: &[&str]) -> Result<Value> {

@@ -27,6 +27,7 @@ export {
 export { loadCanonicalInputs } from "./client-agent-conversation-parity-reducer/inputs.mjs";
 export {
   assertReadinessMatchesReduction,
+  assertReleaseReady,
   runCli,
 } from "./client-agent-conversation-parity-reducer/cli.mjs";
 

@@ -14,6 +14,7 @@ pub use manager_fanout::{SecureMeshSesameDeviceRecord, SecureMeshSesameSessionMa
 pub(crate) use persistence::pairwise_secret_store_namespace;
 pub use persistence::{
     SecureMeshLocalPreKeyUse, SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore,
+    SecureMeshPairwisePendingDelivery, SecureMeshPairwiseReceivedPayload,
     SecureMeshRemotePreKeyUse,
 };
 pub use runtime_self_test::runtime_crypto_self_test;

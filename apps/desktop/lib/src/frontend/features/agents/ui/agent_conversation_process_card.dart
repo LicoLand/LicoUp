@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_details_builder.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_lifecycle_indicator.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_operations.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
@@ -17,12 +18,14 @@ final class ConversationProcessCard extends StatefulWidget {
     required this.adapter,
     required this.detailsBuilder,
     this.active = false,
+    this.topOverlayInset = 0,
   }) : assert(events.length > 0);
 
   final List<AgentConversationMessage> events;
   final AgentRenderAdapter adapter;
   final ConversationEventDetailsBuilder detailsBuilder;
   final bool active;
+  final double topOverlayInset;
 
   @override
   State<ConversationProcessCard> createState() =>
@@ -34,6 +37,7 @@ final class _ConversationProcessCardState
   final FocusNode _headerFocusNode = FocusNode(
     debugLabel: 'conversation-process-header',
   );
+  final ScrollController _operationScrollController = ScrollController();
   bool _expanded = false;
   bool _focused = false;
 
@@ -42,36 +46,26 @@ final class _ConversationProcessCardState
   @override
   void dispose() {
     _headerFocusNode.dispose();
+    _operationScrollController.dispose();
     super.dispose();
   }
 
   void _toggleExpanded() {
     final expanding = !_expanded;
     setState(() => _expanded = expanding);
-    if (!expanding) return;
-    final delay = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 210);
-    void scheduleEnsureVisible() {
-      if (!mounted || !_expanded) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_expanded) return;
-        final headerContext = _headerFocusNode.context;
-        if (headerContext == null || !headerContext.mounted) return;
-        Scrollable.ensureVisible(
-          headerContext,
-          alignment: 0.08,
-          duration: Duration.zero,
-        );
-      });
-      WidgetsBinding.instance.scheduleFrame();
-    }
+    if (expanding) _pinHeaderBelowOverlay();
+  }
 
-    if (delay == Duration.zero) {
-      scheduleEnsureVisible();
-    } else {
-      Future<void>.delayed(delay, scheduleEnsureVisible);
-    }
+  void _pinHeaderBelowOverlay() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_expanded) return;
+      final headerContext = _headerFocusNode.context;
+      if (headerContext == null || !headerContext.mounted) return;
+      pinConversationProcessHeaderBelowOverlay(
+        headerContext,
+        widget.topOverlayInset,
+      );
+    });
   }
 
   @override
@@ -79,18 +73,23 @@ final class _ConversationProcessCardState
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final projection = projectConversationProcessEvents(widget.events);
-    final operations = projection.events;
-    final title = _processTitle(
+    final lifecycle = projectConversationTurnLifecycle(widget.events);
+    final operations = projection.events
+        .where((event) => !isConversationLifecycleEvent(event))
+        .toList(growable: false);
+    final durationTitle = conversationProcessDurationTitle(
       projection.startedAt,
       projection.endedAt,
       strings,
     );
-    final summary = _processSummary(
-      projection.totalOperations,
-      projection.issues,
-      projection.countTruncated,
-      strings,
-    );
+    final title = lifecycle == null
+        ? conversationProcessSemanticTitle(operations, strings)
+        : conversationLifecycleStageLabel(lifecycle.stage, strings);
+    final summary = lifecycle == null
+        ? '${widget.active ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, projection.countTruncated, strings)}'
+        : lifecycle.terminal
+        ? '$durationTitle · ${strings.lifecycleObserved(lifecycle.observedStages.length, 5)}'
+        : strings.lifecycleObserved(lifecycle.observedStages.length, 5);
     final motionDisabled = MediaQuery.disableAnimationsOf(context);
     final containerDuration = motionDisabled
         ? Duration.zero
@@ -107,6 +106,11 @@ final class _ConversationProcessCardState
       detailsBuilder: widget.detailsBuilder,
       truncated: projection.renderTruncated,
       activeStepIndex: widget.active ? operations.length - 1 : -1,
+    );
+    final expandedBody = ConversationProcessOperationViewport(
+      processId: _processId,
+      controller: _operationScrollController,
+      child: operationList,
     );
 
     return Align(
@@ -126,7 +130,7 @@ final class _ConversationProcessCardState
             ),
             border: Border.all(
               color: _focused
-                  ? colors.info.withAlpha(170)
+                  ? colors.accent.withAlpha(170)
                   : Colors.white.withAlpha(colors.isDark ? 42 : 64),
               width: AppleControlMetrics.hairline,
             ),
@@ -162,7 +166,7 @@ final class _ConversationProcessCardState
                           }
                         },
                         onTap: _toggleExpanded,
-                        focusColor: colors.info.withValues(alpha: 0.10),
+                        focusColor: colors.accent.withValues(alpha: 0.10),
                         hoverColor: colors.text.withValues(alpha: 0.04),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(minHeight: 48),
@@ -173,10 +177,25 @@ final class _ConversationProcessCardState
                             ),
                             child: Row(
                               children: [
-                                widget.active
+                                widget.active && lifecycle?.terminal != true
                                     ? LicoSpinningRefreshIcon(
                                         size: 15,
                                         color: colors.textMuted,
+                                      )
+                                    : lifecycle?.stage ==
+                                          ConversationTurnLifecycleStage
+                                              .completed
+                                    ? Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 16,
+                                        color: colors.success,
+                                      )
+                                    : lifecycle?.stage ==
+                                          ConversationTurnLifecycleStage.failed
+                                    ? Icon(
+                                        Icons.error_rounded,
+                                        size: 16,
+                                        color: colors.error,
                                       )
                                     : Icon(
                                         Icons.format_list_bulleted_rounded,
@@ -203,7 +222,9 @@ final class _ConversationProcessCardState
                                       const SizedBox(height: 1),
                                       LicoShimmerText(
                                         text: summary,
-                                        enabled: widget.active,
+                                        enabled:
+                                            widget.active &&
+                                            lifecycle?.terminal != true,
                                         style: TextStyle(
                                           color: colors.textMuted,
                                           fontSize: 11,
@@ -211,6 +232,15 @@ final class _ConversationProcessCardState
                                           letterSpacing: -0.04,
                                         ),
                                       ),
+                                      if (lifecycle != null &&
+                                          (!lifecycle.terminal ||
+                                              lifecycle.observedStages.length <
+                                                  5)) ...[
+                                        const SizedBox(height: 8),
+                                        ConversationLifecycleSteps(
+                                          projection: lifecycle,
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -234,13 +264,14 @@ final class _ConversationProcessCardState
                   ),
                 ),
                 if (motionDisabled)
-                  _expanded ? operationList : const SizedBox.shrink()
+                  _expanded ? expandedBody : const SizedBox.shrink()
                 else
                   AnimatedSize(
                     duration: sizeDuration,
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.topCenter,
-                    child: _expanded ? operationList : const SizedBox.shrink(),
+                    onEnd: _pinHeaderBelowOverlay,
+                    child: _expanded ? expandedBody : const SizedBox.shrink(),
                   ),
               ],
             ),
@@ -251,7 +282,32 @@ final class _ConversationProcessCardState
   }
 }
 
-String _processTitle(DateTime? start, DateTime? end, LicoStrings strings) {
+String conversationProcessSemanticTitle(
+  Iterable<AgentConversationMessage> events,
+  LicoStrings strings,
+) {
+  var hasReasoning = false;
+  var hasToolActivity = false;
+  for (final event in events) {
+    hasReasoning =
+        hasReasoning || event.kind == AgentConversationMessageKind.reasoning;
+    hasToolActivity =
+        hasToolActivity ||
+        event.kind == AgentConversationMessageKind.toolCall ||
+        event.kind == AgentConversationMessageKind.toolResult;
+  }
+  if (hasReasoning && !hasToolActivity) return strings.reasoningProcess;
+  if (hasToolActivity && !hasReasoning) return strings.toolExecution;
+  return strings.agentActivity;
+}
+
+/// Shared "Worked for …" title for process presentations (console card and
+/// messaging inline status row).
+String conversationProcessDurationTitle(
+  DateTime? start,
+  DateTime? end,
+  LicoStrings strings,
+) {
   if (start == null || end == null || end.isBefore(start)) {
     return strings.agentProcess;
   }
@@ -262,7 +318,9 @@ String _processTitle(DateTime? start, DateTime? end, LicoStrings strings) {
   return strings.workedForMinutes(seconds ~/ 60, seconds % 60);
 }
 
-String _processSummary(
+/// Shared "N steps · N issues" summary for process presentations (console
+/// card and messaging inline status row).
+String conversationProcessSummary(
   int totalOperations,
   int issues,
   bool truncated,

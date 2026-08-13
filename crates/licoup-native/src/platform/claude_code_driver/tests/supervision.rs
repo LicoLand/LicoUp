@@ -28,7 +28,7 @@ fn cleanup_detaches_before_wait_and_acknowledges_after_tree_and_io_exit() {
         "",
         Some(&directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(first.ok, "fixture turn failed: {:?}", first.error);
@@ -50,20 +50,31 @@ fn cleanup_detaches_before_wait_and_acknowledges_after_tree_and_io_exit() {
         "cleanup crossed the deterministic transport gate before it was released"
     );
 
+    // A closing transport is never entered; resume hands off to a fresh
+    // --resume process that stays out of the deterministic transport gate.
     let resume = execute(
         &executable,
-        &json!({}),
-        "resume-must-not-enter-closing-transport",
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
         &session_id,
         Some(&directory),
-        1_000,
-        1024,
+        5_000,
+        Some(1024),
         1024,
     );
-    assert_eq!(
-        resume.error.unwrap().code,
-        "claude_code_live_session_unavailable"
+    assert!(
+        resume.ok,
+        "resume around closing transport failed: {:?}",
+        resume.error
     );
+    assert_eq!(resume.session_id, session_id);
+    // The fresh resume transport must be released before the shared fixture
+    // session can be observed as fully cleaned up.
+    assert_eq!(cleanup_session(&session_id), ControlDisposition::Accepted);
     drop(transport_gate);
     assert_eq!(cleanup.join().unwrap(), ControlDisposition::Accepted);
     assert!(managed.lifecycle.wait_until_closed(Duration::from_secs(1)));
@@ -89,7 +100,7 @@ fn cleanup_propagates_a_poisoned_transport_shutdown_failure() {
         "",
         Some(&directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(first.ok);
@@ -114,7 +125,7 @@ fn cleanup_propagates_a_poisoned_transport_shutdown_failure() {
 }
 
 #[test]
-fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
+fn test_cleanup_clears_the_exact_registry_and_is_idempotent() {
     let _serial = process_local_test_guard();
     let (directory, executable) = compile_fake_claude("lico-claude-shutdown-all");
     let first = execute(
@@ -128,15 +139,15 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
         "",
         Some(&directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(first.ok);
     assert!(has_live_session(&first.session_id));
 
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     assert!(!has_live_session(&first.session_id));
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
 
     let reclaimed_directory = directory.join("capacity-reclaimed");
     fs::create_dir_all(&reclaimed_directory).unwrap();
@@ -151,15 +162,15 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
         "",
         Some(&reclaimed_directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(
         reclaimed.ok,
-        "shutdown_all did not reclaim transport capacity"
+        "test cleanup did not reclaim transport capacity"
     );
     assert!(has_live_session(&reclaimed.session_id));
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     assert!(!has_live_session(&reclaimed.session_id));
     let _ = fs::remove_dir_all(directory);
 }
@@ -167,7 +178,7 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
 #[test]
 fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
     let _serial = process_local_test_guard();
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     let (directory, executable) = compile_fake_claude("lico-claude-capacity");
     let executable = executable.to_string_lossy().to_string();
     let params = json!({
@@ -186,7 +197,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
             "",
             Some(&working_directory),
             10_000,
-            1024 * 1024,
+            Some(1024 * 1024),
             1024,
         );
         assert!(
@@ -207,7 +218,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
         "",
         Some(&overflow_directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert_eq!(
@@ -230,7 +241,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
         "",
         Some(&overflow_directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(
@@ -239,7 +250,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
     );
     assert_ne!(replacement.session_id, reclaimed_session);
     assert!(sessions.iter().all(|session| has_live_session(session)));
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     assert!(sessions.iter().all(|session| !has_live_session(session)));
     assert!(!has_live_session(&replacement.session_id));
     let _ = fs::remove_dir_all(directory);

@@ -1,4 +1,4 @@
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_gateway.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_station.dart';
 
 class MobileRelayPairedDevice {
   const MobileRelayPairedDevice({
@@ -7,7 +7,7 @@ class MobileRelayPairedDevice {
     required this.pairingId,
     required this.mobileToken,
     required this.credentialPresent,
-    required this.gatewayUrl,
+    required this.stationBaseUrl,
   });
 
   final String id;
@@ -15,7 +15,7 @@ class MobileRelayPairedDevice {
   final String pairingId;
   final String mobileToken;
   final bool credentialPresent;
-  final String gatewayUrl;
+  final String stationBaseUrl;
 
   bool get isUsable =>
       pairingId.trim().isNotEmpty &&
@@ -35,8 +35,8 @@ class MobileRelayPairedDevice {
           json['credentialPresent'] == true ||
           json['mobileTokenPresent'] == true ||
           (json['mobileToken'] ?? '').toString().trim().isNotEmpty,
-      gatewayUrl: normalizeMobileRelayGatewayUrl(
-        (json['gatewayUrl'] ?? '').toString(),
+      stationBaseUrl: normalizeMobileRelayStationBaseUrl(
+        (json['stationBaseUrl'] ?? '').toString(),
       ),
     );
   }
@@ -62,12 +62,12 @@ List<String> _pairedDeviceDedupeKeys(MobileRelayPairedDevice device) {
   final id = device.id.trim();
   final pairingId = device.pairingId.trim();
   final label = device.label.trim().toLowerCase();
-  final gateway = normalizeMobileRelayGatewayUrl(
-    device.gatewayUrl,
+  final station = normalizeMobileRelayStationBaseUrl(
+    device.stationBaseUrl,
   ).toLowerCase();
   return [
     if (id.isNotEmpty) 'id:$id',
     if (pairingId.isNotEmpty) 'pairing:$pairingId',
-    if (label.isNotEmpty && gateway.isNotEmpty) 'label:$label@$gateway',
+    if (label.isNotEmpty && station.isNotEmpty) 'label:$label@$station',
   ];
 }

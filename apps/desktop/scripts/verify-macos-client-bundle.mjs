@@ -15,7 +15,7 @@ const roots = [
   {
     kind: "runnable",
     root: path.join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release"),
-    appName: "Arc.app"
+    appName: "LicoUp.app"
   }
 ];
 
@@ -72,8 +72,8 @@ async function main() {
       if (!plistHasString(plist, "CFBundleName", "LicoUp")) {
         missing.push(`${appPath} CFBundleName must be LicoUp`);
       }
-      if (!plistHasString(plist, "CFBundleDisplayName", "Arc")) {
-        missing.push(`${appPath} CFBundleDisplayName must be Arc`);
+      if (!plistHasString(plist, "CFBundleDisplayName", "LicoUp")) {
+        missing.push(`${appPath} CFBundleDisplayName must be LicoUp`);
       }
     }
     for (const executableName of ["licoup"]) {
@@ -123,7 +123,7 @@ async function main() {
         missing.push(`${root} macOS package manifest has signing.entitlementsFile=${signing.entitlementsFile}`);
       }
       const expectedExecutable = kind === "runnable"
-        ? path.join("Arc.app", "Contents", "MacOS", "licoup")
+        ? path.join("LicoUp.app", "Contents", "MacOS", "licoup")
         : path.join("licoup.app", "Contents", "MacOS", "licoup");
       if (manifest.flutterExecutable !== expectedExecutable) {
         missing.push(`${root} macOS package manifest has flutterExecutable=${manifest.flutterExecutable}`);

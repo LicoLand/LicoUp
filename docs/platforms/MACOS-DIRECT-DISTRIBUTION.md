@@ -1,0 +1,69 @@
+# macOS direct-distribution compliance
+
+[简体中文](MACOS-DIRECT-DISTRIBUTION.zh-CN.md)
+
+This document covers only direct distribution outside the Mac App Store. The
+repository does not claim that a release is complete until the final artifact
+has passed real signing, notarization, stapling, and Gatekeeper verification.
+The Mac App Store target remains blocked because its sandbox, process, update,
+and submission model is a different product boundary.
+
+## Apple requirements and repository controls
+
+| Requirement | Repository control | Current status |
+| --- | --- | --- |
+| Use `Developer ID Application` for an app distributed outside the Mac App Store | The local platform-channel coordinator verifies the certificate type, team, application identifier, and profile authorization before packaging | Implemented; real release proof pending |
+| Sign every executable, enable Hardened Runtime, include a secure timestamp, and omit `get-task-allow` | Nested code is inventoried and signed before the outer app; post-sign checks require Developer ID, runtime, timestamp, bounded entitlements, and exact nested-code closure | Implemented; real release proof pending |
+| Submit Developer ID software to Apple notarization and staple the ticket | The app and final DMG are submitted with `notarytool`, stapled, revalidated, and assessed with `spctl`; a failure prevents the ready manifest | Implemented; real release proof pending |
+| Request only resources the macOS app actually needs | The macOS target has no camera purpose string, camera entitlement, or camera plugin registration. QR capture is instantiated only on Android/iOS, while macOS displays the pairing QR; the final macOS nested-code inventory rejects camera/scanner plugins before signing | Implemented |
+| Accurately disclose privacy behavior and bundled SDK practices | `PrivacyInfo.xcprivacy` and the bilingual privacy policy are inserted only into the macOS app/DMG release path. The manifest declares no tracking or project-operated collection and records the evidenced File Timestamp, System Boot Time, and User Defaults required-reason API uses | Implemented; must be re-audited when dependencies or data flows change |
+| Protect users from changed or substituted update code | A macOS update must match the installed app's exact Developer ID designated requirement and team and pass code-signing, Hardened Runtime, timestamp, stapled-ticket, and Gatekeeper checks before replacement; the replacement script repeats the checks | Implemented; real update proof pending |
+| Take responsibility for distributed code and dependencies | LicoUp no longer downloads, installs, updates, rolls back, or synchronizes skills. It only discovers local skills and can move a selected local directory to the system Trash. The release bundles the AGPL license, project notice, Flutter/Dart notices, and a target-filtered inventory plus available license texts from the locked Rust dependency graph | Implemented for skills and bundled notices |
+| Keep protected credentials out of source and remote publication jobs | Signing and notarization inputs are local-only, secret-like files are rejected by repository gates and Rulesets, and the old GitHub/local-identity macOS archive and install entry points are disabled | Implemented |
+
+## Direct distribution versus the Mac App Store
+
+Apple's App Review Guideline 2.5.2 restricts App Store apps from downloading,
+installing, or executing code that changes app functionality. That review rule
+is not a substitute for the Developer ID rules used by this direct channel.
+LicoUp nevertheless keeps skill delivery out of the product, and the repository
+does not present the current process-running, self-update, or optional adapter
+model as Mac App Store compatible.
+
+Any optional third-party adapter or collaboration package obtained separately
+from LicoUp remains third-party software. It is not made trustworthy by the
+LicoUp app's notarization ticket. The publisher remains responsible for code
+bundled in or distributed as part of an official LicoUp release, while users
+remain responsible for software they independently place in local agent roots.
+
+## Release acceptance boundary
+
+A macOS release is not accepted merely because the scripts or certificates
+exist. Acceptance requires one final, unmodified artifact to satisfy all of the
+following in a single local release run:
+
+1. Release metadata, privacy manifest, entitlements, certificate, profile, and
+   toolchain preflight pass.
+2. Every nested executable and the outer app are signed with Developer ID,
+   Hardened Runtime, and a secure timestamp.
+3. The app is notarized, stapled, and accepted by Gatekeeper.
+4. The update ZIP is created only after the accepted app state.
+5. The final DMG is signed, notarized, stapled, verified, and accepted by
+   Gatekeeper.
+6. Privacy, license, open-source notice, and third-party notices exist in the
+   app resources and readable DMG root.
+7. The redacted ready manifest is written only after every preceding check.
+
+No remote workflow may publish a macOS direct artifact. Publication, upload,
+and release-page mutation require separate explicit authorization.
+
+## Primary Apple references
+
+- [Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates)
+- [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
+- [Configuring the Hardened Runtime](https://developer.apple.com/documentation/xcode/configuring-the-hardened-runtime)
+- [Adding a privacy manifest](https://developer.apple.com/documentation/bundleresources/adding-a-privacy-manifest-to-your-app-or-third-party-sdk)
+- [Third-party SDK requirements](https://developer.apple.com/support/third-party-SDK-requirements/)
+- [Protecting users from suspicious software](https://developer.apple.com/support/protecting-users-from-suspicious-software/)
+- [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+- [Apple developer agreements and guidelines](https://developer.apple.com/support/terms)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Sanitized copy for deterministic conversation-send unavailability.
@@ -19,21 +20,12 @@ class ConversationSendAvailabilityCopy {
   final ConversationSendUnblockAction? unblockAction;
 }
 
-enum ConversationSendUnblockAction { rescanAgents, editPolicy }
+enum ConversationSendUnblockAction { rescanAgents, authorizeRuntime }
 
 ConversationSendAvailabilityCopy conversationSendAvailabilityCopy({
   required LicoStrings strings,
   required String reasonCode,
-  bool orchestration = false,
 }) {
-  if (orchestration) {
-    return ConversationSendAvailabilityCopy(
-      reasonCode: 'orchestration_policy_required',
-      reasonLabel: strings.configurePolicyBeforeSend,
-      unblockLabel: strings.editPolicy,
-      unblockAction: ConversationSendUnblockAction.editPolicy,
-    );
-  }
   final normalized = reasonCode.trim().isEmpty
       ? 'runtime_message_send_unavailable'
       : reasonCode.trim();
@@ -43,12 +35,20 @@ ConversationSendAvailabilityCopy conversationSendAvailabilityCopy({
     'native_agent_runtime_profile_unavailable' ||
     'runtime_message_send_unavailable' =>
       ConversationSendUnblockAction.rescanAgents,
+    'antigravity_auth_required' =>
+      ConversationSendUnblockAction.authorizeRuntime,
     _ => null,
+  };
+  final unblockLabel = switch (action) {
+    ConversationSendUnblockAction.authorizeRuntime =>
+      strings.conversationAuthorizeRuntimeAction,
+    null => null,
+    _ => strings.refreshAgents,
   };
   return ConversationSendAvailabilityCopy(
     reasonCode: normalized,
     reasonLabel: label,
-    unblockLabel: action == null ? null : strings.refreshAgents,
+    unblockLabel: unblockLabel,
     unblockAction: action,
   );
 }
@@ -91,7 +91,7 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
         elevation: const WidgetStatePropertyAll(6),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(LicoRadius.floating),
             side: BorderSide(color: colors.line),
           ),
         ),

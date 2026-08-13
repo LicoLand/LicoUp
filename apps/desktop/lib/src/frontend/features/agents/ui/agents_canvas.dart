@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
@@ -69,6 +70,7 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
         final agentsPresentation = LayoutDestinationPresentationScope.maybeOf(
           context,
         )?.agents;
+        final chrome = LayoutChromePortScope.maybeOf(context);
         return Scaffold(
           backgroundColor:
               agentsPresentation?.canvasColor(context.layoutPalette) ??
@@ -79,6 +81,9 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
             scanning: scanning,
             adding: adding,
             onAddTarget: _showAddTargetDialog,
+            onSearch: chrome == null
+                ? null
+                : () => unawaited(chrome.openGlobalSearch(context)),
             allowManualTargetActions: allowManualTargetActions,
           ),
         );
@@ -104,6 +109,8 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
         configPath: draft.configPath,
         binaryPath: draft.binaryPath,
         historyRoot: draft.historyRoot,
+        location: draft.location,
+        runtimeConnection: draft.runtimeConnection,
       ),
     );
   }

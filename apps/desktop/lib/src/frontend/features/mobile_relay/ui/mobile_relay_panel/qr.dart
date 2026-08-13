@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayPairingQrFrame extends StatelessWidget {
@@ -11,13 +12,13 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
     super.key,
     required this.inviteText,
     required this.busy,
-    required this.gatewayConfigured,
+    required this.stationConfigured,
     required this.onGenerate,
   });
 
   final String inviteText;
   final bool busy;
-  final bool gatewayConfigured;
+  final bool stationConfigured;
   final Future<void> Function() onGenerate;
 
   @override
@@ -37,16 +38,16 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             key: const Key('pairing-qr-frame'),
-            onTap: busy || !gatewayConfigured
+            onTap: busy || !stationConfigured
                 ? null
                 : () => unawaited(onGenerate()),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(LicoRadius.card),
             child: Ink(
               width: 220,
               height: 220,
               decoration: BoxDecoration(
                 color: hasQr ? Colors.white : placeholderFill,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(LicoRadius.card),
                 border: Border.all(
                   color: hasQr
                       ? colors.line.withAlpha(40)

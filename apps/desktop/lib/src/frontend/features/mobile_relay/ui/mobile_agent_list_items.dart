@@ -6,6 +6,7 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_o
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_swipe_pin_action.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class MobilePairedDeviceListItem extends StatelessWidget {
@@ -35,7 +36,7 @@ final class MobilePairedDeviceListItem extends StatelessWidget {
       icon: Icon(
         Icons.computer_rounded,
         size: 30,
-        color: active ? colors.primary : colors.text,
+        color: active ? colors.accent : colors.text,
       ),
       title: strings.arcDesktop,
       subtitle: active ? '${strings.active} · ${device.label}' : device.label,
@@ -114,15 +115,15 @@ final class _MobileListTile extends StatelessWidget {
       pinned: pinned,
       onTogglePinned: onTogglePinned,
       child: Material(
-        color: pinned ? colors.primaryFixed.withAlpha(120) : Colors.transparent,
+        color: pinned ? colors.brandSurface.withAlpha(120) : Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           side: pinned
               ? BorderSide(color: colors.primary.withAlpha(150))
               : BorderSide.none,
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
@@ -150,7 +151,7 @@ final class _MobileListTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: pinned ? colors.primary : colors.textMuted,
+                          color: pinned ? colors.accent : colors.textMuted,
                           fontSize: 12,
                           fontWeight: pinned
                               ? FontWeight.w700

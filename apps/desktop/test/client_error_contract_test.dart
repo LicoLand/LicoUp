@@ -88,20 +88,21 @@ void main() {
         requestId: commandRequestId,
         workflowId: 'workflow-1',
       );
-      final terminal = StdioRpcConversationDecoder(
-        requestId: terminalRequestId,
-        workflowId: 'workflow-1',
-      ).decode(
-        _frame({
-          'protocol': stdioRpcProtocol,
-          'id': terminalRequestId,
-          'workflowId': 'workflow-1',
-          'kind': 'terminal',
-          'sequence': 1,
-          'ok': false,
-          'error': error,
-        }),
-      );
+      final terminal =
+          StdioRpcConversationDecoder(
+            requestId: terminalRequestId,
+            workflowId: 'workflow-1',
+          ).decode(
+            _frame({
+              'protocol': stdioRpcProtocol,
+              'id': terminalRequestId,
+              'workflowId': 'workflow-1',
+              'kind': 'terminal',
+              'sequence': 1,
+              'ok': false,
+              'error': error,
+            }),
+          );
 
       expect(command.error?.toJson(), error, reason: error['stage'] as String);
       expect(terminal, isA<StdioRpcConversationTerminal>());
@@ -120,8 +121,8 @@ void main() {
     );
     final event = decoder.decode(
       _frame({
-          'protocol': stdioRpcProtocol,
-          'id': 'stream-request',
+        'protocol': stdioRpcProtocol,
+        'id': 'stream-request',
         'workflowId': 'workflow-1',
         'kind': 'event',
         'sequence': 1,
@@ -134,8 +135,8 @@ void main() {
     );
     final terminal = decoder.decode(
       _frame({
-          'protocol': stdioRpcProtocol,
-          'id': 'stream-request',
+        'protocol': stdioRpcProtocol,
+        'id': 'stream-request',
         'workflowId': 'workflow-1',
         'kind': 'terminal',
         'sequence': 2,
@@ -152,23 +153,26 @@ void main() {
     );
   });
 
-  test('typed recovery preserves the draft and localizes without raw matching', () {
-    final error = ClientError.fromJson(_wireError);
+  test(
+    'typed recovery preserves the draft and localizes without raw matching',
+    () {
+      final error = ClientError.fromJson(_wireError);
 
-    expect(ConversationRuntimeResultPolicy.preserveDraft(error), isTrue);
-    expect(
-      ClientApplicationStrings.forPreference(
-        'en',
-      ).conversationClientError(error),
-      contains('Fixture Agent'),
-    );
-    expect(
-      ClientApplicationStrings.forPreference(
-        'zh',
-      ).conversationClientError(error),
-      contains('Fixture Agent'),
-    );
-  });
+      expect(ConversationRuntimeResultPolicy.preserveDraft(error), isTrue);
+      expect(
+        ClientApplicationStrings.forPreference(
+          'en',
+        ).conversationClientError(error),
+        contains('Fixture Agent'),
+      );
+      expect(
+        ClientApplicationStrings.forPreference(
+          'zh',
+        ).conversationClientError(error),
+        contains('Fixture Agent'),
+      );
+    },
+  );
 
   test('unknown future values fail safe without exposing their raw values', () {
     final futureStage = ['future', 'private', 'stage'].join('/');

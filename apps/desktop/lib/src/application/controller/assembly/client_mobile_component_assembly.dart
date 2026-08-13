@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import 'package:licoup/src/application/composition/mobile_home_layout_repository_adapter.dart';
-import 'package:licoup/src/application/composition/mobile_relay_gateway_adapter.dart';
+import 'package:licoup/src/application/composition/mobile_relay_client_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
@@ -9,7 +9,6 @@ import 'package:licoup/src/application/features/mobile_relay/controller/secure_m
 import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
-import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
@@ -26,8 +25,6 @@ final class ClientMobileComponentAssembly {
     required MobileHomeLayoutService mobileHomeLayoutService,
     required ClientClipboardService clientClipboardService,
     required RuntimePlatformBridge runtimePlatformBridge,
-    required SkillHubGateway skillHubGateway,
-    required void Function(Map<String, dynamic>?) replaceSkillInstallResult,
     required bool Function() isMobileRuntime,
     required List<TargetCandidate> Function() scannedTargets,
     required void Function(List<TargetCandidate>) replaceScannedTargets,
@@ -47,14 +44,14 @@ final class ClientMobileComponentAssembly {
                portableData: portableData,
              ),
        ) {
-    final relayGateway = MobileRelayGatewayAdapter(
+    final relayClient = MobileRelayClientAdapter(
       relayService: mobileRelayService,
       agentService: agentService,
       capabilityService: secureMeshCapabilityService,
     );
     final operationGate = MobileRelayOperationGate();
     relayController = MobileRelayController(
-      gateway: relayGateway,
+      client: relayClient,
       operationGate: operationGate,
       isMobileRuntime: isMobileRuntime,
       isAndroid: () => runtimePlatformBridge.isAndroid,
@@ -77,8 +74,7 @@ final class ClientMobileComponentAssembly {
       },
     );
     secureMeshController = SecureMeshController(
-      gateway: relayGateway,
-      skillInstaller: SecureMeshSkillInstallGatewayAdapter(skillHubGateway),
+      gateway: relayClient,
       operationGate: operationGate,
       onStatus: (update) => reportStatus(
         chinese: update.chinese,
@@ -86,7 +82,6 @@ final class ClientMobileComponentAssembly {
         caption: update.caption,
         errorCode: update.errorCode,
       ),
-      onSkillInstallResult: replaceSkillInstallResult,
     );
   }
 

@@ -3,8 +3,9 @@
 use super::adapter_dispatch::parse_history_file;
 use super::history::{
     CONVERSATION_SCHEMA_VERSION, HistoryScanConfig, apply_codex_session_index_titles,
-    dedupe_history_sessions, finalize_history_sessions, history_session_dedupe_key,
-    paged_history_sessions, sort_sessions_by_updated_at,
+    browse_catalog_applies, conversation_list_from_catalog, dedupe_history_sessions,
+    finalize_history_sessions, history_session_dedupe_key, paged_history_sessions,
+    sort_sessions_by_updated_at,
 };
 use super::history_discovery::discover_history_files;
 use super::parameters::agent_param;
@@ -23,13 +24,24 @@ pub(crate) fn conversation_stream(params: &Value) -> Result<()> {
     stream_to_writer(params, &mut writer)
 }
 
-fn stream_to_writer<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
+pub(crate) fn stream_to_writer<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
+    if crate::platform::remote_acp_history::has_runtime_connection(params) {
+        return stream_remote_acp(params, writer);
+    }
     let agent_id = agent_param(params)?;
     let adapter = adapter_for_agent(&agent_id)
         .ok_or_else(|| anyhow!("unsupported native history adapter: {}", agent_id))?;
     let scan_config = HistoryScanConfig::from_params(params);
     if adapter == HistoryAdapter::Codex {
         return stream_codex_finalized(params, writer, &agent_id, adapter, &scan_config);
+    }
+    // Match conversation_list: browse mode streams the catalog projection so
+    // workingDirectory and conversation identity stay identical to list.
+    if browse_catalog_applies(params, &scan_config) {
+        return stream_listed_projection(
+            &conversation_list_from_catalog(adapter, &agent_id, params, &scan_config)?,
+            writer,
+        );
     }
     let roots = history_roots(adapter, params);
     let discovery = discover_history_files(adapter, &roots, scan_config.discovery_options());
@@ -135,6 +147,73 @@ fn stream_to_writer<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
         returned_sessions,
         matched_sessions,
         has_more,
+    )
+}
+
+fn stream_remote_acp<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
+    stream_listed_projection(
+        &crate::platform::remote_acp_history::conversation_list(params)?,
+        writer,
+    )
+}
+
+/// Project a list-shaped history payload as start/session/done JSON-lines.
+///
+/// Remote ACP and local catalog browse both produce the list shape; Flutter
+/// only consumes the stream, so this keeps the two read paths aligned.
+fn stream_listed_projection<W: Write>(listed: &Value, writer: &mut W) -> Result<()> {
+    let agent_id = listed
+        .get("agentId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("history_list_projection_invalid"))?;
+    let page = listed
+        .get("page")
+        .cloned()
+        .ok_or_else(|| anyhow!("history_list_projection_invalid"))?;
+    write_json_line(
+        writer,
+        &json!({
+            "event": "start",
+            "ok": true,
+            "schemaVersion": CONVERSATION_SCHEMA_VERSION,
+            "mode": listed.get("mode").cloned().unwrap_or_else(|| json!("native-history")),
+            "scanMode": listed.get("scanMode").cloned().unwrap_or_else(|| json!("browse")),
+            "importMode": listed
+                .get("importMode")
+                .cloned()
+                .unwrap_or_else(|| json!("precise-adapter")),
+            "readOnly": true,
+            "agentId": agent_id,
+            "adapterId": listed.get("adapterId"),
+            "adapterLabel": listed.get("adapterLabel"),
+            "sources": listed.get("sources"),
+            "page": page
+        }),
+    )?;
+    let sessions = listed
+        .get("sessions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("history_list_projection_invalid"))?;
+    for session in sessions {
+        write_json_line(
+            writer,
+            &json!({
+                "event": "session",
+                "ok": true,
+                "agentId": agent_id,
+                "session": session
+            }),
+        )?;
+    }
+    write_json_line(
+        writer,
+        &json!({
+            "event": "done",
+            "ok": true,
+            "schemaVersion": CONVERSATION_SCHEMA_VERSION,
+            "agentId": agent_id,
+            "page": page
+        }),
     )
 }
 

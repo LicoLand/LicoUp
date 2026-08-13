@@ -24,6 +24,7 @@ impl ImmutableRuntimeFile {
         );
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
+            let _ = store;
             return linux_memfd(bytes, executable);
         }
         #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]

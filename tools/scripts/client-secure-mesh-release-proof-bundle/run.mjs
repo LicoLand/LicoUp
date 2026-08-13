@@ -3,6 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { createSecureClientMeshE2eeRefReportScope } from "../lib/secure-client-mesh-e2ee-ref-report.mjs";
+import {
+  CANONICAL_CLIENT_SOURCE_ROOTS,
+  clientSourceStateDigest,
+} from "../lib/client-source-state-digest.mjs";
+import {
+  captureLicoArcBadTowerCandidateBinding,
+  licoArcBadTowerCandidateSnapshotsMatch,
+} from "../lib/licoarc-badtower-candidate-binding.mjs";
 import { atomicWriteReportJson, resolveSafeReportPath } from "../lib/safe-report-io.mjs";
 import { parseReleaseProofArgs } from "./cli.mjs";
 import {
@@ -13,7 +21,7 @@ import {
   physicalEvidenceManifestReportPath,
   physicalMatrixReportPath,
   platformCryptoReportPath,
-  relayMockReportPath,
+  stationAcceptanceReportPath,
   repoRoot,
   reportPath,
   reportRedactionReportPath,
@@ -30,13 +38,13 @@ import { readJson, readJsonIfPresent } from "./io.mjs";
 import { dedupeRemainingGates, stableStringList } from "./lists.mjs";
 import { assertNoLeak } from "./privacy.mjs";
 import { buildReleaseProofReport } from "./report.mjs";
-import { runClientRelayCryptoInputsReadinessSelfTest } from "./self-test/client-relay-crypto.mjs";
+import { runClientLicoArcCryptoInputsReadinessSelfTest } from "./self-test/client-licoarc-crypto.mjs";
 import { runReleaseProofContractReadinessSelfTest } from "./self-test/contract.mjs";
 import { runReleaseInputFreshnessSelfTest } from "./self-test/freshness.mjs";
 import { runPhysicalEvidenceManifestReadinessSelfTest } from "./self-test/physical-evidence.mjs";
 import { runReportRedactionFreshnessSelfTest } from "./self-test/redaction.mjs";
 import { summarizeAndroidPhysicalInstallLaunchReport } from "./summarize/android-install.mjs";
-import { summarizeClientRelayCryptoInputs } from "./summarize/client-relay-crypto.mjs";
+import { summarizeClientLicoArcCryptoInputs } from "./summarize/client-licoarc-crypto.mjs";
 import { summarizePhysicalEvidenceManifest } from "./summarize/physical-evidence.mjs";
 import { summarizePhysicalMatrixReport } from "./summarize/physical-matrix.mjs";
 import { summarizeReportRedactionProof } from "./summarize/redaction.mjs";
@@ -61,8 +69,8 @@ export async function runSecureMeshReleaseProofBundleCli(
       "Client-pinned Secure Client Mesh contract does not define release proof bundle blocker",
     );
   }
-  if (args.clientRelayCryptoReadinessSelfTest) {
-    const selfTest = runClientRelayCryptoInputsReadinessSelfTest();
+  if (args.clientLicoArcCryptoReadinessSelfTest) {
+    const selfTest = runClientLicoArcCryptoInputsReadinessSelfTest();
     console.log(JSON.stringify(selfTest, null, 2));
     if (selfTest.ok !== true) {
       process.exitCode = 1;
@@ -78,6 +86,14 @@ export async function runSecureMeshReleaseProofBundleCli(
     return;
   }
 
+  const currentClientCandidateDigest = clientSourceStateDigest(
+    repoRoot,
+    CANONICAL_CLIENT_SOURCE_ROOTS,
+  );
+  const stationCandidateBefore =
+    captureLicoArcBadTowerCandidateBinding({
+      clientCandidateDigest: currentClientCandidateDigest,
+    });
   const sourceResults = [];
   for (const check of sourceChecks) {
     sourceResults.push(await evaluateSourceCheck(check));
@@ -148,16 +164,29 @@ export async function runSecureMeshReleaseProofBundleCli(
     runPhysicalEvidenceManifestReadinessSelfTest();
   const releaseProofContractReadinessSelfTest =
     runReleaseProofContractReadinessSelfTest();
-  const clientRelayCryptoInputsReadinessSelfTest =
-    runClientRelayCryptoInputsReadinessSelfTest();
-  const clientRelayCryptoInputs = summarizeClientRelayCryptoInputs({
-    relayMock: await readJsonIfPresent(relayMockReportPath),
+  const clientLicoArcCryptoInputsReadinessSelfTest =
+    runClientLicoArcCryptoInputsReadinessSelfTest();
+  const stationCandidateAfter =
+    captureLicoArcBadTowerCandidateBinding({
+      clientCandidateDigest: currentClientCandidateDigest,
+    });
+  const stationCandidateInputsStable =
+    licoArcBadTowerCandidateSnapshotsMatch(
+      stationCandidateBefore,
+      stationCandidateAfter,
+    ) &&
+    clientSourceStateDigest(repoRoot, CANONICAL_CLIENT_SOURCE_ROOTS) ===
+      currentClientCandidateDigest;
+  const clientLicoArcCryptoInputs = summarizeClientLicoArcCryptoInputs({
+    stationAcceptance: await readJsonIfPresent(stationAcceptanceReportPath),
     rustCrypto: await readJsonIfPresent(rustCryptoReportPath),
     platformCrypto: await readJsonIfPresent(platformCryptoReportPath),
     androidPlatformCrypto: await readJsonIfPresent(
       androidPlatformCryptoReportPath,
     ),
     reportRedactionProof,
+    stationCandidateBindings: stationCandidateAfter.bindings,
+    stationCandidateInputsStable,
   });
 
   const ok = sourceResults.every((check) => check.ok) &&
@@ -171,10 +200,10 @@ export async function runSecureMeshReleaseProofBundleCli(
     redactionFreshnessSelfTest.ok === true &&
     physicalEvidenceManifestReadinessSelfTest.ok === true &&
     releaseProofContractReadinessSelfTest.ok === true &&
-    clientRelayCryptoInputsReadinessSelfTest.ok === true &&
+    clientLicoArcCryptoInputsReadinessSelfTest.ok === true &&
     releaseInputFreshnessSelfTest.ok === true &&
-    clientRelayCryptoInputs.relayMockContractReady === true &&
-    clientRelayCryptoInputs.androidPlatformCryptoReportReady === true;
+    clientLicoArcCryptoInputs.ready === true &&
+    clientLicoArcCryptoInputs.androidPlatformCryptoReportReady === true;
   const productionReady = false;
   const scopeEvidence = await createSecureClientMeshE2eeRefReportScope({
     contract,
@@ -211,9 +240,9 @@ export async function runSecureMeshReleaseProofBundleCli(
     ...(physicalEvidenceManifest.inputIntegrityReady === true
       ? []
       : ["physical evidence manifest v2 schema and producer integrity ready"]),
-    ...(clientRelayCryptoInputs.ready === true
+    ...(clientLicoArcCryptoInputs.ready === true
       ? []
-      : clientRelayCryptoInputs.remainingGates),
+      : clientLicoArcCryptoInputs.remainingGates),
     ...(releaseInputFreshness.ready === true
       ? []
       : releaseInputFreshness.remainingGates),
@@ -248,10 +277,10 @@ export async function runSecureMeshReleaseProofBundleCli(
     redactionFreshnessSelfTest,
     physicalEvidenceManifestReadinessSelfTest,
     releaseProofContractReadinessSelfTest,
-    clientRelayCryptoInputsReadinessSelfTest,
+    clientLicoArcCryptoInputsReadinessSelfTest,
     releaseInputFreshness,
     releaseInputFreshnessSelfTest,
-    clientRelayCryptoInputs,
+    clientLicoArcCryptoInputs,
     androidPhysicalInstallLaunchReport,
     remainingGates,
     productionReady,
@@ -315,27 +344,35 @@ export async function runSecureMeshReleaseProofBundleCli(
     physicalEvidenceManifestIosUserPresencePolicyReady:
       physicalEvidenceManifest.iosUserPresencePolicyReady === true,
     reportRedactionReady: reportRedactionProof.ready === true,
-    clientRelayCryptoInputsReady: clientRelayCryptoInputs.ready === true,
-    relayMockContractReady: clientRelayCryptoInputs.relayMockContractReady === true,
-    relayMockExactFiveOperationsReady:
-      clientRelayCryptoInputs.relayMockExactFiveOperationsReady === true,
-    relayMockExactSixOuterFieldsReady:
-      clientRelayCryptoInputs.relayMockExactSixOuterFieldsReady === true,
-    relayMockReplayRejected: clientRelayCryptoInputs.relayMockReplayRejected === true,
-    relayMockStaleLeaseRejected:
-      clientRelayCryptoInputs.relayMockStaleLeaseRejected === true,
-    relayMockAckIdempotencyReady:
-      clientRelayCryptoInputs.relayMockAckIdempotencyReady === true,
-    relayMockPlaintextWireReady:
-      clientRelayCryptoInputs.relayMockPlaintextWireReady === true,
-    relayMockWireBytesSemanticsReady:
-      clientRelayCryptoInputs.relayMockWireBytesSemanticsReady === true,
-    rustCryptoReportReady: clientRelayCryptoInputs.rustCryptoReportReady === true,
-    rustCryptoReviewReady: clientRelayCryptoInputs.rustCryptoReviewReady === true,
+    clientLicoArcCryptoInputsReady: clientLicoArcCryptoInputs.ready === true,
+    stationAcceptanceContractReady:
+      clientLicoArcCryptoInputs.stationAcceptanceContractReady === true,
+    stationCandidateBindingsReady:
+      clientLicoArcCryptoInputs.stationCandidateBindingsReady === true,
+    stationCandidateInputsStable:
+      clientLicoArcCryptoInputs.stationCandidateInputsStable === true,
+    stationAcceptanceFreshEndpointCount:
+      clientLicoArcCryptoInputs.stationAcceptanceFreshEndpointCount,
+    stationAcceptancePositiveExchange:
+      clientLicoArcCryptoInputs.stationAcceptancePositiveExchange === true,
+    stationAcceptanceRoundTrip:
+      clientLicoArcCryptoInputs.stationAcceptanceRoundTrip === true,
+    stationAcceptancePlaintextAbsent:
+      clientLicoArcCryptoInputs.stationAcceptancePlaintextAbsent === true,
+    stationAcceptanceNonConformantEnvelopeRejected:
+      clientLicoArcCryptoInputs
+        .stationAcceptanceNonConformantEnvelopeRejected === true,
+    stationAcceptanceTransportHintsNonAuthoritative:
+      clientLicoArcCryptoInputs
+        .stationAcceptanceTransportHintsNonAuthoritative === true,
+    stationAcceptanceExactFiveOuterFields:
+      clientLicoArcCryptoInputs.stationAcceptanceExactFiveOuterFields === true,
+    rustCryptoReportReady: clientLicoArcCryptoInputs.rustCryptoReportReady === true,
+    rustCryptoReviewReady: clientLicoArcCryptoInputs.rustCryptoReviewReady === true,
     platformCryptoReportReady:
-      clientRelayCryptoInputs.platformCryptoReportReady === true,
+      clientLicoArcCryptoInputs.platformCryptoReportReady === true,
     androidPlatformCryptoReportReady:
-      clientRelayCryptoInputs.androidPlatformCryptoReportReady === true,
+      clientLicoArcCryptoInputs.androidPlatformCryptoReportReady === true,
     windowsLocalImplementationReady,
     windowsNativeHostEvidenceReady,
     macosActualReleaseBundleVerified:

@@ -18,6 +18,7 @@ pub(in crate::platform) struct ProtocolConfig {
     pub(in crate::platform) requested_session_id: String,
     pub(in crate::platform) cwd: String,
     pub(in crate::platform) settings: RequestedSettings,
+    pub(in crate::platform) allow_all_authorized: bool,
     pub(in crate::platform) mcp_servers: Vec<Value>,
 }
 
@@ -49,6 +50,7 @@ impl ProtocolConfig {
                 "session/configure",
             ));
         }
+        let allow_all = params.get("allowAll").and_then(Value::as_bool);
         Ok(Self {
             prompt: prompt.to_string(),
             requested_session_id: session_id.trim().to_string(),
@@ -61,8 +63,9 @@ impl ProtocolConfig {
                 ),
                 mode: text_param(params, &["runtimeMode", "agentMode", "conversationMode"]),
                 runtime_agent: text_param(params, &["runtimeAgent", "customAgent"]),
-                allow_all: params.get("allowAll").and_then(Value::as_bool),
+                allow_all,
             },
+            allow_all_authorized: allow_all == Some(true),
             mcp_servers: Vec::new(),
         })
     }

@@ -4,6 +4,7 @@ import 'package:licoup/src/application/controller/client_conversation_facade.dar
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
@@ -29,6 +30,8 @@ mixin ClientPresentationFacade
 
   List<AppearancePresetConfig> get appearancePresetConfigs =>
       shellController.appearancePresetConfigs;
+  List<AppearancePresetConfig> get selectableAppearancePresetConfigs =>
+      shellController.selectableAppearancePresetConfigs;
   String get appearancePresetDirectoryPath =>
       shellController.appearancePresetDirectoryPath;
   List<String> get appearancePresetLoadErrors =>
@@ -83,7 +86,7 @@ mixin ClientPresentationFacade
 
   Future<void> setAppearancePreset(String presetId) async {
     if (!hasAppearancePresetConfig(presetId, appearancePresetConfigs)) {
-      presetId = AppearancePresetIds.defaultSystem;
+      presetId = AppearancePresetIds.licoSoda;
     }
     if (await layoutManager.setAppearancePreset(presetId)) {
       appearancePresetId = presetId;
@@ -107,7 +110,7 @@ mixin ClientPresentationFacade
         await layoutManager.setAppearancePreset(appearancePresetId);
       }
       setLocalizedStatusMessage(
-        appearancePresetLoadErrors.isEmpty ? '外观方案已重新加载。' : '外观方案已重新加载，部分配置无效。',
+        appearancePresetLoadErrors.isEmpty ? '外观预设已重新加载。' : '外观预设已重新加载，部分配置无效。',
         appearancePresetLoadErrors.isEmpty
             ? 'Appearance presets reloaded.'
             : 'Appearance presets reloaded, but some configurations are invalid.',
@@ -116,7 +119,7 @@ mixin ClientPresentationFacade
     } catch (_) {
       lastError = 'appearance_preset_reload_failed';
       setLocalizedStatusMessage(
-        '外观方案重新加载失败。',
+        '外观预设重新加载失败。',
         'Failed to reload appearance presets.',
       );
       statusCaption = 'Error';
@@ -147,4 +150,22 @@ mixin ClientPresentationFacade
     english,
     displayChinese: displayChinese,
   );
+
+  @override
+  void agentWorkspacePublishNotification({
+    required String id,
+    required String messageChinese,
+    required String messageEnglish,
+    MessagingNotificationTone tone = MessagingNotificationTone.info,
+    String code = '',
+  }) {
+    messagingNotificationCenter.publish(
+      id: id,
+      messageChinese: messageChinese,
+      messageEnglish: messageEnglish,
+      tone: tone,
+      code: code,
+    );
+    notifyClientStateChanged();
+  }
 }

@@ -230,7 +230,7 @@ exec sleep 5
   });
 
   test(
-    'falls back to licoup in PATH when no binary is discovered',
+    'falls back to licoup-cli in PATH when no binary is discovered',
     () async {
       final captured = <String>[];
       final agentService = AgentService(
@@ -242,7 +242,7 @@ exec sleep 5
       );
 
       await agentService.restoreSnapshot('snapshot-codex-1');
-      expect(captured.single, 'licoup');
+      expect(captured.single, 'licoup-cli');
       expect(captured.length, 1);
     },
   );
@@ -365,78 +365,6 @@ exec sleep 5
 
     final pairings = await agentService.listPairings(agent: 'codex');
     expect(pairings, isEmpty);
-  });
-
-  test('builds skill install command arguments', () async {
-    final captured = <List<String>>[];
-    final agentService = AgentService(
-      runCliExecutable: (executable, args, env) {
-        captured.add(List<String>.from(args));
-        return Future.value(ProcessResult(0, 0, '{"ok":true}', ''));
-      },
-    );
-
-    await agentService.planSkillInstall(
-      agent: 'codex',
-      url: ' https://github.com/example/skills/tree/main/review ',
-      installRoot: ' test-data/codex-skills ',
-      name: ' review-helper ',
-      overwrite: true,
-    );
-    await agentService.applySkillInstall(
-      agent: 'codex',
-      url: 'https://github.com/example/skills/tree/main/review',
-      installRoot: 'test-data/codex-skills',
-      name: 'review-helper',
-      overwrite: true,
-      pin: true,
-    );
-    await agentService.rollbackSkillInstall(
-      agent: 'codex',
-      snapshotId: 'skill-install-snapshot-1',
-    );
-
-    expect(captured[0], [
-      'skill',
-      'install',
-      'plan',
-      '--agent',
-      'codex',
-      '--url',
-      'https://github.com/example/skills/tree/main/review',
-      '--install-root',
-      'test-data/codex-skills',
-      '--name',
-      'review-helper',
-      '--overwrite',
-      'true',
-    ]);
-    expect(captured[1], [
-      'skill',
-      'install',
-      'apply',
-      '--agent',
-      'codex',
-      '--url',
-      'https://github.com/example/skills/tree/main/review',
-      '--install-root',
-      'test-data/codex-skills',
-      '--name',
-      'review-helper',
-      '--overwrite',
-      'true',
-      '--pin',
-      'true',
-    ]);
-    expect(captured[2], [
-      'skill',
-      'install',
-      'rollback',
-      '--agent',
-      'codex',
-      '--snapshot-id',
-      'skill-install-snapshot-1',
-    ]);
   });
 
   test(
@@ -708,7 +636,6 @@ done
         'history',
         'send',
         'cleanup',
-        'shutdown',
       ]);
       expect(
         operations.map((row) => row.split(':').last).toSet(),

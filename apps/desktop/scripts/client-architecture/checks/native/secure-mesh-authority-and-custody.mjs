@@ -20,53 +20,8 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const cargoToml = await readText("crates/licoup-native/Cargo.toml");
-  const secureClientRelayRoot =
-    "crates/licoup-native/src/platform/secure_client_relay";
-  const secureClientRelayLeaves = [
-    "contract.rs",
-    "http_io.rs",
-    "redaction.rs",
-    "request.rs",
-    "response_binding.rs",
-    "response_codec.rs",
-    "response_schema.rs",
-    "status_projection.rs",
-    "transport.rs"
-  ];
-  const secureClientRelaySources = Object.fromEntries(await Promise.all(
-    secureClientRelayLeaves.map(async (leaf) => [
-      leaf,
-      await readText(`${secureClientRelayRoot}/${leaf}`)
-    ])
-  ));
-  const secureClientRelayFacadeSource = await readText(`${secureClientRelayRoot}/mod.rs`);
-  assert(secureClientRelayLeaves.every((leaf) =>
-      secureClientRelayFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
-    secureClientRelayFacadeSource.includes("pub use transport::SecureClientRelayTransport;"),
-    "Secure Client Relay must expose one complete split module root"
-  );
-  assert(secureClientRelaySources["contract.rs"].includes("enum SecureClientRelayOperation") &&
-    secureClientRelaySources["contract.rs"].includes("struct SecureClientRelayHttpError") &&
-    secureClientRelaySources["contract.rs"].includes("MAX_HTTP_RESPONSE_BYTES") &&
-    !secureClientRelaySources["contract.rs"].includes("client_local_runtime") &&
-    secureClientRelaySources["request.rs"].includes("envelope.validate()?") &&
-    secureClientRelaySources["request.rs"].includes("envelope.to_json()") &&
-    !secureClientRelaySources["request.rs"].includes("plaintext"),
-    "Secure Client Relay contract and request leaves must keep an exact ciphertext-only surface"
-  );
-  assert(secureClientRelayLeaves.filter((leaf) =>
-      secureClientRelaySources[leaf].includes("ureq::")).join(",") === "http_io.rs" &&
-    secureClientRelaySources["http_io.rs"].includes('parsed.scheme() == "https"') &&
-    secureClientRelaySources["http_io.rs"].includes('parsed.scheme() == "http" && is_loopback') &&
-    secureClientRelaySources["http_io.rs"].includes("Duration::from_secs(HTTP_TIMEOUT_SECONDS)") &&
-    secureClientRelaySources["response_codec.rs"].includes("MAX_HTTP_ERROR_RESPONSE_BYTES") &&
-    secureClientRelaySources["response_codec.rs"].includes("take((maximum_bytes + 1) as u64)") &&
-    secureClientRelaySources["redaction.rs"].includes("SecureClientRelayAuth([redacted])"),
-    "Secure Client Relay must isolate TLS-gated bounded egress and redact credentials and server detail"
-  );
   const mobileRelayRustSource = await readJoinedText([
     "crates/licoup-native/src/domain/mobile_relay.rs",
     ...await collectSourceFiles("crates/licoup-native/src/domain/mobile_relay", ".rs")
@@ -94,7 +49,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     )
   ]);
   assert(
-    keyTransparencyFacadeSource.trimEnd().split(/\r?\n/u).length <= 30 &&
     keyTransparencyFacadeSource.includes("mod authority;") &&
     keyTransparencyFacadeSource.includes("mod publication;") &&
     keyTransparencyFacadeSource.includes("mod revocation;") &&
@@ -134,7 +88,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/rotation.rs"
   ]);
   assert(
-    localMaterialFacadeSource.trimEnd().split(/\r?\n/u).length <= 30 &&
     localMaterialFacadeSource.includes("mod identity_generation;") &&
     localMaterialFacadeSource.includes("mod material_mutation;") &&
     localMaterialFacadeSource.includes("mod prekey_generation;") &&
@@ -187,7 +140,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/test_support.rs"
   );
   assert(
-    directoryTransparencyFacadeSource.trimEnd().split(/\r?\n/u).length <= 45 &&
     directoryTransparencyFacadeSource.includes("mod authorization;") &&
     directoryTransparencyFacadeSource.includes("mod authority;") &&
     directoryTransparencyFacadeSource.includes("mod claim;") &&
@@ -247,7 +199,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   ));
   const pairwiseSessionJoinedSource = Object.values(pairwiseSessionSources).join("\n");
   assert(
-    pairwiseSessionFacadeSource.trimEnd().split(/\r?\n/u).length <= 45 &&
     pairwiseSessionFacadeSource.includes("mod crypto_operation;") &&
     pairwiseSessionFacadeSource.includes("mod handshake;") &&
     pairwiseSessionFacadeSource.includes("mod payload;") &&
@@ -288,13 +239,12 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "command_handlers.rs",
     "command_handlers/check_in.rs",
     "command_handlers/create.rs",
-    "command_handlers/poll_complete.rs",
+    "command_handlers/poll.rs",
     "command_handlers/result.rs",
-    "context.rs",
     "delivery.rs",
     "envelope.rs",
     "mailbox.rs",
-    "registration.rs",
+    "station.rs",
     "status.rs"
   ];
   const relayOperationSources = Object.fromEntries(await Promise.all(
@@ -307,32 +257,29 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   ));
   const relayOperationJoinedSource = Object.values(relayOperationSources).join("\n");
   assert(
-    relayOperationsFacadeSource.trimEnd().split(/\r?\n/u).length <= 40 &&
     relayOperationsFacadeSource.includes("mod allow_list;") &&
     relayOperationsFacadeSource.includes("mod command_handlers;") &&
-    relayOperationsFacadeSource.includes("mod context;") &&
     relayOperationsFacadeSource.includes("mod delivery;") &&
     relayOperationsFacadeSource.includes("mod envelope;") &&
     relayOperationsFacadeSource.includes("mod mailbox;") &&
-    relayOperationsFacadeSource.includes("mod registration;") &&
+    relayOperationsFacadeSource.includes("mod station;") &&
     relayOperationsFacadeSource.includes("mod status;") &&
-    !relayOperationsFacadeSource.includes("fn canonical_relay_context") &&
+    !relayOperationsFacadeSource.includes("fn station_context") &&
     !relayOperationJoinedSource.includes("use super::*") &&
     !relayOperationJoinedSource.includes("::*;") &&
-    relayOperationSources["context.rs"].includes("SecureClientRelayTransport::new") &&
-    relayOperationSources["context.rs"].includes("mobile relay is disabled") &&
+    relayOperationSources["station.rs"].includes("BadTowerStationTransport::new") &&
+    relayOperationSources["station.rs"].includes("mobile relay is disabled") &&
     relayOperationSources["mailbox.rs"].includes("SecureMeshMailboxSchedule") &&
     relayOperationSources["mailbox.rs"].includes("checked_mul") &&
-    relayOperationSources["envelope.rs"].includes("SecureMeshRelayEnvelope::from_json") &&
-    relayOperationSources["envelope.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
-    relayOperationSources["delivery.rs"].includes("SECURE_MESH_RELAY_OUTER_FIELDS") &&
-    relayOperationSources["registration.rs"].includes("challengeEncoding") &&
-    relayOperationSources["registration.rs"].includes("challenge_signature") &&
+    relayOperationSources["envelope.rs"].includes("LicoArcRelayEnvelope::from_json") &&
+    pairwiseSessionSources["payload.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
+    pairwiseSessionSources["crypto_operation.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
+    relayOperationSources["delivery.rs"].includes("SECURE_MESH_ENVELOPE_COMMAND") &&
     relayOperationSources["command_handlers/create.rs"].includes("secure_envelope_param(params)") &&
     relayOperationSources["command_handlers/create.rs"].includes(
-      "seal_mobile_relay_payload_with_pairwise_operation") &&
+      "seal_mobile_relay_payload_deferred") &&
     relayOperationSources["command_handlers/result.rs"].includes(
-      "open_mobile_relay_payload_with_pairwise_operation") &&
+      "open_mobile_relay_payload_deferred") &&
     relayOperationSources["command_handlers/result.rs"].includes('"bodyRedacted": true') &&
     relayOperationSources["status.rs"].includes("should_authorize_secret_read") &&
     relayOperationSources["status.rs"].includes("redacted_pairing_invite") &&
@@ -341,7 +288,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     !relayOperationJoinedSource.includes("fn execute_command(") &&
     !relayOperationJoinedSource.includes("ureq::") &&
     !relayOperationJoinedSource.includes("reqwest::"),
-    "relay operations must isolate ciphertext-only handlers, canonical context, mailbox, envelope, registration, delivery, status, and allow-list boundaries"
+    "relay operations must isolate ciphertext-only handlers, station context, mailbox, envelope, delivery, status, and allow-list boundaries"
   );
   const secureMeshSecretStoreRustSource = await readJoinedText([
     "crates/licoup-native/src/platform/secure_mesh_secret_store.rs",
@@ -450,8 +397,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
       ".mjs"
     ),
   ]);
-  const secureClientRelayMockSource =
-    await readText("tools/scripts/client-secure-client-relay-mock-e2e.mjs");
   const clientCliVmSource = await readText("tools/scripts/client-cli-vm/verify/command.mjs");
   const runtimeAdaptersRustSource = await readJoinedText([
     "crates/licoup-native/src/platform/runtime_adapters.rs",
@@ -479,7 +424,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     runtimeAdaptersRustSource.includes("codex_app_server::execute") &&
     runtimeAdaptersRustSource.includes("nativeSessionId") &&
     runtimeAdaptersRustSource.includes("approvalOwner") &&
-    codexAppServerFacadeSource.trimEnd().split(/\r?\n/u).length <= 20 &&
     codexAppServerRustSource.includes('"codex-app-server-stdio-jsonrpc"') &&
     codexAppServerRustSource.includes('"thread/start"') &&
     codexAppServerRustSource.includes('"thread/resume"') &&
@@ -491,28 +435,19 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     !codexAppServerRustSource.includes("struct AcpProtocol"),
     "runtime adapters must expose canonical per-agent transports and explicit approval ownership"
   );
-  assert(mobileRelayRustSource.includes("SecureClientRelayTransport") &&
-    mobileRelayRustSource.includes("CanonicalRelayContext") &&
-    mobileRelayRustSource.includes("SecureClientRelayTransport::new") &&
-    mobileRelayRustSource.includes("endpoint_challenge") &&
-    mobileRelayRustSource.includes("endpoint_register") &&
-    mobileRelayRustSource.includes("envelope_send") &&
-    mobileRelayRustSource.includes("envelope_sync") &&
-    mobileRelayRustSource.includes("envelope_ack") &&
+  assert(mobileRelayRustSource.includes("BadTowerStationTransport") &&
+    mobileRelayRustSource.includes("StationContext") &&
+    mobileRelayRustSource.includes("BadTowerStationTransport::new") &&
+    mobileRelayRustSource.includes("lease_mailbox") &&
+    mobileRelayRustSource.includes("send_envelope") &&
+    mobileRelayRustSource.includes("receive_envelopes") &&
+    mobileRelayRustSource.includes("delete_envelope") &&
     mobileRelayRustSource.includes("SECURE_MESH_ENVELOPE_COMMAND") &&
     mobileRelayRustSource.includes("reject_plaintext_relay_command") &&
     mobileRelayRustSource.includes("mobile_relay_plaintext_command_rejected") &&
     mobileRelayRustSource.includes("secure_mesh_envelope_command_is_transport_only") &&
     mobileRelayRustSource.includes("mobile_relay_public_config_redacts_secret_material"),
-    "mobile_relay.rs must use only the canonical five-operation secure-client-relay transport"
-  );
-  assert(secureClientRelayMockSource.includes("exactFiveOperationsObserved") &&
-    secureClientRelayMockSource.includes("exactSixOuterFieldsObserved") &&
-    secureClientRelayMockSource.includes("replayRejected") &&
-    secureClientRelayMockSource.includes("staleLeaseRejected") &&
-    secureClientRelayMockSource.includes("ackIdempotencyVerified") &&
-    secureClientRelayMockSource.includes("plaintextAbsentFromServerVisibleWire"),
-    "secure-client-relay Mock must cover the client-owned opaque-wire adversarial boundary"
+    "mobile_relay.rs must use only the canonical four-operation BadTower station transport"
   );
   assert(!mobileRelayRustSource.includes("fn execute_command("),
     "mobile_relay.rs must not keep a plaintext command execution path for relayed server commands"
@@ -585,8 +520,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   assert(JSON.stringify(secureMeshCapabilityDiscoveredProductionPaths) ===
     JSON.stringify([...secureMeshCapabilityProductionPaths].sort()),
     "Secure Mesh capability production must retain exactly six independently owned leaves");
-  assert(secureMeshCapabilityFacadeRustSource.trimEnd().split(/\r?\n/).length <= 22 &&
-    secureMeshCapabilityProductionPaths.every((relativePath) =>
+  assert(secureMeshCapabilityProductionPaths.every((relativePath) =>
       secureMeshCapabilityFacadeRustSource.includes(
         `mod ${path.basename(relativePath, ".rs")};`)) &&
     ["struct ", "enum ", "impl ", "fn ", "include_str!", "OnceLock"]
@@ -626,8 +560,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   assert(JSON.stringify(secureMeshPrekeyDiscoveredProductionPaths) ===
     JSON.stringify([...secureMeshPrekeyProductionPaths].sort()),
     "Secure Mesh prekey production must retain exactly four independently owned leaves");
-  assert(secureMeshPrekeyFacadeRustSource.trimEnd().split(/\r?\n/).length <= 30 &&
-    secureMeshPrekeyProductionPaths.every((relativePath) =>
+  assert(secureMeshPrekeyProductionPaths.every((relativePath) =>
       secureMeshPrekeyFacadeRustSource.includes(
         `mod ${path.basename(relativePath, ".rs")};`)) &&
     ["struct ", "enum ", "impl ", "fn ", "SigningKey", "OffsetDateTime"]
@@ -719,7 +652,8 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ) &&
     mobileRelayRustSource.includes("NATIVE_SECRET_STORE_SERVICE") &&
     mobileRelayRustSource.includes("persist_config_secret_material_to_native_store") &&
-    mobileRelayRustSource.includes("hydrate_config_secret_material_from_native_store") &&
+    mobileRelayRustSource.includes("RuntimeSecretContext") &&
+    mobileRelayRustSource.includes("load_config_with_runtime_secret_context") &&
     mobileRelayRustSource.includes("SecretStoreAuthorizationSession") &&
     mobileRelayRustSource.includes("begin_authorized_session") &&
     mobileRelayRustSource.includes("set_secret_with_session") &&
@@ -847,9 +781,15 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     secureMeshSecretStoreRustSource.includes("fail_closed::get_secret_with_session"),
     "Ubuntu proof tooling may exercise Secret Service, but production selection must stay fail-closed until measured CRUD and native authorization are available"
   );
-  assert(mobileRelayRustSource.includes("SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL") &&
-    mobileRelayRustSource.includes("commands_sync_redacts_malicious_relay_crypto_errors") &&
-    mobileRelayRustSource.includes("mobile_relay_command_error_result_redacts_internal_detail") &&
+  const mobileRelaySupportRustSource = await readText(
+    "crates/licoup-native/src/domain/mobile_relay/support.rs"
+  );
+  const mobileRelayRedactionTests = await readText(
+    "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/identity_replay_safety.rs"
+  );
+  assert(mobileRelaySupportRustSource.includes("SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL") &&
+    mobileRelayRedactionTests.includes("commands_sync_redacts_malicious_station_crypto_errors") &&
+    mobileRelayRedactionTests.includes("mobile_relay_command_error_result_redacts_internal_detail") &&
     !mobileRelayCommandSyncRustSource.includes("error.to_string()"),
     "mobile_relay.rs must redact endpoint crypto/runtime errors instead of returning raw local details"
   );

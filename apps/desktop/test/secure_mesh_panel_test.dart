@@ -47,8 +47,7 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.mobileRelayConfig = controller.mobileRelayConfig.copyWith(
-        useCustomGateway: true,
-        customGatewayUrl: 'https://relay.example.test',
+        stationBaseUrl: 'https://station.example.test',
         pairingId: 'pair-1',
         pcToken: 'pc-token',
         lastPairingCode: '1234-5678',
@@ -94,7 +93,7 @@ void main() {
         'config': {
           'mobileRelayPairingInvite': {
             'protocolVersion': 'licomesh.mobile-relay.e2ee.v2',
-            'gatewayUrl': 'https://relay.example.test',
+            'stationBaseUrl': 'https://station.example.test',
             'pairingId': 'pair-1',
             'pairingCode': '1234-5678',
             'pcSecureMesh': {'endpointId': 'pc'},
@@ -128,23 +127,20 @@ void main() {
       await tester.pump();
 
       expect(find.byType(PanelFrame), findsNothing);
-      expect(find.text('Gateway'), findsOneWidget);
-      expect(find.text('LicoUp Gateway'), findsNothing);
-      expect(find.text('Custom Gateway'), findsNothing);
+      expect(find.text('Station'), findsOneWidget);
       expect(find.text('Address'), findsNothing);
       expect(find.text('licomesh.app'), findsNothing);
-      expect(find.text('https://relay.example.test'), findsOneWidget);
+      expect(find.text('https://station.example.test'), findsOneWidget);
       expect(find.byIcon(Icons.lock_outline), findsNothing);
-      final gatewayEditable = find.byWidgetPredicate(
+      final stationEditable = find.byWidgetPredicate(
         (widget) =>
             widget is EditableText &&
-            widget.controller.text == 'https://relay.example.test',
+            widget.controller.text == 'https://station.example.test',
       );
-      expect(gatewayEditable, findsOneWidget);
-      expect(tester.widget<EditableText>(gatewayEditable).readOnly, isFalse);
+      expect(stationEditable, findsOneWidget);
+      expect(tester.widget<EditableText>(stationEditable).readOnly, isFalse);
       expect(find.text('Default'), findsNothing);
       expect(find.text('Active'), findsNothing);
-      expect(find.text('Private Cloud Gateway URL'), findsNothing);
       expect(find.text('Relay Status'), findsNothing);
       expect(find.text('Paired Computer'), findsNothing);
       expect(find.text('Available Agents'), findsNothing);
@@ -210,21 +206,20 @@ void main() {
     },
   );
 
-  testWidgets('MobileRelayPanel keeps private gateway field unlabeled', (
+  testWidgets('MobileRelayPanel keeps the station base URL directly editable', (
     tester,
   ) async {
     final controller = ClientController(
       agentService: AgentService(
         runCliExecutable: (_, _, _) async {
-          throw StateError('private gateway field test does not execute CLI');
+          throw StateError('station field test does not execute CLI');
         },
       ),
     );
     addTearDown(controller.dispose);
 
     controller.mobileRelayConfig = controller.mobileRelayConfig.copyWith(
-      useCustomGateway: true,
-      customGatewayUrl: 'https://private.example',
+      stationBaseUrl: 'https://station.example',
     );
 
     await tester.pumpWidget(
@@ -236,10 +231,8 @@ void main() {
     await tester.pump();
 
     expect(find.byType(PanelFrame), findsNothing);
-    expect(find.text('LicoUp Gateway'), findsNothing);
-    expect(find.text('Custom Gateway'), findsNothing);
-    expect(find.text('Private Cloud Gateway URL'), findsNothing);
-    expect(find.text('https://private.example'), findsOneWidget);
+    expect(find.text('Station'), findsOneWidget);
+    expect(find.text('https://station.example'), findsOneWidget);
     expect(find.byIcon(Icons.save_outlined), findsOneWidget);
   });
 
@@ -281,8 +274,10 @@ void main() {
       );
       final decoration = card.decoration! as BoxDecoration;
       final themeColors = buildLicoTheme().extension<LicoThemeColors>()!;
+      // Neutral charcoal, deliberately not the brand-tinted surface: this card
+      // is ordinary content, not a brand-owned one.
       expect(decoration.color, themeColors.surfaceLow);
-      expect(decoration.color, isNot(themeColors.surfaceHigh));
+      expect(decoration.color, isNot(themeColors.brandSurface));
       expect(
         find.byKey(const Key('secure-mesh-capability-details')),
         findsNothing,
@@ -569,8 +564,7 @@ class _PanelMobileRelayService extends MobileRelayService {
   int createPairingCalls = 0;
   int refreshPairingStatusCalls = 0;
   MobileRelayConfig config = MobileRelayConfig.defaults().copyWith(
-    useCustomGateway: true,
-    customGatewayUrl: 'https://relay.example.test',
+    stationBaseUrl: 'https://station.example.test',
     pairingId: 'pair-old',
     pcToken: 'pc-token-old',
     lastPairingCode: '',
@@ -620,7 +614,7 @@ class _PanelMobileRelayService extends MobileRelayService {
       'mobileRelayPairingInvite': {
         'protocolVersion': 'licomesh.mobile-relay.e2ee.v2',
         'oneTime': true,
-        'gatewayUrl': 'https://relay.example.test',
+        'stationBaseUrl': 'https://station.example.test',
         'pairingId': config.pairingId,
         'pairingCode': pairingCode,
         'pcSecureMesh': {'endpointId': 'pc'},

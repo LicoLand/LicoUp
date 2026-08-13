@@ -1,0 +1,146 @@
+{
+  "schema": "licomesh.layout-visual-manifest",
+  "schemaVersion": 2,
+  "profile": "dashboard",
+  "surface": "desktop",
+  "bundleEntry": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart",
+  "sourceRoots": [
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop",
+    "apps/desktop/test/goldens/layout/dashboard/desktop",
+    "apps/desktop/test/goldens/layout/production-baseline/dashboard/desktop",
+    "apps/desktop/test/layout/profiles/dashboard/desktop"
+  ],
+  "authorityEntries": [
+    {
+      "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
+      "digest": "sha256:e605151ff36b846717baa90d558af6597981af63900c71ac94a6c3a631c2c537"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
+      "digest": "sha256:871dbd038ed71bc77bddc4666b34753a5fe6bc829938030ed14e0c16f2e47c19"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
+      "digest": "sha256:bfc78cef3248aaefef0ac110fa1e07a5141d42d66b878faf00468e821a2812fd"
+    }
+  ],
+  "entries": [
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/components/dashboard_desktop_component_kit.dart",
+      "digest": "sha256:44b6ca6aff6ff1304c6489600892199d14047785a444008330efc730ea6102cf"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart",
+      "digest": "sha256:c173dd3898d7784d0955142730fadabeacfc28b4704cf8edacfdbee1f5e4a753"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/agents_destination.dart",
+      "digest": "sha256:b36f099f7fa37721acb239f11a5d4c6d99525b22b918e4138411fc66caa08baa"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_agents_presentation.dart",
+      "digest": "sha256:b499131628cceeb2684865b143b33754007f91378ce1c1e0c9664ec3903485d7"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_destination_frame.dart",
+      "digest": "sha256:861af5833e783c2d5b610f6631f325a579ac8782063c4c18b63e27decb883580"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_settings_presentation.dart",
+      "digest": "sha256:fd8286f70d261cca97773bf2ae7bfcc1032d655fc519d227726bfd96f2cbfe66"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/mobile_relay_destination.dart",
+      "digest": "sha256:6648dd902f4f26d6db3de6bc023bb846613e98292c9e92549c7e5f94f25e4372"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/models_destination.dart",
+      "digest": "sha256:077c4446d2530615f000c06922b72ff1f4017e614432e1d48ffbf4acb95f8135"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/monitoring_destination.dart",
+      "digest": "sha256:879fee6a1f74d33aba3462f046b073b24202a63970df7085f2c7cac2b177b365"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/plugin_management_destination.dart",
+      "digest": "sha256:f81e8f0af5d6dad1e6a1eb2390359fe3f575e233ded09761f777ed88f27abbfb"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/settings_destination.dart",
+      "digest": "sha256:63bcd9da61fb0367decbf33079fe52b240bb0fe1879a884c35e82753a12e3ba7"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/skill_hub_destination.dart",
+      "digest": "sha256:850eb68b139e26306ad775579902982568d444186bea4c67aa23354bd1d43d4b"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/preview/dashboard_desktop_preview.dart",
+      "digest": "sha256:db485b62e14f6782c7990a2ad1ce1cf240740ce9d2fb1738770afc4e8440ac2e"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart",
+      "digest": "sha256:e1c4ca13b137e028d2b85cbf8e1e2ee300b56d555a40ed73739f0b8692c3489d"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
+      "digest": "sha256:93abddee4e236c246c3b33ab5da4537802aa7a14c0b483bb754bfa13e2a7fccb"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_shell.dart",
+      "digest": "sha256:0e597647eb38ed7074158d84d3caed702b9e151b79022ec757fe262f5caaf50a"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart",
+      "digest": "sha256:83a3b5b75883c0a450433100329c518c5f303d2c7dab4c08b954b46bbf7284f8"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart",
+      "digest": "sha256:10617da619347d87e9eca71a3efc6326dd9e0ab8372dd2efe90d9626bc155126"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/dashboard/desktop/expanded-shell.png",
+      "digest": "sha256:dbce684635a7aca761e74274a934f8f13c670f24964a1ca49cd36392565ed3fb"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/dashboard/desktop/medium-shell.png",
+      "digest": "sha256:5f05ac5373de5f4023c7762510bbe0972a618119774e3e2503e4fb0840dd1dd6"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/dashboard/desktop/preview.png",
+      "digest": "sha256:fd87626c8f5b9598173a8f6d4d4e3721f62fcac88bdf91f28a64a58ea8d9e2a8"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/dashboard/desktop/agents.png",
+      "digest": "sha256:00d0c4ef05de19d81aaa192121ccd2ce13212d5f2d52d7055af9bb249a6233de"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/dashboard/desktop/settings.png",
+      "digest": "sha256:382b0de3f227066efcc4c68d490cef513d8d8a696b0560096b6359b86dd68ecd"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_bundle_test.dart",
+      "digest": "sha256:5367ed923fa998c4babd73e48492fb4cbb567d5a683436ffc14a22b51c2d467b"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_golden_test.dart",
+      "digest": "sha256:ca03f7803901b798c6899ccb18cef2f64d830772943179138a3fef28c66fb208"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_search_test.dart",
+      "digest": "sha256:92d6e9332cff86db216dcc49fadc5dab935d367ad8ba6a3238823db2e27c84c1"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_test_harness.dart",
+      "digest": "sha256:211f40eb05ace4905020d0321e8402eae300c493b2cc9f0949f809a32b03ce57"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_widget_test.dart",
+      "digest": "sha256:4e7da0535332304933920ac106468e263636692813f2f76bcc18e2bbb64ea31a"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_folder_sidebar_test.dart",
+      "digest": "sha256:dabaa7aedfbe7b6c8196c5b18f55436d3f125f75c393a8e4e8239efc88e5c1d7"
+    }
+  ],
+  "manifestDigest": "sha256:8bee983b2938948e3b4c3b148461c30513feb7e22f8e166710276f2aead811e5"
+}

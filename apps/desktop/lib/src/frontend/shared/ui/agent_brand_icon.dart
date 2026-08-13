@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:licoup/src/application/features/agents/agent_product_names.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _agentIconAssets = <String, String>{
+  'lico-agent': 'assets/agent-icons/lico-agent.svg',
   'openclaw': 'assets/agent-icons/openclaw.svg',
   'claude-code': 'assets/agent-icons/claude-code.svg',
   // ChatGPT blossom mark (no app-icon background).
@@ -33,7 +33,12 @@ const _agentIconDarkAssets = <String, String>{
 };
 
 /// Mono marks that ship as `currentColor` and need a theme-aware brand fill.
-const _agentIconTintKeys = <String>{'cursor', 'hermes', 'opencode'};
+const _agentIconTintKeys = <String>{
+  'cursor',
+  'hermes',
+  'opencode',
+  'lico-agent',
+};
 
 class AgentBrandIcon extends StatelessWidget {
   const AgentBrandIcon({
@@ -67,13 +72,7 @@ class AgentBrandIcon extends StatelessWidget {
       width: size,
       height: size,
       child: Center(
-        child: isAgentOrchestrationTargetId(target.target)
-            ? Icon(
-                Icons.account_tree_outlined,
-                size: iconSize,
-                color: selected ? colors.primary : colors.text,
-              )
-            : asset == null
+        child: asset == null
             ? Icon(
                 target.manual
                     ? Icons.edit_location_alt_outlined

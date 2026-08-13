@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 final class CatalogConvergenceStatusCard extends StatelessWidget {
   const CatalogConvergenceStatusCard({super.key, required this.controller});
@@ -21,14 +22,14 @@ final class CatalogConvergenceStatusCard extends StatelessWidget {
           key: const Key('catalog-convergence-status'),
           margin: EdgeInsets.zero,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(LicoContentSpacing.item),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
                   children: [
                     const Icon(Icons.sync_alt_outlined, size: 19),
-                    const SizedBox(width: 9),
+                    const SizedBox(width: LicoContentSpacing.compact),
                     Expanded(
                       child: Text(
                         isChinese ? '工具目录同步' : 'Tool catalog sync',
@@ -46,15 +47,15 @@ final class CatalogConvergenceStatusCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: LicoContentSpacing.compact),
                 Text(
                   _summary(controller.phase, isChinese),
                   key: const Key('catalog-convergence-summary'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: LicoContentSpacing.compact),
                 Wrap(
-                  spacing: 16,
-                  runSpacing: 6,
+                  spacing: LicoContentSpacing.item,
+                  runSpacing: LicoContentSpacing.compact,
                   children: [
                     _Fact(
                       label: isChinese ? '分区' : 'Partitions',
@@ -77,7 +78,7 @@ final class CatalogConvergenceStatusCard extends StatelessWidget {
                   ],
                 ),
                 if (controller.reasonCode != 'catalog_current') ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: LicoContentSpacing.compact),
                   Text(
                     controller.reasonCode,
                     key: const Key('catalog-convergence-reason'),

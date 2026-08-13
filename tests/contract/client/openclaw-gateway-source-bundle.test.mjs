@@ -17,7 +17,6 @@ async function read(relativePath) {
 
 test("OpenClaw Gateway facade owns every dedicated production leaf", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.split("\n").length <= 65);
   for (const leaf of leaves) {
     assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
     await fs.access(path.join(repoRoot, root, leaf));

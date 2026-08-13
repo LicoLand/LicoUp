@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use std::fmt;
 use std::ptr;
 use std::sync::{
-    Arc, Condvar, Mutex,
+    Arc, Condvar, Mutex, OnceLock,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
@@ -41,10 +41,10 @@ use crate::core::secure_mesh_capability::{
 use crate::core::secure_mesh_secret_store::{
     MAX_SECRET_STORE_PRESENCE_GRANT_TTL, PresenceDecision, SecretBytes,
     SecretStoreApprovedPresenceBatch, SecretStoreAuthorizationRequest,
-    SecretStoreAuthorizationSession, SecretStoreCallerChannel, SecretStoreConsumedPresence,
-    SecretStoreHandle, SecretStoreKeyClass, SecretStoreOperation, SecretStorePresenceBatchRequest,
-    SecretStorePresenceNonce, SecretStorePresenceProvider, SecretStorePresencePurpose,
-    SecretStorePresenceScope, derive_presence_binding_digest, digest_matches,
+    SecretStoreAuthorizationSession, SecretStoreConsumedPresence, SecretStoreHandle,
+    SecretStoreOperation, SecretStorePresenceBatchRequest, SecretStorePresenceNonce,
+    SecretStorePresenceProvider, SecretStorePresencePurpose, SecretStorePresenceScope,
+    derive_presence_binding_digest, digest_matches,
 };
 
 macro_rules! security_framework_static {
@@ -59,6 +59,56 @@ const SYSTEM_AUTHORIZATION_TIMEOUT: Duration = Duration::from_secs(120);
 const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
 
 static TEST_USER_PRESENCE_DISABLED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone)]
+struct ApplicationAuthorization {
+    context: Retained<LAContext>,
+    effect_lock: Arc<Mutex<()>>,
+}
+
+// SAFETY: the retained LAContext is used only by synchronous
+// LocalAuthentication/Security.framework calls. All Keychain effects that use
+// the context are serialized by effect_lock.
+unsafe impl Send for ApplicationAuthorization {}
+// SAFETY: see the Send justification above; callers only clone the retained
+// reference and never mutate LAContext outside the serialized native APIs.
+unsafe impl Sync for ApplicationAuthorization {}
+
+static APPLICATION_AUTHORIZATION: OnceLock<Mutex<Option<ApplicationAuthorization>>> =
+    OnceLock::new();
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MacosKeychainBackend {
+    DataProtection,
+    Classic,
+}
+
+static SELECTED_KEYCHAIN_BACKEND: OnceLock<Option<MacosKeychainBackend>> = OnceLock::new();
+
+fn application_authorization() -> &'static Mutex<Option<ApplicationAuthorization>> {
+    APPLICATION_AUTHORIZATION.get_or_init(|| Mutex::new(None))
+}
+
+fn cached_application_authorization() -> Result<Option<ApplicationAuthorization>> {
+    application_authorization()
+        .lock()
+        .map(|authorization| authorization.clone())
+        .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))
+}
+
+fn remember_application_authorization(authorization: ApplicationAuthorization) -> Result<()> {
+    *application_authorization()
+        .lock()
+        .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))? =
+        Some(authorization);
+    Ok(())
+}
+
+fn forget_application_authorization() {
+    if let Ok(mut authorization) = application_authorization().lock() {
+        *authorization = None;
+    }
+}
 
 #[derive(Clone)]
 pub struct MacosAuthorizationContext {
@@ -163,6 +213,7 @@ impl MacosPresenceError {
         Self { code }
     }
 
+    #[cfg(test)]
     pub fn code(&self) -> &'static str {
         self.code
     }
@@ -212,6 +263,24 @@ pub trait MacosKeychainEffectPort {
         service: &str,
         handle: &SecretStoreHandle,
     ) -> Result<()>;
+
+    fn get_legacy_classic_secret(
+        &self,
+        _authorized_presence: MacosAuthorizedPresence,
+        _service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        Ok(None)
+    }
+
+    fn delete_legacy_classic_secret(
+        &self,
+        _authorized_presence: MacosAuthorizedPresence,
+        _service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub trait MacosSecItemPort {
@@ -236,6 +305,24 @@ pub trait MacosSecItemPort {
         service: &str,
         handle: &SecretStoreHandle,
     ) -> Result<()>;
+
+    fn get_legacy_classic_secret(
+        &self,
+        _authorization_context: &MacosAuthorizationContext,
+        _service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        Ok(None)
+    }
+
+    fn delete_legacy_classic_secret(
+        &self,
+        _authorization_context: &MacosAuthorizationContext,
+        _service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -324,10 +411,15 @@ impl MacosPresenceBatchCoordinator {
             let decision = prompt
                 .prompt(request)
                 .map_err(|_| anyhow!("secure_mesh_presence_prompt_failed"))?;
+            // The approval window starts when the user completes the system
+            // prompt, not when the request was constructed: interactive prompts
+            // may legitimately outlast the grant TTL. Tests keep the injected
+            // anchor so their time control stays deterministic.
+            let approved_anchor = if cfg!(test) { now } else { Instant::now() };
             let batch = Arc::new(
                 SecretStoreApprovedPresenceBatch::approve(
                     request,
-                    now,
+                    approved_anchor,
                     MAX_SECRET_STORE_PRESENCE_GRANT_TTL,
                     decision,
                 )
@@ -452,6 +544,7 @@ pub struct MacosSecretStoreAccess {
 }
 
 impl MacosSecretStoreAccess {
+    #[cfg(test)]
     pub fn new(
         request: SecretStorePresenceBatchRequest,
         approved_at: Instant,
@@ -614,6 +707,40 @@ impl MacosSecretStoreAccess {
             SecretStorePresencePurpose::new("platform-secret-store-delete")?,
         )
     }
+
+    pub(crate) fn get_legacy_classic_secret(
+        &self,
+        service: &str,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        let approved = self.approved_for_session(session)?;
+        execute_legacy_classic_get(
+            service,
+            &approved,
+            self.operation_now(),
+            &*self.keychain,
+            handle,
+            SecretStorePresencePurpose::new("platform-secret-store-legacy-read")?,
+        )
+    }
+
+    pub(crate) fn delete_legacy_classic_secret(
+        &self,
+        service: &str,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        let approved = self.approved_for_session(session)?;
+        execute_legacy_classic_delete(
+            service,
+            &approved,
+            self.operation_now(),
+            &*self.keychain,
+            handle,
+            SecretStorePresencePurpose::new("platform-secret-store-legacy-delete")?,
+        )
+    }
 }
 
 pub(crate) fn production_access(
@@ -622,16 +749,17 @@ pub(crate) fn production_access(
     let nonce = SecretStorePresenceNonce::new(Uuid::new_v4().to_string())?;
     let presence_request = SecretStorePresenceBatchRequest::new(
         SecretStorePresenceProvider::MacosKeychain,
-        SecretStoreKeyClass::DeviceIdentity,
+        request.key_class(),
         request.operation_count(),
         request.reason(),
         nonce,
-        SecretStoreCallerChannel::DesktopGui,
+        request.caller_channel(),
         request.allow_interaction(),
     )?;
     Ok(MacosSecretStoreAccess::production(presence_request))
 }
 
+#[cfg(test)]
 pub fn set_secret(
     service: &str,
     coordinator: &MacosPresenceBatchCoordinator,
@@ -656,6 +784,7 @@ pub fn set_secret(
     )
 }
 
+#[cfg(test)]
 pub fn get_secret(
     service: &str,
     coordinator: &MacosPresenceBatchCoordinator,
@@ -671,6 +800,7 @@ pub fn get_secret(
     execute_get(service, &approved, operation_now, keychain, handle, purpose)
 }
 
+#[cfg(test)]
 pub fn delete_secret(
     service: &str,
     coordinator: &MacosPresenceBatchCoordinator,
@@ -732,6 +862,36 @@ fn execute_delete(
         .map_err(|_| anyhow!("secure_mesh_keychain_delete_failed"))
 }
 
+fn execute_legacy_classic_get(
+    service: &str,
+    approved: &MacosApprovedPresenceBatch,
+    now: Instant,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+) -> Result<Option<SecretBytes>> {
+    let authorized =
+        authorize_exact_operation(approved, SecretStoreOperation::Read, handle, purpose, now)?;
+    keychain
+        .get_legacy_classic_secret(authorized, service, handle)
+        .map_err(|_| anyhow!("secure_mesh_keychain_read_failed"))
+}
+
+fn execute_legacy_classic_delete(
+    service: &str,
+    approved: &MacosApprovedPresenceBatch,
+    now: Instant,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+) -> Result<()> {
+    let authorized =
+        authorize_exact_operation(approved, SecretStoreOperation::Delete, handle, purpose, now)?;
+    keychain
+        .delete_legacy_classic_secret(authorized, service, handle)
+        .map_err(|_| anyhow!("secure_mesh_keychain_delete_failed"))
+}
+
 fn authorize_exact_operation(
     approved: &MacosApprovedPresenceBatch,
     operation: SecretStoreOperation,
@@ -760,6 +920,7 @@ impl SecurityFrameworkKeychain {
         }
     }
 
+    #[cfg(test)]
     pub fn with_sec_item_port(sec_item_port: Arc<dyn MacosSecItemPort + Send + Sync>) -> Self {
         Self { sec_item_port }
     }
@@ -820,6 +981,38 @@ impl MacosKeychainEffectPort for SecurityFrameworkKeychain {
         self.sec_item_port
             .delete_secret(&context, service, &bound_handle)
     }
+
+    fn get_legacy_classic_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        let (context, bound_handle) =
+            authorized_presence.into_authorized_effect(SecretStoreOperation::Read)?;
+        let _effect_guard = context
+            .effect_lock
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))?;
+        self.sec_item_port
+            .get_legacy_classic_secret(&context, service, &bound_handle)
+    }
+
+    fn delete_legacy_classic_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        let (context, bound_handle) =
+            authorized_presence.into_authorized_effect(SecretStoreOperation::Delete)?;
+        let _effect_guard = context
+            .effect_lock
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))?;
+        self.sec_item_port
+            .delete_legacy_classic_secret(&context, service, &bound_handle)
+    }
 }
 
 struct SecurityFrameworkSecItem;
@@ -827,17 +1020,21 @@ struct SecurityFrameworkSecItem;
 impl MacosSecItemPort for SecurityFrameworkSecItem {
     fn set_secret(
         &self,
-        context: &MacosAuthorizationContext,
+        authorization_context: &MacosAuthorizationContext,
         service: &str,
         handle: &SecretStoreHandle,
         secret: SecretBytes,
     ) -> Result<()> {
         let account = handle.account();
-        let query = CFDictionary::from_CFType_pairs(&base_pairs(service, &account, context)?);
-        let update = CFDictionary::from_CFType_pairs(&[(
-            security_framework_static!(kSecValueData, sec_key),
-            CFData::from_buffer(secret.expose_bytes()).into_CFType(),
-        )]);
+        let query =
+            CFDictionary::from_CFType_pairs(&base_pairs(service, &account, authorization_context)?);
+        // Updating an existing item must enforce the same access-control
+        // invariant as creating one. Updating only kSecValueData preserves a
+        // legacy per-item application ACL, which makes macOS ask for the login
+        // password once per credential even after this LAContext has already
+        // passed user-presence authentication.
+        let update =
+            CFDictionary::from_CFType_pairs(&protected_secret_pairs(secret.expose_bytes())?);
         // SAFETY: query and update own their CF values for the synchronous call.
         let update_status =
             unsafe { SecItemUpdate(query.as_concrete_TypeRef(), update.as_concrete_TypeRef()) };
@@ -849,20 +1046,8 @@ impl MacosSecItemPort for SecurityFrameworkSecItem {
             }
         }
 
-        let access_control = SecAccessControl::create_with_protection(
-            Some(ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly),
-            kSecAccessControlUserPresence,
-        )
-        .map_err(|_| anyhow!("secure_mesh_keychain_access_control_unavailable"))?;
-        let mut pairs = base_pairs(service, &account, context)?;
-        pairs.push((
-            security_framework_static!(kSecAttrAccessControl, sec_key),
-            access_control.into_CFType(),
-        ));
-        pairs.push((
-            security_framework_static!(kSecValueData, sec_key),
-            CFData::from_buffer(secret.expose_bytes()).into_CFType(),
-        ));
+        let mut pairs = base_pairs(service, &account, authorization_context)?;
+        pairs.extend(protected_secret_pairs(secret.expose_bytes())?);
         let add_query = CFDictionary::from_CFType_pairs(&pairs);
         // SAFETY: add_query owns all referenced values for the synchronous call.
         let add_status = unsafe { SecItemAdd(add_query.as_concrete_TypeRef(), ptr::null_mut()) };
@@ -880,12 +1065,12 @@ impl MacosSecItemPort for SecurityFrameworkSecItem {
 
     fn get_secret(
         &self,
-        context: &MacosAuthorizationContext,
+        authorization_context: &MacosAuthorizationContext,
         service: &str,
         handle: &SecretStoreHandle,
     ) -> Result<Option<SecretBytes>> {
         let account = handle.account();
-        let mut pairs = base_pairs(service, &account, context)?;
+        let mut pairs = base_pairs(service, &account, authorization_context)?;
         pairs.push((
             security_framework_static!(kSecReturnData, sec_key),
             CFBoolean::from(true).into_CFType(),
@@ -917,12 +1102,13 @@ impl MacosSecItemPort for SecurityFrameworkSecItem {
 
     fn delete_secret(
         &self,
-        context: &MacosAuthorizationContext,
+        authorization_context: &MacosAuthorizationContext,
         service: &str,
         handle: &SecretStoreHandle,
     ) -> Result<()> {
         let account = handle.account();
-        let query = CFDictionary::from_CFType_pairs(&base_pairs(service, &account, context)?);
+        let query =
+            CFDictionary::from_CFType_pairs(&base_pairs(service, &account, authorization_context)?);
         // SAFETY: query owns valid CF values for the synchronous call.
         let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
         if status == errSecItemNotFound {
@@ -931,6 +1117,60 @@ impl MacosSecItemPort for SecurityFrameworkSecItem {
             status_result("delete", status)
         }
     }
+
+    fn get_legacy_classic_secret(
+        &self,
+        authorization_context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        let account = handle.account();
+        let mut pairs = classic_pairs(service, &account, authorization_context)?;
+        pairs.push((
+            security_framework_static!(kSecReturnData, sec_key),
+            CFBoolean::from(true).into_CFType(),
+        ));
+        copy_secret_from_query(&pairs)
+    }
+
+    fn delete_legacy_classic_secret(
+        &self,
+        authorization_context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        let account = handle.account();
+        let query = CFDictionary::from_CFType_pairs(&classic_pairs(
+            service,
+            &account,
+            authorization_context,
+        )?);
+        // SAFETY: query owns valid CF values for the synchronous call.
+        let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
+        if status == errSecItemNotFound {
+            Ok(())
+        } else {
+            status_result("delete", status)
+        }
+    }
+}
+
+fn protected_secret_pairs(secret: &[u8]) -> Result<Vec<(CFString, CFType)>> {
+    let access_control = SecAccessControl::create_with_protection(
+        Some(ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly),
+        kSecAccessControlUserPresence,
+    )
+    .map_err(|_| anyhow!("secure_mesh_keychain_access_control_unavailable"))?;
+    Ok(vec![
+        (
+            security_framework_static!(kSecAttrAccessControl, sec_key),
+            access_control.into_CFType(),
+        ),
+        (
+            security_framework_static!(kSecValueData, sec_key),
+            CFData::from_buffer(secret).into_CFType(),
+        ),
+    ])
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -953,7 +1193,39 @@ fn keychain_update_transition(status: i32) -> KeychainUpdateTransition {
 fn base_pairs(
     service: &str,
     account: &str,
-    context: &MacosAuthorizationContext,
+    authorization_context: &MacosAuthorizationContext,
+) -> Result<Vec<(CFString, CFType)>> {
+    let mut pairs = vec![
+        (
+            security_framework_static!(kSecClass, sec_key),
+            security_framework_static!(kSecClassGenericPassword, sec_string_value),
+        ),
+        (
+            security_framework_static!(kSecAttrService, sec_key),
+            CFString::from(service).into_CFType(),
+        ),
+        (
+            security_framework_static!(kSecAttrAccount, sec_key),
+            CFString::from(account).into_CFType(),
+        ),
+        (
+            security_framework_static!(kSecUseAuthenticationContext, sec_key),
+            authorization_context.as_cf_type()?,
+        ),
+    ];
+    if selected_keychain_backend() == Some(MacosKeychainBackend::DataProtection) {
+        pairs.push((
+            security_framework_static!(kSecUseDataProtectionKeychain, sec_key),
+            CFBoolean::true_value().into_CFType(),
+        ));
+    }
+    Ok(pairs)
+}
+
+fn classic_pairs(
+    service: &str,
+    account: &str,
+    authorization_context: &MacosAuthorizationContext,
 ) -> Result<Vec<(CFString, CFType)>> {
     Ok(vec![
         (
@@ -970,13 +1242,133 @@ fn base_pairs(
         ),
         (
             security_framework_static!(kSecUseAuthenticationContext, sec_key),
-            context.as_cf_type()?,
-        ),
-        (
-            security_framework_static!(kSecUseDataProtectionKeychain, sec_key),
-            CFBoolean::true_value().into_CFType(),
+            authorization_context.as_cf_type()?,
         ),
     ])
+}
+
+fn copy_secret_from_query(pairs: &[(CFString, CFType)]) -> Result<Option<SecretBytes>> {
+    let query = CFDictionary::from_CFType_pairs(pairs);
+    let mut copied: CFTypeRef = ptr::null();
+    // SAFETY: query is valid and copied is an initialized out-pointer.
+    let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut copied) };
+    if status == errSecItemNotFound {
+        return Ok(None);
+    }
+    status_result("read", status)?;
+    if copied.is_null() {
+        return Ok(None);
+    }
+    // SAFETY: copied is a live CF object returned at +1 ownership.
+    let type_id = unsafe { CFGetTypeID(copied) };
+    if type_id != CFData::type_id() {
+        // SAFETY: copied has not yet been released.
+        unsafe { CFRelease(copied) };
+        return Err(anyhow!("secure_mesh_keychain_data_invalid"));
+    }
+    // SAFETY: type identity is CFData and +1 ownership transfers to the wrapper.
+    let data = unsafe { CFData::wrap_under_create_rule(copied as CFDataRef) };
+    SecretBytes::try_from_bytes(data.bytes().to_vec())
+        .map(Some)
+        .map_err(|_| anyhow!("secure_mesh_keychain_data_invalid"))
+}
+
+fn selected_keychain_backend() -> Option<MacosKeychainBackend> {
+    *SELECTED_KEYCHAIN_BACKEND.get_or_init(|| {
+        if keychain_roundtrip_probe(MacosKeychainBackend::DataProtection) {
+            Some(MacosKeychainBackend::DataProtection)
+        } else if keychain_roundtrip_probe(MacosKeychainBackend::Classic) {
+            Some(MacosKeychainBackend::Classic)
+        } else {
+            None
+        }
+    })
+}
+
+/// Bounded runtime evidence for the selected macOS Keychain backend. A signed
+/// production helper selects the Data Protection Keychain. Local builds that
+/// cannot hold its required access-group entitlement select the classic macOS
+/// Keychain instead; both stores keep protected records under the same native
+/// user-presence access control.
+pub fn adaptive_keychain_roundtrip_probe() -> bool {
+    selected_keychain_backend().is_some()
+}
+
+fn keychain_roundtrip_probe(backend: MacosKeychainBackend) -> bool {
+    const PROBE_SERVICE: &str = "dev.licoland.licoup.secure-mesh-probe";
+    const PROBE_SECRET: &[u8] = b"secure-mesh-keychain-probe";
+    let account = format!("probe-{}", Uuid::new_v4());
+
+    let mut pairs = vec![
+        (
+            security_framework_static!(kSecClass, sec_key),
+            security_framework_static!(kSecClassGenericPassword, sec_string_value),
+        ),
+        (
+            security_framework_static!(kSecAttrService, sec_key),
+            CFString::from(PROBE_SERVICE).into_CFType(),
+        ),
+        (
+            security_framework_static!(kSecAttrAccount, sec_key),
+            CFString::from(account.as_str()).into_CFType(),
+        ),
+    ];
+    if backend == MacosKeychainBackend::DataProtection {
+        pairs.push((
+            security_framework_static!(kSecUseDataProtectionKeychain, sec_key),
+            CFBoolean::true_value().into_CFType(),
+        ));
+    }
+    let query_pair_count = pairs.len();
+    pairs.push((
+        security_framework_static!(kSecValueData, sec_key),
+        CFData::from_buffer(PROBE_SECRET).into_CFType(),
+    ));
+    let add_query = CFDictionary::from_CFType_pairs(&pairs);
+    // SAFETY: add_query owns all referenced values for the synchronous call.
+    let add_status = unsafe { SecItemAdd(add_query.as_concrete_TypeRef(), ptr::null_mut()) };
+    if add_status != errSecSuccess {
+        return false;
+    }
+
+    let mut query_pairs = pairs
+        .iter()
+        .take(query_pair_count)
+        .cloned()
+        .collect::<Vec<(CFString, CFType)>>();
+    query_pairs.push((
+        security_framework_static!(kSecReturnData, sec_key),
+        CFBoolean::from(true).into_CFType(),
+    ));
+    let read_query = CFDictionary::from_CFType_pairs(&query_pairs);
+    let mut copied: CFTypeRef = ptr::null();
+    // SAFETY: read_query is valid and copied is an initialized out-pointer.
+    let read_status = unsafe { SecItemCopyMatching(read_query.as_concrete_TypeRef(), &mut copied) };
+    let read_ok = if read_status == errSecSuccess && !copied.is_null() {
+        // SAFETY: copied is a live CF object returned at +1 ownership.
+        let type_id = unsafe { CFGetTypeID(copied) };
+        if type_id == CFData::type_id() {
+            // SAFETY: type identity is CFData and +1 ownership transfers to the wrapper.
+            let data = unsafe { CFData::wrap_under_create_rule(copied as CFDataRef) };
+            data.bytes() == PROBE_SECRET
+        } else {
+            // SAFETY: copied has not yet been released.
+            unsafe { CFRelease(copied) };
+            false
+        }
+    } else {
+        false
+    };
+
+    let delete_pairs = pairs
+        .iter()
+        .take(query_pair_count)
+        .cloned()
+        .collect::<Vec<(CFString, CFType)>>();
+    let delete_query = CFDictionary::from_CFType_pairs(&delete_pairs);
+    // SAFETY: delete_query owns valid CF values for the synchronous call.
+    let delete_status = unsafe { SecItemDelete(delete_query.as_concrete_TypeRef()) };
+    read_ok && delete_status == errSecSuccess
 }
 
 fn status_result(operation: &'static str, status: i32) -> Result<()> {
@@ -984,6 +1376,10 @@ fn status_result(operation: &'static str, status: i32) -> Result<()> {
         return Ok(());
     }
     if status == errSecAuthFailed || status == ERR_SEC_INTERACTION_NOT_ALLOWED {
+        // A lock, logout, credential change, or invalidated LAContext revokes
+        // the process-scoped grant. The next explicit operation authenticates
+        // again instead of silently falling back to a password prompt.
+        forget_application_authorization();
         return Err(anyhow!("secure_mesh_authorization_required"));
     }
     let code = match operation {
@@ -1007,6 +1403,14 @@ impl LocalAuthenticationPrompt {
 
 impl MacosPresencePromptPort for LocalAuthenticationPrompt {
     fn prompt(&mut self, request: &SecretStorePresenceBatchRequest) -> Result<PresenceDecision> {
+        if let Some(cached) = cached_application_authorization()? {
+            self.context = Some(MacosAuthorizationContext {
+                batch_binding_digest: [0; 32],
+                context: Some(cached.context),
+                effect_lock: cached.effect_lock,
+            });
+            return Ok(PresenceDecision::Approved);
+        }
         // SAFETY: LAContext::new returns a retained initialized Objective-C object.
         let context = unsafe { LAContext::new() };
         let reason = NSString::from_str(request.reason());
@@ -1021,13 +1425,19 @@ impl MacosPresencePromptPort for LocalAuthenticationPrompt {
         let policy = preferred_system_authorization_policy(&context)?;
         let decision = evaluate_system_authorization_once(&context, policy, &reason)?;
         if decision == PresenceDecision::Approved {
-            // SAFETY: the retained context remains live; later Security.framework use must not
-            // initiate a second application-controlled prompt.
+            // Keep the successfully evaluated context alive for this app
+            // process. Keychain operations receive it explicitly and are not
+            // allowed to open their own password prompts.
             unsafe { context.setInteractionNotAllowed(true) };
+            let authorization = ApplicationAuthorization {
+                context: context.clone(),
+                effect_lock: Arc::new(Mutex::new(())),
+            };
+            remember_application_authorization(authorization.clone())?;
             self.context = Some(MacosAuthorizationContext {
                 batch_binding_digest: [0; 32],
-                context: Some(context),
-                effect_lock: Arc::new(Mutex::new(())),
+                context: Some(authorization.context),
+                effect_lock: authorization.effect_lock,
             });
         }
         Ok(decision)
@@ -1039,6 +1449,8 @@ impl MacosPresencePromptPort for LocalAuthenticationPrompt {
 }
 
 fn preferred_system_authorization_policy(context: &LAContext) -> Result<LAPolicy> {
+    // Device-owner authentication is one native flow: macOS can satisfy it
+    // with Touch ID or a single password fallback without a second app prompt.
     // SAFETY: context is retained and the policy is SDK-defined.
     unsafe {
         context
@@ -1132,6 +1544,35 @@ fn sec_string_value(value: CFStringRef) -> CFType {
 mod tests {
     use super::*;
 
+    struct ApplicationAuthorizationReset;
+
+    impl Drop for ApplicationAuthorizationReset {
+        fn drop(&mut self) {
+            forget_application_authorization();
+        }
+    }
+
+    #[test]
+    fn application_authorization_reuses_one_native_context_until_revoked() {
+        let _reset = ApplicationAuthorizationReset;
+        forget_application_authorization();
+        // SAFETY: constructing LAContext does not evaluate a policy or display
+        // system UI; the test only verifies retained process-local identity.
+        let context = unsafe { LAContext::new() };
+        remember_application_authorization(ApplicationAuthorization {
+            context,
+            effect_lock: Arc::new(Mutex::new(())),
+        })
+        .unwrap();
+
+        let first = cached_application_authorization().unwrap().unwrap();
+        let second = cached_application_authorization().unwrap().unwrap();
+        assert!(std::ptr::eq::<LAContext>(&*first.context, &*second.context));
+
+        forget_application_authorization();
+        assert!(cached_application_authorization().unwrap().is_none());
+    }
+
     #[test]
     fn update_failure_never_falls_through_to_add() {
         assert_eq!(
@@ -1153,6 +1594,20 @@ mod tests {
         assert_eq!(
             keychain_update_transition(errSecItemNotFound),
             KeychainUpdateTransition::AddNew
+        );
+    }
+
+    #[test]
+    fn existing_item_updates_include_user_presence_access_control() {
+        let pairs = protected_secret_pairs(b"synthetic-secret").unwrap();
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(
+            pairs[0].0,
+            security_framework_static!(kSecAttrAccessControl, sec_key)
+        );
+        assert_eq!(
+            pairs[1].0,
+            security_framework_static!(kSecValueData, sec_key)
         );
     }
 }

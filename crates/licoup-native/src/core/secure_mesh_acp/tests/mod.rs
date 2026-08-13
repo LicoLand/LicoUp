@@ -4,6 +4,7 @@ use super::{
     open_acp_protected_payload, reject_plaintext_acp_protected_payload_relay,
     seal_acp_protected_payload,
 };
+use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::{
     ContentKey, SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
     open_payload_with_aad_binding, seal_payload_with_aad_binding,
@@ -14,13 +15,12 @@ use crate::core::secure_mesh_prekey::{
     SecureMeshPairwisePreKeyBundle, SecureMeshPreKeyKind, SecureMeshPreKeyValidationPolicy,
     authorize_test_pairwise_prekey_bundle, sign_prekey_record,
 };
-use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
 use crate::core::secure_mesh_trust::{DeviceTrustPublicIdentity, DeviceTrustState};
 use base64::{Engine, engine::general_purpose};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 fn binding_fixture(class: SecureMeshAcpPayloadClass) -> SecureMeshAcpEnvelopeBinding {
     let mut binding = SecureMeshAcpEnvelopeBinding::new(
@@ -49,6 +49,8 @@ fn binding_fixture(class: SecureMeshAcpPayloadClass) -> SecureMeshAcpEnvelopeBin
 }
 
 fn context_fixture(session_id: &str) -> SecureMeshContentContext {
+    let created_at = OffsetDateTime::now_utc();
+    let expires_at = created_at + Duration::minutes(10);
     SecureMeshContentContext::new(
         general_purpose::URL_SAFE_NO_PAD.encode(&Sha256::digest(b"env-acp-1")[..24]),
         "msg-acp-1",
@@ -56,8 +58,8 @@ fn context_fixture(session_id: &str) -> SecureMeshContentContext {
         "agent-source",
         "agent-target",
         session_id,
-        "2026-01-01T00:00:00.000Z",
-        "2026-01-01T00:10:00.000Z",
+        created_at.format(&Rfc3339).unwrap(),
+        expires_at.format(&Rfc3339).unwrap(),
     )
 }
 
@@ -274,15 +276,14 @@ fn acp_canary_variants(canary: &str) -> Vec<String> {
     ]
 }
 
-fn relay_visible_envelope_text(envelope: &SecureMeshRelayEnvelope) -> String {
+fn relay_visible_envelope_text(envelope: &LicoArcRelayEnvelope) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}",
-        envelope.schema(),
-        envelope.delivery_id(),
-        envelope.mailbox_token(),
-        envelope.encrypted_header(),
-        envelope.ciphertext_bucket(),
-        envelope.ciphertext()
+        "{}|{}|{}|{}|{}",
+        envelope.contract_version(),
+        envelope.envelope_id(),
+        envelope.mailbox_id(),
+        envelope.ciphertext(),
+        envelope.expires_at()
     )
 }
 

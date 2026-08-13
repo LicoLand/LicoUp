@@ -48,4 +48,28 @@ Visible request
 
     expect(title, 'Visible title');
   });
+
+  test('user settings change metadata is hidden from messages and titles', () {
+    final message = parseAgentConversationMessage({
+      'role': 'user',
+      'text': '''
+hi
+<USERSETTINGSCHANGE>
+The user changed setting Model Selection.
+</USERSETTINGSCHANGE>
+''',
+      'createdAt': '2026-08-03T00:00:00Z',
+    });
+
+    expect(message.text, 'hi');
+    expect(message.text, isNot(contains('USERSETTINGSCHANGE')));
+    expect(visibleAgentConversationTitle(message.text, [message]), 'hi');
+  });
+
+  test('inline user settings metadata is removed from provider titles', () {
+    const raw =
+        'hi <USER_SETTINGS_CHANGE> The user changed setting. </USER_SETTINGS_CHANGE>';
+
+    expect(visibleAgentConversationTitle(raw, const []), 'hi');
+  });
 }

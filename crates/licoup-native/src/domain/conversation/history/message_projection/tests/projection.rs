@@ -33,8 +33,29 @@ fn plain_projection_keeps_thread_semantics_and_filters_generated_context() {
 }
 
 #[test]
+fn plain_projection_keeps_generated_wrapper_image_as_typed_attachment() {
+    let message = plain_history_message(
+        HistoryAdapter::Codex,
+        Path::new("fixture/session.jsonl"),
+        1,
+        0,
+        "user",
+        "# Files mentioned by the user:\n\n## screenshot.webp: /fixture-root/screenshot.webp\n\n## My request:\n\n<image name=[Image #1] path=\"/fixture-root/screenshot.webp\">\nprivate image metadata\n</image>",
+        Some("2026-01-01T00:00:00Z".to_string()),
+    )
+    .unwrap();
+
+    assert_eq!(message["text"], "");
+    assert_eq!(message["images"][0]["mediaType"], "image/webp");
+    assert_eq!(
+        message["images"][0]["path"],
+        "/fixture-root/screenshot.webp"
+    );
+}
+
+#[test]
 fn structured_projection_preserves_execution_card_without_sensitive_detail() {
-    let private_path = ["/", "Users", "sample-user", "private.txt"].join("/");
+    let private_path = format!("/{}", ["Users", "sample-user", "private.txt"].join("/"));
     let message = structured_history_message(
         HistoryAdapter::ClaudeCode,
         Path::new("fixture/session.jsonl"),
@@ -49,7 +70,44 @@ fn structured_projection_preserves_execution_card_without_sensitive_detail() {
         Some("2026-01-01T00:00:00Z".to_string()),
     );
     assert_eq!(message["cardTitle"], "Read");
-    assert_eq!(message["text"], "Invocation details are hidden.");
+    assert_eq!(message["text"], "path: [local path hidden]");
     assert_eq!(message["layer"], "execution");
     assert!(!message.to_string().contains(&private_path));
+}
+
+#[test]
+fn reasoning_projection_prefers_recorded_thinking_over_provider_summary() {
+    let message = structured_history_message(
+        HistoryAdapter::Codex,
+        Path::new("fixture/session.jsonl"),
+        3,
+        0,
+        HistoryMessageKind::Reasoning,
+        "reasoning",
+        &json!({
+            "summary": {"type": "summary_text", "text": "Provider summary line"},
+            "text": "Private chain of thought"
+        }),
+        Some("2026-01-01T00:00:00Z".to_string()),
+    );
+    assert_eq!(message["text"], "Private chain of thought");
+    assert!(message.get("providerSummary").is_none());
+    assert_eq!(message["cardSubtitle"], "Provider summary line");
+}
+
+#[test]
+fn reasoning_projection_uses_provider_summary_when_no_thinking_recorded() {
+    let message = structured_history_message(
+        HistoryAdapter::ClaudeCode,
+        Path::new("fixture/session.jsonl"),
+        3,
+        0,
+        HistoryMessageKind::Reasoning,
+        "reasoning",
+        &json!({"summary": "Provider summary line"}),
+        Some("2026-01-01T00:00:00Z".to_string()),
+    );
+    assert_eq!(message["text"], "Provider summary line");
+    assert_eq!(message["providerSummary"], true);
+    assert_eq!(message["cardSubtitle"], "Reasoning summary");
 }

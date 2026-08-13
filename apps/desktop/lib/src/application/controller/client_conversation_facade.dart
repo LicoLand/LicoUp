@@ -2,20 +2,19 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 
 mixin ClientConversationFacade on AgentWorkspaceCoordinator {
+  ClientConversationController get clientConversationController;
+  @override
   ConversationPresentationSignals get conversationPresentationSignals;
 
   ValueListenable<int> get conversationStructureListenable =>
       conversationPresentationSignals.structureListenable;
   ValueListenable<int> get activeConversationListenable =>
       conversationPresentationSignals.activeListenable;
-  String get conversationComposerDraft =>
-      conversationPresentationSignals.composerDraft;
-
-  void updateConversationComposerDraft(String value) {
-    conversationPresentationSignals.replaceComposerDraft(value);
-  }
+  ValueListenable<int> get liveConversationListenable =>
+      conversationPresentationSignals.liveListenable;
 
   void notifyClientStateChanged() {
     if (!lifecycleProjection.disposed) notifyListeners();
@@ -31,6 +30,10 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
     conversationPresentationSignals.notifyActiveChanged();
   }
 
+  void notifyLiveConversationChanged() {
+    conversationPresentationSignals.notifyLiveChanged();
+  }
+
   @override
   void agentWorkspaceNotifyStateChanged() => notifyClientStateChanged();
 
@@ -42,4 +45,8 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   @override
   void agentWorkspaceNotifyActiveConversationChanged() =>
       notifyActiveConversationChanged();
+
+  @override
+  void agentWorkspaceNotifyLiveConversationChanged() =>
+      notifyLiveConversationChanged();
 }

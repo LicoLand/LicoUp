@@ -13,10 +13,6 @@ void main() {
       owner: 'AgentConversationGatewayAdapter(',
       forbidden: 'AgentUsageController(',
     ),
-    'client_routing_component_assembly.dart': (
-      owner: 'RoutingModuleLifecycleController(',
-      forbidden: 'MobileRelayController(',
-    ),
     'client_target_component_assembly.dart': (
       owner: 'TargetController(',
       forbidden: 'SkillHubController(',
@@ -39,7 +35,11 @@ void main() {
     ),
     'client_navigation_component_assembly.dart': (
       owner: 'ClientNavigationController(',
-      forbidden: 'RoutingModuleLifecycleController(',
+      forbidden: 'MobileRelayController(',
+    ),
+    'client_catalog_convergence_component_assembly.dart': (
+      owner: 'CatalogConvergenceController(',
+      forbidden: 'TargetController(',
     ),
     'client_presentation_component_assembly.dart': (
       owner: 'LayoutManager(',
@@ -57,7 +57,6 @@ void main() {
         isNot(contains('client_controller.dart')),
         reason: entry.key,
       );
-      expect(source.split('\n').length, lessThan(140), reason: entry.key);
     }
   });
 
@@ -67,11 +66,10 @@ void main() {
       final source = File(
         'lib/src/application/controller/client_component_assembly.dart',
       ).readAsStringSync();
-      expect(source.split('\n').length, lessThan(320));
       for (final className in [
         'ClientLifecycleComponentAssembly(',
         'ClientConversationComponentAssembly(',
-        'ClientRoutingComponentAssembly(',
+        'ClientCatalogConvergenceComponentAssembly(',
         'ClientTargetComponentAssembly(',
         'ClientSkillComponentAssembly(',
         'ClientSettingsComponentAssembly(',

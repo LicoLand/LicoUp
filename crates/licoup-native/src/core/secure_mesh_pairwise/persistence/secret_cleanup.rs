@@ -76,6 +76,31 @@ impl SecureMeshPairwiseDurableStore {
                 &public.secret_store_key,
             )?);
         }
+        drop(statement);
+        let mut received_statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT secret_store_namespace, secret_store_key
+                FROM secure_mesh_pairwise_received_payloads
+                ORDER BY secret_store_namespace, secret_store_key
+                "#,
+            )
+            .context("secure mesh received payload cleanup query prepare failed")?;
+        let received_rows = received_statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .context("secure mesh received payload cleanup query failed")?;
+        for row in received_rows {
+            let (namespace, key) =
+                row.context("secure mesh received payload cleanup row read failed")?;
+            ensure!(
+                namespace == self.secret_store_namespace && key.starts_with("received.v1."),
+                "secure mesh received payload cleanup binding is invalid"
+            );
+            handles.push(self.secret_snapshot_handle(&namespace, &key)?);
+        }
         handles.sort_by(|left, right| {
             left.namespace()
                 .cmp(right.namespace())
@@ -105,6 +130,10 @@ impl SecureMeshPairwiseDurableStore {
             .connection
             .transaction()
             .context("secure mesh pairwise session purge transaction failed")?;
+        tx.execute("DELETE FROM secure_mesh_pairwise_pending_deliveries", [])
+            .context("secure mesh pairwise pending delivery purge failed")?;
+        tx.execute("DELETE FROM secure_mesh_pairwise_received_payloads", [])
+            .context("secure mesh pairwise received payload purge failed")?;
         let deleted = tx
             .execute("DELETE FROM secure_mesh_pairwise_sessions", [])
             .context("secure mesh pairwise session purge failed")?;

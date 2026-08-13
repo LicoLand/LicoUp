@@ -137,6 +137,7 @@ pub(super) fn mls_ffi_identity(
     .unwrap()
 }
 
+#[track_caller]
 pub(super) fn call_mls_ffi(
     files_dir: &std::path::Path,
     store: Arc<EphemeralSecretStore>,
@@ -150,5 +151,5 @@ pub(super) fn call_mls_ffi(
         "test_secure_mesh_action_unsupported",
         selected,
     )
-    .unwrap()
+    .unwrap_or_else(|error| panic!("{action} failed with redacted error: {error}"))
 }

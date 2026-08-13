@@ -169,6 +169,14 @@ export const INVENTORY_DRIVER_FIELDS = new Set([
   "driverMode",
   "blockerCodes",
   "capabilityMatrix",
+  "lifecycleEvidence",
+]);
+
+export const LIFECYCLE_EVIDENCE_FIELDS = new Set([
+  "accepted",
+  "processing",
+  "responding",
+  "completed",
 ]);
 
 export const CAPABILITY_MATRIX_FIELDS = new Set([

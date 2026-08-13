@@ -1,3 +1,5 @@
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+
 import 'support/agents_workspace_test_harness.dart';
 
 void registerAgentsWorkspaceLayoutScenarios() {
@@ -121,11 +123,10 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
     expect(find.byKey(const Key('agents-workspace-sidebar')), findsOneWidget);
     expect(
-      find.byKey(const Key('agents-workspace-floating-card')),
+      find.byKey(const Key('agents-workspace-detail-pane')),
       findsOneWidget,
     );
     expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);
-    expect(find.text('GitHub Copilot'), findsWidgets);
     expect(
       find.byKey(const Key('conversation-parity-readiness')),
       findsOneWidget,
@@ -134,16 +135,15 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.text('UNVERIFIED'), findsNothing);
     expect(find.text('unverified'), findsNothing);
     expect(find.text('VS Code'), findsNothing);
-    expect(find.text('Kilo Code'), findsOneWidget);
     expect(find.text('OpenClaw'), findsNothing);
     expect(find.text('Not detected'), findsNothing);
     expect(find.text('Conversation history'), findsNothing);
     expect(find.text('Search conversations'), findsNothing);
-    expect(find.byTooltip('Archive agent conversations'), findsOneWidget);
-    expect(find.byTooltip('New Conversation'), findsOneWidget);
+    expect(find.text('Back up conversations'), findsOneWidget);
+    expect(find.text('New Chat'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.byTooltip('Archive agent conversations')).dx,
-      lessThan(tester.getTopLeft(find.byTooltip('New Conversation')).dx),
+      tester.getTopLeft(find.text('New Chat')).dy,
+      lessThan(tester.getTopLeft(find.text('Back up conversations')).dy),
     );
     expect(find.byTooltip('Collapse conversation history'), findsOneWidget);
     expect(find.text('key: workspace-history-with-a-long-title'), findsWidgets);
@@ -167,7 +167,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.byType(TextField), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
 
-    await tester.tap(find.byTooltip('New Conversation'));
+    await tester.tap(find.byKey(const Key('agents-sidebar-new-conversation')));
     await tester.pump();
 
     expect(controller.selectedConversationSessionId, isEmpty);
@@ -176,10 +176,89 @@ void registerAgentsWorkspaceLayoutScenarios() {
     await tester.tap(find.byTooltip('Collapse conversation history'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Archive agent conversations'), findsNothing);
-    expect(find.byTooltip('New Conversation'), findsNothing);
+    expect(find.text('Back up conversations'), findsNothing);
+    expect(find.text('New Chat'), findsOneWidget);
+    expect(
+      find.byKey(const Key('agent-conversation-home-new-conversation')),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);
   });
+
+  testWidgets(
+    'agent workspace survives a window narrower than the sidebar minimum',
+    (tester) async {
+      final controller = ClientController();
+      addTearDown(controller.dispose);
+      controller.scannedTargets = [
+        TargetCandidate(
+          target: 'codex',
+          label: 'Codex',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 0.72,
+          adapterStatus: 'implemented',
+        ),
+      ];
+      controller.selectedConversationAgentId = 'codex';
+      controller.selectedConversationSessionId = 'session-1';
+      controller.conversationSessionsByAgent = {
+        'codex': const [
+          AgentConversationSession(
+            id: 'session-1',
+            agentId: 'codex',
+            title: 'Narrow window conversation',
+            createdAt: '2026-06-15T00:00:00Z',
+            updatedAt: '2026-06-15T00:00:00Z',
+            nativeSessionId: 'codex-session',
+            sourceKind: 'native-agent-history',
+            messages: [
+              AgentConversationMessage(
+                id: 'message-1',
+                role: 'assistant',
+                text: 'Body',
+                createdAt: '2026-06-15T00:00:00Z',
+              ),
+            ],
+          ),
+        ],
+      };
+
+      // 500 px leaves less room than the 196 px sidebar minimum after the chat
+      // minimum and chrome extents; the sidebar must floor at its minimum
+      // instead of feeding an inverted clamp range.
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: SizedBox(
+              width: 500,
+              height: 560,
+              child: AgentConversationWorkspace(
+                controller: controller,
+                targets: controller.scannedTargets,
+                scanning: false,
+                adding: false,
+                onAddTarget: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
+      final sidebar = find.byKey(const Key('agents-workspace-sidebar'));
+      expect(sidebar, findsOneWidget);
+      expect(tester.getSize(sidebar).width, agentsSidebarMinWidth);
+    },
+  );
 
   testWidgets('wide agent workspace uses sidebar and floating card', (
     tester,
@@ -249,7 +328,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
     expect(find.byKey(const Key('agents-workspace-sidebar')), findsOneWidget);
     expect(
-      find.byKey(const Key('agents-workspace-floating-card')),
+      find.byKey(const Key('agents-workspace-detail-pane')),
       findsOneWidget,
     );
     expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);

@@ -61,6 +61,10 @@ pub struct TargetCandidate {
     pub binary_path: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history_roots: Vec<String>,
+    #[serde(default = "local_location")]
+    pub location: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_connection: Option<Value>,
     pub manual: bool,
     pub adapter_status: String,
     pub adapter_capabilities: AdapterCapabilities,
@@ -71,8 +75,8 @@ pub struct TargetCandidate {
     pub model_catalog: Option<Value>,
 }
 
-pub(super) fn target_supports_skill_install(target: &str) -> bool {
-    matches!(target, "codex" | "claude-code")
+fn local_location() -> String {
+    "local".to_string()
 }
 
 pub(super) fn candidate_runtime_is_available(
@@ -238,6 +242,46 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
             binary_names: &["pi"],
             process_names: &["pi.exe", "pi"],
         },
+        TargetDef {
+            id: "lico-agent",
+            label: "Lico Agent - CLI",
+            kind: "cli",
+            config_hint: "LicoUp first-party Agent sessions",
+            binary_names: &["lico-agent"],
+            process_names: &["lico-agent.exe", "lico-agent"],
+        },
+        TargetDef {
+            id: "workbuddy",
+            label: "WorkBuddy - Desktop",
+            kind: "desktop-agent",
+            config_hint: "WorkBuddy desktop application data",
+            binary_names: &[],
+            process_names: &[],
+        },
+        TargetDef {
+            id: "codebuddy",
+            label: "CodeBuddy - CLI",
+            kind: "cli",
+            config_hint: "CodeBuddy CLI configuration and sessions",
+            binary_names: &["codebuddy"],
+            process_names: &["codebuddy.exe", "codebuddy"],
+        },
+        TargetDef {
+            id: "trae-work",
+            label: "Trae Work - Desktop",
+            kind: "desktop-agent",
+            config_hint: "Trae Work desktop application data",
+            binary_names: &[],
+            process_names: &[],
+        },
+        TargetDef {
+            id: "trae-agent",
+            label: "Trae Agent - CLI",
+            kind: "cli",
+            config_hint: "Trae Agent CLI configuration and trajectories",
+            binary_names: &["trae-cli"],
+            process_names: &["trae-cli"],
+        },
     ]
 }
 
@@ -257,9 +301,13 @@ pub(super) fn normalize_target(value: &str) -> String {
         "github-copilot" => "copilot".to_string(),
         "kimi_code" | "kimicode" => "kimi-code".to_string(),
         "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => "pi".to_string(),
+        "lico" | "lico_agent" => "lico-agent".to_string(),
         "open-code" | "open_code" => "opencode".to_string(),
         "openclaw-kate" | "openclaw_kate" => "openclaw".to_string(),
         "hermes-agent" | "hermes_serena" | "hermes-serena" => "hermes".to_string(),
+        "workbuddy-cli" | "workbuddy_cli" => "codebuddy".to_string(),
+        "trae_work" | "traework" => "trae-work".to_string(),
+        "trae-cli" | "trae_cli" | "trae_agent" => "trae-agent".to_string(),
         other => other.to_string(),
     }
 }
@@ -276,13 +324,10 @@ mod tests {
         assert_eq!(ids.len(), defs.len());
         assert_eq!(normalize_target("vscode"), "code");
         assert_eq!(normalize_target("kimi_code"), "kimi-code");
+        assert_eq!(normalize_target("workbuddy-cli"), "codebuddy");
+        assert_eq!(normalize_target("trae-cli"), "trae-agent");
         assert_eq!(target_def("claude").unwrap().id, "claude-code");
-    }
-
-    #[test]
-    fn skill_install_is_limited_to_supported_local_agents() {
-        assert!(target_supports_skill_install("claude-code"));
-        assert!(target_supports_skill_install("codex"));
-        assert!(!target_supports_skill_install("copilot"));
+        assert_eq!(target_def("workbuddy").unwrap().id, "workbuddy");
+        assert_eq!(target_def("trae-work").unwrap().id, "trae-work");
     }
 }

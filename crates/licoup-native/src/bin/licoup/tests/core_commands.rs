@@ -1,11 +1,12 @@
 use super::support::*;
-use super::*;
+use serde_json::json;
+use std::fs;
 
 #[test]
-fn cli_dispatches_state_targets_and_local_usage() {
+fn cli_dispatches_state_targets_and_mobile_relay() {
     let dir = temp_cli_dir("dispatch");
     {
-        let _guard = cli_env_lock().lock().unwrap();
+        let _guard = cli_env_guard();
         let _portable = set_portable_dir(&dir);
         let set_state = execute_cli(vec![
             "state".into(),
@@ -44,76 +45,6 @@ fn cli_dispatches_state_targets_and_local_usage() {
             "opencode"
         );
 
-        let added = execute_cli(vec![
-            "targets".into(),
-            "add".into(),
-            "--target".into(),
-            "opencode".into(),
-        ])
-        .unwrap();
-        assert_eq!(json_payload(&added)["status"], "accepted");
-
-        let native_history_root = dir.join("native-codex-history");
-        fs::create_dir_all(&native_history_root).unwrap();
-        fs::write(
-            native_history_root.join("history.jsonl"),
-            [
-                r#"{"role":"user","content":"hello from native codex history"}"#,
-                r#"{"role":"assistant","content":"native history response"}"#,
-            ]
-            .join("\n"),
-        )
-        .unwrap();
-
-        let conversations = execute_cli(vec![
-            "conversations".into(),
-            "list".into(),
-            "--agent".into(),
-            "codex".into(),
-            "--root".into(),
-            native_history_root.display().to_string(),
-        ])
-        .unwrap();
-        assert_eq!(
-            json_payload(&conversations)["sessions"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-        assert_eq!(json_payload(&conversations)["mode"], "native-history");
-
-        let usage = execute_cli(vec![
-            "agent-usage".into(),
-            "scan".into(),
-            "--agent".into(),
-            "codex".into(),
-            "--root".into(),
-            native_history_root.display().to_string(),
-            "--state-root".into(),
-            dir.join("client-state").display().to_string(),
-        ])
-        .unwrap();
-        assert_eq!(json_payload(&usage)["mode"], "local-token-usage");
-        assert_eq!(json_payload(&usage)["summary"]["agentCount"], 1);
-
-        let usage_report = execute_cli(vec![
-            "agent-usage".into(),
-            "report".into(),
-            "--agent".into(),
-            "codex".into(),
-            "--state-root".into(),
-            dir.join("client-state").display().to_string(),
-        ])
-        .unwrap();
-        assert_eq!(
-            json_payload(&usage_report)["reports"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-
         let secret_store: std::sync::Arc<
             dyn licoup_native::platform::secure_mesh_secret_store::SecureMeshSecretStore,
         > = std::sync::Arc::new(
@@ -128,21 +59,35 @@ fn cli_dispatches_state_targets_and_local_usage() {
                         "relay".into(),
                         "config".into(),
                         "set".into(),
-                        "--use-custom-gateway".into(),
-                        "true".into(),
-                        "--custom-gateway-url".into(),
+                        "--station-base-url".into(),
                         "https://relay.example.test/".into(),
                     ])
                 },
             )
             .unwrap();
         assert_eq!(
-            json_payload(&relay_config)["config"]["useCustomGateway"],
-            true
-        );
-        assert_eq!(
-            json_payload(&relay_config)["config"]["customGatewayUrl"],
+            json_payload(&relay_config)["config"]["stationBaseUrl"],
             "https://relay.example.test"
         );
     }
+}
+
+#[test]
+fn cli_wraps_client_conversation_results_for_the_desktop_runner() {
+    let dir = temp_cli_dir("client-conversation-cli");
+    {
+        let _guard = cli_env_guard();
+        let _portable = set_portable_dir(&dir);
+        let result = execute_cli(vec![
+            "conversation".into(),
+            "execute".into(),
+            "--stdin-json".into(),
+            r#"{"action":"conversation.list","includeArchived":false}"#.into(),
+        ])
+        .unwrap();
+        let payload = json_payload(&result);
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], json!([]));
+    }
+    let _ = fs::remove_dir_all(dir);
 }

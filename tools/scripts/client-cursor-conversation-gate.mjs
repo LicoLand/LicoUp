@@ -5,7 +5,7 @@
  *
  * Authority for Cursor send enablement: one create-chat, then three sequential
  * turns on the same sessionId with a non-empty result each. Does not launch
- * the release UI or product e2e Arc.app path.
+ * the release UI or product e2e LicoUp.app path.
  *
  * Implementation authority: client-same-session-conversation-gate.mjs
  */

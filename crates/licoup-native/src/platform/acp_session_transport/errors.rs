@@ -1,7 +1,10 @@
 use crate::core::acp;
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailure {
+pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);
+
+#[derive(Clone, Debug)]
+pub(in crate::platform) struct ProtocolFailurePayload {
     pub(in crate::platform) code: &'static str,
     pub(in crate::platform) message: &'static str,
     pub(in crate::platform) stage: &'static str,
@@ -12,13 +15,31 @@ pub(in crate::platform) struct ProtocolFailure {
     pub(in crate::platform) turn_status: Option<String>,
 }
 
+impl std::ops::Deref for ProtocolFailure {
+    type Target = ProtocolFailurePayload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ProtocolFailure {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl ProtocolFailure {
+    pub(in crate::platform) fn into_payload(self) -> ProtocolFailurePayload {
+        *self.0
+    }
+
     pub(in crate::platform) fn new(
         code: &'static str,
         message: &'static str,
         stage: &'static str,
     ) -> Self {
-        Self {
+        Self(Box::new(ProtocolFailurePayload {
             code,
             message,
             stage,
@@ -27,7 +48,7 @@ impl ProtocolFailure {
             session_id: None,
             turn_id: None,
             turn_status: None,
-        }
+        }))
     }
 
     pub(in crate::platform) fn user_interaction(
@@ -35,7 +56,7 @@ impl ProtocolFailure {
         session_id: Option<&str>,
         turn_id: Option<&str>,
     ) -> Self {
-        Self {
+        Self(Box::new(ProtocolFailurePayload {
             code: "hermes_user_interaction_required",
             message: "Hermes Agent requires explicit user interaction before this turn can continue.",
             stage: "server/request",
@@ -44,7 +65,7 @@ impl ProtocolFailure {
             session_id: session_id.map(str::to_string),
             turn_id: turn_id.map(str::to_string),
             turn_status: None,
-        }
+        }))
     }
 
     pub(in crate::platform) fn from_acp(error: acp::AcpError, stage: &'static str) -> Self {

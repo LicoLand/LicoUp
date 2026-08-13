@@ -22,6 +22,9 @@ reports/
 tmp/
 .tmp/
 apps/desktop/test/layout/production_baseline/failures/
+# Golden comparison residue. Flutter writes these on any pixel mismatch, and
+# the layout visual-manifest verifier rejects them as generated residue.
+apps/desktop/test/**/failures/
 
 # Node / Rust / Flutter
 node_modules/
@@ -61,16 +64,48 @@ apps/desktop/windows/flutter/ephemeral/
 *.tar.xz
 *.rar
 
+# Sensitive certificate, key, and provisioning material. Defense in depth only;
+# the local Git gates and the push Ruleset remain the effective publication
+# guards, and public-key-only suffixes (.pub, .asc, .gpg) stay trackable.
+*.cer
+*.cert
+*.csr
+*.certsigningrequest
+*.certSigningRequest
+*.crt
+*.der
+*.pem
+*.p7b
+*.p7c
+*.p12
+*.pfx
+*.pkcs12
+*.key
+*.p8
+*.pk8
+*.pkcs8
+*.jks
+*.keystore
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+*.provisioningprofile
+
 # Local browser/test artifacts
 .playwright-cli/
 test-results/
 
 # Local planning, agent, and one-off work
 /docs/plans/
+/apps/desktop/docs/plans/
+/design-qa.md
 /docs/reports/
 /.agents/
 /.claude/
 /.codex/
+/.cursor/
+/.kilo/
 /skills/
 /scripts/local/
 /tools/local/
@@ -83,3 +118,4 @@ test-results/
 # Agent entrypoints are retired; agent guidance lives in lico-dev skills.
 AGENTS.md
 AGENT.md
+CLAUDE.md

@@ -2,10 +2,18 @@ use anyhow::{Context, Result, anyhow, ensure};
 use rusqlite::params;
 
 use super::super::{key_ratchet::SecureMeshPairwiseSession, support::require_text};
+use super::secret_snapshot::PendingPairwiseSnapshot;
 use super::{
     capability_proof::{PreparedCapabilityProofPair, consume_prepared_capability_proof_pair},
+    pending_delivery::insert_pending_delivery,
+    received_payload::{
+        PreparedReceivedPayload, cleanup_prepared_received_payload, insert_received_payload,
+    },
     restoration_validation::{replay_window_preserved, skipped_keys_not_reintroduced},
-    store_model::{SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore},
+    store_model::{
+        SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore,
+        SecureMeshPairwisePendingDelivery, SecureMeshPairwiseReceivedPayload,
+    },
 };
 use crate::core::secure_mesh_capability_proof::SignedCapabilityProof;
 use crate::core::secure_mesh_secret_store::SecretStoreAuthorizationSession;
@@ -21,6 +29,8 @@ impl SecureMeshPairwiseDurableStore {
             previous,
             session,
             updated_at.into(),
+            None,
+            None,
             None,
             None,
         )
@@ -39,6 +49,46 @@ impl SecureMeshPairwiseDurableStore {
             updated_at.into(),
             Some(secret_store_session),
             None,
+            None,
+            None,
+        )
+    }
+
+    pub fn commit_session_with_authorized_session_and_pending_delivery(
+        &mut self,
+        previous: &SecureMeshPairwiseDurableRecord,
+        session: &SecureMeshPairwiseSession,
+        pending_delivery: &SecureMeshPairwisePendingDelivery,
+        updated_at: impl Into<String>,
+        secret_store_session: &SecretStoreAuthorizationSession,
+    ) -> Result<SecureMeshPairwiseDurableRecord> {
+        self.commit_session_with_optional_authorization(
+            previous,
+            session,
+            updated_at.into(),
+            Some(secret_store_session),
+            None,
+            Some(pending_delivery),
+            None,
+        )
+    }
+
+    pub fn commit_session_with_authorized_session_and_received_payload(
+        &mut self,
+        previous: &SecureMeshPairwiseDurableRecord,
+        session: &SecureMeshPairwiseSession,
+        received_payload: &SecureMeshPairwiseReceivedPayload,
+        updated_at: impl Into<String>,
+        secret_store_session: &SecretStoreAuthorizationSession,
+    ) -> Result<SecureMeshPairwiseDurableRecord> {
+        self.commit_session_with_optional_authorization(
+            previous,
+            session,
+            updated_at.into(),
+            Some(secret_store_session),
+            None,
+            None,
+            Some(received_payload),
         )
     }
 
@@ -58,6 +108,8 @@ impl SecureMeshPairwiseDurableStore {
             updated_at.into(),
             Some(secret_store_session),
             Some((first_proof, second_proof, now_unix_seconds)),
+            None,
+            None,
         )
     }
 
@@ -68,6 +120,8 @@ impl SecureMeshPairwiseDurableStore {
         updated_at: String,
         secret_store_session: Option<&SecretStoreAuthorizationSession>,
         capability_proofs: Option<(&SignedCapabilityProof, &SignedCapabilityProof, i64)>,
+        pending_delivery: Option<&SecureMeshPairwisePendingDelivery>,
+        received_payload: Option<&SecureMeshPairwiseReceivedPayload>,
     ) -> Result<SecureMeshPairwiseDurableRecord> {
         ensure!(
             previous.session_id == session.session_id
@@ -136,6 +190,28 @@ impl SecureMeshPairwiseDurableStore {
             previous.state_version + 1,
             secret_store_session,
         )?;
+        let prepared_received = match received_payload {
+            Some(received_payload) => {
+                let authorization = secret_store_session.ok_or_else(|| {
+                    anyhow!("secure mesh received payload commit requires authorization")
+                })?;
+                match self.prepare_received_payload(
+                    &session.session_id,
+                    &session.local_endpoint_id,
+                    received_payload,
+                    authorization,
+                ) {
+                    Ok(prepared) => Some(prepared),
+                    Err(error) => {
+                        self.cleanup_pending_snapshot(&pending).context(
+                            "secure mesh received payload preparation snapshot cleanup is incomplete",
+                        )?;
+                        return Err(error);
+                    }
+                }
+            }
+            None => None,
+        };
         let tx = self
             .connection
             .transaction()
@@ -171,14 +247,14 @@ impl SecureMeshPairwiseDurableStore {
             Ok(changed) => changed,
             Err(error) => {
                 drop(tx);
-                self.cleanup_pending_snapshot(&pending)
+                self.cleanup_failed_commit_material(&pending, prepared_received.as_ref())
                     .context("secure mesh pairwise failed update snapshot cleanup is incomplete")?;
                 return Err(error).context("secure mesh pairwise durable update failed");
             }
         };
         if changed != 1 {
             drop(tx);
-            self.cleanup_pending_snapshot(&pending)
+            self.cleanup_failed_commit_material(&pending, prepared_received.as_ref())
                 .context("secure mesh pairwise rejected update snapshot cleanup is incomplete")?;
             return Err(anyhow!(
                 "secure mesh pairwise durable compare-and-swap failed"
@@ -187,14 +263,44 @@ impl SecureMeshPairwiseDurableStore {
         if let Some(capability_proofs) = &capability_proofs {
             if let Err(error) = consume_prepared_capability_proof_pair(&tx, capability_proofs) {
                 drop(tx);
-                self.cleanup_pending_snapshot(&pending).context(
-                    "secure mesh pairwise failed proof update snapshot cleanup is incomplete",
+                self.cleanup_failed_commit_material(&pending, prepared_received.as_ref())
+                    .context(
+                        "secure mesh pairwise failed proof update snapshot cleanup is incomplete",
+                    )?;
+                return Err(error);
+            }
+        }
+        if let Some(pending_delivery) = pending_delivery {
+            if let Err(error) = insert_pending_delivery(
+                &tx,
+                &session.session_id,
+                &session.local_endpoint_id,
+                pending_delivery,
+            ) {
+                drop(tx);
+                self.cleanup_failed_commit_material(&pending, prepared_received.as_ref()).context(
+                    "secure mesh pairwise failed delivery update snapshot cleanup is incomplete",
                 )?;
                 return Err(error);
             }
         }
+        if let Some(prepared_received) = &prepared_received
+            && let Err(error) = insert_received_payload(
+                &tx,
+                &session.session_id,
+                &session.local_endpoint_id,
+                prepared_received,
+            )
+        {
+            drop(tx);
+            self.cleanup_failed_commit_material(&pending, Some(prepared_received))
+                .context(
+                    "secure mesh pairwise failed received payload snapshot cleanup is incomplete",
+                )?;
+            return Err(error);
+        }
         if let Err(error) = tx.commit() {
-            self.cleanup_pending_snapshot(&pending)
+            self.cleanup_failed_commit_material(&pending, prepared_received.as_ref())
                 .context("secure mesh pairwise failed commit snapshot cleanup is incomplete")?;
             return Err(error).context("secure mesh pairwise durable commit failed");
         }
@@ -207,5 +313,17 @@ impl SecureMeshPairwiseDurableStore {
         }
         self.read_record(&session.session_id, &session.local_endpoint_id)?
             .ok_or_else(|| anyhow!("secure mesh pairwise durable record disappeared after commit"))
+    }
+
+    fn cleanup_failed_commit_material(
+        &self,
+        pending: &PendingPairwiseSnapshot,
+        received: Option<&PreparedReceivedPayload>,
+    ) -> Result<()> {
+        let received_cleanup = received
+            .map(|received| cleanup_prepared_received_payload(self, received))
+            .unwrap_or(Ok(()));
+        let snapshot_cleanup = self.cleanup_pending_snapshot(pending);
+        received_cleanup.and(snapshot_cleanup)
     }
 }

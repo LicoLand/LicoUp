@@ -6,7 +6,7 @@
  * Authority for send enablement on supported agents: one session create, then
  * three sequential turns on the same sessionId with a non-empty result each.
  * Writes CL-06 evidence and runs the readiness reducer. Does not launch the
- * product e2e Arc.app path.
+ * product e2e LicoUp.app path.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -176,11 +176,13 @@ function writeGateEvidence({ agentId, gate, aggregate, context }) {
     CONDITIONAL_CHECK_IDS.map((id) => [id, conditionalRaw[id]]),
   );
   const pass = (ready) => (ready ? "pass" : "fail");
+  const streamingSatisfied = driver.capabilityMatrix.streaming !== true
+    || aggregate.streamingProven === true;
   const coreChecks = {
     "P-01": pass(aggregate.officialNativeLane === true),
     "P-02": pass(aggregate.realSessionIds === true),
     "P-03": pass(aggregate.sameSessionSequential === true),
-    "P-04": pass(aggregate.finalResults === true && aggregate.streamingProven === true),
+    "P-04": pass(aggregate.finalResults === true && streamingSatisfied),
     "P-05": pass(aggregate.cwdParity === true),
     "P-06": pass(aggregate.historyReadback === true),
     "P-07": pass(aggregate.errorFailClosed === true && aggregate.permissionFailClosed === true),
@@ -380,6 +382,8 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
           sessionId: nextSessionId,
           output,
           boundedOutput: sidecar.boundedOutput === true,
+          streamingSeen: sidecar.streamingSeen === true,
+          structuredSeen: sidecar.structuredSeen === true,
         };
       } else {
         result = await nativeTurn(context, sessionId, prompt);
@@ -395,7 +399,8 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
         turn,
         outputBytes: Buffer.byteLength(result.output),
         boundedOutput: result.boundedOutput === true,
-        streamingSeen: result.output.length > 0,
+        streamingSeen: result.streamingSeen === true,
+        structuredSeen: result.structuredSeen === true,
       });
     }
 
@@ -426,7 +431,7 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
       sameSessionSequential: turnResults.length === TURN_COUNT,
       finalResults: turnResults.every((row) => row.outputBytes > 0),
       streamingProven: turnResults.every((row) => row.streamingSeen),
-      structuredProven: turnResults.every((row) => row.streamingSeen),
+      structuredProven: turnResults.every((row) => row.structuredSeen),
       cwdParity: true,
       historyReadback: true,
       errorFailClosed: true,

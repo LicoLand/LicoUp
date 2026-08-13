@@ -77,9 +77,9 @@ function normalizeCommandDescriptor(value, label) {
 function normalizeDiagnosticRefs(value) {
   const diagnosticConfig = asRecord(value);
   return {
-    relayMock: normalizeSafeRef(
-      diagnosticConfig.relayMock,
-      "relay Mock diagnostic report ref"
+    stationAcceptance: normalizeSafeRef(
+      diagnosticConfig.stationAcceptance,
+      "Lico Arc BadTower diagnostic acceptance report ref"
     ),
     physicalEvidenceManifest: normalizeSafeRef(
       diagnosticConfig.physicalEvidenceManifest,

@@ -3,6 +3,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayTrustVerificationCard extends StatelessWidget {
@@ -34,8 +35,8 @@ class MobileRelayTrustVerificationCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.surfaceHigh,
-        borderRadius: BorderRadius.circular(8),
+        color: colors.surfaceLow,
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(color: statusColor),
       ),
       child: Column(
@@ -116,7 +117,7 @@ class MobileRelayTrustVerificationCard extends StatelessWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(LicoRadius.chip),
                 ),
                 child: QrImageView(
                   data: presentation.qrPayload,

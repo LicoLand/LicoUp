@@ -4,6 +4,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.da
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_segmented_control.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentUsageChartTooltip extends StatelessWidget {
@@ -11,10 +12,12 @@ final class AgentUsageChartTooltip extends StatelessWidget {
     super.key,
     required this.timeline,
     required this.snapshot,
+    this.semanticLabel,
   });
 
   final AgentUsageTimelineData timeline;
   final AgentUsageSnapshot snapshot;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -24,85 +27,111 @@ final class AgentUsageChartTooltip extends StatelessWidget {
       for (final series in timeline.series)
         if ((snapshot.values[series.label] ?? 0) > 0) series,
     ];
+    final borderRadius = BorderRadius.circular(14);
+    final neutralGlassTint = colors.isDark
+        ? const Color(0xFF17191C)
+        : const Color(0xFFE5E7EB);
     return Semantics(
       container: true,
-      label: strings.dailyTokenUsage(agentUsageDateKey(snapshot.time)),
-      child: Material(
-        key: const ValueKey('usage-wave-tooltip'),
-        color: colors.surfaceHigh,
-        elevation: 10,
-        shadowColor: Colors.black.withValues(alpha: 0.34),
-        borderRadius: BorderRadius.circular(14),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      agentUsageDateKey(snapshot.time),
-                      style: TextStyle(
-                        color: colors.text,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    formatAgentUsageTooltipNumber(snapshot.total),
-                    style: TextStyle(
-                      color: colors.text,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
+      label:
+          semanticLabel ??
+          strings.dailyTokenUsage(agentUsageDateKey(snapshot.time)),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: colors.isDark ? 0.42 : 0.18,
               ),
-              const SizedBox(height: 9),
-              for (final series in visibleSeries) ...[
-                Row(
-                  key: ValueKey('usage-wave-tooltip-row-${series.label}'),
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: agentUsageSeriesColor(colors, series.label),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        series.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+              blurRadius: 28,
+              spreadRadius: -4,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: AppleGlassSurface(
+          key: const ValueKey('usage-wave-tooltip'),
+          borderRadius: borderRadius,
+          blurSigma: 24,
+          fillAlpha: colors.isDark ? 12 : 18,
+          borderAlpha: colors.isDark ? 54 : 84,
+          child: ColoredBox(
+            key: const ValueKey('usage-wave-tooltip-glass-fill'),
+            color: neutralGlassTint.withValues(
+              alpha: colors.isDark ? 0.72 : 0.84,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          agentUsageDateKey(snapshot.time),
+                          style: TextStyle(
+                            color: colors.text,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      formatAgentUsageTooltipNumber(
-                        snapshot.values[series.label] ?? 0,
+                      Text(
+                        formatAgentUsageTooltipNumber(snapshot.total),
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                      style: TextStyle(
-                        color: colors.text,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 9),
+                  for (final series in visibleSeries) ...[
+                    Row(
+                      key: ValueKey('usage-wave-tooltip-row-${series.label}'),
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: agentUsageSeriesColor(colors, series.label),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            series.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.textMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          formatAgentUsageTooltipNumber(
+                            snapshot.values[series.label] ?? 0,
+                          ),
+                          style: TextStyle(
+                            color: colors.text,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
+                    if (series != visibleSeries.last) const SizedBox(height: 6),
                   ],
-                ),
-                if (series != visibleSeries.last) const SizedBox(height: 6),
-              ],
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

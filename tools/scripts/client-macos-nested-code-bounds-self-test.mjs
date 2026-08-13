@@ -37,6 +37,7 @@ function readySignature() {
     entitlementsMatch: true,
     entitlementsEmpty: true,
     entitlementsDigest: `sha256:${"a".repeat(64)}`,
+    signerFingerprint: `sha256:${"b".repeat(64)}`,
   };
 }
 
@@ -69,8 +70,26 @@ try {
     },
   });
   requireValue(positive.nestedCodePaths.length > 0 &&
+    positive.signerIdentityUniform === true &&
     positiveCalls === positive.nestedCodePaths.length + 1,
   "bounded_macos_code_inventory_positive_failed");
+
+  let identityCalls = 0;
+  let identityMismatchRejected = false;
+  try {
+    inspectBoundedMacosCodePolicy(appPath, "main", "", {
+      inspectSignature: () => {
+        identityCalls += 1;
+        return identityCalls === 1
+          ? readySignature()
+          : { ...readySignature(), signerFingerprint: `sha256:${"c".repeat(64)}` };
+      },
+    });
+  } catch {
+    identityMismatchRejected = true;
+  }
+  requireValue(identityMismatchRejected && identityCalls > 1,
+    "macos_nested_identity_mismatch_not_rejected");
 
   expectPreflightRejected(appPath, {
     limits: {
@@ -119,7 +138,7 @@ try {
 
   console.log(JSON.stringify({
     ok: true,
-    caseCount: 7,
+    caseCount: 8,
     realCodesignExecuted: false,
     privatePathsIncluded: false,
   }));

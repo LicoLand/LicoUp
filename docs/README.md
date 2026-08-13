@@ -8,10 +8,14 @@ authority.
 
 ## Project entry documents
 
-- [Product definition](../PRODUCT.md) · [产品定义](../PRODUCT.zh-CN.md)
+- [Product goal and boundary](../PRODUCT.md) · [产品目标与边界](../PRODUCT.zh-CN.md)
+- [Domain language](../CONTEXT.md)
+- [Current status](STATUS.md) · [当前状态](STATUS.zh-CN.md)
 - [Contributing](../CONTRIBUTING.md) · [参与贡献](../CONTRIBUTING.zh-CN.md)
 - [Code of Conduct](../CODE_OF_CONDUCT.md)
 - [Changelog](../CHANGELOG.md)
+- [Governed release status](releases/README.md) ·
+  [版本发布状态](releases/README.zh-CN.md)
 - [Security](../SECURITY.md) · [安全](../SECURITY.zh-CN.md)
 - [License](../LICENSE)
 
@@ -25,22 +29,41 @@ authority.
 - [Client capability boundary](functionality/CLIENT-DESKTOP.md)
 - [User guide](functionality/USER-GUIDE.md) ·
   [用户指南](functionality/USER-GUIDE.zh-CN.md)
+- [Adaptive Flywheel strategies](functionality/ADAPTIVE-FLYWHEEL.md) ·
+  [Adaptive Flywheel 策略](functionality/ADAPTIVE-FLYWHEEL.zh-CN.md)
 - [Design system](functionality/DESIGN-SYSTEM.md)
-- [Secure Client Mesh file handoff](functionality/SECURE-CLIENT-MESH-FILE-HANDOFF.md)
+- [Current retiring endpoint-protection Preview file handoff](functionality/ENDPOINT-PROTECTION-PREVIEW-FILE-HANDOFF.md)
 
 ## Protocols and artifact formats
 
 - [Protocol index](protocols/README.md)
-- [Local Bridge](protocols/local-bridge.md) ·
-  [Local Bridge 中文](protocols/local-bridge.zh-CN.md)
+- [Lico Arc candidate station adapter](protocols/licoarc-station-adapter.md) ·
+  [Lico Arc 候选通讯站 Adapter](protocols/licoarc-station-adapter.zh-CN.md)
+- [Subagent MCP](protocols/subagent-mcp.md) ·
+  [下属智能体 MCP](protocols/subagent-mcp.zh-CN.md)
+- [Conversation MCP and canonical model](protocols/lico-conversation-mcp.md) ·
+  [Conversation MCP 与统一模型](protocols/lico-conversation-mcp.zh-CN.md)
+- [Lico Agent](protocols/lico-agent.md) ·
+  [Lico Agent 中文说明](protocols/lico-agent.zh-CN.md)
+- [Gateway runtime](protocols/gateway-runtime.md) ·
+  [Gateway 运行时](protocols/gateway-runtime.zh-CN.md)
+- [LLM Gateway](protocols/llm-gateway.md) ·
+  [LLM Gateway 中文说明](protocols/llm-gateway.zh-CN.md)
 - [Semantic conversation contract](protocols/semantic-conversation.md)
 - [Client artifact verification receipts](protocols/client-artifact-verification-receipts.md)
+
+## Platforms
+
+- [macOS direct-distribution compliance](platforms/MACOS-DIRECT-DISTRIBUTION.md) ·
+  [macOS 站外直发合规清单](platforms/MACOS-DIRECT-DISTRIBUTION.zh-CN.md)
 
 ## Operations and configuration
 
 - [Runbook](RUNBOOK.md)
 - [Compatibility](COMPATIBILITY.md) ·
   [兼容性](COMPATIBILITY.zh-CN.md)
+- [Release packages](RELEASE-PACKAGES.md) ·
+  [发布包结构](RELEASE-PACKAGES.zh-CN.md)
 - [Entity configuration layout](ENTITY-CONFIG-LAYOUT.md)
 
 `COMPATIBILITY.md` and its localization are generated projections. Their source
@@ -51,6 +74,7 @@ catalogs and update commands are stated in those files.
 - [Examples](examples/README.md)
 - [CLI workflow examples](examples/CLI-WORKFLOWS.md)
 - [Architecture decision records](adrs/README.md)
+- [ADR 0001: PTY transport for CLI lanes](adrs/0001-pty-transport-for-cli-lanes.md)
 
 Plans, proposals, work reports, raw audit material, caches, and build output are
 not formal documents. They remain in ignored `docs/plans/`, `docs/reports/`,

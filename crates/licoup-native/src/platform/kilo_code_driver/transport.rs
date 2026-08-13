@@ -16,7 +16,7 @@ const SESSION_EVENT_QUEUE_CAPACITY: usize = 64;
 pub(super) fn execute_via_serve(
     endpoint: &kilo_code_serve::ServeEndpoint,
     config: &ServeTurnConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<ProtocolOutcome, ProtocolFailure> {
     let session_id = open_session(endpoint, config, deadline)?;
     let message_body = build_message_body(config);
@@ -75,15 +75,7 @@ pub(super) fn execute_via_serve(
         streamed.push(text);
     }
     let response = response?;
-    let had_streamed_chunks = !streamed.is_empty();
     let outcome = project_turn(&response, streamed, session_id, turn_id, config)?;
-    if !had_streamed_chunks {
-        turn_event_emit::emit_agent_message_chunk(
-            &outcome.session_id,
-            &outcome.turn_id,
-            &outcome.output,
-        );
-    }
     turn_event_emit::emit_agent_message_completed(
         &outcome.session_id,
         &outcome.turn_id,
@@ -95,7 +87,7 @@ pub(super) fn execute_via_serve(
 fn open_session(
     endpoint: &kilo_code_serve::ServeEndpoint,
     config: &ServeTurnConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<String, ProtocolFailure> {
     if config.is_resume() {
         let url = format!(
@@ -139,16 +131,27 @@ pub(super) fn build_message_body(config: &ServeTurnConfig) -> Value {
     let mut body = json!({
         "parts": [{"type": "text", "text": config.prompt}]
     });
-    if let Some(model) = config.model.as_deref()
-        && let Some((provider, model_id)) = model.split_once('/')
-    {
-        body["model"] = json!({
-            "providerID": provider,
-            "modelID": model_id
-        });
+    if let Some(model) = config.model.as_deref() {
+        if model == "kilo-auto/free" || model.ends_with(":free") {
+            // Kilo presents gateway routes without the outer provider prefix
+            // in local history. Its serve API still requires the canonical
+            // `kilo` provider and keeps the complete nested route as modelID.
+            body["model"] = json!({
+                "providerID": "kilo",
+                "modelID": model
+            });
+        } else if let Some((provider, model_id)) = model.split_once('/') {
+            body["model"] = json!({
+                "providerID": provider,
+                "modelID": model_id
+            });
+        }
     }
     if let Some(agent) = config.runtime_agent.as_deref() {
         body["agent"] = json!(agent);
+    }
+    if let Some(reasoning_effort) = config.reasoning_effort.as_deref() {
+        body["variant"] = json!(reasoning_effort);
     }
     body
 }
@@ -156,9 +159,9 @@ pub(super) fn build_message_body(config: &ServeTurnConfig) -> Value {
 pub(super) fn wait_post_json(
     url: &str,
     body: &Value,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<Value, ProtocolFailure> {
-    if Instant::now() >= deadline {
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
         return Err(ProtocolFailure::new(
             "acp_protocol_timeout",
             "The ACP agent timed out before the turn completed.",

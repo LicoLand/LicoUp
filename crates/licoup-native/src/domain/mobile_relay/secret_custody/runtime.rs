@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in crate::domain::mobile_relay) const CONFIG_SCHEMA_VERSION: u32 = 1;
+pub(in crate::domain::mobile_relay) const CONFIG_SCHEMA_VERSION: u32 = 2;
 pub(in crate::domain::mobile_relay) const CONFIG_MAX_BYTES: usize = 512 * 1024;
 pub(in crate::domain::mobile_relay) const CONFIG_GENERATION_FIELD: &str = "configGeneration";
 pub(in crate::domain::mobile_relay) const AUTHORITY_GENERATION_FIELD: &str =

@@ -26,37 +26,18 @@ test("approval modules retain leaf-owned inputs and exact command filters", () =
   }
 });
 
-test("Secure Client Relay modules retain focused contract, response, and HTTP closures", async () => {
-  const filters = new Map([
-    ["rust.platform.secure-client-relay.composition",
-      "platform::secure_client_relay::tests::contract::operation_registry_is_exact_and_has_no_arbitrary_path_surface"],
-    ["rust.platform.secure-client-relay.contract-request",
-      "platform::secure_client_relay::tests::contract::"],
-    ["rust.platform.secure-client-relay.response",
-      "platform::secure_client_relay::tests::response::"],
-    ["rust.platform.secure-client-relay.http",
-      "platform::secure_client_relay::tests::http::"],
-  ]);
-  const relayModules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.secure-client-relay."));
-  assert.equal(relayModules.length, filters.size);
-  for (const [id, filter] of filters) {
-    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
-    assert.equal(module.command.args.at(-1), filter);
-    assert.equal(module.inputs.includes(
-      "crates/licoup-native/src/platform/secure_client_relay_transport.rs"), false);
-    assert.equal(module.inputs.includes(
-      "crates/licoup-native/src/platform/secure_client_relay_response.rs"), false);
-  }
-
-  const preciseInputs = new Set(relayModules.flatMap((module) => module.inputs));
+test("BadTower station transport has complete focused ownership", async () => {
+  const module = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.platform.badtower-station");
+  assert.equal(module.command.args.at(-1), "platform::badtower_station::tests::");
+  const preciseInputs = new Set(module.inputs);
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/secure_client_relay",
+    "crates/licoup-native/src/platform/badtower_station",
     ".rs",
   );
   for (const relativePath of splitSources) {
     assert.equal(preciseInputs.has(relativePath), true,
-      `Secure Client Relay source must have a focused regression owner: ${relativePath}`);
+      `BadTower station source must have a focused regression owner: ${relativePath}`);
   }
 });
 
@@ -375,12 +356,13 @@ test("relay operations leaves retain precise changed-file ownership", async () =
   const sourceBundleId = "regression.relay-operations-source-bundle";
   const modulePrefix = "rust.domain.mobile-relay.relay-operations";
   const selections = new Map([
+    ["command_handlers/check_in.rs", `${modulePrefix}.command-handlers`],
     ["command_handlers/create.rs", `${modulePrefix}.command-handlers`],
+    ["command_handlers/poll.rs", `${modulePrefix}.command-handlers`],
     ["command_handlers/result.rs", `${modulePrefix}.command-handlers`],
-    ["context.rs", `${modulePrefix}.context`],
+    ["station.rs", `${modulePrefix}.station`],
     ["mailbox.rs", `${modulePrefix}.mailbox`],
     ["envelope.rs", `${modulePrefix}.envelope`],
-    ["registration.rs", `${modulePrefix}.registration`],
     ["delivery.rs", `${modulePrefix}.delivery`],
     ["status.rs", `${modulePrefix}.status`],
     ["allow_list.rs", `${modulePrefix}.allow-list`],
@@ -402,12 +384,10 @@ test("relay operations leaves retain precise changed-file ownership", async () =
     [`${modulePrefix}.scenario.local-result-authorization`,
       "domain::mobile_relay::tests::relay_operations::local_result_authorization::"],
     [`${modulePrefix}.command-handlers`,
-      "domain::mobile_relay::relay_operations::tests::command_handlers::"],
-    [`${modulePrefix}.context`, "domain::mobile_relay::relay_operations::tests::context::"],
+      "domain::mobile_relay::relay_operations::tests::"],
+    [`${modulePrefix}.station`, "domain::mobile_relay::relay_operations::tests::station::"],
     [`${modulePrefix}.mailbox`, "domain::mobile_relay::relay_operations::tests::mailbox::"],
     [`${modulePrefix}.envelope`, "domain::mobile_relay::relay_operations::tests::envelope::"],
-    [`${modulePrefix}.registration`,
-      "domain::mobile_relay::relay_operations::tests::registration::"],
     [`${modulePrefix}.delivery`, "domain::mobile_relay::relay_operations::tests::delivery::"],
     [`${modulePrefix}.status`, "domain::mobile_relay::relay_operations::tests::status::"],
     [`${modulePrefix}.allow-list`,
@@ -533,52 +513,34 @@ test("transparency modules retain leaf-owned inputs and exact command filters", 
   }
 });
 
-test("relay-envelope modules retain complete leaf ownership and exact command filters", async () => {
+test("Lico Arc relay modules retain complete leaf ownership and exact command filters", async () => {
   const filters = new Map([
-    ["rust.core.secure-mesh.relay-envelope.composition",
-      "core::secure_mesh_relay_envelope::tests::envelope"],
-    ["rust.core.secure-mesh.relay-envelope.delivery",
-      "core::secure_mesh_relay_envelope::tests::delivery"],
-    ["rust.core.secure-mesh.relay-envelope.mailbox-token",
-      "core::secure_mesh_relay_envelope::tests::mailbox_token"],
-    ["rust.core.secure-mesh.relay-envelope.schedule",
-      "core::secure_mesh_relay_envelope::tests::schedule"],
-    ["rust.core.secure-mesh.relay-envelope.envelope",
-      "core::secure_mesh_relay_envelope::tests::envelope"],
-    ["rust.core.secure-mesh.relay-envelope.codec",
-      "core::secure_mesh_relay_envelope::tests::codec"],
-    ["rust.core.secure-mesh.relay-envelope.aad",
-      "core::secure_mesh_relay_envelope::tests::aad"],
-    ["rust.core.secure-mesh.relay-envelope.header",
-      "core::secure_mesh_relay_envelope::tests::header"],
-    ["rust.core.secure-mesh.relay-envelope.header-negatives",
-      "core::secure_mesh_relay_envelope::tests::header_negatives"],
-    ["rust.core.secure-mesh.relay-envelope.support",
-      "core::secure_mesh_relay_envelope::tests"],
+    ["rust.core.licoarc-relay.contract", "core::licoarc_relay::tests::contract::"],
+    ["rust.core.licoarc-relay.carrier", "core::licoarc_relay::tests::carrier::"],
+    ["rust.core.licoarc-relay.delivery", "core::licoarc_relay::tests::delivery::"],
+    ["rust.core.licoarc-relay.header", "core::licoarc_relay::tests::header::"],
+    ["rust.core.licoarc-relay.mailbox-token", "core::licoarc_relay::tests::mailbox_token::"],
+    ["rust.core.licoarc-relay.schedule", "core::licoarc_relay::tests::schedule::"],
   ]);
   const relayModules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.core.secure-mesh.relay-envelope."));
+    candidate.id.startsWith("rust.core.licoarc-relay."));
   assert.equal(relayModules.length, filters.size);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
-    if (!id.endsWith(".composition")) {
-      assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs"), false);
-    }
   }
 
   const ownedInputs = new Set(relayModules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope",
+    "crates/licoup-native/src/core/licoarc_relay",
     ".rs",
   );
   for (const relativePath of [
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs",
+    "crates/licoup-native/src/core/licoarc_relay.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `relay-envelope source must have a precise regression owner: ${relativePath}`);
+      `Lico Arc relay source must have a precise regression owner: ${relativePath}`);
   }
 });
 

@@ -204,18 +204,36 @@ function addFailure(reasonCode, relativePath, privateDetail = "") {
 
 async function scanPublicFiles() {
   let output;
+  let deletedOutput;
   try {
-    ({ stdout: output } = await execFileAsync(
-      "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-      { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-    ));
+    [
+      { stdout: output },
+      { stdout: deletedOutput },
+    ] = await Promise.all([
+      execFileAsync(
+        "git",
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+      ),
+      execFileAsync(
+        "git",
+        ["ls-files", "--deleted", "-z"],
+        { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+      ),
+    ]);
   } catch (error) {
     addFailure("PUBLIC_FILE_LIST_FAILED", ".", error?.message);
     return;
   }
 
-  const candidates = [...new Set(output.split("\0").filter(Boolean))].sort();
+  const deletedPaths = new Set(deletedOutput.split("\0").filter(Boolean));
+  const candidates = [
+    ...new Set(
+      output.split("\0").filter((relativePath) =>
+        relativePath && !deletedPaths.has(relativePath)
+      ),
+    ),
+  ].sort();
   for (const relativePath of candidates) {
     const normalized = relativePath.split(path.sep).join("/");
     if (normalized !== relativePath || path.posix.normalize(normalized) !== normalized) {
@@ -555,15 +573,15 @@ const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"
 if (packageJson.private !== false) {
   addFailure("PACKAGE_OPEN_SOURCE_FLAG_INVALID", "package.json", String(packageJson.private));
 }
-if (packageJson.license !== "GPL-3.0-or-later") {
+if (packageJson.license !== "AGPL-3.0-or-later") {
   addFailure("PACKAGE_LICENSE_INVALID", "package.json", String(packageJson.license));
 }
 const licenseText = await readFile(path.join(repoRoot, "LICENSE"), "utf8");
-if (!licenseText.includes("GNU GENERAL PUBLIC LICENSE") ||
-  !licenseText.includes("Version 3, 29 June 2007") ||
+if (!licenseText.includes("GNU AFFERO GENERAL PUBLIC LICENSE") ||
+  !licenseText.includes("Version 3, 19 November 2007") ||
   !licenseText.includes("either version 3 of the License, or") ||
   !licenseText.includes("(at your option) any later version")) {
-  addFailure("OPEN_SOURCE_LICENSE_TEXT_INVALID", "LICENSE", "GPL-3.0-or-later text missing");
+  addFailure("OPEN_SOURCE_LICENSE_TEXT_INVALID", "LICENSE", "AGPL-3.0-or-later text missing");
 }
 
 const cargoToml = await readFile(path.join(repoRoot, "crates/licoup-native/Cargo.toml"), "utf8");
@@ -574,7 +592,7 @@ if (!cargoToml.includes("license.workspace = true")) {
   addFailure("CARGO_LICENSE_METADATA_INVALID", "crates/licoup-native/Cargo.toml", cargoToml);
 }
 const workspaceCargoToml = await readFile(path.join(repoRoot, "Cargo.toml"), "utf8");
-if (!workspaceCargoToml.includes('license = "GPL-3.0-or-later"')) {
+if (!workspaceCargoToml.includes('license = "AGPL-3.0-or-later"')) {
   addFailure("CARGO_WORKSPACE_LICENSE_INVALID", "Cargo.toml", workspaceCargoToml);
 }
 

@@ -4,11 +4,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
 
 void main() {
   final composition = BuiltInLayoutComposition();
+
+  setUpAll(() async {
+    // Keep isolated and suite runs on the same production adapter. Otherwise
+    // the first case can paint with the fallback while later cases reuse the
+    // asynchronously loaded adapter cache.
+    await AgentRenderAdapterRegistry.instance.loadAdapters();
+  });
 
   for (final definition in composition.definitions) {
     for (final bundle in definition.bundles.values) {

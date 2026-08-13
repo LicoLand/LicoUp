@@ -32,6 +32,7 @@ class AgentConversationSession {
     this.sourceMessageCount = 0,
     this.historyTruncated = false,
     this.messageTreeTruncated = false,
+    this.running = false,
     String cachedPreview = '',
   }) : _preview = cachedPreview;
 
@@ -60,6 +61,10 @@ class AgentConversationSession {
   final int sourceMessageCount;
   final bool historyTruncated;
   final bool messageTreeTruncated;
+
+  /// True only when the native adapter has current evidence that this
+  /// conversation owns an in-flight turn.
+  final bool running;
   final List<AgentConversationMessage> messages;
   final AgentSemanticConversation? semantic;
   final String _preview;
@@ -97,6 +102,74 @@ class AgentConversationSession {
     return _preview.isNotEmpty
         ? _preview
         : _agentConversationSessionPreview(messages, semantic);
+  }
+
+  AgentConversationSession withWorkingDirectory(String value) {
+    return AgentConversationSession(
+      id: id,
+      agentId: agentId,
+      title: title,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      messages: messages,
+      semantic: semantic,
+      adapterId: adapterId,
+      nativeSessionId: nativeSessionId,
+      parentSessionId: parentSessionId,
+      lineageRootId: lineageRootId,
+      sourceKind: sourceKind,
+      importMode: importMode,
+      sourceTool: sourceTool,
+      sourceClient: sourceClient,
+      sourceClientLabel: sourceClientLabel,
+      hostApp: hostApp,
+      hostAppLabel: hostAppLabel,
+      sourceLabel: sourceLabel,
+      sourcePath: sourcePath,
+      workingDirectory: value,
+      native: native,
+      readOnly: readOnly,
+      messageCount: messageCount,
+      sourceMessageCount: sourceMessageCount,
+      historyTruncated: historyTruncated,
+      messageTreeTruncated: messageTreeTruncated,
+      running: running,
+      cachedPreview: _preview,
+    );
+  }
+
+  AgentConversationSession withTitle(String value) {
+    return AgentConversationSession(
+      id: id,
+      agentId: agentId,
+      title: value,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      messages: messages,
+      semantic: semantic,
+      adapterId: adapterId,
+      nativeSessionId: nativeSessionId,
+      parentSessionId: parentSessionId,
+      lineageRootId: lineageRootId,
+      sourceKind: sourceKind,
+      importMode: importMode,
+      sourceTool: sourceTool,
+      sourceClient: sourceClient,
+      sourceClientLabel: sourceClientLabel,
+      hostApp: hostApp,
+      hostAppLabel: hostAppLabel,
+      sourceLabel: sourceLabel,
+      sourcePath: sourcePath,
+      workingDirectory: workingDirectory,
+      native: native,
+      readOnly: readOnly,
+      messageCount: messageCount,
+      sourceMessageCount: sourceMessageCount,
+      historyTruncated: historyTruncated,
+      messageTreeTruncated: messageTreeTruncated,
+      running: running,
+      cachedPreview: _preview,
+    );
   }
 
   factory AgentConversationSession.fromJson(Map<String, dynamic> json) {
@@ -178,6 +251,7 @@ class AgentConversationSession {
       messageTreeTruncated:
           parsedMessages.messageTreeTruncated ||
           json['messageTreeTruncated'] == true,
+      running: json['running'] == true,
       messages: messages,
       semantic: semantic,
       cachedPreview: preview,
@@ -211,6 +285,7 @@ class AgentConversationSession {
       if (sourceMessageCount > 0) 'sourceMessageCount': sourceMessageCount,
       if (historyTruncated) 'historyTruncated': true,
       if (messageTreeTruncated) 'messageTreeTruncated': true,
+      if (running) 'running': true,
       'messages': messages.map((message) => message.toJson()).toList(),
       if (semantic != null)
         'semantic': {

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LicoLand/.github/main/schemas/release-plan.schema.json",
+  "schemaVersion": 1,
+  "repository": "LicoLand/LicoUp",
+  "profile": "semver",
+  "currentVersion": "0.1.0-alpha",
+  "versionSources": [
+    {
+      "format": "json",
+      "path": "package.json",
+      "pointer": "/version"
+    },
+    {
+      "format": "json",
+      "path": "tools/client-version.json",
+      "pointer": "/productVersion"
+    }
+  ],
+  "changelog": "CHANGELOG.md",
+  "nextRelease": null,
+  "releases": [],
+  "components": []
+}

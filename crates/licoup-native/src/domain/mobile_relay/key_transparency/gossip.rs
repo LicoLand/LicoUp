@@ -84,8 +84,7 @@ pub(super) fn key_transparency_gossip(params: &Value) -> Result<Value> {
                 "operation": "seal",
                 "envelope": envelope,
                 "treeSize": checkpoint.tree_size,
-                "bodyRedacted": true,
-                "privateKeyMaterial": "redacted"
+                "bodyRedacted": true
             }))
         }
         "open" => {
@@ -111,8 +110,7 @@ pub(super) fn key_transparency_gossip(params: &Value) -> Result<Value> {
                 "ok": true,
                 "operation": "open",
                 "treeSize": checkpoint.tree_size,
-                "bodyRedacted": true,
-                "privateKeyMaterial": "redacted"
+                "bodyRedacted": true
             }))
         }
         _ => Err(anyhow!("secure mesh KT gossip operation is unsupported")),

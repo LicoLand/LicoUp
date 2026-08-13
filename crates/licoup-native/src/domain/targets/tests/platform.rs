@@ -1,9 +1,8 @@
-#[cfg(target_os = "windows")]
 use super::super::binaries;
 use super::super::catalog::target_def;
 use super::super::platform_paths::{
     default_config_path_for_platform, default_detection_path_for_platform,
-    default_detection_paths_for_platform, kimi_code_home_override,
+    default_detection_paths_for_platform, kilo_code_extension_roots, kimi_code_home_override,
 };
 use super::super::processes::target_uses_running_process_detection;
 use super::super::scan_targets_with_params;
@@ -216,8 +215,59 @@ fn kilo_code_detection_path_uses_extension_install_dir_when_present() {
 }
 
 #[test]
+fn kilo_code_extension_install_dir_yields_bundled_cli_binary() {
+    let home = temp_test_dir("kilo-extension-bundled-cli");
+    let app_data = home.join("Library").join("Application Support");
+    let extension = home
+        .join(".vscode")
+        .join("extensions")
+        .join("kilocode.kilo-code-7.4.15-darwin-arm64");
+    #[cfg(target_os = "windows")]
+    let binary = extension.join("bin").join("kilo.exe");
+    #[cfg(not(target_os = "windows"))]
+    let binary = extension.join("bin").join("kilo");
+    fs::create_dir_all(binary.parent().unwrap()).unwrap();
+    fs::write(&binary, "kilo").unwrap();
+
+    let detected =
+        default_detection_path_for_platform("kilo-code", "macos", &home, &app_data).unwrap();
+    assert_eq!(detected, extension);
+
+    let bundled =
+        binaries::find_kilo_code_extension_cli(&kilo_code_extension_roots(&home)).unwrap();
+    assert_eq!(bundled, binary);
+}
+
+#[test]
 fn kilo_code_uses_running_process_detection() {
     assert!(target_uses_running_process_detection("kilo-code"));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn kimi_desktop_detection_pairs_app_support_evidence_with_bundle_executable() {
+    let home = temp_test_dir("kimi-desktop-detection");
+    let app_data = home.join("Library").join("Application Support");
+    let evidence = home
+        .join("Library")
+        .join("Application Support")
+        .join("Kimi");
+    fs::create_dir_all(&evidence).unwrap();
+
+    let detected = default_detection_path_for_platform("kimi", "macos", &home, &app_data).unwrap();
+    assert_eq!(detected, evidence);
+
+    let install_root = home.join("Applications");
+    let executable = install_root
+        .join("Kimi.app")
+        .join("Contents")
+        .join("MacOS")
+        .join("Kimi");
+    fs::create_dir_all(executable.parent().unwrap()).unwrap();
+    fs::write(&executable, "kimi").unwrap();
+
+    let found = binaries::find_kimi_desktop_app_executable(&[install_root]).unwrap();
+    assert_eq!(found, executable);
 }
 
 #[test]

@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
@@ -9,7 +10,7 @@ const int maxPendingConversationTurns = 16;
 /// agent, native conversation, runtime settings, and transport choice that the
 /// user actually submitted instead of reading mutable UI selection later.
 final class ConversationQueuedTurn {
-  const ConversationQueuedTurn({
+  ConversationQueuedTurn({
     required this.submissionId,
     required this.agent,
     required this.text,
@@ -19,10 +20,19 @@ final class ConversationQueuedTurn {
     required this.model,
     required this.reasoningEffort,
     required this.throughMobileRelay,
+    this.licoProfile = '',
+    this.conversationOwnerAgentId = '',
+    this.participantLabel = '',
+    this.participantRole = '',
     this.newConversationDraftToken = '',
-    this.orchestration = false,
     this.awaitActiveSession = false,
-  });
+    this.promoteToCurrentConversationOnSuccess = false,
+    this.dailyQuotaFallbackAttemptedKeys = const <String>{},
+    this.ideHandoffComposerId = '',
+    this.allowedTools = const <String>[],
+    this.scopeKey = '',
+    List<ConversationAttachment> attachments = const <ConversationAttachment>[],
+  }) : attachments = List<ConversationAttachment>.unmodifiable(attachments);
 
   final int submissionId;
   final TargetCandidate agent;
@@ -33,9 +43,35 @@ final class ConversationQueuedTurn {
   final String model;
   final String reasoningEffort;
   final bool throughMobileRelay;
+  final String licoProfile;
+  final String conversationOwnerAgentId;
+  final String participantLabel;
+  final String participantRole;
+  final List<String> allowedTools;
   final String newConversationDraftToken;
-  final bool orchestration;
   final bool awaitActiveSession;
+
+  /// When true, a successful Lico group send persists this agent/model as
+  /// Current Conversation (Daily Conversation quota fallback).
+  final bool promoteToCurrentConversationOnSuccess;
+
+  /// `(agentId\\0model)` keys already tried for Daily Conversation quota
+  /// fallback so a chain does not retry the same capsule.
+  final Set<String> dailyQuotaFallbackAttemptedKeys;
+
+  /// IDE composer id for a one-time Cursor IDE→CLI handoff. On successful
+  /// send, the controller marks this id so the handoff is not repeated.
+  final String ideHandoffComposerId;
+
+  /// Conversation scope the user was viewing when the turn was submitted
+  /// (same identity as [AgentWorkspaceCoordinator.conversationComposerScopeKey]).
+  /// The live process card renders only while the user is viewing this scope.
+  final String scopeKey;
+
+  /// Immutable ordered snapshot of the local image attachments submitted with
+  /// this turn. Captured at submission time; a retry carries the same list and
+  /// the path is never encoded into prompt text.
+  final List<ConversationAttachment> attachments;
 
   ConversationQueuedTurn bindActiveSession(String sessionId) {
     final normalized = sessionId.trim();
@@ -50,8 +86,17 @@ final class ConversationQueuedTurn {
       model: model,
       reasoningEffort: reasoningEffort,
       throughMobileRelay: throughMobileRelay,
+      licoProfile: licoProfile,
+      conversationOwnerAgentId: conversationOwnerAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
       newConversationDraftToken: newConversationDraftToken,
-      orchestration: orchestration,
+      promoteToCurrentConversationOnSuccess:
+          promoteToCurrentConversationOnSuccess,
+      dailyQuotaFallbackAttemptedKeys: dailyQuotaFallbackAttemptedKeys,
+      ideHandoffComposerId: ideHandoffComposerId,
+      scopeKey: scopeKey,
+      attachments: attachments,
     );
   }
 }

@@ -31,6 +31,10 @@ abstract final class LayoutStateChannels {
     'settings-section',
     LayoutStateValueKind.tab,
   );
+  static const settingsIndex = LayoutStateChannel(
+    'settings-index',
+    LayoutStateValueKind.paneExtent,
+  );
 }
 
 /// A bounded presentation-state address declared by a profile manifest.

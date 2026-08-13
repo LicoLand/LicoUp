@@ -33,7 +33,7 @@ final class StdioRpcOperationQueue {
 
   Stream<T> serializeStream<T>({
     required Stream<T> Function() operation,
-    required Duration timeout,
+    Duration? timeout,
     required Future<void> Function() onTimeout,
   }) {
     if (_closing) {
@@ -42,7 +42,11 @@ final class StdioRpcOperationQueue {
     final controller = StreamController<T>();
     _enqueue(() async {
       try {
-        await for (final event in operation().timeout(timeout)) {
+        final events = operation();
+        // A null timeout keeps the operation unbounded (agent turns run until
+        // they complete, however long that takes).
+        await for (final event
+            in timeout == null ? events : events.timeout(timeout)) {
           controller.add(event);
         }
       } on TimeoutException catch (_, stackTrace) {
@@ -69,6 +73,27 @@ final class StdioRpcOperationQueue {
       completer.complete();
     });
     return _closeFuture = completer.future;
+  }
+
+  /// Stops accepting work and releases the observer transport immediately.
+  /// The native conversation host remains responsible for active Agent work.
+  Future<void> detach(Future<void> Function() detachTransport) {
+    final existing = _closeFuture;
+    if (existing != null) return existing;
+    _closing = true;
+    final completer = Completer<void>();
+    _closeFuture = completer.future;
+    Future<void> releaseTransport() async {
+      try {
+        await detachTransport();
+      } on Object catch (_) {
+      } finally {
+        completer.complete();
+      }
+    }
+
+    unawaited(releaseTransport());
+    return completer.future;
   }
 
   void _enqueue(RpcOp<void> run, [RpcPriorityToken? priority]) {

@@ -31,7 +31,7 @@ void main() {
       expect(
         await controller.planLocalDeployment(
           selectedFeatureIds: ['unknown'],
-          destination: 'test-data/licomesh-local',
+          destination: '/test-data/licomesh-local',
         ),
         isFalse,
       );
@@ -40,7 +40,7 @@ void main() {
       expect(
         await controller.planLocalDeployment(
           selectedFeatureIds: ['server-core'],
-          destination: 'test-data/licomesh-local',
+          destination: '/test-data/licomesh-local',
         ),
         isTrue,
       );
@@ -53,7 +53,7 @@ void main() {
       expect(controller.localDeploymentPlan, isNull);
       expect(
         controller.lastApplyResult?.plan.destination,
-        'test-data/licomesh-local',
+        '/test-data/licomesh-local',
       );
     },
   );
@@ -69,7 +69,7 @@ void main() {
       controller.replaceCatalog(_catalog);
       await controller.planLocalDeployment(
         selectedFeatureIds: const ['server-core'],
-        destination: 'test-data/licomesh-local',
+        destination: '/test-data/licomesh-local',
       );
       await controller.applyLocalDeployment(confirmed: true);
       expect(controller.localServers.single.isStopped, isTrue);
@@ -119,11 +119,11 @@ void main() {
           agentDestinations: const [
             OptionalCollaborationAgentDestination(
               agentId: 'cursor',
-              installDestination: 'test-data/cursor-mcp',
+              installDestination: '/test-data/cursor-mcp',
             ),
             OptionalCollaborationAgentDestination(
               agentId: 'hermes',
-              installDestination: 'test-data/hermes-mcp',
+              installDestination: '/test-data/hermes-mcp',
             ),
           ],
         ),
@@ -168,11 +168,11 @@ void main() {
         agentDestinations: const [
           OptionalCollaborationAgentDestination(
             agentId: 'cursor',
-            installDestination: 'test-data/cursor',
+            installDestination: '/test-data/cursor',
           ),
           OptionalCollaborationAgentDestination(
             agentId: 'hermes',
-            installDestination: 'test-data/cursor/hermes',
+            installDestination: '/test-data/cursor/hermes',
           ),
         ],
       ),
@@ -555,7 +555,7 @@ Map<String, dynamic> _localServerJson(
 OptionalLocalServerState _localServerState({
   String status = 'assembled-awaiting-deployment',
 }) => OptionalLocalServerState.fromJson(
-  _localServerJson('test-data/licomesh-local', const [
+  _localServerJson('/test-data/licomesh-local', const [
     'server-core',
   ], status: status),
 );
@@ -568,7 +568,7 @@ Map<String, dynamic> _registrationPlan(
   final registrationId =
       '00000000-0000-4000-8000-${(index + 10).toString().padLeft(12, '0')}';
   final registrationDestination =
-      'test-data/licoup-private/${destination.agentId}/$registrationId.json';
+      '/test-data/licoup-private/${destination.agentId}/$registrationId.json';
   return {
     'agentId': destination.agentId,
     'registrationId': registrationId,

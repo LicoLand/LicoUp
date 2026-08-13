@@ -5,16 +5,36 @@ class MainFlutterWindow: NSWindow {
   /// Must stay in sync with `AppleControlMetrics.topBarHeight` in Flutter.
   private let flutterTopBarHeight: CGFloat = 48
 
+  /// Clears AppKit layer backgrounds so transparent Flutter pixels reveal
+  /// the NSVisualEffectView beneath instead of the default black backing.
+  private func applyTransparentLayer(to view: NSView) {
+    view.wantsLayer = true
+    view.layer?.isOpaque = false
+    view.layer?.backgroundColor = NSColor.clear.cgColor
+  }
+
+  /// Installing the visual-effect view as `contentView` (below) makes AppKit
+  /// clear `contentViewController`, which would deallocate the
+  /// FlutterViewController and shut its engine (and the Dart VM) down. Retain
+  /// the controller for the window's lifetime so the engine keeps rendering
+  /// into its view inside the visual-effect hierarchy.
+  private var retainedFlutterViewController: FlutterViewController?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
+    self.retainedFlutterViewController = flutterViewController
     self.titleVisibility = .hidden
     self.titlebarAppearsTransparent = true
     self.styleMask.insert(.fullSizeContentView)
     self.isMovableByWindowBackground = true
+    flutterViewController.backgroundColor = .clear
     self.backgroundColor = .clear
     self.isOpaque = false
+    if #available(macOS 11.0, *) {
+      self.titlebarSeparatorStyle = .none
+    }
     self.setFrame(windowFrame, display: true)
     self.minSize = NSSize(width: 760, height: 560)
     if self.frame.width < 1040 || self.frame.height < 720 {
@@ -25,12 +45,37 @@ class MainFlutterWindow: NSWindow {
     // Concentric with the collapsed shell search circle:
     // R_window = searchButtonRadius (16) + edgeInset (8) = 24.
     let windowCornerRadius: CGFloat = 24
-    flutterViewController.view.wantsLayer = true
+
+    // True Dock-style frosted glass: a system visual-effect view behind the
+    // Flutter content, so transparent Flutter regions (the Messaging
+    // profile's window chrome) blur the desktop beneath the window while
+    // opaque regions render unchanged. `.underWindowBackground` follows the
+    // system appearance in both light and dark presets.
+    let visualEffectView = NSVisualEffectView(
+      frame: flutterViewController.view.frame
+    )
+    visualEffectView.autoresizingMask = [.width, .height]
+    visualEffectView.material = .underWindowBackground
+    visualEffectView.blendingMode = .behindWindow
+    visualEffectView.state = .active
+    applyTransparentLayer(to: visualEffectView)
+    visualEffectView.layer?.cornerRadius = windowCornerRadius
+    visualEffectView.layer?.masksToBounds = true
+    if #available(macOS 10.15, *) {
+      visualEffectView.layer?.cornerCurve = .continuous
+    }
+    flutterViewController.view.autoresizingMask = [.width, .height]
+    flutterViewController.view.frame = visualEffectView.bounds
+    applyTransparentLayer(to: flutterViewController.view)
+    // Corner shape is owned by the visual-effect view; the Flutter view stays
+    // unclipped so transparent margin gutters do not expose a black layer.
     flutterViewController.view.layer?.cornerRadius = windowCornerRadius
-    flutterViewController.view.layer?.masksToBounds = true
     if #available(macOS 10.15, *) {
       flutterViewController.view.layer?.cornerCurve = .continuous
     }
+    visualEffectView.addSubview(flutterViewController.view)
+    self.contentView = visualEffectView
+    applyTransparentLayer(to: self.contentView!)
 
     // Align now and after Flutter finishes its first layout passes. Do not hook
     // didUpdate — that fires far too often and still cannot fix a bad mapping.

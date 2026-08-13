@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SecureMeshCapabilityCard extends StatefulWidget {
@@ -45,7 +46,7 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
     final actionHint = _expanded
         ? strings.collapseSecurityCapabilities
         : strings.expandSecurityCapabilities;
-    // Neutral carbon charcoal — not brand-subtle (yellow-tinted) surfaceHigh.
+    // Neutral charcoal, deliberately not the brand-tinted surface.
     final cardFill = colors.surfaceLow;
 
     return AnimatedContainer(
@@ -55,7 +56,7 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: cardFill,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(
           color: _focused ? colors.primary : colors.line,
           width: _focused ? 2 : 1,
@@ -103,7 +104,7 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
                           children: [
                             Icon(
                               Icons.security_outlined,
-                              color: colors.primary,
+                              color: colors.textSecondary,
                             ),
                             const SizedBox(width: 10),
                             Expanded(

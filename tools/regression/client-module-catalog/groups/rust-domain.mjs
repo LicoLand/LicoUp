@@ -2,6 +2,28 @@ import { rustLayer, rustIntegrationTest, defineModule } from "../helpers.mjs";
 
 export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
+      id: "rust.domain.adaptive-flywheel",
+      kind: "rust-domain",
+      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
+      inputs: [
+        "crates/licoup-native/src/domain/adaptive_flywheel/**",
+        "crates/licoup-native/resources/adaptive_flywheel/**",
+        "crates/licoup-native/src/core/safe_archive.rs",
+        "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
+        "crates/licoup-native/src/platform/strategy_runtime/**",
+      ],
+      command: rustLayer("domain::adaptive_flywheel::"),
+    }),
+  defineModule({
+      id: "rust.domain.client-conversations",
+      kind: "rust-domain",
+      summary: "Canonical Conversation messaging, membership, indexed events, direct mentions, and migration",
+      inputs: [
+        "crates/licoup-native/src/domain/client_conversation/**",
+      ],
+      command: rustLayer("domain::client_conversation::"),
+    }),
+  defineModule({
       id: "rust.domain.mcp-adapter",
       kind: "rust-domain",
       summary: "Exact-scope MCP preview-to-authorization, one-shot execution, response validation, and projection",
@@ -426,6 +448,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/conversation/history/tests/query.rs",
       ],
       command: rustLayer("domain::conversation::history::tests::query"),
+    }),
+  defineModule({
+      id: "rust.domain.agent-conversations.catalog",
+      kind: "rust-domain",
+      summary: "Bounded browse catalog, page hydration, and native runtime facts",
+      inputs: [
+        "crates/licoup-native/src/domain/conversation/history/catalog.rs",
+        "crates/licoup-native/src/domain/conversation/history/tests/catalog.rs",
+      ],
+      command: rustLayer("domain::conversation::history::tests::catalog::"),
     }),
   defineModule({
       id: "rust.domain.agent-conversations.parser-kimi",
@@ -1295,26 +1327,25 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.command-handlers",
       kind: "rust-domain",
-      summary: "Ciphertext-only check-in poll complete create and result command handlers",
+      summary: "Ciphertext-only lease poll send receive delete and result command handlers",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers.rs",
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/check_in.rs",
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/create.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/poll_complete.rs",
+        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/poll.rs",
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/result.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/command_handlers.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::command_handlers::"),
+      command: rustLayer("domain::mobile_relay::relay_operations::tests::"),
     }),
   defineModule({
-      id: "rust.domain.mobile-relay.relay-operations.context",
+      id: "rust.domain.mobile-relay.relay-operations.station",
       kind: "rust-domain",
-      summary: "Canonical authenticated relay context and scope persistence",
+      summary: "Explicit BadTower station selection and untrusted transport-hint projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/context.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/context.rs",
+        "crates/licoup-native/src/domain/mobile_relay/relay_operations/station.rs",
+        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/station.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::context::"),
+      command: rustLayer("domain::mobile_relay::relay_operations::tests::station::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.mailbox",
@@ -1335,16 +1366,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/envelope.rs",
       ],
       command: rustLayer("domain::mobile_relay::relay_operations::tests::envelope::"),
-    }),
-  defineModule({
-      id: "rust.domain.mobile-relay.relay-operations.registration",
-      kind: "rust-domain",
-      summary: "Ed25519 challenge-bound local relay endpoint registration",
-      inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/registration.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/registration.rs",
-      ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::registration::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.delivery",
@@ -2112,6 +2133,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::targets::model_catalog::tests::antigravity::"),
     }),
   defineModule({
+      id: "rust.domain.targets.model-catalog.cursor",
+      kind: "rust-domain",
+      summary: "Bounded Cursor Agent CLI model discovery",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/cursor.rs",
+      ],
+      command: rustLayer("domain::targets::model_catalog::tests::cursor::"),
+    }),
+  defineModule({
       id: "rust.domain.targets.model-catalog.config",
       kind: "rust-domain",
       summary: "Local model settings and cache document discovery",
@@ -2198,16 +2228,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::tests::pairing_catalog::"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.install",
-      kind: "rust-domain",
-      summary: "Skill installation planning, conflict policy, apply, and visible result",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/install.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/install.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::install::"),
-    }),
-  defineModule({
       id: "rust.domain.skill-hub.package",
       kind: "rust-domain",
       summary: "Bounded skill package inspection, identifiers, file walks, and digests",
@@ -2217,26 +2237,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::package::tests"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.rollback",
-      kind: "rust-domain",
-      summary: "Skill installation snapshots, ownership checks, and rollback boundaries",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/snapshot.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/rollback.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::rollback::"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.transaction",
-      kind: "rust-domain",
-      summary: "Crash-safe skill install journal, commit, and recovery transaction",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/transaction.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/transaction.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::transaction::"),
-    }),
-  defineModule({
       id: "rust.domain.skill-hub.discovery",
       kind: "rust-domain",
       summary: "Explicit local skill root discovery",
@@ -2244,26 +2244,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/skill_hub/discovery.rs",
       ],
       command: rustLayer("domain::skill_hub::discovery::tests"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.update",
-      kind: "rust-domain",
-      summary: "Digest-bound transactional skill update preview and apply",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/update.rs",
-      ],
-      command: rustLayer("domain::skill_hub::update::tests::"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.auto-update",
-      kind: "rust-domain",
-      summary: "User-enabled due scheduling, cross-process exclusion, and bounded skill update retries",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/auto_update.rs",
-        "crates/licoup-native/src/domain/skill_hub/auto_update/**",
-        "crates/licoup-native/src/ffi/commands/skill.rs",
-      ],
-      command: rustLayer("domain::skill_hub::auto_update::tests::"),
     }),
   defineModule({
       id: "rust.domain.skill-hub.delete",
@@ -2286,13 +2266,13 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::usage::"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.source",
+      id: "rust.domain.skill-hub.usage-backfill",
       kind: "rust-domain",
-      summary: "Explicit local mirror and bounded GitHub skill source validation",
+      summary: "Incremental history backfill for skill invocation counts with watermark and digest idempotency",
       inputs: [
-        "crates/licoup-native/src/domain/skill_hub/source.rs",
+        "crates/licoup-native/tests/skill_usage_backfill_cases.rs",
       ],
-      command: rustLayer("domain::skill_hub::source::tests"),
+      command: rustIntegrationTest("skill_usage_backfill_cases"),
     }),
   defineModule({
       id: "rust.domain.optional-collaboration",

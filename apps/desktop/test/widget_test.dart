@@ -14,6 +14,7 @@ void main() {
       ClientSection.skillHub,
       ClientSection.pluginManagement,
       ClientSection.mobileRelay,
+      ClientSection.models,
       ClientSection.settings,
     ]);
   });

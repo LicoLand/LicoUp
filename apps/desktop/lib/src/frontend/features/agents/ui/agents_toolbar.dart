@@ -44,7 +44,7 @@ class AgentsToolbar extends StatelessWidget {
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: colors.info,
+                        color: colors.accent,
                       ),
                     )
                   : const Icon(Icons.refresh, size: 18),

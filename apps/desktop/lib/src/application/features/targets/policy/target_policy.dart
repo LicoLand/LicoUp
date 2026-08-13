@@ -3,6 +3,9 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 class TargetPolicy {
   const TargetPolicy._();
 
+  /// Default pin set for conversation contacts/tabs.
+  static const List<String> defaultPinnedConversationTargetIds = [];
+
   static List<String> incrementalScanIds({
     required Iterable<String> packagedIds,
     required Iterable<TargetCandidate> currentTargets,
@@ -57,15 +60,28 @@ class TargetPolicy {
     );
   }
 
+  /// Resolves the effective pin list. Until the user customizes pins, the
+  /// product defaults stay pinned.
+  static List<String> effectivePinnedConversationTargetIds({
+    required Iterable<String> persistedPinnedIds,
+    bool pinsInitialized = false,
+  }) {
+    if (!pinsInitialized) {
+      return List.unmodifiable(defaultPinnedConversationTargetIds);
+    }
+    return List.unmodifiable([
+      for (final id in persistedPinnedIds)
+        if (id.trim().isNotEmpty) id.trim(),
+    ]);
+  }
+
   static List<TargetCandidate> orderedConversationTargets({
     required Iterable<TargetCandidate> targets,
     required Iterable<String> persistedOrder,
-    required bool Function(String targetId) isOrchestrationTarget,
-    TargetCandidate? orchestrationTarget,
+    Iterable<String> pinnedIds = const [],
   }) {
     final visible = targets
         .where((target) => target.isConversationAgent)
-        .where((target) => !isOrchestrationTarget(target.target))
         .toList(growable: false);
     final order = persistedOrder.toList(growable: false);
     final byId = {for (final target in visible) target.target: target};
@@ -76,7 +92,37 @@ class TargetPolicy {
       for (final target in visible)
         if (used.add(target.target)) target,
     ];
-    return List.unmodifiable([?orchestrationTarget, ...ordered]);
+    return List.unmodifiable(
+      pinOrderedConversationTargets(targets: ordered, pinnedIds: pinnedIds),
+    );
+  }
+
+  /// Sorts [targets] with pinned ids first (in pin order), then unpinned in
+  /// their incoming relative order.
+  static List<TargetCandidate> pinOrderedConversationTargets({
+    required Iterable<TargetCandidate> targets,
+    required Iterable<String> pinnedIds,
+  }) {
+    final list = targets.toList(growable: false);
+    if (list.isEmpty) {
+      return const [];
+    }
+    final byId = <String, TargetCandidate>{
+      for (final target in list) target.target: target,
+    };
+    final pinned = <TargetCandidate>[];
+    final pinnedUsed = <String>{};
+    for (final id in pinnedIds) {
+      final target = byId[id.trim()];
+      if (target != null && pinnedUsed.add(target.target)) {
+        pinned.add(target);
+      }
+    }
+    final unpinned = [
+      for (final target in list)
+        if (!pinnedUsed.contains(target.target)) target,
+    ];
+    return List.unmodifiable([...pinned, ...unpinned]);
   }
 
   static List<String>? reorderedTabIds({
@@ -84,18 +130,15 @@ class TargetPolicy {
     required List<String> persistedOrder,
     required int oldIndex,
     required int newIndex,
-    required bool Function(String targetId) isOrchestrationTarget,
   }) {
     if (oldIndex < 0 ||
         oldIndex >= visibleTargets.length ||
         newIndex < 0 ||
-        isOrchestrationTarget(visibleTargets[oldIndex].target) ||
         oldIndex == newIndex) {
       return null;
     }
     final realTargets = visibleTargets
         .where((target) => target.isConversationAgent)
-        .where((target) => !isOrchestrationTarget(target.target))
         .toList(growable: true);
     final movedId = visibleTargets[oldIndex].target;
     final oldRealIndex = realTargets.indexWhere(

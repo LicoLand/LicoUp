@@ -73,6 +73,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -96,6 +102,12 @@
         "officialLane": true,
         "processLocalContinuation": true,
         "interruptSteer": true
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -114,10 +126,16 @@
         "cancel": false,
         "structuredEvents": true,
         "approvals": false,
-        "multimodal": false,
+        "multimodal": true,
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": true
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -140,6 +158,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": false,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -162,6 +186,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": false,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -184,6 +214,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -206,6 +242,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": false,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -228,6 +270,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": false,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -250,6 +298,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -272,6 +326,12 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": false
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     },
     {
@@ -294,6 +354,40 @@
         "usageStatus": false,
         "officialLane": true,
         "interruptSteer": true
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
+      }
+    },
+    {
+      "agentId": "lico-agent",
+      "driverId": "lico-agent-rpc",
+      "runtimeProtocol": "lico-agent-rpc-stdio-jsonl",
+      "officialNativeLaneKind": "public-local-protocol",
+      "historyReadable": true,
+      "driverMode": "conversation",
+      "blockerCodes": [],
+      "capabilityMatrix": {
+        "laneFamily": "rpc",
+        "openNew": true,
+        "exactResume": true,
+        "streaming": true,
+        "cancel": true,
+        "structuredEvents": true,
+        "approvals": false,
+        "multimodal": false,
+        "usageStatus": false,
+        "officialLane": true,
+        "interruptSteer": true
+      },
+      "lifecycleEvidence": {
+        "accepted": true,
+        "processing": true,
+        "responding": true,
+        "completed": true
       }
     }
   ]

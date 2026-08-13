@@ -1,5 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   artifactTreeSnapshot,
@@ -54,6 +60,120 @@ function plistToCanonicalJson(plistBytes, { deadlineMs } = {}) {
   return canonicalJson(decoded);
 }
 
+function signerCertificateFingerprint(codePath, { deadlineMs } = {}) {
+  const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), "licoup-codesign-certificate-"));
+  const certificatePrefix = path.join(temporaryRoot, "certificate");
+  try {
+    const extracted = run(
+      "/usr/bin/codesign",
+      ["-d", `--extract-certificates=${certificatePrefix}`, codePath],
+      { deadlineMs },
+    );
+    const leafCertificate = `${certificatePrefix}0`;
+    requireValue(
+      extracted.status === 0 && existsSync(leafCertificate),
+      "macOS signer certificate could not be extracted",
+    );
+    return sha256Buffer(stableReadFile(leafCertificate, { maxBytes: 4 * 1024 * 1024 }));
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
+export function macosSignatureEvidenceFromText(
+  detailText,
+  requirementText,
+  requirementStatus = 0,
+) {
+  const timestamp = /(?:^|\n)Timestamp=([^\r\n]+)/u.exec(detailText)?.[1]?.trim() || "";
+  const teamIdentifier = /(?:^|\n)TeamIdentifier=([A-Z0-9]{10})(?:\r?$)/mu
+    .exec(detailText)?.[1] || "";
+  return Object.freeze({
+    detailText,
+    secureTimestamp: timestamp !== "" && timestamp.toLowerCase() !== "none",
+    teamIdentifier,
+    developerIdApplication: requirementStatus === 0 &&
+      /\banchor apple generic\b/u.test(requirementText) &&
+      /certificate 1\[field\.1\.2\.840\.113635\.100\.6\.2\.6\]/u.test(requirementText) &&
+      /certificate leaf\[field\.1\.2\.840\.113635\.100\.6\.1\.13\]/u.test(requirementText),
+  });
+}
+
+function parsedSignatureEvidence(codePath, details, { deadlineMs } = {}) {
+  const requirements = run(
+    "/usr/bin/codesign",
+    ["-d", "-r-", codePath],
+    { deadlineMs },
+  );
+  const detailText = `${String(details.stdout || "")}\n${String(details.stderr || "")}`;
+  const requirementText = `${String(requirements.stdout || "")}\n${String(requirements.stderr || "")}`;
+  return macosSignatureEvidenceFromText(
+    detailText,
+    requirementText,
+    requirements.status,
+  );
+}
+
+export function macosEntitlementsInspection({
+  expected,
+  actualCanonical,
+  expectedCanonical,
+  raw,
+  parsed,
+  status,
+}) {
+  const entitlementsMatch = expected === true && actualCanonical !== "" &&
+    actualCanonical === expectedCanonical;
+  const inspectionCompleted = Number.isInteger(status) && [0, 1].includes(status);
+  const entitlementsEmpty = expected !== true &&
+    inspectionCompleted &&
+    (String(raw || "").trim() === "" || (parsed === true && actualCanonical === "{}"));
+  return Object.freeze({
+    entitlementsMatch,
+    entitlementsEmpty,
+    ready: expected === true
+      ? status === 0 && parsed === true
+      : entitlementsEmpty,
+  });
+}
+
+export function inspectMacosContainerSignature(codePath, { deadlineMs } = {}) {
+  const verification = run(
+    "/usr/bin/codesign",
+    ["--verify", "--strict", codePath],
+    { deadlineMs },
+  );
+  const details = run(
+    "/usr/bin/codesign",
+    ["-dv", "--verbose=4", codePath],
+    { deadlineMs },
+  );
+  const evidence = parsedSignatureEvidence(codePath, details, { deadlineMs });
+  const { detailText } = evidence;
+  const signatureKind = detailText.includes("Signature=adhoc")
+    ? "local-ad-hoc-codesign"
+    : /(?:^|\n)Authority=/u.test(detailText)
+      ? "local-identity-codesign"
+      : "unknown";
+  let signerFingerprint = "";
+  if (signatureKind === "local-identity-codesign" && details.status === 0) {
+    try {
+      signerFingerprint = signerCertificateFingerprint(codePath, { deadlineMs });
+    } catch {
+      signerFingerprint = "";
+    }
+  }
+  return Object.freeze({
+    verified: verification.status === 0 && details.status === 0 &&
+      signatureKind === "local-identity-codesign" && signerFingerprint !== "",
+    signatureKind,
+    signerFingerprint,
+    developerIdApplication: evidence.developerIdApplication,
+    secureTimestamp: evidence.secureTimestamp,
+    teamIdentifier: evidence.teamIdentifier,
+  });
+}
+
 export function normalizedMacosEntitlementsFile(entitlementsPath, options = {}) {
   return plistToCanonicalJson(stableReadFile(entitlementsPath, {
     maxBytes: 1024 * 1024,
@@ -75,27 +195,41 @@ export function inspectMacosCodeSignature(
     ["-dv", "--verbose=4", appPath],
     { deadlineMs },
   );
+  const evidence = parsedSignatureEvidence(appPath, details, { deadlineMs });
   const entitlementResult = run(
     "/usr/bin/codesign",
     ["-d", "--entitlements", ":-", appPath],
     { deadlineMs },
   );
-  const detailText = `${String(details.stdout || "")}\n${String(details.stderr || "")}`;
+  const { detailText } = evidence;
   const signatureKind = detailText.includes("Signature=adhoc")
     ? "local-ad-hoc-codesign"
     : /(?:^|\n)Authority=/u.test(detailText)
       ? "local-identity-codesign"
       : "unknown";
-  const hardenedRuntime = /(?:^|\n)flags=0x[0-9a-f]+\([^\n)]*runtime[^\n)]*\)/iu.test(
+  const hardenedRuntime = /\bflags=0x[0-9a-f]+\([^\n)]*runtime[^\n)]*\)/iu.test(
     detailText,
   );
+  let signerFingerprint = "";
+  if (signatureKind === "local-identity-codesign" && details.status === 0) {
+    try {
+      signerFingerprint = signerCertificateFingerprint(appPath, { deadlineMs });
+    } catch {
+      signerFingerprint = "";
+    }
+  }
   let actualEntitlements = "";
   let expectedEntitlements = "";
+  let entitlementsParsed = false;
   try {
-    actualEntitlements = plistToCanonicalJson(
-      Buffer.from(entitlementResult.stdout || "", "utf8"),
-      { deadlineMs },
-    );
+    const rawEntitlements = String(entitlementResult.stdout || "");
+    if (rawEntitlements.trim() !== "") {
+      actualEntitlements = plistToCanonicalJson(
+        Buffer.from(rawEntitlements, "utf8"),
+        { deadlineMs },
+      );
+      entitlementsParsed = true;
+    }
     expectedEntitlements = expectedEntitlementsPath
       ? normalizedMacosEntitlementsFile(expectedEntitlementsPath, { deadlineMs })
       : "";
@@ -103,20 +237,27 @@ export function inspectMacosCodeSignature(
     actualEntitlements = "";
     expectedEntitlements = "";
   }
-  const entitlementsMatch = Boolean(expectedEntitlementsPath) &&
-    actualEntitlements !== "" &&
-    actualEntitlements === expectedEntitlements;
-  const entitlementsReadable = entitlementResult.status === 0;
-  const entitlementsEmpty = entitlementsReadable &&
-    (actualEntitlements === "" || actualEntitlements === "{}");
+  const entitlementInspection = macosEntitlementsInspection({
+    expected: Boolean(expectedEntitlementsPath),
+    actualCanonical: actualEntitlements,
+    expectedCanonical: expectedEntitlements,
+    raw: entitlementResult.stdout,
+    parsed: entitlementsParsed,
+    status: entitlementResult.status,
+  });
   return Object.freeze({
     verified: verification.status === 0 && details.status === 0 &&
-      entitlementsReadable,
+      entitlementInspection.ready &&
+      (signatureKind !== "local-identity-codesign" || signerFingerprint !== ""),
     signatureKind,
+    signerFingerprint,
     hardenedRuntime,
-    entitlementsMatch,
-    entitlementsEmpty,
-    entitlementsDigest: entitlementsMatch
+    developerIdApplication: evidence.developerIdApplication,
+    secureTimestamp: evidence.secureTimestamp,
+    teamIdentifier: evidence.teamIdentifier,
+    entitlementsMatch: entitlementInspection.entitlementsMatch,
+    entitlementsEmpty: entitlementInspection.entitlementsEmpty,
+    entitlementsDigest: entitlementInspection.entitlementsMatch
       ? sha256Buffer(Buffer.from(expectedEntitlements, "utf8"))
       : "",
   });
@@ -197,12 +338,24 @@ export function inspectBoundedMacosCodePolicy(
       signature: inspectSignature(nestedPath, undefined, { deadlineMs }),
     };
   });
+  const signerIdentityUniform = signature.signatureKind === "local-identity-codesign" &&
+    /^sha256:[a-f0-9]{64}$/u.test(signature.signerFingerprint) &&
+    nestedSignatures.every(({ signature: nestedSignature }) =>
+      nestedSignature.signatureKind === "local-identity-codesign" &&
+      nestedSignature.signerFingerprint === signature.signerFingerprint);
+  if (signature.signatureKind === "local-identity-codesign") {
+    requireValue(
+      signerIdentityUniform,
+      "macOS nested code signing identity does not match the app identity",
+    );
+  }
   const after = artifactTreeSnapshot(appPath, { limits, deadlineMs });
   requireValue(before.digest === after.digest,
     "macOS app bundle changed during code signature inspection");
   return Object.freeze({
     artifactDigest: before.digest,
     signature,
+    signerIdentityUniform,
     nestedCodePaths: Object.freeze([...nestedCodePaths]),
     nestedSignatures: Object.freeze(nestedSignatures.map((entry) => Object.freeze(entry))),
     treeMetrics: before.metrics,

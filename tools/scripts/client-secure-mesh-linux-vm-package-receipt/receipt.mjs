@@ -39,16 +39,16 @@ export async function runReceipt(ctx) {
   assert(process.platform === "linux", "Linux VM package receipt requires Linux");
   assert(["arm64", "aarch64"].includes(process.arch), "Linux VM package receipt requires ARM64");
   const archive = requiredFile(options.archive, "Linux archive");
-  const distributionManifestPath = requiredFile(
-    options.distributionManifest,
-    "Linux distribution manifest"
+  const verificationManifestPath = requiredFile(
+    options.verificationManifest,
+    "Linux verification manifest"
   );
   const signaturePath = requiredFile(`${archive}.sig`, "Linux archive signature");
   const validationKeyPath = requiredFile(
-    process.env.LICO_LINUX_RELEASE_SIGNING_KEY_PATH,
+    process.env.LICO_LINUX_VERIFICATION_SIGNING_KEY_PATH,
     "Linux VM validation signing key"
   );
-  const distribution = JSON.parse(stableReadFile(distributionManifestPath, {
+  const distribution = JSON.parse(stableReadFile(verificationManifestPath, {
     maxBytes: 2 * 1024 * 1024,
   }).toString("utf8"));
   const versionManifestPath = resolveContainedExistingPath(
@@ -70,6 +70,10 @@ export async function runReceipt(ctx) {
     { maxBytes: LINUX_TAR_RESOURCE_LIMITS.maxCompressedBytes },
   );
   const archiveDigest = stableSha256File(stableArchive);
+  assert(distribution.schemaVersion === "licomesh.client-linux.verification-carrier.v1" &&
+    distribution.mode === "verification" && distribution.verificationReady === true &&
+    distribution.publicReleaseBlocked === true,
+  "Linux verification carrier policy is invalid");
   assert(distribution.targetId === "linux-glibc-arm64", "Linux distribution target is invalid");
   assert(distribution.archive === path.basename(archive), "Linux distribution archive binding is invalid");
   assert(distribution.sha256 === archiveDigest.slice("sha256:".length),
@@ -139,7 +143,7 @@ export async function runReceipt(ctx) {
 
   const flutterClient = requiredFile(path.join(installedBundle, "licoup"),
     "installed Linux desktop executable");
-  const nativeClient = requiredFile(path.join(installedBundle, "licoup"),
+  const nativeClient = requiredFile(path.join(installedBundle, "licoup-cli"),
     "installed Linux native sidecar");
   const bundleManifestPath = requiredFile(
     path.join(installedBundle, "package-metadata", "licoup", "packaging-modules.json"),

@@ -95,6 +95,13 @@ final class _AgentsPresentation implements LayoutAgentsPresentation {
   }) => KeyedSubtree(key: key, child: child);
 
   @override
+  Widget frameWorkspace(
+    BuildContext context, {
+    required Key key,
+    required Widget child,
+  }) => KeyedSubtree(key: key, child: child);
+
+  @override
   Widget frameSidebar(
     BuildContext context, {
     required Key key,
@@ -104,6 +111,9 @@ final class _AgentsPresentation implements LayoutAgentsPresentation {
 
 final class _SettingsPresentation implements LayoutSettingsPresentation {
   const _SettingsPresentation();
+
+  @override
+  bool get indexHostedByNavigation => false;
 
   @override
   EdgeInsetsGeometry get contentPadding => EdgeInsets.zero;

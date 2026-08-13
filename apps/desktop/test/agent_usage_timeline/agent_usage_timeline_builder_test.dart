@@ -118,40 +118,43 @@ void main() {
     }
   });
 
-  test('displayDayCount crops the x-axis independently of report.windowDays', () {
-    final report = AgentUsageReport(
-      schemaVersion: AgentUsageReport.currentSchemaVersion,
-      generatedAt: '2026-07-15T12:00:00Z',
-      summary: const {'totalTokens': 70},
-      agents: const [
-        AgentUsageAgentSummary(
-          agentId: 'codex',
-          label: 'Codex',
-          status: 'detected',
-          history: {
-            'totalTokens': 70,
-            'dailyUsage': [
-              {'date': '2026-07-15', 'totalTokens': 70},
-              {'date': '2026-05-01', 'totalTokens': 999},
-            ],
-          },
-          confidence: 'high',
-        ),
-      ],
-      warnings: const [],
-      window: const {'days': 90},
-    );
+  test(
+    'displayDayCount crops the x-axis independently of report.windowDays',
+    () {
+      final report = AgentUsageReport(
+        schemaVersion: AgentUsageReport.currentSchemaVersion,
+        generatedAt: '2026-07-15T12:00:00Z',
+        summary: const {'totalTokens': 70},
+        agents: const [
+          AgentUsageAgentSummary(
+            agentId: 'codex',
+            label: 'Codex',
+            status: 'detected',
+            history: {
+              'totalTokens': 70,
+              'dailyUsage': [
+                {'date': '2026-07-15', 'totalTokens': 70},
+                {'date': '2026-05-01', 'totalTokens': 999},
+              ],
+            },
+            confidence: 'high',
+          ),
+        ],
+        warnings: const [],
+        window: const {'days': 90},
+      );
 
-    final timeline = buildAgentUsageTimelineData(
-      report,
-      AgentUsageChartGrouping.agent,
-      const {'codex'},
-      anchor: DateTime(2026, 7, 15),
-      displayDayCount: 7,
-    );
-    expect(timeline.snapshots, hasLength(7));
-    expect(timeline.snapshots.first.time, DateTime(2026, 7, 9));
-    expect(timeline.snapshots.last.time, DateTime(2026, 7, 15));
-    expect(timeline.snapshots.last.total, 70);
-  });
+      final timeline = buildAgentUsageTimelineData(
+        report,
+        AgentUsageChartGrouping.agent,
+        const {'codex'},
+        anchor: DateTime(2026, 7, 15),
+        displayDayCount: 7,
+      );
+      expect(timeline.snapshots, hasLength(7));
+      expect(timeline.snapshots.first.time, DateTime(2026, 7, 9));
+      expect(timeline.snapshots.last.time, DateTime(2026, 7, 15));
+      expect(timeline.snapshots.last.total, 70);
+    },
+  );
 }

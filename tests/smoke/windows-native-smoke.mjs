@@ -160,10 +160,10 @@ async function main() {
   }
 
   await recordProgress("licoup-build", "start");
-  await runChecked(process.execPath, ["tools/scripts/cargo-client.mjs", "build", "--manifest-path", "crates/licoup-native/Cargo.toml", "--bin", "licoup"], { timeoutMs: 240000 });
+  await runChecked(process.execPath, ["tools/scripts/cargo-client.mjs", "build", "--manifest-path", "crates/licoup-native/Cargo.toml", "--bin", "licoup-cli"], { timeoutMs: 240000 });
   await recordProgress("licoup-build", "ok");
 
-  const licoClientExe = path.join(repoRoot, "build", "crates", "licoup-native", "target", "debug", "licoup.exe");
+  const licoClientExe = path.join(repoRoot, "build", "crates", "licoup-native", "target", "debug", "licoup-cli.exe");
   assert.equal(await fileExists(licoClientExe), true, `licoup.exe missing: ${licoClientExe}`);
 
   const portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-windows-native-smoke-"));

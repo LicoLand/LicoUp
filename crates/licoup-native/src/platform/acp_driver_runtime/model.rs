@@ -11,6 +11,10 @@ pub(in crate::platform) struct AcpDriverSpec {
     pub(in crate::platform) error_prefix: &'static str,
     pub(in crate::platform) runtime_protocol: &'static str,
     pub(in crate::platform) launch_args: &'static [&'static str],
+    pub(in crate::platform) launch_model_arg: Option<&'static str>,
+    pub(in crate::platform) launch_reasoning_env: Option<&'static str>,
+    pub(in crate::platform) launch_reasoning_values: &'static [&'static str],
+    pub(in crate::platform) launch_allow_all_arg: Option<&'static str>,
 }
 
 impl AcpDriverSpec {
@@ -23,6 +27,10 @@ impl AcpDriverSpec {
             error_prefix: "acp",
             runtime_protocol,
             launch_args,
+            launch_model_arg: None,
+            launch_reasoning_env: None,
+            launch_reasoning_values: &[],
+            launch_allow_all_arg: None,
         }
     }
 
@@ -33,6 +41,26 @@ impl AcpDriverSpec {
     ) -> Self {
         self.agent_id = agent_id;
         self.error_prefix = error_prefix;
+        self
+    }
+
+    pub(in crate::platform) const fn with_launch_settings(
+        mut self,
+        model_arg: &'static str,
+        reasoning_env: &'static str,
+        reasoning_values: &'static [&'static str],
+    ) -> Self {
+        self.launch_model_arg = Some(model_arg);
+        self.launch_reasoning_env = Some(reasoning_env);
+        self.launch_reasoning_values = reasoning_values;
+        self
+    }
+
+    pub(in crate::platform) const fn with_allow_all_argument(
+        mut self,
+        allow_all_arg: &'static str,
+    ) -> Self {
+        self.launch_allow_all_arg = Some(allow_all_arg);
         self
     }
 }

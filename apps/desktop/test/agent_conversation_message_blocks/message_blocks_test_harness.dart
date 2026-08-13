@@ -26,9 +26,10 @@ AgentConversationMessage messageBlockTestMessage({
   String cardTitle = '',
   bool collapsed = true,
   List<AgentConversationMessage> childMessages = const [],
+  String? id,
 }) {
   return AgentConversationMessage(
-    id: 'message-$role',
+    id: id ?? 'message-$role',
     role: role,
     text: text,
     createdAt: '2030-01-01T00:00:00Z',

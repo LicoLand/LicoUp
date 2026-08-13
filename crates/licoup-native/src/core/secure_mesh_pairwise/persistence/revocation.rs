@@ -3,7 +3,7 @@ use rusqlite::params;
 
 use super::super::support::require_text;
 use super::store_model::{SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore};
-use crate::core::secure_mesh_secret_store::SecretStoreAuthorizationRequest;
+use crate::core::secure_mesh_secret_store::{SecretStoreAuthorizationRequest, SecretStoreHandle};
 
 impl SecureMeshPairwiseDurableStore {
     pub fn mark_revoked(
@@ -20,6 +20,29 @@ impl SecureMeshPairwiseDurableStore {
             &previous_public.secret_store_namespace,
             &previous_public.secret_store_key,
         )?;
+        let mut received_statement = self.connection.prepare(
+            r#"
+            SELECT secret_store_namespace, secret_store_key
+            FROM secure_mesh_pairwise_received_payloads
+            WHERE session_id = ?1 AND local_endpoint_id = ?2
+            ORDER BY receipt_id
+            "#,
+        )?;
+        let received_secret_handles = received_statement
+            .query_map(
+                params![previous.session_id, previous.local_endpoint_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?
+            .map(|row| {
+                let (namespace, key) = row?;
+                ensure!(
+                    namespace == self.secret_store_namespace && key.starts_with("received.v1."),
+                    "secure mesh received payload revoke binding is invalid"
+                );
+                self.secret_snapshot_handle(&namespace, &key)
+            })
+            .collect::<Result<Vec<SecretStoreHandle>>>()?;
+        drop(received_statement);
         previous_public.revoked = true;
         let revoked_public_json = serde_json::to_string(&previous_public)
             .context("secure mesh pairwise revoked snapshot serialization failed")?;
@@ -51,16 +74,34 @@ impl SecureMeshPairwiseDurableStore {
             changed == 1,
             "secure mesh pairwise durable revoke compare-and-swap failed"
         );
+        tx.execute(
+            r#"
+            DELETE FROM secure_mesh_pairwise_pending_deliveries
+            WHERE session_id = ?1 AND local_endpoint_id = ?2
+            "#,
+            params![previous.session_id, previous.local_endpoint_id],
+        )?;
+        tx.execute(
+            r#"
+            DELETE FROM secure_mesh_pairwise_received_payloads
+            WHERE session_id = ?1 AND local_endpoint_id = ?2
+            "#,
+            params![previous.session_id, previous.local_endpoint_id],
+        )?;
         tx.commit()
             .context("secure mesh pairwise durable revoke commit failed")?;
         let revoke_session =
             self.secret_store
                 .begin_authorized_session(&SecretStoreAuthorizationRequest::new(
                     "Secure Mesh pairwise durable revoke cleanup",
-                    1,
+                    received_secret_handles.len().saturating_add(1),
                 ))?;
         self.delete_secret_or_enqueue_cleanup(&revoke_session, &previous_secret_handle)
             .context("secure mesh pairwise revoked secret cleanup is incomplete")?;
+        for handle in &received_secret_handles {
+            self.delete_secret_or_enqueue_cleanup(&revoke_session, handle)
+                .context("secure mesh received payload revoke cleanup is incomplete")?;
+        }
         self.read_record(&previous.session_id, &previous.local_endpoint_id)?
             .ok_or_else(|| anyhow!("secure mesh pairwise durable record disappeared after revoke"))
     }

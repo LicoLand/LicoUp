@@ -13,7 +13,7 @@ import 'layout_catalog_test_fixtures.dart';
 void main() {
   test('initialize hydrates before reaching a stable selection', () async {
     final repository = FakePreferencesRepository(
-      preferences: preferences(layout: LayoutProfileId.parse('native')),
+      preferences: preferences(layout: LayoutProfileId.parse('atlas')),
     );
     final manager = createManager(repository);
 
@@ -23,50 +23,51 @@ void main() {
 
     expect(manager.initialized, isTrue);
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('native'));
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     manager.dispose();
   });
 
-  test('preview is memory-only and cancel restores committed state', () async {
+  test('selecting the committed profile stays stable without writes', () async {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
 
-    expect(manager.beginPreview(LayoutProfileId.parse('native')), isTrue);
-    expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
-    expect(repository.layoutWriteCount, 0);
-
-    manager.cancelPreview();
+    expect(
+      await manager.selectLayout(LayoutProfileId.parse('dashboard')),
+      isTrue,
+    );
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('dashboard'));
     expect(repository.layoutWriteCount, 0);
     manager.dispose();
   });
 
-  test('confirm persists before promoting the committed profile', () async {
+  test('selection persists before promoting the committed profile', () async {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.parse('native'));
     repository.layoutWriteGate = Completer<void>();
 
-    final confirmation = manager.confirmPreview();
+    final selection = manager.selectLayout(LayoutProfileId.parse('atlas'));
     await repository.layoutWriteStarted.future;
     expect(manager.state.status, LayoutSelectionStatus.committing);
-    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('atlas'));
+    expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
     expect(
       repository.preferences.layoutProfileId,
-      LayoutProfileId.parse('workbench'),
+      LayoutProfileId.parse('dashboard'),
     );
+    // A second selection cannot start while a commit is in flight.
+    expect(await manager.selectLayout(LayoutProfileId.parse('focus')), isFalse);
+    expect(manager.state.status, LayoutSelectionStatus.committing);
 
     repository.layoutWriteGate!.complete();
-    expect(await confirmation, isTrue);
+    expect(await selection, isTrue);
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('native'));
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     expect(
       repository.preferences.layoutProfileId,
-      LayoutProfileId.parse('native'),
+      LayoutProfileId.parse('atlas'),
     );
     manager.dispose();
   });
@@ -75,13 +76,12 @@ void main() {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.parse('native'));
     repository.failNextLayoutWrite = true;
 
-    expect(await manager.confirmPreview(), isFalse);
+    expect(await manager.selectLayout(LayoutProfileId.parse('atlas')), isFalse);
     expect(manager.state.status, LayoutSelectionStatus.error);
-    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
-    expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
+    expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('dashboard'));
     expect(manager.state.errorCode, LayoutSelectionErrorCode.persistenceFailed);
     manager.dispose();
   });
@@ -89,7 +89,7 @@ void main() {
   test('reset uses the same commit path and preserves other fields', () async {
     final repository = FakePreferencesRepository(
       preferences: preferences(
-        layout: LayoutProfileId.parse('native'),
+        layout: LayoutProfileId.parse('atlas'),
         appearance: 'dark',
         locale: 'zh',
       ),
@@ -98,39 +98,32 @@ void main() {
     await manager.initialize();
 
     expect(await manager.resetLayout(), isTrue);
-    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+    expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
     expect(repository.preferences.appearancePresetId, 'dark');
     expect(repository.preferences.localePreference, 'zh');
     manager.dispose();
   });
 
-  test(
-    'timeout, invalid, and unavailable previews recover deterministically',
-    () async {
-      final repository = FakePreferencesRepository(preferences: preferences());
-      final manager = createManager(
-        repository,
-        previewTimeout: const Duration(milliseconds: 10),
-      );
-      await manager.initialize();
+  test('unavailable selections recover deterministically', () async {
+    final repository = FakePreferencesRepository(preferences: preferences());
+    final manager = createManager(repository);
+    await manager.initialize();
 
-      manager.beginPreview(LayoutProfileId.parse('native'));
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(manager.state.status, LayoutSelectionStatus.error);
-      expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
-      expect(manager.state.errorCode, LayoutSelectionErrorCode.previewExpired);
-      expect(repository.layoutWriteCount, 0);
+    expect(await manager.selectLayout(LayoutProfileId.parse('focus')), isFalse);
+    expect(manager.state.status, LayoutSelectionStatus.error);
+    expect(manager.state.effectiveId, LayoutProfileId.parse('dashboard'));
+    expect(
+      manager.state.errorCode,
+      LayoutSelectionErrorCode.unavailableProfile,
+    );
+    expect(repository.layoutWriteCount, 0);
 
-      expect(manager.beginPreviewId('numeric-2'), isFalse);
-      expect(manager.state.errorCode, LayoutSelectionErrorCode.invalidProfile);
-      expect(manager.beginPreview(LayoutProfileId.parse('focus')), isFalse);
-      expect(
-        manager.state.errorCode,
-        LayoutSelectionErrorCode.unavailableProfile,
-      );
-      manager.dispose();
-    },
-  );
+    // A valid selection clears the error and commits normally.
+    expect(await manager.selectLayout(LayoutProfileId.parse('atlas')), isTrue);
+    expect(manager.state.status, LayoutSelectionStatus.stable);
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
+    manager.dispose();
+  });
 
   test(
     'invalid stored document and read failure produce bounded errors',
@@ -195,7 +188,7 @@ void main() {
     expect(unavailableRepository.layoutWriteCount, 1);
     expect(
       unavailableRepository.preferences.layoutProfileId,
-      LayoutProfileId.parse('workbench'),
+      LayoutProfileId.parse('dashboard'),
     );
     unavailableManager.dispose();
   });
@@ -208,12 +201,12 @@ void main() {
       );
       final manager = createManager(
         repository,
-        preferredDefaultId: LayoutProfileId.parse('native'),
+        preferredDefaultId: LayoutProfileId.parse('atlas'),
       );
 
       await manager.initialize();
-      expect(manager.preferredDefaultId, LayoutProfileId.parse('native'));
-      expect(manager.state.committedId, LayoutProfileId.parse('native'));
+      expect(manager.preferredDefaultId, LayoutProfileId.parse('atlas'));
+      expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
       expect(
         manager.state.errorCode,
         LayoutSelectionErrorCode.unavailableProfile,
@@ -221,7 +214,7 @@ void main() {
       expect(await manager.resetLayout(), isTrue);
       expect(
         repository.preferences.layoutProfileId,
-        LayoutProfileId.parse('native'),
+        LayoutProfileId.parse('atlas'),
       );
       manager.dispose();
     },
@@ -241,20 +234,19 @@ void main() {
   });
 
   test(
-    'presentation writes serialize safely with a layout confirmation',
+    'presentation writes serialize safely with a layout selection',
     () async {
       final repository = FakePreferencesRepository(preferences: preferences());
       final manager = createManager(repository);
       await manager.initialize();
-      manager.beginPreview(LayoutProfileId.parse('native'));
 
       final appearance = manager.setAppearancePreset('dark');
-      final confirmation = manager.confirmPreview();
+      final selection = manager.selectLayout(LayoutProfileId.parse('atlas'));
       expect(await appearance, isTrue);
-      expect(await confirmation, isTrue);
+      expect(await selection, isTrue);
       expect(
         manager.preferences?.layoutProfileId,
-        LayoutProfileId.parse('native'),
+        LayoutProfileId.parse('atlas'),
       );
       expect(manager.preferences?.appearancePresetId, 'dark');
       expect(repository.preferences, manager.preferences);
@@ -263,28 +255,52 @@ void main() {
   );
 
   test(
-    'unavailable recovery cannot overwrite a later layout confirmation',
+    'locale write waits for an active layout commit instead of dropping',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences())
+        ..layoutWriteGate = Completer<void>();
+      final manager = createManager(repository);
+      await manager.initialize();
+
+      final selection = manager.selectLayout(LayoutProfileId.parse('atlas'));
+      await repository.layoutWriteStarted.future;
+      final locale = manager.setLocalePreference('zh');
+
+      repository.layoutWriteGate!.complete();
+      expect(await selection, isTrue);
+      expect(await locale, isTrue);
+      expect(
+        manager.preferences?.layoutProfileId,
+        LayoutProfileId.parse('atlas'),
+      );
+      expect(manager.preferences?.localePreference, 'zh');
+      expect(repository.preferences, manager.preferences);
+      manager.dispose();
+    },
+  );
+
+  test(
+    'unavailable recovery cannot overwrite a later layout selection',
     () async {
       final repository = FakePreferencesRepository(
         preferences: preferences(layout: LayoutProfileId.parse('focus')),
       );
       final manager = createManager(repository);
       await manager.initialize();
-      expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+      expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
 
-      expect(manager.beginPreview(LayoutProfileId.parse('native')), isTrue);
       repository.layoutWriteGate = Completer<void>();
       final appearance = manager.setAppearancePreset('dark');
-      final confirmation = manager.confirmPreview();
+      final selection = manager.selectLayout(LayoutProfileId.parse('atlas'));
 
       await repository.layoutWriteStarted.future;
       repository.layoutWriteGate!.complete();
       expect(await appearance, isTrue);
-      expect(await confirmation, isTrue);
-      expect(manager.state.committedId, LayoutProfileId.parse('native'));
+      expect(await selection, isTrue);
+      expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
       expect(
         repository.preferences.layoutProfileId,
-        LayoutProfileId.parse('native'),
+        LayoutProfileId.parse('atlas'),
       );
       expect(repository.preferences.appearancePresetId, 'dark');
       expect(manager.preferences, repository.preferences);
@@ -320,18 +336,17 @@ void main() {
       final repository = FakePreferencesRepository(preferences: preferences());
       final manager = createManager(repository);
       await manager.initialize();
-      manager.beginPreview(LayoutProfileId.parse('native'));
       repository.layoutWriteGate = Completer<void>();
 
-      final oldConfirmation = manager.confirmPreview();
+      final oldSelection = manager.selectLayout(LayoutProfileId.parse('atlas'));
       await repository.layoutWriteStarted.future;
       final newerInitialization = manager.initialize();
       repository.layoutWriteGate!.complete();
 
-      expect(await oldConfirmation, isTrue);
+      expect(await oldSelection, isTrue);
       await newerInitialization;
       expect(manager.state.status, LayoutSelectionStatus.stable);
-      expect(manager.state.committedId, LayoutProfileId.parse('native'));
+      expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
       manager.dispose();
     },
   );
@@ -348,43 +363,58 @@ void main() {
       FlutterError.onError = reported.add;
       addTearDown(() => FlutterError.onError = previousHandler);
       var trailingNotifications = 0;
+      Future<bool>? reentrantSelection;
 
       manager.addListener((_) => throw StateError('listener_failed'));
       manager.addListener((state) {
-        if (state.status == LayoutSelectionStatus.previewing) {
-          manager.cancelPreview();
+        if (state.status == LayoutSelectionStatus.stable &&
+            reentrantSelection == null) {
+          reentrantSelection = manager.selectLayout(
+            LayoutProfileId.parse('dashboard'),
+          );
         }
       });
       manager.addListener((_) => trailingNotifications += 1);
 
-      expect(manager.beginPreview(LayoutProfileId.parse('native')), isTrue);
-      expect(manager.state.status, LayoutSelectionStatus.previewing);
-      expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
-      expect(trailingNotifications, 1);
-      expect(reported, hasLength(2));
       expect(
-        reported.map((details) => details.exception.toString()),
-        contains(contains('layout_manager_listener_reentrancy')),
+        await manager.selectLayout(LayoutProfileId.parse('atlas')),
+        isTrue,
+      );
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
+      expect(trailingNotifications, 2);
+      expect(reported, hasLength(2));
+      // The reentrant selection from inside the notification is rejected by
+      // the operation guard and surfaces as a failed future.
+      await expectLater(
+        reentrantSelection,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'layout_manager_listener_reentrancy',
+          ),
+        ),
       );
 
-      manager.cancelPreview();
-      expect(manager.state.status, LayoutSelectionStatus.stable);
-      expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
-      expect(trailingNotifications, 2);
-      expect(reported, hasLength(3));
+      expect(
+        await manager.selectLayout(LayoutProfileId.parse('dashboard')),
+        isTrue,
+      );
+      expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
       manager.dispose();
     },
   );
 
   test('resize updates only the surface-local variant state', () async {
     final repository = FakePreferencesRepository(
-      preferences: preferences(layout: LayoutProfileId.parse('native')),
+      preferences: preferences(layout: LayoutProfileId.parse('atlas')),
     );
     final manager = createManager(repository);
     await manager.initialize();
 
     manager.updateEnvironment(desktopEnvironment(width: 1400));
-    expect(manager.state.committedId, LayoutProfileId.parse('native'));
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     expect(manager.state.viewport, LayoutViewportClass.expanded);
     expect(repository.layoutWriteCount, 0);
     manager.dispose();
@@ -414,15 +444,15 @@ void main() {
 
 LayoutManager createManager(
   PresentationPreferencesRepository repository, {
-  Duration previewTimeout = const Duration(seconds: 12),
   LayoutProfileId? preferredDefaultId,
+  Duration? persistenceTimeout,
 }) => LayoutManager(
   catalog: fixtureLayoutCatalog(),
   preferencesRepository: repository,
   canonicalFallback: preferences(),
   preferredDefaultId: preferredDefaultId,
+  persistenceTimeout: persistenceTimeout ?? const Duration(seconds: 5),
   initialEnvironment: desktopEnvironment(width: 800),
-  previewTimeout: previewTimeout,
 );
 
 PresentationPreferences preferences({
@@ -430,7 +460,7 @@ PresentationPreferences preferences({
   String appearance = 'default-system',
   String locale = 'system',
 }) => PresentationPreferences(
-  layoutProfileId: layout ?? LayoutProfileId.parse('workbench'),
+  layoutProfileId: layout ?? LayoutProfileId.parse('dashboard'),
   appearancePresetId: appearance,
   localePreference: locale,
 );
