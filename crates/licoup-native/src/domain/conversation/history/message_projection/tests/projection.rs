@@ -33,6 +33,27 @@ fn plain_projection_keeps_thread_semantics_and_filters_generated_context() {
 }
 
 #[test]
+fn plain_projection_keeps_generated_wrapper_image_as_typed_attachment() {
+    let message = plain_history_message(
+        HistoryAdapter::Codex,
+        Path::new("fixture/session.jsonl"),
+        1,
+        0,
+        "user",
+        "# Files mentioned by the user:\n\n## screenshot.webp: /fixture-root/screenshot.webp\n\n## My request:\n\n<image name=[Image #1] path=\"/fixture-root/screenshot.webp\">\nprivate image metadata\n</image>",
+        Some("2026-01-01T00:00:00Z".to_string()),
+    )
+    .unwrap();
+
+    assert_eq!(message["text"], "");
+    assert_eq!(message["images"][0]["mediaType"], "image/webp");
+    assert_eq!(
+        message["images"][0]["path"],
+        "/fixture-root/screenshot.webp"
+    );
+}
+
+#[test]
 fn structured_projection_preserves_execution_card_without_sensitive_detail() {
     let private_path = format!("/{}", ["Users", "sample-user", "private.txt"].join("/"));
     let message = structured_history_message(

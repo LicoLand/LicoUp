@@ -30,10 +30,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('messaging-chrome-band')), findsOneWidget);
-      expect(
-        find.byKey(const Key('messaging-topstrip-search')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('messaging-topstrip-search')), findsNothing);
       expect(
         find.byKey(const Key('messaging-fake-content-agents')),
         findsOneWidget,
@@ -53,22 +50,16 @@ void main() {
       expect(cardRect.left, 56);
       expect(width - cardRect.right, 8);
       expect(700 - cardRect.bottom, 8);
-      // The chrome band spans the full window width with the search capsule
-      // inside it.
+      // The chrome band spans the full window width. Agents moves search into
+      // its conversation sidebar, so the top-right cluster contains the bell.
       final bandRect = tester.getRect(
         find.byKey(const Key('messaging-chrome-band')),
       );
       expect(bandRect.left, 0);
       expect(bandRect.width, width);
       expect(bandRect.height, 48);
-      final searchRect = tester.getRect(
-        find.byKey(const Key('messaging-topstrip-search')),
-      );
-      expect(searchRect.top, greaterThanOrEqualTo(bandRect.top));
-      expect(searchRect.bottom, lessThanOrEqualTo(bandRect.bottom));
-      expect(searchRect.width, 200);
-      // Right cluster order: tabs | search | bell, with notifications pinned
-      // at the band's far-right edge.
+      // Right cluster order: tabs | bell, with notifications pinned at the
+      // band's far-right edge.
       final tabsRect = tester.getRect(
         find.byKey(const Key('fixture-conversation-tabs')),
       );
@@ -77,8 +68,7 @@ void main() {
       final bellRect = tester.getRect(
         find.byKey(const Key('fixture-notification-bell')),
       );
-      expect(tabsRect.left, lessThan(searchRect.left));
-      expect(searchRect.right, lessThan(bellRect.left));
+      expect(tabsRect.right, lessThan(bellRect.left));
       expect(bellRect.right, bandRect.right - 10);
       // The band stays frosted glass: native blur only — no Flutter tint overlay.
       final band = find.byKey(const Key('messaging-chrome-band'));
@@ -201,6 +191,7 @@ void main() {
       LayoutAgentsStrategyScope.maybeOf(contentContext),
       const AgentsPresentationStrategy.console(),
     );
+    expect(find.byKey(const Key('messaging-topstrip-search')), findsOneWidget);
   });
 
   testWidgets('rail selection routes to the destination callback', (

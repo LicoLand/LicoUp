@@ -242,12 +242,17 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
     agentWorkspaceNotifyStateChanged();
     final sequence = beginConversationRequest();
+    final completedLoadMoreCount =
+        conversationSessionLoadMoreCountsByAgent[normalized] ?? 0;
+    final pageSize = conversationSessionLoadMorePageSize(
+      completedLoadMoreCount,
+    );
     try {
       final offset = conversationSessionsByAgent[normalized]?.length ?? 0;
       final page = await readConversationSessionPage(
         normalized,
         offset: offset,
-        pageSize: conversationSessionPageSize,
+        pageSize: pageSize,
       );
       if (!canApplyConversationRequest(normalized, sequence)) {
         return;
@@ -266,6 +271,10 @@ mixin AgentConversationSessionController
       conversationSessionsHasMoreByAgent = {
         ...conversationSessionsHasMoreByAgent,
         normalized: page.hasMore,
+      };
+      conversationSessionLoadMoreCountsByAgent = {
+        ...conversationSessionLoadMoreCountsByAgent,
+        normalized: completedLoadMoreCount + 1,
       };
       if (selectedConversationAgentId == normalized) {
         conversationReconcileSelectedSession(
@@ -382,7 +391,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
-    recordLastUsedConversation();
+    agentWorkspaceRecordCurrentAgentView();
   }
 
   String get selectedConversationWorkingDirectory {
@@ -590,7 +599,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged(immediateActive: false);
-    recordLastUsedConversation();
+    agentWorkspaceRecordCurrentAgentView();
   }
 
   Future<void> deleteConversationSession(String sessionId) async {
@@ -641,6 +650,7 @@ mixin AgentConversationSessionController
       acknowledgeConversationTabWorkFinished(normalizedAgentId);
       conversationAttentionContextChanged();
       agentWorkspaceNotifyStateChanged();
+      agentWorkspaceRecordCurrentAgentView();
       return;
     }
 
@@ -657,6 +667,7 @@ mixin AgentConversationSessionController
       agentWorkspaceNotifyStateChanged();
       stopConversationRefreshScheduling();
       await loadConversationSessions(normalizedAgentId);
+      agentWorkspaceRecordCurrentAgentView();
       return;
     }
     // Desktop lands on the new-conversation home instead of auto-opening the
@@ -664,6 +675,7 @@ mixin AgentConversationSessionController
     conversationPrimeNewConversationDraft();
     selectedConversationSessionId = '';
     beginNewConversationDraft(normalizedAgentId);
+    agentWorkspaceRecordCurrentAgentView();
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
@@ -674,11 +686,11 @@ mixin AgentConversationSessionController
     if ((conversationSessionsByAgent[normalizedAgentId] ?? const [])
         .isNotEmpty) {
       conversationAttentionContextChanged();
-      recordLastUsedConversation();
+      agentWorkspaceRecordCurrentAgentView();
       return;
     }
     await loadConversationSessions(normalizedAgentId);
-    recordLastUsedConversation();
+    agentWorkspaceRecordCurrentAgentView();
   }
 
   Future<void> loadConversationSessions(String agentId) async {
@@ -727,6 +739,10 @@ mixin AgentConversationSessionController
         updateStatus: selectedConversationAgentId == normalizedAgentId,
         notifyChanges: false,
       );
+      conversationSessionLoadMoreCountsByAgent = {
+        ...conversationSessionLoadMoreCountsByAgent,
+        normalizedAgentId: 0,
+      };
     } catch (_) {
       if (selectedConversationAgentId == normalizedAgentId) {
         lastError = 'native_history_load_failed';
@@ -746,7 +762,7 @@ mixin AgentConversationSessionController
     } finally {
       conversationSessionLoadingTargets.remove(normalizedAgentId);
       if (selectedConversationAgentId == normalizedAgentId) {
-        _confirmLastUsedConversationRestore(normalizedAgentId);
+        _confirmCurrentViewRestore(normalizedAgentId);
         agentWorkspaceNotifyConversationStructureChanged();
         agentWorkspaceNotifyStateChanged();
         conversationAttentionContextChanged(immediateActive: false);
@@ -754,16 +770,16 @@ mixin AgentConversationSessionController
     }
   }
 
-  /// Confirms the restored last-used session against the loaded history once
+  /// Confirms the globally restored session against the loaded history once
   /// the session list arrives: reopen the restored session when it still
   /// exists, otherwise keep the newest session the reconciliation already
   /// selected.
-  void _confirmLastUsedConversationRestore(String agentId) {
-    final restoreSessionId = lastUsedConversationRestoreSessionId.trim();
+  void _confirmCurrentViewRestore(String agentId) {
+    final restoreSessionId = currentViewRestoreSessionId.trim();
     if (restoreSessionId.isEmpty) {
       return;
     }
-    lastUsedConversationRestoreSessionId = '';
+    currentViewRestoreSessionId = '';
     final sessions = conversationSessionsByAgent[agentId] ?? const [];
     AgentConversationSession? restored;
     for (final session in sessions) {
@@ -778,49 +794,28 @@ mixin AgentConversationSessionController
     }
   }
 
-  /// Restores the last-used conversation persisted by the previous run.
-  ///
-  /// Called from [selectDefaultConversationAgent] before any default choice
-  /// and again once the persisted reference finishes loading. Returns true
-  /// when the restore was applied (the caller skips the default selection);
-  /// returns false when the reference is absent, still loading, or the agent
-  /// is no longer available, so the caller keeps its default behavior.
-  bool applyLastUsedConversationRestore() {
-    if (lastUsedConversationRestoreApplied) {
-      return false;
-    }
-    if (lastUsedConversationRestoreLoading) {
-      // The persisted reference has not loaded yet; a later call retries.
-      return false;
-    }
-    final ref = lastUsedConversationRestore;
-    if (ref == null || ref.agentId.trim().isEmpty) {
-      // Nothing was recorded: this launch has no restore to apply.
-      lastUsedConversationRestoreApplied = true;
-      return false;
-    }
-    final agentId = ref.agentId.trim();
+  /// Applies an Agent selection from the global current-view snapshot.
+  bool restoreCurrentAgentView(String agentId, String sessionId) {
+    final normalizedAgentId = agentId.trim();
+    if (normalizedAgentId.isEmpty) return false;
     final visibleTargets = scannedTargets
         .where((target) => target.isConversationAgent)
         .toList(growable: false);
-    if (!visibleTargets.any((target) => target.target == agentId)) {
-      // The agent is not (yet) discovered. Do not mark the restore as
-      // applied: the targets may not have settled and a later call retries.
+    if (!visibleTargets.any((target) => target.target == normalizedAgentId)) {
       return false;
     }
-    selectedConversationAgentId = agentId;
-    lastUsedConversationRestoreApplied = true;
-    final sessionId = ref.sessionId.trim();
-    if (sessionId.isNotEmpty) {
-      final loaded = conversationSessionsByAgent[agentId] ?? const [];
-      if (loaded.any((session) => session.id == sessionId)) {
-        setSelectedConversationSessionId(agentId, sessionId);
+    selectedConversationAgentId = normalizedAgentId;
+    final normalizedSessionId = sessionId.trim();
+    if (normalizedSessionId.isNotEmpty) {
+      final loaded = conversationSessionsByAgent[normalizedAgentId] ?? const [];
+      if (loaded.any((session) => session.id == normalizedSessionId)) {
+        setSelectedConversationSessionId(
+          normalizedAgentId,
+          normalizedSessionId,
+        );
       } else {
-        // The restored session may live on in native history that is not
-        // cached yet: load the list and confirm (or fall back) once it
-        // arrives.
-        lastUsedConversationRestoreSessionId = sessionId;
-        unawaited(loadConversationSessions(agentId));
+        currentViewRestoreSessionId = normalizedSessionId;
+        unawaited(loadConversationSessions(normalizedAgentId));
       }
     }
     lastError = '';
@@ -829,8 +824,9 @@ mixin AgentConversationSessionController
     return true;
   }
 
-  Future<void> refreshConversationSessions(String agentId) {
-    return refreshConversationCatalogInternal(agentId.trim(), foreground: true);
+  Future<void> refreshConversationSessions(String agentId) async {
+    await refreshConversationCatalogInternal(agentId.trim(), foreground: true);
+    conversationAttentionContextChanged(immediateActive: false);
   }
 
   /// Maps a display session id to the stable native session id the native

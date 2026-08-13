@@ -16,7 +16,10 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
   NativeStdioRpcClient({required NativeCliProcessContext processContext})
     : _processContext = processContext,
       _sessionManager = StdioRpcSessionManager(processContext: processContext),
-      _chat = StdioRpcSessionManager(processContext: processContext);
+      _chat = StdioRpcSessionManager(
+        processContext: processContext,
+        preserveActiveWork: true,
+      );
 
   final NativeCliProcessContext _processContext;
   final StdioRpcSessionManager _sessionManager;
@@ -142,13 +145,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
           workflowId: _workflowId,
         ),
       ),
-      _conversationOperations.close(
-        () => shutdownStdioRpcManager(
-          manager: _chat,
-          requestId: _nextRequestId(),
-          workflowId: _workflowId,
-        ),
-      ),
+      _conversationOperations.detach(_chat.detachAndClose),
     ]);
   }
 }

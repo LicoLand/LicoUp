@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -45,6 +46,7 @@ class AgentConversationWorkspace extends StatefulWidget {
     required this.scanning,
     required this.adding,
     required this.onAddTarget,
+    this.onSearch,
     this.allowManualTargetActions = true,
   });
 
@@ -53,6 +55,7 @@ class AgentConversationWorkspace extends StatefulWidget {
   final bool scanning;
   final bool adding;
   final VoidCallback onAddTarget;
+  final VoidCallback? onSearch;
   final bool allowManualTargetActions;
 
   @override
@@ -142,6 +145,7 @@ class _AgentConversationWorkspaceState
       scanning: widget.scanning,
       adding: widget.adding,
       onAddTarget: widget.onAddTarget,
+      onSearch: widget.onSearch,
       allowManualTargetActions: widget.allowManualTargetActions,
       useFloatingShell: !mobileClient,
     );
@@ -155,6 +159,7 @@ class _ConversationWorkspaceBody extends StatefulWidget {
     required this.scanning,
     required this.adding,
     required this.onAddTarget,
+    this.onSearch,
     required this.allowManualTargetActions,
     this.useFloatingShell = false,
   });
@@ -164,6 +169,7 @@ class _ConversationWorkspaceBody extends StatefulWidget {
   final bool scanning;
   final bool adding;
   final VoidCallback onAddTarget;
+  final VoidCallback? onSearch;
   final bool allowManualTargetActions;
   final bool useFloatingShell;
 
@@ -182,6 +188,7 @@ class _ConversationWorkspaceBodyState
   String? _layoutStateIdentity;
   String _conversationListAgentId = '';
   String _conversationListGroupId = '';
+  bool _showAgentDetailInsideGroupList = false;
   String? _observedConversationSelection;
   final List<({String agentId, String groupId})> _conversationListHistory = [];
 
@@ -201,18 +208,19 @@ class _ConversationWorkspaceBodyState
         .selectedConversationId
         .trim();
     final agentId = controller.selectedConversationAgentId.trim();
+    final sessionId = controller.selectedConversationSessionId.trim();
     final selection = groupId.isNotEmpty
         ? 'group:$groupId'
         : agentId.isNotEmpty
-        ? 'agent:$agentId'
+        ? 'agent:$agentId:$sessionId'
         : '';
     if (_observedConversationSelection == selection) return;
     _observedConversationSelection = selection;
     if (groupId.isNotEmpty) {
       _applyConversationListLocation((agentId: '', groupId: groupId));
-    } else if (agentId.isNotEmpty) {
+    } else if (agentId.isNotEmpty && sessionId.isNotEmpty) {
       _applyConversationListLocation((agentId: agentId, groupId: ''));
-    } else {
+    } else if (agentId.isEmpty) {
       _applyConversationListLocation((agentId: '', groupId: ''));
     }
   }
@@ -221,6 +229,7 @@ class _ConversationWorkspaceBodyState
     final next = (agentId: agentId, groupId: '');
     if (_conversationListLocation == next) return;
     setState(() {
+      _showAgentDetailInsideGroupList = false;
       _conversationListHistory.add(_conversationListLocation);
       _applyConversationListLocation(next);
     });
@@ -230,6 +239,7 @@ class _ConversationWorkspaceBodyState
     final next = (agentId: '', groupId: conversationId);
     if (_conversationListLocation == next) return;
     setState(() {
+      _showAgentDetailInsideGroupList = false;
       _conversationListHistory.add(_conversationListLocation);
       _applyConversationListLocation(next);
     });
@@ -240,6 +250,7 @@ class _ConversationWorkspaceBodyState
         ? (agentId: '', groupId: '')
         : _conversationListHistory.removeLast();
     setState(() {
+      _showAgentDetailInsideGroupList = false;
       _applyConversationListLocation(previous);
     });
 
@@ -258,10 +269,28 @@ class _ConversationWorkspaceBodyState
 
   void _showWelcome(ClientController controller) {
     setState(() {
+      _showAgentDetailInsideGroupList = false;
       _conversationListHistory.clear();
       _applyConversationListLocation((agentId: '', groupId: ''));
     });
     controller.showConversationWelcomePage();
+  }
+
+  bool _isConversationSessionRunning(
+    ClientController controller,
+    AgentConversationSession session,
+  ) {
+    if (session.running) return true;
+    if (!controller.isSendingConversationMessage) return false;
+    final nativeSessionId = session.nativeSessionId.trim();
+    final selectedSessionId = controller.selectedConversationSession?.id ?? '';
+    return (controller.sendingConversationSessionId.isNotEmpty &&
+            session.id == controller.sendingConversationSessionId) ||
+        (controller.sendingConversationNativeSessionId.isNotEmpty &&
+            nativeSessionId == controller.sendingConversationNativeSessionId) ||
+        (controller.sendingConversationSessionId.isEmpty &&
+            controller.sendingConversationNativeSessionId.isEmpty &&
+            session.id == selectedSessionId);
   }
 
   @override
@@ -469,10 +498,11 @@ class _ConversationWorkspaceBodyState
       target: target,
       session: session,
       liveMessages: controller.selectedConversationTimelineMessages,
-      recentSessions: controller.selectedConversationSessions
-          .take(3)
-          .toList(growable: false),
+      recentSessions: controller.selectedConversationSessions,
       loading: controller.isLoadingConversations,
+      recentSessionsHasMore: controller.selectedConversationSessionsHasMore,
+      recentSessionsLoadingMore:
+          controller.isLoadingMoreSelectedConversationSessions,
       turnActive: controller.isSendingConversationMessage,
       preparingNewConversation: controller.preparingNewConversation,
       composerEnabled: composerEnabled,
@@ -523,7 +553,13 @@ class _ConversationWorkspaceBodyState
       onPermissionDeny: controller.dismissDeniedConversationTurn,
       onCopyText: controller.clientClipboardService.writeText,
       onSend: controller.sendConversationMessage,
-      onSelectSession: controller.selectConversationSession,
+      onSelectSession: (sessionId) {
+        _showAgentConversationList(target.target);
+        controller.selectConversationSession(sessionId);
+      },
+      onNewConversation: controller.startNewConversationSession,
+      onLoadMoreRecentSessions: () =>
+          unawaited(controller.loadMoreConversationSessions(target.target)),
       onUnblockSend: onUnblockSend,
       onChooseWorkingDirectory: workingDirectorySelectable
           ? () => unawaited(
@@ -579,26 +615,8 @@ class _ConversationWorkspaceBodyState
                   controller.selectedConversationSession?.id ?? '',
               onSwitchConversation: controller.selectConversationSession,
               onSwitchNewConversation: controller.startNewConversationSession,
-              switcherRunningFor: (candidate) {
-                final nativeId = candidate.nativeSessionId.trim();
-                final selectedSessionId =
-                    controller.selectedConversationSession?.id ?? '';
-                return controller.isSendingConversationMessage &&
-                    ((controller.sendingConversationSessionId.isNotEmpty &&
-                            candidate.id ==
-                                controller.sendingConversationSessionId) ||
-                        (controller
-                                .sendingConversationNativeSessionId
-                                .isNotEmpty &&
-                            nativeId ==
-                                controller
-                                    .sendingConversationNativeSessionId) ||
-                        (controller.sendingConversationSessionId.isEmpty &&
-                            controller
-                                .sendingConversationNativeSessionId
-                                .isEmpty &&
-                            candidate.id == selectedSessionId));
-              },
+              switcherRunningFor: (candidate) =>
+                  _isConversationSessionRunning(controller, candidate),
             )
           : ConversationPaneHeader(
               state: headerState,
@@ -657,23 +675,13 @@ class _ConversationWorkspaceBodyState
     required Widget conversationPane,
     required VoidCallback onAddTarget,
     required bool allowManualTargetActions,
-    required LicoStrings strings,
     required LayoutAgentsPresentation presentation,
   }) {
-    String? conversationListTitle;
+    var showConversationList = false;
     var conversationListTargets = const <TargetCandidate>[];
     var showConversationAgentIcons = false;
     if (_conversationListGroupId.isNotEmpty) {
-      for (final conversation
-          in controller.clientConversationController.groupConversations) {
-        if (conversation.id == _conversationListGroupId) {
-          conversationListTitle = conversation.title.trim().isEmpty
-              ? strings.groupConversation
-              : conversation.title.trim();
-          break;
-        }
-      }
-      conversationListTitle ??= strings.groupConversation;
+      showConversationList = true;
       final selectedGroup =
           controller.clientConversationController.selectedConversation;
       if (selectedGroup?.id == _conversationListGroupId) {
@@ -700,10 +708,8 @@ class _ConversationWorkspaceBodyState
         }
       }
       if (representative != null) {
+        showConversationList = true;
         final productId = agentConversationProductId(representative.target);
-        conversationListTitle = agentConversationTargetCompactDisplayName(
-          representative,
-        );
         conversationListTargets = widget.targets
             .where(
               (candidate) =>
@@ -741,6 +747,8 @@ class _ConversationWorkspaceBodyState
             sessionsByAgent: controller.conversationSessionsByAgent,
             selectedSessionId: controller.selectedConversationSession?.id ?? '',
             activityFor: controller.conversationTabActivityFor,
+            runningFor: (session) =>
+                _isConversationSessionRunning(controller, session),
             onSelectSession: (agentId, sessionId) async {
               controller.clientConversationController.clearSelection();
               await controller.selectConversationAgent(agentId);
@@ -809,6 +817,7 @@ class _ConversationWorkspaceBodyState
                   .clientConversationController
                   .selectedConversationId,
               onSelectGroupConversation: (conversationId) {
+                _showAgentDetailInsideGroupList = false;
                 _showGroupConversationList(conversationId);
                 unawaited(
                   controller.clientConversationController.selectConversation(
@@ -831,8 +840,9 @@ class _ConversationWorkspaceBodyState
                 ),
               ),
               activityFor: controller.conversationTabActivityFor,
+              runningFor: (session) =>
+                  _isConversationSessionRunning(controller, session),
               onSelectAgent: (agentId) {
-                _showAgentConversationList(agentId);
                 unawaited(() async {
                   controller.clientConversationController.clearSelection();
                   if (agentId == controller.selectedConversationAgentId) {
@@ -848,15 +858,29 @@ class _ConversationWorkspaceBodyState
                 controller.clientConversationController.clearSelection();
                 controller.startNewConversationSession();
               },
+              onSearch: widget.onSearch,
               onOpenWelcome: () => _showWelcome(controller),
               onAdaptiveFlywheel: () =>
                   unawaited(showAdaptiveFlywheelDialog(context, controller)),
-              conversationListTitle: conversationListTitle,
+              showConversationList: showConversationList,
               conversationListTargets: conversationListTargets,
               selectedSessionId:
                   controller.selectedConversationSession?.id ?? '',
               showConversationAgentIcons: showConversationAgentIcons,
               onSelectSession: (agentId, sessionId) => unawaited(() async {
+                if (_conversationListGroupId.isNotEmpty) {
+                  final groupListId = _conversationListGroupId;
+                  final selection = controller.selectConversationAgent(agentId);
+                  setState(() {
+                    _showAgentDetailInsideGroupList = true;
+                  });
+                  await selection;
+                  if (!mounted || _conversationListGroupId != groupListId) {
+                    return;
+                  }
+                  controller.selectConversationSession(sessionId);
+                  return;
+                }
                 controller.clientConversationController.clearSelection();
                 await controller.selectConversationAgent(agentId);
                 controller.selectConversationSession(sessionId);
@@ -941,7 +965,8 @@ class _ConversationWorkspaceBodyState
 
     if (widget.useFloatingShell && !mobileClient) {
       final presentation = LayoutDestinationPresentationScope.agentsOf(context);
-      final conversationPane = groupSelected
+      final showGroupPane = groupSelected && !_showAgentDetailInsideGroupList;
+      final conversationPane = showGroupPane
           ? CanonicalGroupConversationPane(
               controller: groupController,
               targets: widget.targets,
@@ -969,7 +994,6 @@ class _ConversationWorkspaceBodyState
         conversationPane: conversationPane,
         onAddTarget: onAddTarget,
         allowManualTargetActions: allowManualTargetActions,
-        strings: strings,
         presentation: presentation,
       );
     }
@@ -1066,15 +1090,21 @@ class _ConversationWorkspaceBodyState
           final workingDirectory = session.workingDirectory.trim();
           final nativeId = session.nativeSessionId.trim();
           final running =
-              controller.isSendingConversationMessage &&
-              ((controller.sendingConversationSessionId.isNotEmpty &&
-                      session.id == controller.sendingConversationSessionId) ||
-                  (controller.sendingConversationNativeSessionId.isNotEmpty &&
-                      nativeId ==
-                          controller.sendingConversationNativeSessionId) ||
-                  (controller.sendingConversationSessionId.isEmpty &&
-                      controller.sendingConversationNativeSessionId.isEmpty &&
-                      session.id == selectedSessionId));
+              session.running ||
+              (controller.isSendingConversationMessage &&
+                  ((controller.sendingConversationSessionId.isNotEmpty &&
+                          session.id ==
+                              controller.sendingConversationSessionId) ||
+                      (controller
+                              .sendingConversationNativeSessionId
+                              .isNotEmpty &&
+                          nativeId ==
+                              controller.sendingConversationNativeSessionId) ||
+                      (controller.sendingConversationSessionId.isEmpty &&
+                          controller
+                              .sendingConversationNativeSessionId
+                              .isEmpty &&
+                          session.id == selectedSessionId)));
           return HistorySessionPanelItem(
             id: session.id,
             title: session.title,

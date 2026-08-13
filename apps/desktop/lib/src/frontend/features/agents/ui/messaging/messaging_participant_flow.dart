@@ -427,6 +427,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             adapter: widget.adapter,
             detailsBuilder: buildAgentConversationEventDetails,
             active: active,
+            topOverlayInset: widget.topOverlayInset,
           ),
         ),
       ),

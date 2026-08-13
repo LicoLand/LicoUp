@@ -28,7 +28,7 @@ void registerAgentConversationFilteringScenarios() {
           'id': 'msg-user',
           'role': 'user',
           'text':
-              '# Files mentioned by the user:\n\n## clip.png: ${['', 'private', 'tmp', 'clip.png'].join('/')}\n\n## My request for Codex:\n真正的用户问题\n<image name=[Image #1] path="${['', 'private', 'tmp', 'clip.png'].join('/')}">\nprivate image metadata\n</image>',
+              '# Files mentioned by the user:\n\n## clip.png: ${['', 'fixture-root', 'clip.png'].join('/')}\n\n## My request:\n真正的用户问题\n<image name=[Image #1] path="${['', 'fixture-root', 'clip.png'].join('/')}">\nprivate image metadata\n</image>',
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
@@ -50,9 +50,7 @@ void registerAgentConversationFilteringScenarios() {
       session.messages.any(
         (message) =>
             message.text.contains('Apps (Connectors)') ||
-            message.text.contains(
-              ['', 'private', 'tmp', 'clip.png'].join('/'),
-            ) ||
+            message.text.contains(['', 'fixture-root', 'clip.png'].join('/')) ||
             message.text.contains('You are Codex'),
       ),
       isFalse,

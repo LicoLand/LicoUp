@@ -80,6 +80,8 @@ final class ClientConversation {
   final List<ClientConversationMembership> memberships;
   final int eventCount;
 
+  bool get isDefaultLocalAgentGroup => id == 'lico-group-default';
+
   List<ClientConversationMembership> get activeMemberships => memberships
       .where(
         (membership) =>

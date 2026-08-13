@@ -41,40 +41,52 @@ class AgentConversationWelcome extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 28),
-              GridView.count(
-                key: const Key('agent-conversation-welcome-actions'),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.45,
-                children: [
-                  _WelcomeActionCard(
-                    key: const Key('welcome-new-conversation'),
-                    icon: Icons.add_comment_outlined,
-                    label: strings.newConversation,
-                    onTap: onNewConversation,
-                  ),
-                  _WelcomeActionCard(
-                    key: const Key('welcome-mobile-pairing'),
-                    icon: Icons.phonelink_ring_outlined,
-                    label: strings.mobileAppPairing,
-                    onTap: onOpenMobilePairing,
-                  ),
-                  _WelcomeActionCard(
-                    key: const Key('welcome-new-group-conversation'),
-                    icon: Icons.group_add_outlined,
-                    label: strings.welcomeNewGroupConversation,
-                    onTap: onNewGroupConversation,
-                  ),
-                  _WelcomeActionCard(
-                    key: const Key('welcome-settings'),
-                    icon: Icons.settings_outlined,
-                    label: strings.settings,
-                    onTap: onOpenSettings,
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final cardWidth = (constraints.maxWidth - 12) / 2;
+                  final labelLineHeight =
+                      MediaQuery.textScalerOf(context).scale(15) * 1.2;
+                  final minimumCardHeight =
+                      24 + 28 + 10 + labelLineHeight * 2 + 4;
+                  final responsiveAspect = cardWidth / minimumCardHeight;
+                  return GridView.count(
+                    key: const Key('agent-conversation-welcome-actions'),
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: responsiveAspect < 1.45
+                        ? responsiveAspect
+                        : 1.45,
+                    children: [
+                      _WelcomeActionCard(
+                        key: const Key('welcome-new-conversation'),
+                        icon: Icons.add_comment_outlined,
+                        label: strings.newConversation,
+                        onTap: onNewConversation,
+                      ),
+                      _WelcomeActionCard(
+                        key: const Key('welcome-mobile-pairing'),
+                        icon: Icons.phonelink_ring_outlined,
+                        label: strings.mobileAppPairing,
+                        onTap: onOpenMobilePairing,
+                      ),
+                      _WelcomeActionCard(
+                        key: const Key('welcome-new-group-conversation'),
+                        icon: Icons.group_add_outlined,
+                        label: strings.welcomeNewGroupConversation,
+                        onTap: onNewGroupConversation,
+                      ),
+                      _WelcomeActionCard(
+                        key: const Key('welcome-settings'),
+                        icon: Icons.settings_outlined,
+                        label: strings.settings,
+                        onTap: onOpenSettings,
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -112,7 +124,7 @@ class _WelcomeActionCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -127,6 +139,7 @@ class _WelcomeActionCard extends StatelessWidget {
                     color: colors.text,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
+                    height: 1.2,
                   ),
                 ),
               ],

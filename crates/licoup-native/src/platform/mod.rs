@@ -8,6 +8,7 @@ pub(crate) mod badtower_station;
 pub mod authorized_secure_record;
 mod claude_code_driver;
 mod codex_app_server;
+pub(crate) mod codex_runtime_observation;
 mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
@@ -65,7 +66,6 @@ pub mod url_security;
 pub(crate) use codex_app_server::list_models as codex_app_server_model_catalog;
 pub use conversation_lane::{
     cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
-    shutdown_all_conversations,
 };
 pub use hermes_driver::resolve_parked_permission as hermes_resolve_parked_permission;
 pub use turn_event_emit::{

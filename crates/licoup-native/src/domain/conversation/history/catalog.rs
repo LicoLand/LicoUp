@@ -23,8 +23,8 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use super::codex::{
-    CodexRolloutGroup, codex_rollout_groups_to_sessions, parse_codex_rollout_line,
-    rollout_session_id_from_filename,
+    CodexRolloutGroup, CodexRuntimeObservation, codex_rollout_groups_to_sessions,
+    parse_codex_rollout_line, rollout_session_id_from_filename,
 };
 use super::cursor_openagent::codec::{open_read_only_connection, sqlite_table_exists};
 use super::cursor_openagent::cursor_composer_catalog;
@@ -88,6 +88,7 @@ pub(crate) struct CatalogSession {
     pub(crate) working_directory: Option<String>,
     pub(crate) message_count: Option<usize>,
     pub(crate) model: Option<String>,
+    pub(crate) running: bool,
     pub(crate) hydrate: CatalogHydration,
 }
 
@@ -157,11 +158,19 @@ pub(crate) fn conversation_list_from_catalog_inner(
         .end()
         .map(|end| end.min(total_sessions))
         .unwrap_or(total_sessions);
-    let page_entries: Vec<CatalogSession> = if offset >= total_sessions {
+    let mut page_entries: Vec<CatalogSession> = if offset >= total_sessions {
         Vec::new()
     } else {
         catalog.sessions[offset..end].to_vec()
     };
+    if adapter == HistoryAdapter::Codex {
+        let observation = CodexRuntimeObservation::capture();
+        for entry in &mut page_entries {
+            entry.running = catalog_entry_runtime_paths(entry)
+                .into_iter()
+                .any(|path| observation.is_running(path));
+        }
+    }
     let mut cache = HistoryProjectionCache::open(params);
     let mut counters = BrowseWorkCounters::default();
     let mut hydration_skipped = Vec::new();
@@ -315,6 +324,7 @@ fn absorb_duplicate_catalog_entry(kept: &mut CatalogSession, duplicate: CatalogS
     if kept.message_count.is_none() {
         kept.message_count = duplicate.message_count;
     }
+    kept.running |= duplicate.running;
 }
 
 fn catalog_dedupe_key(adapter: HistoryAdapter, entry: &CatalogSession) -> String {
@@ -476,6 +486,11 @@ fn hydrate_catalog_page(
                 {
                     object.insert("model".to_string(), json!(model));
                 }
+                if page[*index].running {
+                    object.insert("running".to_string(), json!(true));
+                } else {
+                    object.remove("running");
+                }
                 if let Some(messages) = object.get_mut("messages").and_then(Value::as_array_mut) {
                     let overflow = messages.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
                     if overflow > 0 {
@@ -552,6 +567,20 @@ fn catalog_entry_content_source(entry: &CatalogSession) -> Option<&PathBuf> {
         CatalogHydration::KimiWireDirectory(directory) => Some(directory),
         CatalogHydration::TranscriptWithDelegatedTasks { transcript, .. } => Some(transcript),
         CatalogHydration::None => None,
+    }
+}
+
+fn catalog_entry_runtime_paths(entry: &CatalogSession) -> Vec<&Path> {
+    match &entry.hydrate {
+        CatalogHydration::File(path) => vec![path.as_path()],
+        CatalogHydration::TranscriptWithDelegatedTasks {
+            transcript,
+            delegated,
+            ..
+        } => std::iter::once(transcript.as_path())
+            .chain(delegated.iter().map(PathBuf::as_path))
+            .collect(),
+        CatalogHydration::KimiWireDirectory(_) | CatalogHydration::None => Vec::new(),
     }
 }
 
@@ -777,6 +806,9 @@ fn catalog_session_stub(adapter: HistoryAdapter, entry: &CatalogSession) -> Opti
             .filter(|value| !value.trim().is_empty())
         {
             object.insert("model".to_string(), json!(model));
+        }
+        if entry.running {
+            object.insert("running".to_string(), json!(true));
         }
         object.insert(
             "messageCount".to_string(),
@@ -1083,6 +1115,7 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
             working_directory: codex_rollout_working_directory(&candidate.path),
             message_count: None,
             model: None,
+            running: false,
             hydrate: CatalogHydration::File(candidate.path),
         });
     }
@@ -1426,6 +1459,7 @@ fn read_codex_state_threads(
                 model: row
                     .get::<_, Option<String>>(6)?
                     .filter(|value| !value.trim().is_empty()),
+                running: false,
                 hydrate: CatalogHydration::File(PathBuf::from(rollout_path)),
             })
         })
@@ -1540,6 +1574,7 @@ fn read_openagent_sessions(
                     .filter(|value| !value.trim().is_empty()),
                 // The session store holds the conversation too, so the browse row
                 // carries its messages instead of rendering as an empty row.
+                running: false,
                 hydrate: CatalogHydration::File(db_path.to_path_buf()),
             })
         })
@@ -1651,6 +1686,7 @@ fn read_copilot_sessions(
             working_directory: cwd.filter(|value| !value.trim().is_empty()),
             message_count: None,
             model: None,
+            running: false,
             hydrate: CatalogHydration::None,
         });
     }
@@ -1734,6 +1770,7 @@ fn read_kimi_state(path: &Path) -> Option<CatalogSession> {
             .map(str::to_string),
         message_count: None,
         model: None,
+        running: false,
         hydrate: CatalogHydration::KimiWireDirectory(session_dir),
     })
 }
@@ -1821,6 +1858,7 @@ fn cursor_ide_store_catalog(root: &HistoryRoot, cutoff: SystemTime, catalog: &mu
                 working_directory: entry.working_directory,
                 message_count: Some(entry.message_count),
                 model: entry.model,
+                running: false,
                 hydrate: CatalogHydration::File(store.clone()),
             });
         }
@@ -1934,6 +1972,7 @@ fn push_delegated_transcript_units(
                 working_directory: working_directory.map(str::to_string),
                 message_count: None,
                 model: None,
+                running: false,
                 hydrate: CatalogHydration::File(orphan),
             });
             continue;
@@ -1948,6 +1987,7 @@ fn push_delegated_transcript_units(
             working_directory: working_directory.map(str::to_string),
             message_count: None,
             model: None,
+            running: false,
             hydrate: CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript,
                 delegated: unit.delegated.into_iter().map(|(_, path)| path).collect(),
@@ -2068,6 +2108,7 @@ fn read_cursor_cli_meta(path: &Path) -> Option<CatalogSession> {
             .and_then(bounded_project_workspace),
         message_count: None,
         model: None,
+        running: false,
         hydrate: CatalogHydration::None,
     })
 }
@@ -2143,6 +2184,7 @@ fn antigravity_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut 
                 working_directory: antigravity_trajectory_workspace(&trajectories, conversation_id),
                 message_count: None,
                 model: None,
+                running: false,
                 hydrate: CatalogHydration::File(transcript),
             });
         }
@@ -2345,6 +2387,7 @@ fn pi_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut SessionCa
                 working_directory,
                 message_count: None,
                 model: None,
+                running: false,
                 hydrate: CatalogHydration::File(candidate.path),
             });
         }
@@ -2436,6 +2479,7 @@ fn generic_file_root_catalog(
             working_directory: None,
             message_count: None,
             model: None,
+            running: false,
             hydrate: CatalogHydration::File(candidate.path),
         });
     }

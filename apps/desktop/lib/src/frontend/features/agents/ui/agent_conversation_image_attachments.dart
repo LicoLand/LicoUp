@@ -314,6 +314,8 @@ void showConversationImageViewer(
     builder: (dialogContext) {
       final strings = LicoStrings.of(dialogContext);
       return GestureDetector(
+        key: const Key('conversation-image-viewer-dismiss'),
+        behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(dialogContext).pop(),
         child: Dialog(
           key: const Key('conversation-image-viewer'),

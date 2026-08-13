@@ -119,12 +119,7 @@ mixin ClientLifecycleFacade
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
     await loadConversationToolAllowlists();
-    await loadLastUsedConversationRestore();
-    if (!lastUsedConversationRestoreApplied) {
-      // Targets may have settled before the persisted reference loaded. Retry
-      // the restore once; a fresh desktop install remains unselected.
-      selectDefaultConversationAgent();
-    }
+    await loadCurrentViewRestore();
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
     );

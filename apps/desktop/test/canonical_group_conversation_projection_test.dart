@@ -208,10 +208,89 @@ void main() {
     ]);
   });
 
+  test('group roster reads the first five entries from the queue order', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Local',
+      'archived': false,
+      'isGroup': true,
+      'revision': 1,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 7,
+      'eventCount': 7,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        for (var index = 1; index <= 7; index += 1)
+          _membership(
+            id: 'membership:agent-$index',
+            principalId: 'agent:agent-$index',
+            kind: 'agent',
+            label: 'Agent $index',
+            agentId: 'agent-$index',
+          ),
+      ],
+    });
+    final targets = [
+      for (var index = 1; index <= 7; index += 1)
+        _target('agent-$index', 'Agent $index'),
+    ];
+
+    final recent = resolveCanonicalGroupOrderedParticipantTargets(
+      conversation,
+      targets,
+      const ['agent-4', 'agent-7', 'agent-2', 'agent-6', 'agent-1', 'agent-3'],
+    );
+
+    expect(recent.map((target) => target.target), [
+      'agent-4',
+      'agent-7',
+      'agent-2',
+      'agent-6',
+      'agent-1',
+    ]);
+  });
+
+  test('Local roster resolves a newly scanned non-member from queue order', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'lico-group-default',
+      'title': 'Local',
+      'archived': false,
+      'isGroup': true,
+      'revision': 1,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 1,
+      'eventCount': 0,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+      ],
+    });
+    final scannedTarget = _target('new-agent', 'New Agent');
+
+    final recent = resolveCanonicalGroupOrderedParticipantTargets(
+      conversation,
+      [scannedTarget],
+      const ['new-agent'],
+    );
+
+    expect(recent, [same(scannedTarget)]);
+  });
+
   testWidgets('restored group header and right-side Agent roster render', (
     tester,
   ) async {
-    var archiveCount = 0;
+    var rosterToggleCount = 0;
     final mentioned = <String>[];
     final opened = <String>[];
     final conversation = ClientConversation.fromJson({
@@ -270,7 +349,8 @@ void main() {
               children: [
                 CanonicalGroupConversationHeader(
                   conversation: conversation,
-                  onArchive: () => archiveCount += 1,
+                  rosterVisible: true,
+                  onToggleRoster: () => rosterToggleCount += 1,
                 ),
                 Expanded(
                   child: Align(
@@ -296,7 +376,11 @@ void main() {
     expect(find.text('3 members'), findsOneWidget);
     expect(find.textContaining('@'), findsNothing);
     expect(find.byKey(const Key('canonical-group-archive')), findsNothing);
-    expect(find.byKey(const Key('canonical-group-menu')), findsOneWidget);
+    expect(
+      find.byKey(const Key('canonical-group-roster-toggle')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
     expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
     expect(find.byKey(const Key('canonical-group-roster')), findsOneWidget);
     final headerAvatar = tester.widget<Container>(
@@ -312,19 +396,9 @@ void main() {
           .map((tooltip) => tooltip.message),
       containsAll(<String>['Codex', 'Claude Code']),
     );
-    await tester.tap(find.byKey(const Key('canonical-group-menu')));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('canonical-group-header-menu')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('messaging-glass-menu-archive')),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(const Key('messaging-glass-menu-archive')));
-    await tester.pumpAndSettle();
-    expect(archiveCount, 1);
+    await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
+    await tester.pump();
+    expect(rosterToggleCount, 1);
 
     final codexAvatar = find.byKey(
       const Key('canonical-group-roster-agent-codex'),

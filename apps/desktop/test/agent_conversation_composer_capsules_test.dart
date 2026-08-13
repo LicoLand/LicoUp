@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +135,63 @@ void main() {
     await tester.pump();
 
     expect(find.text('gpt-5.6-sol · Medium'), findsOneWidget);
+  });
+
+  testWidgets('runtime selector opens on hover and stays pinned after click', (
+    tester,
+  ) async {
+    _useComposerPopoverViewport(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomLeft,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ComposerRuntimeCapsule(
+                modelOptions: const ['gpt-5.6-sol'],
+                selectedModel: 'gpt-5.6-sol',
+                defaultModel: 'gpt-5.6-sol',
+                enabled: true,
+                onModelChanged: (_) {},
+                reasoningEffortOptions: const ['low'],
+                selectedReasoningEffort: 'low',
+                onReasoningEffortChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final button = find.byKey(const Key('conversation-model-button'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.moveTo(tester.getCenter(button));
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-runtime-selector-panel')),
+      findsOneWidget,
+    );
+
+    await tester.tap(button);
+    await tester.pump();
+    await mouse.moveTo(const Offset(799, 1));
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(
+      find.byKey(const Key('conversation-runtime-selector-panel')),
+      findsOneWidget,
+    );
+
+    await tester.tap(button);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('conversation-runtime-selector-panel')),
+      findsNothing,
+    );
   });
 
   testWidgets('ComposerRuntimeCapsule omits effort when no model is resolved', (

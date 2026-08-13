@@ -35,6 +35,7 @@ import 'package:licoup/src/application/features/messaging/messaging_notification
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
@@ -50,19 +51,19 @@ import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_la
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
-import 'package:licoup/src/contracts/agent_last_used_conversation.dart';
+import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
 import 'package:licoup/src/platform/agents/agent_tool_allowlist_store.dart';
-import 'package:licoup/src/platform/agents/last_used_conversation_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
@@ -72,10 +73,12 @@ import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
+import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/skill_hub/skill_hub_preferences_store.dart';
 import 'package:licoup/src/platform/storage/client_log_export_service.dart';
+import 'package:licoup/src/platform/storage/llm_gateway_diagnostic_log.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Stable application facade. Feature behavior and component construction live
@@ -118,7 +121,8 @@ class ClientController extends AgentConversationController
     SkillHubPreferencesService? skillHubPreferencesService,
     AgentTabOrderStore? agentTabOrderStore,
     ScannedTargetsCacheStore? scannedTargetsCacheStore,
-    LastUsedConversationStore? lastUsedConversationStore,
+    ClientCurrentViewStore? currentViewStore,
+    ClientCurrentViewTracker? currentViewTracker,
     AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
     BuiltInLayoutComposition? layoutComposition,
@@ -134,6 +138,8 @@ class ClientController extends AgentConversationController
     bool? mobileClientRuntimePlatformOverride,
     CatalogConvergenceGateway? catalogConvergenceGateway,
     Duration llmGatewayMonitorInterval = const Duration(seconds: 5),
+    Duration llmGatewayRecoveryRetryDelay = const Duration(milliseconds: 500),
+    LlmGatewayDiagnosticSink? llmGatewayDiagnosticSink,
   }) : portableData = portableData ?? PortableDataRoot(),
        agentService =
            agentService ??
@@ -163,9 +169,10 @@ class ClientController extends AgentConversationController
            agentTabOrderStore ?? const PlatformAgentTabOrderStore(),
        scannedTargetsCacheStore =
            scannedTargetsCacheStore ?? const PlatformScannedTargetsCacheStore(),
-       lastUsedConversationStore =
-           lastUsedConversationStore ??
-           const PlatformLastUsedConversationStore(),
+       currentViewStore =
+           currentViewStore ?? const PlatformClientCurrentViewStore(),
+       currentViewTracker =
+           currentViewTracker ?? ClientCurrentViewTracker.instance,
        agentToolAllowlistRepository =
            agentToolAllowlistRepository ?? const AgentToolAllowlistStore(),
        appearancePresetCatalogService =
@@ -240,18 +247,29 @@ class ClientController extends AgentConversationController
       agentService: this.agentService,
       readSettings: agentWorkspaceReadSettingsState,
       monitorInterval: llmGatewayMonitorInterval,
+      recoveryRetryDelay: llmGatewayRecoveryRetryDelay,
+      diagnosticSink:
+          llmGatewayDiagnosticSink ??
+          LlmGatewayDiagnosticLog(portableData: this.portableData),
     )..addListener(notifyClientStateChanged);
     messagingNotificationCenter = MessagingNotificationCenter()
       ..addListener(notifyClientStateChanged);
     clientConversationController = ClientConversationController(
       runner: this.agentService,
+      onSelectionChanged: recordCurrentGroupConversationView,
     )..addListener(notifyClientStateChanged);
+    _clientConversationControllerReady = true;
+    clientConversationController.syncAvailableConversationAgents(
+      scannedTargets,
+    );
   }
 
   @override
   final PortableDataRoot portableData;
   @override
-  final LastUsedConversationStore lastUsedConversationStore;
+  final ClientCurrentViewStore currentViewStore;
+  @override
+  final ClientCurrentViewTracker currentViewTracker;
   @override
   final AgentToolAllowlistRepository agentToolAllowlistRepository;
   @override
@@ -284,6 +302,7 @@ class ClientController extends AgentConversationController
   late final MessagingNotificationCenter messagingNotificationCenter;
   @override
   late final ClientConversationController clientConversationController;
+  bool _clientConversationControllerReady = false;
   @override
   final ConversationRefreshPolicy conversationRefreshPolicy;
   final bool? _mobileClientRuntimePlatformOverride;
@@ -374,6 +393,11 @@ class ClientController extends AgentConversationController
 
   void _onTargetsSettled() {
     selectDefaultConversationAgent();
+    if (_clientConversationControllerReady) {
+      clientConversationController.syncAvailableConversationAgents(
+        scannedTargets,
+      );
+    }
   }
 
   @override
@@ -383,9 +407,6 @@ class ClientController extends AgentConversationController
   }) => openDirectoryPath(path, caption: caption);
 
   Future<void> _disposeRuntimeServices() async {
-    if (!mobileClientRuntimePlatform && opencodeServeState != null) {
-      await stopClientRuntimeServices();
-    }
     if (_ownsAgentService) {
       await agentService.dispose();
     }

@@ -563,7 +563,11 @@ mixin AgentConversationMessageController
             ),
             attachments: queuedTurn.attachments,
           )) {
-            if (agentWorkspaceDisposed) return;
+            // Closing the UI only detaches its projection. The native host
+            // still owns this turn and must keep draining it to completion.
+            // Returning here would cancel the Dart subscription and close the
+            // transport that carries the already accepted Agent work.
+            if (agentWorkspaceDisposed) continue;
             final eventSessionId = event.sessionId.trim();
             final eventTurnId = event.turnId.trim();
             if (eventSessionId.isNotEmpty) {
@@ -817,7 +821,13 @@ mixin AgentConversationMessageController
                       ))
                   .raw;
         }
-        if (agentWorkspaceDisposed) return;
+        if (agentWorkspaceDisposed) {
+          // The turn has reached a terminal native result. The disposed UI no
+          // longer projects it, but returning here must not reclassify the
+          // completed Agent work as a transport failure.
+          completedSuccessfully = result['ok'] == true;
+          break;
+        }
         final returnedSessionId = sendThroughMobileRelay
             ? secureAgentRelayNativeSessionId(result)
             : (result['nativeSessionId'] ??
