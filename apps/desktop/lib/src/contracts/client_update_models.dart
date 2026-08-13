@@ -9,6 +9,8 @@ enum ClientUpdatePhase {
   verifying,
   verified,
   applyPlanned,
+  applied,
+  rolledBack,
   failed,
 }
 
@@ -76,6 +78,8 @@ final class ClientUpdateStatus {
         'verifying' => ClientUpdatePhase.verifying,
         'verified' => ClientUpdatePhase.verified,
         'applyPlanned' => ClientUpdatePhase.applyPlanned,
+        'applied' => ClientUpdatePhase.applied,
+        'rolledBack' => ClientUpdatePhase.rolledBack,
         'failed' => ClientUpdatePhase.failed,
         _ => ClientUpdatePhase.idle,
       },

@@ -30,6 +30,10 @@ mixin ClientMaintenanceFacade {
   String get clientUpdateArtifactReceiptId =>
       clientUpdateController.artifactReceiptId;
 
+  String get clientUpdateSource => clientUpdateController.source;
+
+  String get clientUpdateRepo => clientUpdateController.repo;
+
   bool get isClientUpdateBusy => clientUpdateController.busy;
 
   Future<void> refreshClientUpdateStatus({String channel = 'stable'}) =>
@@ -47,12 +51,23 @@ mixin ClientMaintenanceFacade {
     revocationPath: revocationPath,
   );
 
+  Future<void> checkClientUpdateFromGithub({String repo = 'LicoLand/LicoUp'}) =>
+      clientUpdateController.checkGithub(repo: repo);
+
   Future<void> downloadClientUpdateArtifact({required String sourcePath}) =>
       clientUpdateController.download(sourcePath: sourcePath);
+
+  Future<void> downloadClientUpdateFromGithub() =>
+      clientUpdateController.downloadGithub();
 
   Future<void> verifyClientUpdateArtifact() => clientUpdateController.verify();
 
   Future<void> planClientUpdateApply() => clientUpdateController.planApply();
+
+  Future<void> applyClientUpdateThenExit(void Function() exitClient) =>
+      clientUpdateController.applyThenExit(exitClient);
+
+  Future<void> rollbackClientUpdate() => clientUpdateController.rollback();
 
   Future<void> openDirectoryPath(String path, {String caption = ''}) =>
       directoryPathController.open(path, caption: caption);
@@ -70,14 +85,6 @@ mixin ClientMaintenanceFacade {
         'errorCode': 'opencode_serve_unavailable',
       };
       debugPrint('OpenCode serve bootstrap failed.');
-    }
-  }
-
-  Future<void> stopClientRuntimeServices() async {
-    try {
-      opencodeServeState = await agentService.stopOpencodeServe();
-    } catch (_) {
-      debugPrint('OpenCode serve shutdown failed.');
     }
   }
 

@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const GATEWAY_AGENT_CONFIG_SCHEMA: &str = "licoup.llm-gateway-agent-config.v1";
+pub const LOCAL_CLIENT_TOKEN_PLACEHOLDER: &str = "__LICOUP_GATEWAY_CLIENT_TOKEN__";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -117,7 +118,7 @@ pub fn plan_agent_config(
                         "name": "LicoUp Gateway",
                         "options": {
                             "baseURL": chat_base,
-                            "apiKey": "licoup-local"
+                            "apiKey": LOCAL_CLIENT_TOKEN_PLACEHOLDER
                         },
                         "models": Value::Object(model_map)
                     }
@@ -148,7 +149,7 @@ pub fn plan_agent_config(
                     "licoup-gateway": {
                         "baseUrl": chat_base,
                         "api": "openai-completions",
-                        "apiKey": "licoup-local",
+                        "apiKey": LOCAL_CLIENT_TOKEN_PLACEHOLDER,
                         "authHeader": true,
                         "compat": {
                             "supportsDeveloperRole": false,
@@ -243,6 +244,8 @@ mod tests {
         );
         assert!(plan.content.contains("@ai-sdk/openai-compatible"));
         assert!(plan.content.contains("http://127.0.0.1:15722/v1"));
+        assert!(plan.content.contains(LOCAL_CLIENT_TOKEN_PLACEHOLDER));
+        assert!(!plan.content.contains("licoup-local"));
         assert!(plan.content.contains("kimi:k3"));
         assert!(plan.content.contains("deepseek:deepseek-v4-pro"));
         assert!(plan.content.contains("kilo:kilo-auto/frontier"));
@@ -308,6 +311,8 @@ mod tests {
         );
         assert!(plan.content.contains("openai-completions"));
         assert!(plan.content.contains("http://127.0.0.1:15722/v1"));
+        assert!(plan.content.contains(LOCAL_CLIENT_TOKEN_PLACEHOLDER));
+        assert!(!plan.content.contains("licoup-local"));
         assert!(plan.content.contains("kimi:k3"));
         assert!(plan.content.contains("deepseek:deepseek-v4-flash"));
         assert!(plan.content.contains("kilo:kilo-auto/balanced"));

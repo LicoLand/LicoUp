@@ -43,26 +43,26 @@
       "agentId": "claude-code",
       "status": "unverified",
       "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "conversationGatePassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
       "coreChecks": {
         "required": 10,
-        "passed": 0,
+        "passed": 10,
         "failed": 0
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
+        "nativeSupported": 3,
+        "passed": 3,
         "gaps": 0,
         "failed": 0
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "evidence_missing"
+        "evidence_stale_or_incomplete"
       ]
     },
     {

@@ -34,6 +34,29 @@ fn stdio_rpc_parses_exact_method_and_absolute_portable_path() {
 }
 
 #[test]
+fn stdio_rpc_parses_client_conversation_execute() {
+    let request = serde_json::to_vec(&json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": "request-1",
+        "workflowId": "workflow-1",
+        "method": "client.conversation.execute",
+        "params": {"action": "conversation.list", "includeArchived": false},
+    }))
+    .unwrap();
+
+    let parsed = parse_stdio_rpc_request(&request).expect("request should parse");
+    match parsed.method {
+        StdioRpcMethod::ClientConversation { params, .. } => {
+            assert_eq!(
+                params,
+                json!({"action": "conversation.list", "includeArchived": false})
+            );
+        }
+        _ => panic!("expected a client conversation request"),
+    }
+}
+
+#[test]
 fn stdio_rpc_rejects_invalid_protocol_and_relative_portable_path() {
     let invalid_protocol = serde_json::to_vec(&json!({
         "protocol": "unsupported",
@@ -75,4 +98,15 @@ fn stdio_rpc_execute_rejects_commands_that_require_external_private_stdin() {
 
     assert!(rpc_command_reads_external_stdin(&args));
     assert!(!rpc_command_writes_external_stdout(&args));
+}
+
+#[test]
+fn gateway_client_token_is_never_projected_over_stdio_rpc() {
+    let args = vec![
+        "gateway".to_string(),
+        "client-token".to_string(),
+        "--agent".to_string(),
+        "codex".to_string(),
+    ];
+    assert!(rpc_command_writes_external_stdout(&args));
 }

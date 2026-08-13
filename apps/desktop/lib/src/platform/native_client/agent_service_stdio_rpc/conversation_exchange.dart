@@ -28,7 +28,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     await writeStdioRpcFrame(session, encoded);
   } on Object {
     session.abandonExpectedFrame(requestId);
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     throw const LicoClientRpcException('transport_failed');
   }
   var terminalSeen = false;
@@ -69,7 +69,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     }
   } on Object {
     session.abandonExpectedFrame(requestId);
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     rethrow;
   }
 }

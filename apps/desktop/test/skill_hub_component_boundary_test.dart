@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart';
-import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,7 +22,17 @@ void main() {
                 selectedCategory: 'all',
                 onChanged: selected.add,
               ),
-              const Expanded(child: SkillEmptyPlaceholder()),
+              Expanded(
+                child: Builder(
+                  builder: (context) => LicoEmptyState(
+                    icon: Icons.extension_outlined,
+                    iconSize: 64,
+                    title: LicoStrings.of(context).noSkillsFound,
+                    message: LicoStrings.of(context).refreshSkillsHint,
+                    padding: const EdgeInsets.all(32),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -36,9 +47,6 @@ void main() {
   test('Skill Hub libraries form a one-way dependency chain', () {
     const root = 'lib/src/frontend/features/skill_hub/ui';
     final panel = File('$root/skill_hub_panel.dart').readAsStringSync();
-    final widgets = File(
-      '$root/skill_hub_panel_widgets.dart',
-    ).readAsStringSync();
     final catalog = File(
       '$root/skill_hub_panel_catalog.dart',
     ).readAsStringSync();
@@ -50,13 +58,13 @@ void main() {
     ).readAsStringSync();
 
     expect(panel, contains("ui/skill_hub_panel_catalog.dart';"));
-    expect(panel, contains("ui/skill_hub_panel_widgets.dart';"));
     expect(catalog, contains("ui/skill_hub_panel_card_support.dart';"));
+    expect(catalog, contains("shared/ui/lico_empty_state.dart';"));
     expect(cards, contains("ui/skill_hub_panel_icon_picker.dart';"));
-    for (final leaf in [widgets, catalog, cards, picker]) {
+    for (final leaf in [catalog, cards, picker]) {
       expect(leaf, isNot(contains('skill_hub_panel.dart')));
     }
-    for (final source in [panel, widgets, catalog, cards, picker]) {
+    for (final source in [panel, catalog, cards, picker]) {
       expect(
         source,
         isNot(contains(RegExp(r'^part(?: of)? ', multiLine: true))),

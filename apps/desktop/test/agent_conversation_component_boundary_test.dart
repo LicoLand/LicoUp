@@ -43,14 +43,7 @@ void main() {
     final rootController = File(
       'lib/src/application/controller/client_controller.dart',
     ).readAsStringSync();
-    expect(rootController, contains('extends AgentOrchestrationController'));
-    final orchestrationController = File(
-      'lib/src/application/features/agents/orchestration/agent_orchestration_controller.dart',
-    ).readAsStringSync();
-    expect(
-      orchestrationController,
-      contains('extends AgentConversationController'),
-    );
+    expect(rootController, contains('extends AgentConversationController'));
     expect(
       rootController,
       isNot(contains('with\n        AgentConversationController')),

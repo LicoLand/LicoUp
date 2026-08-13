@@ -3,7 +3,7 @@ use crate::core::secure_mesh_secret_store::{SecretBytes, SecretZeroizeProbe};
 #[test]
 fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly_budgeted() {
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -25,22 +25,21 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
                 assert!(secret_store.get_secret(handle)?.is_some());
             }
 
-            let mut config = normalize_config(json!({
-                "pairedDevices": [
-                    {
-                        "id": "cleanup-device-a",
-                        "pairingId": "cleanup-pairing-a",
-                        "mobileToken": "",
-                        "credentialPresent": true
-                    },
-                    {
-                        "id": "cleanup-device-b",
-                        "pairingId": "cleanup-pairing-b",
-                        "mobileToken": "",
-                        "credentialPresent": true
-                    }
-                ]
-            }));
+            let mut config = default_config();
+            config["pairedDevices"] = json!([
+                {
+                    "id": "cleanup-device-a",
+                    "pairingId": "cleanup-pairing-a",
+                    "mobileToken": "",
+                    "credentialPresent": true
+                },
+                {
+                    "id": "cleanup-device-b",
+                    "pairingId": "cleanup-pairing-b",
+                    "mobileToken": "",
+                    "credentialPresent": true
+                }
+            ]);
             save_config_raw(&mut config)?;
             let root_handles = disposable_cleanup_root_secret_handles(
                 &config,
@@ -148,7 +147,7 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
 #[test]
 fn mobile_relay_disposable_secret_cleanup_requires_exact_confirmation_and_accepts_empty_root() {
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup-empty-root");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
 
     for params in [
@@ -231,7 +230,7 @@ fn mobile_relay_disposable_secret_cleanup_propagates_delete_failures() {
     }
 
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup-delete-failure");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(DeleteFailingSecretStore {
         inner: EphemeralSecretStore::new(),
         rejected_key: "mobileToken",

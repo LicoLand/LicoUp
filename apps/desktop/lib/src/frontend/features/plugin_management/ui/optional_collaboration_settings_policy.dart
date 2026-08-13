@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+
 final class OptionalCollaborationSettingsHeader extends StatelessWidget {
   const OptionalCollaborationSettingsHeader({
     super.key,
@@ -42,7 +44,7 @@ final class OptionalCollaborationPolicyNotice extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),

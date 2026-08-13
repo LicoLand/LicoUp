@@ -8,7 +8,7 @@ projection when those implementations or their verification change.
 
 Lico Agent is a **first-party** LicoUp-owned runtime. It appears in the agent
 list as one ordinary option (`lico-agent`), peer to third-party adapters such as
-Pi or Codex. It is **not** the top「Lico」group Conversation entry.
+Pi or Codex. It is not a special Conversation, role, or orchestration owner.
 
 ## Capabilities
 
@@ -27,10 +27,12 @@ Pi or Codex. It is **not** the top「Lico」group Conversation entry.
   `{portable}/client-state/lico-agent/`. The child process does not persist
   its own session store.
 
-## Relation to the「Lico」group entry
+## Relation to canonical Conversations
 
-The messaging contact labeled **Lico** (formerly Default) opens a LicoUp-owned
-**group Conversation**. Adaptive Flywheel selects which agents—including Lico
-Agent—participate. Group turn-taking defaults to Flywheel main dispatch with
-peer bubbles. See the desktop USER-GUIDE projection for the composer Flywheel
-hover picker and circular edit control.
+The canonical Conversation backend may admit Lico Agent through an ordinary
+Agent Membership, exactly like any other runnable integration. A user-defined
+Conversation Role may include that Membership, and an explicitly started
+Adaptive Flywheel may select it from the Role's ordered candidate pool. There
+is no built-in main-agent slot, automatic group turn-taking, or dedicated Lico
+group identity. The current delivery does not claim a desktop group or
+Flywheel editor.

@@ -1,0 +1,16 @@
+pkgname=licoup
+pkgver=${LICOUP_VERSION}
+pkgrel=1
+pkgdesc='Official LicoMesh client'
+arch=('${LICOUP_PACMAN_ARCH}')
+url='https://github.com/LicoLand/LicoUp'
+license=('AGPL3')
+depends=('gtk3' 'glibc' 'gcc-libs')
+
+package() {
+  local prefix='usr'
+  local client_root="${prefix}/lib/licoup"
+  install -d "${pkgdir}/${client_root}" "${pkgdir}/${prefix}/bin"
+  cp -a "${srcdir}/bundle/." "${pkgdir}/${client_root}/"
+  ln -s ../lib/licoup/licoup "${pkgdir}/${prefix}/bin/licoup"
+}

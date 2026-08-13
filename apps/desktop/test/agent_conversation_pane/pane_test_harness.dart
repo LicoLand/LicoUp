@@ -37,7 +37,6 @@ AgentConversationPaneState paneTestState({
   loading: loading,
   turnActive: turnActive ?? liveMessages.isNotEmpty,
   preparingNewConversation: preparingNewConversation,
-  orchestrationSelected: false,
   composerEnabled: true,
   sendGateReasonCode: sendGateReasonCode,
   composerDraft: '',
@@ -77,7 +76,6 @@ ConversationPaneHeader paneTestHeader({
     historyCollapsed: false,
     collapseHistoryTooltip: 'Collapse history',
     expandHistoryTooltip: 'Expand history',
-    orchestrationSelected: false,
     opencodeServeState: null,
   ),
   actions: AgentConversationHeaderActions(

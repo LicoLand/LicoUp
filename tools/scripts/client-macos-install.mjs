@@ -22,18 +22,6 @@ function main() {
   if (process.platform !== "darwin") {
     throw new Error("macos_install_requires_macos");
   }
-  const explicitIdentity = String(
-    process.env.LICO_MACOS_LOCAL_SIGNING_IDENTITY || "",
-  ).trim();
-  if (explicitIdentity) {
-    run("npm", ["run", "client:build:macos"], 12 * 60_000);
-    run(
-      process.execPath,
-      ["tools/scripts/client-macos-local-identity-install.mjs"],
-      12 * 60_000,
-    );
-    return;
-  }
   run(
     process.execPath,
     [

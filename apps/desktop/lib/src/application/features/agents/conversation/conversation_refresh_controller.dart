@@ -4,9 +4,9 @@ import 'package:licoup/src/application/features/agents/conversation/agent_conver
     show
         conversationSessionLoadFailedSelectionId,
         conversationSessionReadbackPendingSelectionId;
+import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 mixin ConversationRefreshController on AgentWorkspaceCoordinator {
@@ -64,27 +64,48 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     conversationActiveRefreshTimer = null;
     conversationBackgroundRefreshTimer?.cancel();
     conversationBackgroundRefreshTimer = null;
+    conversationCodexRuntimeRefreshTimer?.cancel();
+    conversationCodexRuntimeRefreshTimer = null;
 
     final agentId = selectedConversationAgentId.trim();
     final priority = conversationRefreshPriority;
     if (lifecycleProjection.disposed ||
         !lifecycleProjection.initialized ||
-        agentId.isEmpty ||
-        isAgentOrchestrationTargetId(agentId) ||
         priority == ConversationRefreshPriority.suspended) {
       return;
     }
 
-    _scheduleActiveConversationRefresh(
-      agentId,
-      immediateActive
-          ? Duration.zero
-          : conversationRefreshPolicy.activeDelay(priority),
-    );
-    _scheduleConversationCatalogRefresh(
-      agentId,
-      conversationRefreshPolicy.catalogDelay(priority),
-    );
+    if (agentId.isNotEmpty) {
+      _scheduleActiveConversationRefresh(
+        agentId,
+        immediateActive
+            ? Duration.zero
+            : conversationRefreshPolicy.activeDelay(priority),
+      );
+      _scheduleConversationCatalogRefresh(
+        agentId,
+        conversationRefreshPolicy.catalogDelay(priority),
+      );
+    }
+    final codexAgentId = _codexRuntimeObservationAgentId();
+    if (codexAgentId.isNotEmpty && codexAgentId != agentId) {
+      _scheduleCodexRuntimeRefresh(
+        codexAgentId,
+        immediateActive
+            ? Duration.zero
+            : conversationRefreshPolicy.catalogDelay(priority),
+      );
+    }
+  }
+
+  String _codexRuntimeObservationAgentId() {
+    for (final target in scannedTargets) {
+      if (target.isConversationAgent &&
+          agentProductId(target.target) == 'codex') {
+        return target.target.trim();
+      }
+    }
+    return '';
   }
 
   void _scheduleActiveConversationRefresh(String agentId, Duration delay) {
@@ -97,6 +118,17 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
 
   Future<void> _runScheduledActiveConversationRefresh(String agentId) async {
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
+      return;
+    }
+    if (isSendingConversationMessage) {
+      // A streamed turn is in progress: the native transcript only holds the
+      // half-persisted user message, and a readback must not run under the
+      // live projection. Defer the read until the turn finishes.
+      final priority = conversationRefreshPriority;
+      _scheduleActiveConversationRefresh(
+        agentId,
+        conversationRefreshPolicy.activeDelay(priority),
+      );
       return;
     }
     final selectedSessionId = selectedConversationSessionId.trim();
@@ -132,6 +164,17 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
       return;
     }
+    if (isSendingConversationMessage) {
+      // Same guard as the active-session lane: no catalog readback under a
+      // streaming turn, where the readback can only cover the pending user
+      // message.
+      final priority = conversationRefreshPriority;
+      _scheduleConversationCatalogRefresh(
+        agentId,
+        conversationRefreshPolicy.catalogDelay(priority),
+      );
+      return;
+    }
     await refreshConversationCatalogInternal(agentId, foreground: false);
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
       return;
@@ -143,11 +186,47 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     );
   }
 
+  void _scheduleCodexRuntimeRefresh(String agentId, Duration delay) {
+    conversationCodexRuntimeRefreshTimer?.cancel();
+    conversationCodexRuntimeRefreshTimer = Timer(delay, () {
+      conversationCodexRuntimeRefreshTimer = null;
+      unawaited(_runScheduledCodexRuntimeRefresh(agentId));
+    });
+  }
+
+  Future<void> _runScheduledCodexRuntimeRefresh(String agentId) async {
+    if (!_codexRuntimeRefreshTargetIsCurrent(agentId)) {
+      return;
+    }
+    if (conversationBackgroundRefreshTargets.contains(agentId)) {
+      _scheduleCodexRuntimeRefresh(
+        agentId,
+        conversationRefreshPolicy.catalogDelay(conversationRefreshPriority),
+      );
+      return;
+    }
+    await refreshConversationCatalogInternal(agentId, foreground: false);
+    if (!_codexRuntimeRefreshTargetIsCurrent(agentId)) {
+      return;
+    }
+    _scheduleCodexRuntimeRefresh(
+      agentId,
+      conversationRefreshPolicy.catalogDelay(conversationRefreshPriority),
+    );
+  }
+
+  bool _codexRuntimeRefreshTargetIsCurrent(String agentId) {
+    return !lifecycleProjection.disposed &&
+        lifecycleProjection.initialized &&
+        conversationRefreshPriority != ConversationRefreshPriority.suspended &&
+        selectedConversationAgentId.trim() != agentId &&
+        _codexRuntimeObservationAgentId() == agentId;
+  }
+
   bool _conversationRefreshTargetIsCurrent(String agentId) {
     return !lifecycleProjection.disposed &&
         lifecycleProjection.initialized &&
         selectedConversationAgentId == agentId &&
-        !isAgentOrchestrationTargetId(agentId) &&
         conversationRefreshPriority != ConversationRefreshPriority.suspended;
   }
 
@@ -157,6 +236,8 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     conversationActiveRefreshTimer = null;
     conversationBackgroundRefreshTimer?.cancel();
     conversationBackgroundRefreshTimer = null;
+    conversationCodexRuntimeRefreshTimer?.cancel();
+    conversationCodexRuntimeRefreshTimer = null;
   }
 
   @override

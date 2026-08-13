@@ -172,11 +172,9 @@ class MobileRelayService {
   );
 
   Future<SecureMeshKtResponse> executeSecureMeshKtRequest({
-    required AgentService agentService,
     required SecureMeshKtRequest request,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
   }) => _secureMeshOperations.executeSecureMeshKtRequest(
-    agentService: agentService,
     request: request,
     bridge: bridge,
   );

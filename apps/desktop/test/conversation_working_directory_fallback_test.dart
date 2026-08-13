@@ -146,7 +146,7 @@ void main() {
       session(
         id: 'temp',
         updatedAt: '2026-07-01T00:00:00Z',
-        workingDirectory: '/private/var/folders/synthetic/T/gone/workspace',
+        workingDirectory: '/fixture-root/ephemeral/gone/workspace',
       ),
       session(
         id: 'project',

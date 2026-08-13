@@ -1,7 +1,5 @@
 use super::*;
-use crate::domain::skill_hub::{
-    SKILL_INSTALLER_PROTOCOL, pair_approve_in, pair_request_in, pair_revoke_in,
-};
+use crate::domain::skill_hub::{pair_approve_in, pair_request_in, pair_revoke_in};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Barrier};
@@ -10,9 +8,9 @@ use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 #[test]
-fn real_conversation_events_record_only_managed_skill_invocations() {
+fn real_conversation_events_record_sanitized_local_skill_invocations() {
     let store = test_store("runtime-events");
-    seed_managed_skill(&store, "codex", "review-helper");
+    seed_local_skill(&store, "codex", "review-helper");
     let occurred_at = OffsetDateTime::parse("2026-07-01T01:00:00Z", &Rfc3339).unwrap();
     let receipt = observe_at(
         &store,
@@ -30,19 +28,26 @@ fn real_conversation_events_record_only_managed_skill_invocations() {
         occurred_at,
     )
     .unwrap();
-    assert_eq!(receipt["recordedCount"], 2);
+    assert_eq!(receipt["recordedCount"], 3);
 
     let ledger = store.read_collection(ledger::COLLECTION).unwrap();
-    assert_eq!(ledger["items"][0]["count"], 2);
+    assert_eq!(
+        ledger["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|item| item["count"].as_u64())
+            .sum::<u64>(),
+        3
+    );
     assert!(!ledger.to_string().contains("must never be retained"));
-    assert!(!ledger.to_string().contains("not-installed"));
 }
 
 #[test]
 fn report_supports_custom_windows_and_dimensions() {
     let store = test_store("report");
     for (agent, skill) in [("codex", "review"), ("claude-code", "lint")] {
-        seed_managed_skill(&store, agent, skill);
+        seed_local_skill(&store, agent, skill);
     }
     for (agent, skill, at) in [
         ("codex", "review", "2026-07-01T00:00:00Z"),
@@ -75,7 +80,7 @@ fn report_supports_custom_windows_and_dimensions() {
 #[test]
 fn concurrent_runtime_events_do_not_lose_daily_counts() {
     let store = test_store("concurrent");
-    seed_managed_skill(&store, "codex", "review");
+    seed_local_skill(&store, "codex", "review");
     let barrier = Arc::new(Barrier::new(8));
     let workers = (0..8)
         .map(|_| {
@@ -109,17 +114,10 @@ fn day_count_is_selectable_and_bounded() {
     assert!(report(&store, &json!({"days": 366})).is_err());
 }
 
-fn seed_managed_skill(store: &ClientStateStore, agent_id: &str, skill_id: &str) {
+fn seed_local_skill(store: &ClientStateStore, agent_id: &str, skill_id: &str) {
     pair_request_in(store, &json!({"agent": agent_id})).unwrap();
     pair_approve_in(store, &json!({"agent": agent_id})).unwrap();
-    let mut skills = store.read_collection("skills").unwrap();
-    skills["items"].as_array_mut().unwrap().push(json!({
-        "kind": "skill",
-        "agentId": agent_id,
-        "skillId": skill_id,
-        "installer": SKILL_INSTALLER_PROTOCOL
-    }));
-    store.write_collection("skills", skills).unwrap();
+    assert!(ledger::is_sanitized_skill_id(skill_id));
 }
 
 fn test_store(name: &str) -> ClientStateStore {
@@ -202,7 +200,7 @@ fn backfill_projects_synthetic_kimi_claude_and_codex_transcripts() {
     .unwrap();
     assert_eq!(codex["invocationsAdded"], 2);
 
-    // No pairing and no managed skills were seeded: the backfill gate accepts
+    // No pairing state was seeded: the backfill gate accepts
     // any locally discovered agent and any sanitized skill id.
     let kimi_report = report(
         &store,
@@ -367,7 +365,7 @@ fn runtime_recording_preserves_backfill_watermark_items() {
     let params = json!({"agent": "claude-code", "historyRoot": root.to_string_lossy()});
     assert_eq!(scan(&store, &params).unwrap()["invocationsAdded"], 2);
 
-    seed_managed_skill(&store, "claude-code", "lint-fix");
+    seed_local_skill(&store, "claude-code", "lint-fix");
     observe_at(
         &store,
         "claude-code",

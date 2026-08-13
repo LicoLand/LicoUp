@@ -26,33 +26,23 @@ extension LicoStringsLabels on LicoStrings {
   String get resourceUsageUnsupported => isChinese
       ? '当前平台不支持进程资源统计。'
       : 'Process resource statistics are not supported on this platform.';
-  String get resourceSamplingHint => isChinese
-      ? '每 5 秒采样一次，仅保留最近 15 分钟；全部保存在内存中，不会写入磁盘。'
-      : 'Sampled every 5 seconds; the last 15 minutes are kept in memory and nothing is written to disk.';
   String get memoryUsage => isChinese ? '内存占用' : 'Memory';
-  String get diskReadRate => isChinese ? '磁盘读取' : 'Disk Read';
-  String get diskWriteRate => isChinese ? '磁盘写入' : 'Disk Write';
-  String sessionTransferTotal(String read, String write) => isChinese
-      ? '本次查看累计：读取 $read · 写入 $write'
-      : 'Since opened: $read read · $write written';
-  String get agentResources => isChinese ? '智能体资源' : 'Agent Resources';
-  String get agentResourcesIdle =>
-      isChinese ? '尚未检测到运行中的智能体。' : 'No running agents detected yet.';
-  String get agentResourcesIdleDetail => isChinese
-      ? '正在运行中的本地智能体会在这里显示其实时内存与磁盘读写。'
-      : 'Running local agents appear here with live memory and disk I/O.';
-  String agentResourcesHint(int count) => isChinese
-      ? '正在检测 $count 个运行中的本地智能体，每 5 秒采样一次；仅保存在内存中。'
-      : 'Sampling $count running local agents every 5 seconds; kept in memory only.';
+  String memoryOfTotal(String total) =>
+      isChinese ? '/ $total 本机内存' : 'of $total machine';
   String get systemConfiguration => isChinese ? '系统配置' : 'System';
   String get clientUpdate => isChinese ? '客户端更新' : 'Client Update';
   String get clientUpdateHint => isChinese
-      ? '发现、下载并校验已签名的公开更新清单。不需要商店账号。'
-      : 'Discover, download, and verify signed public update manifests. No store account required.';
+      ? '从 GitHub 发布源检测并安装已签名的公开更新。不需要商店账号。'
+      : 'Detect and install signed public updates from the GitHub release source. No store account required.';
   String get checkUpdate => isChinese ? '检查更新' : 'Check Update';
   String get downloadUpdate => isChinese ? '下载更新' : 'Download Update';
   String get verifyUpdate => isChinese ? '校验更新' : 'Verify Update';
   String get planUpdateInstall => isChinese ? '生成安装计划' : 'Plan Install';
+  String get applyUpdateRestart => isChinese ? '应用更新并重启' : 'Apply & Restart';
+  String get rollbackUpdate => isChinese ? '回滚更新' : 'Roll Back';
+  String get updateSource => isChinese ? '更新源' : 'Source';
+  String get updateSourceGithub => isChinese ? 'GitHub 发布源' : 'GitHub releases';
+  String get updateSourceLocal => isChinese ? '本地清单' : 'Local manifest';
   String get channel => isChinese ? '通道' : 'Channel';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
   String get digest => isChinese ? '摘要' : 'Digest';
@@ -70,6 +60,8 @@ extension LicoStringsLabels on LicoStrings {
   String get clientUpdatePhaseVerified => isChinese ? '已校验' : 'Verified';
   String get clientUpdatePhaseApplyPlanned =>
       isChinese ? '已规划安装' : 'Install planned';
+  String get clientUpdatePhaseApplied => isChinese ? '已应用' : 'Applied';
+  String get clientUpdatePhaseRolledBack => isChinese ? '已回滚' : 'Rolled back';
   String get clientUpdatePhaseFailed => isChinese ? '失败' : 'Failed';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
@@ -139,7 +131,6 @@ extension LicoStringsLabels on LicoStrings {
     return switch (value.trim()) {
       'Agent archive' => '智能体归档',
       'Agent chat' => '智能体对话',
-      'Agent orchestration' => '智能体编排',
       'Agent tabs' => '智能体标签页',
       'Agent usage' => '智能体用量',
       'Appearance' => '外观',
@@ -164,8 +155,8 @@ extension LicoStringsLabels on LicoStrings {
   // Skill Hub interface chrome. Skill names and skill-authored descriptions
   // are source content and intentionally remain unchanged.
   String get skillHubSubtitle => isChinese
-      ? '查看、配对并安装本机智能体可加载的技能。'
-      : 'Browse, pair, and install skills loadable by local agents.';
+      ? '查看本机智能体已有技能，或将选中技能移入系统废纸篓。'
+      : 'Inspect skills already present for local agents or move one to system Trash.';
   String get refreshSkills => isChinese ? '刷新技能' : 'Refresh Skills';
   String get showSkillHubSettings =>
       isChinese ? '显示技能设置' : 'Show Skill Settings';
@@ -196,7 +187,6 @@ extension LicoStringsLabels on LicoStrings {
   String get revoke => isChinese ? '撤销' : 'Revoke';
   String get installFromGitHub =>
       isChinese ? '从 GitHub 安装' : 'Install from GitHub';
-  String get installRoot => isChinese ? '安装目录' : 'Install Root';
   String get overwrite => isChinese ? '覆盖' : 'Overwrite';
   String get pin => isChinese ? '固定' : 'Pin';
   String get preview => isChinese ? '预览' : 'Preview';
@@ -237,6 +227,10 @@ extension LicoStringsLabels on LicoStrings {
   String get selectAgentToView => isChinese
       ? '选择一个智能体查看历史并对话'
       : 'Select an agent to view histories and chat';
+  String get welcome => isChinese ? '欢迎' : 'Welcome';
+  String get mobileAppPairing => isChinese ? '移动 App 配对' : 'Pair Mobile App';
+  String get welcomeNewGroupConversation =>
+      isChinese ? '新群聊' : 'New Group Chat';
 
   String get target => isChinese ? '目标' : 'Target';
   String get configPath => isChinese ? '配置路径' : 'Config path';
@@ -289,8 +283,27 @@ extension LicoStringsLabels on LicoStrings {
   String get statsNav => isChinese ? '统计' : 'Stats';
   String get statsPanel => isChinese ? '统计面板' : 'Statistics';
   String get newConversation => isChinese ? '新对话' : 'New Chat';
+  String get createConversation => isChinese ? '新建' : 'New';
+  String get newGroupConversation => isChinese ? '新群组' : 'New Group';
   String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
   String get archivedConversations => isChinese ? '已归档' : 'Archived';
+  String get archivedConversationsTitle =>
+      isChinese ? '已归档对话' : 'Archived conversations';
+  String get searchArchivedConversations =>
+      isChinese ? '搜索已归档对话' : 'Search archived conversations';
+  String get archivedConversationsHint => isChinese
+      ? '恢复后，对话会重新出现在主列表。'
+      : 'Restored conversations return to the main list.';
+  String get noArchivedConversations =>
+      isChinese ? '没有已归档对话' : 'No archived conversations';
+  String get noMatchingArchivedConversations =>
+      isChinese ? '没有匹配的已归档对话' : 'No matching archived conversations';
+  String conversationRestored(String title) =>
+      isChinese ? '已恢复“$title”。' : 'Restored “$title”.';
+  String archivedConversationFailure(String stage, String code) => isChinese
+      ? '归档对话操作失败（$stage：$code）'
+      : 'Archived conversation operation failed ($stage: $code)';
+  String get retry => isChinese ? '重试' : 'Retry';
   String get recentConversations => isChinese ? '最近对话' : 'Recent conversations';
   String get noConversationsYet => isChinese ? '还没有对话' : 'No conversations yet';
   String get noTrashedConversations =>
@@ -363,8 +376,9 @@ extension LicoStringsLabels on LicoStrings {
       ? '$count 个子任务'
       : '$count nested ${count == 1 ? 'task' : 'tasks'}';
   String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
-  String get runtimeUpdateTitle =>
-      isChinese ? 'Cursor Agent 正在自动更新' : 'Cursor Agent is updating automatically';
+  String get runtimeUpdateTitle => isChinese
+      ? 'Cursor Agent 正在自动更新'
+      : 'Cursor Agent is updating automatically';
   String get runtimeUpdateCompleted => isChinese ? '更新完成' : 'Update completed';
   String get runtimeUpdateInterrupted =>
       isChinese ? '更新中断' : 'Update interrupted';
@@ -408,6 +422,63 @@ extension LicoStringsLabels on LicoStrings {
   // Messaging presentation (participant flow, details panel).
   String get agentBadge => 'AGENT';
   String get contacts => isChinese ? '对话' : 'Conversations';
+  String get conversationBack => isChinese ? '返回上一级' : 'Back one level';
+  String mentionAgent(String agent) =>
+      isChinese ? '@ $agent' : 'Mention $agent';
+  String openAgentConversations(String agent) =>
+      isChinese ? '打开 $agent 的对话' : 'Open $agent conversations';
+  String get groupConversation => isChinese ? '群聊' : 'Group';
+  String get groupConversationName => isChinese ? '群聊名称' : 'Group name';
+  String get createGroupConversation => isChinese ? '创建' : 'Create';
+  String get selectGroupConversationAgents =>
+      isChinese ? '选择至少一个 Agent' : 'Select at least one Agent';
+  String get groupConversationNeedsAgent => isChinese
+      ? '至少需要一个可用 Agent 才能创建群聊。'
+      : 'At least one available Agent is required.';
+  String get noGroupConversationsYet => isChinese ? '还没有群聊' : 'No groups yet';
+  String groupConversationMemberCount(int count) =>
+      isChinese ? '$count 位成员' : '$count members';
+  String get groupConversationMembershipChangeTitle =>
+      isChinese ? '群成员变更' : 'Group membership change';
+  String get groupConversationAvailabilityChangeTitle =>
+      isChinese ? '成员状态变更' : 'Member status change';
+  String groupConversationMemberJoined(String member) =>
+      isChinese ? '新增成员：$member' : 'Added member: $member';
+  String groupConversationMemberLeft(String member) =>
+      isChinese ? '移除成员：$member' : 'Removed member: $member';
+  String groupConversationMemberAccessSet(String member, String access) =>
+      isChinese
+      ? '权限变更：$member → $access'
+      : 'Access changed: $member → $access';
+  String groupConversationMemberAvailabilitySet(
+    String member,
+    String availability,
+  ) => isChinese
+      ? '可用状态：$member → $availability'
+      : 'Availability: $member → $availability';
+  String groupConversationMemberChangeUnknown(String member) =>
+      isChinese ? '成员记录已变更：$member' : 'Member record changed: $member';
+  String get groupConversationEventDetailsUnavailable => isChinese
+      ? '旧记录未保存具体变更'
+      : 'This older record does not include change details';
+  String get groupConversationUnknownMember =>
+      isChinese ? '未知成员' : 'Unknown member';
+  String groupConversationAccessLabel(String value) => switch (value.trim()) {
+    'owner' => isChinese ? '群主' : 'Owner',
+    'member' => isChinese ? '成员' : 'Member',
+    final normalized when normalized.isNotEmpty => normalized,
+    _ => isChinese ? '未知权限' : 'Unknown access',
+  };
+  String groupConversationAvailabilityLabel(String value) =>
+      switch (value.trim()) {
+        'available' => isChinese ? '可用' : 'Available',
+        'unavailable' => isChinese ? '不可用' : 'Unavailable',
+        final normalized when normalized.isNotEmpty => normalized,
+        _ => isChinese ? '未知状态' : 'Unknown status',
+      };
+  String groupConversationFailure(String stage, String code) => isChinese
+      ? '群聊操作失败（$stage：$code）'
+      : 'Group conversation failed ($stage: $code)';
   String get attachments => isChinese ? '附件' : 'Attachments';
   String get imageAttachment => isChinese ? '图片' : 'Image';
   String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';
@@ -422,6 +493,7 @@ extension LicoStringsLabels on LicoStrings {
   String get today => isChinese ? '今天' : 'Today';
   String get yesterday => isChinese ? '昨天' : 'Yesterday';
   String get earlier => isChinese ? '更早' : 'Earlier';
+  String get priority => isChinese ? '优先' : 'Priority';
 
   /// Full localized weekday name for the sidebar time groups.
   /// [weekday] follows [DateTime.weekday]: 1 is Monday, 7 is Sunday.
@@ -503,49 +575,21 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '原生智能体报告了错误。' : 'The native agent reported an error.';
   String get nativeEventDetailsHidden =>
       isChinese ? '原生事件详情已隐藏。' : 'Native event details are hidden.';
-  String get orchestrationFallback => orchestrationSequentialFallback;
-  String get orchestrationWorkType => orchestrationDynamicAllocation;
-  String get orchestrationSequentialFallback =>
-      isChinese ? '顺序降级' : 'Sequential Fallback';
-  String get orchestrationDynamicAllocation =>
-      isChinese ? '动态分配' : 'Dynamic Routing';
-  String get automatic => isChinese ? '自动' : 'Auto';
-  String get codeWork => isChinese ? '写代码' : 'Code';
-  String get documentationWork => isChinese ? '写文档' : 'Docs';
-  String get primaryAgent => isChinese ? '主智能体' : 'Primary Agent';
-  String get primaryAgentShort => isChinese ? '主' : 'P';
-  String get resetCircuitBreaker => isChinese ? '重置熔断' : 'Reset Circuit';
-  String get circuitBroken => isChinese ? '已熔断' : 'Circuit Open';
-  String get commander => isChinese ? '主智能体' : 'Main Agent';
-
-  /// Composer flywheel section: active dispatch owner for this conversation.
-  /// May differ from the first Daily Conversation capsule; when it does, this
-  /// selection wins for the current session.
+  String get fastModeLabel => 'Fast';
   String get currentConversation => isChinese ? '当前对话' : 'Current Conversation';
-  String get dailyConversation => isChinese ? '日常对话' : 'Assistant';
-  String get codeEngineeringDesigner => isChinese ? '设计师' : 'Designer';
-  String get codeEngineeringWorker => isChinese ? '执行者' : 'Worker';
-  String get codeEngineeringReviewer => isChinese ? '审查官' : 'Reviewer';
   String get addDailyConversationAgent => isChinese ? '添加智能体' : 'Add agent';
   String get confirmDailyConversationSelection =>
       isChinese ? '确认添加' : 'Confirm';
-  String get searchDailyConversationAgents =>
-      isChinese ? '搜索智能体' : 'Search agents';
-  String get fastModeLabel => 'Fast';
-  String get agentClient => isChinese ? '智能体客户端' : 'Agent Client';
   String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
   String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';
+  String get codeEngineeringDesigner => isChinese ? '设计师' : 'Designer';
+  String get codeEngineeringWorker => isChinese ? '执行者' : 'Worker';
+  String get codeEngineeringReviewer => isChinese ? '审查官' : 'Reviewer';
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
-  String get editPolicy => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
-  String get editMainAgent => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
   String get agentModeLabel => isChinese ? 'Agent' : 'Agent';
   String get planModeLabel => isChinese ? 'Plan' : 'Plan';
-  String get addRule => isChinese ? '新增规则' : 'Add Rule';
-  String ruleLabel(int index) => isChinese ? '规则 $index' : 'Rule $index';
-  String get configurePolicyBeforeSend =>
-      isChinese ? '先配置策略' : 'Configure a policy first';
   String get conversationParitySendDisabled =>
       isChinese ? '发送已关闭' : 'Sending disabled';
   String get conversationParityCapabilities =>
@@ -607,11 +651,6 @@ extension LicoStringsLabels on LicoStrings {
         isChinese
             ? '当前扫描结果没有可执行的消息发送路径。'
             : 'The current scan has no executable message-send path.',
-      'orchestration_policy_required' => configurePolicyBeforeSend,
-      'orchestration_targets_unavailable' =>
-        isChinese
-            ? '当前策略没有可用的发送目标。'
-            : 'The current policy has no available send targets.',
       'antigravity_auth_required' =>
         isChinese
             ? '发送前需要完成 Google 账号授权。'
@@ -632,12 +671,10 @@ extension LicoStringsLabels on LicoStrings {
   String conversationPermissionDenied(String tool) => isChinese
       ? '$tool 的权限请求被拒绝，回复中未执行该操作。'
       : '$tool was denied permission; the action was not performed.';
-  String get conversationPermissionAllowAction =>
-      isChinese ? '允许' : 'Allow';
+  String get conversationPermissionAllowAction => isChinese ? '允许' : 'Allow';
   String get conversationPermissionAllowAndRememberAction =>
       isChinese ? '允许并加入白名单' : 'Allow and remember';
-  String get conversationPermissionDenyAction =>
-      isChinese ? '拒绝' : 'Deny';
+  String get conversationPermissionDenyAction => isChinese ? '拒绝' : 'Deny';
 
   String get llmGatewayStart => isChinese ? '启动' : 'Start';
   String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';
@@ -753,21 +790,6 @@ extension LicoStringsLabels on LicoStrings {
   String get tools => isChinese ? '工具' : 'Tools';
   String get allow => isChinese ? '允许' : 'Allow';
   String get deny => isChinese ? '拒绝' : 'Deny';
-  String get skillSync => isChinese ? '技能同步' : 'Skill Sync';
-  String get skillSyncHint => isChinese
-      ? '选择技能与目标智能体，确认后再安装。'
-      : 'Choose a skill and target agent, then confirm before install.';
-  String get skillSyncPrepare => isChinese ? '准备技能同步' : 'Prepare Skill Sync';
-  String get skillSyncConfirmInstall => isChinese ? '确认安装' : 'Confirm Install';
-  String get skillSyncRejectInstall => isChinese ? '拒绝安装' : 'Reject Install';
-  String get skillSyncQueue => isChinese ? '技能同步队列' : 'Skill Sync Queue';
-  String get skillSyncStatusDrafting => isChinese ? '起草中' : 'Drafting';
-  String get skillSyncStatusTransferring => isChinese ? '传输中' : 'Transferring';
-  String get skillSyncStatusAwaitingInstall =>
-      isChinese ? '等待安装' : 'Awaiting install';
-  String get skillSyncStatusInstalling => isChinese ? '安装中' : 'Installing';
-  String get skillSyncStatusInstalled => isChinese ? '已安装' : 'Installed';
-  String get skillSyncStatusFailed => isChinese ? '失败' : 'Failed';
   String get sourceAgent => isChinese ? '源智能体' : 'Source Agent';
   String get targetAgent => isChinese ? '目标智能体' : 'Target Agent';
   String get packageDigest => isChinese ? '包摘要' : 'Package Digest';
@@ -941,11 +963,6 @@ extension LicoStringsLabels on LicoStrings {
   String get llmGatewayLaunchAtLoginUnsupported => isChinese
       ? '当前系统不支持 Gateway 开机自启动。'
       : 'Launch at login is not supported on this system.';
-  String get mentionConfiguredAgents =>
-      isChinese ? '提及角色与智能体' : 'Mention roles and agents';
-  String get mentionConfiguredAgentsEmpty => isChinese
-      ? '尚未配置角色或智能体。点击编辑打开适应性飞轮。'
-      : 'No roles or agents configured yet. Edit Adaptive Flywheel to add some.';
   String get startupAutostartHint => isChinese
       ? '登录后自动启动桌面客户端与可选后台进程；Gateway 启动时不加载 API Key。'
       : 'Start the desktop client and optional helpers at login. Gateway starts without API keys.';

@@ -50,7 +50,8 @@ pub(super) fn handle_antigravity_authorize(command: AdmittedCommand) -> Result<C
 }
 
 pub(super) fn handle_codex_plugin_plan(command: AdmittedCommand) -> Result<CliExecution> {
-    let result = codex_plugin_plan(&command);
+    let binary_path = command.option_text("binary-path");
+    let result = codex_plugin_plan(binary_path.as_deref());
     Ok(CliExecution::Json(match result {
         Ok(plan) => serde_json::json!({
             "ok": true,
@@ -60,7 +61,6 @@ pub(super) fn handle_codex_plugin_plan(command: AdmittedCommand) -> Result<CliEx
             "marketplaceSource": crate::platform::codex_plugin_manager::CodexPluginInstallPlan::source(),
             "marketplaceRelease": crate::platform::codex_plugin_manager::CodexPluginInstallPlan::release(),
             "requiresConfirmation": true,
-            "fallbackOwner": "licoup",
         }),
         Err(error) => codex_plugin_error(error),
     }))
@@ -71,23 +71,23 @@ pub(super) fn handle_codex_plugin_status(command: AdmittedCommand) -> Result<Cli
         .option_text("binary-path")
         .map(Path::new)
         .map(crate::platform::codex_plugin_manager::status)
-        .unwrap_or(crate::domain::agent_workflow_loop::CodexPluginState::Unavailable);
+        .unwrap_or(crate::domain::integration_state::IntegrationState::Unavailable);
     let (state_label, ready) = match state {
-        crate::domain::agent_workflow_loop::CodexPluginState::Ready => ("ready", true),
-        crate::domain::agent_workflow_loop::CodexPluginState::Missing => ("missing", false),
-        crate::domain::agent_workflow_loop::CodexPluginState::Unavailable => ("unavailable", false),
+        crate::domain::integration_state::IntegrationState::Ready => ("ready", true),
+        crate::domain::integration_state::IntegrationState::Missing => ("missing", false),
+        crate::domain::integration_state::IntegrationState::Unavailable => ("unavailable", false),
     };
     Ok(CliExecution::Json(serde_json::json!({
         "ok": true,
         "state": state_label,
         "ready": ready,
-        "orchestrationOwner": if ready { "main-agent-plugin" } else { "licoup" },
     })))
 }
 
 pub(super) fn handle_codex_plugin_install(command: AdmittedCommand) -> Result<CliExecution> {
     let result = (|| {
-        let plan = codex_plugin_plan(&command)?;
+        let binary_path = command.option_text("binary-path");
+        let plan = codex_plugin_plan(binary_path.as_deref())?;
         let confirmation = command.option_text("confirmation").ok_or(
             crate::platform::codex_plugin_manager::CodexPluginInstallError::ApprovalRequired,
         )?;
@@ -99,20 +99,18 @@ pub(super) fn handle_codex_plugin_install(command: AdmittedCommand) -> Result<Cl
             "ok": true,
             "installed": receipt.installed,
             "pluginReadyForNewConversations": receipt.plugin_ready_for_new_conversations,
-            "orchestrationOwner": "main-agent-plugin",
         }),
         Err(error) => codex_plugin_error(error),
     }))
 }
 
 fn codex_plugin_plan(
-    command: &AdmittedCommand,
+    binary_path: Option<&str>,
 ) -> std::result::Result<
     crate::platform::codex_plugin_manager::CodexPluginInstallPlan,
     crate::platform::codex_plugin_manager::CodexPluginInstallError,
 > {
-    let executable = command
-        .option_text("binary-path")
+    let executable = binary_path
         .map(Path::new)
         .ok_or(crate::platform::codex_plugin_manager::CodexPluginInstallError::InvalidExecutable)?;
     crate::platform::codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", executable)
@@ -311,14 +309,16 @@ mod tests {
     }
 
     #[test]
-    fn missing_codex_binary_projects_only_unavailable_fallback_state() {
+    fn missing_codex_binary_projects_only_unavailable_plugin_state() {
+        let missing_binary =
+            std::env::temp_dir().join(format!("lico-missing-codex-{}", uuid::Uuid::new_v4()));
         let CliExecution::Json(result) = crate::ffi::commands::execute_cli(vec![
             "adapter".into(),
             "codex".into(),
             "plugin".into(),
             "status".into(),
             "--binary-path".into(),
-            "/synthetic/missing-codex".into(),
+            missing_binary.to_string_lossy().into_owned(),
         ])
         .unwrap() else {
             panic!("status must be JSON");
@@ -326,7 +326,8 @@ mod tests {
         assert_eq!(result["ok"], true);
         assert_eq!(result["state"], "unavailable");
         assert_eq!(result["ready"], false);
-        assert_eq!(result["orchestrationOwner"], "licoup");
-        assert!(!result.to_string().contains("synthetic"));
+        assert!(result.get("orchestrationOwner").is_none());
+        assert!(result.get("fallbackOwner").is_none());
+        assert!(!result.to_string().contains("missing-codex"));
     }
 }

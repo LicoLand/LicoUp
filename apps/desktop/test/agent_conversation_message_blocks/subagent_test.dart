@@ -1,5 +1,3 @@
-import 'package:licoup/src/contracts/agent_conversation_message.dart';
-
 import 'message_blocks_test_harness.dart';
 
 void main() {

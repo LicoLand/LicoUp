@@ -51,8 +51,9 @@ class _FakeProcessContext implements NativeCliProcessContext {
   Future<Process> startProcess(
     String executable,
     List<String> arguments,
-    Map<String, String>? environment,
-  ) {
+    Map<String, String>? environment, {
+    ProcessStartMode mode = ProcessStartMode.normal,
+  }) {
     throw UnimplementedError();
   }
 }

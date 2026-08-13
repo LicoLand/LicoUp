@@ -58,14 +58,6 @@
     "rejected",
     "failed"
   ],
-  "skillStatuses": [
-    "drafting",
-    "transferring",
-    "awaiting_install",
-    "installing",
-    "installed",
-    "failed"
-  ],
   "approvalStatuses": [
     "pending",
     "resolved",

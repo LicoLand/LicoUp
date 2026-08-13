@@ -20,7 +20,7 @@ class StdioRpcTransportFailure implements Exception {
 }
 
 class StdioRpcSession {
-  StdioRpcSession(this.process) {
+  StdioRpcSession(this.process, {bool observeExit = true}) {
     _stdoutSubscription = process.stdout.listen(
       _acceptStdoutChunk,
       onError: (Object _, StackTrace _) => _addFrameError(),
@@ -34,12 +34,14 @@ class StdioRpcSession {
       },
       cancelOnError: false,
     );
-    unawaited(
-      process.exitCode.then<void>(
-        (_) => _addFrameError(),
-        onError: (Object _, StackTrace _) => _addFrameError(),
-      ),
-    );
+    if (observeExit) {
+      unawaited(
+        process.exitCode.then<void>(
+          (_) => _addFrameError(),
+          onError: (Object _, StackTrace _) => _addFrameError(),
+        ),
+      );
+    }
   }
 
   final Process process;
@@ -215,14 +217,16 @@ class StdioRpcSession {
     } on Object {
       // Teardown deliberately ignores and redacts process-specific details.
     }
-    try {
-      await process.exitCode.timeout(stdioRpcShutdownTimeout);
-    } on Object {
-      process.kill();
+    if (kill) {
       try {
         await process.exitCode.timeout(stdioRpcShutdownTimeout);
       } on Object {
-        // The process is detached from this client instance after this bound.
+        process.kill();
+        try {
+          await process.exitCode.timeout(stdioRpcShutdownTimeout);
+        } on Object {
+          // The process is detached from this client instance after this bound.
+        }
       }
     }
     await _stdoutSubscription.cancel();

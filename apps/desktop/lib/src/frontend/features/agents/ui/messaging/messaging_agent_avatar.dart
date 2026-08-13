@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Circular agent brand avatar with the shared activity-dot semantics (amber
@@ -68,9 +69,12 @@ class MessagingAgentAvatar extends StatelessWidget {
           Positioned.fill(
             child: showWell
                 ? DecoratedBox(
+                    key: const Key('messaging-agent-avatar-well'),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: colors.surfaceLow,
+                      color: ConversationVisualTokens.circularIdentityWellFill(
+                        colors,
+                      ),
                       border: Border.all(
                         color: colors.line.withAlpha(90),
                         width: 1,

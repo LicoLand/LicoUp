@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -31,10 +30,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('messaging-chrome-band')), findsOneWidget);
-      expect(
-        find.byKey(const Key('messaging-topstrip-search')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('messaging-topstrip-search')), findsNothing);
       expect(
         find.byKey(const Key('messaging-fake-content-agents')),
         findsOneWidget,
@@ -54,22 +50,16 @@ void main() {
       expect(cardRect.left, 56);
       expect(width - cardRect.right, 8);
       expect(700 - cardRect.bottom, 8);
-      // The chrome band spans the full window width with the search capsule
-      // inside it.
+      // The chrome band spans the full window width. Agents moves search into
+      // its conversation sidebar, so the top-right cluster contains the bell.
       final bandRect = tester.getRect(
         find.byKey(const Key('messaging-chrome-band')),
       );
       expect(bandRect.left, 0);
       expect(bandRect.width, width);
       expect(bandRect.height, 48);
-      final searchRect = tester.getRect(
-        find.byKey(const Key('messaging-topstrip-search')),
-      );
-      expect(searchRect.top, greaterThanOrEqualTo(bandRect.top));
-      expect(searchRect.bottom, lessThanOrEqualTo(bandRect.bottom));
-      expect(searchRect.width, 200);
-      // Right cluster order: tabs | bell | search, with the stadium search
-      // field pinned at the band's far right edge.
+      // Right cluster order: tabs | bell, with notifications pinned at the
+      // band's far-right edge.
       final tabsRect = tester.getRect(
         find.byKey(const Key('fixture-conversation-tabs')),
       );
@@ -78,9 +68,8 @@ void main() {
       final bellRect = tester.getRect(
         find.byKey(const Key('fixture-notification-bell')),
       );
-      expect(tabsRect.left, lessThan(bellRect.left));
-      expect(bellRect.left, lessThan(searchRect.left));
-      expect(searchRect.right, bandRect.right - 10);
+      expect(tabsRect.right, lessThan(bellRect.left));
+      expect(bellRect.right, bandRect.right - 10);
       // The band stays frosted glass: native blur only — no Flutter tint overlay.
       final band = find.byKey(const Key('messaging-chrome-band'));
       expect(
@@ -124,29 +113,28 @@ void main() {
       expect(selectedIcon.color, shellContext.licoColors.textOnPrimary);
       // The rail's destination group (four destinations plus the pairing
       // page) is vertically centered in the zone above the bottom
-      // avatar/settings buttons.
+      // settings button.
       final firstButtonCenter = tester.getCenter(
         find.byKey(const Key('messaging-rail-nav-agents')),
       );
       final lastButtonCenter = tester.getCenter(
         find.byKey(const Key('messaging-rail-pairing-button')),
       );
-      final avatarRect = tester.getRect(
-        find.byKey(const Key('messaging-rail-avatar-button')),
+      final settingsRect = tester.getRect(
+        find.byKey(const Key('messaging-rail-settings-button')),
       );
-      final expectedCenter = (bandRect.bottom + avatarRect.top) / 2;
+      final expectedCenter = (bandRect.bottom + settingsRect.top) / 2;
       expect(
         (((firstButtonCenter.dy + lastButtonCenter.dy) / 2) - expectedCenter)
             .abs(),
         lessThan(6),
       );
-      // The avatar and settings are rounded-rect buttons anchored at the
-      // rail's bottom-left.
-      final settingsRect = tester.getRect(
-        find.byKey(const Key('messaging-rail-settings-button')),
+      // Settings is a rounded-rect button anchored at the rail's bottom.
+      expect(settingsRect.top, greaterThan(lastButtonCenter.dy));
+      expect(
+        find.byKey(const Key('messaging-rail-avatar-button')),
+        findsNothing,
       );
-      expect(avatarRect.top, greaterThan(lastButtonCenter.dy));
-      expect(settingsRect.top, greaterThan(avatarRect.top));
       expect(
         find.byKey(const Key('messaging-destination-capsule')),
         findsNothing,
@@ -203,6 +191,7 @@ void main() {
       LayoutAgentsStrategyScope.maybeOf(contentContext),
       const AgentsPresentationStrategy.console(),
     );
+    expect(find.byKey(const Key('messaging-topstrip-search')), findsOneWidget);
   });
 
   testWidgets('rail selection routes to the destination callback', (
@@ -279,49 +268,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'avatar toggles the profile page and capsule selection closes it',
-    (tester) async {
-      configureMessagingTestView(tester, const Size(1280, 700));
-      final harness = MessagingDesktopHarness();
-      await tester.pumpWidget(
-        MessagingDesktopTestShell(
-          environment: messagingDesktopEnvironment(width: 1280, height: 700),
-          activeDestination: ClientSection.agents,
-          content: MessagingDesktopFixtureContent(harness),
-          harness: harness,
-        ),
-      );
-      await tester.pump();
-
-      expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-
-      await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-      await tester.pump();
-      expect(find.byKey(const Key('messaging-profile-page')), findsOneWidget);
-      expect(find.text('Local User'), findsOneWidget);
-      expect(
-        find.byKey(const Key('messaging-fake-content-agents')),
-        findsNothing,
-      );
-
-      // Re-tapping the avatar closes it.
-      await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-      await tester.pump();
-      expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-
-      // Selecting any capsule destination closes it too.
-      await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('messaging-rail-nav-skillHub')));
-      await tester.pump();
-      expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-      expect(harness.selections, [ClientSection.skillHub]);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('avatar and settings are never active at the same time', (
+  testWidgets('settings destination activates the settings rail tile', (
     tester,
   ) async {
     configureMessagingTestView(tester, const Size(1280, 700));
@@ -336,145 +283,22 @@ void main() {
     );
     await tester.pump();
 
-    Color tileColor(Key key) {
-      final container = tester.widget<AnimatedContainer>(
-        find
-            .descendant(
-              of: find.byKey(key),
-              matching: find.byType(AnimatedContainer),
-            )
-            .first,
-      );
-      return (container.decoration! as BoxDecoration).color!;
-    }
-
+    final container = tester.widget<AnimatedContainer>(
+      find
+          .descendant(
+            of: find.byKey(const Key('messaging-rail-settings-button')),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
     final colors = tester.element(
       find.byKey(const Key('messaging-desktop-shell')),
     );
-    final primary = colors.licoColors.primary;
-    // Settings destination alone activates the settings tile.
-    expect(tileColor(const Key('messaging-rail-settings-button')), primary);
-
-    // Opening the profile deactivates the settings tile while the avatar
-    // tile takes the active treatment.
-    await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-    await tester.pump();
-    expect(find.byKey(const Key('messaging-profile-page')), findsOneWidget);
     expect(
-      tileColor(const Key('messaging-rail-settings-button')),
-      isNot(primary),
+      (container.decoration! as BoxDecoration).color,
+      colors.licoColors.primary,
     );
-    expect(tileColor(const Key('messaging-rail-avatar-button')), primary);
+    expect(find.byKey(const Key('messaging-rail-avatar-button')), findsNothing);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets('avatar deactivates the previously selected destination', (
-    tester,
-  ) async {
-    configureMessagingTestView(tester, const Size(1280, 700));
-    final harness = MessagingDesktopHarness();
-    await tester.pumpWidget(
-      MessagingDesktopTestShell(
-        environment: messagingDesktopEnvironment(width: 1280, height: 700),
-        activeDestination: ClientSection.models,
-        content: MessagingDesktopFixtureContent(harness),
-        harness: harness,
-      ),
-    );
-    await tester.pump();
-
-    Color tileColor(Key key) {
-      final container = tester.widget<AnimatedContainer>(
-        find
-            .descendant(
-              of: find.byKey(key),
-              matching: find.byType(AnimatedContainer),
-            )
-            .first,
-      );
-      return (container.decoration! as BoxDecoration).color!;
-    }
-
-    final shellContext = tester.element(
-      find.byKey(const Key('messaging-desktop-shell')),
-    );
-    final primary = shellContext.licoColors.primary;
-    const modelsButton = Key('messaging-rail-nav-models');
-    const avatarButton = Key('messaging-rail-avatar-button');
-
-    expect(tileColor(modelsButton), primary);
-    await tester.tap(find.byKey(avatarButton));
-    await tester.pump();
-
-    expect(find.byKey(const Key('messaging-profile-page')), findsOneWidget);
-    expect(tileColor(modelsButton), isNot(primary));
-    expect(tileColor(avatarButton), primary);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('profile quick actions navigate to pairing and settings', (
-    tester,
-  ) async {
-    configureMessagingTestView(tester, const Size(1280, 700));
-    final harness = MessagingDesktopHarness();
-    final chrome = _RecordingChromePort();
-    await tester.pumpWidget(
-      MessagingDesktopTestShell(
-        environment: messagingDesktopEnvironment(width: 1280, height: 700),
-        activeDestination: ClientSection.agents,
-        content: MessagingDesktopFixtureContent(harness),
-        harness: harness,
-        chrome: chrome,
-      ),
-    );
-    await tester.pump();
-
-    await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-    await tester.pump();
-
-    // Pairing is a destination page inside the unified card, never the
-    // dialog, so the chrome pairing port stays untouched.
-    await tester.tap(find.byKey(const Key('messaging-profile-pairing-action')));
-    await tester.pump();
-    expect(chrome.pairingCalls, 0);
-    expect(harness.selections, [ClientSection.mobileRelay]);
-    expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('messaging-profile-settings-action')),
-    );
-    await tester.pump();
-    expect(harness.selections, [
-      ClientSection.mobileRelay,
-      ClientSection.settings,
-    ]);
-    expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-}
-
-final class _RecordingChromePort implements LayoutChromePort {
-  int pairingCalls = 0;
-  int searchCalls = 0;
-
-  @override
-  LayoutChromeSnapshot get value => const LayoutChromeSnapshot.empty();
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
-
-  @override
-  Future<void> openPairing(BuildContext context) async {
-    pairingCalls += 1;
-  }
-
-  @override
-  Future<void> openGlobalSearch(BuildContext context) async {
-    searchCalls += 1;
-  }
 }

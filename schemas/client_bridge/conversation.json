@@ -1,0 +1,42 @@
+{
+  "title": "ConversationBridge",
+  "version": 1,
+  "maxRequestBytes": 1048576,
+  "defaultEventPageSize": 50,
+  "maxEventPageSize": 100,
+  "actions": [
+    "conversation.create",
+    "conversation.rename",
+    "conversation.archive",
+    "conversation.list",
+    "conversation.get",
+    "conversation.events.page",
+    "conversation.events.search",
+    "conversation.event.append",
+    "conversation.message.post",
+    "conversation.event.part.append",
+    "conversation.event.finalize",
+    "conversation.membership.add",
+    "conversation.membership.access.set",
+    "conversation.membership.leave",
+    "conversation.export",
+    "conversation.import"
+  ],
+  "principalKinds": ["human", "agent"],
+  "membershipAccess": ["owner", "member"],
+  "membershipStatuses": ["active", "left"],
+  "turnStates": ["pending", "claimed", "running", "waiting-for-human", "succeeded", "failed", "interrupted", "cancelled"],
+  "eventKinds": ["message", "membership-changed", "availability"],
+  "eventPartKinds": ["text", "reasoning", "tool-call", "tool-result", "artifact", "diagnostic", "metadata"],
+  "failureCodes": [
+    "invalid_request",
+    "conversation_not_found",
+    "membership_not_found",
+    "event_author_not_active",
+    "event_already_finalized",
+    "migration_required",
+    "migration_failed",
+    "runtime_unavailable",
+    "unsupported_action"
+  ]
+}

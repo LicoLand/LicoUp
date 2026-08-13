@@ -13,6 +13,8 @@ final class AgentConversationPaneState {
     required List<AgentConversationMessage> liveMessages,
     required List<AgentConversationSession> recentSessions,
     required this.loading,
+    this.recentSessionsHasMore = false,
+    this.recentSessionsLoadingMore = false,
     required this.turnActive,
     required this.preparingNewConversation,
     required this.composerEnabled,
@@ -53,6 +55,8 @@ final class AgentConversationPaneState {
   final List<AgentConversationMessage> liveMessages;
   final List<AgentConversationSession> recentSessions;
   final bool loading;
+  final bool recentSessionsHasMore;
+  final bool recentSessionsLoadingMore;
   final bool turnActive;
   final bool preparingNewConversation;
   final bool composerEnabled;
@@ -90,6 +94,8 @@ final class AgentConversationPaneActions {
     required this.onDraftChanged,
     required this.onSend,
     required this.onSelectSession,
+    this.onNewConversation,
+    this.onLoadMoreRecentSessions,
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
@@ -105,6 +111,8 @@ final class AgentConversationPaneActions {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final ValueChanged<String> onSelectSession;
+  final VoidCallback? onNewConversation;
+  final VoidCallback? onLoadMoreRecentSessions;
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;

@@ -9,7 +9,7 @@ first, and under your control.**
 
 English (normative language) · [简体中文 (localized language)](README.zh-CN.md)
 
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Version: 0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.md)
 [![Platforms: macOS · Windows · Linux · Android · iOS](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux_%C2%B7_Android_%C2%B7_iOS-24292f?style=flat-square)](docs/COMPATIBILITY.md)
 
@@ -44,9 +44,9 @@ in [`docs/STATUS.md`](docs/STATUS.md) and the generated
   uses ACP; Hermes uses ACP when its optional package is present and otherwise
   uses the built-in TUI Gateway JSON-RPC. Existing SSH authentication and host
   verification are required; LicoUp stores no SSH password or private key.
-- **Manages skills across agents** — list, install, update from an
-  explicitly configured mirror or GitHub repository, delete, and aggregate
-  usage counts by time window.
+- **Shows local skills across agents** — discover skills already present in
+  local agent roots, inspect usage counts, and move a selected skill to the
+  system Trash. LicoUp does not download, install, update, or synchronize skills.
 - **Backs up conversations** — browse native conversation history and back
   up all or keyword-selected conversations to a local directory you choose.
 - **Reports token usage** — by agent or model, defaulting to the latest
@@ -102,6 +102,7 @@ flowchart LR
 
 **Explicit external approval.** Optional external MCP requests can send
 only the exact request or selected files shown in a fresh direct approval;
+each transfer requires a protected one-shot user approval.
 the named external service can read that approved content even though
 transport is protected by HTTPS. Without an exact external-service
 approval, protected user content can leave the client only as an approved,
@@ -112,18 +113,6 @@ runtime, not a peer-encrypted LicoUp recipient. The conversation header keeps
 its SSH destination visible, and pressing Send authorizes that exact prompt to
 that VM. SSH protects the transport, while OpenClaw or Hermes inside the VM
 receives the conversation content in order to answer.
-
-## Optional Meshrix collaboration
-
-Meshrix collaboration is not loaded by the default client. It is available
-only after you choose an immutable GitHub commit, separately import its
-trusted signing key, and install and enable the plugin manually. A local
-deployment starts only through a fixed, signed external runner after a
-separate manual action. This repository does not bundle that server runner,
-so building LicoUp alone is not proof that Meshrix was deployed.
-Installation, enablement, and startup never authorize an external data
-transfer: each exact request or selected local file that would leave the
-device requires a fresh, protected one-shot user approval.
 
 ## Build from source
 
@@ -166,6 +155,7 @@ data boundaries.
 | Architecture | [Architecture](docs/architecture/README.md) | [架构](docs/architecture/README.zh-CN.md) |
 | Federation transport | [Lico Arc candidate station adapter](docs/protocols/licoarc-station-adapter.md) | [Lico Arc 候选通讯站 Adapter](docs/protocols/licoarc-station-adapter.zh-CN.md) |
 | Compatibility | [Compatibility](docs/COMPATIBILITY.md) | [兼容性](docs/COMPATIBILITY.zh-CN.md) |
+| Release packages | [Release packages](docs/RELEASE-PACKAGES.md) | [发布包结构](docs/RELEASE-PACKAGES.zh-CN.md) |
 | Security | [Security](SECURITY.md) | [安全](SECURITY.zh-CN.md) |
 | Contributing | [Contributing](CONTRIBUTING.md) | [参与贡献](CONTRIBUTING.zh-CN.md) |
 
@@ -174,4 +164,4 @@ data boundaries.
 
 ## License
 
-LicoUp is licensed under `GPL-3.0-or-later`. See [LICENSE](LICENSE).
+LicoUp is licensed under `AGPL-3.0-or-later`. See [LICENSE](LICENSE).

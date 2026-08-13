@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LicoUp
+Comment=Official LicoMesh client
+Exec=licoup
+Icon=land.lico.licoup
+Categories=Network;Utility;
+Terminal=false

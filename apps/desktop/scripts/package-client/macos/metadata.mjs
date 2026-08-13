@@ -25,7 +25,7 @@ export function updateMacosAppMetadata(bundle, options) {
   for (const [key, value] of [
     ["CFBundleIdentifier", packageClientRuntime.bundleId],
     ["CFBundleName", "LicoUp"],
-    ["CFBundleDisplayName", "Arc"],
+    ["CFBundleDisplayName", "LicoUp"],
     [
       "NSHumanReadableCopyright",
       "Copyright (c) 2026 LicoMesh. All rights reserved.",

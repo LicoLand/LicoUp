@@ -91,8 +91,8 @@
       "method": "official lane usage projection is not enabled"
     },
     "multimodal": {
-      "status": "unsupported",
-      "method": "current adapter contribution is text-only"
+      "status": "supported",
+      "method": "ordered app-server localImage items from bounded local desktop attachments"
     }
   },
   "events": {
