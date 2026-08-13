@@ -352,9 +352,39 @@ test("inventory discloses current native transports and fail-closed capability g
   ]);
   for (const driver of inventory.drivers) {
     assert.equal(
+      driver.capabilityMatrix?.hostSurvivesGuiDisconnect,
+      true,
+      `${driver.agentId} must use the shared GUI-independent host`,
+    );
+    assert.equal(
+      driver.capabilityMatrix?.activeTurnReattach,
+      true,
+      `${driver.agentId} must expose active-turn reattachment`,
+    );
+    assert.equal(
+      driver.capabilityMatrix?.orderedCursorReplay,
+      true,
+      `${driver.agentId} must expose ordered cursor replay`,
+    );
+    assert.equal(
       driver.capabilityMatrix?.cancel,
       supervisedCancel.has(driver.agentId),
       `${driver.agentId} cancel must match its bounded active-turn control handle`,
+    );
+  }
+
+  for (const capability of [
+    "hostSurvivesGuiDisconnect",
+    "activeTurnReattach",
+    "orderedCursorReplay",
+  ]) {
+    const incomplete = structuredClone(inventory);
+    delete incomplete.drivers[0].capabilityMatrix[capability];
+    assert.throws(
+      () => reduceConversationParity({ packagingRegistry, inventory: incomplete }),
+      (error) =>
+        error instanceof ReducerError && error.code === "driver_inventory_invalid",
+      `${capability} must be mandatory without a compatibility fallback`,
     );
   }
 });

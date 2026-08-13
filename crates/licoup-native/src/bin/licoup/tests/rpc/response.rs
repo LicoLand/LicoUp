@@ -62,6 +62,30 @@ fn stdio_rpc_progress_frames_are_ordered_before_the_terminal_frame() {
 }
 
 #[test]
+fn stdio_rpc_accepts_persistent_progress_before_native_ids_are_bound() {
+    let writer = Arc::new(Mutex::new(Vec::new()));
+    write_stdio_rpc_event(
+        &writer,
+        "request-1",
+        "workflow-1",
+        1,
+        json!({
+            "event": "agent.turn.processing",
+            "sessionId": "",
+            "turnId": "",
+            "turnHandle": "dispatch-1",
+            "conversationId": "conversation-1",
+            "cursor": 1,
+        }),
+    )
+    .unwrap();
+
+    let frames = response_lines(recover_stdio_rpc_writer(writer).unwrap());
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0]["event"]["event"], "agent.turn.processing");
+}
+
+#[test]
 fn stdio_rpc_rejects_unstructured_progress_events() {
     let writer = Arc::new(Mutex::new(Vec::new()));
     let error = write_stdio_rpc_event(

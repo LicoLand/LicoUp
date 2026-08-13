@@ -169,13 +169,16 @@
     "lifecycle": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["supervision", "cleanupScope", "cancelHandleScope", "maxConcurrentTransports", "maxTrackedSessions"],
+      "required": ["supervision", "cleanupScope", "cancelHandleScope", "maxConcurrentTransports", "maxTrackedSessions", "survivesGuiDisconnect", "reattachScope", "replayMode"],
       "properties": {
         "supervision": { "enum": ["process-tree", "attached-service", "runtime-owned", "unavailable"] },
         "cleanupScope": { "enum": ["official-session", "disposable-root", "process-session", "unavailable"] },
         "cancelHandleScope": { "enum": ["active-turn", "unavailable"] },
         "maxConcurrentTransports": { "type": "integer", "minimum": 1, "maximum": 128 },
-        "maxTrackedSessions": { "type": "integer", "minimum": 1, "maximum": 65536 }
+        "maxTrackedSessions": { "type": "integer", "minimum": 1, "maximum": 65536 },
+        "survivesGuiDisconnect": { "const": true },
+        "reattachScope": { "const": "activeTurn" },
+        "replayMode": { "const": "orderedCursor" }
       }
     },
     "privacy": {

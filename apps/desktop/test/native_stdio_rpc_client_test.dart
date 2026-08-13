@@ -231,8 +231,12 @@ while IFS= read -r line; do
   case "$line" in
     *'"method":"agent.conversation.send"'*)
       : > "$LICO_TEST_STARTED_FILE"
-      while [ ! -f "$LICO_TEST_RELEASE_FILE" ]; do sleep 0.01; done
-      : > "$LICO_TEST_COMPLETED_FILE"
+      (
+        while [ ! -f "$LICO_TEST_RELEASE_FILE" ]; do sleep 0.01; done
+        : > "$LICO_TEST_COMPLETED_FILE"
+      ) &
+      worker=$!
+      wait "$worker"
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"sessionId":"session-1","turnId":"turn-1"}}\n' "$request_id" "$workflow_id" || true
       ;;
   esac
@@ -262,7 +266,7 @@ done
           );
 
       await _waitUntil(started.existsSync);
-      expect(context.startModes, [ProcessStartMode.detachedWithStdio]);
+      expect(context.startModes, [ProcessStartMode.normal]);
       await client.dispose().timeout(const Duration(milliseconds: 500));
       await streamDone.future.timeout(const Duration(milliseconds: 500));
       expect(completed.existsSync(), isFalse);

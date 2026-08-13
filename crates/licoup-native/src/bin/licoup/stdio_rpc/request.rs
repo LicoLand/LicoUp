@@ -120,7 +120,9 @@ pub(crate) fn parse_stdio_rpc_request(
         | "agent.conversation.cleanup"
         | "agent.conversation.steer"
         | "agent.conversation.capabilities"
-        | "agent.conversation.stream" => {
+        | "agent.conversation.stream"
+        | "agent.conversation.active"
+        | "agent.conversation.attach" => {
             let operation = method
                 .strip_prefix("agent.conversation.")
                 .unwrap_or(method)

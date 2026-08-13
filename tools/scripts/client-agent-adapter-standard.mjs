@@ -20,6 +20,7 @@ const laneFamilies = new Set(["acp", "app-server", "cli", "rpc", "serve-http", "
 const requiredCapabilities = [
   "laneFamily", "openNew", "exactResume", "streaming", "cancel", "interruptSteer",
   "structuredEvents", "approvals", "multimodal", "usageStatus", "officialLane",
+  "hostSurvivesGuiDisconnect", "activeTurnReattach", "orderedCursorReplay",
 ];
 const safetyBlockers = new Set([
   "antigravity_cli_structured_transport_unavailable",
@@ -95,6 +96,9 @@ function validateSchemaAuthority() {
   requireFact(schema.properties?.privacy?.properties?.continuityIdInArguments?.type === "boolean", "adapter_schema_id_privacy_missing");
   requireFact(schema.properties?.privacy?.properties?.boundedInput?.const === true, "adapter_schema_input_bound_missing");
   requireFact(schema.properties?.privacy?.properties?.structuredEventProjection?.const === true, "adapter_schema_event_projection_missing");
+  requireFact(schema.properties?.lifecycle?.properties?.survivesGuiDisconnect?.const === true, "adapter_schema_gui_survival_missing");
+  requireFact(schema.properties?.lifecycle?.properties?.reattachScope?.const === "activeTurn", "adapter_schema_reattach_scope_missing");
+  requireFact(schema.properties?.lifecycle?.properties?.replayMode?.const === "orderedCursor", "adapter_schema_replay_mode_missing");
   requireFact(schema.properties?.officialCapabilityAssessment?.properties?.completedBeforeImplementation?.const === true, "adapter_schema_official_assessment_order_missing");
   requireFact(schema.properties?.officialCapabilityAssessment?.properties?.sourceAuthority?.const === "official", "adapter_schema_official_authority_missing");
   for (const field of ["assessedVersion", "versionProbe", "capabilityProbe", "newSessionMethod", "exactResumeMethod", "streamingMethod", "historyMethod", "cleanupMethod", "officialReferences"]) {
@@ -132,6 +136,11 @@ function validateSchemaAuthority() {
   addFormats(ajv);
   const validate = ajv.compile(schema);
   requireFact(validate(template), "adapter_template_schema_invalid");
+  const processReuseOnly = structuredClone(template);
+  delete processReuseOnly.lifecycle.survivesGuiDisconnect;
+  delete processReuseOnly.lifecycle.reattachScope;
+  delete processReuseOnly.lifecycle.replayMode;
+  requireFact(!validate(processReuseOnly), "adapter_process_reuse_only_overclaimed");
   return validate;
 }
 
@@ -166,6 +175,12 @@ function validateInventory(validateManifest) {
     if (matrix.exactResume !== true) {
       requireFact(driver.driverMode !== "conversation", "adapter_exact_resume_overclaimed");
     }
+    requireFact(
+      matrix.hostSurvivesGuiDisconnect === true
+        && matrix.activeTurnReattach === true
+        && matrix.orderedCursorReplay === true,
+      "adapter_inventory_persistent_runtime_missing",
+    );
   }
 
   const manifests = loadManifests();
@@ -214,6 +229,12 @@ function validateInventory(validateManifest) {
           ? manifest.lifecycle.cleanupScope !== "unavailable"
           : operations.cleanup.status === "blocked" && manifest.lifecycle.cleanupScope === "unavailable"),
       "adapter_manifest_cleanup_inconsistent",
+    );
+    requireFact(
+      manifest.lifecycle.survivesGuiDisconnect === true
+        && manifest.lifecycle.reattachScope === "activeTurn"
+        && manifest.lifecycle.replayMode === "orderedCursor",
+      "adapter_manifest_persistent_runtime_missing",
     );
     if (operations.cancel.status === "supported") {
       requireFact(
@@ -345,6 +366,10 @@ try {
     minimumConsecutiveReleaseUiPassesDefault: 3,
     officialCapabilityAssessmentRequired: true,
     canonicalReadinessRequired: true,
+    guiDisconnectSurvivalRequired: true,
+    activeTurnReattachmentRequired: true,
+    orderedCursorReplayRequired: true,
+    processReuseOnlyRejected: true,
     templateValidated: true,
   })}\n`);
 } catch (error) {
