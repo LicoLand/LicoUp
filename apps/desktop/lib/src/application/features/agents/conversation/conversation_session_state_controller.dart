@@ -6,7 +6,7 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_context_projection.dart';
 
 const int conversationSessionPageSize = 10;
-const List<int> conversationSessionLoadMorePageSizes = [20, 50, 100];
+const int conversationSessionLoadMoreIncrement = 10;
 const List<int> conversationInitialProgressiveMilestones = [3, 10];
 const String conversationCatalogRefreshKey = '__lico_catalog_refresh__';
 const int mobileConversationSessionLimit = 20;
@@ -31,10 +31,7 @@ typedef ConversationSessionProgressCallback =
     void Function(ConversationSessionPage page);
 
 int conversationSessionLoadMorePageSize(int completedLoadMoreCount) {
-  final index = completedLoadMoreCount
-      .clamp(0, conversationSessionLoadMorePageSizes.length - 1)
-      .toInt();
-  return conversationSessionLoadMorePageSizes[index];
+  return (completedLoadMoreCount + 1) * conversationSessionLoadMoreIncrement;
 }
 
 /// Owns deterministic session-list reconciliation and native identity binding.
