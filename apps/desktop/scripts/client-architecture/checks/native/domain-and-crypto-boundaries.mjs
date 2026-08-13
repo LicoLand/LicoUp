@@ -30,15 +30,17 @@ export async function checkDomainAndCryptoBoundaries(context) {
   assert(
     sameSet(clientUpdateDeclaredModules, [
       "apply",
+      "archive",
       "canonical",
       "check",
       "constants",
       "dispatch",
       "download",
+      "github_source",
       "keys",
-      "macos_runner",
       "metadata",
       "model",
+      "native_runner",
       "params",
       "release",
       "revocation",
@@ -46,6 +48,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
       "signature",
       "staging",
       "status",
+      "tree",
       "verify",
     ]),
     "client update facade must declare its complete ordinary-module authority exactly once"
@@ -68,7 +71,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     "check::",
     "dispatch::",
     "download::",
-    "macos_runner::",
+    "native_runner::",
     "selection::",
     "staging::",
     "status::",
@@ -83,7 +86,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     `${clientUpdateRoot}/apply.rs`,
     `${clientUpdateRoot}/check.rs`,
     `${clientUpdateRoot}/download.rs`,
-    `${clientUpdateRoot}/macos_runner/lifecycle.rs`,
+    `${clientUpdateRoot}/native_runner/mod.rs`,
     `${clientUpdateRoot}/status.rs`,
     `${clientUpdateRoot}/verify.rs`,
   ]);
@@ -104,8 +107,10 @@ export async function checkDomainAndCryptoBoundaries(context) {
   )).map((relativePath) => path.basename(relativePath));
   assert(
     sameSet(clientUpdateTestFiles, [
+      "archive.rs",
       "artifact_binding.rs",
-      "macos_runner.rs",
+      "github_source.rs",
+      "native_runner.rs",
       "release_selection.rs",
       "revocation.rs",
       "signature_roles.rs",

@@ -331,7 +331,7 @@ mod tests {
         let ready = json!({
             "target": "codex",
             "label": "Codex",
-            "binaryPath": "/usr/local/bin/codex",
+            "binaryPath": "/fixture-root/bin/codex",
             "adapterCapabilities": {
                 "conversationDriver": "native",
                 "conversationReadiness": "ready"

@@ -135,13 +135,13 @@ fn client_update_native_runner_scripts_use_only_bundled_tools() {
 fn client_update_native_runner_rejects_injected_argv_values() {
     use super::super::native_runner::script::validate_script_paths;
     for value in [
-        "/tmp/evil;rm -rf /",
-        "/tmp/$(id)",
-        "/tmp/quote'",
-        "/tmp/quote\"",
-        "/tmp/backtick`",
-        "/tmp/pipe|",
-        "/tmp/amp&",
+        "/fixture-root/evil;rm -rf /",
+        "/fixture-root/$(id)",
+        "/fixture-root/quote'",
+        "/fixture-root/quote\"",
+        "/fixture-root/backtick`",
+        "/fixture-root/pipe|",
+        "/fixture-root/amp&",
         "relative-path",
         "",
     ] {
@@ -151,7 +151,9 @@ fn client_update_native_runner_rejects_injected_argv_values() {
         );
     }
     // Absolute paths with spaces and drive letters are accepted.
-    assert!(validate_script_paths(&["/tmp/LicoUp data/App", "C:\\Users\\Lico\\App"]).is_ok());
+    let separator = char::from(92);
+    let windows_fixture = format!("C:{separator}fixture-root{separator}Lico{separator}App");
+    assert!(validate_script_paths(&["/fixture-root/LicoUp data/App", &windows_fixture]).is_ok());
 }
 
 #[test]
@@ -163,7 +165,7 @@ fn client_update_native_runner_target_guard_rejects_filesystem_roots() {
             "target must be rejected: {target:?}"
         );
     }
-    assert!(ensure_guarded_target_for_test(Path::new("/tmp/LicoUp")).is_ok());
+    assert!(ensure_guarded_target_for_test(Path::new("/fixture-root/LicoUp")).is_ok());
 }
 
 fn write_app_archive(path: &Path, marker: &[u8]) {

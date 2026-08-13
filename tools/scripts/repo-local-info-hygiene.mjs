@@ -153,6 +153,27 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
   };
 }
 
+export function excludeValidatedWorktreePointerFindings(canonical, pointerValid) {
+  if (!pointerValid) return canonical;
+  const worktreeMetadataReasons = new Set([
+    "LICOMESH_DEV_MACHINE_HOST",
+    "LICOMESH_DEV_MACHINE_PATH",
+    "LICOMESH_DEV_MACHINE_USER",
+  ]);
+  const failures = canonical.failures.filter((failure) =>
+    failure.path !== ".git" || !worktreeMetadataReasons.has(failure.reasonCode));
+  return { ...canonical, ok: failures.length === 0, failures };
+}
+
+async function hasValidatedWorktreePointer(scanRoot) {
+  const metadataPath = path.join(scanRoot, ".git");
+  const metadata = await lstat(metadataPath).catch(() => null);
+  if (!metadata?.isFile() || metadata.isSymbolicLink() || metadata.size > 4096) return false;
+  const text = await readFile(metadataPath, "utf8").catch(() => "");
+  const match = /^gitdir: ([^\0\r\n]+)\n?$/u.exec(text);
+  return Boolean(match && path.isAbsolute(match[1]));
+}
+
 function validateCanonicalFindingForRoot(finding, scanRoot) {
   if (scanRoot === repoRoot) {
     return validateCanonicalFinding(finding);
@@ -219,7 +240,11 @@ async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
     exitCode = Number.isInteger(error?.code) ? error.code : -1;
   }
-  return parseCanonicalResult(stdout, exitCode, scanRoot);
+  const parsed = parseCanonicalResult(stdout, exitCode, scanRoot);
+  return excludeValidatedWorktreePointerFindings(
+    parsed,
+    scanRoot === repoRoot && await hasValidatedWorktreePointer(scanRoot),
+  );
 }
 
 function isRedacted(value) {
@@ -357,6 +382,19 @@ async function runSelfTest() {
       temporary
     );
     requireSelfTest(cleanProtocolResult.ok === true, "SELF_TEST_CLEAN_PROTOCOL_RESULT_REJECTED");
+    const worktreeFiltered = excludeValidatedWorktreePointerFindings({
+      ok: false,
+      scannedFiles: 2,
+      failures: [
+        redactedFailure("LICOMESH_DEV_MACHINE_PATH", ".git", "fixture"),
+        redactedFailure("LICOMESH_DEV_MACHINE_PATH", "source.mjs", "fixture"),
+      ],
+    }, true);
+    requireSelfTest(
+      worktreeFiltered.ok === false && worktreeFiltered.failures.length === 1 &&
+      worktreeFiltered.failures[0].path === "source.mjs",
+      "SELF_TEST_WORKTREE_POINTER_SCOPE_TOO_BROAD",
+    );
 
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
@@ -481,7 +519,8 @@ async function runSelfTest() {
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
         missingCanonicalScannerFailedClosed: true,
-        auditorDelegationRestrictedToClientGitHubJob: true
+        auditorDelegationRestrictedToClientGitHubJob: true,
+        validatedWorktreePointerMetadataExcluded: true
       }
     };
   } finally {
