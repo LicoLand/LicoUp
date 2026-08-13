@@ -1,15 +1,15 @@
+use super::test_support::MOBILE_RELAY_NATIVE_ACTIONS;
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::fs;
-
-use super::test_support::MOBILE_RELAY_NATIVE_ACTIONS;
 fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
 
 #[test]
 fn secure_mesh_contract_actions_and_schemas_are_drift_free() {
-    let schema = fs::read_to_string("schemas/client_bridge/secure_mesh.json")
-        .unwrap_or_else(|error| panic!("cannot read secure mesh schema: {error}"));
+    let schema = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../schemas/client_bridge/secure_mesh.json"
+    ));
     let schema: Value = serde_json::from_str(&schema)
         .unwrap_or_else(|error| panic!("secure mesh schema must be valid json: {error}"));
 
@@ -36,8 +36,10 @@ fn secure_mesh_contract_actions_and_schemas_are_drift_free() {
 
 #[test]
 fn secure_mesh_contract_limits_match_schema() {
-    let schema = fs::read_to_string("schemas/client_bridge/secure_mesh.json")
-        .unwrap_or_else(|error| panic!("cannot read secure mesh schema: {error}"));
+    let schema = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../schemas/client_bridge/secure_mesh.json"
+    ));
     let schema: Value = serde_json::from_str(&schema)
         .unwrap_or_else(|error| panic!("secure mesh schema must be valid json: {error}"));
 
@@ -78,12 +80,14 @@ fn secure_mesh_contract_limits_match_schema() {
 
 #[test]
 fn secure_mesh_contract_typed_api_symbols_are_present() {
-    let generated = fs::read_to_string("crates/licoup-native/src/ffi/generated/secure_mesh.rs")
-        .unwrap_or_else(|error| panic!("cannot read generated secure mesh rust contract: {error}"));
-    let dispatch_router = fs::read_to_string(
-        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
-    )
-    .unwrap_or_else(|error| panic!("cannot read dispatch router: {error}"));
+    let generated = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/ffi/generated/secure_mesh.rs"
+    ));
+    let dispatch_router = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs"
+    ));
 
     for symbol in [
         "SecureMeshAction",
@@ -97,12 +101,7 @@ fn secure_mesh_contract_typed_api_symbols_are_present() {
         );
     }
 
-    for symbol in [
-        "dispatch_request",
-        "SecureMeshAction",
-        "SecureMeshRequest",
-        "SecureMeshResult",
-    ] {
+    for symbol in ["dispatch_request", "SecureMeshRequest", "SecureMeshResult"] {
         assert!(
             dispatch_router.contains(symbol),
             "dispatch router should route through generated typed request/response API"
@@ -113,12 +112,16 @@ fn secure_mesh_contract_typed_api_symbols_are_present() {
 #[test]
 fn secure_mesh_contract_failure_codes_cover_secret_and_unsupported_inputs() {
     let sv_unit_test_sentinel = synthetic_value("synthetic-ref");
-    let schema = fs::read_to_string("schemas/client_bridge/secure_mesh.json")
-        .unwrap_or_else(|error| panic!("cannot read secure mesh schema: {error}"));
+    let schema = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../schemas/client_bridge/secure_mesh.json"
+    ));
     let schema: Value = serde_json::from_str(&schema)
         .unwrap_or_else(|error| panic!("secure mesh schema must be valid json: {error}"));
-    let generated = fs::read_to_string("crates/licoup-native/src/ffi/generated/secure_mesh.rs")
-        .unwrap_or_else(|error| panic!("cannot read generated secure mesh rust contract: {error}"));
+    let generated = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/ffi/generated/secure_mesh.rs"
+    ));
 
     let codes = schema
         .get("failureCodes")

@@ -39,8 +39,8 @@ export async function checkDocsReadiness({ assert, files }) {
     "Sensitive runtime data stays on the device",
     "Default client scenarios do not",
     "protected one-shot user approval",
-    "treats the relay as untrusted",
-    "GPL-3.0-or-later",
+    "treats transport as untrusted",
+    "AGPL-3.0-or-later",
   ]) {
     assert(readme.includes(token), `README.md must keep public client token ${token}`);
   }
@@ -51,7 +51,7 @@ export async function checkDocsReadiness({ assert, files }) {
     "融合",
     "默认客户端场景不会把",
     "一次新的、受保护的用户确认",
-    "中转端视为不可信环境",
+    "把运输路径视为不可信环境",
   ]) {
     assert(chineseReadme.includes(token), `README.zh-CN.md must keep public client token ${token}`);
   }
@@ -59,8 +59,8 @@ export async function checkDocsReadiness({ assert, files }) {
   const architecture = normalized("docs/architecture/README.md");
   const chineseArchitecture = normalized("docs/architecture/README.zh-CN.md");
   for (const token of [
-    "Untrusted relay",
-    "Ciphertext + minimum routing data",
+    "Compatible untrusted station",
+    "Five-field Lico Arc envelope",
     "runtime data stay on the device",
     "Current platform key custody",
     "Caller-supplied flags or ordinary state files are not proof of approval",
@@ -70,8 +70,8 @@ export async function checkDocsReadiness({ assert, files }) {
     assert(architecture.includes(token), `ARCHITECTURE.md must keep boundary token ${token}`);
   }
   for (const token of [
-    "不可信中转端",
-    "密文 + 最少路由信息",
+    "兼容且不可信的通讯站",
+    "五字段 Lico Arc 信封",
     "原始运行时数据留在设备上",
     "当前平台密钥保管",
     "调用方参数和普通状态文件都不能证明用户已经批准",

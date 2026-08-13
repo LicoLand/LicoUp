@@ -1,7 +1,5 @@
 #[cfg(test)]
 use super::config::default_config;
-#[cfg(test)]
-pub(crate) use super::secret_custody::test_runtime_secret_material;
 use super::{pairwise_session::*, relay_operations::*, support::*};
 
 mod directory_transparency;
@@ -26,15 +24,16 @@ pub(in crate::domain::mobile_relay) use directory_transparency::{
 };
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) use directory_transparency::{
-    set_kt_freshness_now_override, with_mobile_relay_test_kt_log,
+    set_kt_freshness_now_override, with_mobile_relay_test_kt_authority_scope,
+    with_mobile_relay_test_kt_log,
 };
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) use local_material::rotate_mobile_relay_local_identity_for_repair;
 pub(in crate::domain::mobile_relay) use local_material::{
     LocalEndpointState, ensure_mobile_relay_endpoint_descriptor,
-    ensure_mobile_relay_endpoint_material, hex_encode_bytes, local_endpoint_public_descriptor,
-    local_endpoint_state, local_public_device_identity, reset_incompatible_local_pairwise_protocol,
-    rotate_mobile_relay_one_time_prekeys,
+    ensure_mobile_relay_endpoint_material, force_reset_local_pairwise_protocol, hex_encode_bytes,
+    local_endpoint_public_descriptor, local_endpoint_state, local_public_device_identity,
+    reset_incompatible_local_pairwise_protocol, rotate_mobile_relay_one_time_prekeys,
 };
 pub(in crate::domain::mobile_relay) use pairing_presentation::*;
 pub(in crate::domain::mobile_relay) use pairwise_codec::*;

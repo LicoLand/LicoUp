@@ -16,10 +16,7 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
   int? displayDayCount,
 }) {
   final dayCount = displayDayCount ?? report.windowDays;
-  final bucketDates = _recentDayBuckets(
-    anchor: anchor,
-    dayCount: dayCount,
-  );
+  final bucketDates = _recentDayBuckets(anchor: anchor, dayCount: dayCount);
   final bucketKeys = bucketDates.map(agentUsageDateKey).toSet();
   final valuesByDay = {for (final key in bucketKeys) key: <String, double>{}};
   final modelShareTotals = <String, double>{};

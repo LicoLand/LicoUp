@@ -18,7 +18,6 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const openCodeServeFacadeSource = await readText(
     "crates/licoup-native/src/platform/opencode_serve.rs"

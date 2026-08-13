@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/line_framer.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_expectation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcFrame {
@@ -19,7 +20,7 @@ class StdioRpcTransportFailure implements Exception {
 }
 
 class StdioRpcSession {
-  StdioRpcSession(this.process) {
+  StdioRpcSession(this.process, {bool observeExit = true}) {
     _stdoutSubscription = process.stdout.listen(
       _acceptStdoutChunk,
       onError: (Object _, StackTrace _) => _addFrameError(),
@@ -33,12 +34,14 @@ class StdioRpcSession {
       },
       cancelOnError: false,
     );
-    unawaited(
-      process.exitCode.then<void>(
-        (_) => _addFrameError(),
-        onError: (Object _, StackTrace _) => _addFrameError(),
-      ),
-    );
+    if (observeExit) {
+      unawaited(
+        process.exitCode.then<void>(
+          (_) => _addFrameError(),
+          onError: (Object _, StackTrace _) => _addFrameError(),
+        ),
+      );
+    }
   }
 
   final Process process;
@@ -47,20 +50,20 @@ class StdioRpcSession {
   );
   late final StreamSubscription<List<int>> _stdoutSubscription;
   late final StreamSubscription<List<int>> _stderrSubscription;
-  Completer<StdioRpcFrame>? _expectedFrame;
-  StreamController<StdioRpcConversationFrame>? _expectedFrames;
-  StdioRpcConversationDecoder? _conversationDecoder;
+  final Map<String, Completer<StdioRpcFrame>> _expectedFrames = {};
+  final Map<String, StdioRpcConversationExpectation> _expectedConversations =
+      {};
   var _closed = false;
   var usable = true;
   var stderrBytes = 0;
   var stderrTruncated = false;
 
-  Future<StdioRpcFrame> expectFrame() {
-    if (!_canExpectFrame) {
+  Future<StdioRpcFrame> expectFrame({required String requestId}) {
+    if (!_canExpectRequest(requestId)) {
       throw const StdioRpcTransportFailure();
     }
     final completer = Completer<StdioRpcFrame>();
-    _expectedFrame = completer;
+    _expectedFrames[requestId] = completer;
     return completer.future;
   }
 
@@ -68,37 +71,41 @@ class StdioRpcSession {
     required String requestId,
     required String workflowId,
   }) {
-    if (!_canExpectFrame) {
+    if (!_canExpectRequest(requestId)) {
       throw const StdioRpcTransportFailure();
     }
     final controller = StreamController<StdioRpcConversationFrame>();
-    _expectedFrames = controller;
-    _conversationDecoder = StdioRpcConversationDecoder(
-      requestId: requestId,
-      workflowId: workflowId,
+    _expectedConversations[requestId] = StdioRpcConversationExpectation(
+      controller: controller,
+      decoder: StdioRpcConversationDecoder(
+        requestId: requestId,
+        workflowId: workflowId,
+      ),
     );
     return controller.stream;
   }
 
-  bool get _canExpectFrame =>
-      usable && !_closed && _expectedFrame == null && _expectedFrames == null;
+  bool _canExpectRequest(String requestId) =>
+      usable &&
+      !_closed &&
+      requestId.isNotEmpty &&
+      !_expectedFrames.containsKey(requestId) &&
+      !_expectedConversations.containsKey(requestId) &&
+      _expectedFrames.length + _expectedConversations.length < 64;
 
-  void completeExpectedFrames() {
-    final controller = _expectedFrames;
-    _clearExpectedConversation();
+  void completeExpectedFrames(String requestId) {
+    final controller = _expectedConversations.remove(requestId)?.controller;
     if (controller != null && !controller.isClosed) {
       unawaited(controller.close());
     }
   }
 
-  void abandonExpectedFrame() {
-    final expectedFrame = _expectedFrame;
-    _expectedFrame = null;
+  void abandonExpectedFrame(String requestId) {
+    final expectedFrame = _expectedFrames.remove(requestId);
     if (expectedFrame != null && !expectedFrame.isCompleted) {
       expectedFrame.complete(const StdioRpcFrame.failure());
     }
-    final controller = _expectedFrames;
-    _clearExpectedConversation();
+    final controller = _expectedConversations.remove(requestId)?.controller;
     if (controller != null && !controller.isClosed) {
       controller.addError(const LicoClientRpcException('transport_failed'));
       unawaited(controller.close());
@@ -109,7 +116,7 @@ class StdioRpcSession {
     if (!usable || _closed) {
       return;
     }
-    if (_expectedFrame == null && _expectedFrames == null) {
+    if (_expectedFrames.isEmpty && _expectedConversations.isEmpty) {
       _addFrameError();
       return;
     }
@@ -124,31 +131,37 @@ class StdioRpcSession {
     if (!usable || _closed) {
       return;
     }
-    final expectedFrame = _expectedFrame;
-    if (expectedFrame != null) {
-      _expectedFrame = null;
-      expectedFrame.complete(StdioRpcFrame.data(bytes));
-      return;
-    }
-    final controller = _expectedFrames;
-    final decoder = _conversationDecoder;
-    if (controller == null || decoder == null) {
+    final requestId = stdioRpcEnvelopeRequestId(bytes);
+    if (requestId == null) {
       _addFrameError();
       return;
     }
+    final expectedFrame = _expectedFrames.remove(requestId);
+    if (expectedFrame != null) {
+      expectedFrame.complete(StdioRpcFrame.data(bytes));
+      return;
+    }
+    final expectation = _expectedConversations[requestId];
+    if (expectation == null) {
+      _addFrameError();
+      return;
+    }
+    final controller = expectation.controller;
     late StdioRpcConversationFrame frame;
     try {
-      frame = decoder.decode(bytes);
+      frame = expectation.decoder.decode(bytes);
     } on StdioRpcProtocolViolation {
-      usable = false;
-      _clearExpectedConversation();
-      controller.addError(const LicoClientRpcException('invalid_response'));
-      unawaited(controller.close());
+      _expectedConversations.remove(requestId);
+      if (!controller.isClosed) {
+        controller.addError(const LicoClientRpcException('invalid_response'));
+        unawaited(controller.close());
+      }
+      _addFrameError();
       return;
     }
     controller.add(frame);
     if (frame is StdioRpcConversationTerminal) {
-      _clearExpectedConversation();
+      _expectedConversations.remove(requestId);
       unawaited(controller.close());
     }
   }
@@ -167,26 +180,27 @@ class StdioRpcSession {
   }
 
   void _addFrameError() {
-    if (!usable && _expectedFrame == null && _expectedFrames == null) {
+    if (!usable && _expectedFrames.isEmpty && _expectedConversations.isEmpty) {
       return;
     }
     usable = false;
-    final expectedFrame = _expectedFrame;
-    _expectedFrame = null;
-    if (expectedFrame != null && !expectedFrame.isCompleted) {
-      expectedFrame.complete(const StdioRpcFrame.failure());
+    final expectedFrames = _expectedFrames.values.toList(growable: false);
+    _expectedFrames.clear();
+    for (final expectedFrame in expectedFrames) {
+      if (!expectedFrame.isCompleted) {
+        expectedFrame.complete(const StdioRpcFrame.failure());
+      }
     }
-    final controller = _expectedFrames;
-    _clearExpectedConversation();
-    if (controller != null && !controller.isClosed) {
-      controller.addError(const LicoClientRpcException('transport_failed'));
-      unawaited(controller.close());
+    final controllers = _expectedConversations.values
+        .map((expectation) => expectation.controller)
+        .toList(growable: false);
+    _expectedConversations.clear();
+    for (final controller in controllers) {
+      if (!controller.isClosed) {
+        controller.addError(const LicoClientRpcException('transport_failed'));
+        unawaited(controller.close());
+      }
     }
-  }
-
-  void _clearExpectedConversation() {
-    _expectedFrames = null;
-    _conversationDecoder = null;
   }
 
   Future<void> close({required bool kill}) async {
@@ -203,14 +217,16 @@ class StdioRpcSession {
     } on Object {
       // Teardown deliberately ignores and redacts process-specific details.
     }
-    try {
-      await process.exitCode.timeout(stdioRpcShutdownTimeout);
-    } on Object {
-      process.kill();
+    if (kill) {
       try {
         await process.exitCode.timeout(stdioRpcShutdownTimeout);
       } on Object {
-        // The process is detached from this client instance after this bound.
+        process.kill();
+        try {
+          await process.exitCode.timeout(stdioRpcShutdownTimeout);
+        } on Object {
+          // The process is detached from this client instance after this bound.
+        }
       }
     }
     await _stdoutSubscription.cancel();

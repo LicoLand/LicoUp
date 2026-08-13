@@ -16,5 +16,7 @@ class AppDelegate: FlutterAppDelegate {
     // title-bar double-click action (zoom / minimize / fill) from firing inside
     // that Flutter chrome; the shell offers zoom deliberately on its top bar.
     UserDefaults.standard.register(defaults: ["AppleActionOnDoubleClick": "None"])
+    super.applicationDidFinishLaunching(notification)
+    mainFlutterWindow?.makeKeyAndOrderFront(nil)
   }
 }

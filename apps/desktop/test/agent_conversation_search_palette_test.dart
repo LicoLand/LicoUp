@@ -56,10 +56,7 @@ void main() {
     expect(find.text('Kimi Code'), findsOneWidget);
     expect(find.text('Fix the release pipeline'), findsOneWidget);
     expect(find.text('Random notes'), findsOneWidget);
-    expect(
-      find.textContaining('release checklist'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('release checklist'), findsOneWidget);
 
     final codexHeader = tester.getTopLeft(find.text('Codex'));
     final kimiHeader = tester.getTopLeft(find.text('Kimi Code'));

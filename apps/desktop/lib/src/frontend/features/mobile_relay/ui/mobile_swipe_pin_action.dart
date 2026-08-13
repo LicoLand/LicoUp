@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class MobileSwipePinAction extends StatefulWidget {
@@ -32,7 +33,7 @@ final class _MobileSwipePinActionState extends State<MobileSwipePinAction> {
   Widget build(BuildContext context) {
     return ClipRRect(
       key: Key('mobile-home-swipe-${widget.entryId}'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(LicoRadius.chip),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onHorizontalDragUpdate: _handleDragUpdate,
@@ -115,8 +116,8 @@ final class _MobilePinSwipeButton extends StatelessWidget {
       child: Container(
         alignment: Alignment.centerRight,
         decoration: BoxDecoration(
-          color: colors.primaryFixed.withAlpha(pinned ? 80 : 140),
-          borderRadius: BorderRadius.circular(8),
+          color: colors.brandSurface.withAlpha(pinned ? 80 : 140),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
         ),
         child: SizedBox(
           width: _MobileSwipePinActionState.maxDragExtent,
@@ -126,7 +127,7 @@ final class _MobilePinSwipeButton extends StatelessWidget {
             onPressed: onPressed,
             icon: Icon(
               pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-              color: colors.primary,
+              color: colors.accent,
               size: 22,
             ),
           ),

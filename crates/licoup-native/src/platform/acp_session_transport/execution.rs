@@ -1,3 +1,4 @@
+use super::super::virtual_machine::SshRuntimeConnection;
 use super::approval_wait::{ApprovalWaitOutcome, await_external_approval};
 use super::capabilities::{AcpSessionDriverSpec, PROCESS_POLL_INTERVAL, RunResult, timestamp};
 use super::command::ProtocolConfig;
@@ -20,12 +21,13 @@ use std::time::{Duration, Instant};
 pub(in crate::platform) fn execute(
     driver: AcpSessionDriverSpec,
     executable: &str,
+    runtime_connection: Option<&SshRuntimeConnection>,
     params: &Value,
     prompt: &str,
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
@@ -33,7 +35,9 @@ pub(in crate::platform) fn execute(
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
     };
-    if let Err(failure) = config.load_collaboration_mcp(driver.driver_id) {
+    if runtime_connection.is_none()
+        && let Err(failure) = config.load_collaboration_mcp(driver.driver_id)
+    {
         return RunResult::failed(failure, started_at, None, false, false);
     }
     let managed = match acquire_transport(
@@ -43,6 +47,7 @@ pub(in crate::platform) fn execute(
         timeout_ms,
         max_stdout,
         max_stderr,
+        runtime_connection,
     ) {
         Ok(managed) => managed,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
@@ -80,7 +85,11 @@ pub(in crate::platform) fn execute(
     let (outcome, failure, stdout_was_truncated) = if let Err(failure) = initial_write {
         (None, Some(failure), false)
     } else {
-        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let deadline = if timeout_ms == 0 {
+            None
+        } else {
+            Some(Instant::now() + Duration::from_millis(timeout_ms))
+        };
         run_protocol_loop(
             &mut transport,
             &managed,
@@ -137,8 +146,8 @@ fn run_protocol_loop(
     transport: &mut PersistentTransport,
     managed: &Arc<ManagedTransport>,
     protocol: &mut SessionProtocol,
-    deadline: Instant,
-    max_stdout: usize,
+    deadline: Option<Instant>,
+    max_stdout: Option<usize>,
 ) -> (Option<ProtocolOutcome>, Option<ProtocolFailure>, bool) {
     let mut observed_bytes = 0usize;
     loop {
@@ -157,7 +166,7 @@ fn run_protocol_loop(
             );
         }
         let now = Instant::now();
-        if now >= deadline {
+        if deadline.is_some_and(|deadline| now >= deadline) {
             let mut failure = protocol.failure_with_ids(
                 "hermes_acp_timeout",
                 "Hermes ACP timed out before the turn completed.",
@@ -166,22 +175,24 @@ fn run_protocol_loop(
             failure.turn_status = Some("timeout".to_string());
             return (None, Some(failure), false);
         }
-        match transport
-            .receiver
-            .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
-        {
+        let wait = deadline
+            .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+            .unwrap_or(PROCESS_POLL_INTERVAL);
+        match transport.receiver.recv_timeout(wait) {
             Ok(TransportEvent::Message { message, bytes }) => {
-                observed_bytes = observed_bytes.saturating_add(bytes);
-                if observed_bytes > max_stdout {
-                    return (
-                        None,
-                        Some(protocol.failure_with_ids(
-                            "hermes_acp_output_limit",
-                            "Hermes ACP exceeded the configured protocol output limit.",
-                            "protocol/read",
-                        )),
-                        true,
-                    );
+                if let Some(max_stdout) = max_stdout {
+                    observed_bytes = observed_bytes.saturating_add(bytes);
+                    if observed_bytes > max_stdout {
+                        return (
+                            None,
+                            Some(protocol.failure_with_ids(
+                                "hermes_acp_output_limit",
+                                "Hermes ACP exceeded the configured protocol output limit.",
+                                "protocol/read",
+                            )),
+                            true,
+                        );
+                    }
                 }
                 for effect in protocol.handle_message(message) {
                     match effect {

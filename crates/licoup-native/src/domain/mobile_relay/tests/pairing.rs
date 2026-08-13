@@ -9,28 +9,26 @@ fn sv_abcde_fghij_klmno_pqrst() -> &'static str {
 
 
 #[test]
-fn mobile_relay_config_defaults_and_private_gateway() {
+fn mobile_relay_config_requires_one_canonical_station() {
     let dir = temp_dir("mobile-relay");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let config = config_get(&json!({})).unwrap();
-    assert_eq!(config["config"]["defaultGatewayUrl"], "");
+    assert_eq!(config["config"]["stationBaseUrl"], "");
     assert_eq!(config["config"]["relayEnabled"], false);
     let error = config_set(&json!({"relayEnabled": true}))
         .unwrap_err()
         .to_string();
-    assert!(error.contains("gateway is not configured"));
+    assert!(error.contains("station is not configured"));
 
     let saved = config_set(&json!({
-        "useCustomGateway": "true",
-        "customGatewayUrl": "https://relay.example.test/",
+        "stationBaseUrl": "https://station.example.test/",
         "relayEnabled": "true"
     }))
     .unwrap();
-    assert_eq!(saved["config"]["useCustomGateway"], true);
     assert_eq!(
-        saved["config"]["customGatewayUrl"],
-        "https://relay.example.test"
+        saved["config"]["stationBaseUrl"],
+        "https://station.example.test"
     );
     assert_eq!(saved["config"]["relayEnabled"], true);
 
@@ -38,75 +36,14 @@ fn mobile_relay_config_defaults_and_private_gateway() {
 }
 
 #[test]
-fn mobile_relay_config_disables_ephemeral_custom_gateway() {
-    let sv_pc_synthetic_ephemeral = synthetic_value("pc-synthetic-ephemeral");
-    let dir = temp_dir("mobile-relay-ephemeral-gateway");
-    let previous = set_portable_data_dir_override(Some(dir));
-
-    save_config(&mut json!({
-        "schemaVersion": CONFIG_SCHEMA_VERSION,
-        "defaultGatewayUrl": "https://relay.example.test",
-        "useCustomGateway": true,
-        "customGatewayUrl": "https://old-relay.trycloudflare.com/",
-        "pcClientId": "pc-ephemeral",
-        "pcClientName": "Ephemeral PC",
-        "pairingId": "pair-ephemeral",
-        "pcToken": sv_pc_synthetic_ephemeral.as_str(),
-        "relayEnabled": true
-    }))
-    .unwrap();
-
-    let config = config_get(&json!({})).unwrap();
-    assert_eq!(config["config"]["useCustomGateway"], false);
-    assert_eq!(config["config"]["customGatewayUrl"], "");
-
-    let loaded = load_config().unwrap();
-    assert_eq!(
-        effective_gateway_url(&loaded).unwrap(),
-        "https://relay.example.test"
-    );
-    let persisted =
-        serde_json::from_str::<Value>(&fs::read_to_string(config_path().unwrap()).unwrap())
-            .unwrap();
-    assert_eq!(persisted["useCustomGateway"], false);
-    assert_eq!(persisted["customGatewayUrl"], "");
-
-    set_portable_data_dir_override(previous);
-}
-
-#[test]
-fn mobile_relay_config_set_disables_ephemeral_custom_gateway_before_save() {
-    let dir = temp_dir("mobile-relay-ephemeral-gateway-set");
-    let previous = set_portable_data_dir_override(Some(dir));
-
-    let saved = config_set(&json!({
-        "useCustomGateway": true,
-        "customGatewayUrl": "https://old-relay.trycloudflare.com/"
-    }))
-    .unwrap();
-
-    assert_eq!(saved["config"]["useCustomGateway"], false);
-    assert_eq!(saved["config"]["customGatewayUrl"], "");
-
-    let persisted =
-        serde_json::from_str::<Value>(&fs::read_to_string(config_path().unwrap()).unwrap())
-            .unwrap();
-    assert_eq!(persisted["useCustomGateway"], false);
-    assert_eq!(persisted["customGatewayUrl"], "");
-
-    set_portable_data_dir_override(previous);
-}
-
-#[test]
-fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gateway() {
+fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_station() {
     let sv_pc_synthetic_stale = synthetic_value("pc-synthetic-stale");
     let sv_mobile_synthetic_stale = synthetic_value("mobile-synthetic-stale");
     let sv_v123456 = synthetic_value("123456");
     let dir = temp_dir("mobile-relay-reset-pairing");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
-    config["useCustomGateway"] = json!(true);
-    config["customGatewayUrl"] = json!("https://relay.example.test");
+    config["stationBaseUrl"] = json!("https://station.example.test");
     config["pcClientId"] = json!("pc-stable");
     config["pcClientName"] = json!("Stable Mac");
     config["pairingId"] = json!("pair-stale");
@@ -118,7 +55,7 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gatew
     config["relayEnabled"] = json!(true);
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -134,10 +71,6 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gatew
         .as_str()
         .unwrap()
         .to_string();
-    let pairing_secret = config["mobileRelayE2ee"]["pairingSecretBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
     config["mobileRelayE2ee"]["peerEndpointId"] = json!("mobile-stale");
     config["mobileRelayE2ee"]["peerEndpointKind"] = json!("mobile");
     config["mobileRelayE2ee"]["peerPublicKeyBase64url"] = json!(random_base64url(32));
@@ -148,10 +81,9 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gatew
     save_config(&mut config).unwrap();
 
     let saved = config_set(&json!({"resetPairing": true})).unwrap();
-    assert_eq!(saved["config"]["useCustomGateway"], true);
     assert_eq!(
-        saved["config"]["customGatewayUrl"],
-        "https://relay.example.test"
+        saved["config"]["stationBaseUrl"],
+        "https://station.example.test"
     );
     assert_eq!(saved["config"]["pcClientId"], "pc-stable");
     assert_eq!(saved["config"]["pcClientName"], "Stable Mac");
@@ -172,9 +104,10 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gatew
     assert_eq!(internal["mobileRelayE2ee"]["peerVerified"], false);
     assert!(internal["mobileRelayE2ee"].get("peerEndpointId").is_none());
     assert_ne!(internal["mobileRelayE2ee"]["sessionId"], session_id);
-    assert_ne!(
-        internal["mobileRelayE2ee"]["pairingSecretBase64url"],
-        pairing_secret
+    assert!(
+        internal["mobileRelayE2ee"]
+            .get("pairingSecretBase64url")
+            .is_none()
     );
 
     set_portable_data_dir_override(previous);
@@ -184,11 +117,11 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gatew
 fn e2ee_status_redacts_pairing_invite_secret() {
     let sv_pairing_invite_e2ee_sent = synthetic_value("pairing-invite-e2ee-sentinel-redaction-canary");
     let dir = temp_dir("mobile-relay-e2ee-status-redacts-pairing-invite");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     let endpoint = ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -196,7 +129,7 @@ fn e2ee_status_redacts_pairing_invite_secret() {
         "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
         "oneTime": true,
         "createdAt": "2026-07-04T00:00:00Z",
-        "gatewayUrl": "https://relay.example.test",
+        "stationBaseUrl": "https://station.example.test",
         "pcClientId": "pc-redacted-invite",
         "pcClientName": "LicoUp",
         "pairingId": "pair-redacted-invite",
@@ -224,11 +157,11 @@ fn e2ee_status_redacts_pairing_invite_secret() {
 fn config_load_clears_persisted_pairing_invite_and_code() {
     let sv_pairing_invite_sentinel_ = synthetic_value("pairing-invite-sentinel-status-canary");
     let dir = temp_dir("mobile-relay-clears-persisted-invite");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -263,50 +196,49 @@ fn config_load_clears_persisted_pairing_invite_and_code() {
 }
 
 #[test]
-fn invalid_gateway_is_rejected_before_config_persistence() {
+fn invalid_station_is_rejected_before_config_persistence() {
     let dir = temp_dir("mobile-relay-invalid");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     for denied in [
         "https://",
-        "https://?gateway=relay.example.test",
-        "https://user@relay.example.test",
-        "https://relay.example.test#fragment",
-        "https://relay.example.test:invalid",
-        "https://relay.example.test/api",
-        "https://relay.example.test?tenant=one",
-        "https://relay.example.test\\@evil.test",
+        "https://?station=station.example.test",
+        "https://user@station.example.test",
+        "https://station.example.test#fragment",
+        "https://station.example.test:invalid",
+        "https://station.example.test/api",
+        "https://station.example.test?scope=one",
+        "https://station.example.test\\@evil.test",
         "http://example.test",
         "http://localhost.evil.test",
         "http://127.0.0.1@evil.test",
         "http://127.1",
     ] {
         let result = config_set(&json!({
-            "useCustomGateway": true,
-            "customGatewayUrl": denied
+            "stationBaseUrl": denied
         }));
-        assert!(result.is_err(), "accepted disallowed gateway");
+        assert!(result.is_err(), "accepted disallowed station");
         assert!(!config_path().unwrap().exists());
     }
     set_portable_data_dir_override(previous);
 }
 
 #[test]
-fn gateway_origins_are_canonicalized_and_exact_loopback_http_is_allowed() {
+fn station_origins_are_canonicalized_and_exact_loopback_http_is_allowed() {
     for (input, expected) in [
         (
-            "HTTPS://Relay.Example.Test:443/",
-            "https://relay.example.test",
+            "HTTPS://Station.Example.Test:443/",
+            "https://station.example.test",
         ),
         ("http://127.0.0.1:7228/", "http://127.0.0.1:7228"),
         ("http://localhost:7228", "http://localhost:7228"),
         ("http://[::1]:7228/", "http://[::1]:7228"),
     ] {
-        assert_eq!(validated_gateway(input).unwrap(), expected);
+        assert_eq!(validated_station_base_url(input).unwrap(), expected);
     }
 }
 
 #[test]
-fn invalid_pairing_invite_gateway_cannot_mutate_existing_pairing_state() {
+fn invalid_pairing_invite_station_cannot_mutate_existing_pairing_state() {
     let mut config = default_config();
     config["pairingId"] = json!("existing-pairing");
     config["paired"] = json!(true);
@@ -317,7 +249,7 @@ fn invalid_pairing_invite_gateway_cannot_mutate_existing_pairing_state() {
         &json!({
             "invite": {
                 "pairingId": "replacement-pairing",
-                "gatewayUrl": "https://trusted.example@evil.test#fragment"
+                "stationBaseUrl": "https://trusted.example@evil.test#fragment"
             }
         }),
     );
@@ -328,18 +260,16 @@ fn invalid_pairing_invite_gateway_cannot_mutate_existing_pairing_state() {
 
 #[test]
 fn pairing_create_returns_one_time_invite_without_persisting_code() {
-    let gateway = CanonicalRelayGateway::start(2, Vec::new());
     let dir = temp_dir("mobile-relay-one-time-create");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     config_set(&json!({
-        "useCustomGateway": true,
-        "customGatewayUrl": gateway.url(),
+        "stationBaseUrl": "https://station.example.test",
         "pcClientId": "pc-one-time",
         "pcClientName": "LicoUp"
     }))
     .unwrap();
-    let output = pairing_create(&with_canonical_relay_params(json!({"targets": []}))).unwrap();
+    let output = pairing_create(&with_station_params(json!({"targets": []}))).unwrap();
 
     assert_eq!(
         output["mobileRelayPairingInvite"]["pairingCode"],
@@ -371,48 +301,35 @@ fn pairing_create_returns_one_time_invite_without_persisting_code() {
             .as_str()
             .is_some_and(|value| !value.is_empty())
     );
-    for index in 0..2 {
-        let body = gateway.request_body(index);
-        for forbidden in ["pairingId", "pairingCode", "pairingContext"] {
-            assert!(!body.contains(forbidden));
-        }
-    }
-    gateway.assert_operations(&[
-        SecureClientRelayOperation::EndpointChallenge,
-        SecureClientRelayOperation::EndpointRegister,
-    ]);
-
-    gateway.join();
+    assert_eq!(output["serverVisiblePairingState"], false);
     set_portable_data_dir_override(previous);
 }
 
 #[test]
 fn pairing_claim_sends_one_time_context_and_clears_code() {
-    let gateway = CanonicalRelayGateway::start(2, Vec::new());
     let dir = temp_dir("mobile-relay-one-time-claim");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
 
     config_set(&json!({
-        "useCustomGateway": true,
-        "customGatewayUrl": gateway.url(),
+        "stationBaseUrl": "https://station.example.test",
         "pcClientName": "LicoUp"
     }))
     .unwrap();
 
-    let output = pairing_claim(&with_canonical_relay_params(json!({
+    let output = pairing_claim(&with_station_params(json!({
         "invite": {
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
-            "gatewayUrl": gateway.url(),
+            "stationBaseUrl": "https://station.example.test",
             "pcClientId": "pc-one-time",
             "pcClientName": "LicoUp",
             "pairingId": "pair-one-time",
@@ -437,54 +354,35 @@ fn pairing_claim_sends_one_time_context_and_clears_code() {
     assert_eq!(persisted["lastPairingExpiresAt"], "");
     assert!(persisted.get("mobileRelayPairingInvite").is_none());
 
-    for index in 0..2 {
-        let body = gateway.request_body(index);
-        for forbidden in [
-            "oneTimePairing",
-            "pairingId",
-            "pairingCode",
-            "claimContext",
-            "secureMeshClaimProof",
-        ] {
-            assert!(!body.contains(forbidden));
-        }
-    }
-    gateway.assert_operations(&[
-        SecureClientRelayOperation::EndpointChallenge,
-        SecureClientRelayOperation::EndpointRegister,
-    ]);
-
-    gateway.join();
+    assert_eq!(output["serverVisiblePairingState"], false);
     set_portable_data_dir_override(previous);
 }
 
 #[test]
 fn pairing_claim_invite_e2ee_secret_completes_mobile_endpoint_descriptor() {
-    let gateway = CanonicalRelayGateway::start(2, Vec::new());
     let dir = temp_dir("mobile-relay-one-time-claim-invite-e2ee-sentinel");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
 
     config_set(&json!({
-        "useCustomGateway": true,
-        "customGatewayUrl": gateway.url(),
+        "stationBaseUrl": "https://station.example.test",
         "pcClientName": "LicoUp"
     }))
     .unwrap();
 
-    let output = pairing_claim(&with_canonical_relay_params(json!({
+    let output = pairing_claim(&with_station_params(json!({
         "invite": {
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
-            "gatewayUrl": gateway.url(),
+            "stationBaseUrl": "https://station.example.test",
             "pcClientId": "pc-runtime-override",
             "pcClientName": "LicoUp",
             "pairingId": "pair-one-time",
@@ -523,38 +421,20 @@ fn pairing_claim_invite_e2ee_secret_completes_mobile_endpoint_descriptor() {
             .is_none()
     );
 
-    let registration = serde_json::from_str::<Value>(&gateway.request_body(1)).unwrap();
-    assert_eq!(registration["endpointKind"], "mobile");
-    assert!(
-        registration["endpointId"]
-            .as_str()
-            .unwrap()
-            .starts_with("mobile_")
-    );
     assert_eq!(
         output["outOfBandPairingResponse"]["mobileSecureMesh"]["endpointId"],
-        registration["endpointId"]
+        output["config"]["mobileRelayE2ee"]["endpointId"]
     );
     let serialized_output = serde_json::to_string(&output).unwrap();
-    let serialized_request = gateway.request_body(0) + &gateway.request_body(1);
     assert!(!serialized_output.contains(&pairing_secret));
-    assert!(!serialized_request.contains(&pairing_secret));
-    for forbidden in ["pairingId", "pairingCode", "claimContext", "secureMesh"] {
-        assert!(!serialized_request.contains(forbidden));
-    }
-    gateway.assert_operations(&[
-        SecureClientRelayOperation::EndpointChallenge,
-        SecureClientRelayOperation::EndpointRegister,
-    ]);
-
-    gateway.join();
+    assert_eq!(output["serverVisiblePairingState"], false);
     set_portable_data_dir_override(previous);
 }
 
 #[test]
 fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
     let dir = temp_dir("mobile-relay-new-invite-resets-pairwise-state");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
@@ -573,7 +453,7 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
 
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -582,7 +462,7 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
         "invite": {
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
-            "gatewayUrl": "https://relay.example.test",
+            "stationBaseUrl": "https://station.example.test",
             "pcClientId": "pc-repairing",
             "pcClientName": "LicoUp",
             "pairingId": "pair-new",
@@ -591,11 +471,21 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
             "e2eePairingSecret": pairing_secret
         }
     });
-    apply_pairing_invite_params(&mut mobile_config, &invite_params).unwrap();
+    let mut mobile_context = take_test_runtime_secret_context(stringify!(&mobile_config));
+    apply_pairing_invite_params_with_context(
+        &mut mobile_config,
+        &invite_params,
+        Some(&mut mobile_context),
+    )
+    .unwrap();
+    restore_test_runtime_secret_context(stringify!(&mobile_config), mobile_context);
 
     assert_eq!(mobile_config["pairingId"], "pair-new");
     assert_eq!(
-        mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"],
+        test_runtime_e2ee_secret(
+            stringify!(&mobile_config),
+            MobileRelayE2eeSecretField::PairingSecret,
+        ),
         pairing_secret
     );
     assert_eq!(mobile_config["mobileRelayE2ee"]["peerVerified"], true);
@@ -614,24 +504,30 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
     );
 
     pc_config["pairingId"] = json!("pair-new");
-    pc_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret);
+    test_runtime_secret_material(stringify!(&pc_config))
+        .replace_e2ee_secret(
+            MobileRelayE2eeSecretField::PairingSecret,
+            SecretBytes::try_from_string(pairing_secret).unwrap(),
+        )
+        .unwrap();
     let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     assert!(mobile_descriptor["pairwiseIntro"].is_object());
     let proof = mobile_relay_claim_proof_for_pair(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         "pair-new",
         &mobile_descriptor,
         &pc_descriptor,
     )
     .unwrap();
-    apply_out_of_band_pairing_response(
+    apply_test_out_of_band_pairing_response(
         &mut pc_config,
+        stringify!(&pc_config),
         &json!({
             "mobileSecureMesh": mobile_descriptor,
             "secureMeshClaimProof": proof
@@ -648,7 +544,7 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
 #[test]
 fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
     let dir = temp_dir("mobile-relay-new-invite-resets-blank-pairing-stale-peer");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
@@ -667,7 +563,7 @@ fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
 
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -676,7 +572,7 @@ fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
         "invite": {
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
-            "gatewayUrl": "https://relay.example.test",
+            "stationBaseUrl": "https://station.example.test",
             "pcClientId": "pc-repairing-blank",
             "pcClientName": "LicoUp",
             "pairingId": "pair-new-blank",
@@ -685,11 +581,21 @@ fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
             "e2eePairingSecret": pairing_secret
         }
     });
-    apply_pairing_invite_params(&mut mobile_config, &invite_params).unwrap();
+    let mut mobile_context = take_test_runtime_secret_context(stringify!(&mobile_config));
+    apply_pairing_invite_params_with_context(
+        &mut mobile_config,
+        &invite_params,
+        Some(&mut mobile_context),
+    )
+    .unwrap();
+    restore_test_runtime_secret_context(stringify!(&mobile_config), mobile_context);
 
     assert_eq!(mobile_config["pairingId"], "pair-new-blank");
     assert_eq!(
-        mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"],
+        test_runtime_e2ee_secret(
+            stringify!(&mobile_config),
+            MobileRelayE2eeSecretField::PairingSecret,
+        ),
         pairing_secret
     );
     assert_ne!(
@@ -707,32 +613,30 @@ fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
 }
 
 #[test]
-fn pairing_claim_ignores_ephemeral_invite_gateway() {
-    let gateway = CanonicalRelayGateway::start(2, Vec::new());
-    let dir = temp_dir("mobile-relay-ephemeral-invite-claim");
-    let previous = set_portable_data_dir_override(Some(dir));
+fn pairing_claim_adopts_the_explicit_invite_station() {
+    let dir = temp_dir("mobile-relay-invite-station-claim");
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
 
     config_set(&json!({
-        "defaultGatewayUrl": gateway.url(),
-        "useCustomGateway": false,
+        "stationBaseUrl": "https://fallback-station.example.test",
         "pcClientName": "LicoUp"
     }))
     .unwrap();
 
-    let output = pairing_claim(&with_canonical_relay_params(json!({
+    let output = pairing_claim(&with_station_params(json!({
         "invite": {
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
-            "gatewayUrl": "https://old-relay.trycloudflare.com/",
+            "stationBaseUrl": "https://invite-station.example.test/",
             "pcClientId": "pc-one-time",
             "pcClientName": "LicoUp",
             "pairingId": "pair-one-time",
@@ -747,70 +651,73 @@ fn pairing_claim_ignores_ephemeral_invite_gateway() {
     .unwrap();
 
     assert_eq!(output["ok"], true);
-    assert_eq!(output["config"]["useCustomGateway"], false);
-    assert_eq!(output["config"]["customGatewayUrl"], "");
-
-    for index in 0..2 {
-        let body = gateway.request_body(index);
-        assert!(!body.contains("pairingId"));
-        assert!(!body.contains("pairingCode"));
-    }
+    assert_eq!(
+        output["config"]["stationBaseUrl"],
+        "https://invite-station.example.test"
+    );
+    assert_eq!(output["serverVisiblePairingState"], false);
 
     let persisted =
         serde_json::from_str::<Value>(&fs::read_to_string(config_path().unwrap()).unwrap())
             .unwrap();
-    assert_eq!(persisted["useCustomGateway"], false);
-    assert_eq!(persisted["customGatewayUrl"], "");
-
-    gateway.assert_operations(&[
-        SecureClientRelayOperation::EndpointChallenge,
-        SecureClientRelayOperation::EndpointRegister,
-    ]);
-    gateway.join();
+    assert_eq!(
+        persisted["stationBaseUrl"],
+        "https://invite-station.example.test"
+    );
     set_portable_data_dir_override(previous);
 }
 
 #[test]
 fn out_of_band_pairing_response_rejects_tampered_intro_with_replayed_claim_proof() {
     let dir = temp_dir("mobile-relay-claim-proof-binds-intro");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let pairing_id = "pair_intro_replay_rejected";
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
     let mut pc_config = default_config();
     pc_config["pairingId"] = json!(pairing_id);
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
-    pc_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret.clone());
+    test_runtime_secret_material(stringify!(&pc_config))
+        .replace_e2ee_secret(
+            MobileRelayE2eeSecretField::PairingSecret,
+            SecretBytes::try_from_string(pairing_secret.clone()).unwrap(),
+        )
+        .unwrap();
 
     let mut mobile_config = default_config();
     mobile_config["pairingId"] = json!(pairing_id);
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
-    mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret);
+    test_runtime_secret_material(stringify!(&mobile_config))
+        .replace_e2ee_secret(
+            MobileRelayE2eeSecretField::PairingSecret,
+            SecretBytes::try_from_string(pairing_secret).unwrap(),
+        )
+        .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
     let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     let proof = mobile_relay_claim_proof_for_pair(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         pairing_id,
         &mobile_descriptor,
         &pc_descriptor,
@@ -820,8 +727,9 @@ fn out_of_band_pairing_response_rejects_tampered_intro_with_replayed_claim_proof
     tampered_descriptor["pairwiseIntro"]["initiatorIdentityPublicKeyBase64url"] =
         json!(random_base64url(32));
 
-    let error = apply_out_of_band_pairing_response(
+    let error = apply_test_out_of_band_pairing_response(
         &mut pc_config,
+        stringify!(&pc_config),
         &json!({
             "mobileSecureMesh": tampered_descriptor,
             "secureMeshClaimProof": proof
@@ -848,7 +756,7 @@ fn out_of_band_pairing_response_rejects_tampered_intro_with_replayed_claim_proof
 #[test]
 fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_terminal_error() {
     let dir = temp_dir("mobile-relay-pairing-status-revoked-peer");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mobile_store: Arc<dyn SecureMeshSecretStore> = store.clone();
     let pairwise_store: Arc<dyn SecureMeshSecretStore> = store.clone();
@@ -859,38 +767,43 @@ fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_termi
             let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
             let mut pc_config = default_config();
             let mut mobile_config = default_config();
-            for config in [&mut pc_config, &mut mobile_config] {
-                config["pairingId"] = json!(pairing_id);
-                config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret.clone());
+            pc_config["pairingId"] = json!(pairing_id);
+            mobile_config["pairingId"] = json!(pairing_id);
+            for variable in [stringify!(&pc_config), stringify!(&mobile_config)] {
+                test_runtime_secret_material(variable).replace_e2ee_secret(
+                    MobileRelayE2eeSecretField::PairingSecret,
+                    SecretBytes::try_from_string(pairing_secret.clone())?,
+                )?;
             }
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
             let local_endpoint_id = local_endpoint_state(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
             )?
             .endpoint_id;
             let old_session_id = session_id(&pc_config)?;
             let mut revoked_mobile = ensure_mobile_relay_endpoint_descriptor(
                 &mut mobile_config,
-                test_runtime_secret_material(stringify!(&mut mobile_config)),
+                &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
                 "mobile",
             )?;
             append_test_directory_state(&mut revoked_mobile, "revoked")?;
             let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
                 &mut pc_config,
-                test_runtime_secret_material(stringify!(&mut pc_config)),
+                &mut test_runtime_secret_material(stringify!(&mut pc_config)),
                 "desktop_sidecar",
             )?;
             let proof = mobile_relay_claim_proof_for_pair(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
                 pairing_id,
                 &revoked_mobile,
                 &pc_descriptor,
             )?;
 
-            let error = apply_out_of_band_pairing_response(
+            let error = apply_test_out_of_band_pairing_response(
                 &mut pc_config,
+                stringify!(&pc_config),
                 &json!({
                     "mobileSecureMesh": revoked_mobile,
                     "secureMeshClaimProof": proof,
@@ -898,7 +811,10 @@ fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_termi
             )
             .unwrap_err()
             .to_string();
-            assert!(error.contains("terminal (revoked)"));
+            assert!(
+                error.contains("terminal (revoked)"),
+                "unexpected revoked-peer error: {error}"
+            );
             assert_eq!(pc_config["mobileRelayE2ee"]["peerVerified"], false);
             assert!(
                 pc_config["mobileRelayE2ee"]
@@ -935,11 +851,11 @@ fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_termi
 #[test]
 fn out_of_band_pairing_response_rejects_substituted_peer_without_claim_proof() {
     let dir = temp_dir("out-of-band-pairing-rejects-peer-substitution");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -949,12 +865,13 @@ fn out_of_band_pairing_response_rejects_substituted_peer_without_claim_proof() {
     let mut attacker_config = default_config();
     let attacker_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut attacker_config,
-        test_runtime_secret_material(stringify!(&mut attacker_config)),
+        &mut test_runtime_secret_material(stringify!(&mut attacker_config)),
         "mobile",
     )
     .unwrap();
-    let error = apply_out_of_band_pairing_response(
+    let error = apply_test_out_of_band_pairing_response(
         &mut pc_config,
+        stringify!(&pc_config),
         &json!({
             "mobileSecureMesh": attacker_descriptor,
             "secureMeshClaimProof": "forged-proof"
@@ -972,33 +889,34 @@ fn out_of_band_pairing_response_rejects_substituted_peer_without_claim_proof() {
     let mut mobile_config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
     let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     let proof = mobile_relay_claim_proof_for_pair(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         pairing_id,
         &mobile_descriptor,
         &pc_descriptor,
     )
     .unwrap();
-    apply_out_of_band_pairing_response(
+    apply_test_out_of_band_pairing_response(
         &mut pc_config,
+        stringify!(&pc_config),
         &json!({
             "mobileSecureMesh": mobile_descriptor,
             "secureMeshClaimProof": proof

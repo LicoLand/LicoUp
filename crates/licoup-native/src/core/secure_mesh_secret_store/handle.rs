@@ -33,8 +33,3 @@ impl SecretStoreHandle {
         format!("{}:{}", self.namespace, self.key)
     }
 }
-
-pub(crate) fn is_persistable_secret(value: &str) -> bool {
-    let trimmed = value.trim();
-    !trimmed.is_empty() && trimmed != "redacted" && trimmed != "***" && trimmed != "********"
-}

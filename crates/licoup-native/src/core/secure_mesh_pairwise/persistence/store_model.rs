@@ -41,6 +41,25 @@ pub struct SecureMeshLocalPreKeyUse {
     pub one_time_mlkem1024_prekey_public_key_hash: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SecureMeshPairwisePendingDelivery {
+    pub delivery_kind: String,
+    pub envelope_id: String,
+    pub expires_at: String,
+    pub envelope_json: String,
+    pub binding_json: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SecureMeshPairwiseReceivedPayload {
+    pub receipt_id: String,
+    pub binding_digest: String,
+    pub mailbox_id: String,
+    pub payload_json: String,
+    pub received_at: String,
+}
+
 pub struct SecureMeshPairwiseDurableStore {
     pub(super) connection: Connection,
     pub(super) secret_store: Arc<dyn SecureMeshSecretStore>,

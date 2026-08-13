@@ -11,10 +11,25 @@ void main() {
     await service.report(days: 90, agent: 'codex', skillId: 'review');
     expect(gateway.days, 90);
   });
+
+  test('scan forwards the agent filter and force refresh', () async {
+    final gateway = _Gateway();
+    final service = SkillUsageService(gateway: gateway);
+
+    await service.scan(agent: ' codex ', forceRefresh: true);
+    expect(gateway.scanAgent, 'codex');
+    expect(gateway.scanForceRefresh, isTrue);
+
+    await service.scan();
+    expect(gateway.scanAgent, '');
+    expect(gateway.scanForceRefresh, isFalse);
+  });
 }
 
 class _Gateway implements SkillUsageGateway {
   int days = 0;
+  String scanAgent = '';
+  bool scanForceRefresh = false;
 
   @override
   Future<Map<String, dynamic>> reportSkillUsage({
@@ -23,6 +38,16 @@ class _Gateway implements SkillUsageGateway {
     String skillId = '',
   }) async {
     this.days = days;
+    return {'ok': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> scanSkillUsage({
+    String agent = '',
+    bool forceRefresh = false,
+  }) async {
+    scanAgent = agent;
+    scanForceRefresh = forceRefresh;
     return {'ok': true};
   }
 }

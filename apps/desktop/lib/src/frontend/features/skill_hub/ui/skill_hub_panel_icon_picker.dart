@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/models/skill_category_catalog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _skillIconColorTokens = <String>[
@@ -22,7 +23,7 @@ const _skillIconColorTokens = <String>[
 Color resolveSkillIconColor(LicoThemeColors colors, String colorToken) {
   switch (colorToken.trim()) {
     case 'info':
-      return colors.info;
+      return colors.accent;
     case 'success':
       return colors.success;
     case 'warning':
@@ -69,7 +70,7 @@ class SkillCategoryIconBadge extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       alignment: Alignment.center,
@@ -92,7 +93,7 @@ class SkillCategoryIconBadge extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           child: child,
         ),
       ),
@@ -174,7 +175,9 @@ Future<void> showSkillIconPicker({
                       return Tooltip(
                         message: category.label,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(
+                            LicoRadius.floating,
+                          ),
                           onTap: () {
                             setState(() => selectedIconId = category.iconId);
                           },
@@ -184,7 +187,9 @@ Future<void> showSkillIconPicker({
                               color: selected
                                   ? previewColor.withValues(alpha: 0.14)
                                   : colors.surfaceLow,
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(
+                                LicoRadius.floating,
+                              ),
                               border: Border.all(
                                 color: selected
                                     ? previewColor

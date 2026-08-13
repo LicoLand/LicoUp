@@ -36,15 +36,22 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
         'agent': 'codex',
         'text': 'Hello Codex',
         'streamEvents': true,
+        'timeoutMs': 0,
         'sessionId': 'native-codex-1',
+        'permissionMode': 'bypassPermissions',
         'sessionPath': 'test-data/codex/history.jsonl',
-        'workingDirectory': '/workspace/codex',
+        'workingDirectory': localConversationWorkingDirectoryFallback(
+          agentId: 'codex',
+        ),
         'binaryPath': ['', 'opt', 'lico-test', 'bin', 'codex'].join('/'),
       });
       expect(service.conversationAppendCalls, 0);
       expect(controller.selectedConversationSessions, hasLength(1));
       expect(controller.lastError, isEmpty);
-      expect(controller.statusMessage, '已通过 Codex 运行时适配器发送消息。');
+      expect(
+        controller.statusMessage,
+        'Sent the message through the Codex runtime adapter.',
+      );
       controller.localePreference = 'en';
       expect(
         controller.displayStatusMessage,

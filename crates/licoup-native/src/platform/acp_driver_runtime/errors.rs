@@ -3,7 +3,10 @@ use crate::core::acp;
 use serde_json::Value;
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailure {
+pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);
+
+#[derive(Clone, Debug)]
+pub(in crate::platform) struct ProtocolFailurePayload {
     pub(in crate::platform) code: String,
     pub(in crate::platform) message: &'static str,
     pub(in crate::platform) stage: &'static str,
@@ -15,13 +18,31 @@ pub(in crate::platform) struct ProtocolFailure {
     pub(in crate::platform) turn_status: Option<String>,
 }
 
+impl std::ops::Deref for ProtocolFailure {
+    type Target = ProtocolFailurePayload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ProtocolFailure {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl ProtocolFailure {
+    pub(in crate::platform) fn into_payload(self) -> ProtocolFailurePayload {
+        *self.0
+    }
+
     pub(in crate::platform) fn new(
         code: &'static str,
         message: &'static str,
         stage: &'static str,
     ) -> Self {
-        Self {
+        Self(Box::new(ProtocolFailurePayload {
             code: code.to_string(),
             message,
             stage,
@@ -31,7 +52,7 @@ impl ProtocolFailure {
             thread_id: None,
             turn_id: None,
             turn_status: None,
-        }
+        }))
     }
 
     pub(in crate::platform) fn with_session(mut self, session_id: Option<&str>) -> Self {
@@ -41,7 +62,7 @@ impl ProtocolFailure {
     }
 
     pub(super) fn user_interaction(method: &str, session_id: Option<&str>) -> Self {
-        Self {
+        Self(Box::new(ProtocolFailurePayload {
             code: "acp_user_interaction_required".to_string(),
             message: "The agent requires explicit user interaction before this turn can continue.",
             stage: "session/request_permission",
@@ -51,7 +72,7 @@ impl ProtocolFailure {
             thread_id: session_id.map(str::to_string),
             turn_id: None,
             turn_status: Some("cancelled".to_string()),
-        }
+        }))
     }
 
     pub(in crate::platform) fn namespaced(mut self, driver: AcpDriverSpec) -> Self {

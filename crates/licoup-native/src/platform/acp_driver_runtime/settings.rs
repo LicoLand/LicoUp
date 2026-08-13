@@ -24,6 +24,18 @@ pub(super) fn requested_config_changes(
     let mut changes = VecDeque::new();
     if let Some(model) = settings.model.as_deref() {
         push_select_change(&mut changes, options, "model", model, session_id)?;
+    } else if let Some(router_default) = advertised_router_default(options) {
+        // No explicit model: prefer the session-advertised routing entry
+        // ("auto") over the agent's persisted current value. Real Copilot
+        // advertises currentModelId gpt-5-mini while the account backend
+        // rejects it (CAPIError 400); "auto" is the vendor's own
+        // supported-model routing and is only engaged when the agent
+        // advertises it. Agents without an "auto" value keep their own
+        // session default untouched.
+        changes.push_back(ConfigChange {
+            id: "model".to_string(),
+            value: ConfigValue::Select(router_default),
+        });
     }
     if let Some(reasoning) = settings.reasoning_effort.as_deref() {
         let id = if option(options, "reasoning_effort").is_some() {
@@ -144,6 +156,22 @@ fn option<'a>(options: &'a [Value], id: &str) -> Option<&'a Value> {
     options
         .iter()
         .find(|value| value.get("id").and_then(Value::as_str) == Some(id))
+}
+
+/// The session-advertised model routing value ("auto"), present only when the
+/// agent offers it and the session is not already routed through it.
+fn advertised_router_default(options: &[Value]) -> Option<String> {
+    const ROUTER_VALUE: &str = "auto";
+    let model_option = option(options, "model")?;
+    if model_option.get("type").and_then(Value::as_str) != Some("select")
+        || !select_value_supported(model_option, ROUTER_VALUE)
+    {
+        return None;
+    }
+    if model_option.get("currentValue").and_then(Value::as_str) == Some(ROUTER_VALUE) {
+        return None;
+    }
+    Some(ROUTER_VALUE.to_string())
 }
 
 fn unsupported_setting_failure(session_id: Option<&str>) -> ProtocolFailure {

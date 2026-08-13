@@ -1,5 +1,3 @@
-use super::source::{SkillSource, resolve_skill_package};
-use super::string_param;
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -20,11 +18,6 @@ pub(super) struct SkillPackagePreview {
     pub(super) version: String,
     pub(super) digest_sha256: String,
     pub(super) file_count: usize,
-}
-
-pub(super) fn preview_skill_package(source: &SkillSource) -> Result<SkillPackagePreview> {
-    let resolved = resolve_skill_package(source)?;
-    inspect_skill_dir(&resolved.package_dir)
 }
 
 pub(super) fn inspect_skill_dir(path: &Path) -> Result<SkillPackagePreview> {
@@ -109,16 +102,6 @@ pub(super) fn sanitize_skill_id(value: &str) -> Result<String> {
     Ok(id)
 }
 
-pub(super) fn skill_id_for_install(
-    params: &Value,
-    preview: &SkillPackagePreview,
-) -> Result<String> {
-    if let Some(value) = string_param(params, &["name", "skill", "skillId"], 2) {
-        return sanitize_skill_id(&value);
-    }
-    Ok(preview.skill_id.clone())
-}
-
 pub(super) fn collect_regular_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::<PathBuf>::new();
     let mut total_bytes = 0u64;
@@ -178,11 +161,6 @@ pub(super) fn validate_relative_path(path: &Path) -> Result<()> {
         "skill_package_path_invalid"
     );
     Ok(())
-}
-
-pub(super) fn digest_directory(root: &Path) -> Result<String> {
-    let files = collect_regular_files(root)?;
-    digest_files(root, &files)
 }
 
 fn digest_files(root: &Path, files: &[PathBuf]) -> Result<String> {

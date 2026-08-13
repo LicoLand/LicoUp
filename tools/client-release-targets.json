@@ -1,146 +1,1106 @@
 {
-  "schemaVersion": "licomesh.client-release-target-catalog.v2",
+  "schemaVersion": "licomesh.client-release-target-catalog.v4",
+  "outputLayout": "build/releases/{version}/{targetId}",
   "targets": [
     {
-      "id": "windows-x64",
-      "platform": "windows",
-      "osFamily": "windows",
-      "arch": "x64",
-      "supported": true,
+      "id": "macos-direct-arm64",
+      "platform": "macos",
+      "distributionFamily": "macos",
+      "baseline": "macos-10.15",
+      "channel": "direct",
+      "packageFormat": "dmg",
+      "arch": "arm64",
+      "updateAuthority": "signed-http-manifest",
+      "buildHost": "darwin-arm64",
+      "runtimeTargetId": "macos-arm64",
+      "packageBuildSupported": true,
       "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "macos_developer_id_platform_channel_local_only",
+        "macos_github_release_publication_not_authorized"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "LicoUp-macos-arm64.dmg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-macos-arm64.dmg"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-macos-arm64.dmg.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "update",
+          "file": "LicoUp-macos-arm64-update.zip",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-macos-arm64-update.zip"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-macos-arm64-update.zip.sha256",
+          "for": "update"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-macos-arm64.build.json",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-macos-arm64.build.json"
+        }
+      ],
+      "update": {
+        "kind": "signed-http-manifest",
+        "artifactRole": "update"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "darwin-arm64"
+        ],
+        "ciRunner": [
+          "macos-15"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "macos-direct-arm64"
+        ],
+        "templates": []
+      }
+    },
+    {
+      "id": "macos-direct-x64",
+      "platform": "macos",
+      "distributionFamily": "macos",
+      "baseline": "macos-10.15",
+      "channel": "direct",
+      "packageFormat": "dmg",
+      "arch": "x64",
+      "updateAuthority": "signed-http-manifest",
+      "buildHost": "darwin-x64",
+      "runtimeTargetId": "macos-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "macos_x64_native_host_receipt_pending",
+        "macos_x64_consumer_verification_pending",
+        "macos_developer_id_platform_channel_local_only",
+        "macos_github_release_publication_not_authorized"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "LicoUp-macos-x64.dmg",
+          "source": "build/apps/desktop/native-release/macos-direct-x64/LicoUp-macos-x64.dmg"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-macos-x64.dmg.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "update",
+          "file": "LicoUp-macos-x64-update.zip",
+          "source": "build/apps/desktop/native-release/macos-direct-x64/LicoUp-macos-x64-update.zip"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-macos-x64-update.zip.sha256",
+          "for": "update"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-macos-x64.build.json",
+          "source": "build/apps/desktop/native-release/macos-direct-x64/LicoUp-macos-x64.build.json"
+        }
+      ],
+      "update": {
+        "kind": "signed-http-manifest",
+        "artifactRole": "update"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "darwin-x64"
+        ],
+        "ciRunner": [
+          "macos-15-intel"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "macos-direct-x64"
+        ],
+        "templates": []
+      }
+    },
+    {
+      "id": "macos-app-store-arm64",
+      "platform": "macos",
+      "distributionFamily": "macos",
+      "baseline": "macos-10.15",
+      "channel": "app-store",
+      "packageFormat": "pkg",
+      "arch": "arm64",
+      "updateAuthority": "app-store",
+      "buildHost": "darwin-arm64",
+      "runtimeTargetId": "macos-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "macos_app_store_sandbox_required",
+        "macos_app_store_process_policy_pending",
+        "macos_app_store_update_authority_required",
+        "macos_app_store_signing_authority_required",
+        "macos_app_store_submission_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "submission",
+          "file": "LicoUp-macos-arm64.pkg",
+          "source": "build/apps/desktop/native-release/macos-app-store-arm64/LicoUp-macos-arm64.pkg"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-macos-arm64.pkg.sha256",
+          "for": "submission"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-macos-arm64-app-store.build.json",
+          "source": "build/apps/desktop/native-release/macos-app-store-arm64/LicoUp-macos-arm64-app-store.build.json"
+        }
+      ],
+      "update": {
+        "kind": "store-managed"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "darwin-arm64"
+        ],
+        "ciRunner": [
+          "macos-15"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "macos-app-store-arm64"
+        ],
+        "templates": [
+          "apps/desktop/macos/Runner.xcodeproj/project.pbxproj",
+          "apps/desktop/packaging/ios/ExportOptions-AppStore.plist"
+        ]
+      }
+    },
+    {
+      "id": "windows-direct-x64",
+      "platform": "windows",
+      "distributionFamily": "windows",
+      "baseline": "windows-10.0.19041",
+      "channel": "direct",
+      "packageFormat": "msix",
+      "arch": "x64",
+      "updateAuthority": "appinstaller",
+      "buildHost": "win32-x64",
+      "runtimeTargetId": "windows-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
       "releaseBlockers": [
         "windows_native_host_receipt_pending",
         "windows_github_release_consumer_verification_pending"
       ],
-      "versions": ["10", "11"],
-      "installerStrategy": "msix-or-portable-replacement",
-      "builder": { "kind": "desktop-package-client", "platform": "windows" }
-    },
-    {
-      "id": "windows-arm64",
-      "platform": "windows",
-      "osFamily": "windows",
-      "arch": "arm64",
-      "supported": false,
-      "releaseSupported": false,
-      "blockers": ["flutter_windows_arm64_upstream_unavailable"],
-      "releaseBlockers": ["flutter_windows_arm64_upstream_unavailable"],
-      "versions": ["10", "11"],
-      "installerStrategy": "msix-or-portable-replacement",
-      "builder": { "kind": "unavailable", "platform": "windows" }
-    },
-    {
-      "id": "macos-x64",
-      "platform": "macos",
-      "osFamily": "macos",
-      "arch": "x64",
-      "supported": true,
-      "releaseSupported": false,
-      "releaseBlockers": ["client_release_closure_not_implemented"],
-      "versions": ["13", "14", "15"],
-      "installerStrategy": "app-bundle-replacement",
-      "builder": { "kind": "desktop-package-client", "platform": "macos" }
-    },
-    {
-      "id": "macos-arm64",
-      "platform": "macos",
-      "osFamily": "macos",
-      "arch": "arm64",
-      "supported": true,
-      "releaseSupported": true,
-      "releaseBlockers": [],
-      "versions": ["13", "14", "15"],
-      "installerStrategy": "app-bundle-replacement",
-      "builder": { "kind": "desktop-package-client", "platform": "macos" }
-    },
-    {
-      "id": "linux-glibc-x64",
-      "platform": "linux",
-      "osFamily": "linux-glibc",
-      "arch": "x64",
-      "supported": true,
-      "releaseSupported": false,
-      "releaseBlockers": ["client_release_closure_not_implemented"],
-      "distros": ["debian", "ubuntu", "arch", "manjaro", "rhel", "rocky", "alma", "centos-stream", "fedora", "opensuse"],
-      "installerStrategy": "appimage-deb-rpm-or-tar",
-      "builder": { "kind": "linux-bundle", "libc": "glibc" }
-    },
-    {
-      "id": "linux-glibc-arm64",
-      "platform": "linux",
-      "osFamily": "linux-glibc",
-      "arch": "arm64",
-      "supported": true,
-      "releaseSupported": true,
-      "releaseBlockers": [],
-      "distros": ["debian", "ubuntu", "arch", "manjaro", "rhel", "rocky", "alma", "centos-stream", "fedora", "opensuse"],
-      "installerStrategy": "appimage-deb-rpm-or-tar",
-      "builder": { "kind": "linux-bundle", "libc": "glibc" }
-    },
-    {
-      "id": "linux-musl-x64",
-      "platform": "linux",
-      "osFamily": "linux-musl",
-      "arch": "x64",
-      "supported": true,
-      "releaseSupported": false,
-      "releaseBlockers": ["client_release_closure_not_implemented"],
-      "distros": ["alpine"],
-      "installerStrategy": "appimage-or-tar",
-      "builder": { "kind": "linux-bundle", "libc": "musl" }
-    },
-    {
-      "id": "linux-musl-arm64",
-      "platform": "linux",
-      "osFamily": "linux-musl",
-      "arch": "arm64",
-      "supported": true,
-      "releaseSupported": false,
-      "releaseBlockers": ["client_release_closure_not_implemented"],
-      "distros": ["alpine"],
-      "installerStrategy": "appimage-or-tar",
-      "builder": { "kind": "linux-bundle", "libc": "musl" }
-    },
-    {
-      "id": "android-arm64",
-      "platform": "android",
-      "osFamily": "android",
-      "arch": "arm64",
-      "supported": true,
-      "releaseSupported": true,
-      "releaseBlockers": [],
-      "deviceClass": "physical-phone",
-      "installerStrategy": "apk-channel",
-      "builder": { "kind": "android-apk", "targetPlatform": "android-arm64" }
-    },
-    {
-      "id": "ios-simulator-arm64",
-      "platform": "ios",
-      "osFamily": "ios-simulator",
-      "arch": "arm64",
-      "supported": true,
-      "releaseSupported": false,
-      "releaseBlockers": ["simulator_artifact_is_not_a_distribution_artifact"],
-      "deviceClass": "simulator",
-      "installerStrategy": "core-simulator-app",
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "LicoUp-windows-x64.msix",
+          "source": "build/apps/desktop/native-release/windows-direct-x64/LicoUp-windows-x64.msix"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-windows-x64.msix.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "update",
+          "file": "LicoUp-windows-x64.appinstaller",
+          "source": "build/apps/desktop/native-release/windows-direct-x64/LicoUp-windows-x64.appinstaller"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-windows-x64.build.json",
+          "source": "build/apps/desktop/native-release/windows-direct-x64/LicoUp-windows-x64.build.json"
+        }
+      ],
+      "update": {
+        "kind": "appinstaller",
+        "artifactRole": "update"
+      },
       "builder": {
-        "kind": "mobile-simulator-closure",
-        "platform": "ios",
-        "verificationCommand": "npm run client:verify:mobile-simulator-closure:ios"
+        "kind": "command",
+        "hosts": [
+          "win32-x64"
+        ],
+        "ciRunner": [
+          "windows-2025"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "windows-direct-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/windows/msix/AppxManifest.xml",
+          "apps/desktop/packaging/windows/msix/LicoUp.appinstaller"
+        ]
       }
     },
     {
-      "id": "ios-arm64",
-      "platform": "ios",
-      "osFamily": "ios",
-      "arch": "arm64",
-      "supported": false,
+      "id": "windows-store-x64",
+      "platform": "windows",
+      "distributionFamily": "windows",
+      "baseline": "windows-10.0.19041",
+      "channel": "microsoft-store",
+      "packageFormat": "msixupload",
+      "arch": "x64",
+      "updateAuthority": "microsoft-store",
+      "buildHost": "win32-x64",
+      "runtimeTargetId": "windows-x64",
+      "packageBuildSupported": true,
       "releaseSupported": false,
-      "releaseBlockers": ["client_release_builder_unavailable"],
-      "deviceClass": "physical-phone",
-      "installerStrategy": "ipa-channel",
-      "builder": { "kind": "unavailable" },
-      "blockers": ["client_release_builder_unavailable"]
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "windows_store_signing_authority_required",
+        "microsoft_store_submission_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "submission",
+          "file": "LicoUp-windows-x64.msixupload",
+          "source": "build/apps/desktop/native-release/windows-store-x64/LicoUp-windows-x64.msixupload"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-windows-x64.msixupload.sha256",
+          "for": "submission"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-windows-x64-store.build.json",
+          "source": "build/apps/desktop/native-release/windows-store-x64/LicoUp-windows-x64-store.build.json"
+        }
+      ],
+      "update": {
+        "kind": "store-managed"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "win32-x64"
+        ],
+        "ciRunner": [
+          "windows-2025"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "windows-store-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/windows/msix/AppxManifest.xml"
+        ]
+      }
+    },
+    {
+      "id": "linux-deb-arm64",
+      "platform": "linux",
+      "distributionFamily": "debian",
+      "baseline": "debian-12",
+      "channel": "apt-repository",
+      "packageFormat": "deb",
+      "arch": "arm64",
+      "updateAuthority": "apt-repository",
+      "buildHost": "linux-arm64",
+      "runtimeTargetId": "linux-glibc-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "apt_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup_{version}_arm64.deb",
+          "source": "build/apps/desktop/native-release/linux-deb-arm64/licoup_{version}_arm64.deb"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup_{version}_arm64.deb.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup_{version}_arm64-deb.build.json",
+          "source": "build/apps/desktop/native-release/linux-deb-arm64/licoup_{version}_arm64-deb.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-arm64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "ARM64",
+          "lico-release",
+          "debian"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-deb-arm64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/deb/control"
+        ]
+      }
+    },
+    {
+      "id": "linux-deb-x64",
+      "platform": "linux",
+      "distributionFamily": "debian",
+      "baseline": "debian-12",
+      "channel": "apt-repository",
+      "packageFormat": "deb",
+      "arch": "x64",
+      "updateAuthority": "apt-repository",
+      "buildHost": "linux-x64",
+      "runtimeTargetId": "linux-glibc-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "apt_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup_{version}_amd64.deb",
+          "source": "build/apps/desktop/native-release/linux-deb-x64/licoup_{version}_amd64.deb"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup_{version}_amd64.deb.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup_{version}_amd64-deb.build.json",
+          "source": "build/apps/desktop/native-release/linux-deb-x64/licoup_{version}_amd64-deb.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "ubuntu-24.04"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-deb-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/deb/control"
+        ]
+      }
+    },
+    {
+      "id": "linux-rpm-arm64",
+      "platform": "linux",
+      "distributionFamily": "rpm",
+      "baseline": "fedora-39",
+      "channel": "rpm-repository",
+      "packageFormat": "rpm",
+      "arch": "arm64",
+      "updateAuthority": "rpm-repository",
+      "buildHost": "linux-arm64",
+      "runtimeTargetId": "linux-glibc-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "rpm_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup-{version}-1.aarch64.rpm",
+          "source": "build/apps/desktop/native-release/linux-rpm-arm64/licoup-{version}-1.aarch64.rpm"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup-{version}-1.aarch64.rpm.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup-{version}-1-aarch64-rpm.build.json",
+          "source": "build/apps/desktop/native-release/linux-rpm-arm64/licoup-{version}-1-aarch64-rpm.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-arm64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "ARM64",
+          "lico-release",
+          "rpm"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-rpm-arm64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/rpm/licoup.spec"
+        ]
+      }
+    },
+    {
+      "id": "linux-rpm-x64",
+      "platform": "linux",
+      "distributionFamily": "rpm",
+      "baseline": "fedora-39",
+      "channel": "rpm-repository",
+      "packageFormat": "rpm",
+      "arch": "x64",
+      "updateAuthority": "rpm-repository",
+      "buildHost": "linux-x64",
+      "runtimeTargetId": "linux-glibc-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "rpm_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup-{version}-1.x86_64.rpm",
+          "source": "build/apps/desktop/native-release/linux-rpm-x64/licoup-{version}-1.x86_64.rpm"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup-{version}-1.x86_64.rpm.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup-{version}-1-x86_64-rpm.build.json",
+          "source": "build/apps/desktop/native-release/linux-rpm-x64/licoup-{version}-1-x86_64-rpm.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "X64",
+          "lico-release",
+          "rpm"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-rpm-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/rpm/licoup.spec"
+        ]
+      }
+    },
+    {
+      "id": "linux-pacman-x64",
+      "platform": "linux",
+      "distributionFamily": "arch-linux",
+      "baseline": "arch-linux-rolling",
+      "channel": "pacman-repository",
+      "packageFormat": "pkg.tar.zst",
+      "arch": "x64",
+      "updateAuthority": "pacman-repository",
+      "buildHost": "linux-x64",
+      "runtimeTargetId": "linux-glibc-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "pacman_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup-{version}-1-x86_64.pkg.tar.zst",
+          "source": "build/apps/desktop/native-release/linux-pacman-x64/licoup-{version}-1-x86_64.pkg.tar.zst"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup-{version}-1-x86_64.pkg.tar.zst.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup-{version}-1-x86_64-pacman.build.json",
+          "source": "build/apps/desktop/native-release/linux-pacman-x64/licoup-{version}-1-x86_64-pacman.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "X64",
+          "lico-release",
+          "arch-linux"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-pacman-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/pacman/PKGBUILD"
+        ]
+      }
+    },
+    {
+      "id": "linux-pacman-arm64",
+      "platform": "linux",
+      "distributionFamily": "arch-linux-arm",
+      "baseline": "arch-linux-arm-rolling",
+      "channel": "pacman-repository",
+      "packageFormat": "pkg.tar.zst",
+      "arch": "arm64",
+      "updateAuthority": "pacman-repository",
+      "buildHost": "linux-arm64",
+      "runtimeTargetId": "linux-glibc-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "pacman_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup-{version}-1-aarch64.pkg.tar.zst",
+          "source": "build/apps/desktop/native-release/linux-pacman-arm64/licoup-{version}-1-aarch64.pkg.tar.zst"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup-{version}-1-aarch64.pkg.tar.zst.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup-{version}-1-aarch64-pacman.build.json",
+          "source": "build/apps/desktop/native-release/linux-pacman-arm64/licoup-{version}-1-aarch64-pacman.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-arm64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "ARM64",
+          "lico-release",
+          "arch-linux-arm"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-pacman-arm64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/pacman/PKGBUILD"
+        ]
+      }
+    },
+    {
+      "id": "linux-alpine-apk-arm64",
+      "platform": "linux",
+      "distributionFamily": "alpine",
+      "baseline": "alpine-3.20",
+      "channel": "alpine-repository",
+      "packageFormat": "apk",
+      "arch": "arm64",
+      "updateAuthority": "alpine-repository",
+      "buildHost": "linux-arm64",
+      "runtimeTargetId": "linux-musl-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "alpine_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup-{version}-r0.aarch64.apk",
+          "source": "build/apps/desktop/native-release/linux-alpine-apk-arm64/licoup-{version}-r0.aarch64.apk"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup-{version}-r0.aarch64.apk.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup-{version}-r0-aarch64-apk.build.json",
+          "source": "build/apps/desktop/native-release/linux-alpine-apk-arm64/licoup-{version}-r0-aarch64-apk.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-arm64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "ARM64",
+          "lico-release",
+          "alpine"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-alpine-apk-arm64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/alpine/APKBUILD"
+        ]
+      }
+    },
+    {
+      "id": "linux-alpine-apk-x64",
+      "platform": "linux",
+      "distributionFamily": "alpine",
+      "baseline": "alpine-3.20",
+      "channel": "alpine-repository",
+      "packageFormat": "apk",
+      "arch": "x64",
+      "updateAuthority": "alpine-repository",
+      "buildHost": "linux-x64",
+      "runtimeTargetId": "linux-musl-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "alpine_repository_publication_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "licoup-{version}-r0.x86_64.apk",
+          "source": "build/apps/desktop/native-release/linux-alpine-apk-x64/licoup-{version}-r0.x86_64.apk"
+        },
+        {
+          "role": "checksum",
+          "file": "licoup-{version}-r0.x86_64.apk.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "licoup-{version}-r0-x86_64-apk.build.json",
+          "source": "build/apps/desktop/native-release/linux-alpine-apk-x64/licoup-{version}-r0-x86_64-apk.build.json"
+        }
+      ],
+      "update": {
+        "kind": "package-repository"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "X64",
+          "lico-release",
+          "alpine"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-alpine-apk-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/alpine/APKBUILD"
+        ]
+      }
+    },
+    {
+      "id": "linux-appimage-arm64",
+      "platform": "linux",
+      "distributionFamily": "appimage",
+      "baseline": "linux-glibc-2.31",
+      "channel": "direct",
+      "packageFormat": "appimage",
+      "arch": "arm64",
+      "updateAuthority": "appimage-update-information",
+      "buildHost": "linux-arm64",
+      "runtimeTargetId": "linux-glibc-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "appimage_update_information_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "LicoUp-{version}-linux-arm64.AppImage",
+          "source": "build/apps/desktop/native-release/linux-appimage-arm64/LicoUp-{version}-linux-arm64.AppImage"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-{version}-linux-arm64.AppImage.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-{version}-linux-arm64-appimage.build.json",
+          "source": "build/apps/desktop/native-release/linux-appimage-arm64/LicoUp-{version}-linux-arm64-appimage.build.json"
+        }
+      ],
+      "update": {
+        "kind": "appimage-update-information",
+        "artifactRole": "installer"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-arm64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "ARM64",
+          "lico-release",
+          "appimage"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-appimage-arm64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/appimage/AppRun",
+          "apps/desktop/packaging/linux/appimage/LicoUp.desktop",
+          "apps/desktop/packaging/linux/appimage/land.lico.licoup.metainfo.xml"
+        ]
+      }
+    },
+    {
+      "id": "linux-appimage-x64",
+      "platform": "linux",
+      "distributionFamily": "appimage",
+      "baseline": "linux-glibc-2.31",
+      "channel": "direct",
+      "packageFormat": "appimage",
+      "arch": "x64",
+      "updateAuthority": "appimage-update-information",
+      "buildHost": "linux-x64",
+      "runtimeTargetId": "linux-glibc-x64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "appimage_update_information_not_implemented",
+        "linux_native_package_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "LicoUp-{version}-linux-x64.AppImage",
+          "source": "build/apps/desktop/native-release/linux-appimage-x64/LicoUp-{version}-linux-x64.AppImage"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-{version}-linux-x64.AppImage.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-{version}-linux-x64-appimage.build.json",
+          "source": "build/apps/desktop/native-release/linux-appimage-x64/LicoUp-{version}-linux-x64-appimage.build.json"
+        }
+      ],
+      "update": {
+        "kind": "appimage-update-information",
+        "artifactRole": "installer"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "self-hosted",
+          "Linux",
+          "X64",
+          "lico-release",
+          "appimage"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "linux-appimage-x64"
+        ],
+        "templates": [
+          "apps/desktop/packaging/linux/appimage/AppRun",
+          "apps/desktop/packaging/linux/appimage/LicoUp.desktop",
+          "apps/desktop/packaging/linux/appimage/land.lico.licoup.metainfo.xml"
+        ]
+      }
+    },
+    {
+      "id": "android-direct-arm64-v8a",
+      "platform": "android",
+      "distributionFamily": "android",
+      "baseline": "android-api-21",
+      "channel": "direct",
+      "packageFormat": "apk",
+      "arch": "arm64-v8a",
+      "updateAuthority": "manual-download",
+      "buildHost": "darwin-arm64",
+      "runtimeTargetId": "android-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": true,
+      "packageBlockers": [],
+      "releaseBlockers": [],
+      "artifacts": [
+        {
+          "role": "installer",
+          "file": "LicoUp-android-arm64.apk",
+          "source": "build/apps/desktop/native-release/android-direct-arm64-v8a/LicoUp-android-arm64.apk"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-android-arm64.apk.sha256",
+          "for": "installer"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-android-arm64.build.json",
+          "source": "build/apps/desktop/native-release/android-direct-arm64-v8a/LicoUp-android-arm64.build.json"
+        }
+      ],
+      "update": {
+        "kind": "manual-download",
+        "artifactRole": "installer"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "darwin-arm64",
+          "linux-arm64",
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "macos-15"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "android-direct-arm64-v8a"
+        ],
+        "templates": []
+      }
+    },
+    {
+      "id": "android-play-arm64-v8a",
+      "platform": "android",
+      "distributionFamily": "android",
+      "baseline": "android-api-21",
+      "channel": "google-play",
+      "packageFormat": "aab",
+      "arch": "arm64-v8a",
+      "updateAuthority": "google-play",
+      "buildHost": "darwin-arm64",
+      "runtimeTargetId": "android-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "play_app_signing_authority_required",
+        "google_play_submission_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "submission",
+          "file": "LicoUp-android-arm64.aab",
+          "source": "build/apps/desktop/native-release/android-play-arm64-v8a/LicoUp-android-arm64.aab"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-android-arm64.aab.sha256",
+          "for": "submission"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-android-arm64-aab.build.json",
+          "source": "build/apps/desktop/native-release/android-play-arm64-v8a/LicoUp-android-arm64-aab.build.json"
+        }
+      ],
+      "update": {
+        "kind": "store-managed"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "darwin-arm64",
+          "linux-arm64",
+          "linux-x64"
+        ],
+        "ciRunner": [
+          "macos-15"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "android-play-arm64-v8a"
+        ],
+        "templates": [
+          "apps/desktop/android/app/build.gradle.kts"
+        ]
+      }
+    },
+    {
+      "id": "ios-app-store-arm64",
+      "platform": "ios",
+      "distributionFamily": "ios",
+      "baseline": "ios-13.0",
+      "channel": "app-store",
+      "packageFormat": "ipa",
+      "arch": "arm64",
+      "updateAuthority": "app-store",
+      "buildHost": "darwin-arm64",
+      "runtimeTargetId": "ios-arm64",
+      "packageBuildSupported": true,
+      "releaseSupported": false,
+      "packageBlockers": [],
+      "releaseBlockers": [
+        "ios_app_store_signing_authority_required",
+        "app_store_connect_submission_receipt_pending"
+      ],
+      "artifacts": [
+        {
+          "role": "submission",
+          "file": "LicoUp-ios-arm64.ipa",
+          "source": "build/apps/desktop/native-release/ios-app-store-arm64/LicoUp-ios-arm64.ipa"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-ios-arm64.ipa.sha256",
+          "for": "submission"
+        },
+        {
+          "role": "build-manifest",
+          "file": "LicoUp-ios-arm64.build.json",
+          "source": "build/apps/desktop/native-release/ios-app-store-arm64/LicoUp-ios-arm64.build.json"
+        }
+      ],
+      "update": {
+        "kind": "store-managed"
+      },
+      "builder": {
+        "kind": "command",
+        "hosts": [
+          "darwin-arm64"
+        ],
+        "ciRunner": [
+          "macos-15"
+        ],
+        "program": "node",
+        "args": [
+          "apps/desktop/scripts/build-platform-release-package.mjs",
+          "--target",
+          "ios-app-store-arm64"
+        ],
+        "templates": [
+          "apps/desktop/ios/Runner.xcodeproj/project.pbxproj",
+          "apps/desktop/packaging/ios/ExportOptions-AppStore.plist"
+        ]
+      }
     }
   ]
 }

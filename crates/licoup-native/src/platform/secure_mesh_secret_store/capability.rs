@@ -97,7 +97,26 @@ pub fn platform_native_secret_store_runtime_state() -> PlatformSecretStoreRuntim
     {
         return linux_secret_service::runtime_state();
     }
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        // Unit tests must never touch the real Keychain.
+        if cfg!(test) {
+            return PlatformSecretStoreRuntimeState::Unverified;
+        }
+        // Bounded runtime evidence for the selected native Keychain backend:
+        // one silent synthetic add/read/delete round trip, cached for the
+        // process lifetime.
+        use std::sync::OnceLock;
+        static PROBE_RESULT: OnceLock<bool> = OnceLock::new();
+        let probed = *PROBE_RESULT
+            .get_or_init(super::macos_user_presence::adaptive_keychain_roundtrip_probe);
+        if probed {
+            PlatformSecretStoreRuntimeState::Available
+        } else {
+            PlatformSecretStoreRuntimeState::Unavailable
+        }
+    }
+    #[cfg(target_os = "windows")]
     {
         // Presence of an OS API is not evidence that the current process can
         // create, read, and delete a protected record under the required user

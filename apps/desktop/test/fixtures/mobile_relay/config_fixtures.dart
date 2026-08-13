@@ -1,16 +1,13 @@
 Map<String, dynamic> mobileRelayConfigJson({
-  bool useCustomGateway = false,
-  String customGatewayUrl = '',
+  String stationBaseUrl = 'https://station.example.test',
   String pairingId = '',
   String pcToken = '',
   String lastPairingCode = '',
   String lastPairingExpiresAt = '',
 }) {
   return {
-    'schemaVersion': 1,
-    'defaultGatewayUrl': 'https://relay.example.test',
-    'useCustomGateway': useCustomGateway,
-    'customGatewayUrl': customGatewayUrl,
+    'schemaVersion': 2,
+    'stationBaseUrl': stationBaseUrl,
     'pcClientId': 'pc-test',
     'pcClientName': 'Test PC',
     'pairingId': pairingId,

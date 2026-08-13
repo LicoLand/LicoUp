@@ -129,13 +129,22 @@ impl CodexProtocol {
     fn turn_start_request(&self, thread_id: &str) -> Value {
         let mut params = Map::new();
         params.insert("threadId".to_string(), json!(thread_id));
-        params.insert(
-            "input".to_string(),
-            json!([{
+        let mut input = Vec::new();
+        if !self.config.prompt.is_empty() {
+            input.push(json!({
                 "type": "text",
                 "text": self.config.prompt
-            }]),
-        );
+            }));
+        }
+        for image in &self.config.local_images {
+            input.push(json!({
+                "type": "localImage",
+                "path": image.path,
+                "mediaType": image.media_type,
+                "name": image.name
+            }));
+        }
+        params.insert("input".to_string(), json!(input));
         if let Some(model) = self.config.model.as_ref() {
             params.insert("model".to_string(), json!(model));
         }
@@ -185,6 +194,12 @@ impl CodexProtocol {
         };
 
         self.turn_id = Some(turn_id.to_string());
+        crate::platform::turn_event_emit::emit_turn_event(
+            "agent.turn.accepted",
+            self.thread_id.as_deref().unwrap_or_default(),
+            turn_id,
+            json!({ "evidenceKind": "turn-start-ack" }),
+        );
         if let Some(model) = self.config.model.as_ref() {
             self.effective.model = Some(model.clone());
         }

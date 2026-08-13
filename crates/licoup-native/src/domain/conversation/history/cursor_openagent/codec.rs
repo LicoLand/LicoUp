@@ -9,7 +9,9 @@ pub(super) const MAX_SQLITE_FIELD_NAME_BYTES: usize = 256;
 pub(super) const MAX_SQLITE_VALUE_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_SQLITE_ROW_BYTES: usize = 8 * 1024 * 1024;
 
-pub(super) fn open_read_only_connection(path: &Path) -> Option<Connection> {
+pub(in crate::domain::conversation::history) fn open_read_only_connection(
+    path: &Path,
+) -> Option<Connection> {
     Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY
@@ -19,7 +21,10 @@ pub(super) fn open_read_only_connection(path: &Path) -> Option<Connection> {
     .ok()
 }
 
-pub(super) fn sqlite_table_exists(connection: &Connection, table: &str) -> bool {
+pub(in crate::domain::conversation::history) fn sqlite_table_exists(
+    connection: &Connection,
+    table: &str,
+) -> bool {
     connection
         .query_row(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1 LIMIT 1",

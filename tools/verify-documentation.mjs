@@ -37,7 +37,10 @@ const languagePairs = [
   ["SECURITY.md", "SECURITY.zh-CN.md"],
   ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
   ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
-  ["docs/protocols/local-bridge.md", "docs/protocols/local-bridge.zh-CN.md"],
+  [
+    "docs/protocols/licoarc-station-adapter.md",
+    "docs/protocols/licoarc-station-adapter.zh-CN.md",
+  ],
   ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.md"],
 ];
 
@@ -186,6 +189,7 @@ for (const generatedPath of ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.
   for (const token of [
     "tools/client-support-matrix.json",
     "crates/licoup-native/resources/agent-conversation-drivers.json",
+    "crates/licoup-native/resources/agent-native-capabilities.json",
     "crates/licoup-native/resources/agent-conversation-readiness.json",
     "client:support-matrix:sync",
     "client:support-matrix:check",

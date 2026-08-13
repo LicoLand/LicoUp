@@ -44,6 +44,8 @@ async function nativeSidecarCliTurn(context, requestedSessionId, prompt) {
     permissionRequests: 0,
     unsupportedRequests: 0,
     boundedOutput: sidecar.boundedOutput === true,
+    streamingSeen: sidecar.streamingSeen === true,
+    structuredSeen: sidecar.structuredSeen === true,
   };
 }
 
@@ -115,6 +117,9 @@ export async function nativeTurn(context, requestedSessionId, prompt) {
       unsupportedRequests: client.unsupportedRequests,
       boundedOutput: client.outputBytes <= context.maxOutputBytes
         && client.stderrBytes <= context.maxOutputBytes,
+      streamingSeen: turnNotifications.some((notification) =>
+        notification?.params?.update?.sessionUpdate === "agent_message_chunk"),
+      structuredSeen: true,
     };
   } finally {
     await client.close();
@@ -213,18 +218,15 @@ export function parseSidecarStreamStdout(stdout) {
   }
   const streamingSeen = validStreamingChunks > 0;
   const structuredSeen = events.includes("agent.message.completed")
-    && (events.includes("dispatch.turn.started") || events.includes("agent.message.chunk"));
+    && (events.includes("dispatch.turn.completed") || events.includes("dispatch.turn.failed"));
   return { result, events, streamingSeen, structuredSeen };
 }
 
 export async function runSidecar(context, request) {
   const streamEvents = request?.streamEvents === true;
-  const args = streamEvents
-    ? [...sidecarArgs, "--stream-events", "true"]
-    : sidecarArgs;
   const run = await runBoundedProcess(
     context.sidecar,
-    args,
+    sidecarArgs,
     {
       cwd: context.cwd,
       environment: context.wrapper.environment,

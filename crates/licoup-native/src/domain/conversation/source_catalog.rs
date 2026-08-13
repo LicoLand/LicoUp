@@ -4,6 +4,7 @@ use super::paths::{
     local_appdata_dir_from_home, xdg_config_dir, xdg_config_dir_from_home, xdg_data_dir,
     xdg_data_dir_from_home,
 };
+use crate::platform::paths::portable_data_dir;
 use serde_json::Value;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,11 @@ pub(crate) enum HistoryAdapter {
     OpenClaw,
     OpenCode,
     Pi,
+    LicoAgent,
+    WorkBuddy,
+    CodeBuddy,
+    TraeWork,
+    TraeAgent,
 }
 
 #[derive(Clone, Debug)]
@@ -47,6 +53,11 @@ impl HistoryAdapter {
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
+            Self::LicoAgent => "lico-agent",
+            Self::WorkBuddy => "workbuddy",
+            Self::CodeBuddy => "codebuddy",
+            Self::TraeWork => "trae-work",
+            Self::TraeAgent => "trae-agent",
         }
     }
 
@@ -55,9 +66,9 @@ impl HistoryAdapter {
             Self::Antigravity => "Antigravity - IDE",
             Self::ClaudeCode => "Claude Code - CLI",
             Self::Code => "Visual Studio Code - IDE",
-            Self::Codex => "ChatGPT - Desktop",
+            Self::Codex => "Codex - CLI",
             Self::Copilot => "GitHub Copilot - Plugin",
-            Self::Cursor => "Cursor - IDE",
+            Self::Cursor => "Cursor",
             Self::Hermes => "Hermes Agent - CLI",
             Self::KiloCode => "Kilo Code - CLI",
             Self::Kimi => "Kimi - Desktop",
@@ -65,6 +76,11 @@ impl HistoryAdapter {
             Self::OpenClaw => "OpenClaw - CLI",
             Self::OpenCode => "OpenCode - CLI",
             Self::Pi => "Pi Agent - CLI",
+            Self::LicoAgent => "Lico Agent - CLI",
+            Self::WorkBuddy => "WorkBuddy - Desktop",
+            Self::CodeBuddy => "CodeBuddy - CLI",
+            Self::TraeWork => "Trae Work - Desktop",
+            Self::TraeAgent => "Trae Agent - CLI",
         }
     }
 
@@ -117,6 +133,11 @@ impl HistoryAdapter {
                 extension,
                 "jsonl" | "ndjson" | "json" | "sqlite" | "sqlite3" | "db" | "vscdb"
             ),
+            Self::LicoAgent => matches!(extension, "jsonl" | "ndjson" | "json"),
+            Self::WorkBuddy => matches!(extension, "sqlite" | "sqlite3" | "db"),
+            Self::CodeBuddy => matches!(extension, "jsonl" | "json" | "md" | "txt" | "log"),
+            Self::TraeWork => matches!(extension, "json"),
+            Self::TraeAgent => matches!(extension, "json"),
             Self::KiloCode
             | Self::OpenCode
             | Self::OpenClaw
@@ -224,6 +245,11 @@ pub(crate) fn adapter_for_agent(agent_id: &str) -> Option<HistoryAdapter> {
         "openclaw" => Some(HistoryAdapter::OpenClaw),
         "opencode" => Some(HistoryAdapter::OpenCode),
         "pi" | "pi-agent" | "pi-coding-agent" => Some(HistoryAdapter::Pi),
+        "lico-agent" | "lico" => Some(HistoryAdapter::LicoAgent),
+        "workbuddy" => Some(HistoryAdapter::WorkBuddy),
+        "codebuddy" | "workbuddy-cli" | "workbuddy_cli" => Some(HistoryAdapter::CodeBuddy),
+        "trae-work" | "trae_work" | "traework" => Some(HistoryAdapter::TraeWork),
+        "trae-agent" | "trae_agent" | "trae-cli" | "trae_cli" => Some(HistoryAdapter::TraeAgent),
         _ => None,
     }
 }
@@ -299,7 +325,12 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             (home.join(".claude/projects"), "claude-project-transcripts"),
             (home.join(".claude.json"), "claude-global-state"),
         ]),
+        // Chats and projects carry the conversation working directory; scan them
+        // before Application Support trees so the shared catalog walk budget is
+        // not spent on agent-cli installs and checkpoint noise first.
         HistoryAdapter::Cursor => roots(&[
+            (home.join(".cursor/chats"), "cursor-cli-chats"),
+            (home.join(".cursor/projects"), "cursor-cli-projects"),
             (
                 home.join("Library/Application Support/Cursor/User/workspaceStorage"),
                 "cursor-workspace-storage",
@@ -324,8 +355,6 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
                 xdg_config.join("Cursor/User/globalStorage"),
                 "cursor-global-storage",
             ),
-            (home.join(".cursor/chats"), "cursor-cli-chats"),
-            (home.join(".cursor/projects"), "cursor-cli-projects"),
         ]),
         HistoryAdapter::Code => roots(&[
             (
@@ -439,7 +468,51 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             roots(&[(kimi_code_home.join("sessions"), "kimi-code-session-store")])
         }
         HistoryAdapter::Pi => roots(&[(pi_session_dir, "pi-session-store")]),
+        HistoryAdapter::LicoAgent => lico_agent_history_roots(params),
+        // WorkBuddy desktop keeps conversation material inside its sqlite
+        // app store; the data root itself is the browse root (associated
+        // strength — community-documented, no vendor inventory).
+        HistoryAdapter::WorkBuddy => roots(&[(home.join(".workbuddy"), "workbuddy-app-state")]),
+        // CodeBuddy CLI is transcript-primary: global resume history plus
+        // per-project session records (official codebuddy-dir doc).
+        HistoryAdapter::CodeBuddy => roots(&[
+            (
+                home.join(".codebuddy/history.jsonl"),
+                "codebuddy-global-history",
+            ),
+            (home.join(".codebuddy/sessions"), "codebuddy-session-store"),
+            (
+                home.join(".codebuddy/projects"),
+                "codebuddy-project-transcripts",
+            ),
+        ]),
+        // Trae Work session files live under the data root (associated
+        // strength — community adapter evidence, no vendor documentation).
+        HistoryAdapter::TraeWork => {
+            roots(&[(home.join(".trae/sessions"), "trae-work-session-store")])
+        }
+        // Trae Agent trajectories are working-directory relative
+        // (trajectories/ under cwd or --trajectory-file), so there is no
+        // static home root; override-root browsing still applies.
+        HistoryAdapter::TraeAgent => Vec::new(),
     }
+}
+
+fn lico_agent_history_roots(params: &Value) -> Vec<HistoryRoot> {
+    lico_agent_session_dir(params)
+        .map(|dir| roots(&[(dir, "lico-agent-session-store")]))
+        .unwrap_or_default()
+}
+
+fn lico_agent_session_dir(params: &Value) -> Option<PathBuf> {
+    text_param(params, &["licoAgentSessionDir", "licoAgentSessionsDir"])
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| expand_home(&value))
+        .or_else(|| {
+            portable_data_dir()
+                .ok()
+                .map(|portable| portable.join("client-state/lico-agent/sessions"))
+        })
 }
 
 fn kimi_code_history_home(params: &Value, home: &Path, allow_environment: bool) -> PathBuf {
@@ -546,5 +619,84 @@ mod tests {
         let pi = history_roots(HistoryAdapter::Pi, &params);
         assert_eq!(pi.len(), 1);
         assert_eq!(pi[0].path, home.join(".pi/agent/sessions"));
+
+        let lico_override = json!({"licoAgentSessionDir": "/fixture-root/lico-agent-sessions"});
+        let lico = history_roots(HistoryAdapter::LicoAgent, &lico_override);
+        assert_eq!(lico.len(), 1);
+        assert_eq!(
+            lico[0].path,
+            PathBuf::from("/fixture-root/lico-agent-sessions")
+        );
+        assert_eq!(lico[0].source_kind, "lico-agent-session-store");
+        assert_eq!(
+            adapter_for_agent("lico-agent"),
+            Some(HistoryAdapter::LicoAgent)
+        );
+        assert_eq!(adapter_for_agent("lico"), Some(HistoryAdapter::LicoAgent));
+    }
+
+    #[test]
+    fn workbuddy_and_codebuddy_resolve_independent_roots() {
+        let home = PathBuf::from("synthetic-home");
+        let params = json!({"homeDir": home});
+
+        let workbuddy = history_roots(HistoryAdapter::WorkBuddy, &params);
+        assert_eq!(workbuddy.len(), 1);
+        assert_eq!(workbuddy[0].path, home.join(".workbuddy"));
+        assert_eq!(workbuddy[0].source_kind, "workbuddy-app-state");
+        assert!(HistoryAdapter::WorkBuddy.accepts_file(Path::new("workbuddy.db"), "db"));
+        assert!(!HistoryAdapter::WorkBuddy.accepts_file(Path::new("history.jsonl"), "jsonl"));
+
+        let codebuddy = history_roots(HistoryAdapter::CodeBuddy, &params);
+        assert_eq!(
+            codebuddy
+                .iter()
+                .find(|root| root.source_kind == "codebuddy-global-history")
+                .unwrap()
+                .path,
+            home.join(".codebuddy/history.jsonl")
+        );
+        assert!(
+            codebuddy
+                .iter()
+                .any(|root| root.path == home.join(".codebuddy/sessions"))
+        );
+        assert!(HistoryAdapter::CodeBuddy.accepts_file(Path::new("session.jsonl"), "jsonl"));
+        assert_eq!(
+            adapter_for_agent("workbuddy-cli"),
+            Some(HistoryAdapter::CodeBuddy)
+        );
+    }
+
+    #[test]
+    fn trae_work_has_session_root_and_trae_agent_has_none() {
+        let home = PathBuf::from("synthetic-home");
+        let params = json!({"homeDir": home});
+
+        let trae_work = history_roots(HistoryAdapter::TraeWork, &params);
+        assert_eq!(trae_work.len(), 1);
+        assert_eq!(trae_work[0].path, home.join(".trae/sessions"));
+        assert_eq!(trae_work[0].source_kind, "trae-work-session-store");
+        assert!(HistoryAdapter::TraeWork.accepts_file(Path::new("session.json"), "json"));
+        assert!(!HistoryAdapter::TraeWork.accepts_file(Path::new("session.jsonl"), "jsonl"));
+
+        // Trae Agent trajectories are working-directory relative; a static
+        // home root would be invented. Override-root browsing still applies.
+        assert!(history_roots(HistoryAdapter::TraeAgent, &params).is_empty());
+        let override_root = PathBuf::from("trajectories");
+        let override_roots = history_roots(
+            HistoryAdapter::TraeAgent,
+            &json!({"historyRoot": override_root, "rootKind": "fixture"}),
+        );
+        assert_eq!(override_roots.len(), 1);
+        assert_eq!(override_roots[0].source_kind, "fixture");
+        assert!(
+            HistoryAdapter::TraeAgent
+                .accepts_file(Path::new("trajectory_20260101_000000.json"), "json")
+        );
+        assert_eq!(
+            adapter_for_agent("trae-cli"),
+            Some(HistoryAdapter::TraeAgent)
+        );
     }
 }

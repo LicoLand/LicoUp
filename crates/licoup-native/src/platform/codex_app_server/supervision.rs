@@ -15,7 +15,7 @@ pub(super) fn run_protocol_loop(
     control_sender: &SyncSender<SteerRequest>,
     control_receiver: &Receiver<SteerRequest>,
     protocol: &mut CodexProtocol,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
@@ -75,7 +75,7 @@ pub(super) fn run_protocol_loop(
             );
         }
         let now = Instant::now();
-        if now >= deadline {
+        if deadline.is_some_and(|deadline| now >= deadline) {
             return (
                 None,
                 Some(protocol.contextualize(ProtocolFailure::new(
@@ -87,7 +87,9 @@ pub(super) fn run_protocol_loop(
                 false,
             );
         }
-        let wait = (deadline - now).min(PROCESS_POLL_INTERVAL);
+        let wait = deadline
+            .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+            .unwrap_or(PROCESS_POLL_INTERVAL);
         match receiver.recv_timeout(wait) {
             Ok(TransportEvent::Message(message)) => {
                 if acknowledge_steer_response(&message, &mut pending_steers) {
@@ -110,7 +112,7 @@ pub(super) fn run_protocol_loop(
                             }
                         }
                         ProtocolEffect::Complete(outcome) => {
-                            return (Some(outcome), None, None, false);
+                            return (Some(*outcome), None, None, false);
                         }
                         ProtocolEffect::Fail(failure) => {
                             return (None, Some(protocol.contextualize(failure)), None, false);

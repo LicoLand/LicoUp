@@ -204,7 +204,8 @@ function validateInventory(validateManifest) {
       "adapter_manifest_history_drift",
     );
     requireFact(
-      (manifest.events.realtimeKinds.length > 0) === matrix.structuredEvents,
+      (manifest.events.realtimeKinds.length > 0) === matrix.streaming
+        && (manifest.events.terminalKinds.length > 0) === matrix.structuredEvents,
       "adapter_manifest_event_capability_drift",
     );
     requireFact(
@@ -236,7 +237,7 @@ function validateInventory(validateManifest) {
     );
     if (driver.driverMode === "conversation") {
       requireFact(
-        ["openNew", "exactResume", "send", "stream", "cleanup", "history"]
+        ["openNew", "exactResume", "send", "cleanup", "history"]
           .every((operation) => operations[operation].status === "supported") &&
           matrix.officialLane === true && manifest.privacy.safeCleanup === true,
         "adapter_manifest_conversation_incomplete",

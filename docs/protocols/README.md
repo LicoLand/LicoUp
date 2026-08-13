@@ -2,11 +2,20 @@
 
 [Documentation](../README.md)
 
-- [Local Bridge](local-bridge.md) ·
-  [Local Bridge 中文](local-bridge.zh-CN.md)
+- [Subagent MCP](subagent-mcp.md) ·
+  [下属智能体 MCP](subagent-mcp.zh-CN.md)
+- [Conversation MCP and canonical model](lico-conversation-mcp.md) ·
+  [Conversation MCP 与统一模型](lico-conversation-mcp.zh-CN.md)
+- [Lico Agent](lico-agent.md) · [Lico Agent 中文说明](lico-agent.zh-CN.md)
+- [Lico Arc candidate station adapter](licoarc-station-adapter.md) ·
+  [Lico Arc 候选通讯站 Adapter](licoarc-station-adapter.zh-CN.md)
 - [Semantic conversation contract](semantic-conversation.md)
 - [Client artifact verification receipts](client-artifact-verification-receipts.md)
 
-Schemas and protocol implementations named inside each document are
-authoritative. These documents are public explanations, not competing protocol
-definitions.
+LicoUp schemas and implementations named inside each document are authoritative
+only for client-internal contracts and current implementation facts. Lico Arc
+Protocol owns stable wire-observable Pairwise Protection, Generic Message,
+Reliable Exchange, negotiation, Transport Profile, and station-facing
+semantics. The
+[current retiring endpoint-protection Preview](../STATUS.md) remains a LicoUp
+implementation, not a Lico Arc Profile or future compatibility contract.

@@ -4,25 +4,25 @@ use super::*;
 #[cfg(test)]
 pub(crate) fn initialize_secure_mesh_mls_test_endpoint(endpoint_kind: &str) -> Result<()> {
     let mut config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(
+    let mut context = crate::domain::mobile_relay::secret_custody::RuntimeSecretContext::default();
+    ensure_mobile_relay_endpoint_material(&mut config, &mut context.material, endpoint_kind)?;
+    ensure_mobile_relay_key_transparency(&mut config)?;
+    crate::domain::mobile_relay::secret_custody::save_config_with_runtime_secret_context(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
-        endpoint_kind,
-    )?;
-    save_config(&mut config)
+        &mut context,
+    )
 }
 
 #[cfg(test)]
 pub(crate) fn initialize_secure_mesh_mls_test_peer(
     peer_identity: &DeviceTrustPublicIdentity,
 ) -> Result<()> {
-    let (mut config, _context) = load_config_with_runtime_secret_context_for_operation(
+    let (mut config, mut context) = load_config_with_runtime_secret_context_for_operation(
         &json!({"allowInteraction": true}),
         "Secure Mesh MLS test peer authority",
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count(),
     )?;
-    let local_endpoint =
-        local_endpoint_state(&config, test_runtime_secret_material(stringify!(&config)))?;
+    let local_endpoint = local_endpoint_state(&config, &context.material)?;
     let local_identity = local_endpoint.device_identity()?;
     let issued_at = mobile_relay_trust_record_now_epoch()?;
     let trust_record = sign_device_trust_record(
@@ -52,7 +52,10 @@ pub(crate) fn initialize_secure_mesh_mls_test_peer(
     config["mobileRelayE2ee"]["peerVerified"] = json!(true);
     config["mobileRelayE2ee"]["peerTrustRecord"] = trust_record_json;
     refresh_secure_mesh_mls_test_directory_authority(&mut config)?;
-    save_config(&mut config)
+    crate::domain::mobile_relay::secret_custody::save_config_with_runtime_secret_context(
+        &mut config,
+        &mut context,
+    )
 }
 
 #[cfg(test)]

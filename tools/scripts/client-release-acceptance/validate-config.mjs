@@ -12,16 +12,15 @@ import { requireValue, text } from "./util.mjs";
 
 export function validateConfig(config) {
   requireValue(config?.schemaVersion === "licomesh.client-release-acceptance-config.v3", "client release acceptance config schema mismatch");
-  requireValue(config?.reportSchemaVersion === "licomesh.client-release-acceptance-report.v3", "client release acceptance report schema mismatch");
+  requireValue(config?.reportSchemaVersion === "licomesh.client-release-acceptance-report.v4", "client release acceptance report schema mismatch");
   requireValue(config?.producerPolicy === "same-process-required", "client release acceptance must run approved producers in the same process closure");
   const authorityIds = config?.releaseTargetAuthority?.selectedTargetIds;
   requireValue(
     config?.releaseTargetAuthority?.schemaVersion ===
       "licomesh.client-release-target-authority.v1" &&
       JSON.stringify(authorityIds) === JSON.stringify([
-        "macos-arm64",
-        "android-arm64",
-        "linux-glibc-arm64",
+        "macos-direct-arm64",
+        "android-direct-arm64-v8a",
       ]),
     "client release target authority is invalid",
   );
@@ -35,28 +34,26 @@ export function validateConfig(config) {
   );
   const requiredReports = [
     "pairwise",
-    "relayMock",
+    "stationAcceptance",
     "file",
     "trust",
     "acp",
     "acpArchive",
     "androidPlatformCrypto",
     "macosCli",
-    "linuxCli",
     "redaction",
   ];
   requireValue(canonicalClientSourceRootsMatch(config.sourceRoots),
     "client release acceptance source roots are not canonical");
   requireValue(JSON.stringify(config.reportOrder) === JSON.stringify([
     "pairwise",
-    "relayMock",
+    "stationAcceptance",
     "file",
     "trust",
     "acp",
     "acpArchive",
     "androidPlatformCrypto",
     "macosCli",
-    "linuxCli",
     "redaction",
   ]), "client release acceptance producer DAG is invalid");
   requireValue(requiredReports.every((id) => {
@@ -69,19 +66,21 @@ export function validateConfig(config) {
     "client release acceptance must bind Trust UX v2 to its canonical producer"
   );
   requireValue(
+    config.reports.stationAcceptance.schemaVersion ===
+      "licoup.licoarc-badtower.acceptance.v1" &&
+      config.reports.stationAcceptance.producer ===
+        "tools/scripts/client-licoarc-badtower-acceptance.mjs",
+    "client release acceptance must bind the strict Lico Arc BadTower report",
+  );
+  requireValue(
     JSON.stringify(config.reports.androidPlatformCrypto?.targetIds) ===
-      JSON.stringify(["android-arm64"]) &&
+      JSON.stringify(["android-direct-arm64-v8a"]) &&
       config.reports.androidPlatformCrypto?.producer ===
         "tools/scripts/client-android-native-tests.mjs" &&
       JSON.stringify(config.reports.macosCli?.targetIds) ===
-        JSON.stringify(["macos-arm64"]) &&
+        JSON.stringify(["macos-direct-arm64"]) &&
       config.reports.macosCli?.producer ===
-        "tools/scripts/client-secure-mesh-release-cli-proof.mjs" &&
-      JSON.stringify(config.reports.linuxCli?.targetIds) ===
-        JSON.stringify(["linux-glibc-arm64"]) &&
-      config.reports.linuxCli?.producer ===
-        "tools/scripts/client-secure-mesh-release-cli-proof.mjs" &&
-      Array.isArray(config.reports.linuxCli?.args),
+        "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
     "client release target-specific evidence DAG is incomplete",
   );
   for (const [targetId, artifact] of Object.entries(config.artifacts || {})) {
@@ -99,10 +98,6 @@ export function validateConfig(config) {
       requireValue(text(artifact.distributionManifestRef) &&
         text(artifact.installArtifactRef) && text(artifact.entitlementsRef),
       `client release acceptance macOS lineage policy is incomplete: ${targetId}`);
-    }
-    if (artifact.artifactKind === "linux-tar-archive") {
-      requireValue(text(artifact.distributionManifestRef),
-        `client release acceptance Linux manifest policy is incomplete: ${targetId}`);
     }
   }
   requireValue(

@@ -39,7 +39,7 @@ fn stdout_jsonl_reader_enforces_the_aggregate_capacity() {
     let (sender, receiver) = mpsc::channel();
     read_protocol_messages(
         std::io::BufReader::new(Cursor::new(b"{\"type\":\"event\"}\n")),
-        4,
+        Some(4),
         sender,
     );
     assert!(matches!(

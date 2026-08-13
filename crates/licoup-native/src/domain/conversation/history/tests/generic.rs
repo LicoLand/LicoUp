@@ -121,8 +121,17 @@ fn antigravity_history_decodes_protocol_wrapped_messages() {
     assert_eq!(messages[0]["text"], "请找到本项目的开发规则文档入口");
     assert_eq!(messages[1]["role"], "tool_call");
     assert_eq!(messages[1]["cardTitle"], "View file");
+    // Activity details are expandable: the recorded command content and file
+    // view stay available on the tool call card.
+    assert!(
+        messages[1]["text"]
+            .as_str()
+            .unwrap()
+            .contains("coverageContribution")
+    );
     assert_eq!(messages[2]["role"], "tool_call");
     assert_eq!(messages[2]["cardTitle"], "Run command");
+    assert_eq!(messages[2]["text"], "npm run verify\nPASS 133 tests");
     assert_eq!(
         messages[3]["text"],
         "开发规则入口在仓库根目录的 AGENTS.md。"
@@ -132,9 +141,6 @@ fn antigravity_history_decodes_protocol_wrapped_messages() {
         text.contains("<USER_REQUEST>")
             || text.contains("<SYSTEM_MESSAGE>")
             || text.contains("not actually sent by the user")
-            || text.contains("coverageContribution")
-            || text.contains("npm run verify")
-            || text.contains("2255")
     }));
 }
 
@@ -166,6 +172,54 @@ fn claude_code_adapter_extracts_nested_jsonl_messages() {
 }
 
 #[test]
+fn claude_code_adapter_projects_launch_directory_for_project_grouping() {
+    let dir = temp_dir("claude-working-directory");
+    fs::write(
+        dir.join("project.jsonl"),
+        [
+            r#"{"sessionId":"claude-session-cwd","type":"system","cwd":"/workspace/projects/alpha"}"#,
+            r#"{"sessionId":"claude-session-cwd","type":"user","message":{"role":"user","content":"Group this conversation"}}"#,
+            r#"{"sessionId":"claude-session-cwd","type":"assistant","message":{"role":"assistant","content":"Grouped"}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["workingDirectory"], "/workspace/projects/alpha");
+}
+
+#[test]
+fn claude_code_adapter_rejects_relative_launch_directory() {
+    let dir = temp_dir("claude-relative-working-directory");
+    fs::write(
+        dir.join("project.jsonl"),
+        [
+            r#"{"sessionId":"claude-session-relative","type":"user","cwd":"relative/project","message":{"role":"user","content":"Do not group this conversation"}}"#,
+            r#"{"sessionId":"claude-session-relative","type":"assistant","message":{"role":"assistant","content":"Ungrouped"}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let session = &listed["sessions"].as_array().unwrap()[0];
+    assert!(session.get("workingDirectory").is_none());
+}
+
+#[test]
 fn claude_code_adapter_attaches_message_model() {
     let dir = temp_dir("claude-model-history");
     fs::write(
@@ -189,4 +243,97 @@ fn claude_code_adapter_attaches_message_model() {
     let message = &sessions[0]["messages"][1];
     assert_eq!(message["model"], "claude-opus-4-6");
     assert_eq!(message["usage"]["totalTokens"], 16);
+}
+
+#[test]
+fn directory_layout_sessions_take_the_conversation_uuid_from_the_path() {
+    let dir = temp_dir("antigravity-directory-identity");
+    let conversation_a = dir
+        .join("brain")
+        .join("7bb7b109-f089-4529-a6c9-2c019a71c106")
+        .join(".system_generated")
+        .join("logs");
+    let conversation_b = dir
+        .join("brain")
+        .join("2f7230ca-e675-4846-a922-1104cf0a1854")
+        .join(".system_generated")
+        .join("logs");
+    fs::create_dir_all(&conversation_a).unwrap();
+    fs::create_dir_all(&conversation_b).unwrap();
+    let record = |text: &str| {
+        json!({"role": "user", "content": text, "created_at": "2026-07-31T08:04:37Z"}).to_string()
+    };
+    for (dir, name, text) in [
+        (&conversation_a, "transcript.jsonl", "first conversation"),
+        (
+            &conversation_a,
+            "transcript_full.jsonl",
+            "first conversation",
+        ),
+        (&conversation_b, "transcript.jsonl", "second conversation"),
+    ] {
+        fs::write(dir.join(name), record(text)).unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "antigravity",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 3);
+    let mut native_ids: Vec<&str> = sessions
+        .iter()
+        .map(|session| session["nativeSessionId"].as_str().unwrap())
+        .collect();
+    native_ids.sort();
+    assert_eq!(
+        native_ids,
+        vec![
+            "2f7230ca-e675-4846-a922-1104cf0a1854",
+            "7bb7b109-f089-4529-a6c9-2c019a71c106",
+            "7bb7b109-f089-4529-a6c9-2c019a71c106",
+        ],
+        "transcript duplicates share the conversation uuid while distinct conversations stay distinct"
+    );
+    let projected_ids: std::collections::BTreeSet<&str> = sessions
+        .iter()
+        .map(|session| session["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(projected_ids.len(), 3);
+}
+
+#[test]
+fn embedded_session_id_wins_and_non_uuid_paths_keep_the_file_fallback() {
+    let dir = temp_dir("antigravity-embedded-identity");
+    let uuid_dir = dir
+        .join("brain")
+        .join("7bb7b109-f089-4529-a6c9-2c019a71c106");
+    fs::create_dir_all(&uuid_dir).unwrap();
+    fs::write(
+        uuid_dir.join("transcript.jsonl"),
+        json!({"sessionId": "embedded-id", "role": "user", "content": "hi"}).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("loose.jsonl"),
+        json!({"role": "user", "content": "hi"}).to_string(),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "antigravity",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 2);
+    let mut native_ids: Vec<&str> = sessions
+        .iter()
+        .map(|session| session["nativeSessionId"].as_str().unwrap())
+        .collect();
+    native_ids.sort();
+    assert_eq!(native_ids, vec!["embedded-id", "file"]);
 }

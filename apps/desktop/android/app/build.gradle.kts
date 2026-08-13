@@ -181,7 +181,7 @@ val secureMeshAndroidAbi = "arm64-v8a"
 val secureMeshNativeLibrary = "liblicoup_native.so"
 val repoRoot = rootProject.projectDir.resolve("../../..").canonicalFile
 val secureMeshNativeTargetRoot =
-    repoRoot.resolve("build/crates/licoup-native/android-target")
+    repoRoot.resolve("build/crates/licoup-native/target")
 val secureMeshGeneratedJniRoot =
     layout.buildDirectory.dir("generated/secureMeshJniLibs")
 val secureMeshGeneratedLibrary =
@@ -249,7 +249,8 @@ val buildSecureMeshAndroidNative by tasks.registering {
         exec {
             workingDir = repoRoot
             commandLine(
-                "cargo",
+                "node",
+                repoRoot.resolve("tools/scripts/cargo-client.mjs").path,
                 "build",
                 "--manifest-path",
                 repoRoot.resolve("crates/licoup-native/Cargo.toml").path,
@@ -258,7 +259,6 @@ val buildSecureMeshAndroidNative by tasks.registering {
                 "--release",
                 "--lib"
             )
-            environment("CARGO_TARGET_DIR", secureMeshNativeTargetRoot.path)
             environment("CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER", clang.path)
             environment("AR_aarch64_linux_android", llvmAr.path)
             environment("CC_aarch64_linux_android", clang.path)

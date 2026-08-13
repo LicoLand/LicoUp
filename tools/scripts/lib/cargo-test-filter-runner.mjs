@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   acquireTestArtifactLease,
   NATIVE_CARGO_TEST_TARGET,
@@ -15,12 +16,30 @@ export function cargoTestExecutionCount(output) {
   return executed;
 }
 
+export function cargoFailureDiagnostic(output, sanitizeError = () => "") {
+  const sanitized = sanitizeError(String(output || "").slice(-8 * 1024))
+    .replace(/\u001b\[[0-9;]*m/gu, "");
+  const diagnosticLine = /^(?:error(?:\[[A-Z0-9]+\])?:|Caused by:|thread '.+' panicked at|Unable to find|No space left on device|warning: build failed)/u;
+  return sanitized
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => diagnosticLine.test(line))
+    .map((line) => line
+      .replace(/\/(?:Users|home|private|var\/folders)\/\S*/gu, "<local-path>")
+      .replace(/[A-Za-z]:\\\S*/gu, "<local-path>")
+      .replace(/\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9._-]+\b/gu, "[redacted]")
+      .slice(0, 240))
+    .slice(-6)
+    .join("\n")
+    .slice(0, 1200);
+}
+
 export function runCargoTestFilter({
   repoRoot,
   manifestPath,
   filter,
   env = process.env,
-  sanitizeError = (value) => String(value || "")
+  sanitizeError = () => ""
 }) {
   const started = Date.now();
   const command = "cargo";
@@ -45,6 +64,10 @@ export function runCargoTestFilter({
   const executedTestCount = cargoTestExecutionCount(output);
   const matchedAtLeastOneTest = executedTestCount > 0;
   const ok = result.status === 0 && matchedAtLeastOneTest;
+  const failureOutput = ok ? "" : String(result.stderr || result.stdout || "");
+  const failureDiagnostic = ok || matchedAtLeastOneTest
+    ? ""
+    : cargoFailureDiagnostic(failureOutput, sanitizeError);
   return {
     id: filter,
     command: `${command} ${commandArgs.join(" ")}`,
@@ -53,10 +76,16 @@ export function runCargoTestFilter({
     durationMs: Date.now() - started,
     executedTestCount,
     matchedAtLeastOneTest,
+    failureDigest: ok
+      ? ""
+      : createHash("sha256").update(failureOutput, "utf8").digest("hex"),
+    failureDiagnostic,
     failureSummary: ok
       ? ""
       : result.status === 0
         ? "cargo test filter matched zero executable tests"
-        : sanitizeError(result.stderr || result.stdout)
+        : matchedAtLeastOneTest
+          ? "cargo test filter failed"
+          : "cargo test filter execution failed"
   };
 }

@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Opens the command-palette style conversation search. The palette indexes
@@ -141,25 +142,20 @@ class _AgentConversationSearchPaletteState
 
   void _applyQuery() {
     final query = _queryController.text;
-    final featureHits =
-        [
-            for (final feature in widget.features)
-              if (feature.matchScore(query) > 0) feature,
-          ]
-          ..sort(
-            (a, b) => b.matchScore(query).compareTo(a.matchScore(query)),
-          );
+    final featureHits = [
+      for (final feature in widget.features)
+        if (feature.matchScore(query) > 0) feature,
+    ]..sort((a, b) => b.matchScore(query).compareTo(a.matchScore(query)));
     final skillHits =
         [
-            for (final skill in widget.controller.skillHubSkills)
-              if (scoreSkillSearchEntry(skill, query) > 0) skill,
-          ]
-          ..sort(
-            (a, b) => scoreSkillSearchEntry(
-              b,
-              query,
-            ).compareTo(scoreSkillSearchEntry(a, query)),
-          );
+          for (final skill in widget.controller.skillHubSkills)
+            if (scoreSkillSearchEntry(skill, query) > 0) skill,
+        ]..sort(
+          (a, b) => scoreSkillSearchEntry(
+            b,
+            query,
+          ).compareTo(scoreSkillSearchEntry(a, query)),
+        );
     final hits = _index.search(query);
     setState(() {
       _featureHits = featureHits;
@@ -191,8 +187,7 @@ class _AgentConversationSearchPaletteState
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       if (_resultCount > 0) {
         setState(() {
-          _selectedIndex =
-              (_selectedIndex - 1 + _resultCount) % _resultCount;
+          _selectedIndex = (_selectedIndex - 1 + _resultCount) % _resultCount;
         });
       }
       return KeyEventResult.handled;
@@ -220,9 +215,7 @@ class _AgentConversationSearchPaletteState
       controller.selectSection(ClientSection.skillHub);
       return;
     }
-    unawaited(
-      _activate(_hits[skillIndex - _skillHits.length]),
-    );
+    unawaited(_activate(_hits[skillIndex - _skillHits.length]));
   }
 
   Future<void> _activate(AgentConversationSearchHit hit) async {
@@ -365,9 +358,8 @@ double scoreSkillSearchEntry(Map<String, dynamic> skill, String query) {
   if (author.contains(normalized)) {
     score += 2;
   }
-  for (final term in normalized
-      .split(RegExp(r'\s+'))
-      .where((term) => term.isNotEmpty)) {
+  for (final term
+      in normalized.split(RegExp(r'\s+')).where((term) => term.isNotEmpty)) {
     if (title.contains(term)) {
       score += 2;
     } else if (skillId.contains(term)) {
@@ -424,10 +416,11 @@ class _GroupedHitList extends StatelessWidget {
     final rows = <Widget>[];
     if (featureHits.isNotEmpty) {
       rows.add(
-        _GroupHeader(
-          icon: Icons.bolt_outlined,
+        LicoGroupHeader(
           label: featuresGroupLabel,
           count: featureHits.length,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          leading: Icon(Icons.bolt_outlined, size: 15, color: colors.textMuted),
         ),
       );
       for (var index = 0; index < featureHits.length; index++) {
@@ -435,9 +428,7 @@ class _GroupedHitList extends StatelessWidget {
         final selected = index == selectedIndex;
         rows.add(
           Material(
-            color: selected
-                ? colors.surfaceHigh.withAlpha(160)
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(index),
               child: Padding(
@@ -473,10 +464,15 @@ class _GroupedHitList extends StatelessWidget {
     }
     if (skillHits.isNotEmpty) {
       rows.add(
-        _GroupHeader(
-          icon: Icons.library_books_outlined,
+        LicoGroupHeader(
           label: skillsGroupLabel,
           count: skillHits.length,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          leading: Icon(
+            Icons.library_books_outlined,
+            size: 15,
+            color: colors.textMuted,
+          ),
         ),
       );
       for (var index = 0; index < skillHits.length; index++) {
@@ -487,9 +483,7 @@ class _GroupedHitList extends StatelessWidget {
         final description = (skill['description'] ?? '').toString();
         rows.add(
           Material(
-            color: selected
-                ? colors.surfaceHigh.withAlpha(160)
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(flatIndex),
               child: Padding(
@@ -545,10 +539,13 @@ class _GroupedHitList extends StatelessWidget {
           ? agentId
           : agentConversationTargetDisplayName(target);
       rows.add(
-        _GroupHeader(
+        LicoGroupHeader(
           label: name,
           count: groups[agentId]!.length,
-          target: target,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          leading: target != null
+              ? AgentBrandIcon(target: target, size: 18, iconSize: 12)
+              : null,
         ),
       );
       for (final hitIndex in groups[agentId]!) {
@@ -557,9 +554,7 @@ class _GroupedHitList extends StatelessWidget {
         final selected = flatIndex == selectedIndex;
         rows.add(
           Material(
-            color: selected
-                ? colors.surfaceHigh.withAlpha(160)
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(flatIndex),
               child: Padding(
@@ -617,55 +612,5 @@ class _GroupedHitList extends StatelessWidget {
       }
     }
     return null;
-  }
-}
-
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader({
-    required this.label,
-    required this.count,
-    this.icon,
-    this.target,
-  });
-
-  final String label;
-  final int count;
-  final IconData? icon;
-  final TargetCandidate? target;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      child: Row(
-        children: [
-          if (target != null) ...[
-            AgentBrandIcon(target: target!, size: 18, iconSize: 12),
-            const SizedBox(width: 6),
-          ] else if (icon != null) ...[
-            Icon(icon, size: 15, color: colors.textMuted),
-            const SizedBox(width: 6),
-          ],
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          Text(
-            '$count',
-            style: TextStyle(color: colors.textMuted, fontSize: 11),
-          ),
-        ],
-      ),
-    );
   }
 }

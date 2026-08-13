@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
@@ -6,13 +9,17 @@ class NativeCommandActions {
   const NativeCommandActions({
     required NativeCommandExecutor commandExecutor,
     required NativeCommandExecutor concurrentCommandExecutor,
+    AgentCommandRunner? privateRunner,
   }) : _commandExecutor = commandExecutor,
-       _concurrentCommandExecutor = concurrentCommandExecutor;
+       _concurrentCommandExecutor = concurrentCommandExecutor,
+       _privateRunner = privateRunner;
 
   final NativeCommandExecutor _commandExecutor;
   final NativeCommandExecutor _concurrentCommandExecutor;
+  final AgentCommandRunner? _privateRunner;
 
   static const List<String> packagedScanTargetIds = [
+    'lico-agent',
     'openclaw',
     'claude-code',
     'codex',
@@ -81,192 +88,49 @@ class NativeCommandActions {
     return _listFromOutput(output, 'skills');
   }
 
-  Future<Map<String, dynamic>> planSkillInstall({
-    required String agent,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
+  /// Explicit, user-consented Antigravity vendor OAuth start. Long-running,
+  /// so it uses the one-shot executor: no client-side watchdog may interrupt
+  /// the bounded native authorization flow.
+  Future<Map<String, dynamic>> authorizeAntigravityRuntime({
+    String binaryPath = '',
   }) {
-    final arguments = ['skill', 'install', 'plan', '--agent', agent];
-    _appendOptionalArgument(arguments, '--url', url);
-    _appendOptionalArgument(arguments, '--source-path', sourcePath);
-    _appendOptionalArgument(arguments, '--install-root', installRoot);
-    _appendOptionalArgument(arguments, '--name', name);
-    if (overwrite) {
-      arguments.addAll(['--overwrite', 'true']);
-    }
-    return _commandExecutor.execute(arguments);
-  }
-
-  Future<Map<String, dynamic>> applySkillInstall({
-    required String agent,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-    bool pin = false,
-  }) {
-    final arguments = ['skill', 'install', 'apply', '--agent', agent];
-    _appendOptionalArgument(arguments, '--url', url);
-    _appendOptionalArgument(arguments, '--source-path', sourcePath);
-    _appendOptionalArgument(arguments, '--install-root', installRoot);
-    _appendOptionalArgument(arguments, '--name', name);
-    if (overwrite) {
-      arguments.addAll(['--overwrite', 'true']);
-    }
-    if (pin) {
-      arguments.addAll(['--pin', 'true']);
-    }
-    return _commandExecutor.execute(arguments);
-  }
-
-  Future<Map<String, dynamic>> rollbackSkillInstall({
-    required String agent,
-    required String snapshotId,
-  }) {
-    return _commandExecutor.execute([
-      'skill',
-      'install',
-      'rollback',
-      '--agent',
-      agent,
-      '--snapshot-id',
-      snapshotId,
-    ]);
-  }
-
-  Future<Map<String, dynamic>> planSkillUpdate({
-    required String agent,
-    required String skillId,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-  }) {
-    final arguments = [
-      'skill',
-      'update',
-      'plan',
-      '--agent',
-      agent,
-      '--skill',
-      skillId,
-    ];
-    _appendOptionalArgument(arguments, '--url', url);
-    _appendOptionalArgument(arguments, '--source-path', sourcePath);
-    _appendOptionalArgument(arguments, '--install-root', installRoot);
-    return _commandExecutor.execute(arguments);
-  }
-
-  Future<Map<String, dynamic>> applySkillUpdate({
-    required String agent,
-    required String skillId,
-    required String confirmation,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-  }) {
-    final arguments = [
-      'skill',
-      'update',
-      'apply',
-      '--agent',
-      agent,
-      '--skill',
-      skillId,
-      '--confirmation',
-      confirmation,
-    ];
-    _appendOptionalArgument(arguments, '--url', url);
-    _appendOptionalArgument(arguments, '--source-path', sourcePath);
-    _appendOptionalArgument(arguments, '--install-root', installRoot);
-    return _commandExecutor.execute(arguments);
-  }
-
-  Future<Map<String, dynamic>> configureSkillAutoUpdate({
-    required String agent,
-    required String skillId,
-    required bool enabled,
-    String url = '',
-    String sourcePath = '',
-  }) {
-    final arguments = [
-      'skill',
-      'auto-update',
-      'set',
-      '--agent',
-      agent,
-      '--skill',
-      skillId,
-      '--enabled',
-      enabled.toString(),
-      '--direct-user-action',
-      'true',
-    ];
-    _appendOptionalArgument(arguments, '--url', url);
-    _appendOptionalArgument(arguments, '--source-path', sourcePath);
-    return _commandExecutor.execute(arguments);
-  }
-
-  Future<Map<String, dynamic>> runConfiguredSkillUpdates({
-    required String agent,
-    String skillId = '',
-  }) {
-    final arguments = [
-      'skill',
-      'auto-update',
-      'run',
-      '--agent',
-      agent,
-      '--direct-user-action',
-      'true',
-    ];
-    _appendOptionalArgument(arguments, '--skill', skillId);
-    return _commandExecutor.execute(arguments);
-  }
-
-  Future<Map<String, dynamic>> runDueSkillUpdates() {
-    return _concurrentCommandExecutor.execute(['skill', 'auto-update', 'tick']);
+    final arguments = ['adapter', 'antigravity', 'authorize'];
+    _appendOptionalArgument(arguments, '--binary-path', binaryPath);
+    return _concurrentCommandExecutor.execute(arguments);
   }
 
   Future<Map<String, dynamic>> planSkillDelete({
-    required List<String> agents,
     required String skillId,
-    String installRoot = '',
+    required String path,
   }) {
     final arguments = [
       'skill',
       'delete',
       'plan',
-      '--agents',
-      agents.join(','),
       '--skill',
       skillId,
+      '--path',
+      path,
     ];
-    _appendOptionalArgument(arguments, '--install-root', installRoot);
     return _commandExecutor.execute(arguments);
   }
 
   Future<Map<String, dynamic>> applySkillDelete({
-    required List<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   }) {
     final arguments = [
       'skill',
       'delete',
       'apply',
-      '--agents',
-      agents.join(','),
       '--skill',
       skillId,
+      '--path',
+      path,
       '--confirmation',
       confirmation,
     ];
-    _appendOptionalArgument(arguments, '--install-root', installRoot);
     return _commandExecutor.execute(arguments);
   }
 
@@ -278,6 +142,18 @@ class NativeCommandActions {
     final arguments = ['skill', 'usage', 'report', '--days', days.toString()];
     _appendOptionalArgument(arguments, '--agent', agent);
     _appendOptionalArgument(arguments, '--skill', skillId);
+    return _commandExecutor.execute(arguments);
+  }
+
+  Future<Map<String, dynamic>> scanSkillUsage({
+    String agent = '',
+    bool forceRefresh = false,
+  }) {
+    final arguments = ['skill', 'usage', 'scan'];
+    _appendOptionalArgument(arguments, '--agent', agent);
+    if (forceRefresh) {
+      arguments.add('--force-refresh');
+    }
     return _commandExecutor.execute(arguments);
   }
 
@@ -348,7 +224,23 @@ class NativeCommandActions {
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   }) {
+    if (runtimeConnection.isNotEmpty) {
+      final runner = _privateRunner;
+      if (runner == null) {
+        throw StateError('private target configuration transport unavailable');
+      }
+      return runner.runCliWithStdin(
+        ['targets', 'add', '--target', target, '--stdin-json', 'true'],
+        jsonEncode(<String, dynamic>{
+          'target': target,
+          'location': location,
+          'runtimeConnection': runtimeConnection,
+        }),
+      );
+    }
     final arguments = ['targets', 'add', '--target', target];
     _appendOptionalArgument(arguments, '--config-path', configPath);
     _appendOptionalArgument(arguments, '--binary-path', binaryPath);
@@ -357,7 +249,13 @@ class NativeCommandActions {
   }
 
   Future<Map<String, dynamic>> inspectTarget(String target) {
-    return _commandExecutor.execute(['targets', 'inspect', target]);
+    return _commandExecutor.execute([
+      'targets',
+      'inspect',
+      target,
+      '--include-accessible-environments',
+      'true',
+    ]);
   }
 
   Future<Map<String, dynamic>> restoreSnapshot(String snapshotId) {

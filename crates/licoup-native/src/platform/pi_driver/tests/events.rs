@@ -1,4 +1,5 @@
 use super::*;
+use crate::platform::pi_driver::events::processing_evidence_kind;
 
 #[test]
 fn event_projection_drops_raw_delta_arguments_and_extension_details() {
@@ -25,4 +26,23 @@ fn event_projection_drops_raw_delta_arguments_and_extension_details() {
     }))
     .unwrap();
     assert_eq!(extension, json!({"type": "extension_error"}));
+}
+
+#[test]
+fn processing_evidence_distinguishes_reasoning_tools_and_terminal_events() {
+    assert_eq!(
+        processing_evidence_kind(&json!({"type": "tool_execution_start"})),
+        Some("tool")
+    );
+    assert_eq!(
+        processing_evidence_kind(&json!({
+            "type": "message_update",
+            "assistantMessageEvent": {"type": "thinking_delta"}
+        })),
+        Some("reasoning")
+    );
+    assert_eq!(
+        processing_evidence_kind(&json!({"type": "agent_settled"})),
+        None
+    );
 }

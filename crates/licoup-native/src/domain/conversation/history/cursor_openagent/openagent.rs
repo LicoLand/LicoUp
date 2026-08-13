@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use super::super::HistoryAdapter;
 use super::super::generic::messages_from_json;
 use super::super::message_projection::{extract_role, native_message_timestamp};
+use super::super::project_workspace::bounded_project_workspace;
 use super::super::query_filter::epoch_number_to_rfc3339;
 use super::super::session_metadata::session_from_messages_with_title;
 use super::codec::{sqlite_table_exists, sqlite_value_text};
@@ -91,15 +92,60 @@ pub(super) fn parse_openagent_sqlite_sessions(
     sessions
 }
 
+/// Columns the session projection can use when the store happens to have them.
+/// `id` is the only one every schema is required to carry.
+const OPENAGENT_SESSION_COLUMNS: [&str; 13] = [
+    "id",
+    "title",
+    "directory",
+    "path",
+    "agent",
+    "model",
+    "time_created",
+    "time_updated",
+    "tokens_input",
+    "tokens_output",
+    "tokens_reasoning",
+    "tokens_cache_read",
+    "tokens_cache_write",
+];
+
+/// Session rows from one OpenCode-shaped store.
+///
+/// The column set differs between builds — a Kilo Code or OpenCode `session`
+/// table has no `agent`, `model`, or token columns at all. Selecting a fixed
+/// list makes `prepare` fail on those stores, which silently produced zero
+/// sessions and left every conversation of the agent rendering as an empty row.
+/// Missing columns are projected as `NULL` instead, so a narrower schema still
+/// yields its conversations.
 pub(super) fn openagent_session_rows(connection: &Connection) -> Vec<OpenAgentSessionMeta> {
-    let mut statement = match connection.prepare(
-        "SELECT id, title, directory, path, agent, model, time_created, time_updated, \
-         tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write \
-         FROM session ORDER BY time_updated DESC, id ASC",
-    ) {
-        Ok(statement) => statement,
-        Err(_) => return Vec::new(),
+    let Ok(available) = sqlite_table_columns(connection, "session") else {
+        return Vec::new();
     };
+    if !available.contains("id") {
+        return Vec::new();
+    }
+    let projection = OPENAGENT_SESSION_COLUMNS
+        .iter()
+        .map(|column| {
+            if available.contains(*column) {
+                format!("\"{column}\"")
+            } else {
+                "NULL".to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let order = if available.contains("time_updated") {
+        "ORDER BY time_updated DESC, id ASC"
+    } else {
+        "ORDER BY id ASC"
+    };
+    let mut statement =
+        match connection.prepare(&format!("SELECT {projection} FROM session {order}")) {
+            Ok(statement) => statement,
+            Err(_) => return Vec::new(),
+        };
     let rows = match statement.query_map([], |row| {
         let Some(id) = sqlite_value_text(row.get_ref(0)?).filter(|value| !value.trim().is_empty())
         else {
@@ -113,7 +159,9 @@ pub(super) fn openagent_session_rows(connection: &Connection) -> Vec<OpenAgentSe
         Ok(Some(OpenAgentSessionMeta {
             id,
             title: sqlite_value_text(row.get_ref(1)?),
-            directory: sqlite_value_text(row.get_ref(2)?),
+            directory: sqlite_value_text(row.get_ref(2)?)
+                .as_deref()
+                .and_then(bounded_project_workspace),
             path: sqlite_value_text(row.get_ref(3)?),
             agent: sqlite_value_text(row.get_ref(4)?),
             model: sqlite_value_text(row.get_ref(5)?),
@@ -136,6 +184,17 @@ pub(super) fn openagent_session_rows(connection: &Connection) -> Vec<OpenAgentSe
         Err(_) => return Vec::new(),
     };
     rows.filter_map(Result::ok).flatten().collect()
+}
+
+fn sqlite_table_columns(
+    connection: &Connection,
+    table: &str,
+) -> std::result::Result<std::collections::HashSet<String>, rusqlite::Error> {
+    // Table names at every call site are compile-time constants.
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
+    statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect()
 }
 
 pub(super) fn openagent_messages_for_session(

@@ -8,7 +8,6 @@ pub(crate) struct RuntimeDriverProfile {
     pub(crate) readiness: String,
     pub(crate) protocol: String,
     pub(crate) blocker: Option<String>,
-    pub(crate) runtime_version_digest: Option<String>,
     pub(crate) capability_matrix: Option<Value>,
     pub(crate) summary_codes: Vec<String>,
     pub(crate) consecutive_passes: usize,
@@ -48,6 +47,37 @@ pub(super) struct DriverInventoryEntry {
     pub(super) blocker_codes: Vec<String>,
     #[serde(default)]
     pub(super) capability_matrix: Option<Value>,
+    // Consumed by the support-matrix projection
+    // (`tools/scripts/client-support-matrix.mjs`); the runtime only enforces
+    // the contract shape so unobservable stages stay explicitly declared.
+    #[allow(dead_code)]
+    pub(super) lifecycle_evidence: LifecycleEvidence,
+}
+
+/// Per-driver declaration of which conversation lifecycle stages carry native
+/// evidence.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[allow(dead_code)]
+pub(super) struct LifecycleEvidence {
+    pub(super) accepted: bool,
+    pub(super) processing: bool,
+    pub(super) responding: bool,
+    pub(super) completed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct NativeCapabilityDocument {
+    pub(super) schema_version: String,
+    pub(super) agents: Vec<NativeCapabilityEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct NativeCapabilityEntry {
+    pub(super) agent_id: String,
+    pub(super) capabilities: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

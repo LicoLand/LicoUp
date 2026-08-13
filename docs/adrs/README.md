@@ -2,7 +2,9 @@
 
 [Documentation](../README.md)
 
-No implemented long-lived decisions are currently published as ADRs.
+Implemented long-lived decisions:
+
+- [0001: PTY transport for the Antigravity and Cursor CLI lanes](0001-pty-transport-for-cli-lanes.md)
 
 New ADRs use stable numeric identifiers and record context, decision,
 alternatives, rationale, consequences, status, and implementation evidence.

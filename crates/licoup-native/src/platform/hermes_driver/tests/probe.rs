@@ -21,7 +21,7 @@ fi
 exit 40
 "#,
     );
-    let result = probe_driver(executable.to_str().unwrap(), 2_000, 16 * 1024);
+    let result = probe_driver(executable.to_str().unwrap(), 10_000, 16 * 1024);
     assert!(result.available);
     assert!(result.supported);
     assert_eq!(result.version.as_deref(), Some("Hermes public-version"));

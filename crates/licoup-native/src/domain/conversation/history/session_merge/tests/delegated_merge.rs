@@ -59,6 +59,64 @@ fn nested_delegated_lineage_merges_leaf_to_root_without_flattening_children() {
 }
 
 #[test]
+fn running_delegated_task_marks_its_conversation_running() {
+    let main = session(
+        "main",
+        None,
+        false,
+        vec![json!({"role": "user", "text": "Start", "createdAt": 0})],
+    );
+    let mut child = session(
+        "child",
+        Some("main"),
+        true,
+        vec![json!({"role": "assistant", "text": "Working", "createdAt": 1})],
+    );
+    child["running"] = json!(true);
+
+    let merged = merge_delegated_subagent_sessions(vec![main, child]);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0]["running"], true);
+}
+
+#[test]
+fn card_without_a_timestamp_sits_after_the_conversation_flow_not_past_events() {
+    let main = session(
+        "main",
+        None,
+        false,
+        vec![
+            json!({"role": "user", "text": "Start", "createdAt": 0}),
+            json!({"role": "agent", "text": "Working", "createdAt": 1}),
+            json!({"role": "event", "text": "Runtime trace", "createdAt": 2, "cardType": "event"}),
+        ],
+    );
+    let child = session(
+        "child",
+        Some("main"),
+        true,
+        vec![
+            json!({"role": "user", "text": "Delegate", "createdAt": ""}),
+            json!({"role": "assistant", "text": "Child result", "createdAt": ""}),
+        ],
+    );
+
+    let merged = merge_delegated_subagent_sessions(vec![main, child]);
+    let main_messages = merged[0]["messages"].as_array().unwrap();
+    let card = main_messages
+        .iter()
+        .find(|message| message["role"] == "subagent")
+        .expect("child card");
+    assert_eq!(card["text"], "Child result");
+    let card_index = main_messages
+        .iter()
+        .position(|message| message == card)
+        .unwrap();
+    assert_eq!(main_messages[card_index - 1]["role"], "agent");
+    assert_eq!(main_messages[card_index + 1]["role"], "event");
+}
+
+#[test]
 fn delegated_cycles_fail_closed_to_bounded_fallback_and_preview_is_bounded() {
     let main = session(
         "main",

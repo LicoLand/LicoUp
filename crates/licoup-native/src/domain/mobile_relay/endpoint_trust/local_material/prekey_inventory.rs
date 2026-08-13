@@ -1,5 +1,5 @@
 use super::identity_generation::{derive_identity_public, signing_material};
-use super::prekey_generation::{curve_prekey_material, mlkem_prekey_material};
+use super::prekey_generation::{CurvePreKeyRequest, curve_prekey_material, mlkem_prekey_material};
 use crate::core::secure_mesh_prekey::SecureMeshPreKeyKind;
 use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
@@ -124,16 +124,19 @@ fn ensure_curve_prekey(
         .e2ee_secret(secret_field)
         .map(SecretBytes::expose_utf8)
         .transpose()?;
-    let material = curve_prekey_material(
-        existing_private,
-        optional_text(object, fields.id).as_deref(),
-        optional_text(object, fields.created_at).as_deref(),
-        optional_text(object, fields.expires_at).as_deref(),
+    let id = optional_text(object, fields.id);
+    let created_at = optional_text(object, fields.created_at);
+    let expires_at = optional_text(object, fields.expires_at);
+    let material = curve_prekey_material(CurvePreKeyRequest {
+        private_key: existing_private,
+        id: id.as_deref(),
+        created_at: created_at.as_deref(),
+        expires_at: expires_at.as_deref(),
         signing_key,
         identity,
         kind,
         id_prefix,
-    )?;
+    })?;
     object.insert(fields.id.to_string(), json!(material.id));
     if existing_private.is_none() {
         secret_material.insert_e2ee_secret(

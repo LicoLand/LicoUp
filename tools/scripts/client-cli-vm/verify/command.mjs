@@ -46,7 +46,7 @@ export function verifyCommand(distro) {
     "export CARGO_BUILD_JOBS=1",
     'mkdir -p "$CARGO_TARGET_DIR" "$HOME/lico-artifacts"',
     cargoTestCommand,
-    "cargo build --manifest-path crates/licoup-native/Cargo.toml --locked --release --bin licoup",
+    "cargo build --manifest-path crates/licoup-native/Cargo.toml --locked --release --bin licoup-cli",
     `cp "$CARGO_TARGET_DIR/release/licoup" "$HOME/lico-artifacts/${artifactName}"`,
     `chmod 0755 "$HOME/lico-artifacts/${artifactName}"`,
     `"$HOME/lico-artifacts/${artifactName}" --help >${guestHelpPath}`,

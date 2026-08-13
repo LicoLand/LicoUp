@@ -24,6 +24,10 @@ final class LayoutScopedState {
   bool declares(LayoutStateChannel channel) =>
       _store.declares(_namespace(channel));
 
+  /// Notifies after any store mutation. Listeners re-read the channels they
+  /// care about; writes through any scope (shell or destination) arrive here.
+  Listenable get changes => _store;
+
   LayoutPresentationStateValue? readIfDeclared(LayoutStateChannel channel) {
     final namespace = _namespace(channel);
     return _store.declares(namespace) ? _store.read(namespace) : null;

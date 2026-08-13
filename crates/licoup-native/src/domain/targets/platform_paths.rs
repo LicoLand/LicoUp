@@ -240,7 +240,7 @@ pub(super) fn default_detection_paths_for_platform(
     }
 }
 
-fn kilo_code_extension_roots(home: &Path) -> Vec<PathBuf> {
+pub(super) fn kilo_code_extension_roots(home: &Path) -> Vec<PathBuf> {
     vec![
         home.join(".vscode").join("extensions"),
         home.join(".vscode-insiders").join("extensions"),

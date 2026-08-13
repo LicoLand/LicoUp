@@ -9,14 +9,17 @@ import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
 import 'package:licoup/src/frontend/shell/client_platform.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
-import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
+import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
+import 'package:licoup/src/frontend/shell/client_chrome_features.dart';
 import 'package:licoup/src/frontend/shell/client_layout_chrome_adapter.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class ClientShell extends StatefulWidget {
@@ -61,7 +64,13 @@ class _ClientShellState extends State<ClientShell>
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        return Scaffold(body: LayoutBuilder(builder: _buildLayoutHost));
+        // Every layout profile paints its own full-bleed background inside
+        // its shell, so the shared scaffold stays neutral; profiles that
+        // choose translucency (messaging window chrome) can show through.
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: LayoutBuilder(builder: _buildLayoutHost),
+        );
       },
     );
   }
@@ -70,7 +79,7 @@ class _ClientShellState extends State<ClientShell>
     final media = MediaQuery.of(context);
     final colors = context.licoColors;
     final mobile = _isMobileShell(context);
-    final section = _effectiveSection(context);
+    final section = controller.currentSection;
     final environment = LayoutEnvironment.fromConstraints(
       surface: mobile
           ? LayoutRuntimeSurface.mobile
@@ -90,39 +99,24 @@ class _ClientShellState extends State<ClientShell>
       hasTouch: mobile,
       reducedMotion: media.disableAnimations,
     );
-    return LayoutHost(
-      manager: controller.layoutManager,
-      registry: controller.layoutComposition.registry,
-      stateStore: controller.layoutComposition.stateStore,
-      environment: environment,
-      destination: section,
-      onSelectDestination: _selectDestination,
-      destinationLabel: (destination) =>
-          _destinationLabel(LicoStrings.of(context), destination),
-      content: this,
-      focusCoordinator: _focusCoordinator,
-      primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
-      loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
-      palette: LayoutPalette(
-        background: colors.background,
-        surface: colors.surface,
-        surfaceLow: colors.surfaceLow,
-        surfaceHigh: colors.surfaceHigh,
-        surfaceHighest: colors.surfaceHighest,
-        line: colors.line,
-        text: colors.text,
-        textMuted: colors.textMuted,
-        primary: colors.primary,
-        primaryStrong: colors.primaryStrong,
-        primaryFixed: colors.primaryFixed,
-        textOnPrimary: colors.textOnPrimary,
-        info: colors.info,
-        infoMuted: colors.infoMuted,
-        success: colors.success,
-        warning: colors.warning,
-        error: colors.error,
+    return LayoutChromeFeaturesScope(
+      features: ClientChromeFeatures(controller),
+      child: LayoutHost(
+        manager: controller.layoutManager,
+        registry: controller.layoutComposition.registry,
+        stateStore: controller.layoutComposition.stateStore,
+        environment: environment,
+        destination: section,
+        onSelectDestination: _selectDestination,
+        destinationLabel: (destination) =>
+            _destinationLabel(LicoStrings.of(context), destination),
+        content: this,
+        focusCoordinator: _focusCoordinator,
+        primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
+        loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
+        palette: layoutPaletteFromColors(colors),
+        chrome: _layoutChromeAdapter,
       ),
-      chrome: _layoutChromeAdapter,
     );
   }
 
@@ -139,18 +133,8 @@ class _ClientShellState extends State<ClientShell>
         controller: controller,
       ),
       ClientSection.mobileRelay => MobileRelayPanel(controller: controller),
+      ClientSection.models => ModelsPanel(controller: controller),
       ClientSection.settings => SettingsPanel(controller: controller),
-    };
-  }
-
-  ClientSection _effectiveSection(BuildContext context) {
-    final section = controller.currentSection;
-    if (!_isMobileShell(context)) {
-      return section;
-    }
-    return switch (section) {
-      ClientSection.agents || ClientSection.settings => section,
-      _ => ClientSection.agents,
     };
   }
 
@@ -174,6 +158,7 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.skillHub => strings.skillHub,
         ClientSection.pluginManagement => strings.pluginManagement,
         ClientSection.mobileRelay => strings.mobileRelay,
+        ClientSection.models => strings.keys,
         ClientSection.settings => strings.settings,
       };
 }

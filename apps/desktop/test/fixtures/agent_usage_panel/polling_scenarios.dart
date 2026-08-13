@@ -39,7 +39,7 @@ void registerAgentUsagePollingScenarios() {
     expect(service.reportCalls, 0);
     expect(service.scanCalls, 0);
 
-    await tester.pump(const Duration(minutes: 1));
+    await tester.pump(const Duration(minutes: 5));
     await tester.pumpAndSettle();
 
     expect(service.scanCalls, 1);

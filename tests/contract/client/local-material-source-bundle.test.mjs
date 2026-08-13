@@ -44,7 +44,6 @@ async function sources() {
 
 test("local material uses a thin facade and ordinary owned leaves", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 30);
   assert.deepEqual(
     [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])

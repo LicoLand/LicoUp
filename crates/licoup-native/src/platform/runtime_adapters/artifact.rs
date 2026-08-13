@@ -1,10 +1,15 @@
 use super::registry::runtime_driver_profile;
 use super::{RuntimeAdapter, RuntimeAdapterError};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, Metadata};
+use std::fs;
+#[cfg(test)]
+use std::fs::{File, Metadata};
+#[cfg(test)]
 use std::io::Read;
 use std::path::Path;
 
+#[cfg(test)]
 pub(crate) fn runtime_artifact_digest(executable: &Path) -> Option<String> {
     let mut file = File::open(executable).ok()?;
     let opened_before = file.metadata().ok()?;
@@ -60,6 +65,7 @@ pub(super) fn runtime_executable(
 }
 
 #[cfg(unix)]
+#[cfg(test)]
 fn same_runtime_artifact(left: &Metadata, right: &Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
     left.dev() == right.dev()
@@ -70,6 +76,7 @@ fn same_runtime_artifact(left: &Metadata, right: &Metadata) -> bool {
 }
 
 #[cfg(not(unix))]
+#[cfg(test)]
 fn same_runtime_artifact(left: &Metadata, right: &Metadata) -> bool {
     left.len() == right.len()
         && left.modified().ok() == right.modified().ok()

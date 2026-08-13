@@ -7,6 +7,7 @@ use super::super::macos_user_presence::{
 };
 use super::super::platform_backends::fail_closed;
 use super::super::platform_store::{PlatformSecretStore, SecretClassPersistenceProof};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use super::super::{PlatformSecretStoreRuntimeState, platform_native_secret_store_runtime_state};
 use crate::core::secure_mesh_secret_store::SecretBytes;
 #[cfg(target_os = "macos")]

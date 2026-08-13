@@ -18,7 +18,6 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const mlKemBraidFacadeSource = await readText(
     "crates/licoup-native/src/core/secure_mesh_mlkem_braid.rs"
@@ -120,13 +119,13 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     );
   }
 
-  const relayEnvelopeFiles = (await collectSourceFiles(
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope",
+  const licoArcRelayFiles = (await collectSourceFiles(
+    "crates/licoup-native/src/core/licoarc_relay",
     ".rs"
   )).filter((relativePath) => !relativePath.includes("/tests/"));
-  const relayEnvelopeRustSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs",
-    ...relayEnvelopeFiles
+  const licoArcRelayRustSource = await readJoinedText([
+    "crates/licoup-native/src/core/licoarc_relay.rs",
+    ...licoArcRelayFiles
   ]);
   for (const token of [
     "Hkdf::<Sha256>",
@@ -141,14 +140,13 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     "OUTER_AAD_MAGIC"
   ]) {
     assert(
-      relayEnvelopeRustSource.includes(token),
-      `relay envelope split must preserve cryptographic and bounded-codec evidence: ${token}`
+      licoArcRelayRustSource.includes(token),
+      `Lico Arc relay split must preserve cryptographic and bounded-codec evidence: ${token}`
     );
   }
   assert(
-    !/(^|[^A-Za-z])ChaCha20Poly1305::new/u.test(relayEnvelopeRustSource) &&
-      !relayEnvelopeRustSource.includes("LCOSM-PAIRWISE-RELAY-v1"),
-    "relay envelope production code must not restore a pre-migration header cipher or legacy AAD"
+    !/(^|[^A-Za-z])ChaCha20Poly1305::new/u.test(licoArcRelayRustSource),
+    "Lico Arc relay production code must keep the XChaCha20-Poly1305 header cipher"
   );
 
 }

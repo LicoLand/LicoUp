@@ -1,3 +1,4 @@
+use super::super::virtual_machine::is_absolute_acp_working_directory;
 use super::errors::ProtocolFailure;
 use serde_json::{Map, Value};
 use std::path::Path;
@@ -20,6 +21,25 @@ impl ProtocolConfig {
         prompt: &str,
         session_id: &str,
         cwd: Option<&Path>,
+    ) -> Result<Self, ProtocolFailure> {
+        Self::from_params_with_local_mcp(params, prompt, session_id, cwd, true)
+    }
+
+    pub(super) fn from_params_without_local_mcp(
+        params: &Value,
+        prompt: &str,
+        session_id: &str,
+        cwd: Option<&Path>,
+    ) -> Result<Self, ProtocolFailure> {
+        Self::from_params_with_local_mcp(params, prompt, session_id, cwd, false)
+    }
+
+    fn from_params_with_local_mcp(
+        params: &Value,
+        prompt: &str,
+        session_id: &str,
+        cwd: Option<&Path>,
+        include_local_mcp: bool,
     ) -> Result<Self, ProtocolFailure> {
         if prompt.trim().is_empty() {
             return Err(ProtocolFailure::new(
@@ -63,7 +83,7 @@ impl ProtocolConfig {
             ));
         }
         let cwd = cwd
-            .filter(|path| path.is_absolute())
+            .filter(|path| is_absolute_acp_working_directory(path))
             .map(|path| path.to_string_lossy().to_string())
             .ok_or_else(|| {
                 ProtocolFailure::new(
@@ -110,14 +130,19 @@ impl ProtocolConfig {
                 normalized_runtime_agent_id
                     .map(|agent_id| format!("agent:{agent_id}:acp:{}", Uuid::new_v4()))
             });
-        let mcp_servers = crate::domain::collaboration_plugin::acp_servers_for_runtime("openclaw")
-            .map_err(|_| {
-                ProtocolFailure::new(
-                    "openclaw_acp_mcp_registration_invalid",
-                    "The optional MCP registration could not be validated safely.",
-                    "session/mcp",
-                )
-            })?;
+        let mcp_servers = if include_local_mcp {
+            crate::domain::collaboration_plugin::acp_servers_for_runtime("openclaw").map_err(
+                |_| {
+                    ProtocolFailure::new(
+                        "openclaw_acp_mcp_registration_invalid",
+                        "The optional MCP registration could not be validated safely.",
+                        "session/mcp",
+                    )
+                },
+            )?
+        } else {
+            Vec::new()
+        };
         Ok(Self {
             prompt: prompt.to_string(),
             requested_session_id,

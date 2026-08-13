@@ -12,6 +12,21 @@ pub(super) fn summarize_sessions(
     sessions: &[Value],
     calendar: &UsageWindow,
 ) -> HistoryUsageSummary {
+    summarize_sessions_with_fallback(sessions, calendar, true)
+}
+
+pub(super) fn summarize_sessions_exact_only(
+    sessions: &[Value],
+    calendar: &UsageWindow,
+) -> HistoryUsageSummary {
+    summarize_sessions_with_fallback(sessions, calendar, false)
+}
+
+fn summarize_sessions_with_fallback(
+    sessions: &[Value],
+    calendar: &UsageWindow,
+    estimate_missing: bool,
+) -> HistoryUsageSummary {
     let mut summary = HistoryUsageSummary::default();
     for session in sessions {
         if session
@@ -55,6 +70,7 @@ pub(super) fn summarize_sessions(
                         date_key,
                         session_model.clone(),
                         calendar,
+                        estimate_missing,
                     )
                 })
                 .sum::<u64>()
@@ -189,6 +205,7 @@ fn collect_message_usage_tree(
     fallback_date: Option<String>,
     default_model: Option<String>,
     calendar: &UsageWindow,
+    estimate_missing: bool,
 ) -> u64 {
     if message.get("usage").is_some() {
         let scope = text_field(message, &["usageScope", "usage_scope"])
@@ -227,9 +244,13 @@ fn collect_message_usage_tree(
                     date_key,
                     default_model.clone(),
                     calendar,
+                    estimate_missing,
                 )
             })
             .sum();
+    }
+    if !estimate_missing {
+        return 0;
     }
     let Some(date_key) = fallback_date.filter(|value| calendar.contains(value)) else {
         return 0;
@@ -466,6 +487,7 @@ mod tests {
             Some("2026-07-10".to_owned()),
             Some("model-a".to_owned()),
             &window(),
+            true,
         );
         assert_eq!(added, 1);
         assert_eq!(summary.total_tokens(), 13);

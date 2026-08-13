@@ -3,7 +3,8 @@ use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::core::secure_mesh_mls::{
-    SECURE_MESH_GROUP_MLS_PROTOCOL_VERSION, SecureMeshMlsGroup, SecureMeshMlsParticipant,
+    SECURE_MESH_GROUP_MLS_PROTOCOL_VERSION, SecureMeshMlsDurableStore, SecureMeshMlsGroup,
+    SecureMeshMlsParticipant,
 };
 use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
 
@@ -11,20 +12,18 @@ use super::input_codec::{encode_base64url, identity_to_json};
 use super::journal_recovery::current_group_metadata;
 
 pub(super) fn load_group_checked(
+    group_store: &mut SecureMeshMlsDurableStore,
     participant: &SecureMeshMlsParticipant,
     identity: &DeviceTrustPublicIdentity,
     group_id: &[u8],
 ) -> Result<SecureMeshMlsGroup> {
     let group = SecureMeshMlsGroup::load(participant, group_id)?;
     let metadata = group.public_metadata(identity.fingerprint()?)?;
-    let mut store = crate::platform::secure_mesh_mls_store::open(
-        crate::domain::mobile_relay::secure_mesh_mls_state_dir()?.join("group-state.sqlite3"),
-    )?;
-    if store
+    if group_store
         .read(&metadata.group_id_hash, &metadata.participant_endpoint_id)?
         .is_some()
     {
-        let previous = store.reconcile_authenticated_snapshot(
+        let previous = group_store.reconcile_authenticated_snapshot(
             &metadata,
             OffsetDateTime::now_utc()
                 .format(&Rfc3339)
@@ -47,20 +46,18 @@ pub(super) fn load_group_checked(
 }
 
 pub(super) fn load_group_for_journal(
+    group_store: &mut SecureMeshMlsDurableStore,
     participant: &SecureMeshMlsParticipant,
     identity: &DeviceTrustPublicIdentity,
     group_id: &[u8],
 ) -> Result<SecureMeshMlsGroup> {
     let group = SecureMeshMlsGroup::load(participant, group_id)?;
     let metadata = current_group_metadata(&group, identity)?;
-    let mut store = crate::platform::secure_mesh_mls_store::open(
-        crate::domain::mobile_relay::secure_mesh_mls_state_dir()?.join("group-state.sqlite3"),
-    )?;
-    if store
+    if group_store
         .read(&metadata.group_id_hash, &metadata.participant_endpoint_id)?
         .is_some()
     {
-        let previous = store.reconcile_authenticated_snapshot(
+        let previous = group_store.reconcile_authenticated_snapshot(
             &metadata,
             OffsetDateTime::now_utc()
                 .format(&Rfc3339)
@@ -84,14 +81,12 @@ pub(super) fn load_group_for_journal(
 }
 
 pub(super) fn require_group_base_current(
+    group_store: &SecureMeshMlsDurableStore,
     base: Option<&crate::core::secure_mesh_mls::SecureMeshMlsGroupMetadata>,
     group_id_hash: &str,
     participant_scope: &str,
 ) -> Result<()> {
-    let store = crate::platform::secure_mesh_mls_store::open(
-        crate::domain::mobile_relay::secure_mesh_mls_state_dir()?.join("group-state.sqlite3"),
-    )?;
-    let durable = store.read(group_id_hash, participant_scope)?;
+    let durable = group_store.read(group_id_hash, participant_scope)?;
     match (base, durable) {
         (None, None) => Ok(()),
         (Some(base), Some(durable)) => {
@@ -114,23 +109,23 @@ pub(super) fn require_group_base_current(
 }
 
 pub(super) fn reconcile_group_metadata(
+    group_store: &mut SecureMeshMlsDurableStore,
     group: &SecureMeshMlsGroup,
     identity: &DeviceTrustPublicIdentity,
 ) -> Result<crate::core::secure_mesh_mls::SecureMeshMlsDurableRecord> {
     let metadata = group.public_metadata(identity.fingerprint()?)?;
-    let mut store = crate::platform::secure_mesh_mls_store::open(
-        crate::domain::mobile_relay::secure_mesh_mls_state_dir()?.join("group-state.sqlite3"),
-    )?;
     let updated_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|_| anyhow!("secure mesh MLS metadata timestamp is invalid"))?;
-    let previous = store.read(&metadata.group_id_hash, &metadata.participant_endpoint_id)?;
+    let previous = group_store.read(&metadata.group_id_hash, &metadata.participant_endpoint_id)?;
     let previous = match previous {
-        Some(_) => Some(store.reconcile_authenticated_snapshot(&metadata, updated_at.clone())?),
+        Some(_) => {
+            Some(group_store.reconcile_authenticated_snapshot(&metadata, updated_at.clone())?)
+        }
         None => None,
     };
     match previous {
-        None => store.upsert_initial(&metadata, updated_at),
+        None => group_store.upsert_initial(&metadata, updated_at),
         Some(previous)
             if previous.epoch == metadata.epoch
                 && previous.public_state_digest == metadata.public_state_digest
@@ -140,7 +135,7 @@ pub(super) fn reconcile_group_metadata(
         {
             Ok(previous)
         }
-        Some(previous) => store.commit_epoch(&previous, &metadata, updated_at),
+        Some(previous) => group_store.commit_epoch(&previous, &metadata, updated_at),
     }
 }
 
@@ -157,8 +152,7 @@ pub(super) fn group_status_json(
         "memberCount": group.member_count(),
         "active": group.is_active(),
         "capabilityNegotiated": group.require_active_capability_negotiation().is_ok(),
-        "participantScopeRedacted": true,
-        "privateKeyMaterial": "redacted"
+        "participantScopeRedacted": true
     })
 }
 

@@ -449,12 +449,6 @@ pub struct SecureMeshFileSyncTransfer {
     pub fields: BTreeMap<String, Value>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SecureMeshSkillSyncTransfer {
-    #[serde(flatten)]
-    pub fields: BTreeMap<String, Value>,
-}
-
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SecureMeshFileSyncStatus {
     #[serde(rename = "drafting")]
@@ -467,22 +461,6 @@ pub enum SecureMeshFileSyncStatus {
     Confirmed,
     #[serde(rename = "rejected")]
     Rejected,
-    #[serde(rename = "failed")]
-    Failed,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum SecureMeshSkillSyncStatus {
-    #[serde(rename = "drafting")]
-    Drafting,
-    #[serde(rename = "transferring")]
-    Transferring,
-    #[serde(rename = "awaiting_install")]
-    AwaitingInstall,
-    #[serde(rename = "installing")]
-    Installing,
-    #[serde(rename = "installed")]
-    Installed,
     #[serde(rename = "failed")]
     Failed,
 }

@@ -18,11 +18,44 @@ void main() {
     );
 
     expect(fellBack, isTrue);
-    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
     expect(controller.appearancePresetLoadErrors, [
       'external_preset_invalid:1',
     ]);
     expect(controller.presentationListenable.value, before + 1);
+  });
+
+  test('every built-in preset including light mode is selectable', () {
+    final controller = ClientShellController();
+    addTearDown(controller.dispose);
+
+    final pickerIds = controller.selectableAppearancePresetConfigs
+        .map((config) => config.id)
+        .toList();
+    // A light theme the user cannot choose is not a light theme. Both fixed
+    // presets share one brand identity, so each is a legitimate direct choice.
+    expect(pickerIds, [
+      AppearancePresetIds.licoSoda,
+      AppearancePresetIds.licoSodaLight,
+    ]);
+    expect(AppearancePresetIds.resolutionOnly, isEmpty);
+    // Resolution sees the same full built-in catalog.
+    expect(
+      controller.appearancePresetConfigs.map((config) => config.id),
+      containsAll([
+        AppearancePresetIds.defaultSystem,
+        AppearancePresetIds.licoSoda,
+        AppearancePresetIds.licoSodaLight,
+      ]),
+    );
+    expect(controller.appearancePresetLabel, 'LicoUp Dark');
+    expect(
+      controller.applyAppearanceCatalog(
+        configs: const [],
+        directoryPath: '/synthetic/presets',
+      ),
+      isFalse,
+    );
   });
 
   test('locale and status presentation change without exposing raw errors', () {

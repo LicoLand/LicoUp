@@ -3,7 +3,7 @@ use super::super::process_supervisor::{
 };
 use super::control::ActiveAcpControl;
 use super::errors::ProtocolFailure;
-use super::events::{TransportEvent, read_protocol_messages};
+use super::events::{ACP_EVENT_CHANNEL_CAPACITY, TransportEvent, read_protocol_messages};
 use super::io::{drain_stderr, write_message};
 use super::model::{AcpDriverSpec, CapabilityProbe, PROCESS_POLL_INTERVAL, RunResult};
 use super::params::{ProtocolConfig, timestamp};
@@ -29,14 +29,13 @@ pub(super) enum PromptDrainExpiration {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PromptDrainBudget {
-    hard_deadline: Instant,
+    hard_deadline: Option<Instant>,
     last_valid_notification_at: Instant,
     quiet_deadline: Instant,
 }
 
 impl PromptDrainBudget {
-    pub(super) fn new(prompt_response_at: Instant, hard_deadline: Instant) -> Self {
-        let prompt_response_at = prompt_response_at.min(hard_deadline);
+    pub(super) fn new(prompt_response_at: Instant, hard_deadline: Option<Instant>) -> Self {
         Self {
             hard_deadline,
             last_valid_notification_at: prompt_response_at,
@@ -44,7 +43,8 @@ impl PromptDrainBudget {
         }
     }
 
-    pub(super) fn hard_deadline(self) -> Instant {
+    #[cfg(test)]
+    pub(super) fn hard_deadline(self) -> Option<Instant> {
         self.hard_deadline
     }
 
@@ -53,8 +53,9 @@ impl PromptDrainBudget {
     }
 
     pub(super) fn observe_valid_notification(&mut self, observed_at: Instant) {
-        let observed_at = observed_at
-            .min(self.hard_deadline)
+        let observed_at = self
+            .hard_deadline
+            .map_or(observed_at, |deadline| observed_at.min(deadline))
             .max(self.last_valid_notification_at);
         self.last_valid_notification_at = observed_at;
         self.quiet_deadline = self
@@ -63,7 +64,7 @@ impl PromptDrainBudget {
     }
 
     pub(super) fn expiration_at(self, now: Instant) -> PromptDrainExpiration {
-        if now >= self.hard_deadline {
+        if self.hard_deadline.is_some_and(|deadline| now >= deadline) {
             PromptDrainExpiration::Hard
         } else if now >= self.quiet_deadline {
             PromptDrainExpiration::Quiet
@@ -73,11 +74,11 @@ impl PromptDrainBudget {
     }
 }
 
-fn quiet_deadline_after(observed_at: Instant, hard_deadline: Instant) -> Instant {
-    observed_at
+fn quiet_deadline_after(observed_at: Instant, hard_deadline: Option<Instant>) -> Instant {
+    let quiet = observed_at
         .checked_add(PROMPT_DRAIN_QUIET_DURATION)
-        .unwrap_or(hard_deadline)
-        .min(hard_deadline)
+        .unwrap_or(observed_at);
+    hard_deadline.map_or(quiet, |deadline| quiet.min(deadline))
 }
 
 pub(super) trait ProtocolLoopTransport {
@@ -131,7 +132,7 @@ pub(in crate::platform) fn execute_acp(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
@@ -162,7 +163,26 @@ pub(in crate::platform) fn execute_acp(
             Vec::new(),
         );
     }
-    let launch = LaunchSpec::new(executable, driver, Path::new(&config.cwd));
+    let launch = match LaunchSpec::for_execution(
+        executable,
+        driver,
+        Path::new(&config.cwd),
+        &mut config.settings,
+    ) {
+        Ok(launch) => launch,
+        Err(failure) => {
+            return RunResult::failed(
+                driver,
+                failure,
+                started_at,
+                None,
+                false,
+                false,
+                CapabilityProbe::default(),
+                Vec::new(),
+            );
+        }
+    };
     let mut child = match launch.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -197,7 +217,7 @@ pub(in crate::platform) fn execute_acp(
     };
     let mut stdin = BoundedStdinWriter::new(stdin);
 
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = mpsc::sync_channel(ACP_EVENT_CHANNEL_CAPACITY);
     let stdout_handle =
         thread::spawn(move || read_protocol_messages(BufReader::new(stdout), max_stdout, sender));
     let stderr_truncated = Arc::new(AtomicBool::new(false));
@@ -263,7 +283,9 @@ pub(in crate::platform) fn execute_acp(
         );
     }
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
+    // so only a non-zero window gets a concrete deadline.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let (outcome, failure, status_code, stdout_was_truncated) = {
         let mut transport = StdioProtocolLoopTransport {
             stdin: &mut stdin,
@@ -272,6 +294,7 @@ pub(in crate::platform) fn execute_acp(
         };
         run_protocol_loop(&mut transport, &mut protocol, deadline)
     };
+    drop(receiver);
     let capabilities = protocol.capabilities.clone();
     let events = std::mem::take(&mut protocol.events);
 
@@ -312,6 +335,8 @@ pub(in crate::platform) fn execute_acp(
     }
 
     if let Some(outcome) = outcome {
+        let mut effective = outcome.effective;
+        launch.apply_effective_settings(&mut effective);
         return RunResult {
             ok: true,
             output: outcome.output,
@@ -321,7 +346,7 @@ pub(in crate::platform) fn execute_acp(
             thread_id: outcome.thread_id,
             turn_id: outcome.turn_id,
             turn_status: outcome.turn_status,
-            effective: outcome.effective,
+            effective,
             capabilities: outcome.capabilities,
             status_code,
             stdout_truncated: stdout_was_truncated,
@@ -388,7 +413,7 @@ fn pipe_failure(
 pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
     transport: &mut T,
     protocol: &mut AcpProtocol,
-    hard_deadline: Instant,
+    hard_deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
@@ -431,18 +456,18 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
                 }
                 PromptDrainExpiration::Pending => {}
             }
-        } else if now >= hard_deadline {
+        } else if hard_deadline.is_some_and(|deadline| now >= deadline) {
             return protocol_timeout(protocol);
         }
-        let next_deadline = drain_budget
+        let wait = drain_budget
             .map(PromptDrainBudget::next_deadline)
-            .unwrap_or(hard_deadline);
-        let wait = next_deadline
-            .saturating_duration_since(now)
+            .or(hard_deadline)
+            .map(|deadline| deadline.saturating_duration_since(now))
+            .unwrap_or(PROCESS_POLL_INTERVAL)
             .min(PROCESS_POLL_INTERVAL);
         let received = transport.recv_timeout(wait);
         let observed_at = transport.now();
-        if observed_at >= hard_deadline {
+        if hard_deadline.is_some_and(|deadline| observed_at >= deadline) {
             return protocol_timeout(protocol);
         }
         match received {
@@ -506,11 +531,14 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
             Ok(TransportEvent::StdoutLimitExceeded) => {
                 return (
                     None,
-                    Some(ProtocolFailure::new(
-                        "acp_protocol_output_limit",
-                        "The ACP agent exceeded the configured protocol output limit.",
-                        "protocol/read",
-                    )),
+                    Some(
+                        ProtocolFailure::new(
+                            "acp_protocol_output_limit",
+                            "The ACP agent exceeded the configured protocol output limit.",
+                            "protocol/read",
+                        )
+                        .with_session(protocol.session_id.as_deref()),
+                    ),
                     None,
                     true,
                 );
@@ -568,7 +596,7 @@ fn apply_protocol_effects<T: ProtocolLoopTransport>(
                 }
             }
             ProtocolEffect::Complete(outcome) => {
-                return Some((Some(outcome), None, None, false));
+                return Some((Some(*outcome), None, None, false));
             }
             ProtocolEffect::Fail(failure) => {
                 return Some((None, Some(failure), None, false));

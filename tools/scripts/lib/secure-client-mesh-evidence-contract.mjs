@@ -1,3 +1,8 @@
+import {
+  licoArcBadTowerAcceptanceReady,
+  licoArcBadTowerAcceptanceSchemaVersion,
+} from "./licoarc-badtower-acceptance-report.mjs";
+
 export const SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH =
   "tools/scripts/lib/secure-client-mesh-release-contract.mjs";
 export const SECURE_CLIENT_MESH_E2EE_AUTHORITY_PROOF_SCHEMA_VERSION =
@@ -16,15 +21,13 @@ export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_ABSENCE_RECEIPT_FIELD = "absenceRe
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_ABSENCE_RECEIPT_SCHEMA_VERSION =
   "licomesh.secure-client-mesh.e2ee-evidence-absence-receipt.v1";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_ABSENCE_RECEIPT_TYPE = "evidence-absence";
-export const SECURE_CLIENT_RELAY_MOCK_ACCEPTANCE_REPORT_SCHEMA_VERSION =
-  "licomesh.secure-client-relay.client-acceptance-report.v1";
 const SERVER_SCRIPTS_PREFIX = "tools/" + "server" + "-scripts/";
 
 export const SECURE_CLIENT_MESH_PRODUCTION_BLOCKERS = Object.freeze([
   "pairwise/content crypto audit",
   "platform secret-store binding",
   "physical device matrix",
-  "opaque relay protocol mock",
+  "Lico Arc BadTower interoperability",
   "encrypted file handoff",
   "trust UX",
   "release proof bundle"
@@ -51,7 +54,7 @@ export const SECURE_CLIENT_MESH_EVIDENCE_REF_REPORT_REQUIRED_SCOPE_CLAIMS_BY_BLO
   "pairwise/content crypto audit": Object.freeze(["clientRuntimeClaims", "independentCryptoReviewClaims"]),
   "platform secret-store binding": Object.freeze(["clientRuntimeClaims", "platformSecretStoreClaims"]),
   "physical device matrix": Object.freeze(["physicalDeviceClaims"]),
-  "opaque relay protocol mock": Object.freeze(["clientRuntimeClaims", "relayProtocolClaims"]),
+  "Lico Arc BadTower interoperability": Object.freeze(["clientRuntimeClaims", "stationInteroperabilityClaims"]),
   "encrypted file handoff": Object.freeze(["clientRuntimeClaims", "encryptedFileHandoffClaims"]),
   "trust UX": Object.freeze(["trustUxClaims"]),
   "release proof bundle": Object.freeze(["releaseArtifactClaims"])
@@ -67,7 +70,7 @@ export const SECURE_CLIENT_MESH_EVIDENCE_SCOPE_CLAIM_AUTHORITY_BY_CLAIM = Object
   independentCryptoReviewClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   platformSecretStoreClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   physicalDeviceClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
-  relayProtocolClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
+  stationInteroperabilityClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   encryptedFileHandoffClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   trustUxClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   releaseArtifactClaims: Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit])
@@ -77,7 +80,7 @@ export const SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY_BY_BLOCKER = Object.freeze({
   "pairwise/content crypto audit": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   "platform secret-store binding": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient]),
   "physical device matrix": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
-  "opaque relay protocol mock": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
+  "Lico Arc BadTower interoperability": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit]),
   "encrypted file handoff": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient]),
   "trust UX": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient]),
   "release proof bundle": Object.freeze([SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.externalClient, SECURE_CLIENT_MESH_EVIDENCE_AUTHORITY.independentAudit])
@@ -213,58 +216,65 @@ export function evaluateSecureClientMeshEvidenceFreshness(report = {}, options =
   };
 }
 
-function boolFromReportOrSummary(record = {}, summary = {}, field = "") {
-  return record[field] === true || summary[field] === true;
-}
-
 function evaluateSecureClientMeshEvidenceRefReportBlockerSemantics(record = {}, canonicalBlocker = "") {
-  const summary = asRecord(record.summary);
-  if (canonicalBlocker !== "opaque relay protocol mock") {
+  if (canonicalBlocker !== "Lico Arc BadTower interoperability") {
     return {
       accepted: true,
       schemaVersion: "",
       expectedSchemaVersion: "",
       schemaAccepted: true,
-      requiredBooleanFields: [],
-      booleanFieldClaims: {},
-      semanticClaimCount: 0,
-      semanticClaimCountAccepted: true,
+      requiredScenarioFields: [],
+      scenarioFieldClaims: {},
+      scenarioClaimCount: 0,
+      scenarioClaimCountAccepted: true,
       reasons: []
     };
   }
-  const schemaVersion = String(record.schemaVersion || summary.schemaVersion || "").trim();
-  const requiredBooleanFields = [
-    "exactFiveOperationsObserved",
-    "exactSixOuterFieldsObserved",
-    "replayRejected",
-    "staleLeaseRejected",
-    "ackIdempotencyVerified",
-    "plaintextAbsentFromServerVisibleWire",
-    "wireBytesMeasured"
+  const schemaVersion = String(record.schemaVersion || "").trim();
+  const requiredScenarioFields = [
+    "freshEndpointCount",
+    "positiveExchange",
+    "roundTrip",
+    "stationPlaintextAbsent",
+    "nonConformantEnvelopeRejected",
+    "transportHintsNonAuthoritative",
+    "exactFiveOuterFields",
   ];
-  const booleanFieldClaims = Object.fromEntries(requiredBooleanFields.map((field) => [
+  const scenario = asRecord(record.scenario);
+  const scenarioFieldClaims = Object.fromEntries(requiredScenarioFields.map((field) => [
     field,
-    boolFromReportOrSummary(record, summary, field)
+    field === "freshEndpointCount"
+      ? scenario[field] === 2
+      : scenario[field] === true,
   ]));
-  const missingBooleanFields = requiredBooleanFields
-    .filter((field) => booleanFieldClaims[field] !== true);
-  const semanticClaimCount = Object.values(booleanFieldClaims).filter(Boolean).length;
-  const semanticClaimCountAccepted = semanticClaimCount === requiredBooleanFields.length;
-  const schemaAccepted = schemaVersion === SECURE_CLIENT_RELAY_MOCK_ACCEPTANCE_REPORT_SCHEMA_VERSION;
+  const missingScenarioFields = requiredScenarioFields
+    .filter((field) => scenarioFieldClaims[field] !== true);
+  const scenarioClaimCount = Object.values(scenarioFieldClaims).filter(Boolean).length;
+  const scenarioClaimCountAccepted =
+    scenarioClaimCount === requiredScenarioFields.length;
+  const schemaAccepted =
+    schemaVersion === licoArcBadTowerAcceptanceSchemaVersion;
+  const strictReportAccepted = licoArcBadTowerAcceptanceReady(record);
   const reasons = [
-    schemaAccepted ? "" : "relay-mock-schema-mismatch",
-    semanticClaimCountAccepted ? "" : "relay-mock-semantic-claim-count-insufficient",
-    ...missingBooleanFields.map((field) => `relay-mock-${field}-missing`)
+    schemaAccepted ? "" : "licoarc-badtower-schema-mismatch",
+    strictReportAccepted ? "" : "licoarc-badtower-strict-report-invalid",
+    scenarioClaimCountAccepted
+      ? ""
+      : "licoarc-badtower-scenario-incomplete",
+    ...missingScenarioFields.map(
+      (field) => `licoarc-badtower-scenario-${field}-missing`,
+    ),
   ].filter(Boolean);
   return {
     accepted: reasons.length === 0,
     schemaVersion,
-    expectedSchemaVersion: SECURE_CLIENT_RELAY_MOCK_ACCEPTANCE_REPORT_SCHEMA_VERSION,
+    expectedSchemaVersion: licoArcBadTowerAcceptanceSchemaVersion,
     schemaAccepted,
-    requiredBooleanFields,
-    booleanFieldClaims,
-    semanticClaimCount,
-    semanticClaimCountAccepted,
+    strictReportAccepted,
+    requiredScenarioFields,
+    scenarioFieldClaims,
+    scenarioClaimCount,
+    scenarioClaimCountAccepted,
     reasons
   };
 }
@@ -454,9 +464,15 @@ export function evaluateSecureClientMeshEvidenceRefReportReadiness(report = {}, 
     blockerSemanticsExpectedSchemaVersion: blockerSemantics.expectedSchemaVersion,
     blockerSemanticsSchemaAccepted: blockerSemantics.schemaAccepted === true,
     blockerSemanticsReasons: safeProtocolDiagnosticList(blockerSemantics.reasons),
-    blockerSemanticsBooleanFieldClaims: blockerSemantics.booleanFieldClaims,
-    blockerSemanticsSemanticClaimCount: blockerSemantics.semanticClaimCount,
-    blockerSemanticsSemanticClaimCountAccepted: blockerSemantics.semanticClaimCountAccepted === true,
+    blockerSemanticsStrictReportAccepted:
+      blockerSemantics.strictReportAccepted === true,
+    blockerSemanticsRequiredScenarioFields:
+      blockerSemantics.requiredScenarioFields,
+    blockerSemanticsScenarioFieldClaims:
+      blockerSemantics.scenarioFieldClaims,
+    blockerSemanticsScenarioClaimCount: blockerSemantics.scenarioClaimCount,
+    blockerSemanticsScenarioClaimCountAccepted:
+      blockerSemantics.scenarioClaimCountAccepted === true,
     absenceReceiptProvided: absenceReceipt.provided === true,
     absenceReceiptAccepted: absenceReceipt.accepted === true,
     absenceReceiptReleaseEvidence: false,

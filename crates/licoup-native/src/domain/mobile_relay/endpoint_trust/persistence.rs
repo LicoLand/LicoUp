@@ -79,7 +79,7 @@ pub(crate) fn persisted_mobile_relay_peer_trust_state(
     Ok(trust_state)
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(super) fn persist_peer_trust_authority_entry(
     config: &mut Value,
     local_identity: &DeviceTrustPublicIdentity,
@@ -141,7 +141,7 @@ pub(super) fn persist_peer_trust_authority_entry(
     Ok(())
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(super) fn remove_peer_trust_authority_entry(
     config: &mut Value,
     peer_endpoint_id: &str,

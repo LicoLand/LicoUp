@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -15,6 +21,7 @@ import {
 } from "./package-client.mjs";
 import { readFileSync } from "node:fs";
 import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
+import { retireStaleCleanBuildRuns } from "./package-client/source-staging.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const packageScript = "apps/desktop/scripts/package-client.mjs";
@@ -150,6 +157,48 @@ try {
 } finally {
   rmSync(sourceFixtureRoot, { recursive: true, force: true });
 }
+const cleanupFixtureRoot = mkdtempSync(
+  path.join(os.tmpdir(), "lico-package-cleanup-"),
+);
+try {
+  const fixtureUuid = "12345678-1234-4123-8123-123456789abc";
+  const dead = `run-9101-1-${fixtureUuid}`;
+  const live = `run-9102-1-${fixtureUuid}`;
+  const current = `run-9103-1-${fixtureUuid}`;
+  for (const name of [dead, live, current, "bundle", "pub-cache"]) {
+    mkdirSync(path.join(cleanupFixtureRoot, name));
+  }
+  const retired = retireStaleCleanBuildRuns(cleanupFixtureRoot, current, {
+    isProcessAlive: (pid) => pid === 9102,
+  });
+  requireValue(retired.removed === 1 &&
+    !existsSync(path.join(cleanupFixtureRoot, dead)) &&
+    existsSync(path.join(cleanupFixtureRoot, live)) &&
+    existsSync(path.join(cleanupFixtureRoot, current)) &&
+    existsSync(path.join(cleanupFixtureRoot, "bundle")) &&
+    existsSync(path.join(cleanupFixtureRoot, "pub-cache")),
+  "clean_build_retirement_boundary_failed");
+
+  const failed = `run-9104-1-${fixtureUuid}`;
+  mkdirSync(path.join(cleanupFixtureRoot, failed));
+  let cleanupError = null;
+  try {
+    retireStaleCleanBuildRuns(cleanupFixtureRoot, current, {
+      isProcessAlive: () => false,
+      removeDirectory: () => {
+        throw new Error("synthetic removal failure");
+      },
+    });
+  } catch (error) {
+    cleanupError = error;
+  }
+  requireValue(cleanupError?.code === "packaging_temporary_cleanup_failed" &&
+    cleanupError?.details?.stage === "flutter-clean-build-retire" &&
+    cleanupError?.details?.reason === "temporary_directory_removal_failed",
+  "clean_build_cleanup_failure_was_not_typed");
+} finally {
+  rmSync(cleanupFixtureRoot, { recursive: true, force: true });
+}
 for (const field of ["skipFlutterBuild", "skipNativeBuild"]) {
   expectRejected(() => validateReleaseBuildPolicy({
     mode: "release",
@@ -184,6 +233,9 @@ for (const mutate of [
   (value) => { value.unknown = true; },
   (value) => { value.modules["../escape"] = value.modules["native-sidecar"]; },
   (value) => { value.modules["native-sidecar"].includePaths = ["../outside"]; },
+  (value) => {
+    value.modules["codex-plugin"].embeddedCargoTarget = "../outside";
+  },
 ]) {
   const fixture = structuredClone(canonicalConfig);
   mutate(fixture);
@@ -216,7 +268,7 @@ requireValue(outputIsReferenceOnly(`${rejected.stdout}\n${rejected.stderr}`) &&
 
 console.log(JSON.stringify({
   ok: true,
-  caseCount: 25,
+  caseCount: 27,
   canonicalReleaseConfigRequired: true,
   releaseOverridesRejected: true,
   packagingSchemaClosed: true,

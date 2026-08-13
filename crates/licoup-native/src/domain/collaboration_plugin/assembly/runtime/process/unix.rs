@@ -1,6 +1,10 @@
-use anyhow::{Result, anyhow, ensure};
+#[cfg(target_os = "macos")]
+use anyhow::ensure;
+use anyhow::{Result, anyhow};
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 
 use super::ProcessLiveness;
 

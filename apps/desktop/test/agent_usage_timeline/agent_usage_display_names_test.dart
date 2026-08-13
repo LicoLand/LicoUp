@@ -39,10 +39,7 @@ void main() {
     expect(agentUsageAgentDisplayName(fallback), 'Custom agent');
     expect(agentUsageModelDisplayName('openai/gpt-5.5'), 'GPT 5.5');
     expect(agentUsageModelDisplayName('deepseek_v4_pro'), 'DeepSeek V4 Pro');
-    expect(
-      agentUsageModelDisplayName('composer-2-5-fast'),
-      'Composer 2.5',
-    );
+    expect(agentUsageModelDisplayName('composer-2-5-fast'), 'Composer 2.5');
     expect(agentUsageModelDisplayName('composer-2.5'), 'Composer 2.5');
     expect(
       agentUsageModelLabel('{"model_name":"claude-opus-4.6"}'),

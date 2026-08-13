@@ -1,27 +1,49 @@
-# packages/protocols/native-client
+# Native Client Protocol Boundary
 
-本目录记录 LicoUp Flutter 客户端、Rust native library 与本机智能体之间的稳定协议边界。
+English (normative) · [简体中文](README.zh-CN.md)
 
-实现入口：
+This directory documents the client-internal adaptation boundary among the
+LicoUp Flutter client, Rust native library, and local agents. “Stable” here
+does not apply to the
+[current retiring endpoint-protection Preview](../../../docs/STATUS.md).
 
-- `../../../crates/licoup-native/src/core/task_queue.rs`：有界本机任务队列。
-- `../../../crates/licoup-native/src/platform/runtime_adapters.rs`：智能体会话适配注册表。
-- `../../../crates/licoup-native/src/core/mcp.rs`：与服务实现无关的 MCP JSON-RPC 报文适配。
-- `../../../crates/licoup-native/src/core/secure_mesh_acp.rs`：Secure Client Mesh 上的 ACP 承载。
+## Implementation Entry Points
 
-协议范围：
+- `../../../crates/licoup-native/src/core/task_queue.rs`: bounded local task
+  queue.
+- `../../../crates/licoup-native/src/platform/runtime_adapters.rs`: native
+  agent-session adapter registry.
+- `../../../crates/licoup-native/src/core/mcp.rs`: service-neutral MCP
+  JSON-RPC message adaptation.
+- `../../../crates/licoup-native/src/core/secure_mesh_acp.rs`: ACP carriage
+  over the current endpoint-protection Preview.
 
-- 并发发现本机智能体及其原生配置。
-- 通过智能体官方 ACP、app-server、RPC 或 CLI 通道新建、续接和回显对话。
-- 构造、校验和编码单条 MCP 请求、通知与响应；转发响应必须消费与请求和目的端精确绑定的一次性用户批准。
-- 在 Secure Client Mesh 内承载经过端到端加密的 ACP 命令和结果。
-- macOS、Windows、Ubuntu、Android 与 iOS 的平台桥接只实现各自平台职责，不复制业务协议。
+## Protocol Scope
 
-边界原则：
+- Concurrent discovery of local agents and their native configuration.
+- Creation, continuation, and projection of conversations through the agent's
+  official ACP, app-server, RPC, or CLI interface.
+- Construction, validation, and encoding of one MCP request, notification, or
+  response. Forwarding a response consumes one-time user approval bound to the
+  exact request and destination.
+- ACP command and result carriage inside the current endpoint-protection
+  Preview messages.
+- Platform bridges for macOS, Windows, Ubuntu, Android, and iOS implement only
+  their platform responsibilities and do not duplicate product protocols.
 
-- 默认能力不绑定任何 LicoMesh 地址、令牌、服务发现文件或后台服务。
-- 可选协作只注册 `collaboration` 手动生命周期命令；默认状态查询不读取插件，GitHub 安装计划必须绑定来源与 SHA-256 摘要，插件包不得包含可执行文件或指令。
-- CLI、Flutter 与移动桥接复用同一组 Rust 协议模型，不各自创建报文变体。
-- 本机路径、配置、对话和统计保留在客户端拥有的存储中。
-- 任何把用户信息或文件发送到本机之外的动作都必须由用户针对本次动作、具体目的端和具体范围直接确认；取消、范围不匹配或批准缺失时失败关闭。
-- 可选协作能力属于用户主动安装的外部插件，不进入默认包，也不改变上述边界。
+## Boundary Principles
+
+- CLI, Flutter, and mobile bridges reuse the same Rust protocol models instead
+  of creating message variants.
+- Stable wire-observable Pairwise Protection, Generic Message, Reliable
+  Exchange, negotiation, and Transport Profile semantics belong to a pinned
+  Lico Arc Protocol Line. The current retiring preview is not a Lico Arc
+  Profile, has no future compatibility promise, and is to be retired directly
+  when that line replaces it.
+- LicoUp retains private keys, Provider configuration, plaintext, history,
+  backups, user trust, approvals, and local effects.
+- Local paths, configuration, conversations, and statistics stay in
+  client-owned storage.
+- Sending user information or files beyond the device requires direct
+  approval bound to that operation's destination, purpose, and exact scope.
+  Cancellation, a scope mismatch, or missing approval fails closed.

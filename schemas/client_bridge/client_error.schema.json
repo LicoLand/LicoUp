@@ -74,6 +74,7 @@
       "type": "enum",
       "values": [
         "request/validation",
+        "cli/admission",
         "discovery/adapter",
         "discovery/driver",
         "process/launch",
@@ -103,6 +104,10 @@
       "type": "enum",
       "values": [
         "correct_request",
+        "use_cli_help",
+        "correct_command_arguments",
+        "provide_valid_json",
+        "reduce_command_arguments",
         "select_supported_adapter",
         "install_or_retry_runtime",
         "preserve_draft_and_retry",

@@ -11,27 +11,27 @@ const secureMeshEvidenceRouteConfigJson = await readJson("tools/scripts/config/s
 
 for (const token of [
   "licomesh.secure-mesh.e2ee-evidence-routes.v2",
-  "build/reports/secure-client-relay-mock-e2e.json",
+  "build/reports/licoarc-badtower-acceptance.json",
   "build/reports/secure-mesh-physical-evidence-manifest.json",
   "pairwise/content crypto audit",
   "platform secret-store binding",
   "physical device matrix",
-  "opaque relay protocol mock",
+  "Lico Arc BadTower interoperability",
   "encrypted file handoff",
   "trust UX",
   "release proof bundle",
-  "client:verify:secure-client-relay-mock-e2e",
+  "client:verify:licoarc-badtower-acceptance",
   "client:verify:secure-mesh-physical-evidence-manifest"
 ]) {
   assert(secureMeshEvidenceRouteConfig.includes(token),
     `secure mesh evidence route config must preserve route token ${token}`);
 }
-assert(secureMeshEvidenceRouteConfigJson.diagnosticRefs?.relayMock ===
-  "build/reports/secure-client-relay-mock-e2e.json",
-  "secure mesh evidence route config must bind the client-owned relay Mock report");
-assert(secureMeshEvidenceRouteConfigJson.routes?.["opaque relay protocol mock"]?.commands?.includes(
-  "npm run client:verify:secure-client-relay-mock-e2e"
-), "secure mesh evidence route config must execute the client-owned relay Mock");
+assert(secureMeshEvidenceRouteConfigJson.diagnosticRefs?.stationAcceptance ===
+  "build/reports/licoarc-badtower-acceptance.json",
+  "secure mesh evidence route config must bind the client-owned Lico Arc BadTower acceptance report");
+assert(secureMeshEvidenceRouteConfigJson.routes?.["Lico Arc BadTower interoperability"]?.commands?.includes(
+  "npm run client:verify:licoarc-badtower-acceptance"
+), "secure mesh evidence route config must execute the client-owned Lico Arc BadTower acceptance");
 assert(JSON.stringify(Object.keys(secureMeshEvidenceRouteConfigJson.routes || {})) ===
   JSON.stringify(secureClientContract.SECURE_CLIENT_MESH_PRODUCTION_BLOCKERS),
   "secure mesh evidence route config must exactly match canonical client blockers");
@@ -40,7 +40,7 @@ for (const token of [
   "loadSecureClientMeshE2eeEvidenceRoutePlan",
   "loadSecureClientMeshE2eeDiagnosticRefs",
   "normalizeDiagnosticRefs",
-  "relayMock",
+  "stationAcceptance",
   "normalizeSafeRef",
   "normalizeCommand",
   "normalizeCommandDescriptor",
@@ -53,24 +53,6 @@ for (const token of [
 }
 assert(!/const\s+evidenceRoutePlan\s*=\s*Object\.freeze/u.test(secureMeshEvidenceBundle),
   "secure mesh evidence bundle must load route plan from config instead of hardcoding it");
-assert(Object.keys(secureClientContract.relayArtifacts.coreOperations).length === 5 &&
-  Object.values(secureClientContract.relayArtifacts.coreOperations)
-    .every((operation) => operation.method === "POST"),
-  "secure client relay core contract must expose exactly five POST operations");
-assert(secureClientContract.relayArtifacts.relayEnvelopeOuterFields.length === 6,
-  "secure client relay core contract must expose exactly six outer envelope fields");
-const secureClientRelayArtifactLoader =
-  await readText("tools/scripts/lib/secure-client-relay-artifacts.mjs");
-for (const token of [
-  "SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST",
-  "digestArtifactWithoutDeclaredDigest",
-  "Secure Client Relay core operations",
-  "Secure Client Relay outer envelope fields are not exact",
-  "loadDigestBoundJsonInput"
-]) {
-  assert(secureClientRelayArtifactLoader.includes(token),
-    `secure client relay artifact loader must keep strict validation token ${token}`);
-}
 const secureMeshAcpRelayBaseline =
   await readText("tools/scripts/client-secure-mesh-acp-relay-governed-baseline.mjs");
 const secureMeshAcpRelayBaselineConfig =
@@ -101,7 +83,7 @@ for (const token of [
   "sha256Digest",
   "verifyBundle",
   "routeConfigRef",
-  "relayMockReportRef",
+  "stationAcceptanceReportRef",
   "clientOrAuditProvenanceAccepted",
   "sourceOfTruth"
 ]) {
@@ -147,7 +129,7 @@ for (const token of [
   "build/reports/secure-mesh-platform-secret-store-matrix.json",
   "build/reports/secure-mesh-physical-device-matrix.json",
 	  "build/reports/secure-mesh-physical-evidence-manifest.json",
-	  "build/reports/secure-client-relay-mock-e2e.json",
+	  "build/reports/licoarc-badtower-acceptance.json",
   "build/reports/secure-mesh-encrypted-file-handoff.json",
   "build/reports/secure-mesh-trust-ux.json",
 	  "build/reports/secure-mesh-release-proof-bundle.json",
@@ -155,7 +137,7 @@ for (const token of [
 	  "scopeEvidenceFreshnessSeconds",
 	  "clientRuntimeClaims",
 	  "independentCryptoReviewClaims",
-	  "relayProtocolClaims",
+	  "stationInteroperabilityClaims",
 	  "independent-audit",
 	  "platformSecretStoreClaims",
   "physicalDeviceClaims",

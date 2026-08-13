@@ -88,6 +88,10 @@ fn e2ee_secret_store_self_test_in_current_portable_dir() -> Result<Value> {
         &mut config,
         &mut secret_store_batch,
     )?;
+    persist_runtime_secret_material_to_native_store_with_batch(
+        &mut material,
+        &mut secret_store_batch,
+    )?;
     save_config_raw(&mut config)?;
 
     let persisted = fs::read_to_string(config_path()?).unwrap_or_default();
@@ -101,7 +105,8 @@ fn e2ee_secret_store_self_test_in_current_portable_dir() -> Result<Value> {
             }
         })
         .collect();
-    let mut loaded = normalize_config(config.clone());
+    let loaded = normalize_config(config.clone());
+    material = RuntimeSecretMaterial::new();
     let mut overrides = RuntimeSecretOverrides::default();
     hydrate_runtime_secret_material_from_native_store_with_batch(
         &loaded,

@@ -68,6 +68,29 @@ pub fn emit_agent_message_completed(session_id: &str, turn_id: &str, text: &str)
     );
 }
 
+/// Emit a redacted native-work receipt. The evidence kind is a fixed adapter
+/// classification such as `reasoning`, `plan`, or `tool`; provider payloads
+/// and model-authored reasoning never cross this boundary.
+pub fn emit_agent_processing(
+    session_id: &str,
+    turn_id: &str,
+    evidence_kind: &str,
+    tool_name: Option<&str>,
+) {
+    let evidence_kind = match evidence_kind {
+        "reasoning" => "reasoning",
+        "plan" => "plan",
+        "tool" => "tool",
+        "progress" => "progress",
+        _ => "activity",
+    };
+    let mut payload = json!({ "evidenceKind": evidence_kind });
+    if let Some(tool_name) = tool_name.filter(|name| !name.trim().is_empty()) {
+        payload["toolName"] = json!(tool_name);
+    }
+    emit_turn_event("agent.turn.processing", session_id, turn_id, payload);
+}
+
 /// RAII guard that clears the sink on drop.
 pub struct StreamSinkGuard;
 
@@ -119,6 +142,32 @@ mod tests {
         assert_eq!(events[0]["event"], "agent.message.chunk");
         assert_eq!(events[0]["sessionId"], "sess-1");
         assert_eq!(events[0]["payload"]["text"], "chunk");
+    }
+
+    #[test]
+    fn processing_receipt_exposes_only_bounded_evidence_kind() {
+        let captured = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let sink_target = Arc::clone(&captured);
+        install_stream_sink(Box::new(move |event| {
+            sink_target.lock().unwrap().push(event);
+        }));
+        let _guard = StreamSinkGuard;
+
+        emit_agent_processing("sess-1", "turn-1", "provider-private-value", None);
+
+        let events = captured.lock().unwrap().clone();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["event"], "agent.turn.processing");
+        assert_eq!(events[0]["payload"], json!({"evidenceKind": "activity"}));
+        assert!(!events[0].to_string().contains("provider-private-value"));
+
+        captured.lock().unwrap().clear();
+        emit_agent_processing("sess-1", "turn-1", "tool", Some("Bash"));
+        let events = captured.lock().unwrap().clone();
+        assert_eq!(
+            events[0]["payload"],
+            json!({"evidenceKind": "tool", "toolName": "Bash"})
+        );
     }
 
     #[test]

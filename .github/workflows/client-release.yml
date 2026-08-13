@@ -1,32 +1,54 @@
-name: Client GitHub release artifacts
+name: Client release packages
+run-name: ${{ inputs.phase }} ${{ inputs.release_tag }} ${{ inputs.targets }} ${{ inputs.correlation }}
 
 on:
   workflow_dispatch:
     inputs:
+      phase:
+        description: Prepare immutable packages or publish one prepared run
+        required: true
+        type: choice
+        options:
+          - prepare
+          - publish
       release_tag:
-        description: GitHub Release tag to create or update
+        description: Exact version-authority tag
         required: true
         type: string
+      targets:
+        description: One or more comma-separated exact package targets
+        required: true
+        type: string
+      correlation:
+        description: Unique 64-character lowercase hexadecimal correlation
+        required: true
+        type: string
+      prepare_run_id:
+        description: Successful prepare run ID; publish only
+        required: false
+        default: ""
+        type: string
+      source_revision:
+        description: Exact release revision prepared; publish only
+        required: false
+        default: ""
+        type: string
+      artifact_digests:
+        description: JSON object mapping every package target to its installer sha256; publish only
+        required: false
+        default: ""
+        type: string
+      signed_update_manifest_base64:
+        description: Locally signed public update manifest; publish only
+        required: false
+        default: ""
+        type: string
       publish_release:
-        description: Publish the Release after every selected artifact succeeds
+        description: Reconcile every selected package and publish the draft once
         required: true
         default: false
         type: boolean
-      macos:
-        description: Build the independently releasable macOS artifact
-        required: true
-        default: false
-        type: boolean
-      linux_arm64:
-        description: Build the independently releasable Linux ARM64 artifact
-        required: true
-        default: false
-        type: boolean
-      android_arm64:
-        description: Build the independently releasable Android ARM64 artifact
-        required: true
-        default: false
-        type: boolean
+
 permissions:
   contents: read
 
@@ -35,175 +57,70 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  github-release:
-    permissions:
-      contents: write
+  source:
+    name: Bind immutable release request
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+      version: ${{ steps.matrix.outputs.version }}
     steps:
-      - name: Validate selected targets and Release tag
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - name: Validate exact release authority and phase inputs
         env:
+          PHASE: ${{ inputs.phase }}
           RELEASE_TAG: ${{ inputs.release_tag }}
-          MACOS_SELECTED: ${{ inputs.macos }}
-          LINUX_SELECTED: ${{ inputs.linux_arm64 }}
-          ANDROID_SELECTED: ${{ inputs.android_arm64 }}
+          TARGETS: ${{ inputs.targets }}
+          CORRELATION: ${{ inputs.correlation }}
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          ARTIFACT_DIGESTS: ${{ inputs.artifact_digests }}
+          SIGNED_UPDATE_MANIFEST: ${{ inputs.signed_update_manifest_base64 }}
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,126}$ ]]; then
-            echo "Invalid GitHub Release tag" >&2
-            exit 1
-          fi
-          if [[ "$MACOS_SELECTED" != "true" && "$LINUX_SELECTED" != "true" && "$ANDROID_SELECTED" != "true" ]]; then
-            echo "Select at least one release-supported target" >&2
-            exit 1
-          fi
-      - name: Create or reuse GitHub Release
+          signed_manifest_present=false
+          if [[ -n "$SIGNED_UPDATE_MANIFEST" ]]; then signed_manifest_present=true; fi
+          node tools/scripts/client-release-workflow-binding.mjs \
+            --mode request --phase "$PHASE" --tag "$RELEASE_TAG" --targets "$TARGETS" \
+            --correlation "$CORRELATION" --ref "$GITHUB_REF" --sha "$GITHUB_SHA" \
+            --source-revision "$SOURCE_REVISION" --prepare-run-id "$PREPARE_RUN_ID" \
+            --artifact-digests "$ARTIFACT_DIGESTS" \
+            --signed-manifest-present "$signed_manifest_present"
+      - name: Resolve exact package matrix
+        id: matrix
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          TARGETS: ${{ inputs.targets }}
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            existing="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets --jq '.isDraft as $draft | .targetCommitish as $target | (.assets | length) as $assets | "\($draft) \($target) \($assets)"')"
-            if [[ "$existing" != "true $GITHUB_SHA 0" ]]; then
-              echo "Existing GitHub Release must be an empty draft bound to this source revision" >&2
-              exit 1
-            fi
-          else
-            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Verified LicoUp artifacts. See LicoUp-consumer-verification.json." --draft
-          fi
+          matrix="$(node tools/scripts/client-release-workflow-binding.mjs \
+            --mode matrix --targets "$TARGETS")"
+          echo "value=$matrix" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p \
+            'require("./tools/client-version.json").productVersion')" >> "$GITHUB_OUTPUT"
 
-  macos:
-    if: ${{ inputs.macos }}
-    needs: github-release
-    runs-on: macos-15
-    timeout-minutes: 90
-    env:
-      LICO_CLIENT_RELEASE_TARGETS: macos-arm64
+  prepare:
+    name: Prepare ${{ matrix.target }}
+    if: ${{ inputs.phase == 'prepare' }}
+    needs: [source]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.source.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
-      - uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          flutter-version: "3.44.2"
-          cache: true
-      - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Run platform-neutral source gate
-        run: npm run client:verify:source
-      - name: Prepare ephemeral local integrity identity
-        run: |
-          openssl req -x509 -newkey rsa:3072 -nodes -days 1 \
-            -keyout "$RUNNER_TEMP/lico-local-integrity.key" \
-            -out "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -subj "/CN=LicoUp GitHub Artifact Validation" \
-            -addext "extendedKeyUsage=codeSigning"
-          openssl pkcs12 -export \
-            -inkey "$RUNNER_TEMP/lico-local-integrity.key" \
-            -in "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -out "$RUNNER_TEMP/lico-local-integrity.p12" \
-            -passout pass:github-artifact
-          security create-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security unlock-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security list-keychains -d user -s "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security import "$RUNNER_TEMP/lico-local-integrity.p12" \
-            -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
-            -P github-artifact -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s \
-            -k github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          identity="$(security find-certificate -c "LicoUp GitHub Artifact Validation" \
-            -Z "$RUNNER_TEMP/lico-local-integrity.keychain-db" | awk '/SHA-1/{print $3; exit}')"
-          if [[ ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
-            echo "Ephemeral local integrity identity was not created" >&2
-            exit 1
-          fi
-          echo "LICO_MACOS_LOCAL_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
-      - name: Build, sign and install the local-integrity app
-        run: npm run client:install:macos
-      - name: Archive the exact verified macOS app
-        run: npm run client:archive:macos-github-release
-      - name: Emit consumer verification metadata
-        run: |
-          cd build/apps/desktop/distribution/macos
-          shasum -a 256 LicoUp-macos-arm64.zip > LicoUp-macos-arm64.zip.sha256
-      - name: Verify macOS GitHub Release acceptance
-        run: npm run client:verify:github-release
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        with:
-          name: licoup-macos
-          path: |
-            build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip
-            build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256
-          if-no-files-found: error
-
-  linux-arm64:
-    if: ${{ inputs.linux_arm64 }}
-    needs: github-release
-    runs-on: [self-hosted, linux, ARM64, lico-release]
-    timeout-minutes: 90
-    env:
-      LICO_CLIENT_RELEASE_TARGETS: linux-glibc-arm64
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          flutter-version: "3.44.2"
-          cache: true
-      - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Run platform-neutral source gate
-        run: npm run client:verify:source
-      - run: npm run client:build:linux
-      - run: npm run client:linux:smoke
-      - run: npm run client:linux:gui-smoke
-      - name: Prepare ephemeral GitHub artifact verification key
-        run: |
-          openssl genpkey -algorithm ED25519 -out "$RUNNER_TEMP/linux-release-signing-key.pem"
-          openssl pkey -in "$RUNNER_TEMP/linux-release-signing-key.pem" -pubout -out "$RUNNER_TEMP/linux-release-verification-key.pem"
-          chmod 600 "$RUNNER_TEMP/linux-release-signing-key.pem"
-      - name: Sign and archive Linux ARM64 distribution
-        env:
-          LICO_LINUX_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/linux-release-signing-key.pem
-          LICO_LINUX_RELEASE_SIGNING_KEY_ID: linux-vm-acceptance
-        run: npm run client:archive:linux-arm64
-      - name: Publish public verification material with artifact
-        run: cp "$RUNNER_TEMP/linux-release-verification-key.pem" build/apps/desktop/distribution/linux-arm64/
-      - name: Verify Linux GitHub Release acceptance
-        run: npm run client:verify:github-release
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        with:
-          name: licoup-linux-arm64
-          path: |
-            build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz
-            build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256
-            build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig
-            build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem
-          if-no-files-found: error
-
-  android-arm64:
-    if: ${{ inputs.android_arm64 }}
-    needs: github-release
-    runs-on: [self-hosted, macOS, ARM64, lico-release, android]
-    timeout-minutes: 90
-    env:
-      JAVA_HOME: /Applications/Android Studio.app/Contents/jbr/Contents/Home
-      LICO_CLIENT_RELEASE_TARGETS: android-arm64
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
+      - name: Install Rust toolchain for native package
+        if: ${{ matrix.platform != 'android' }}
+        uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+      - name: Install Rust toolchain for Android package
+        if: ${{ matrix.platform == 'android' }}
+        uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
         with:
           targets: aarch64-linux-android
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -211,111 +128,94 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Run platform-neutral source gate
-        run: npm run client:verify:source
-      - name: Build same-source macOS relay CLI prerequisite
-        run: npm run client:build:macos
-      - name: Install pinned Android NDK
-        run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;30.0.14904198" < /dev/null
-          test -d "$ANDROID_HOME/ndk/30.0.14904198"
-      - name: Run Android authorization policy tests
-        working-directory: apps/desktop/android
-        run: ./gradlew testDebugUnitTest
-      - name: Prepare ephemeral Android install key
-        run: |
-          keytool -genkeypair -keystore "$RUNNER_TEMP/lico-github-artifact.jks" -storepass github-artifact -keypass github-artifact -alias github-artifact -keyalg RSA -keysize 3072 -validity 30 -dname "CN=LicoUp GitHub Artifact Validation"
-          chmod 600 "$RUNNER_TEMP/lico-github-artifact.jks"
-          keytool -exportcert -rfc -keystore "$RUNNER_TEMP/lico-github-artifact.jks" -storepass github-artifact -alias github-artifact -file "$RUNNER_TEMP/lico-github-artifact.pem"
-      - name: Build signed Android ARM64 release
+      - name: Prepare stable Android signing identity
+        if: ${{ matrix.target == 'android-direct-arm64-v8a' }}
         env:
-          LICO_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/lico-github-artifact.jks
-          LICO_ANDROID_KEYSTORE_PASSWORD: github-artifact
-          LICO_ANDROID_KEY_ALIAS: github-artifact
-          LICO_ANDROID_KEY_PASSWORD: github-artifact
-          LICO_ANDROID_TARGET_PLATFORM: android-arm64
-        run: npm run client:build:android
-      - run: npm run client:verify:android-apk
-      - name: Publish public verification material with artifact
+          LICO_ANDROID_KEYSTORE_BASE64: ${{ secrets.LICO_ANDROID_KEYSTORE_BASE64 }}
+          LICO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.LICO_ANDROID_KEYSTORE_PASSWORD }}
+          LICO_ANDROID_KEY_ALIAS: ${{ secrets.LICO_ANDROID_KEY_ALIAS }}
+          LICO_ANDROID_KEY_PASSWORD: ${{ secrets.LICO_ANDROID_KEY_PASSWORD }}
         run: |
-          cp "$RUNNER_TEMP/lico-github-artifact.pem" build/apps/desktop/android/release/
-          cp build/apps/desktop/android/release/app-release.apk build/apps/desktop/android/release/LicoUp-android-arm64.apk
-          cd build/apps/desktop/android/release
-          shasum -a 256 LicoUp-android-arm64.apk > LicoUp-android-arm64.apk.sha256
-      - name: Verify Android GitHub Release acceptance
-        run: npm run client:verify:github-release
+          test -n "$LICO_ANDROID_KEYSTORE_BASE64"
+          test -n "$LICO_ANDROID_KEYSTORE_PASSWORD"
+          test -n "$LICO_ANDROID_KEY_ALIAS"
+          test -n "$LICO_ANDROID_KEY_PASSWORD"
+          printf '%s' "$LICO_ANDROID_KEYSTORE_BASE64" | \
+            openssl base64 -d -A -out "$RUNNER_TEMP/licoup-release.jks"
+          chmod 600 "$RUNNER_TEMP/licoup-release.jks"
+          echo "LICO_ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/licoup-release.jks" >> "$GITHUB_ENV"
+          echo "LICO_ANDROID_KEYSTORE_PASSWORD=$LICO_ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "LICO_ANDROID_KEY_ALIAS=$LICO_ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "LICO_ANDROID_KEY_PASSWORD=$LICO_ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Install exact Android package toolchain
+        if: ${{ matrix.platform == 'android' }}
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --install "ndk;30.0.14904198" < /dev/null
+      - name: Build, stage, and verify exact package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          npm run client:release:build -- --target "$TARGET"
+          npm run client:release:verify -- --target "$TARGET"
+      - name: Verify build validity strategy
+        run: npm run client:release:remote-strategy -- --expect build-success
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: licoup-android-arm64
-          path: |
-            build/apps/desktop/android/release/LicoUp-android-arm64.apk
-            build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256
-            build/apps/desktop/android/release/lico-github-artifact.pem
+          name: ${{ matrix.artifactName }}
+          path: build/releases/${{ needs.source.outputs.version }}/${{ matrix.target }}/*
           if-no-files-found: error
+
   publish:
-    if: ${{ always() && needs.github-release.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped') && (needs.linux-arm64.result == 'success' || needs.linux-arm64.result == 'skipped') && (needs.android-arm64.result == 'success' || needs.android-arm64.result == 'skipped') }}
-    needs: [github-release, macos, linux-arm64, android-arm64]
+    name: Publish selected package set
+    if: ${{ inputs.phase == 'publish' }}
+    needs: [source]
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
+      actions: read
       contents: write
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        if: ${{ inputs.macos }}
-        with:
-          name: licoup-macos
-          path: build/release-assets
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        if: ${{ inputs.linux_arm64 }}
-        with:
-          name: licoup-linux-arm64
-          path: build/release-assets
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        if: ${{ inputs.android_arm64 }}
-        with:
-          name: licoup-android-arm64
-          path: build/release-assets
-      - name: Build canonical consumer verification manifest
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          MACOS_SELECTED: ${{ inputs.macos }}
-          LINUX_SELECTED: ${{ inputs.linux_arm64 }}
-          ANDROID_SELECTED: ${{ inputs.android_arm64 }}
-        run: node tools/scripts/client-consumer-verification-manifest.mjs --assets build/release-assets --output build/release-assets/LicoUp-consumer-verification.json --tag "$RELEASE_TAG" --targets "macos-arm64=$MACOS_SELECTED,linux-glibc-arm64=$LINUX_SELECTED,android-arm64=$ANDROID_SELECTED"
-      - name: Upload exact verified asset set to GitHub Release
+      - name: Download every selected prepared package
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          MACOS_SELECTED: ${{ inputs.macos }}
-          LINUX_SELECTED: ${{ inputs.linux_arm64 }}
-          ANDROID_SELECTED: ${{ inputs.android_arm64 }}
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+          TARGETS: ${{ inputs.targets }}
         run: |
-          assets=(build/release-assets/LicoUp-consumer-verification.json)
-          if [[ "$MACOS_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoUp-macos-arm64.zip build/release-assets/LicoUp-macos-arm64.zip.sha256)
-          fi
-          if [[ "$LINUX_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoUp-linux-arm64.tar.gz build/release-assets/LicoUp-linux-arm64.tar.gz.sha256 build/release-assets/LicoUp-linux-arm64.tar.gz.sig build/release-assets/linux-release-verification-key.pem)
-          fi
-          if [[ "$ANDROID_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoUp-android-arm64.apk build/release-assets/LicoUp-android-arm64.apk.sha256 build/release-assets/lico-github-artifact.pem)
-          fi
-          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
-      - name: Read remote Release asset set
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREPARE_RUN_ID" \
+            > "$RUNNER_TEMP/prepare-run.json"
+          mkdir -p build/release-incoming
+          IFS=',' read -ra selected_targets <<< "$TARGETS"
+          for target in "${selected_targets[@]}"; do
+            mkdir -p "build/release-incoming/$target"
+            gh run download "$PREPARE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "licoup-$target" --dir "build/release-incoming/$target"
+          done
+      - name: Verify prepare metadata and every exact artifact digest
+        env:
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          TARGETS: ${{ inputs.targets }}
+          CORRELATION: ${{ inputs.correlation }}
+          ARTIFACT_DIGESTS: ${{ inputs.artifact_digests }}
+        run: |
+          node tools/scripts/client-release-workflow-binding.mjs \
+            --mode prepare-run --run-json "$RUNNER_TEMP/prepare-run.json" \
+            --prepare-run-id "$PREPARE_RUN_ID" --source-revision "$SOURCE_REVISION" \
+            --tag "$RELEASE_TAG" --targets "$TARGETS" --correlation "$CORRELATION" \
+            --artifacts build/release-incoming --artifact-digests "$ARTIFACT_DIGESTS"
+      - name: Create, reconcile, and publish once
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets | map({name, size, digest})' > "$RUNNER_TEMP/release-assets.json"
-      - name: Verify exact remote Release asset set
-        run: node tools/scripts/client-release-remote-asset-set.mjs --assets build/release-assets --remote "$RUNNER_TEMP/release-assets.json"
-      - name: Publish complete GitHub Release
-        if: ${{ inputs.publish_release }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          LICO_RELEASE_SOURCE_REVISION: ${{ inputs.source_revision }}
+          LICO_SIGNED_UPDATE_MANIFEST_BASE64: ${{ inputs.signed_update_manifest_base64 }}
+        run: |
+          node tools/scripts/client-github-release-publish.mjs \
+            --tag "${{ inputs.release_tag }}" --targets "${{ inputs.targets }}" \
+            --incoming-root build/release-incoming --assets build/release-assets \
+            --publish "$PUBLISH_RELEASE"

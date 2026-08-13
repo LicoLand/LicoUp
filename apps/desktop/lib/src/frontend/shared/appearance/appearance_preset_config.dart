@@ -16,6 +16,79 @@ ThemeMode themeModeForAppearance(
   };
 }
 
+/// Whether the selected preset resolves to a dark appearance.
+///
+/// When [selectedId] follows the system, [platformBrightness] decides the
+/// resolved mode so the day/night toggle reflects what the user currently sees.
+bool isResolvedAppearanceDark(
+  String selectedId,
+  List<AppearancePresetConfig> configs,
+  Brightness platformBrightness,
+) {
+  return resolveAppearancePresetConfig(
+        selectedId,
+        configs,
+        platformBrightness,
+      ).mode ==
+      AppearancePresetMode.dark;
+}
+
+/// Maps an explicit day/night choice to the built-in fixed preset id.
+String appearancePresetIdForBrightness(bool dark) {
+  return dark
+      ? AppearancePresetIds.licoSoda
+      : AppearancePresetIds.licoSodaLight;
+}
+
+/// Maps a brightness-mode choice to the preset id that should be persisted.
+///
+/// Light and dark keep the current preset when it already matches that mode;
+/// otherwise they fall back to the built-in fixed preset for that mode.
+String appearancePresetIdForBrightnessSelection(
+  AppearanceBrightnessSelection selection,
+  String currentId,
+  List<AppearancePresetConfig> configs,
+) {
+  return switch (selection) {
+    AppearanceBrightnessSelection.system => AppearancePresetIds.defaultSystem,
+    AppearanceBrightnessSelection.light => () {
+      final current = findAppearancePresetConfig(currentId, configs);
+      if (current.mode == AppearancePresetMode.light) {
+        return currentId;
+      }
+      return AppearancePresetIds.licoSodaLight;
+    }(),
+    AppearanceBrightnessSelection.dark => () {
+      final current = findAppearancePresetConfig(currentId, configs);
+      if (current.mode == AppearancePresetMode.dark) {
+        return currentId;
+      }
+      return AppearancePresetIds.licoSoda;
+    }(),
+  };
+}
+
+/// Presets offered in the appearance picker for the current brightness.
+///
+/// [dark] reflects the resolved day/night mode. System-following presets are
+/// excluded; fixed presets are limited to the active mode so a light toggle
+/// never lists dark themes and vice versa.
+List<AppearancePresetConfig> selectableAppearancePresetsForBrightness(
+  List<AppearancePresetConfig> configs,
+  bool dark,
+) {
+  return configs
+      .where(
+        (config) =>
+            !AppearancePresetIds.resolutionOnly.contains(config.id) &&
+            config.mode != AppearancePresetMode.system &&
+            (dark
+                ? config.mode == AppearancePresetMode.dark
+                : config.mode == AppearancePresetMode.light),
+      )
+      .toList(growable: false);
+}
+
 ResolvedAppearancePreset resolveAppearancePresetConfig(
   String selectedId,
   List<AppearancePresetConfig> configs,
@@ -32,8 +105,8 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
     final resolved = resolveAppearancePresetConfig(
       resolvedId ??
           (platformBrightness == Brightness.dark
-              ? AppearancePresetIds.licoCrystal
-              : AppearancePresetIds.geekLightBlue),
+              ? AppearancePresetIds.licoSoda
+              : AppearancePresetIds.licoSodaLight),
       configs,
       platformBrightness,
     );
@@ -41,8 +114,8 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
   }
 
   final baseId = selected.mode == AppearancePresetMode.dark
-      ? AppearancePresetIds.licoCrystal
-      : AppearancePresetIds.geekLightBlue;
+      ? AppearancePresetIds.licoSoda
+      : AppearancePresetIds.licoSodaLight;
   final base = selected.id == baseId
       ? null
       : findAppearancePresetConfig(baseId, builtInAppearancePresetConfigs);
@@ -62,12 +135,17 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
   );
 }
 
+/// Resolves one appearance token to a [Color].
+///
+/// Accepts `#rrggbb` and `rgba(r, g, b, a)`. Both forms are permitted by the
+/// preset schema, so every token the runtime reads must parse through here
+/// rather than through a hex-only helper.
 Color colorFromAppearanceToken(
   Map<String, String> tokens,
   String token,
   String fallback,
 ) {
-  return _colorFromHex(tokens[token] ?? fallback);
+  return _colorFromToken(tokens[token] ?? fallback, fallback);
 }
 
 class ResolvedAppearancePreset {
@@ -93,81 +171,108 @@ class ResolvedAppearancePreset {
   }
 }
 
+/// Fills in every runtime role a preset did not declare.
+///
+/// This is the compatibility layer that lets a preset authored against an
+/// earlier schema keep working: the roles introduced later are derived from
+/// the roles it does declare instead of being rejected. Every value emitted
+/// here must be parseable by [colorFromAppearanceToken] — no `var(--x)`
+/// indirection and no CSS shadow shorthand.
 Map<String, String> _deriveTokens(
   AppearancePresetMode mode,
   Map<String, String> tokens,
 ) {
   final isDark = mode == AppearancePresetMode.dark;
-  final brand = tokens['brand'] ?? '#2563eb';
-  final danger = tokens['danger'] ?? (isDark ? '#fb7185' : '#b91c1c');
-  final success = tokens['success'] ?? (isDark ? '#4ade80' : '#15803d');
+  final brand = tokens['brand'] ?? (isDark ? '#e1ec28' : '#d9e320');
+  final accent = tokens['accent'] ?? (isDark ? '#21dcf1' : '#007d8a');
   final textPrimary =
-      tokens['text-primary'] ?? (isDark ? '#f8fafc' : '#0f172a');
-  final textMuted = tokens['text-muted'] ?? (isDark ? '#94a3b8' : '#475569');
-  final bgBase = tokens['bg-base'] ?? (isDark ? '#0f172a' : '#f8fafc');
-  final bgSubtle = tokens['bg-subtle'] ?? (isDark ? '#1f2937' : '#f1f5f9');
+      tokens['text-primary'] ?? (isDark ? '#f4f4f7' : '#1a1a20');
+  final bgSubtle = tokens['bg-subtle'] ?? (isDark ? '#2a2a2f' : '#eeeef1');
+  final bgRaised = tokens['bg-raised'] ?? (isDark ? '#3a3a3f' : '#ffffff');
   final borderSubtle =
-      tokens['border-subtle'] ?? (isDark ? '#334155' : '#cbd5e1');
+      tokens['border-subtle'] ?? (isDark ? '#323337' : '#dbdce0');
 
   return {
     'color-scheme': mode.id,
-    'bg-inset': isDark ? '#0b1120' : '#e2e8f0',
+
+    // Neutral depth. `bg-raised` is the highest neutral step and must never
+    // be substituted by a brand tint.
+    'bg-inset': isDark ? '#040405' : '#e7e7ea',
+    'bg-raised': bgRaised,
     'border-subtle': borderSubtle,
-    'border-strong': isDark ? '#475569' : '#94a3b8',
-    'text-secondary': isDark ? '#cbd5e1' : '#334155',
-    'text-disabled': isDark ? '#64748b' : '#94a3b8',
-    'text-on-brand': isDark ? '#06121f' : '#ffffff',
-    'text-inverse': isDark ? '#020617' : '#ffffff',
-    'brand-muted': isDark ? '#0c4a6e' : '#bfdbfe',
-    'accent': 'var(--brand)',
-    'info': isDark ? '#22d3ee' : '#0e7490',
-    'info-surface': isDark ? '#083344' : '#cffafe',
-    'info-border': isDark ? '#155e75' : '#67e8f9',
-    'success-surface': isDark ? '#052e16' : '#dcfce7',
-    'success-border': isDark ? '#166534' : '#86efac',
-    'warning-text': isDark ? '#fde68a' : '#92400e',
-    'warning-surface': isDark ? '#422006' : '#fef3c7',
-    'warning-border': isDark ? '#854d0e' : '#fcd34d',
-    'danger-surface': isDark ? '#4c0519' : '#fee2e2',
-    'danger-border': isDark ? '#9f1239' : '#fca5a5',
-    'brand-ring': _rgba(brand, isDark ? 0.22 : 0.18),
-    'brand-tint': _rgba(brand, isDark ? 0.10 : 0.08),
-    'brand-border': _rgba(brand, isDark ? 0.44 : 0.42),
-    'brand-glow': _rgba(brand, 0.12),
-    'brand-shadow': _rgba(brand, 0.24),
-    'danger-tint': _rgba(danger, isDark ? 0.12 : 0.10),
-    'success-tint': _rgba(success, isDark ? 0.12 : 0.10),
-    'backdrop': isDark ? 'rgba(2, 6, 23, 0.62)' : 'rgba(15, 23, 42, 0.42)',
-    'backdrop-strong': isDark
-        ? 'rgba(2, 6, 23, 0.74)'
-        : 'rgba(15, 23, 42, 0.58)',
-    'border-soft': _rgba(borderSubtle, isDark ? 0.55 : 0.32),
-    'scrollbar-thumb': _rgba(textMuted, isDark ? 0.38 : 0.42),
-    'scrollbar-thumb-hover': _rgba(textPrimary, isDark ? 0.52 : 0.60),
-    'shadow-xs': isDark
-        ? '0 1px 2px rgba(0, 0, 0, 0.44)'
-        : '0 1px 2px rgba(15, 23, 42, 0.06)',
-    'shadow-sm': isDark
-        ? '0 1px 3px rgba(0, 0, 0, 0.52), 0 1px 2px rgba(0, 0, 0, 0.36)'
-        : '0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)',
-    'shadow-md': isDark
-        ? '0 4px 12px rgba(0, 0, 0, 0.58), 0 2px 4px rgba(0, 0, 0, 0.36)'
-        : '0 4px 12px rgba(15, 23, 42, 0.10), 0 2px 4px rgba(15, 23, 42, 0.05)',
-    'shadow-lg': isDark
-        ? '0 8px 24px rgba(0, 0, 0, 0.66), 0 4px 8px rgba(0, 0, 0, 0.36)'
-        : '0 8px 24px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(15, 23, 42, 0.05)',
-    'shadow-xl': isDark
-        ? '0 20px 48px rgba(0, 0, 0, 0.74), 0 8px 16px rgba(0, 0, 0, 0.44)'
-        : '0 20px 48px rgba(15, 23, 42, 0.16), 0 8px 16px rgba(15, 23, 42, 0.07)',
-    'skeleton-base': isDark ? bgSubtle : '#e2e8f0',
-    'skeleton-highlight': bgBase,
+    'border-strong': isDark ? '#56565b' : '#b0b0b6',
+
+    // Text ramp.
+    'text-secondary': isDark ? '#cccdd0' : '#4f4f55',
+    'text-disabled': isDark ? '#6c6c70' : '#9d9ea3',
+    'text-on-brand': isDark ? '#171800' : '#1b1d00',
+
+    // Brand is fill-and-mark. `brand-border` is the mandatory hairline for a
+    // brand fill, whose own contrast against the surface can be below 3:1.
+    'brand-border': isDark ? '#878d24' : '#bfc744',
+
+    // Accent carries interaction and must stay legible as text.
+    'accent': accent,
+    'accent-strong': isDark ? '#87effe' : '#0d5f68',
+    'accent-surface': isDark ? '#1d3339' : '#deeef0',
+    'accent-border': isDark ? '#1e838f' : '#67c8d6',
+    'text-on-accent': isDark ? '#00191e' : '#ffffff',
+
+    // State washes, composited over whatever surface is underneath.
+    'hover-overlay': _rgba(textPrimary, isDark ? 0.07 : 0.05),
+    'pressed-overlay': _rgba(textPrimary, isDark ? 0.12 : 0.09),
+    'selected-surface': bgSubtle,
+
+    // Luminous brand and interaction moments.
+    'brand-glow': _rgba(brand, isDark ? 0.22 : 0.30),
+    'accent-glow': _rgba(accent, isDark ? 0.26 : 0.22),
+
+    // Loading placeholders.
+    'skeleton-base': bgSubtle,
+    'skeleton-highlight': bgRaised,
+
+    // Retained for preset authors that tint marks with the emphatic brand.
+    'brand-muted': tokens['brand-strong'] ?? (isDark ? '#f3fe4f' : '#878e1f'),
+    'brand-subtle': tokens['brand-subtle'] ?? (isDark ? '#2e2f21' : '#f5f8c5'),
+    'brand': brand,
+
     ...tokens,
   };
 }
 
-Color _colorFromHex(String hex) {
-  final normalized = hex.replaceFirst('#', '');
-  return Color(int.parse('ff$normalized', radix: 16));
+Color _colorFromToken(String value, String fallback) {
+  final parsed = _tryParseColor(value);
+  if (parsed != null) {
+    return parsed;
+  }
+  return _tryParseColor(fallback) ?? const Color(0xFF000000);
+}
+
+Color? _tryParseColor(String value) {
+  final trimmed = value.trim();
+  if (trimmed.startsWith('#')) {
+    final normalized = trimmed.substring(1);
+    if (normalized.length != 6) {
+      return null;
+    }
+    final parsed = int.tryParse(normalized, radix: 16);
+    if (parsed == null) {
+      return null;
+    }
+    return Color(0xFF000000 | parsed);
+  }
+  final rgba = _rgbaPattern.firstMatch(trimmed);
+  if (rgba == null) {
+    return null;
+  }
+  final red = int.parse(rgba.group(1)!);
+  final green = int.parse(rgba.group(2)!);
+  final blue = int.parse(rgba.group(3)!);
+  final alpha = double.parse(rgba.group(4)!);
+  if (red > 255 || green > 255 || blue > 255 || alpha < 0 || alpha > 1) {
+    return null;
+  }
+  return Color.fromRGBO(red, green, blue, alpha);
 }
 
 String _rgba(String hex, double alpha) {
@@ -175,6 +280,9 @@ String _rgba(String hex, double alpha) {
   final red = int.parse(normalized.substring(0, 2), radix: 16);
   final green = int.parse(normalized.substring(2, 4), radix: 16);
   final blue = int.parse(normalized.substring(4, 6), radix: 16);
-  return 'rgba($red, $green, $blue, '
-      '${alpha.toStringAsFixed(2)})';
+  return 'rgba($red, $green, $blue, ${alpha.toStringAsFixed(2)})';
 }
+
+final _rgbaPattern = RegExp(
+  r'^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(0|1|0?\.\d+)\s*\)$',
+);

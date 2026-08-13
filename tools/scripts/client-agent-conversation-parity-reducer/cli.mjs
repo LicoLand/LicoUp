@@ -1,19 +1,16 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import {
-  READINESS_FILE,
-  READINESS_SCHEMA_VERSION,
-} from "./constants.mjs";
-import { ReducerError } from "./errors.mjs";
+import { READINESS_FILE, READINESS_SCHEMA_VERSION } from "./constants.mjs";
+import { ReducerError, fail } from "./errors.mjs";
+import { maybeReloadGatewayInventory } from "./gateway-reload.mjs";
 import { loadCanonicalInputs } from "./inputs.mjs";
 import { canonicalJson, parseJson } from "./json.mjs";
 import { reduceConversationParity } from "./reduce.mjs";
-import { fail } from "./errors.mjs";
 
 export function parseArguments(argv) {
-  const options = { evidenceFile: null, write: false, check: false };
+  const options = { evidenceFile: null, write: false, check: false, requireReady: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--evidence") {
@@ -25,11 +22,14 @@ export function parseArguments(argv) {
       options.write = true;
     } else if (argument === "--check") {
       options.check = true;
+    } else if (argument === "--require-ready") {
+      options.requireReady = true;
     } else {
       fail("cli_arguments_invalid");
     }
   }
   if (options.write && options.check) fail("cli_arguments_invalid");
+  if (options.requireReady && !options.check) fail("cli_arguments_invalid");
   return options;
 }
 
@@ -48,6 +48,22 @@ export function assertReadinessMatchesReduction(current, reduced) {
   }
 }
 
+export function assertReleaseReady(result) {
+  const adapters = Array.isArray(result?.adapters) ? result.adapters : [];
+  const summary = result?.summary ?? {};
+  const complete =
+    adapters.length > 0 &&
+    summary.total === adapters.length &&
+    summary.ready === adapters.length &&
+    summary.sendEnabled === adapters.length &&
+    ["partial", "failed", "blocked", "unverified", "historyOnly"]
+      .every((field) => summary[field] === 0) &&
+    adapters.every(
+      (adapter) => adapter?.status === "ready" && adapter?.sendEnabled === true,
+    );
+  if (!complete) fail("release_readiness_incomplete");
+}
+
 export function runCli(argv = process.argv.slice(2)) {
   const options = parseArguments(argv);
   const canonical = loadCanonicalInputs();
@@ -61,8 +77,19 @@ export function runCli(argv = process.argv.slice(2)) {
   });
 
   if (options.write) {
-    writeFileSync(READINESS_FILE, `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
-    return receipt("write", result);
+    const nextText = `${JSON.stringify(result, null, 2)}\n`;
+    let previousText = null;
+    if (existsSync(READINESS_FILE)) {
+      previousText = readFileSync(READINESS_FILE, "utf8");
+    }
+    writeFileSync(READINESS_FILE, nextText, { mode: 0o600 });
+    const receiptBody = receipt("write", result);
+    if (previousText !== nextText) {
+      receiptBody.gatewayReload = maybeReloadGatewayInventory(nextText);
+    } else {
+      receiptBody.gatewayReload = { attempted: false, reason: "unchanged" };
+    }
+    return receiptBody;
   }
   if (options.check) {
     const current = parseJson(
@@ -70,6 +97,7 @@ export function runCli(argv = process.argv.slice(2)) {
       "readiness_resource_invalid",
     );
     assertReadinessMatchesReduction(current, result);
+    if (options.requireReady) assertReleaseReady(result);
     return receipt("check", result);
   }
   return result;

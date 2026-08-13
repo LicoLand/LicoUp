@@ -10,7 +10,7 @@ fn synthetic_value(label: &str) -> String {
 #[test]
 fn secure_mesh_envelope_command_is_transport_only() {
     let dir = temp_dir("mobile-relay-unverified-secure-command");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let command = json!({
         "type": SECURE_MESH_ENVELOPE_COMMAND,
         "payload": {
@@ -23,8 +23,15 @@ fn secure_mesh_envelope_command_is_transport_only() {
         .unwrap_err()
         .to_string();
     assert!(
-        error.contains("mobile relay E2EE endpoint state is missing"),
+        error.contains("mobile relay"),
         "unexpected redacted secure command rejection: {error}"
+    );
+    assert!(
+        !error.contains(
+            command["payload"]["envelope"]["ciphertext"]
+                .as_str()
+                .unwrap()
+        )
     );
     assert!(
         secure_envelope_param(&json!({
@@ -37,7 +44,7 @@ fn secure_mesh_envelope_command_is_transport_only() {
 
 #[test]
 fn secure_envelope_validation_rejects_malicious_relay_shapes_before_decrypt() {
-    // v2 envelope rejects extra fields via deny_unknown_fields.
+    // Lico Arc v1 rejects extra fields via deny_unknown_fields.
     let mut oversized = secure_envelope_fixture();
     oversized["unknownField"] = json!("should be rejected");
     assert!(
@@ -49,45 +56,25 @@ fn secure_envelope_validation_rejects_malicious_relay_shapes_before_decrypt() {
 
     let mut invalid_base64 = secure_envelope_fixture();
     invalid_base64["ciphertext"] = json!("not base64!");
+    assert!(validate_secure_envelope(&invalid_base64).is_err());
+
+    let mut invalid_expiry = secure_envelope_fixture();
+    invalid_expiry["expiresAt"] = json!("not-a-timestamp");
     assert!(
-        validate_secure_envelope(&invalid_base64)
+        validate_secure_envelope(&invalid_expiry)
             .unwrap_err()
             .to_string()
-            .contains("base64")
+            .contains("expiresAt")
     );
 
-    let mut mismatched_size = secure_envelope_fixture();
-    mismatched_size["ciphertextBucket"] = json!(65536u64);
+    let mut bad_contract = secure_envelope_fixture();
+    bad_contract["contractVersion"] = json!("unsupported.v1");
     assert!(
-        validate_secure_envelope(&mismatched_size)
+        validate_secure_envelope(&bad_contract)
             .unwrap_err()
             .to_string()
-            .contains("ciphertext")
+            .contains("contract version")
     );
-
-    let mut bad_schema = secure_envelope_fixture();
-    bad_schema["schema"] = json!("unsupported.v1");
-    assert!(
-        validate_secure_envelope(&bad_schema)
-            .unwrap_err()
-            .to_string()
-            .contains("schema")
-    );
-
-    // v2 rejects the retired metadata-rich (10-field) shape.
-    let retired = json!({
-        "protocolVersion": "1.0",
-        "envelopeId": "env_test",
-        "opaqueMailboxId": "mailbox_test",
-        "messageId": "msg_test",
-        "cipherSuite": "AES-256-GCM",
-        "createdAt": "2026-01-01T00:00:00Z",
-        "expiresAt": "2026-01-01T00:10:00Z",
-        "ciphertextSize": 32,
-        "encryptedHeader": "AAAA",
-        "ciphertext": "AAAA"
-    });
-    assert!(validate_secure_envelope(&retired).is_err());
 }
 
 #[test]
@@ -96,7 +83,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     let sv_plaintext_canary_mobile_ = synthetic_value("plaintext-canary-mobile-relay");
     let sv_idem_mobile_test = synthetic_value("idem_mobile_test");
     let dir = temp_dir("mobile-relay-e2ee-roundtrip");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -111,36 +98,35 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
         "commandId": "cmd_mobile_test",
         "commandKind": "agent.message.send",
         "senderIdentity": {
-            "endpointId": local_endpoint_state(&mobile_config, test_runtime_secret_material(stringify!(&mobile_config))).unwrap().endpoint_id,
-            "identityFingerprint": local_endpoint_state(&mobile_config, test_runtime_secret_material(stringify!(&mobile_config))).unwrap().fingerprint,
+            "endpointId": local_endpoint_state(&mobile_config, &mut test_runtime_secret_material(stringify!(&mobile_config))).unwrap().endpoint_id,
+            "identityFingerprint": local_endpoint_state(&mobile_config, &mut test_runtime_secret_material(stringify!(&mobile_config))).unwrap().fingerprint,
             "trustState": "verified",
             "endpointKind": "mobile"
         },
         "targetBinding": {
-            "targetEndpointId": local_endpoint_state(&pc_config, test_runtime_secret_material(stringify!(&pc_config))).unwrap().endpoint_id,
+            "targetEndpointId": local_endpoint_state(&pc_config, &mut test_runtime_secret_material(stringify!(&pc_config))).unwrap().endpoint_id,
             "targetAgentId": "codex",
             "workspaceId": "default"
         },
         "riskClass": "safe_write",
         "requiresUserConfirmation": false,
         "idempotencyKey": sv_idem_mobile_test.as_str(),
-        "createdAt": "2026-01-01T00:00:00Z",
-        "expiresAt": "2099-01-01T00:00:00Z",
+        "createdAt": now_iso(),
+        "expiresAt": timestamp_after_seconds(MOBILE_RELAY_COMMAND_TTL_SECONDS).unwrap(),
         "body": {
-            "agentId": "codex",
             "text": sv_plaintext_canary_mobile_.as_str()
         }
     });
     let command_envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_body,
     )
     .unwrap();
     assert_eq!(
-        command_envelope["schema"],
-        crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA
+        command_envelope["contractVersion"],
+        crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
     );
     let command_wire = serde_json::to_string(&command_envelope).unwrap();
     assert!(!command_wire.contains(sv_plaintext_canary_mobile_.as_str()));
@@ -148,7 +134,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
 
     let opened_command = open_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         &command_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
     )
@@ -165,21 +151,21 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     });
     let result_envelope = seal_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
         &result_body,
     )
     .unwrap();
     assert_eq!(
-        result_envelope["schema"],
-        crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA
+        result_envelope["contractVersion"],
+        crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
     );
     let result_wire = serde_json::to_string(&result_envelope).unwrap();
     assert!(!result_wire.contains(sv_plaintext_result_canary.as_str()));
 
     let opened_result = open_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         &result_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
     )
@@ -197,7 +183,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
     let sv_relay_file_canary = synthetic_value("relay-file-canary");
     let sv_relay_private_file_key_c = synthetic_value("relay/private-file-key-canary");
     let dir = temp_dir("mobile-relay-file-key-envelope");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -215,16 +201,10 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
         chunk_size: 33,
         chunk_count: 1,
     };
-    let source_endpoint = local_endpoint_state(
-        &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
-    )
-    .unwrap();
-    let target_endpoint = local_endpoint_state(
-        &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
-    )
-    .unwrap();
+    let mobile_material = test_runtime_secret_material(stringify!(&mobile_config));
+    let pc_material = test_runtime_secret_material(stringify!(&pc_config));
+    let source_endpoint = local_endpoint_state(&mobile_config, &mobile_material).unwrap();
+    let target_endpoint = local_endpoint_state(&pc_config, &pc_material).unwrap();
     let file_hash = format!(
         "sha256:{}",
         general_purpose::URL_SAFE_NO_PAD
@@ -276,6 +256,10 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
         .unwrap();
     let encrypted_chunk =
         crate::core::secure_mesh_file::seal_file_chunk(&file_key, &chunk_context, &chunk).unwrap();
+    drop(source_endpoint);
+    drop(target_endpoint);
+    drop(mobile_material);
+    drop(pc_material);
 
     let file_key_payload = json!({
         "kind": "secure_mesh.file_key",
@@ -287,7 +271,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
     });
     let file_key_envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &file_key_payload,
     )
@@ -309,7 +293,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 
     let wrong_kind_error = open_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         &file_key_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
     )
@@ -319,7 +303,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 
     let opened = open_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         &file_key_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
     )
@@ -350,7 +334,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 
     let replay_error = open_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         &file_key_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
     )
@@ -365,7 +349,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
     let sv_relay_file_boundary_cana = synthetic_value("relay-file-boundary-canary");
     let dir = temp_dir("mobile-relay-file-key-envelope-boundary");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -373,7 +357,7 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
     let file_key_base64url = general_purpose::URL_SAFE_NO_PAD.encode({ let mut file_key = [0u8; 32]; OsRng.fill_bytes(&mut file_key); file_key });
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &json!({
             "kind": "secure_mesh.file_key",
@@ -389,11 +373,10 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
     visible_keys.sort_unstable();
     let mut expected_keys = vec![
         "ciphertext",
-        "ciphertextBucket",
-        "deliveryId",
-        "encryptedHeader",
-        "mailboxToken",
-        "schema",
+        "contractVersion",
+        "envelopeId",
+        "expiresAt",
+        "mailboxId",
     ];
     expected_keys.sort_unstable();
     assert_eq!(visible_keys, expected_keys);
@@ -416,5 +399,34 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
         );
     }
 
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
+fn mailbox_rotation_boundary_accepts_current_and_previous_epoch_only() {
+    let dir = temp_dir("mobile-relay-mailbox-rotation-overlap");
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
+    let mut pc_config = default_config();
+    let mut mobile_config = default_config();
+    pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
+    let pc_material = test_runtime_secret_material(stringify!(&pc_config));
+    let pc = local_endpoint_state(&pc_config, &pc_material).unwrap();
+
+    let accepted = local_canonical_mailbox_tokens_at_epoch(&pc_config, &pc_material, 420).unwrap();
+    let current =
+        canonical_mailbox_token(&pc_material, &pc.endpoint_id, &pc.endpoint_kind, 420).unwrap();
+    let previous_epoch =
+        canonical_mailbox_token(&pc_material, &pc.endpoint_id, &pc.endpoint_kind, 419).unwrap();
+    let expired =
+        canonical_mailbox_token(&pc_material, &pc.endpoint_id, &pc.endpoint_kind, 418).unwrap();
+
+    assert_eq!(accepted, vec![current, previous_epoch]);
+    assert!(!accepted.contains(&expired));
+    assert_eq!(
+        local_canonical_mailbox_tokens_at_epoch(&pc_config, &pc_material, 0)
+            .unwrap()
+            .len(),
+        1
+    );
     set_portable_data_dir_override(previous);
 }

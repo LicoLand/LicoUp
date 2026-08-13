@@ -75,10 +75,11 @@ class LicoStrings {
   String get skillHub => isChinese ? '技能中心' : 'Skill Hub';
   String get pluginManagement => isChinese ? '插件管理' : 'Plugin Management';
   String get mobileRelay => isChinese ? '移动中转' : 'Mobile Relay';
+  String get keys => isChinese ? '密钥' : 'Keys';
   String get settings => isChinese ? '设置' : 'Settings';
   String get moreActions => isChinese ? '更多' : 'More';
   String get features => isChinese ? '功能' : 'Features';
-  String get globalSearchHint => isChinese ? '搜索功能' : 'Search features';
+  String get globalSearchHint => isChinese ? '搜索' : 'Search';
   String get sidebarSearchHint => isChinese ? '搜索' : 'Search';
   String get collapseSearch => isChinese ? '收起搜索' : 'Collapse search';
   String get language => isChinese ? '语言' : 'Language';

@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { parityModelForAgent } from "./client-acp-conversation-parity/agent-ids.mjs";
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const timeoutMs = Number(process.env.LICO_CODEX_PARITY_TIMEOUT_MS || 180_000);
@@ -63,8 +64,8 @@ function resolveCodexBinary() {
 function resolveSidecarBinary() {
   const candidates = [
     process.env.LICO_CLIENT_PATH,
-    join(workspaceRoot, "target", "debug", "licoup"),
-    join(workspaceRoot, "crates", "licoup-native", "target", "debug", "licoup"),
+    join(workspaceRoot, "target", "debug", "licoup-cli"),
+    join(workspaceRoot, "crates", "licoup-native", "target", "debug", "licoup-cli"),
   ].filter(Boolean);
   const binary = candidates.find((candidate) => existsSync(candidate));
   if (!binary) {
@@ -459,7 +460,7 @@ try {
   const nativePrompt = `Reply with exactly ${nativeCanary} and no other text.`;
   const arcPrompt = `Reply with exactly ${arcCanary} and no other text.`;
 
-  const model = process.env.LICO_CODEX_PARITY_MODEL || "";
+  const model = parityModelForAgent("codex");
   // Spark rejects turn/start when reasoning.effort is omitted or invalid.
   // Prefer an explicit harness effort; fall back to a Spark-safe default.
   const reasoningEffort = process.env.LICO_CODEX_PARITY_REASONING_EFFORT

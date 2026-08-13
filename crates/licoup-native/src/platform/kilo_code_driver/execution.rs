@@ -15,7 +15,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let _ = (max_stdout, max_stderr);
@@ -32,7 +32,9 @@ pub(in crate::platform) fn execute(
         Ok(endpoint) => endpoint,
         Err(error) => return failed(endpoint_failure(&error.to_string()), started_at),
     };
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
+    // so only a non-zero window gets a concrete deadline.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     match execute_via_serve(&endpoint, &config, deadline) {
         Ok(outcome) => RunResult {
             ok: true,

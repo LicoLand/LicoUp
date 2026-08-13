@@ -23,7 +23,7 @@ pub(super) struct ProtocolOutcome {
 #[derive(Debug)]
 pub(super) enum ProtocolEffect {
     Send(Value),
-    Complete(ProtocolOutcome),
+    Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
 }
 
@@ -291,14 +291,14 @@ impl OpenClawProtocol {
             failure.turn_status = Some(stop_reason);
             return vec![ProtocolEffect::Fail(failure)];
         }
-        vec![ProtocolEffect::Complete(ProtocolOutcome {
+        vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
             output: self.output.clone(),
             events: self.events.clone(),
             session_id: self.binding.native_id().unwrap_or_default().to_string(),
             turn_id: self.config.turn_id.clone(),
             turn_status: stop_reason,
             effective: self.effective.clone(),
-        })]
+        }))]
     }
 
     fn handle_notification(&mut self, message: Value) -> Vec<ProtocolEffect> {
@@ -344,6 +344,19 @@ impl OpenClawProtocol {
         let text = update.agent_message_text().map(str::to_owned);
         let current_mode = update.current_mode_id().map(str::to_owned);
         if self.phase == ProtocolPhase::AwaitPrompt {
+            if let Some(evidence_kind) = update.kind().processing_evidence_kind() {
+                let session_for_emit = self
+                    .binding
+                    .native_id()
+                    .or(self.binding.protocol_id())
+                    .unwrap_or_default();
+                super::super::turn_event_emit::emit_agent_processing(
+                    session_for_emit,
+                    &self.config.turn_id,
+                    evidence_kind,
+                    None,
+                );
+            }
             let skill_events = super::super::skill_invocation_projection::project_skill_invocations(
                 update.payload(),
             );

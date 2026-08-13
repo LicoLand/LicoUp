@@ -9,16 +9,18 @@ first, and under your control.**
 
 English (normative language) · [简体中文 (localized language)](README.zh-CN.md)
 
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
-[![Version: 0.0.1-alpha](https://img.shields.io/badge/version-0.0.1--alpha-orange?style=flat-square)](CHANGELOG.md)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![Version: 0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.md)
 [![Platforms: macOS · Windows · Linux · Android · iOS](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux_%C2%B7_Android_%C2%B7_iOS-24292f?style=flat-square)](docs/COMPATIBILITY.md)
 
 </div>
 
-LicoUp is an open-source desktop and mobile client for discovering,
-operating, and securely reaching your own agents. It supports different
-tools and ways of working while keeping you in control.
-[`PRODUCT.md`](PRODUCT.md) is the product-definition authority.
+LicoUp is an open-source client for desktop and mobile devices that helps you
+discover, operate, and reach your own agents. Its durable destination is one
+secure conversation experience shared by people and visible agents.
+[`PRODUCT.md`](PRODUCT.md) owns that product goal; current facts are separated
+in [`docs/STATUS.md`](docs/STATUS.md) and the generated
+[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
 ## Design ideas
 
@@ -31,23 +33,29 @@ tools and ways of working while keeping you in control.
 
 ## What it does
 
-- **Discovers local agents** — concurrent scans of application registries,
-  package managers, executable search locations, and other platform-owned
-  locations, registered into a local cache.
-- **Holds native-fidelity conversations** — start a new conversation or
-  continue an existing one exactly through each agent's official native
-  interface.
-- **Manages skills across agents** — list, install, update from an
-  explicitly configured mirror or GitHub repository, delete, and aggregate
-  usage counts by time window.
+- **Discovers agents** — concurrent scans of local application registries,
+  package managers, executable search locations, and running OrbStack machines.
+  Local routes are cached; VM routes remain transient.
+- **Holds native-fidelity conversations** — use the exact agent interfaces
+  whose current readiness is declared in the compatibility matrix.
+- **Reaches agents in your VM** — automatically detect OpenClaw and Hermes in
+  running OrbStack machines, or add another VM explicitly, then use the
+  agent's official stdio protocol through the system OpenSSH client. OpenClaw
+  uses ACP; Hermes uses ACP when its optional package is present and otherwise
+  uses the built-in TUI Gateway JSON-RPC. Existing SSH authentication and host
+  verification are required; LicoUp stores no SSH password or private key.
+- **Shows local skills across agents** — discover skills already present in
+  local agent roots, inspect usage counts, and move a selected skill to the
+  system Trash. LicoUp does not download, install, update, or synchronize skills.
 - **Backs up conversations** — browse native conversation history and back
   up all or keyword-selected conversations to a local directory you choose.
 - **Reports token usage** — by agent or model, defaulting to the latest
   thirty days with a selectable time window.
-- **Connects clients end to end** — Secure Client Mesh encrypts messages
-  and files on the sender's device and relays only opaque envelopes through
-  the independently maintained LicoTower relay infrastructure, including from
-  mobile.
+- **Previews endpoint-protected client transfer** — the
+  [current retiring endpoint-protection Preview](docs/STATUS.md) encrypts
+  messages and files on the sender's device. The client-owned adapter now
+  carries its protected payload through the candidate `licoarc.relay.v1`
+  five-field envelope and a bounded, untrusted BadTower transport.
 
 ## Platform support
 
@@ -65,40 +73,46 @@ LicoUp targets macOS, Windows, Linux, Android, and iOS.
 scenarios do not upload local paths, logs, conversation history, usage
 records, credentials, or plaintext user content to a service.
 
-**End-to-end peer transfer.** When you send a message or file to another
-LicoUp client, the sender encrypts the content with the selected,
-verified peer keys before it leaves the device. The receiver verifies the
-packet before using the content. LicoUp treats the relay as untrusted and
-sends it only ciphertext plus the minimum data needed to route it; client
-security does not rely on promises about how a relay is run.
+**Endpoint-protected peer-transfer preview.** The current source path encrypts
+content with selected peer keys before network I/O, and the receiving endpoint
+authenticates and verifies it before use. LicoUp treats transport as untrusted
+and does not accept cryptographic algorithms, keys, or security policy from a
+station. The direct Lico Arc candidate adapter has completed one bounded real
+BadTower round trip with two independently initialized endpoints, including
+strict negative-envelope rejection. Platform support remains `preview`; this
+local acceptance is not a product release, protocol publication, support
+declaration, or hosted-network operation claim.
+
+The current retiring endpoint-protection Preview is not a Lico Arc Profile,
+carries no future compatibility promise, and is to be retired directly when a
+complete pinned Lico Arc Protocol Line replaces it. Lico Arc owns stable
+wire-observable Pairwise Protection, Generic Message, Reliable Exchange,
+negotiation, and Transport Profile semantics. LicoUp continues to own private
+keys, local Provider configuration, plaintext, history, backups, user trust,
+approvals, and local effects.
 
 ```mermaid
 flowchart LR
     A["Client A<br/>local data"] --> B["User approves<br/>one peer transfer"]
     B --> C["Encrypt on Client A"]
-    C --> D["Untrusted relay<br/>ciphertext + minimum route"]
+    C --> D["Untrusted station<br/>Lico Arc ciphertext + minimum route"]
     D --> E["Decrypt on Client B"]
     E --> F["Client B<br/>local data"]
 ```
 
 **Explicit external approval.** Optional external MCP requests can send
 only the exact request or selected files shown in a fresh direct approval;
+each transfer requires a protected one-shot user approval.
 the named external service can read that approved content even though
 transport is protected by HTTPS. Without an exact external-service
 approval, protected user content can leave the client only as an approved,
 end-to-end encrypted transfer addressed to another client.
 
-## Optional LicoMesh collaboration
-
-LicoMesh collaboration is not loaded by the default client. It is available
-only after you choose an immutable GitHub commit, separately import its
-trusted signing key, and install and enable the plugin manually. A local
-deployment starts only through a fixed, signed external runner after a
-separate manual action. This repository does not bundle that server runner,
-so building LicoUp alone is not proof that LicoMesh was deployed.
-Installation, enablement, and startup never authorize an external data
-transfer: each exact request or selected local file that would leave the
-device requires a fresh, protected one-shot user approval.
+An automatically discovered or manually configured VM is an addressed external
+runtime, not a peer-encrypted LicoUp recipient. The conversation header keeps
+its SSH destination visible, and pressing Send authorizes that exact prompt to
+that VM. SSH protects the transport, while OpenClaw or Hermes inside the VM
+receives the conversation content in order to answer.
 
 ## Build from source
 
@@ -124,7 +138,7 @@ data boundaries.
 | Path | Contents |
 | --- | --- |
 | [`apps/desktop`](apps/desktop) | Flutter desktop and mobile client |
-| [`crates`](crates) | Rust workspace — native task queue, ACP/MCP adapters, Secure Client Mesh |
+| [`crates`](crates) | Rust workspace — native task queue, ACP/MCP adapters, and the endpoint-protection Preview implementation |
 | [`packages`](packages) | Shared client contracts (JSON Schema) and native-client protocol packages |
 | [`docs`](docs) | Formal documentation — architecture, functionality, protocols, ADRs |
 | [`tests`](tests) | Contract and smoke tests |
@@ -132,12 +146,16 @@ data boundaries.
 
 ## Documentation
 
-| Topic | English | 简体中文 |
+| Topic | English | Simplified Chinese |
 | --- | --- | --- |
 | Index | [Documentation index](docs/README.md) | — |
+| Domain language | [Context](CONTEXT.md) | — |
+| Current status | [Status](docs/STATUS.md) | [当前状态](docs/STATUS.zh-CN.md) |
 | User guide | [User guide](docs/functionality/USER-GUIDE.md) | [用户指南](docs/functionality/USER-GUIDE.zh-CN.md) |
 | Architecture | [Architecture](docs/architecture/README.md) | [架构](docs/architecture/README.zh-CN.md) |
+| Federation transport | [Lico Arc candidate station adapter](docs/protocols/licoarc-station-adapter.md) | [Lico Arc 候选通讯站 Adapter](docs/protocols/licoarc-station-adapter.zh-CN.md) |
 | Compatibility | [Compatibility](docs/COMPATIBILITY.md) | [兼容性](docs/COMPATIBILITY.zh-CN.md) |
+| Release packages | [Release packages](docs/RELEASE-PACKAGES.md) | [发布包结构](docs/RELEASE-PACKAGES.zh-CN.md) |
 | Security | [Security](SECURITY.md) | [安全](SECURITY.zh-CN.md) |
 | Contributing | [Contributing](CONTRIBUTING.md) | [参与贡献](CONTRIBUTING.zh-CN.md) |
 
@@ -146,4 +164,4 @@ data boundaries.
 
 ## License
 
-LicoUp is licensed under `GPL-3.0-or-later`. See [LICENSE](LICENSE).
+LicoUp is licensed under `AGPL-3.0-or-later`. See [LICENSE](LICENSE).

@@ -1,21 +1,16 @@
-import { generateKeyPairSync, sign } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import {
   loadClientReleaseTargetCatalog,
 } from "../../lib/client-release-targets.mjs";
-import {
-  sha256Buffer,
-  stableReadFile,
-} from "../../lib/client-release-artifact-digest.mjs";
+import { CLIENT_GATE_LANES } from "../../client-gate-policy.mjs";
 import {
   selectedReleaseBlockingSupportReady,
   validateClientSupportMatrix,
 } from "../../client-support-matrix.mjs";
 import {
-  SECURE_MESH_TRUST_UX_REPORT_SCHEMA_VERSION,
-} from "../../lib/secure-mesh-trust-ux-reducer.mjs";
-import { verifyLinuxArchiveDigestSignature } from "../artifacts/linux-signature.mjs";
+  LICOARC_BADTOWER_CANDIDATE_BINDING_KEY,
+} from "../../lib/licoarc-badtower-candidate-binding.mjs";
 import {
   artifactBindingMapsEqual,
   artifactInputStatesEqual,
@@ -32,18 +27,26 @@ import { reduceClientReleaseAcceptance } from "../reduce.mjs";
 import { closureRedactionSeedRefs } from "../refs.mjs";
 import { sanitizeArtifactBinding } from "../sanitize-binding.mjs";
 import { selectedTargetIds } from "../targets.mjs";
-import { readJson, requireValue, text } from "../util.mjs";
+import { readJson, requireValue } from "../util.mjs";
 import {
-  selfTestAndroidTrustEvidence,
-  selfTestReleaseCliReport,
   selfTestReports,
-  selfTestTrustReport,
 } from "./fixtures.mjs";
+import {
+  loadCatalog,
+  validateCatalog,
+  validateReleaseFreshness,
+} from "../../model-pricing-facts.mjs";
+
+function assertPricingAuthorityReady() {
+  const catalog = validateCatalog(loadCatalog(repoRoot));
+  validateReleaseFreshness(catalog);
+}
 
 export function runSelfTest({ schemaFixture = false } = {}) {
+  assertPricingAuthorityReady();
   const selected = [
-    { id: "macos-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true },
-    { id: "android-arm64", platform: "android", arch: "arm64", supported: true, releaseSupported: true }
+    { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true },
+    { id: "android-direct-arm64-v8a", platform: "android", arch: "arm64", supported: true, releaseSupported: true }
   ];
   const readyIntegrity = {
     ok: true,
@@ -51,6 +54,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     sourceStateDigest: `sha256:${"a".repeat(64)}`,
     sourceStateStable: true,
     artifactInputsStable: true,
+    candidateInputsStable: true,
     supportMatrixStable: true,
     targetCatalogStable: true,
     policyInputsStable: true,
@@ -66,7 +70,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       ["client-version", "tools/client-version.json", "4"],
     ].map(([id, ref, digit]) => ({ id, ref, digest: `sha256:${digit.repeat(64)}` })),
     reports: [{
-      id: "linuxCli",
+      id: "macosCli",
       ok: true,
       schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
       producer: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
@@ -77,7 +81,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       closureChallengeBound: true,
       invocationNonceDigest: `sha256:${"3".repeat(64)}`,
       dependencies: [],
-    }]
+    }],
   };
   const readyArtifactFor = (targetId, artifactKind, digestDigit) => ({
     targetId,
@@ -85,10 +89,10 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     artifactKind,
     artifactDigest: `sha256:${digestDigit.repeat(64)}`,
     runtimeExecutableDigest: `sha256:${digestDigit.repeat(64)}`,
-    artifactEvidenceReportDigest: targetId === "android-arm64"
+    artifactEvidenceReportDigest: targetId === "android-direct-arm64-v8a"
       ? `sha256:${"b".repeat(64)}`
       : `sha256:${"d".repeat(64)}`,
-    artifactEvidenceInvocationNonceDigest: targetId === "android-arm64"
+    artifactEvidenceInvocationNonceDigest: targetId === "android-direct-arm64-v8a"
       ? `sha256:${"c".repeat(64)}`
       : `sha256:${"e".repeat(64)}`,
     versionReady: true,
@@ -106,12 +110,17 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ready: true
   });
   const readyArtifact = {
-    "macos-arm64": readyArtifactFor(
-      "macos-arm64",
+    "macos-direct-arm64": readyArtifactFor(
+      "macos-direct-arm64",
       "macos-distribution-archive",
       "3",
     ),
-    "android-arm64": readyArtifactFor("android-arm64", "android-apk", "8")
+    "android-direct-arm64-v8a": readyArtifactFor("android-direct-arm64-v8a", "android-apk", "8"),
+    [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]: {
+      clientCandidateDigest: `sha256:${"a".repeat(64)}`,
+      protocolCandidateDigest: `sha256:${"b".repeat(64)}`,
+      stationCandidateDigest: `sha256:${"c".repeat(64)}`,
+    },
   };
   const base = {
     selectedTargets: selected,
@@ -142,8 +151,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": {
-        ...readyArtifact["macos-arm64"],
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
         platformSecurityReady: false,
         ready: false,
       },
@@ -151,10 +160,97 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     reports: selfTestReports(),
   });
   requireValue(!missingSelected.githubReleaseReady && missingSelected.blockers.some((item) => item.startsWith("selected_platform_security_not_ready:")), "selected missing evidence must block");
-  const plaintext = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports({ plaintextReady: false }) });
-  requireValue(!plaintext.githubReleaseReady && plaintext.blockers.some((item) => item.includes("plaintext")), "mock relay plaintext observation must fail closed");
+  const plaintext = reduceClientReleaseAcceptance({
+    ...base,
+    reports: selfTestReports({ stationPlaintextAbsent: false }),
+  });
+  requireValue(
+    !plaintext.githubReleaseReady &&
+      plaintext.blockers.includes("station_plaintext_absence_not_verified"),
+    "station plaintext observation must fail closed",
+  );
+  for (const [field, blocker] of [
+    ["mobileFfiDispatch", "mobile_ffi_dispatch_not_verified"],
+    ["typedPendingObserved", "typed_pending_state_not_observed"],
+    [
+      "durableResultReceiptAcknowledged",
+      "durable_result_receipt_not_acknowledged",
+    ],
+  ]) {
+    const reports = selfTestReports();
+    reports.stationAcceptance.scenario[field] = false;
+    const missingFact = reduceClientReleaseAcceptance({ ...base, reports });
+    requireValue(
+      !missingFact.githubReleaseReady &&
+        missingFact.blockers.includes(blocker) &&
+        missingFact.blockers.includes("licoarc_badtower_acceptance_not_ready"),
+      `false station scenario fact must fail closed: ${field}`,
+    );
+  }
+  const missingScenarioFieldReports = selfTestReports();
+  delete missingScenarioFieldReports.stationAcceptance.scenario.mobileFfiDispatch;
+  const missingScenarioField = reduceClientReleaseAcceptance({
+    ...base,
+    reports: missingScenarioFieldReports,
+  });
+  requireValue(
+    !missingScenarioField.githubReleaseReady &&
+      missingScenarioField.blockers.includes(
+        "licoarc_badtower_acceptance_not_ready",
+      ),
+    "missing station scenario fact must fail closed",
+  );
+  const extraScenarioFieldReports = selfTestReports();
+  extraScenarioFieldReports.stationAcceptance.scenario.unknownScenarioFact =
+    true;
+  const extraScenarioField = reduceClientReleaseAcceptance({
+    ...base,
+    reports: extraScenarioFieldReports,
+  });
+  requireValue(
+    !extraScenarioField.githubReleaseReady &&
+      extraScenarioField.blockers.includes(
+        "licoarc_badtower_acceptance_not_ready",
+      ),
+    "unknown station scenario fact must fail closed",
+  );
+  for (const [option, label] of [
+    ["stationClientCandidateDigest", "client"],
+    ["stationProtocolCandidateDigest", "protocol"],
+    ["stationBinaryCandidateDigest", "station"],
+  ]) {
+    const staleCandidate = reduceClientReleaseAcceptance({
+      ...base,
+      reports: selfTestReports({
+        [option]: `sha256:${"f".repeat(64)}`,
+      }),
+    });
+    requireValue(
+      !staleCandidate.githubReleaseReady &&
+        staleCandidate.blockers.includes(
+          "licoarc_badtower_candidate_bindings_stale",
+        ),
+      `stale ${label} candidate acceptance must fail closed`,
+    );
+  }
+  const unstableCandidates = reduceClientReleaseAcceptance({
+    ...base,
+    inputIntegrity: {
+      ...readyIntegrity,
+      ok: true,
+      candidateInputsStable: false,
+    },
+    reports: selfTestReports(),
+  });
+  requireValue(
+    !unstableCandidates.githubReleaseReady &&
+      unstableCandidates.blockers.includes(
+        "licoarc_badtower_candidate_inputs_unstable",
+      ),
+    "mutated Lico Arc or BadTower candidate input must fail closed",
+  );
   const tamper = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports({ tamperReady: false }) });
-  requireValue(!tamper.githubReleaseReady && tamper.blockers.includes("encrypted_relay_header_tamper_not_rejected"), "mock relay tamper must fail closed");
+  requireValue(!tamper.githubReleaseReady && tamper.blockers.includes("encrypted_private_header_tamper_not_rejected"), "E2EE private-header tamper must fail closed");
   const legacyMetadataReports = selfTestReports();
   delete legacyMetadataReports.pairwise.metadataResistanceEvidence;
   const legacyMetadata = reduceClientReleaseAcceptance({
@@ -177,8 +273,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": {
-        ...readyArtifact["macos-arm64"],
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
         platformSecurityReady: false,
         ready: false,
       },
@@ -202,7 +298,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": { ...readyArtifact["macos-arm64"], consumerVerificationReady: false, ready: false }
+      "macos-direct-arm64": { ...readyArtifact["macos-direct-arm64"], consumerVerificationReady: false, ready: false }
     },
     reports: selfTestReports()
   });
@@ -211,7 +307,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": { ...readyArtifact["macos-arm64"], installReceiptReady: false, receiptProvenanceReady: false, ready: false }
+      "macos-direct-arm64": { ...readyArtifact["macos-direct-arm64"], installReceiptReady: false, receiptProvenanceReady: false, ready: false }
     },
     reports: selfTestReports()
   });
@@ -220,8 +316,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": {
-        ...readyArtifact["macos-arm64"],
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
         nonBlockingDistributionStatus: "ready",
       },
     },
@@ -252,6 +348,36 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     nowMs: 10_010
   };
   requireValue(validateProducedReportReceipt(receiptFixture).ok, "current approved producer receipt must validate");
+  const directStationReceipt = {
+    ...receiptFixture,
+    payload: selfTestReports().stationAcceptance,
+    spec: {
+      schemaVersion: "licoup.licoarc-badtower.acceptance.v1",
+      producer: "tools/scripts/client-licoarc-badtower-acceptance.mjs",
+    },
+    directFreshOutput: true,
+  };
+  requireValue(
+    validateProducedReportReceipt(directStationReceipt).ok,
+    "fresh direct Lico Arc BadTower output must validate without a wrapper",
+  );
+  requireValue(
+    !validateProducedReportReceipt({
+      ...directStationReceipt,
+      payload: {
+        ...directStationReceipt.payload,
+        unknown: false,
+      },
+    }).ok,
+    "unknown direct acceptance fields must fail closed",
+  );
+  requireValue(
+    !validateProducedReportReceipt({
+      ...directStationReceipt,
+      generatedAtMs: 9_000,
+    }).ok,
+    "stale direct acceptance output must fail closed",
+  );
   requireValue(!validateProducedReportReceipt({
     ...receiptFixture,
     payload: { ...receiptFixture.payload, verifier: "tools/scripts/forged.mjs" }
@@ -299,56 +425,32 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     { ...producerSnapshot, inode: 3 },
   ), "replaced canonical receipt producer must fail closed");
   const artifactBindingFixture = {
-    "macos-arm64": sanitizeArtifactBinding({
-      targetId: "macos-arm64",
+    "macos-direct-arm64": sanitizeArtifactBinding({
+      targetId: "macos-direct-arm64",
       artifactDigest: `sha256:${"a".repeat(64)}`,
     }),
   };
   requireValue(artifactBindingMapsEqual(
     artifactBindingFixture,
     structuredClone(artifactBindingFixture),
-    [{ id: "macos-arm64" }],
+    [{ id: "macos-direct-arm64" }],
   ) && !artifactBindingMapsEqual(
     artifactBindingFixture,
     {
-      "macos-arm64": {
-        ...artifactBindingFixture["macos-arm64"],
+      "macos-direct-arm64": {
+        ...artifactBindingFixture["macos-direct-arm64"],
         artifactDigest: `sha256:${"b".repeat(64)}`,
       },
     },
-    [{ id: "macos-arm64" }],
+    [{ id: "macos-direct-arm64" }],
   ), "replaced final artifact input must fail closed");
   requireValue(artifactInputStatesEqual(
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "one" } },
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "one" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "one" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "one" } },
   ) && !artifactInputStatesEqual(
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "one" } },
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "two" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "one" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "two" } },
   ), "replaced artifact sidecar input must fail closed");
-  const { publicKey: linuxPublicKey, privateKey: linuxPrivateKey } =
-    generateKeyPairSync("ed25519");
-  const linuxPublicKeyDer = linuxPublicKey.export({ type: "spki", format: "der" });
-  const linuxArtifactDigest = `sha256:${"d".repeat(64)}`;
-  const linuxSignature = sign(
-    null,
-    Buffer.from(linuxArtifactDigest.slice("sha256:".length), "hex"),
-    linuxPrivateKey,
-  );
-  const linuxDistribution = {
-    signature: {
-      publicKeySpkiBase64: linuxPublicKeyDer.toString("base64"),
-      publicKeyFingerprint: sha256Buffer(linuxPublicKeyDer),
-    },
-  };
-  requireValue(verifyLinuxArchiveDigestSignature(
-    linuxDistribution,
-    linuxSignature,
-    linuxArtifactDigest,
-  ) && !verifyLinuxArchiveDigestSignature(
-    linuxDistribution,
-    linuxSignature,
-    `sha256:${"e".repeat(64)}`,
-  ), "Linux archive signature direct verification must fail closed");
   let privacyRejected = false;
   try {
     assertAcceptancePrivacy({ fixture: ["", "Users", "fixture", "secret"].join("/") });
@@ -367,19 +469,25 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   }
   requireValue(privacyRejected,
     "acceptance privacy scan must reject stable signing identity digests");
-  const defaultVerifySource = stableReadFile(
-    path.join(repoRoot, "tools/run-client-verify.mjs"),
-    { maxBytes: 2 * 1024 * 1024 },
-  ).toString("utf8");
   const packageScripts = readJson(path.join(repoRoot, "package.json")).scripts;
-  requireValue(defaultVerifySource.includes("client:verify:secure-mesh-e2ee-evidence:diagnostic"), "default verification must retain the cross-product diagnostic");
-  requireValue(!defaultVerifySource.includes('["npm", ["run", "client:verify:secure-mesh-e2ee-evidence"]]'), "default verification must not run strict A10 acceptance");
-  requireValue(defaultVerifySource.includes(
+  const sourceGate = CLIENT_GATE_LANES.source;
+  const releasePolicyGate = CLIENT_GATE_LANES["release-policy"];
+  for (const forbidden of [
+    "client:verify:secure-mesh-e2ee-evidence:diagnostic",
+    "client:verify:secure-mesh-e2ee-evidence",
+    "client:verify:product-line-security",
+    "client:verify:github-release",
     "client:verify:client-release-acceptance:self-test",
-  ), "default verification must run the side-effect-free client release acceptance self-test");
-  requireValue(!defaultVerifySource.includes(
-    '["npm", ["run", "client:verify:client-release-acceptance"]]',
-  ), "default verification must not run the side-effecting client release reducer");
+  ]) {
+    requireValue(
+      !sourceGate.includes(forbidden),
+      `source policy must not consume release or cross-product evidence: ${forbidden}`,
+    );
+  }
+  requireValue(
+    packageScripts["client:verify:secure-mesh-e2ee-evidence:diagnostic"],
+    "cross-product diagnostic must remain explicitly callable",
+  );
   requireValue(packageScripts["client:verify:github-release"]?.includes(
     "client-github-release-acceptance.mjs",
   ), "explicit GitHub release must run the artifact-only GitHub reducer");
@@ -390,7 +498,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
-    "client:verify:linux-tar-resource-bounds:self-test",
     "client:verify:android-apk-zip-facts:self-test",
     "client:verify:android-release-toolchain:self-test",
     "client:verify:macos-distribution:self-test",
@@ -402,8 +509,10 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
   ]) {
-    requireValue(defaultVerifySource.includes(scriptName),
-    `default verification must run ${scriptName}`);
+    requireValue(
+      releasePolicyGate.includes(scriptName),
+      `release-policy lane must run ${scriptName}`,
+    );
   }
   requireValue(packageScripts["client:verify:secure-mesh-platform-acceptance"]?.includes("client:verify:secure-mesh-e2ee-evidence"), "strict Secure Mesh platform acceptance must remain explicitly callable");
   const preflightConfig = readJson(configPath);
@@ -419,15 +528,15 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     selectedTargetIds: preflightConfig.releaseTargetAuthority.selectedTargetIds,
   }), "authorized release target preflight failed");
   const mismatchedLineageReceiptConfig = structuredClone(preflightReceiptConfig);
-  mismatchedLineageReceiptConfig.targets["linux-glibc-arm64"].distributionManifestRef =
-    "build/apps/desktop/distribution/linux-arm64/retired-manifest.json";
+  mismatchedLineageReceiptConfig.targets["macos-direct-arm64"].distributionManifestRef =
+    "build/apps/desktop/distribution/macos/retired-manifest.json";
   let mismatchedLineageRejected = false;
   try {
     validateReleaseSelectionPreflight({
       catalog: preflightCatalog,
       config: preflightConfig,
       receiptConfig: mismatchedLineageReceiptConfig,
-      selectedTargetIds: ["linux-glibc-arm64"],
+      selectedTargetIds: ["macos-direct-arm64"],
     });
   } catch {
     mismatchedLineageRejected = true;
@@ -439,7 +548,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "tools/client-support-matrix.json",
   ));
   for (const target of supportMatrixFixture.targets) {
-    if (!["macos-arm64", "android-arm64", "linux-glibc-arm64"].includes(
+    if (!["macos-arm64", "android-arm64"].includes(
       target.targetId,
     )) continue;
     target.overrides = {
@@ -451,19 +560,19 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   const validatedSupportMatrix = validateClientSupportMatrix(supportMatrixFixture);
   requireValue(selectedReleaseBlockingSupportReady(
     validatedSupportMatrix,
-    ["macos-arm64", "android-arm64", "linux-glibc-arm64"],
+    ["macos-arm64", "android-arm64"],
   ), "selected supported blocking services were rejected");
   supportMatrixFixture.targets.find((target) =>
     target.targetId === "android-arm64").overrides["secure-mesh-pairwise"] = "preview";
   requireValue(!selectedReleaseBlockingSupportReady(
     validateClientSupportMatrix(supportMatrixFixture),
-    ["macos-arm64", "android-arm64", "linux-glibc-arm64"],
+    ["macos-arm64", "android-arm64"],
   ), "selected preview blocking service was accepted");
   const childProofRef =
     "build/reports/secure-mesh-macos-keychain-user-presence-proof.json";
   requireValue(closureRedactionSeedRefs(
     preflightConfig,
-    [{ id: "macos-arm64" }],
+    [{ id: "macos-direct-arm64" }],
     { ok: true, payload: { receipts: [{ dependencies: [{ ref: childProofRef }] }] } },
     preflightReceiptConfig,
   ).includes(childProofRef),
@@ -503,7 +612,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   );
   let emptyTokenRejected = false;
   try {
-    process.env.LICO_CLIENT_RELEASE_TARGETS = "macos-arm64,";
+    process.env.LICO_CLIENT_RELEASE_TARGETS = "macos-direct-arm64,";
     selectedTargetIds(
       preflightCatalog,
       preflightConfig.releaseTargetAuthority.selectedTargetIds,
@@ -518,5 +627,5 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     }
   }
   requireValue(emptyTokenRejected, "explicit empty release target token was accepted");
-  return { ok: true, caseCount: 43 };
+  return { ok: true, caseCount: 42 };
 }

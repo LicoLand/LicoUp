@@ -1,11 +1,11 @@
 {
-  "schemaVersion": "v0.0.1:client-desktop:appearance-preset-1",
+  "schemaVersion": "v0.0.1:client-desktop:appearance-preset-2",
   "id": "default-system",
   "label": {
     "en": "System Default",
     "zh-CN": "跟随系统"
   },
   "mode": "system",
-  "lightPresetId": "geek-light-blue",
-  "darkPresetId": "lico-crystal"
+  "lightPresetId": "lico-soda-light",
+  "darkPresetId": "lico-soda"
 }

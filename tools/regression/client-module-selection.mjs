@@ -78,8 +78,8 @@ export function validateClientModuleCatalog(catalog = CLIENT_MODULE_CATALOG) {
     if (!Array.isArray(moduleCommand.args) || moduleCommand.args.some((arg) => typeof arg !== "string")) {
       throw new Error(`client module command args are invalid: ${module.id}`);
     }
-    if (moduleCommand.args.some((arg) => arg.includes("client:verify"))) {
-      throw new Error(`client module must not invoke the full verifier: ${module.id}`);
+    if (moduleCommand.args.some((arg) => arg.includes("client:gate:"))) {
+      throw new Error(`client module must not invoke an aggregate gate: ${module.id}`);
     }
     if (moduleCommand.cwd !== ".") {
       throw new Error(`client module command cwd must remain repository-relative: ${module.id}`);

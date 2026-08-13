@@ -6,8 +6,6 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[path = "tests/conversation_commands.rs"]
-mod conversation_commands;
 #[path = "tests/core_commands.rs"]
 mod core_commands;
 #[path = "tests/parsing.rs"]

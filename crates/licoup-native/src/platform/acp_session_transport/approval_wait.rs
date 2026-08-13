@@ -23,13 +23,22 @@ pub(super) fn await_external_approval(
     display_summary: &str,
     option_id: Option<&str>,
     requested_tools: &[String],
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<ApprovalWaitOutcome, ProtocolFailure> {
     let (decision_tx, decision_rx) = mpsc::sync_channel(1);
     let token = Uuid::new_v4().to_string();
+    let session_id = protocol.session_id.clone().ok_or_else(|| {
+        ProtocolFailure::user_interaction(
+            "session/request_permission",
+            None,
+            Some(&protocol.config.turn_id),
+        )
+    })?;
     if let Err(failure) = register_park_and_inbox(
         &token,
-        protocol,
+        &session_id,
+        &protocol.config.turn_id,
+        "hermes",
         request_id,
         display_summary,
         option_id,
@@ -51,10 +60,16 @@ pub(super) fn await_external_approval(
         protocol.interaction_failure = Some(failure.clone());
         return Err(failure);
     }
-    let approval_deadline = Instant::now()
-        .checked_add(APPROVAL_WAIT_TIMEOUT)
-        .unwrap_or(deadline)
-        .min(deadline);
+    // Without a turn deadline the approval wait is bounded only by the
+    // approval interaction timeout itself.
+    let approval_deadline = deadline
+        .map(|deadline| {
+            Instant::now()
+                .checked_add(APPROVAL_WAIT_TIMEOUT)
+                .unwrap_or(deadline)
+                .min(deadline)
+        })
+        .unwrap_or_else(|| Instant::now() + APPROVAL_WAIT_TIMEOUT);
     loop {
         if let Some(failure) = handle_control_requests(transport, protocol) {
             let _ = parked_permissions()

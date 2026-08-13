@@ -1,3 +1,4 @@
+mod badtower_acceptance;
 mod endpoint_trust;
 mod pairing;
 mod pairwise_session;
