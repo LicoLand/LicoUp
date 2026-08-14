@@ -61,9 +61,6 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.agent-usage.window-control",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/skill_hub/controller/skill_update_controller.dart",
-  ])), ["architecture.client-boundaries", "flutter.feature.skill-hub.update"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/application/features/skill_hub/controller/skill_delete_controller.dart",
   ])), ["architecture.client-boundaries", "flutter.feature.skill-hub.delete"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -175,7 +172,7 @@ test("changed Flutter feature paths select only their bounded feature module", (
   ]);
 });
 
-test("Flutter controller assembly and main-agent selection select precise closures", () => {
+test("Flutter controller assembly selects precise closures", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/application/controller/client_controller.dart",
   ])), [
@@ -188,19 +185,6 @@ test("Flutter controller assembly and main-agent selection select precise closur
     "architecture.client-boundaries",
     "flutter.controller.assembly.mobile",
   ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.main-agent-selection",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/test/agent_orchestration_target_test.dart",
-  ])), [
-    "flutter.contract.main-agent.target",
-    "flutter.feature.main-agent-selection",
-  ]);
-
   const facade = CLIENT_MODULE_CATALOG.find(
     (module) => module.id === "flutter.controller.facade",
   );
@@ -208,30 +192,6 @@ test("Flutter controller assembly and main-agent selection select precise closur
     facade.command.args.includes("test/client_controller_runtime_facades_test.dart"),
     true,
   );
-  const mainAgentSelection = CLIENT_MODULE_CATALOG.find(
-    (module) => module.id === "flutter.feature.main-agent-selection",
-  );
-  assert.equal(mainAgentSelection.command.args.length < 16, true);
-  assert.equal(
-    mainAgentSelection.command.args.includes(
-      "test/agent_orchestration_target_test.dart",
-    ),
-    true,
-  );
-});
-
-test("main-agent selection owns one bounded desktop acceptance target", () => {
-  const projection = CLIENT_MODULE_CATALOG.find(
-    (module) => module.id === "flutter.feature.main-agent-selection",
-  );
-  assert.deepEqual(projection.inputs, [
-    "apps/desktop/lib/src/application/features/agents/orchestration/**",
-    "apps/desktop/lib/src/application/features/agents/conversation/conversation_message_controller.dart",
-    "apps/desktop/test/agent_orchestration_target_test.dart",
-  ]);
-  assert.deepEqual(projection.command.args.slice(-1), [
-    "test/agent_orchestration_target_test.dart",
-  ]);
 });
 
 test("Dashboard desktop chrome leaves retain exact widget tests and bounded catalog ownership", () => {

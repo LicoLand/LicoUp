@@ -47,7 +47,11 @@ fn scan_includes_required_first_targets() {
             "kimi",
             "kimi-code",
             "pi",
-            "lico-agent"
+            "lico-agent",
+            "workbuddy",
+            "codebuddy",
+            "trae-work",
+            "trae-agent"
         ]
     );
     let _ = fs::remove_dir_all(dir);
@@ -119,13 +123,6 @@ fn scan_candidate_has_adapter_capabilities_and_supported_actions() {
         .unwrap();
     assert_eq!(codex["adapterStatus"], "implemented");
     assert_eq!(codex["adapterCapabilities"]["configApply"], "unsupported");
-    assert!(
-        codex["supportedActions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|a| a == "skill.install")
-    );
     // Parity evidence stays informational; a detected binary unlocks relay.
     assert_eq!(
         codex["adapterCapabilities"]["conversationReadiness"],

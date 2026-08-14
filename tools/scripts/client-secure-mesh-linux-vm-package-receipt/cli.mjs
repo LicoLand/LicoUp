@@ -11,7 +11,7 @@ export function parseArgs(args) {
     if (inline === undefined) index += 1;
   }
   requiredOptionFrom(parsed, "archive");
-  requiredOptionFrom(parsed, "distributionManifest");
+  requiredOptionFrom(parsed, "verificationManifest");
   requiredOptionFrom(parsed, "expectedSourceDigest");
   requiredOptionFrom(parsed, "report");
   assert(/^sha256:[a-f0-9]{64}$/u.test(parsed.expectedSourceDigest),

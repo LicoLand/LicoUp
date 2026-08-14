@@ -1,43 +1,58 @@
 {
   "schemaVersion": "licoup.client-release-template.v2",
-  "entryCommands": {
-    "nightly": "npm run client:release -- push nightly --version <version> --target <target>",
-    "stable": "npm run client:release -- push stable --version <version> --target <target>",
-    "release": "npm run client:release -- push release --version <version> --target <target>",
-    "publish": "npm run client:release -- publish --version <version> --target <target>"
+  "versionAuthority": {
+    "path": "tools/client-version.json"
   },
   "promotion": {
     "branches": ["nightly", "stable", "release"],
     "mergeMethod": "merge",
-    "rulesetMutation": "forbidden"
+    "rulesetMutation": "forbidden",
+    "linearHistory": false
   },
-  "requiredPullRequestChecks": {
-    "nightly": ["Branch flow", "Commit identity", "Client required", "Auditor"],
-    "stable": ["Branch flow", "Commit identity", "Stable client", "Auditor"],
-    "release": ["Branch flow", "Commit identity", "Release ready", "Auditor"]
-  },
-  "publication": {
-    "workflow": ".github/workflows/client-release.yml",
-    "ref": "release",
-    "jobTimeoutPolicy": "github-default",
-    "operatorMonitoringTimeoutMinutes": null,
-    "remoteValidity": {
-      "strategyGroup": "tools/client-remote-release-strategies.json",
-      "activeStrategyIds": ["build-success"]
-    },
-    "macosUpdate": {
-      "workflowArtifact": "licoup-macos-update",
-      "manifest": "LicoUp-update-stable.json",
-      "finalizer": "tools/scripts/client-update-release-finalize.mjs",
-      "privateKeyCustody": "local-only"
-    }
+  "requiredPullRequestChecks": [
+    "Branch flow",
+    "Commit identity",
+    "Client required",
+    "Auditor"
+  ],
+  "pullRequestPreflight": {
+    "command": "npm run client:pr:preflight -- --base origin/nightly --targets <target[,target...]> --full-target",
+    "receiptSchema": "licoup.release-pre-pr-receipt.v3",
+    "receiptPath": "build/reports/release-pre-pr-receipt.json",
+    "remoteMutation": "forbidden",
+    "prePushMode": "receipt-only"
   },
   "candidatePreflight": {
     "refPrefix": "release-candidate/",
     "targets": {
-      "macos-arm64": ["source", "flutter", "rust", "dependencies"],
-      "linux-glibc-arm64": ["source", "flutter", "rust", "dependencies"],
-      "android-arm64": ["source", "flutter", "rust", "android", "dependencies"]
+      "macos-direct-arm64": ["source", "flutter", "rust", "dependencies"],
+      "macos-app-store-arm64": ["source", "flutter", "rust", "dependencies"],
+      "windows-direct-x64": ["source", "flutter", "rust", "dependencies"],
+      "windows-store-x64": ["source", "flutter", "rust", "dependencies"],
+      "linux-deb-arm64": ["source", "flutter", "rust", "dependencies"],
+      "linux-deb-x64": ["source", "flutter", "rust", "dependencies"],
+      "linux-rpm-arm64": ["source", "flutter", "rust", "dependencies"],
+      "linux-rpm-x64": ["source", "flutter", "rust", "dependencies"],
+      "linux-pacman-x64": ["source", "flutter", "rust", "dependencies"],
+      "linux-pacman-arm64": ["source", "flutter", "rust", "dependencies"],
+      "linux-alpine-apk-arm64": ["source", "flutter", "rust", "dependencies"],
+      "linux-alpine-apk-x64": ["source", "flutter", "rust", "dependencies"],
+      "linux-appimage-arm64": ["source", "flutter", "rust", "dependencies"],
+      "linux-appimage-x64": ["source", "flutter", "rust", "dependencies"],
+      "android-direct-arm64-v8a": ["source", "flutter", "rust", "android", "dependencies"],
+      "android-play-arm64-v8a": ["source", "flutter", "rust", "android", "dependencies"],
+      "ios-app-store-arm64": ["source", "flutter", "rust", "dependencies"]
+    }
+  },
+  "publication": {
+    "workflow": ".github/workflows/client-release.yml",
+    "ref": "release",
+    "draftOnlyUntilVerified": true,
+    "exactAssetSetRequired": true,
+    "publishOnce": true,
+    "remoteValidity": {
+      "strategyGroup": "tools/client-remote-release-strategies.json",
+      "activeStrategyIds": ["build-success"]
     }
   }
 }

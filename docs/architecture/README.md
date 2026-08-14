@@ -29,9 +29,11 @@ endpoint wire semantics.
 flowchart TB
     UI["Flutter interface"] --> APP["Application layer"]
     APP --> CORE["Rust native client core"]
+    CORE --> CONVERSATIONS["Canonical Conversation domain<br/>Memberships · Events · Roles"]
+    CORE --> STRATEGIES["Adaptive Flywheel strategy domain<br/>Immutable Graphs · durable runs"]
+    CONVERSATIONS --> STORE["Indexed SQLite/WAL client state"]
     CORE --> AGENTS["Agent adapters<br/>ACP · app-server · RPC · CLI"]
     AGENTS --> VM["Accessible user-owned VM<br/>OrbStack discovery · OpenSSH stdio · ACP/Hermes Gateway"]
-    CORE --> STORE["Local client storage"]
     CORE --> MESH["Retiring endpoint-protection Preview<br/>current executor"]
     MESH --> ARC["Lico Arc candidate adapter<br/>closed five-field envelope"]
     ARC --> STATION["Compatible station<br/>untrusted transport"]
@@ -45,6 +47,8 @@ flowchart TB
 | Flutter interface | Navigation, views, user choices, and safe summaries |
 | Application layer | Client flows and adapter-independent rules |
 | Rust native core | Local tasks, protocols, validation, and encryption |
+| Conversation domain | Sole durable authority for direct/group chat, Human/Agent Memberships, structured Events, and roles; native runtime locations stay private |
+| Adaptive Flywheel strategy domain | Immutable package revisions, JSON Graph validation, bindings, exact authorization, durable run reduction, and bounded effect scheduling independent from Conversation history |
 | Agent adapters | Translate supported local interfaces and discovered or explicit OpenClaw/Hermes VM protocol connections |
 | Platform bridges | Secure storage, user presence, and platform launch work |
 | Endpoint-protection Preview | Current LicoUp executor, local key/Provider custody, peer trust, approval, and retiring endpoint implementation; it is not stable protocol authority |
@@ -64,13 +68,28 @@ one scenario does not reach into another scenario's storage or interface.
 | MCP adapter | Bounded MCP/JSON-RPC validation, request-ID preservation, response forwarding, and one-shot approval for external effects |
 | Agent discovery | Concurrent probes of platform application sources, package managers, executable locations, and configured agent roots; normalized results are cached locally |
 | Adapter plugin management | One native catalog for packaged native, bundled ACP, and explicitly installable LicoUp bridges; lifecycle actions are confirmed and limited to LicoUp-owned state |
-| Agent conversations | New and native continued sessions for local agents remain process-local and expose wakeable progress. An active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up; discovered or explicit OpenClaw/Hermes VM sessions use SSH stdio. A local [Subagent MCP](../protocols/subagent-mcp.md) lets one selected main agent discover and directly call every other runnable agent. Agent output is never truncated or budget-limited by the client: LicoUp waits for the agent and keeps showing everything it produces. An explicit per-call `maxStdoutBytes` remains available only as the caller's own bounded request and never applies by default |
-| Skill management | Local install/update/delete workflows, configured-source scheduling, and invocation counters grouped by time window |
-| Conversation management | Local all-conversation or exact-keyword backup to a user-selected directory |
-| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
+| Agent conversations | Direct and group chat share the canonical Conversation model. Human and Agent Principals participate through explicit Memberships. One client-local CLI host per portable data root owns every accepted packaged-adapter turn independently of GUI lifetime over private local IPC. New and native continued sessions keep process-local, wakeable progress in that host; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Replaceable observers attach by Conversation-scoped handle and process-local cursor; committed Conversation Events provide exact replay below each active turn's disposable 16 MiB cache floor. Observer loss is not cancel or steer. Native sessions remain adapter-owned execution details bound privately to a Membership. A local [Subagent MCP](../protocols/subagent-mcp.md) dispatches only by `conversationId + membershipId` and never exposes native continuation paths |
+| Adaptive Flywheel | One small LicoUp basic strategy is registered automatically. Imported ZIP packages contain root `workflow.json` plus optional `scripts/`; the Graph decides pipeline or Agent Loop behavior. Immutable revisions own bindings and exact authorization, while durable runs expose bounded ready-frontier scheduling and explicit terminal or recovery states. There is no Better Plan installation action and no ordinal Conversation compatibility path |
+| Skill management | Read-only discovery of existing local skills, recoverable removal to the system Trash, and invocation counters grouped by time window; no download, install, update, or synchronization channel |
+| Conversation management | Indexed list/get/event paging and search plus bounded canonical import/export; third-party native history is never rewritten |
+| Delivery Plan | Persisted Plans and Checkpoints own delivery eligibility and progression. The Conversation runtime claims the complete eligible frontier in stable order, dispatches through bounded native lanes, and advances a checkpoint only after terminal settlement. Adaptive Flywheel remains the sole Agent/model route-selection authority |
+| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Plan/Task/dispatch rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
 | Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
 
-Optional collaboration is not part of this default composition.
+Optional collaboration is absent from default startup and navigation. The
+client imports its trusted signing key through a separate action that is never
+a trust root by itself, then verifies the immutable package source and fixed
+signed external runner on loopback before an explicit start.
+
+The delivery view consumes one safe native ledger projection. LicoUp owns Plan
+scheduling and checkpoint progression; Adaptive Flywheel owns route selection;
+and Conversation Memberships own Agent dispatch. Native continuation locations
+remain private adapter bindings. The projection keeps only safe codes,
+localized role and state labels, Agent/model labels, numeric Token counts,
+exact-or-estimated coverage, and Plan hierarchy. It excludes prompts, replies,
+tool payloads, summaries, compaction, cache controls, and a second client-owned
+context model. Retention is bounded to active deliveries and the newest twenty
+terminal rollups.
 
 The current agent and platform adaptation targets are generated in
 [Compatibility](../COMPATIBILITY.md). Station-wire and operation status is
@@ -119,6 +138,13 @@ Source support, ordinary builds, physical-device security evidence, GitHub
 Release artifacts, and store publication are separate claims. The current
 [compatibility matrix](../COMPATIBILITY.md) records them without
 promoting simulator or source checks into physical-device or release proof.
+Caller-supplied flags or ordinary state files are not proof of approval;
+protected operations require the platform-owned authorization session.
+
+For an external MCP effect, the bridge may stage an exact preview, but it
+performs no exchange and cannot approve it. The native command requests fresh
+platform user presence for the canonical digest, then atomically claims the
+matching short-lived preview exactly once before exchange.
 
 ## Current retiring endpoint-protection Preview layers
 
@@ -161,47 +187,6 @@ the pinned Lico Arc Protocol Line. The current storage interface can return key
 data to the native core, so an OS store must not be described as proof that
 every protocol key is hardware-backed or non-exportable. Platform support
 claims need current measured evidence.
-
-## Optional Meshrix collaboration boundary
-
-Meshrix collaboration is a separately installed plugin. It is absent from
-default startup and navigation until the user installs and enables it. Source
-selection binds a normalized GitHub repository to an exact immutable commit.
-Before package download, the user imports the trusted signing key through a
-separate action; a key bundled with the package or returned by the same download
-is never a trust root. Changing the repository, key, or fixed runner identity
-requires removal and a new direct authorization.
-
-The package signature covers the fixed runner identity and digest, contract
-versions, source commit, and a complete path/length/digest inventory. Package
-inspection and every start verify the protected trust record, signature, and
-inventory again. The authoritative record also binds the exact approved commit,
-package, inventory, runner, contracts, target, and deployment generation, so an
-older validly signed package cannot replace the approved artifact. Selected
-components are copied into an immutable snapshot; writable runtime data lives
-outside that loadable tree. The client never runs package scripts, hooks,
-user-provided arguments, or inherited environment variables.
-
-A deployment starts only after a separate manual action, using the fixed signed
-external runner on loopback. The verified runner and assembled snapshot are
-passed as locked immutable objects rather than reopened from writable paths.
-The client binds the process executable and start identity to a runtime lease
-and verified health/capability response. Stop and uninstall act only on that
-verified identity and fail closed on mismatch. The source tree does not bundle
-a Meshrix server runner: these controls establish a client deployment
-capability, not evidence that a real server artifact was obtained, started,
-released, or published.
-
-MCP external effects use a separate bounded authorization flow. The bridge may
-stage an exact preview, but it performs no exchange and cannot approve it. The
-authenticated client UI shows the destination, purpose, request body, and every
-selected file. The native command requests fresh platform user presence for the
-canonical digest and then atomically claims the matching short-lived preview
-exactly once before exchange. The digest binds the direction, destination,
-purpose, protocol revision, session, and exact request body. Caller-supplied
-flags or ordinary state files are not proof of approval. The operation fails
-closed after expiry, cancellation, reuse, mutation, rollback, or when a platform
-user-presence authority is unavailable.
 
 Installation, enablement, startup, a schedule, or an agent request cannot grant
 external-transfer permission. Each exact request and each selected local file

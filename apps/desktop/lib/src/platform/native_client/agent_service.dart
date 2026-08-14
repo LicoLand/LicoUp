@@ -5,7 +5,6 @@ import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/contracts/mcp_adapter.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
-import 'package:licoup/src/contracts/skill_update.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/target_management.dart';
@@ -35,7 +34,6 @@ class AgentService
         McpAdapterGateway,
         SkillDeleteGateway,
         SkillHubGateway,
-        SkillUpdateGateway,
         SkillUsageGateway,
         TargetManagementGateway {
   AgentService({
@@ -281,126 +279,6 @@ class AgentService
   @override
   Future<List<Map<String, dynamic>>> listSkills({required String agent}) {
     return _commandActions.listSkills(agent: agent);
-  }
-
-  @override
-  Future<Map<String, dynamic>> planSkillInstall({
-    required String agent,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-  }) {
-    return _commandActions.planSkillInstall(
-      agent: agent,
-      url: url,
-      sourcePath: sourcePath,
-      installRoot: installRoot,
-      name: name,
-      overwrite: overwrite,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> applySkillInstall({
-    required String agent,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-    bool pin = false,
-  }) {
-    return _commandActions.applySkillInstall(
-      agent: agent,
-      url: url,
-      sourcePath: sourcePath,
-      installRoot: installRoot,
-      name: name,
-      overwrite: overwrite,
-      pin: pin,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> rollbackSkillInstall({
-    required String agent,
-    required String snapshotId,
-  }) {
-    return _commandActions.rollbackSkillInstall(
-      agent: agent,
-      snapshotId: snapshotId,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> planSkillUpdate({
-    required String agent,
-    required String skillId,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-  }) {
-    return _commandActions.planSkillUpdate(
-      agent: agent,
-      skillId: skillId,
-      url: url,
-      sourcePath: sourcePath,
-      installRoot: installRoot,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> applySkillUpdate({
-    required String agent,
-    required String skillId,
-    required String confirmation,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-  }) {
-    return _commandActions.applySkillUpdate(
-      agent: agent,
-      skillId: skillId,
-      confirmation: confirmation,
-      url: url,
-      sourcePath: sourcePath,
-      installRoot: installRoot,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> configureSkillAutoUpdate({
-    required String agent,
-    required String skillId,
-    required bool enabled,
-    String url = '',
-    String sourcePath = '',
-  }) {
-    return _commandActions.configureSkillAutoUpdate(
-      agent: agent,
-      skillId: skillId,
-      enabled: enabled,
-      url: url,
-      sourcePath: sourcePath,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> runConfiguredSkillUpdates({
-    required String agent,
-    String skillId = '',
-  }) {
-    return _commandActions.runConfiguredSkillUpdates(
-      agent: agent,
-      skillId: skillId,
-    );
-  }
-
-  @override
-  Future<Map<String, dynamic>> runDueSkillUpdates() {
-    return _commandActions.runDueSkillUpdates();
   }
 
   Future<Map<String, dynamic>> authorizeAntigravityRuntime({

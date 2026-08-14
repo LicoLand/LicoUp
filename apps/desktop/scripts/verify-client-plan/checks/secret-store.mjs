@@ -17,6 +17,8 @@ const secureMeshSecretStoreRustSource =
     "crates/licoup-native/src/platform/secure_mesh_secret_store",
     ".rs",
   );
+const platformUserPresenceRustSource =
+  await readText("crates/licoup-native/src/platform/user_presence.rs");
 const secureMeshSecretStoreCoreRustSource =
   await readSourceBundle(
     "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
@@ -85,13 +87,23 @@ assert(Array.isArray(platformSecretStoreMatrixConfigJson.sourceChecks) &&
   "platform secret-store matrix config must define source checks and native test filters");
 for (const token of [
   "objc2_local_authentication::{LAContext, LAError, LAPolicy}",
-  "MacosAuthorizationContext",
+  "APPLICATION_AUTHORIZATION",
+  "LAPolicy::DeviceOwnerAuthenticationWithBiometrics",
+  "password_fallback_allowed",
+  "setLocalizedFallbackTitle",
   "setInteractionNotAllowed",
   "context.setInteractionNotAllowed(false)",
   "context.setInteractionNotAllowed(true)",
   "evaluatePolicy_localizedReason_reply",
   "block2::RcBlock::new",
+  "canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthenticationWithBiometrics)",
   "canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)",
+]) {
+  assert(platformUserPresenceRustSource.includes(token),
+    `Rust macOS user-presence owner must preserve biometric-first application authorization token ${token}`);
+}
+for (const token of [
+  "MacosAuthorizationContext",
   "if request.allow_interaction() {",
   "secure mesh macOS user-presence authorization is unavailable",
   "with_capability_report",

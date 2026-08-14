@@ -119,12 +119,3 @@ abstract interface class SecureMeshGateway {
   Future<SecureMeshMlsResponse> executeMls(SecureMeshMlsRequest request);
   Future<SecureMeshKtResponse> executeKt(SecureMeshKtRequest request);
 }
-
-abstract interface class SecureMeshSkillInstallGateway {
-  Future<Map<String, dynamic>> applyInstall({
-    required String agent,
-    required String sourcePath,
-    required String name,
-    required bool pin,
-  });
-}

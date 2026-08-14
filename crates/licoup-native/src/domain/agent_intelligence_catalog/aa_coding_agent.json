@@ -1,7 +1,5 @@
 {
-  "schema_version": 2,
-  "catalog_version": "artificial-analysis-coding-agent-index-v1.3-2026-08-01",
-  "as_of": "2026-08-01",
+  "last_updated": "2026-08-10",
   "source_url": "https://artificialanalysis.ai/agents/coding-agents",
   "methodology_url": "https://artificialanalysis.ai/methodology/coding-agents-benchmarking",
   "methodology_version": "Coding Agent Index v1.3",
@@ -13,7 +11,7 @@
     "complex": 55,
     "critical": 64
   },
-  "variant_count": 52,
+  "variant_count": 53,
   "variants": [
     {"variant_id":"codex-gpt-5-6-sol-max","harness":"codex","model":"gpt-5-6-sol","reasoning_effort":"max","index_score":67,"cost_per_task_usd":7.08},
     {"variant_id":"codex-gpt-5-6-sol-xhigh","harness":"codex","model":"gpt-5-6-sol","reasoning_effort":"xhigh","index_score":65,"cost_per_task_usd":5.24},
@@ -42,7 +40,7 @@
     {"variant_id":"claude-code-opus-5-high","harness":"claude-code","model":"opus-5","reasoning_effort":"high","index_score":63,"cost_per_task_usd":3.80},
     {"variant_id":"claude-code-opus-5-medium","harness":"claude-code","model":"opus-5","reasoning_effort":"medium","index_score":62,"cost_per_task_usd":3.14},
     {"variant_id":"claude-code-opus-4-8-max","harness":"claude-code","model":"opus-4-8","reasoning_effort":"max","index_score":61,"cost_per_task_usd":7.70},
-    {"variant_id":"claude-code-opus-4-8-xhigh","harness":"claude-code","model":"opus-4-8","reasoning_effort":"xhigh","index_score":58,"cost_per_task_usd":5.67},
+    {"variant_id":"claude-code-opus-4-8-xhigh","harness":"claude-code","model":"opus-4-8","reasoning_effort":"xhigh","index_score":58,"cost_per_task_usd":5.66},
     {"variant_id":"claude-code-opus-5-low","harness":"claude-code","model":"opus-5","reasoning_effort":"low","index_score":57,"cost_per_task_usd":2.18},
     {"variant_id":"claude-code-opus-4-8-high","harness":"claude-code","model":"opus-4-8","reasoning_effort":"high","index_score":57,"cost_per_task_usd":3.72},
     {"variant_id":"claude-code-opus-4-8-medium","harness":"claude-code","model":"opus-4-8","reasoning_effort":"medium","index_score":54,"cost_per_task_usd":3.26},
@@ -58,6 +56,7 @@
     {"variant_id":"claude-code-deepseek-v4-pro-high","harness":"claude-code","model":"deepseek-v4-pro","reasoning_effort":"high","index_score":31,"cost_per_task_usd":0.27},
     {"variant_id":"opencode-muse-spark-1-1-xhigh","harness":"opencode","model":"muse-spark-1-1","reasoning_effort":"xhigh","index_score":54,"cost_per_task_usd":1.43},
     {"variant_id":"opencode-opus-4-7-medium","harness":"opencode","model":"opus-4-7","reasoning_effort":"medium","index_score":50,"cost_per_task_usd":2.93},
+    {"variant_id":"opencode-gemini-3-6-flash-high","harness":"opencode","model":"gemini-3-6-flash","reasoning_effort":"high","index_score":46,"cost_per_task_usd":2.08},
     {"variant_id":"cursor-cli-gpt-5-5-medium","harness":"cursor-cli","model":"gpt-5-5","reasoning_effort":"medium","index_score":46,"cost_per_task_usd":2.01},
     {"variant_id":"cursor-cli-opus-4-7-medium","harness":"cursor-cli","model":"opus-4-7","reasoning_effort":"medium","index_score":45,"cost_per_task_usd":2.68},
     {"variant_id":"cursor-cli-composer-2-5","harness":"cursor-cli","model":"composer-2-5","reasoning_effort":"none","index_score":38,"cost_per_task_usd":0.08},

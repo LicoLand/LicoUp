@@ -35,9 +35,10 @@ export async function checkTargetReadinessReducer(context) {
   assert(supportsApplyMatches === null,
     "target catalog must not contain a duplicate supports_apply list; use adapter_capabilities_for or adapter_supports_action"
   );
-  assert(targetCatalogSource.includes("fn target_supports_skill_install") &&
-    targetCatalogSource.includes("fn adapter_capabilities_for"),
-    "target catalog must own the unified adapter capability policy"
+  assert(targetCatalogSource.includes("fn adapter_capabilities_for") &&
+    !targetCatalogSource.includes("target_supports_skill_install") &&
+    !targetScanMergeSource.includes('"skill.install"'),
+    "target catalog must not advertise removed skill installation capability"
   );
   assert(targetCatalogSource.includes("fn candidate_runtime_is_available") &&
     targetCatalogSource.includes("runtime_driver_profile") &&
@@ -50,11 +51,16 @@ export async function checkTargetReadinessReducer(context) {
   const targetRuntimeBindingSource = await readText(
     "crates/licoup-native/src/domain/targets/runtime_binding.rs"
   );
+  const targetCacheSource = await readText(
+    "crates/licoup-native/src/domain/targets/target_cache.rs"
+  );
   assert(targetsSource.includes("available_runtime_executable") &&
     targetRuntimeBindingSource.includes("runtime_driver_profile") &&
     !targetRuntimeBindingSource.includes('profile.readiness') &&
     !targetRuntimeBindingSource.includes('runtime.message.send') &&
-    targetRuntimeBindingSource.includes("fs::canonicalize") &&
+    targetRuntimeBindingSource.includes("cached_runtime_executable") &&
+    targetRuntimeBindingSource.includes("scan_targets_with_store") &&
+    targetCacheSource.includes("fs::canonicalize") &&
     !targetRuntimeBindingSource.includes("runtime_evidence_matches"),
     "runtime.message.send must keep an exact single local executable binding without letting projected actions or parity evidence veto execution"
   );

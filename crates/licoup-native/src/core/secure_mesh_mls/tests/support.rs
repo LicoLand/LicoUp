@@ -127,10 +127,10 @@ pub(super) fn activate_test_payload_capabilities(
         activated_at_epoch: group.epoch().saturating_add(1),
         previous_extension_digest: Some(previous_extension_digest),
         committer_endpoint_id: first_identity.endpoint_id.clone(),
-        roster_transition: SecureMeshMlsRosterTransition::MemberAdded {
+        roster_transition: Box::new(SecureMeshMlsRosterTransition::MemberAdded {
             member_endpoint_id: second_identity.endpoint_id.clone(),
             pair_binding: binding.clone(),
-        },
+        }),
         member_capability_proofs: BTreeMap::from([
             (
                 first_identity.endpoint_id.clone(),

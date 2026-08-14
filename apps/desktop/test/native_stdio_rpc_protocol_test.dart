@@ -175,6 +175,35 @@ void main() {
       throwsA(isA<StdioRpcProtocolViolation>()),
     );
   });
+
+  test('conversation decoder accepts persistent events before native ids', () {
+    final decoder = StdioRpcConversationDecoder(
+      requestId: 'request-1',
+      workflowId: 'workflow-1',
+    );
+    final accepted = decoder.decode(
+      _frame({
+        'protocol': stdioRpcProtocol,
+        'id': 'request-1',
+        'workflowId': 'workflow-1',
+        'kind': 'event',
+        'sequence': 1,
+        'event': {
+          'event': 'agent.turn.processing',
+          'sessionId': '',
+          'turnId': '',
+          'turnHandle': 'turn-1',
+          'conversationId': 'conversation-1',
+          'cursor': 1,
+        },
+      }),
+    );
+    expect(
+      (accepted as StdioRpcConversationEvent).event['turnHandle'],
+      'turn-1',
+    );
+    expect(accepted.event['conversationId'], 'conversation-1');
+  });
 }
 
 Uint8List _frame(Map<String, dynamic> value) =>
