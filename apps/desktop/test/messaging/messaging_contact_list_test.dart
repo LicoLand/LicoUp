@@ -979,6 +979,20 @@ void main() {
       ClientSection.settings,
     ]);
   });
+
+  testWidgets('features tab from chats opens agent hub', (tester) async {
+    final selected = <ClientSection>[];
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      onSelectDestination: selected.add,
+    );
+
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+    await tester.pump();
+
+    expect(selected, [ClientSection.agentHub]);
+  });
 }
 
 TargetCandidate _target(String target, String label) {

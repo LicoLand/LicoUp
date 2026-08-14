@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_c
 import 'package:licoup/src/frontend/features/models/ui/telegram_channel_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 
 enum ModelsPanelPane { gateway, chatChannels }
 
@@ -38,7 +39,7 @@ final class ModelsPanel extends StatelessWidget {
     if (pane == ModelsPanelPane.chatChannels) {
       return ListView(
         key: const Key('models-panel-chat-channels'),
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+        padding: MessagingDesktopMetrics.mainPanePadding,
         children: [
           TelegramChannelCard(
             agentService: controller.agentService,
@@ -51,7 +52,7 @@ final class ModelsPanel extends StatelessWidget {
     return ListView(
       // Release AOT keeps ValueKey/Key strings; use this as an install canary.
       key: const Key('models-panel-licoup-keys-layout-v3-gateway-first'),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+      padding: MessagingDesktopMetrics.mainPanePadding,
       children: [
         Text(
           strings.modelGateway,

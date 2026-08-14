@@ -52,6 +52,15 @@ void main() {
           .first,
     );
     expect(selectedIcon.color, colors.textOnPrimary);
+    final hubIcon = tester.widget<Icon>(
+      find
+          .descendant(
+            of: find.byKey(const Key('dashboard-folder-nav-agentHub')),
+            matching: find.byType(Icon),
+          )
+          .first,
+    );
+    expect(hubIcon.icon, Icons.auto_awesome_outlined);
     expect(tester.takeException(), isNull);
   });
 

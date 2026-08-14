@@ -288,6 +288,11 @@ abstract final class MessagingDesktopMetrics {
   /// edges; the card's top edge meets the chrome band.
   static const double mainCardMargin = 8;
 
+  /// Page inset inside the unified main content card. Every single-pane
+  /// destination (Settings, Models, Skill Hub, Plugins, Monitoring, Mobile
+  /// Relay) uses this same padding so content does not hug the card chrome.
+  static const EdgeInsets mainPanePadding = EdgeInsets.fromLTRB(24, 20, 24, 40);
+
   /// Outer corner radius of the unified content card.
   static const double mainCardCornerRadius = 16;
 

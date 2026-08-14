@@ -8,6 +8,8 @@ import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+
 void main() {
   testWidgets('apply and restart delegates process exit to the platform port', (
     tester,
@@ -18,6 +20,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         supportedLocales: LicoStrings.supportedLocales,
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,

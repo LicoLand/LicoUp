@@ -56,7 +56,6 @@ abstract interface class LayoutSettingsPresentation
   EdgeInsetsGeometry get sectionHeaderPadding;
   EdgeInsetsGeometry get rowPadding;
   EdgeInsetsGeometry get selectorGridPadding;
-  EdgeInsetsGeometry get selectorActionPadding;
 
   Widget frameIndex(
     BuildContext context, {
