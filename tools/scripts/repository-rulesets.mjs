@@ -21,10 +21,8 @@ const requiredStatusContexts = Object.freeze([
   "Client required",
   "Auditor",
 ]);
-const githubNoreplyHostPattern = ["users", "noreply", "github", "com"].join("\\.");
-const canonicalNoreplyPattern = `^[0-9]+\\+[A-Za-z0-9][A-Za-z0-9-]{0,38}@${githubNoreplyHostPattern}$`;
-const canonicalCommitterPattern =
-  `(?:${canonicalNoreplyPattern.slice(1, -1)}|noreply@github\\.com)`;
+const forbiddenAgentEmailPattern =
+  "(?i)(^|[+._-])(claude([+._-]*code)?|cursor([+._-]*agent)?|github[+._-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)([+._@-]|$)|\\[bot\\]";
 const forbiddenCommitMessagePattern =
   "(?i)(^|\\n)[ \\t]*((co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:|(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>)";
 
@@ -130,15 +128,15 @@ export function buildRulesets(actionsIntegrationId) {
       rules: [
         metadataRule(
           "commit_author_email_pattern",
-          "Author must use a canonical GitHub noreply identity",
-          canonicalNoreplyPattern,
-          false,
+          "Agent identities are forbidden as commit Authors",
+          forbiddenAgentEmailPattern,
+          true,
         ),
         metadataRule(
           "committer_email_pattern",
-          "Committer must be the developer or GitHub verified merge service",
-          `^${canonicalCommitterPattern}$`,
-          false,
+          "Agent identities are forbidden as commit Committers",
+          forbiddenAgentEmailPattern,
+          true,
         ),
         metadataRule(
           "commit_message_pattern",

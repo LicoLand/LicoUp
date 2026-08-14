@@ -11,6 +11,7 @@ import {
   assertCommitRecord,
   boundedIdentityRead,
   canonicalGitHubEmail,
+  isAgentIdentity,
   outgoingCommits,
   outgoingObjectChecks,
   parseRawDiffEntries,
@@ -84,16 +85,24 @@ test("GitHub identity parser accepts only a canonical login and numeric account 
   rejectsWithCode(() => parseGitHubIdentity("Agent Name\tnot-numeric"), "GH_IDENTITY_INVALID");
 });
 
-test("commit identity must match the authenticated developer exactly", () => {
-  assert.doesNotThrow(() => assertCommitRecord(validRecord(), identity));
+test("commit history preserves human identities and rejects Agent attribution", () => {
+  assert.doesNotThrow(() => assertCommitRecord(validRecord()));
+  assert.doesNotThrow(() => assertCommitRecord(validRecord({
+    authorName: "Legacy Human",
+    authorEmail: "legacy-human@example.invalid",
+    committerName: "Another Human",
+    committerEmail: "another-human@example.invalid",
+  })));
   rejectsWithCode(
-    () => assertCommitRecord(validRecord({ authorName: "cursor-agent" }), identity),
-    "AUTHOR_IDENTITY_MISMATCH",
+    () => assertCommitRecord(validRecord({ authorName: "cursor-agent" })),
+    "AGENT_AUTHOR_IDENTITY_FORBIDDEN",
   );
   rejectsWithCode(
-    () => assertCommitRecord(validRecord({ committerEmail: "bot@example.invalid" }), identity),
-    "COMMITTER_IDENTITY_MISMATCH",
+    () => assertCommitRecord(validRecord({ committerEmail: "service[bot]@users.noreply.github.com" })),
+    "AGENT_COMMITTER_IDENTITY_FORBIDDEN",
   );
+  assert.equal(isAgentIdentity("Robotics Maintainer", "human@example.invalid"), false);
+  assert.equal(isAgentIdentity("GitHub Actions", "service[bot]@users.noreply.github.com"), true);
 });
 
 test("all attribution trailers are rejected, including Agent co-authorship", () => {
@@ -120,6 +129,16 @@ test("identity-shaped Agent lines are rejected without banning product discussio
   );
 });
 
+test("pull request identity workflow requires a User or verified GitHub merge service", () => {
+  const workflow = readFileSync(".github/workflows/commit-identity.yml", "utf8");
+  assert.doesNotMatch(workflow, /EXPECTED_LOGIN|expected_email/u);
+  assert.match(workflow, /\.type \/\/ ""\) == "User"/u);
+  assert.match(workflow, /login \/\/ ""\) == "web-flow"/u);
+  assert.match(workflow, /\.commit\.verification\.verified == true/u);
+  assert.match(workflow, /has_agent_identity/u);
+  assert.match(workflow, /has_forbidden_attribution/u);
+});
+
 test("three Rulesets cover identity, the release flow, and push publication without bypass", () => {
   const integrationId = 15368;
   const rulesets = buildRulesets(integrationId);
@@ -140,13 +159,20 @@ test("three Rulesets cover identity, the release flow, and push publication with
   const [identityRuleset, promotionRuleset, pushRuleset] = rulesets;
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
+  const authorRule = identityRuleset.rules.find(
+    ({ type }) => type === "commit_author_email_pattern",
+  );
   const committerRule = identityRuleset.rules.find(
     ({ type }) => type === "committer_email_pattern",
   );
-  const committerPattern = new RegExp(committerRule.parameters.pattern);
-  assert.equal(committerPattern.test("123+developer@users.noreply.github.com"), true);
-  assert.equal(committerPattern.test("noreply@github.com"), true);
-  assert.equal(committerPattern.test("bot@example.invalid"), false);
+  for (const rule of [authorRule, committerRule]) {
+    assert.equal(rule.parameters.negate, true);
+    const pattern = new RegExp(rule.parameters.pattern.replace(/^\(\?i\)/u, ""), "iu");
+    assert.equal(pattern.test("123+developer@users.noreply.github.com"), false);
+    assert.equal(pattern.test("legacy-human@example.invalid"), false);
+    assert.equal(pattern.test("cursor-agent@example.invalid"), true);
+    assert.equal(pattern.test("service[bot]@users.noreply.github.com"), true);
+  }
   assert.equal(
     identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,
     1,
@@ -462,7 +488,7 @@ test("outgoing history scan recovers add-rename-delete and rejects the hidden bl
   }
 });
 
-test("a new remote ref scans complete reachable history, including commits reachable elsewhere", () => {
+test("a new remote ref scans only history not already reachable from that remote", () => {
   const fixture = initFixtureRepo();
   try {
     writeFileSync(path.join(fixture.dir, "old.txt"), "old reachable content\n");
@@ -476,7 +502,7 @@ test("a new remote ref scans complete reachable history, including commits reach
     const localTip = fixture.git(["rev-parse", "HEAD"]);
     const input = `refs/heads/new ${localTip} refs/heads/new ${zeroOid}\n`;
     const commits = outgoingCommits(input, "origin", (_command, args) => fixture.git(args));
-    assert.ok(commits.includes(oldCommit));
+    assert.ok(!commits.includes(oldCommit));
     assert.ok(commits.includes(localTip));
   } finally {
     fixture.cleanup();
