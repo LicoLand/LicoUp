@@ -6,7 +6,7 @@ void main() {
   AgentConversationSession session({
     String sourceKind = 'cursor-global-storage',
     String nativeSessionId = 'composer-1',
-    String sourcePath = '/fixture/location/state.vscdb',
+    String sourcePath = '/fixture-root/state.vscdb',
     List<AgentConversationMessage> messages = const [],
   }) {
     return AgentConversationSession(
@@ -87,7 +87,7 @@ void main() {
     );
     expect(prompt, contains('[LicoUp IDE→CLI handoff — once]'));
     expect(prompt, contains('composerSessionId: composer-1'));
-    expect(prompt, contains('stateVscdbPath: /fixture/location/state.vscdb'));
+    expect(prompt, contains('stateVscdbPath: /fixture-root/state.vscdb'));
     expect(prompt, contains('sqliteTable: cursorDiskKV'));
     expect(prompt, contains('keyPrefixes: composerData:composer-1'));
     expect(prompt, contains('Last IDE return about quota fallback.'));

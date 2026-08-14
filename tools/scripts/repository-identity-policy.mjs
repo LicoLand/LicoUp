@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -11,6 +11,10 @@ import {
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  SensitiveContentScanner,
+  classifyPath,
+} from "./lib/repository-sensitive-file-policy.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const zeroObjectId = /^0+$/u;
@@ -19,12 +23,22 @@ const managedPolicyPaths = Object.freeze([
   ".githooks/pre-commit",
   ".githooks/commit-msg",
   ".githooks/pre-push",
+  "package.json",
+  "tools/client-release-template.json",
+  "tools/scripts/client-auditor-preflight.mjs",
+  "tools/scripts/client-gate-policy.mjs",
+  "tools/scripts/client-gate.mjs",
+  "tools/scripts/client-pr-preflight.mjs",
+  "tools/scripts/repository-rulesets.mjs",
   "tools/scripts/repository-identity-policy.mjs",
+  "tools/scripts/lib/repository-sensitive-file-policy.mjs",
 ]);
 const prohibitedAttributionTrailer =
   /(?:^|\r?\n)[ \t]*(?:co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \t]*:/iu;
 const agentIdentityLine =
   /(?:^|\r?\n)[ \t]*(?:claude(?: code)?|cursor(?: agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\r\n<]*(?:agent|bot))[^\r\n]*<[^\r\n>]+>/iu;
+const agentIdentityValue =
+  /(?:\[bot\]|(?:^|[^a-z0-9])(?:claude(?:[ ._+-]*code)?|cursor(?:[ ._+-]*agent)?|github[ ._+-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)(?:[^a-z0-9]|$))/iu;
 const forbiddenStagedPrefixes = Object.freeze([
   ".agents/",
   ".claude/",
@@ -91,16 +105,31 @@ export function parseGitHubIdentity(raw) {
   return Object.freeze({ login, id });
 }
 
+export function boundedIdentityRead(operation, attempts = 3) {
+  if (typeof operation !== "function" || !Number.isSafeInteger(attempts) || attempts < 1) {
+    reject("READ_RETRY_INVALID", "The bounded identity read policy is invalid.");
+  }
+  let failure;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      failure = error;
+      if (attempt < attempts) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 250);
+      }
+    }
+  }
+  throw failure;
+}
+
 function currentGitHubIdentity() {
-  run("gh", ["auth", "status", "--active", "--hostname", "github.com"], {
-    code: "GH_AUTH_REQUIRED",
-    message: "GitHub CLI authentication is required.",
-  });
   return parseGitHubIdentity(
-    run("gh", ["api", "user", "--jq", '[.login, (.id | tostring)] | @tsv'], {
-      code: "GH_IDENTITY_UNAVAILABLE",
-      message: "The authenticated GitHub account could not be resolved.",
-    }),
+    boundedIdentityRead(() =>
+      run("gh", ["api", "user", "--jq", '[.login, (.id | tostring)] | @tsv'], {
+        code: "GH_IDENTITY_UNAVAILABLE",
+        message: "The authenticated GitHub account could not be resolved.",
+      })),
   );
 }
 
@@ -123,18 +152,21 @@ export function assertCommitMessage(message) {
   }
 }
 
-export function assertCommitRecord(record, identity) {
-  const expectedEmail = canonicalGitHubEmail(identity);
-  if (record.authorName !== identity.login || record.authorEmail !== expectedEmail) {
+export function isAgentIdentity(name, email) {
+  return agentIdentityValue.test(`${name || ""} <${email || ""}>`);
+}
+
+export function assertCommitRecord(record) {
+  if (isAgentIdentity(record.authorName, record.authorEmail)) {
     reject(
-      "AUTHOR_IDENTITY_MISMATCH",
-      "The commit Author must be the authenticated GitHub CLI developer.",
+      "AGENT_AUTHOR_IDENTITY_FORBIDDEN",
+      "An Agent must not appear as the commit Author.",
     );
   }
-  if (record.committerName !== identity.login || record.committerEmail !== expectedEmail) {
+  if (isAgentIdentity(record.committerName, record.committerEmail)) {
     reject(
-      "COMMITTER_IDENTITY_MISMATCH",
-      "The commit Committer must be the authenticated GitHub CLI developer.",
+      "AGENT_COMMITTER_IDENTITY_FORBIDDEN",
+      "An Agent must not appear as the commit Committer.",
     );
   }
   assertCommitMessage(record.message);
@@ -260,6 +292,206 @@ function assertStagedCandidate() {
   }
 }
 
+export function parseRawDiffEntries(output) {
+  // Parses `git diff --cached --raw -z` and `git diff-tree -r --root -z`
+  // output. Each entry is `:<src_mode> <dst_mode> <src_oid> <dst_oid> <status>`
+  // followed by NUL-terminated path tokens; rename and copy entries carry the
+  // source path and then the destination path.
+  const tokens = output.split("\0").filter((token) => token.length > 0);
+  const entries = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const fields = tokens[index];
+    if (!fields.startsWith(":")) {
+      index += 1;
+      continue;
+    }
+    const parts = fields.slice(1).split(" ");
+    const status = parts[4] || "";
+    const isRenameOrCopy = status.startsWith("R") || status.startsWith("C");
+    const pathCount = isRenameOrCopy ? 2 : 1;
+    const paths = tokens.slice(index + 1, index + 1 + pathCount);
+    if (paths.some((candidate) => candidate === undefined)) {
+      reject("DIFF_ENTRY_INVALID", "A Git diff entry is invalid.");
+    }
+    entries.push({
+      path: isRenameOrCopy ? paths[1] || paths[0] : paths[0],
+      status: status[0] || "",
+      srcOid: parts[2] || "",
+      dstOid: parts[3] || "",
+    });
+    index += 1 + pathCount;
+  }
+  return entries;
+}
+
+function stagedEntries() {
+  const output = run("git", [
+    "diff",
+    "--cached",
+    "--raw",
+    "-z",
+    "--abbrev=40",
+    "--diff-filter=ACMRTUXB",
+  ]);
+  return parseRawDiffEntries(output);
+}
+
+function outgoingCommitEntries(commits) {
+  const records = [];
+  for (const commit of commits) {
+    const output = run("git", [
+      "diff-tree",
+      "-r",
+      "--root",
+      "-m",
+      "-z",
+      "--abbrev=40",
+      "--no-commit-id",
+      commit,
+    ], {
+      code: "OUTGOING_DIFF_UNAVAILABLE",
+      message: "An outgoing commit diff could not be inspected.",
+    });
+    records.push({ commit, entries: parseRawDiffEntries(output) });
+  }
+  return records;
+}
+
+// Pure staged-object check: sensitive destination paths fail before any
+// content read, and only newly introduced object identifiers are returned.
+export function stagedObjectChecks(entries) {
+  const readOids = new Set();
+  for (const entry of entries) {
+    if (entry.status === "D") continue;
+    if (classifyPath(entry.path).verdict === "reject") {
+      return Object.freeze({ status: "reject", code: "SENSITIVE_PATH_STAGED", readOids: [] });
+    }
+    const { srcOid, dstOid } = entry;
+    if (!zeroObjectId.test(dstOid) && dstOid !== srcOid) readOids.add(dstOid);
+  }
+  return Object.freeze({ status: "pass", readOids: Object.freeze([...readOids]) });
+}
+
+// Pure outgoing-history check across every introduced destination path and
+// newly introduced blob, so add-then-delete and rename histories cannot evade
+// the gate; duplicate object identifiers are read at most once.
+export function outgoingObjectChecks(commitRecords) {
+  const readOids = new Set();
+  for (const record of commitRecords) {
+    for (const entry of record.entries) {
+      if (entry.status === "D") continue;
+      if (classifyPath(entry.path).verdict === "reject") {
+        return Object.freeze({ status: "reject", code: "SENSITIVE_PATH_OUTGOING", readOids: [] });
+      }
+      const { srcOid, dstOid } = entry;
+      if (!zeroObjectId.test(dstOid) && dstOid !== srcOid) readOids.add(dstOid);
+    }
+  }
+  return Object.freeze({ status: "pass", readOids: Object.freeze([...readOids]) });
+}
+
+const SENSITIVE_READ_CHUNK_BYTES = 64 * 1024;
+
+class CatFileBatchReader {
+  constructor() {
+    this.child = spawn("git", ["cat-file", "--batch"], {
+      cwd: repoRoot,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.buffer = Buffer.alloc(0);
+    this.done = false;
+    this.iterator = null;
+    this.stderr = "";
+    this.child.stderr.on("data", (chunk) => {
+      this.stderr += chunk;
+    });
+    this.exitPromise = new Promise((resolve) => {
+      this.child.on("error", (error) => resolve({ error }));
+      this.child.on("close", (exitCode) => resolve({ exitCode }));
+    });
+  }
+
+  async fill() {
+    if (this.iterator === null) this.iterator = this.child.stdout[Symbol.asyncIterator]();
+    const next = await this.iterator.next();
+    if (next.done) {
+      this.done = true;
+      return;
+    }
+    this.buffer = Buffer.concat([this.buffer, next.value]);
+  }
+
+  async readLine() {
+    let newline = this.buffer.indexOf(0x0a);
+    while (newline < 0) {
+      await this.fill();
+      if (this.done) return null;
+      newline = this.buffer.indexOf(0x0a);
+    }
+    const line = this.buffer.subarray(0, newline);
+    this.buffer = this.buffer.subarray(newline + 1);
+    return line.toString("utf8");
+  }
+
+  async readExactly(count) {
+    while (this.buffer.length < count) {
+      await this.fill();
+      if (this.done) return null;
+    }
+    const bytes = this.buffer.subarray(0, count);
+    this.buffer = this.buffer.subarray(count);
+    return bytes;
+  }
+}
+
+async function scanBlobContents(blobIds, code) {
+  const uniqueIds = [...new Set(blobIds)];
+  if (uniqueIds.length === 0) return "pass";
+  const reader = new CatFileBatchReader();
+  reader.child.stdin.write(`${uniqueIds.join("\n")}\n`);
+  reader.child.stdin.end();
+  try {
+    for (const blobId of uniqueIds) {
+      const header = await reader.readLine();
+      if (header === null) {
+        const outcome = await reader.exitPromise;
+        if (outcome.error) throw outcome.error;
+        reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
+      }
+      const parts = header.split(" ");
+      if (parts[0] !== blobId || parts[1] !== "blob" || !/^[0-9]+$/u.test(parts[2] || "")) {
+        reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
+      }
+      const size = Number(parts[2]);
+      const scanner = new SensitiveContentScanner();
+      let remaining = size;
+      while (remaining > 0) {
+        const chunk = await reader.readExactly(Math.min(remaining, SENSITIVE_READ_CHUNK_BYTES));
+        if (chunk === null) {
+          reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
+        }
+        if (scanner.feed(chunk).verdict === "reject") {
+          reject(code, "A staged or outgoing object is rejected by the sensitive-file policy.");
+        }
+        remaining -= chunk.length;
+      }
+      const trailer = await reader.readExactly(1);
+      if (trailer === null) {
+        reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
+      }
+    }
+    const outcome = await reader.exitPromise;
+    if (outcome.error) throw outcome.error;
+    if (outcome.exitCode !== 0 || reader.stderr.trim() !== "") {
+      reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
+    }
+  } finally {
+    reader.child.kill();
+  }
+  return "pass";
+}
+
 function writeStagedReceipt() {
   const tree = run("git", ["write-tree"], {
     code: "STAGED_TREE_UNAVAILABLE",
@@ -305,7 +537,7 @@ function readCommitRecord(commit) {
   return { authorName, authorEmail, committerName, committerEmail, message };
 }
 
-function outgoingCommits(input, remoteName) {
+export function outgoingCommits(input, remoteName, execute = run) {
   const commits = new Set();
   for (const line of input.split(/\r?\n/u)) {
     if (!line.trim()) continue;
@@ -321,7 +553,7 @@ function outgoingCommits(input, remoteName) {
     } else {
       args.push(`^${remoteObjectId}`);
     }
-    const result = run("git", args, {
+    const result = execute("git", args, {
       code: "OUTGOING_RANGE_UNAVAILABLE",
       message: "The complete outgoing commit range could not be inspected.",
     });
@@ -348,9 +580,14 @@ function install() {
   process.stdout.write("identity_policy=installed\n");
 }
 
-function preCommit() {
+async function preCommit() {
   verifyLocalIdentityAndPolicy();
   assertStagedCandidate();
+  const checks = stagedObjectChecks(stagedEntries());
+  if (checks.status === "reject") {
+    reject(checks.code, "The staged candidate is rejected by the sensitive-file policy.");
+  }
+  await scanBlobContents(checks.readOids, "SENSITIVE_OBJECT_STAGED");
   writeStagedReceipt();
 }
 
@@ -366,17 +603,22 @@ function commitMessage(messagePath) {
   assertCommitMessage(message);
 }
 
-function prePush(remoteName) {
-  const identity = verifyLocalIdentityAndPolicy();
+async function prePush(remoteName) {
+  verifyLocalIdentityAndPolicy();
   const input = readFileSync(0, "utf8");
   const commits = outgoingCommits(input, remoteName);
   for (const commit of commits) {
-    assertCommitRecord(readCommitRecord(commit), identity);
+    assertCommitRecord(readCommitRecord(commit));
   }
+  const checks = outgoingObjectChecks(outgoingCommitEntries(commits));
+  if (checks.status === "reject") {
+    reject(checks.code, "The outgoing history is rejected by the sensitive-file policy.");
+  }
+  await scanBlobContents(checks.readOids, "SENSITIVE_OBJECT_OUTGOING");
   process.stdout.write(`identity_policy=passed commits=${commits.length}\n`);
 }
 
-function main() {
+async function main() {
   const [command, ...args] = process.argv.slice(2);
   switch (command) {
     case "install":
@@ -387,7 +629,7 @@ function main() {
       process.stdout.write("identity_policy=passed\n");
       break;
     case "pre-commit":
-      preCommit();
+      await preCommit();
       break;
     case "commit-msg":
       if (args.length !== 1) reject("USAGE", "commit-msg requires one message path.");
@@ -395,7 +637,7 @@ function main() {
       break;
     case "pre-push":
       if (args.length < 1) reject("USAGE", "pre-push requires a remote name.");
-      prePush(args[0]);
+      await prePush(args[0]);
       break;
     default:
       reject("USAGE", "Use install, verify, pre-commit, commit-msg, or pre-push.");
@@ -403,13 +645,11 @@ function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     const code = error instanceof IdentityPolicyError ? error.code : "UNEXPECTED_FAILURE";
     const message =
       error instanceof IdentityPolicyError ? error.message : "The identity policy failed closed.";
     process.stderr.write(`LicoUp identity gate: ${code}: ${message}\n`);
     process.exitCode = 1;
-  }
+  });
 }

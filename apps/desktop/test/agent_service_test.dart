@@ -367,78 +367,6 @@ exec sleep 5
     expect(pairings, isEmpty);
   });
 
-  test('builds skill install command arguments', () async {
-    final captured = <List<String>>[];
-    final agentService = AgentService(
-      runCliExecutable: (executable, args, env) {
-        captured.add(List<String>.from(args));
-        return Future.value(ProcessResult(0, 0, '{"ok":true}', ''));
-      },
-    );
-
-    await agentService.planSkillInstall(
-      agent: 'codex',
-      url: ' https://github.com/example/skills/tree/main/review ',
-      installRoot: ' test-data/codex-skills ',
-      name: ' review-helper ',
-      overwrite: true,
-    );
-    await agentService.applySkillInstall(
-      agent: 'codex',
-      url: 'https://github.com/example/skills/tree/main/review',
-      installRoot: 'test-data/codex-skills',
-      name: 'review-helper',
-      overwrite: true,
-      pin: true,
-    );
-    await agentService.rollbackSkillInstall(
-      agent: 'codex',
-      snapshotId: 'skill-install-snapshot-1',
-    );
-
-    expect(captured[0], [
-      'skill',
-      'install',
-      'plan',
-      '--agent',
-      'codex',
-      '--url',
-      'https://github.com/example/skills/tree/main/review',
-      '--install-root',
-      'test-data/codex-skills',
-      '--name',
-      'review-helper',
-      '--overwrite',
-      'true',
-    ]);
-    expect(captured[1], [
-      'skill',
-      'install',
-      'apply',
-      '--agent',
-      'codex',
-      '--url',
-      'https://github.com/example/skills/tree/main/review',
-      '--install-root',
-      'test-data/codex-skills',
-      '--name',
-      'review-helper',
-      '--overwrite',
-      'true',
-      '--pin',
-      'true',
-    ]);
-    expect(captured[2], [
-      'skill',
-      'install',
-      'rollback',
-      '--agent',
-      'codex',
-      '--snapshot-id',
-      'skill-install-snapshot-1',
-    ]);
-  });
-
   test(
     'macOS runCli lazily reuses one serialized stdio RPC workflow',
     () async {
@@ -619,7 +547,7 @@ done
   );
 
   test(
-    'macOS process-local controls and send share one persistent RPC host',
+    'macOS conversation send is isolated from non-dispatch stdio RPC',
     () async {
       if (!Platform.isMacOS) {
         return;
@@ -633,18 +561,19 @@ done
       await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 marker="$dir/rpc-events.log"
-printf 'started\n' >> "$marker"
+lane="$*"
+printf 'started:%s\n' "$lane" >> "$marker"
 while IFS= read -r line; do
   id=$(printf '%s\n' "$line" | sed -E 's/.*"id":"([^"]+)".*/\1/')
   workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
   case "$line" in
     *'"method":"shutdown"'*)
-      printf 'shutdown:%s\n' "$workflow" >> "$marker"
+      printf 'shutdown:%s:%s\n' "$lane" "$workflow" >> "$marker"
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
       exit 0
       ;;
     *'"method":"agent.conversation.send"'*)
-      printf 'send:%s\n' "$workflow" >> "$marker"
+      printf 'send:%s:%s\n' "$lane" "$workflow" >> "$marker"
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-1","payload":{"text":"chunk"}}}\n' "$id" "$workflow"
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-1","turnStatus":"completed"}}\n' "$id" "$workflow"
       ;;
@@ -655,7 +584,7 @@ while IFS= read -r line; do
     *) operation=unexpected ;;
   esac
   if [ "${operation:-}" != "" ]; then
-    printf '%s:%s\n' "$operation" "$workflow" >> "$marker"
+    printf '%s:%s:%s\n' "$operation" "$lane" "$workflow" >> "$marker"
     printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"operation":"%s"}}\n' "$id" "$workflow" "$operation"
     operation=
   fi
@@ -700,19 +629,39 @@ done
       await service.dispose();
 
       final rows = await marker.readAsLines();
-      expect(rows.where((row) => row == 'started'), hasLength(1));
-      final operations = rows.where((row) => row != 'started').toList();
+      expect(rows.where((row) => row.startsWith('started:')), [
+        'started:rpc stdio',
+        'started:rpc conversation',
+      ]);
+      final operations = rows
+          .where(
+            (row) =>
+                !row.startsWith('started:') && !row.startsWith('shutdown:'),
+          )
+          .toList();
       expect(operations.map((row) => row.split(':').first), [
         'open',
         'capabilities',
         'history',
         'send',
         'cleanup',
-        'shutdown',
+      ]);
+      expect(operations.map((row) => row.split(':')[1]), [
+        'rpc stdio',
+        'rpc stdio',
+        'rpc stdio',
+        'rpc conversation',
+        'rpc stdio',
       ]);
       expect(
         operations.map((row) => row.split(':').last).toSet(),
         hasLength(1),
+      );
+      expect(
+        rows
+            .where((row) => row.startsWith('shutdown:'))
+            .map((row) => row.split(':')[1]),
+        ['rpc stdio'],
       );
     },
   );

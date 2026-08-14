@@ -106,7 +106,9 @@ export function failedProcessLocalFactCode(facts) {
 }
 
 export function roundConversationFactsReady(facts) {
-  return facts.nativeToArc
+  return facts.openNew
+    && facts.exactResume
+    && facts.nativeToArc
     && facts.arcToNative
     && facts.realSessionIds
     && facts.finalCanaries
@@ -125,31 +127,22 @@ export function failedParityFactCode(facts) {
     const presentMask = [
       facts.nativeFirstFinalCanaryPresent,
       facts.arcResumeFinalCanaryPresent,
-      facts.arcFirstFinalCanaryPresent,
-      facts.nativeResumeFinalCanaryPresent,
     ].map((value) => value === true ? "1" : "0").join("");
     const exactMask = [
       facts.nativeFirstFinalCanary,
       facts.arcResumeFinalCanary,
-      facts.arcFirstFinalCanary,
-      facts.nativeResumeFinalCanary,
     ].map((value) => value === true ? "1" : "0").join("");
     const normalizedMask = [
       facts.nativeFirstFinalCanaryNormalized,
       facts.arcResumeFinalCanaryNormalized,
-      facts.arcFirstFinalCanaryNormalized,
-      facts.nativeResumeFinalCanaryNormalized,
     ].map((value) => value === true ? "1" : "0").join("");
     const equalityMask = [
       facts.firstSessionOutputsEqual,
-      facts.secondSessionOutputsEqual,
       facts.allOutputsEqual,
     ].map((value) => value === true ? "1" : "0").join("");
     const categoryMask = [
       facts.nativeFirstOutputCategory,
       facts.arcResumeOutputCategory,
-      facts.arcFirstOutputCategory,
-      facts.nativeResumeOutputCategory,
     ].map((value) => /^[aqpsro]$/u.test(value) ? value : "o").join("");
     return `parity_final_p${presentMask}_n${normalizedMask}_e${exactMask}_q${equalityMask}_c${categoryMask}`;
   }
@@ -157,6 +150,8 @@ export function failedParityFactCode(facts) {
     return `parity_settings_m${facts.settingsParityMask}_failed`;
   }
   const orderedFacts = [
+    ["openNew", "open_new"],
+    ["exactResume", "exact_resume"],
     ["nativeToArc", "native_to_arc"],
     ["arcToNative", "arc_to_native"],
     ["realSessionIds", "real_session_ids"],
@@ -164,10 +159,6 @@ export function failedParityFactCode(facts) {
     ["nativeFirstFinalCanary", "native_first_final_canary"],
     ["arcResumeFinalCanaryPresent", "arc_resume_final_canary_missing"],
     ["arcResumeFinalCanary", "arc_resume_final_canary"],
-    ["arcFirstFinalCanaryPresent", "arc_first_final_canary_missing"],
-    ["arcFirstFinalCanary", "arc_first_final_canary"],
-    ["nativeResumeFinalCanaryPresent", "native_resume_final_canary_missing"],
-    ["nativeResumeFinalCanary", "native_resume_final_canary"],
     ["finalCanaries", "final_canaries"],
     ["cwdParity", "cwd_parity"],
     ["settingsParity", "settings_parity"],

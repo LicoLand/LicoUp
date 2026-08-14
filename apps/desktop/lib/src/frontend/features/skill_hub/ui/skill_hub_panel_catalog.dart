@@ -5,6 +5,7 @@ import 'package:licoup/src/application/features/skill_hub/models/skill_agent_com
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SkillCategoryFilter extends StatelessWidget {
@@ -105,6 +106,7 @@ class SkillCollection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
     final skills = controller.skillHubSkills.where((skill) {
       final isPublic = skill['isPublic'] == true;
       if (selectedCategory == 'public') return isPublic;
@@ -119,9 +121,15 @@ class SkillCollection extends StatelessWidget {
       );
     }
     if (skills.isEmpty) {
-      return const SliverFillRemaining(
+      return SliverFillRemaining(
         hasScrollBody: false,
-        child: SkillEmptyPlaceholder(),
+        child: LicoEmptyState(
+          icon: Icons.extension_outlined,
+          iconSize: 64,
+          title: strings.noSkillsFound,
+          message: strings.refreshSkillsHint,
+          padding: const EdgeInsets.all(32),
+        ),
       );
     }
 

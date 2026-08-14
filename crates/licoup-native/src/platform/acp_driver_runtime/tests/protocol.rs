@@ -211,3 +211,63 @@ fn prompt_drain_rejects_mismatched_and_malformed_late_notifications() {
         assert_eq!(protocol.phase, ProtocolPhase::Finished);
     }
 }
+
+#[test]
+fn interleaved_updates_keep_both_public_views_complete_and_ordered() {
+    let mut protocol = new_protocol(json!({}), "private", "");
+    protocol.handle_message(initialize_response(true, true));
+    protocol.handle_message(json!({
+        "jsonrpc": "2.0", "id": SESSION_REQUEST_ID,
+        "result": {"sessionId": "native-session", "configOptions": []}
+    }));
+
+    for text in ["first ", "second ", "third"] {
+        let effects = protocol.handle_message(json!({
+            "jsonrpc": "2.0", "method": "session/update",
+            "params": {"sessionId": "native-session", "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": text}
+            }}
+        }));
+        assert!(effects.is_empty());
+        let effects = protocol.handle_message(json!({
+            "jsonrpc": "2.0", "method": "session/update",
+            "params": {"sessionId": "native-session", "update": {
+                "sessionUpdate": "available_commands_update",
+                "availableCommands": [{"name": "compact", "description": "Summarize"}]
+            }}
+        }));
+        assert!(effects.is_empty());
+    }
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0", "id": PROMPT_REQUEST_ID,
+        "result": {"stopReason": "end_turn"}
+    }));
+    assert!(effects.is_empty());
+    let effects = protocol.finish_prompt_drain();
+    let ProtocolEffect::Complete(outcome) = &effects[0] else {
+        panic!("expected completion after the interleaved updates")
+    };
+    assert_eq!(outcome.output, "first second third");
+    assert_eq!(outcome.events.len(), 6);
+    let kinds: Vec<&str> = outcome
+        .events
+        .iter()
+        .map(|event| event["sessionUpdate"].as_str().expect("update kind"))
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "agent_message_chunk",
+            "available_commands_update",
+            "agent_message_chunk",
+            "available_commands_update",
+            "agent_message_chunk",
+            "available_commands_update",
+        ]
+    );
+    assert_eq!(outcome.events[0]["content"]["text"], "first ");
+    assert_eq!(outcome.events[2]["content"]["text"], "second ");
+    assert_eq!(outcome.events[4]["content"]["text"], "third");
+}

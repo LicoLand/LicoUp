@@ -18,7 +18,7 @@ void main() {
     );
 
     expect(fellBack, isTrue);
-    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
     expect(controller.appearancePresetLoadErrors, [
       'external_preset_invalid:1',
     ]);
@@ -48,7 +48,7 @@ void main() {
         AppearancePresetIds.licoSodaLight,
       ]),
     );
-    expect(controller.appearancePresetLabel, 'System Default');
+    expect(controller.appearancePresetLabel, 'LicoUp Dark');
     expect(
       controller.applyAppearanceCatalog(
         configs: const [],

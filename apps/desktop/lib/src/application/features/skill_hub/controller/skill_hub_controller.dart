@@ -5,7 +5,7 @@ import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/contracts/skill_hub_preferences.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
-/// Owns Skill Hub catalog, pairing, installation and visual preferences.
+/// Owns the local Skill Hub catalog, pairing, and visual preferences.
 class SkillHubController extends ChangeNotifier {
   SkillHubController({
     required SkillHubGateway gateway,
@@ -45,8 +45,6 @@ class SkillHubController extends ChangeNotifier {
   List<Map<String, dynamic>> skills = const [];
   SkillHubPreferences preferences = SkillHubPreferences.defaults();
   Map<String, dynamic>? actionResult;
-  Map<String, dynamic>? installPlan;
-  Map<String, dynamic>? installResult;
   bool busy = false;
   String lastErrorCode = '';
 
@@ -78,16 +76,6 @@ class SkillHubController extends ChangeNotifier {
 
   void replaceActionResult(Map<String, dynamic>? value) {
     actionResult = value;
-    notifyListeners();
-  }
-
-  void replaceInstallPlan(Map<String, dynamic>? value) {
-    installPlan = value;
-    notifyListeners();
-  }
-
-  void replaceInstallResult(Map<String, dynamic>? value) {
-    installResult = value;
     notifyListeners();
   }
 
@@ -265,101 +253,6 @@ class SkillHubController extends ChangeNotifier {
           SkillHubStatusUpdate(
             chinese: '已撤销 $agent 配对。',
             english: 'Revoked pairing for $agent.',
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> previewInstall({
-    required String agent,
-    required String url,
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-  }) async {
-    await _run(
-      busyChinese: '正在读取 GitHub 技能包。',
-      busyEnglish: 'Reading the GitHub skill package.',
-      action: () async {
-        installPlan = await _gateway.planSkillInstall(
-          agent: agent,
-          url: url,
-          installRoot: installRoot,
-          name: name,
-          overwrite: overwrite,
-        );
-        actionResult = installPlan;
-        final skillId = (installPlan?['skillId'] ?? '').toString();
-        final status = (installPlan?['status'] ?? '').toString();
-        _onStatus(
-          SkillHubStatusUpdate(
-            chinese: skillId.isEmpty
-                ? '已生成技能安装计划。'
-                : '已生成 $skillId 的技能安装计划：$status。',
-            english: skillId.isEmpty
-                ? 'Generated the skill install plan.'
-                : 'Generated the skill install plan for $skillId: $status.',
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> installFromGitHub({
-    required String agent,
-    required String url,
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-    bool pin = false,
-  }) async {
-    await _run(
-      busyChinese: '正在安装 GitHub 技能包。',
-      busyEnglish: 'Installing the GitHub skill package.',
-      action: () async {
-        installResult = await _gateway.applySkillInstall(
-          agent: agent,
-          url: url,
-          installRoot: installRoot,
-          name: name,
-          overwrite: overwrite,
-          pin: pin,
-        );
-        actionResult = installResult;
-        pairings = List.unmodifiable(await _gateway.listPairings(agent: agent));
-        skills = List.unmodifiable(await _gateway.listSkills(agent: agent));
-        final skillId = (installResult?['skillId'] ?? '').toString();
-        _onStatus(
-          SkillHubStatusUpdate(
-            chinese: skillId.isEmpty ? '技能安装完成。' : '已安装 $skillId。',
-            english: skillId.isEmpty
-                ? 'Finished installing the skill.'
-                : 'Installed $skillId.',
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> rollbackInstall({
-    required String agent,
-    required String snapshotId,
-  }) async {
-    await _run(
-      busyChinese: '正在回滚技能安装。',
-      busyEnglish: 'Rolling back the skill installation.',
-      action: () async {
-        installResult = await _gateway.rollbackSkillInstall(
-          agent: agent,
-          snapshotId: snapshotId,
-        );
-        actionResult = installResult;
-        skills = List.unmodifiable(await _gateway.listSkills(agent: agent));
-        _onStatus(
-          SkillHubStatusUpdate(
-            chinese: '已回滚技能安装快照 $snapshotId。',
-            english: 'Rolled back skill installation snapshot $snapshotId.',
           ),
         );
       },

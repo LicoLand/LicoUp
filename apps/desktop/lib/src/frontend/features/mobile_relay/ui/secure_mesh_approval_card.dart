@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SecureMeshApprovalCard extends StatelessWidget {
@@ -25,7 +26,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         border: Border.all(color: colors.line.withAlpha(90)),
       ),
       child: Column(
@@ -72,7 +73,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
               key: Key('secure-mesh-approval-item-${item.pendingOperationId}'),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(LicoRadius.floating),
                 border: Border.all(color: colors.line.withAlpha(70)),
               ),
               child: Column(
