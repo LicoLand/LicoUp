@@ -279,10 +279,13 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
         vec!["user", "reasoning", "tool_call", "tool_result", "agent"]
     );
     assert_eq!(messages[0]["text"], "Kimi Code synthetic prompt");
-    assert_eq!(messages[1]["text"], "Reasoning details are redacted.");
+    assert_eq!(
+        messages[1]["text"],
+        "PRIVATE_REASONING_CANARY second private chunk"
+    );
     assert!(messages[1].get("providerSummary").is_none());
     assert_eq!(messages[2]["cardType"], "tool-call");
-    assert_eq!(messages[2]["text"], "Invocation details are hidden.");
+    assert_eq!(messages[2]["text"], "command: api_key: [redacted]");
     assert_eq!(messages[3]["cardType"], "tool-result");
     assert_eq!(messages[4]["text"], "Final answer");
     assert_eq!(
@@ -300,6 +303,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
         1
     );
     let serialized = serde_json::to_string(messages).unwrap();
-    assert!(!serialized.contains(reasoning_canary));
+    // Reasoning detail is shown locally, but secret argument values stay
+    // redacted in the projected tool call.
     assert!(!serialized.contains(argument_canary));
 }

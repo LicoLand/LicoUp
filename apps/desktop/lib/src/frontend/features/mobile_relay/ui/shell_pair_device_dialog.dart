@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
@@ -12,7 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 typedef PairDeviceScannerPreviewBuilder =
     Widget Function(
       BuildContext context,
-      Future<void> Function(BarcodeCapture capture) onDetect,
+      Future<void> Function(String value) onDetect,
     );
 
 class PairDeviceDialog extends StatefulWidget {
@@ -32,7 +30,6 @@ class PairDeviceDialog extends StatefulWidget {
 }
 
 class _PairDeviceDialogState extends State<PairDeviceDialog> {
-  late final MobileScannerController _scannerController;
   final TextEditingController _tokenController = TextEditingController();
   bool _submitting = false;
   bool _scanStatusError = false;
@@ -41,11 +38,6 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
   @override
   void initState() {
     super.initState();
-    _scannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      formats: const [BarcodeFormat.qrCode],
-      autoZoom: true,
-    );
     _tokenController.addListener(_handleTokenChanged);
   }
 
@@ -54,17 +46,12 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
     _tokenController
       ..removeListener(_handleTokenChanged)
       ..dispose();
-    unawaited(_scannerController.dispose());
     super.dispose();
   }
 
   void _handleTokenChanged() {
     setState(() {});
   }
-
-  bool get _usesRealScanner =>
-      widget.scannerPreviewBuilder == null &&
-      widget.scannerPreviewOverride == null;
 
   @override
   Widget build(BuildContext context) {
@@ -146,16 +133,9 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                                   _handleCapture,
                                 ) ??
                                 widget.scannerPreviewOverride ??
-                                MobileScanner(
-                                  controller: _scannerController,
-                                  fit: BoxFit.cover,
-                                  onDetect: _handleCapture,
-                                  errorBuilder: (context, error) =>
-                                      _ScannerErrorPanel(
-                                        message:
-                                            error.errorDetails?.message ??
-                                            error.toString(),
-                                      ),
+                                const _ScannerErrorPanel(
+                                  message:
+                                      'QR scanning is available only in the mobile app.',
                                 ),
                             IgnorePointer(
                               child: DecoratedBox(
@@ -281,17 +261,8 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
     );
   }
 
-  Future<void> _handleCapture(BarcodeCapture capture) async {
-    if (_submitting) {
-      return;
-    }
-    for (final barcode in capture.barcodes) {
-      final raw = _barcodeText(barcode);
-      if (raw.isNotEmpty) {
-        await _submit(raw);
-        return;
-      }
-    }
+  Future<void> _handleCapture(String value) async {
+    await _submit(value);
   }
 
   Future<void> _submitToken() async {
@@ -308,7 +279,6 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
       _scanStatusError = false;
       _scanStatus = LicoStrings.of(context).pairingQrDetected;
     });
-    await _stopScannerIfActive();
     try {
       await widget.onClaim(trimmed);
     } catch (error) {
@@ -320,7 +290,6 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
         _scanStatusError = true;
         _scanStatus = LicoStrings.of(context).pairingScanFailed;
       });
-      await _startScannerIfActive();
       return;
     }
     if (!mounted) {
@@ -339,52 +308,6 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
       navigator.pop();
     }
   }
-
-  Future<void> _stopScannerIfActive() async {
-    if (!_usesRealScanner) {
-      return;
-    }
-    try {
-      await _scannerController.stop();
-    } catch (error) {
-      debugPrint('Failed to stop pairing QR scanner: $error');
-    }
-  }
-
-  Future<void> _startScannerIfActive() async {
-    if (!_usesRealScanner) {
-      return;
-    }
-    try {
-      await _scannerController.start();
-    } catch (error) {
-      debugPrint('Failed to restart pairing QR scanner: $error');
-    }
-  }
-}
-
-String _barcodeText(Barcode barcode) {
-  for (final candidate in [
-    barcode.rawValue,
-    barcode.displayValue,
-    _decodedBarcodeBytes(barcode.rawDecodedBytes),
-  ]) {
-    final value = candidate?.trim() ?? '';
-    if (value.isNotEmpty) {
-      return value;
-    }
-  }
-  return '';
-}
-
-String? _decodedBarcodeBytes(BarcodeBytes? bytes) {
-  if (bytes is DecodedBarcodeBytes) {
-    return utf8.decode(bytes.bytes, allowMalformed: true);
-  }
-  if (bytes is DecodedVisionBarcodeBytes) {
-    return utf8.decode(bytes.bytes ?? bytes.rawBytes, allowMalformed: true);
-  }
-  return null;
 }
 
 class _ScannerErrorPanel extends StatelessWidget {

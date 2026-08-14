@@ -21,6 +21,7 @@ void registerClientPreloadScenarios() {
         agentService: service,
         mobileRelayService: relayService,
       );
+      addTearDown(controller.currentViewTracker.flush);
       addTearDown(controller.dispose);
 
       await controller.initialize();
@@ -74,6 +75,7 @@ void registerClientPreloadScenarios() {
           agentsTaskDone = true;
         },
       );
+      addTearDown(controller.currentViewTracker.flush);
       addTearDown(controller.dispose);
 
       final initializing = controller.initialize();

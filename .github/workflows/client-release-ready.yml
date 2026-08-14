@@ -1,0 +1,38 @@
+name: Release ready
+
+on:
+  pull_request:
+    branches:
+      - release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-ready-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  release-ready:
+    name: Release ready
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Verify promotion source
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"
+          test "$HEAD_BRANCH" = stable
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Verify promotion and publication topology
+        run: npm run client:gate:topology
+      - name: Verify release authority and publication readiness
+        run: npm run client:gate:release-policy

@@ -75,6 +75,7 @@ final class LicoIconButton extends StatefulWidget {
     this.radius,
     this.selected = false,
     this.badge = false,
+    this.busy = false,
   }) : assert(
          shape != LicoIconButtonShape.concentric || radius != null,
          'lico_icon_button_concentric_requires_radius',
@@ -97,6 +98,10 @@ final class LicoIconButton extends StatefulWidget {
   /// Draws an accent dot at the trailing top corner.
   final bool badge;
 
+  /// Replaces the glyph with a progress indicator and blocks presses while
+  /// the action is in flight.
+  final bool busy;
+
   @override
   State<LicoIconButton> createState() => _LicoIconButtonState();
 }
@@ -108,7 +113,7 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final enabled = widget.onPressed != null;
+    final enabled = widget.onPressed != null && !widget.busy;
     final active = enabled && (_hovered || _pressed);
 
     final borderRadius = switch (widget.shape) {
@@ -172,17 +177,27 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
                 clipBehavior: Clip.none,
                 alignment: Alignment.center,
                 children: [
-                  IconTheme.merge(
-                    data: IconThemeData(
-                      size: widget.size.iconSize,
-                      color: _iconColor(
-                        colors,
-                        enabled: enabled,
-                        active: active,
+                  if (widget.busy)
+                    SizedBox(
+                      width: widget.size.iconSize,
+                      height: widget.size.iconSize,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.textMuted,
                       ),
+                    )
+                  else
+                    IconTheme.merge(
+                      data: IconThemeData(
+                        size: widget.size.iconSize,
+                        color: _iconColor(
+                          colors,
+                          enabled: enabled,
+                          active: active,
+                        ),
+                      ),
+                      child: widget.icon,
                     ),
-                    child: widget.icon,
-                  ),
                   if (widget.badge)
                     Positioned(
                       top: 0,

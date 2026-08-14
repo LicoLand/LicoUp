@@ -2,53 +2,68 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 
 const int defaultLlmGatewayPort = 15722;
 const String llmGatewayPortSettingsKey = 'llmGatewayPort';
 
 enum LlmGatewayRuntimeState { unknown, running, stopped, unhealthy }
 
-enum LlmGatewayNoticeKind {
-  initializationFailed,
-  unexpectedExit,
-  monitorUnavailable,
-  restartFailed,
-}
+enum LlmGatewayNoticeKind { recovering, recoveryFailed }
 
 /// Owns the application-wide LLM Gateway lifecycle.
 ///
-/// Production creates exactly one instance. Initialization starts only the
-/// local service, polling observes unexpected exits, and explicit starts apply
-/// any credential session that the independent authorization flow has loaded.
+/// Production creates exactly one instance. Initialization starts the local
+/// service, one coalesced monitor observes it, and runtime faults are recovered
+/// automatically before a terminal notification is shown.
 final class LlmGatewayLifecycleController extends ChangeNotifier {
   LlmGatewayLifecycleController({
     required AgentCommandRunner agentService,
     required Future<Map<String, Object?>> Function() readSettings,
     Duration monitorInterval = const Duration(seconds: 5),
+    Duration recoveryRetryDelay = const Duration(milliseconds: 500),
+    LlmGatewayDiagnosticSink diagnosticSink =
+        const NoopLlmGatewayDiagnosticSink(),
   }) : _agentService = agentService,
        _readSettings = readSettings,
-       _monitorInterval = monitorInterval;
+       _monitorInterval = monitorInterval,
+       _recoveryRetryDelay = recoveryRetryDelay,
+       _diagnosticSink = diagnosticSink;
+
+  static const int maxRecoveryAttempts = 3;
+  static final RegExp _stableErrorCode = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
 
   final AgentCommandRunner _agentService;
   final Future<Map<String, Object?>> Function() _readSettings;
   final Duration _monitorInterval;
+  final Duration _recoveryRetryDelay;
+  final LlmGatewayDiagnosticSink _diagnosticSink;
 
   Timer? _monitor;
+  Future<void>? _pollFuture;
+  Future<void>? _recoveryFuture;
   bool _disposed = false;
   bool _initialized = false;
   bool _busy = false;
+  bool _recovering = false;
   bool _expectedRunning = false;
   bool _observedRunning = false;
   bool _managed = false;
+  bool _automaticRecoveryExhausted = false;
   int _consecutiveMonitorFailures = 0;
+  int _recoveryAttempt = 0;
+  int _autoRevealRevision = 0;
   int _port = defaultLlmGatewayPort;
   LlmGatewayRuntimeState _state = LlmGatewayRuntimeState.unknown;
   LlmGatewayNoticeKind? _notice;
   Map<String, dynamic>? _lastReport;
 
   bool get busy => _busy;
+  bool get recovering => _recovering;
   bool get managed => _managed;
   int get port => _port;
+  int get recoveryAttempt => _recoveryAttempt;
+  int get autoRevealRevision => _autoRevealRevision;
   LlmGatewayRuntimeState get state => _state;
   LlmGatewayNoticeKind? get notice => _notice;
   Map<String, dynamic>? get lastReport => _lastReport;
@@ -59,53 +74,46 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
     _port = await _settingsPort();
     _expectedRunning = true;
     _setBusy(true);
+    String? initializationFailure;
     try {
       final report = await _runService('initialize');
       _applyReport(report);
       if (_state != LlmGatewayRuntimeState.running) {
-        _notice = LlmGatewayNoticeKind.initializationFailed;
+        initializationFailure = 'service_${_state.name}';
       }
-    } catch (_) {
+    } on Object catch (error) {
       _state = LlmGatewayRuntimeState.unknown;
-      _notice = LlmGatewayNoticeKind.initializationFailed;
+      initializationFailure = _safeErrorCode(error);
     } finally {
       _setBusy(false);
-      _startMonitor();
     }
+
+    if (initializationFailure != null) {
+      _recordDiagnostic(
+        LlmGatewayDiagnosticEvent.initializationFailed,
+        errorCode: initializationFailure,
+      );
+      // Cold-start recovery is intentionally silent: the bell carries a badge
+      // but does not pin its panel open over the restored user view.
+      await _recover(autoReveal: false);
+    }
+    _startMonitor();
   }
 
   Future<void> start() => restart();
 
   Future<void> restart() async {
-    if (_disposed || _busy) return;
+    if (_disposed) return;
     _port = await _settingsPort();
     _expectedRunning = true;
-    _setBusy(true);
-    try {
-      if (_state == LlmGatewayRuntimeState.unhealthy && _managed) {
-        try {
-          await _runService('stop');
-        } catch (_) {
-          // Start owns the final typed result. A stale unhealthy process may
-          // already have exited between the monitor probe and this action.
-        }
-      }
-      final report = await _runService('start');
-      _applyReport(report);
-      _notice = _state == LlmGatewayRuntimeState.running
-          ? null
-          : LlmGatewayNoticeKind.restartFailed;
-    } catch (_) {
-      _notice = LlmGatewayNoticeKind.restartFailed;
-    } finally {
-      _setBusy(false);
-    }
+    _automaticRecoveryExhausted = false;
+    await _recover(autoReveal: false);
   }
 
   Future<void> stop() async {
     if (_disposed || _busy) return;
     _expectedRunning = false;
-    _notice = null;
+    _clearRecoveryProjection();
     _setBusy(true);
     try {
       _applyReport(await _runService('stop'));
@@ -114,9 +122,20 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
     }
   }
 
-  /// Public test and UI refresh seam. The periodic monitor calls the same
-  /// method, so no second lifecycle implementation exists.
-  Future<void> pollNow() async {
+  /// Public test and UI refresh seam. Periodic calls share one in-flight
+  /// request so a slow native command cannot build an overlapping poll queue.
+  Future<void> pollNow() {
+    final active = _pollFuture;
+    if (active != null) return active;
+    late final Future<void> poll;
+    poll = _pollOnce().whenComplete(() {
+      if (identical(_pollFuture, poll)) _pollFuture = null;
+    });
+    _pollFuture = poll;
+    return poll;
+  }
+
+  Future<void> _pollOnce() async {
     if (_disposed || _busy || !_initialized) return;
     try {
       final report = await _runService('status');
@@ -124,21 +143,103 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
       _applyReport(report);
       if (_expectedRunning &&
           _observedRunning &&
+          !_automaticRecoveryExhausted &&
           _state != LlmGatewayRuntimeState.running) {
-        _setNotice(LlmGatewayNoticeKind.unexpectedExit);
+        await _recover(autoReveal: true);
       } else if (_state == LlmGatewayRuntimeState.running &&
-          (_notice == LlmGatewayNoticeKind.unexpectedExit ||
-              _notice == LlmGatewayNoticeKind.monitorUnavailable)) {
-        _setNotice(null);
+          _notice == LlmGatewayNoticeKind.recoveryFailed) {
+        _clearRecoveryProjection();
       }
-    } catch (_) {
+    } on Object catch (error) {
       _consecutiveMonitorFailures += 1;
       if (_expectedRunning &&
           _observedRunning &&
+          !_automaticRecoveryExhausted &&
           _consecutiveMonitorFailures >= 2) {
-        _setNotice(LlmGatewayNoticeKind.monitorUnavailable);
+        _consecutiveMonitorFailures = 0;
+        _recordDiagnostic(
+          LlmGatewayDiagnosticEvent.monitorCheckFailed,
+          errorCode: _safeErrorCode(error),
+        );
+        // Native start is health-aware and returns the running process without
+        // replacing it, so this also repairs monitor transport false alarms
+        // without disrupting a healthy Gateway.
+        await _recover(autoReveal: true);
       }
     }
+  }
+
+  Future<void> _recover({required bool autoReveal}) {
+    final active = _recoveryFuture;
+    if (active != null) return active;
+    if (_disposed || !_expectedRunning) return Future<void>.value();
+    late final Future<void> recovery;
+    recovery = _runRecovery(autoReveal: autoReveal).whenComplete(() {
+      if (identical(_recoveryFuture, recovery)) _recoveryFuture = null;
+    });
+    _recoveryFuture = recovery;
+    return recovery;
+  }
+
+  Future<void> _runRecovery({required bool autoReveal}) async {
+    _automaticRecoveryExhausted = false;
+    _recovering = true;
+    _recoveryAttempt = 0;
+    _setNotice(LlmGatewayNoticeKind.recovering, autoReveal: autoReveal);
+    _setBusy(true);
+    var lastErrorCode = 'service_not_running';
+    for (var attempt = 1; attempt <= maxRecoveryAttempts; attempt += 1) {
+      if (_disposed || !_expectedRunning) break;
+      if (attempt > 1 && _recoveryRetryDelay > Duration.zero) {
+        await Future<void>.delayed(_recoveryRetryDelay);
+        if (_disposed || !_expectedRunning) break;
+      }
+      _recoveryAttempt = attempt;
+      _notify();
+      try {
+        if (_state == LlmGatewayRuntimeState.unhealthy && _managed) {
+          try {
+            await _runService('stop');
+          } on Object {
+            // Start owns the final typed result. A stale unhealthy process may
+            // already have exited between the monitor probe and this action.
+          }
+        }
+        final report = await _runService('start');
+        _applyReport(report);
+        if (_state == LlmGatewayRuntimeState.running) {
+          _clearRecoveryProjection();
+          _setBusy(false);
+          return;
+        }
+        lastErrorCode = 'service_${_state.name}';
+      } on Object catch (error) {
+        lastErrorCode = _safeErrorCode(error);
+      }
+      _recordDiagnostic(
+        LlmGatewayDiagnosticEvent.recoveryAttemptFailed,
+        errorCode: lastErrorCode,
+        attempt: attempt,
+      );
+    }
+
+    if (_disposed || !_expectedRunning) {
+      _recovering = false;
+      _recoveryAttempt = 0;
+      _notice = null;
+      _busy = false;
+      return;
+    }
+    _automaticRecoveryExhausted = true;
+    _recovering = false;
+    _recoveryAttempt = maxRecoveryAttempts;
+    _setNotice(LlmGatewayNoticeKind.recoveryFailed);
+    _setBusy(false);
+    _recordDiagnostic(
+      LlmGatewayDiagnosticEvent.recoveryExhausted,
+      errorCode: lastErrorCode,
+      attempt: maxRecoveryAttempts,
+    );
   }
 
   Future<Map<String, dynamic>> _runService(String operation) {
@@ -180,13 +281,52 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
           ? int.tryParse(stored)
           : null;
       if (port != null && _validPort(port)) return port;
-    } catch (_) {
+    } on Object {
       // A missing or unreadable preference uses the fixed product default.
     }
     return defaultLlmGatewayPort;
   }
 
   bool _validPort(int value) => value > 0 && value <= 65535;
+
+  String _safeErrorCode(Object error) {
+    try {
+      final candidate = (error as dynamic).code;
+      if (candidate is String && _stableErrorCode.hasMatch(candidate)) {
+        return candidate;
+      }
+    } on Object {
+      // Unknown exceptions deliberately collapse to one non-sensitive code.
+    }
+    return 'command_failed';
+  }
+
+  void _recordDiagnostic(
+    LlmGatewayDiagnosticEvent event, {
+    required String errorCode,
+    int attempt = 0,
+  }) {
+    unawaited(
+      _diagnosticSink
+          .record(
+            LlmGatewayDiagnosticRecord(
+              event: event,
+              createdAt: DateTime.now(),
+              runtimeState: _state.name,
+              errorCode: errorCode,
+              attempt: attempt,
+            ),
+          )
+          .catchError((_) {}),
+    );
+  }
+
+  void _clearRecoveryProjection() {
+    _automaticRecoveryExhausted = false;
+    _recovering = false;
+    _recoveryAttempt = 0;
+    _setNotice(null);
+  }
 
   void _startMonitor() {
     if (_disposed || _monitor != null || _monitorInterval <= Duration.zero) {
@@ -201,10 +341,11 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
     _notify();
   }
 
-  void _setNotice(LlmGatewayNoticeKind? value) {
-    if (_notice == value) return;
+  void _setNotice(LlmGatewayNoticeKind? value, {bool autoReveal = false}) {
+    final changed = _notice != value;
     _notice = value;
-    _notify();
+    if (autoReveal) _autoRevealRevision += 1;
+    if (changed || autoReveal) _notify();
   }
 
   void _notify() {

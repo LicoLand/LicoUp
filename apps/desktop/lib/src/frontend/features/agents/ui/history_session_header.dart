@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class HistorySessionHeader extends StatelessWidget {
@@ -143,7 +144,7 @@ final class HistorySessionHeader extends StatelessWidget {
                 minimumSize: const Size(32, 32),
                 padding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(LicoRadius.chip),
                 ),
               ),
               icon: Icon(
@@ -160,7 +161,7 @@ final class HistorySessionHeader extends StatelessWidget {
   }
 
   OutlineInputBorder _border(Color color) => OutlineInputBorder(
-    borderRadius: BorderRadius.circular(8),
+    borderRadius: BorderRadius.circular(LicoRadius.chip),
     borderSide: BorderSide(color: color),
   );
 }

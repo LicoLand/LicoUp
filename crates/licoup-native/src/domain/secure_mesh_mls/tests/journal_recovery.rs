@@ -66,7 +66,13 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
             )
             .unwrap();
             let base = current_group_metadata(&group, &identity).unwrap();
-            reconcile_group_metadata(&group, &identity).unwrap();
+            let mut group_store = crate::platform::secure_mesh_mls_store::open(
+                crate::domain::mobile_relay::secure_mesh_mls_state_dir()
+                    .unwrap()
+                    .join("group-state.sqlite3"),
+            )
+            .unwrap();
+            reconcile_group_metadata(&mut group_store, &group, &identity).unwrap();
 
             let selected_store: Arc<dyn SecureMeshSecretStore> =
                 Arc::new(EphemeralSecretStore::new());
@@ -125,7 +131,7 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
                 )
                 .unwrap();
             let mut config = json!({});
-            let runtime = LocalParticipantRuntime {
+            let mut runtime = LocalParticipantRuntime {
                 config: &mut config,
                 identity: &identity,
                 signing_key: &signing_key,
@@ -133,6 +139,7 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
                 authorization: &authorization,
                 snapshot_handle: &snapshot_handle,
                 participant: &mut participant,
+                group_store: &mut None,
             };
             let failpoint_guard = set_journal_failpoint(boundary);
             assert!(
@@ -142,8 +149,9 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
                     .is_ok(),
                 "another test thread must not consume this operation's failpoint"
             );
-            let error = commit_staged_journaled_operation(&runtime, &mut ledger, staged, &group)
-                .unwrap_err();
+            let error =
+                commit_staged_journaled_operation(&mut runtime, &mut ledger, staged, &group)
+                    .unwrap_err();
             assert!(
                 error
                     .to_string()
@@ -162,13 +170,21 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
                     Some(&authorization),
                 )
                 .unwrap();
-            recover_incomplete_writer_operations(&recovered_participant, &identity).unwrap();
+            recover_incomplete_writer_operations(&mut None, &recovered_participant, &identity)
+                .unwrap();
             let mut recovered_ledger = open_security_ledger().unwrap();
             let mut recovered_record = recovered_ledger.operation(&operation_id).unwrap().unwrap();
             if recovered_record.state == SecureMeshMlsOperationState::MetadataReconciled {
                 let recovered_group =
                     SecureMeshMlsGroup::load(&recovered_participant, &group_id).unwrap();
+                let mut recovered_store = crate::platform::secure_mesh_mls_store::open(
+                    crate::domain::mobile_relay::secure_mesh_mls_state_dir()
+                        .unwrap()
+                        .join("group-state.sqlite3"),
+                )
+                .unwrap();
                 resume_journaled_operation(
+                    &mut recovered_store,
                     &mut recovered_ledger,
                     recovered_record.clone(),
                     Some(&recovered_group),

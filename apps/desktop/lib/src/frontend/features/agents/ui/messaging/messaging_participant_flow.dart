@@ -255,6 +255,7 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.preferPeerAgents = false,
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
+    this.scrollController,
   });
 
   /// Flow entries (after author grouping) shown before the user scrolls.
@@ -290,6 +291,10 @@ class MessagingParticipantFlow extends StatefulWidget {
 
   /// Extra bottom padding when a floating composer overlays the transcript.
   final double bottomOverlayInset;
+
+  /// Optional owner for coordinating a floating child scroll surface with
+  /// the transcript viewport.
+  final ScrollController? scrollController;
 
   @override
   State<MessagingParticipantFlow> createState() =>
@@ -367,6 +372,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       onNotification: _loadEarlierOnScroll,
       child: SelectionArea(
         child: ListView.builder(
+          controller: widget.scrollController,
           key: PageStorageKey<String>(
             'messaging-participant-flow-${widget.sessionKey}',
           ),
@@ -427,16 +433,17 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             adapter: widget.adapter,
             detailsBuilder: buildAgentConversationEventDetails,
             active: active,
+            topOverlayInset: widget.topOverlayInset,
           ),
         ),
       ),
       MessagingFlowLog(:final item) => Padding(
-        padding: const EdgeInsets.only(
-          left: 48,
-          bottom: LicoContentSpacing.item,
-        ),
+        padding: LicoContentSpacing.peerItem,
         child: SelectionContainer.disabled(
-          child: ConversationLogEventRow(events: item.events),
+          child: ConversationLogEventRow(
+            events: item.events,
+            detailsBuilder: buildAgentConversationEventDetails,
+          ),
         ),
       ),
       MessagingFlowRuntimeUpdate(:final item) => Padding(

@@ -34,9 +34,16 @@ fn mls_join_missing_snapshot_rejects_existing_durable_authority_before_crypto() 
     )
     .unwrap();
     let metadata = current_group_metadata(&group, &identity).unwrap();
-    reconcile_group_metadata(&group, &identity).unwrap();
+    let mut group_store = crate::platform::secure_mesh_mls_store::open(
+        crate::domain::mobile_relay::secure_mesh_mls_state_dir()
+            .unwrap()
+            .join("group-state.sqlite3"),
+    )
+    .unwrap();
+    reconcile_group_metadata(&mut group_store, &group, &identity).unwrap();
 
     let error = require_group_base_current(
+        &group_store,
         None,
         &metadata.group_id_hash,
         &metadata.participant_endpoint_id,

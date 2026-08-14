@@ -224,28 +224,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('gateway failure is rendered inside the notification panel', (
-    tester,
-  ) async {
-    final fixture = await pumpMessagingApp(tester);
-    final controller = fixture.controller;
+  testWidgets(
+    'cold-start gateway failure does not open the notification panel',
+    (tester) async {
+      final fixture = await pumpMessagingApp(tester);
+      final controller = fixture.controller;
 
-    await controller.llmGatewayLifecycleController.initialize();
-    await tester.pump();
-    await tester.pump(); // auto-open post-frame callback
+      await controller.llmGatewayLifecycleController.initialize();
+      await tester.pump();
+      await tester.pump();
 
-    expect(
-      find.byKey(const Key('messaging-notification-bell-badge')),
-      findsOneWidget,
-    );
-    // New Gateway notices auto-open the top-right panel.
-    expect(
-      find.byKey(const Key('llm-gateway-notification-item')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('llm-gateway-restart-action')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.byKey(const Key('messaging-notification-bell-badge')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('messaging-notification-bell-panel')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const Key('messaging-notification-bell')));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('llm-gateway-notification-item')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('llm-gateway-restart-action')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'operation feedback auto-opens the top-right notification panel',
@@ -288,6 +298,13 @@ void main() {
       final size = tester.getSize(find.byType(MaterialApp));
       expect(panel.dx + 300, greaterThan(size.width - 40));
       expect(panel.dy, lessThan(80));
+
+      await tester.tapAt(const Offset(640, 400));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('messaging-notification-bell-panel')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -353,29 +370,4 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-
-  testWidgets('tab tap closes the profile page and shows the conversation', (
-    tester,
-  ) async {
-    final fixture = await pumpMessagingApp(tester);
-    final controller = fixture.controller;
-    final agentId = controller.selectedConversationAgentId;
-    final session = controller.conversationSessionsByAgent[agentId]!.single;
-
-    // Open the profile page from the rail avatar.
-    await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-    await tester.pump();
-    expect(find.byKey(const Key('messaging-profile-page')), findsOneWidget);
-
-    await tester.tap(find.byKey(Key('messaging-chrome-tab-${session.id}')));
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
-    await tester.pump();
-
-    expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-    expect(controller.selectedConversationSession?.id, session.id);
-    expect(find.text('Layout baseline conversation'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
 }

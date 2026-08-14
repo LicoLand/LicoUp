@@ -1,7 +1,10 @@
-use crate::platform::file_security::{ensure_private_dir, read_private_text_bounded};
+use crate::platform::file_security::{
+    ensure_private_dir, open_private_text_bounded, validate_private_file_unchanged,
+};
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
+use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
 
 use super::{paths, policy, redaction, serialization};
@@ -55,30 +58,98 @@ impl ActivityLog {
             .unwrap_or(policy::MAX_ACTIVITY_EVENTS)
             .min(policy::MAX_ACTIVITY_EVENTS);
         let mut events = VecDeque::<Value>::with_capacity(limit.min(256));
-        if let Some(raw) = read_private_text_bounded(&self.path, policy::MAX_ACTIVITY_FILE_BYTES)? {
-            for line in raw.lines() {
-                if line.trim().is_empty() {
-                    continue;
+        #[cfg_attr(not(test), allow(unused_variables))]
+        let mut validated_lines = 0usize;
+        #[cfg_attr(not(test), allow(unused_variables))]
+        let mut peak_retained = 0usize;
+        #[cfg_attr(not(test), allow(unused_variables))]
+        let mut peak_line_buffer_bytes = 0usize;
+        let Some(mut reader) =
+            open_private_text_bounded(&self.path, policy::MAX_ACTIVITY_FILE_BYTES)?
+        else {
+            return Ok(list_result(&self.path, events));
+        };
+        let opened = reader.get_ref().metadata()?;
+        let mut buffer = String::new();
+        loop {
+            buffer.clear();
+            // Include room for CRLF while bounding a hostile unterminated
+            // record before `read_line` can grow the buffer to the file size.
+            let read = Read::by_ref(&mut reader)
+                .take((policy::MAX_ACTIVITY_EVENT_BYTES as u64).saturating_add(2))
+                .read_line(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            peak_line_buffer_bytes = peak_line_buffer_bytes.max(buffer.len());
+            let line = match buffer.strip_suffix('\n') {
+                Some(without_newline) => without_newline
+                    .strip_suffix('\r')
+                    .unwrap_or(without_newline),
+                None => buffer.as_str(),
+            };
+            if line.trim().is_empty() {
+                continue;
+            }
+            ensure!(
+                line.len() <= policy::MAX_ACTIVITY_EVENT_BYTES,
+                "activity event exceeds its bounded size"
+            );
+            validated_lines += 1;
+            let event: Value = serde_json::from_str(line)?;
+            if matches_activity_filter(&event, filter) && limit > 0 {
+                if events.len() == limit {
+                    events.pop_front();
                 }
-                ensure!(
-                    line.len() <= policy::MAX_ACTIVITY_EVENT_BYTES,
-                    "activity event exceeds its bounded size"
-                );
-                let event: Value = serde_json::from_str(line)?;
-                if matches_activity_filter(&event, filter) && limit > 0 {
-                    if events.len() == limit {
-                        events.pop_front();
-                    }
-                    events.push_back(event);
-                }
+                events.push_back(event);
+                peak_retained = peak_retained.max(events.len());
             }
         }
-        Ok(json!({
-            "ok": true,
-            "schemaVersion": policy::STATE_SCHEMA_VERSION,
-            "path": paths::internal_state_reference(policy::ACTIVITY_DIR, &self.path),
-            "events": events.into_iter().collect::<Vec<_>>()
-        }))
+        validate_private_file_unchanged(&self.path, &opened)?;
+        #[cfg(test)]
+        retention_probe::observe(validated_lines, peak_retained, peak_line_buffer_bytes);
+        Ok(list_result(&self.path, events))
+    }
+}
+
+fn list_result(path: &Path, events: VecDeque<Value>) -> Value {
+    json!({
+        "ok": true,
+        "schemaVersion": policy::STATE_SCHEMA_VERSION,
+        "path": paths::internal_state_reference(policy::ACTIVITY_DIR, path),
+        "events": events.into_iter().collect::<Vec<_>>()
+    })
+}
+
+#[cfg(test)]
+pub(super) mod retention_probe {
+    use std::cell::Cell;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Snapshot {
+        pub validated_lines: usize,
+        pub peak_retained: usize,
+        pub peak_line_buffer_bytes: usize,
+    }
+
+    thread_local! {
+        static SNAPSHOT: Cell<Snapshot> = Cell::new(Snapshot::default());
+    }
+
+    pub fn reset() {
+        SNAPSHOT.set(Snapshot::default());
+    }
+
+    pub fn observe(validated_lines: usize, peak_retained: usize, peak_line_buffer_bytes: usize) {
+        SNAPSHOT.set(Snapshot {
+            validated_lines,
+            peak_retained,
+            peak_line_buffer_bytes,
+        });
+    }
+
+    pub fn snapshot() -> Snapshot {
+        SNAPSHOT.with(|snapshot| snapshot.get())
     }
 }
 

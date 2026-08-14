@@ -35,10 +35,7 @@ void registerClientBootstrapScenarios() {
       );
       expect(controller.scannedTargets, hasLength(1));
       expect(controller.scannedTargets.single.target, 'codex');
-      expect(
-        controller.selectedConversationAgentId,
-        agentOrchestrationTargetId,
-      );
+      expect(controller.selectedConversationAgentId, isEmpty);
       expect(
         await File('${directory.path}/.licoup-workspace.json').exists(),
         isTrue,
@@ -156,7 +153,7 @@ void registerClientBootstrapScenarios() {
     );
   });
 
-  test('retired appearance preset falls back to default-system', () async {
+  test('retired appearance preset falls back to the ready dark preset', () async {
     final directory = await Directory.systemTemp.createTemp(
       'lico-appearance-retired-',
     );
@@ -177,32 +174,35 @@ void registerClientBootstrapScenarios() {
     addTearDown(controller.dispose);
 
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
   });
 
-  test('invalid local appearance preset falls back to default-system', () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'lico-appearance-invalid-',
-    );
-    addTearDown(() => directory.delete(recursive: true));
-    final portableData = PortableDataRoot(dataDirectoryOverride: directory);
-    final preferencesFile = File(
-      '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
-    );
-    await preferencesFile.writeAsString(
-      '{"schemaVersion":1,"appearancePresetId":"unknown"}',
-      flush: true,
-    );
+  test(
+    'invalid local appearance preset falls back to the ready dark preset',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-appearance-invalid-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final portableData = PortableDataRoot(dataDirectoryOverride: directory);
+      final preferencesFile = File(
+        '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
+      );
+      await preferencesFile.writeAsString(
+        '{"schemaVersion":1,"appearancePresetId":"unknown"}',
+        flush: true,
+      );
 
-    final controller = ClientController(
-      portableData: portableData,
-      agentService: FakeAgentService(),
-    );
-    addTearDown(controller.dispose);
+      final controller = ClientController(
+        portableData: portableData,
+        agentService: FakeAgentService(),
+      );
+      addTearDown(controller.dispose);
 
-    await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
-  });
+      await controller.initialize();
+      expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+    },
+  );
 
   test('exports client logs from the portable activity file', () async {
     final directory = await Directory.systemTemp.createTemp(
@@ -397,8 +397,13 @@ void registerClientBootstrapScenarios() {
     addTearDown(controller.dispose);
 
     await controller.initialize();
-    expect(controller.appearancePresetId, 'agent-preview');
-    expect(controller.appearancePresetLabel, 'Agent Preview');
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+    expect(
+      controller.appearancePresetConfigs
+          .singleWhere((config) => config.id == 'agent-preview')
+          .labelFor('en'),
+      'Agent Preview',
+    );
     expect(
       controller.appearancePresetDirectoryPath,
       p.normalize(presetsDirectory.path),
@@ -415,7 +420,7 @@ void registerClientBootstrapScenarios() {
     ).writeAsString('{"schemaVersion": 1, "id": "broken"}', flush: true);
     await controller.reloadAppearancePresets();
 
-    expect(controller.appearancePresetId, 'agent-preview');
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
     expect(controller.appearancePresetLoadErrors, isNotEmpty);
   });
 

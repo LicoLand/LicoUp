@@ -188,7 +188,9 @@ pub(in crate::platform) fn execute_with_connection(
         );
     }
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
+    // so only a non-zero window gets a concrete deadline.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let mut active_control = ActiveAcpControl::new("openclaw-acp");
     let (outcome, failure, status_code, stdout_was_truncated) = run_protocol_loop(
         &mut stdin,
@@ -265,7 +267,7 @@ pub(super) fn run_protocol_loop(
     receiver: &Receiver<TransportEvent>,
     protocol: &mut OpenClawProtocol,
     active_control: &mut ActiveAcpControl,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
@@ -302,7 +304,7 @@ pub(super) fn run_protocol_loop(
             );
         }
         let now = Instant::now();
-        if now >= deadline {
+        if deadline.is_some_and(|deadline| now >= deadline) {
             let mut failure = protocol.failure_with_ids(
                 "openclaw_acp_timeout",
                 "OpenClaw ACP timed out before the turn completed.",
@@ -311,7 +313,9 @@ pub(super) fn run_protocol_loop(
             failure.turn_status = Some("timeout".to_string());
             return (None, Some(failure), None, false);
         }
-        match receiver.recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL)) {
+        match receiver.recv_timeout(deadline.map_or(PROCESS_POLL_INTERVAL, |deadline| {
+            (deadline - now).min(PROCESS_POLL_INTERVAL)
+        })) {
             Ok(TransportEvent::Message(message)) => {
                 let phase_before = protocol.phase;
                 for effect in protocol.handle_message(message) {
@@ -331,7 +335,7 @@ pub(super) fn run_protocol_loop(
                             }
                         }
                         ProtocolEffect::Complete(outcome) => {
-                            return (Some(outcome), None, None, false);
+                            return (Some(*outcome), None, None, false);
                         }
                         ProtocolEffect::Fail(failure) => {
                             return (None, Some(failure), None, false);

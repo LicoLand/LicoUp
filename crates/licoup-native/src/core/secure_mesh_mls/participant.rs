@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow, ensure};
 use openmls::prelude::{BasicCredential, CredentialWithKey, Extensions, KeyPackage};
 use openmls_basic_credential::SignatureKeyPair;
 use openmls_traits::OpenMlsProvider;
-use zeroize::Zeroize;
 
 use crate::core::secure_mesh_secret_store::{
     SecretStoreAuthorizationSession, SecretStoreHandle, SecureMeshSecretStore,
@@ -13,6 +12,7 @@ use super::config::secure_mesh_mls_ciphersuite;
 use super::constants::MLS_EPOCH_SECRET_STORE_CLASS;
 #[cfg(test)]
 use super::constants::MLS_RECOVERY_SECRET_STORE_CLASS;
+use super::group_state::basic_credential_identity;
 use super::key_package::SecureMeshMlsKeyPackage;
 use super::provider::SecureMeshOpenMlsProvider;
 
@@ -59,9 +59,7 @@ impl SecureMeshMlsParticipant {
     }
 
     pub fn credential_identity_bytes(&self) -> Result<Vec<u8>> {
-        let basic = BasicCredential::try_from(self.credential_with_key.credential.clone())
-            .map_err(|error| anyhow!("secure mesh MLS credential is not basic: {error:?}"))?;
-        Ok(basic.identity().to_vec())
+        basic_credential_identity(&self.credential_with_key.credential)
     }
 
     pub fn load_from_secret_store(
@@ -86,15 +84,50 @@ impl SecureMeshMlsParticipant {
         handle: &SecretStoreHandle,
         session: Option<&SecretStoreAuthorizationSession>,
     ) -> Result<Self> {
+        let identity = identity.into();
+        let signing_public_key = signing_public_key.as_ref().to_vec();
         let provider = match session {
-            Some(session) => SecureMeshOpenMlsProvider::load_secret_store_with_session(
-                secret_store,
-                handle,
-                session,
-            )?,
+            Some(session) => {
+                let provider = SecureMeshOpenMlsProvider::load_secret_store_optional_with_session(
+                    secret_store,
+                    handle,
+                    session,
+                )?
+                .ok_or_else(|| anyhow!("secure mesh MLS provider secret-store entry is missing"))?;
+                provider
+            }
             None => SecureMeshOpenMlsProvider::load_secret_store(secret_store, handle)?,
         };
-        let signing_public_key = signing_public_key.as_ref().to_vec();
+        Self::from_provider_parts(identity, signing_public_key, provider)
+    }
+
+    pub(crate) fn load_from_secret_store_optional_with_session(
+        identity: impl Into<Vec<u8>>,
+        signing_public_key: impl AsRef<[u8]>,
+        secret_store: &dyn SecureMeshSecretStore,
+        handle: &SecretStoreHandle,
+        session: &SecretStoreAuthorizationSession,
+    ) -> Result<Option<Self>> {
+        let provider = match SecureMeshOpenMlsProvider::load_secret_store_optional_with_session(
+            secret_store,
+            handle,
+            session,
+        )? {
+            Some(provider) => provider,
+            None => return Ok(None),
+        };
+        Ok(Some(Self::from_provider_parts(
+            identity.into(),
+            signing_public_key.as_ref().to_vec(),
+            provider,
+        )?))
+    }
+
+    fn from_provider_parts(
+        identity: Vec<u8>,
+        signing_public_key: Vec<u8>,
+        provider: SecureMeshOpenMlsProvider,
+    ) -> Result<Self> {
         ensure!(
             !signing_public_key.is_empty(),
             "secure mesh MLS signing public key is required"
@@ -141,19 +174,6 @@ impl SecureMeshMlsParticipant {
             MLS_EPOCH_SECRET_STORE_CLASS,
             session,
         )
-    }
-
-    pub(crate) fn secret_store_snapshot_exists_with_session(
-        secret_store: &dyn SecureMeshSecretStore,
-        handle: &SecretStoreHandle,
-        session: &SecretStoreAuthorizationSession,
-    ) -> Result<bool> {
-        let mut snapshot = secret_store.get_secret_with_session(session, handle)?;
-        let exists = snapshot.is_some();
-        if let Some(secret) = snapshot.as_mut() {
-            secret.zeroize();
-        }
-        Ok(exists)
     }
 
     #[cfg(test)]

@@ -1,6 +1,6 @@
 //! Explicitly approved installation of the released LicoUp Codex Plugin.
 
-use crate::{domain::agent_workflow_loop::CodexPluginState, platform::run_bounded_command_output};
+use crate::{domain::integration_state::IntegrationState, platform::run_bounded_command_output};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -114,28 +114,28 @@ pub struct CodexPluginInstallReceipt {
 
 /// Probes only whether the exact managed plugin is ready. Raw plugin inventory,
 /// local paths, and process output never cross this boundary.
-pub fn status(codex_executable: &Path) -> CodexPluginState {
+pub fn status(codex_executable: &Path) -> IntegrationState {
     let Ok(codex_executable) = canonical_executable(codex_executable) else {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     };
     let mut command = Command::new(codex_executable);
     command.args(["plugin", "list", "--json"]);
     let Ok(result) =
         run_bounded_command_output(&mut command, STATUS_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES)
     else {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     };
     if result.timed_out || result.truncated || !result.status.is_some_and(|status| status.success())
     {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     }
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(&result.stdout) else {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     };
     plugin_state_from_list(&value)
 }
 
-fn plugin_state_from_list(value: &serde_json::Value) -> CodexPluginState {
+fn plugin_state_from_list(value: &serde_json::Value) -> IntegrationState {
     let entries = match value {
         serde_json::Value::Array(entries) => Some(entries.as_slice()),
         serde_json::Value::Object(object) => object
@@ -147,7 +147,7 @@ fn plugin_state_from_list(value: &serde_json::Value) -> CodexPluginState {
         _ => None,
     };
     let Some(entries) = entries else {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     };
     for entry in entries {
         let Some(object) = entry.as_object() else {
@@ -183,12 +183,12 @@ fn plugin_state_from_list(value: &serde_json::Value) -> CodexPluginState {
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|status| matches!(status, "disabled" | "missing" | "uninstalled"));
         return if explicitly_disabled {
-            CodexPluginState::Missing
+            IntegrationState::Missing
         } else {
-            CodexPluginState::Ready
+            IntegrationState::Ready
         };
     }
-    CodexPluginState::Missing
+    IntegrationState::Missing
 }
 
 pub fn install(
@@ -389,19 +389,19 @@ mod tests {
             plugin_state_from_list(&serde_json::json!({
                 "installed": [{"pluginId": "lico-up-codex@licoup-plugins", "enabled": true}]
             })),
-            CodexPluginState::Ready
+            IntegrationState::Ready
         );
         assert_eq!(
             plugin_state_from_list(&serde_json::json!({
                 "plugins": [{"name": "lico-up-codex", "marketplace": "other"}]
             })),
-            CodexPluginState::Missing
+            IntegrationState::Missing
         );
         assert_eq!(
             plugin_state_from_list(&serde_json::json!({
                 "plugins": [{"name": "lico-up-codex", "marketplace": "licoup-plugins", "enabled": false}]
             })),
-            CodexPluginState::Missing
+            IntegrationState::Missing
         );
     }
 
@@ -409,7 +409,7 @@ mod tests {
     fn malformed_plugin_inventory_is_unavailable_not_ready() {
         assert_eq!(
             plugin_state_from_list(&serde_json::json!({"catalog": []})),
-            CodexPluginState::Unavailable
+            IntegrationState::Unavailable
         );
     }
 

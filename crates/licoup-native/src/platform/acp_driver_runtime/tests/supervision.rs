@@ -6,13 +6,7 @@ fn launch_arguments_are_fixed_and_do_not_contain_prompt_or_path() {
     let driver = AcpDriverSpec::new("test-acp", &["acp"]);
     let launch = LaunchSpec::new("test-agent", driver, &cwd);
     assert_eq!(launch.driver.launch_args, &["acp"]);
-    assert!(
-        !launch
-            .driver
-            .launch_args
-            .iter()
-            .any(|arg| *arg == "private")
-    );
+    assert!(!launch.driver.launch_args.contains(&"private"));
     assert!(
         !launch
             .driver
