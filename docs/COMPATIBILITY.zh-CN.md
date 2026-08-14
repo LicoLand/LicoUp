@@ -33,7 +33,7 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 
 | 发布包目标 | 运行目标 | 平台 | 渠道 | 格式 | 架构 | 包构建 | 可发布 | 更新权威 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | 可用 | 不可选入 | signed-http-manifest |
+| macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | 可用 | 可选入 | signed-http-manifest |
 | macos-app-store-arm64 | macos-arm64 | macos | app-store | pkg | arm64 | 可用 | 不可选入 | store-managed |
 | windows-direct-x64 | windows-x64 | windows | direct | msix | x64 | 可用 | 不可选入 | appinstaller |
 | windows-store-x64 | windows-x64 | windows | microsoft-store | msixupload | x64 | 可用 | 不可选入 | store-managed |
