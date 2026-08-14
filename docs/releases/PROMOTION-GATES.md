@@ -15,9 +15,9 @@ selection is independent from the direction in which changes are promoted.
 all three destination branches. Each branch additionally requires only the
 aggregate owned by its incoming edge.
 
-The stable proof uses an ephemeral runner-local integrity identity. It is not a
-publisher identity or a release artifact, and neither the installed app nor its
-local proof is carried into publication.
+The stable proof uses the repository's ordinary local ad-hoc package path. It
+uses no publisher identity, repository credential, or notarization secret. The
+installed app and its local proof are not carried into publication.
 
 Promotion readiness is not publication. The manually authorized workflow in
 `.github/workflows/client-release.yml` remains the sole path that builds formal

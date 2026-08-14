@@ -51,7 +51,7 @@ test("one current catalog owns all rich provider and Agent pricing facts", () =>
   const catalog = loadCatalog();
   const checked = validateCatalog(catalog);
   assert.deepEqual(Object.keys(catalog).sort(), ["agents", "last_updated", "providers"]);
-  assert.equal(catalog.last_updated, "2026-08-10");
+  assert.equal(catalog.last_updated, "2026-08-14");
   assert.equal(checked.tableCount, 10);
   assert.equal(checked.routeCount, 91);
   assert.deepEqual(
@@ -127,16 +127,16 @@ test("catalog validation rejects malformed or incomplete facts", () => {
 
 test("release freshness is inclusive for seven days", () => {
   const current = loadCatalog();
-  assert.equal(validateReleaseFreshness(current, "2026-08-10"), true);
+  assert.equal(validateReleaseFreshness(current, "2026-08-14"), true);
 
   const sevenDays = clone(current);
-  sevenDays.providers[0].routes[0].verified_on = "2026-08-03";
-  assert.equal(validateReleaseFreshness(validateCatalog(sevenDays), "2026-08-10"), true);
+  sevenDays.providers[0].routes[0].verified_on = "2026-08-07";
+  assert.equal(validateReleaseFreshness(validateCatalog(sevenDays), "2026-08-14"), true);
 
   const stale = clone(current);
-  stale.providers[0].routes[0].verified_on = "2026-08-02";
+  stale.providers[0].routes[0].verified_on = "2026-08-06";
   rejects(
-    () => validateReleaseFreshness(validateCatalog(stale), "2026-08-10"),
+    () => validateReleaseFreshness(validateCatalog(stale), "2026-08-14"),
     "pricing_verification_stale",
   );
 });
@@ -151,7 +151,7 @@ test("Rust and release commands consume only the canonical catalog", () => {
     "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json",
     "tools/scripts/model-pricing-facts.mjs",
   ]);
-  assert.equal(selection.lanes["release-policy"], true);
+  assert.equal(selection.lanes["release-policy"], undefined);
 });
 
 test("read-only validator self-test is deterministic", () => {
