@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class HistorySessionList extends StatelessWidget {
@@ -235,10 +236,10 @@ final class HistorySessionGroupedRow extends StatelessWidget {
       child: Material(
         key: Key('history-session-row-${item.id}'),
         color: background,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         child: InkWell(
           onTap: item.disabled ? null : () => onSelect(item.id),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           child: SizedBox(
             height: historySessionGroupedRowHeight,
             child: Padding(

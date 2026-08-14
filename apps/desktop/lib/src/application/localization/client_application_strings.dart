@@ -6,7 +6,7 @@ import 'package:licoup/src/contracts/generated/client_error.g.dart';
 /// Minimal application-layer messages used by controllers.
 ///
 /// UI copy remains in the frontend localization catalog. Keeping this small
-/// application catalog separate prevents orchestration and state transitions
+/// application catalog separate prevents coordination and state transitions
 /// from importing the widget localization layer.
 final class ClientApplicationStrings {
   const ClientApplicationStrings._(this.isChinese);
@@ -78,7 +78,6 @@ final class ClientApplicationStrings {
   static const Map<String, String> _chineseStatusCaptions = {
     'Agent archive': '智能体归档',
     'Agent chat': '智能体对话',
-    'Agent orchestration': '智能体编排',
     'Agent tabs': '智能体标签页',
     'Agent usage': '智能体用量',
     'Appearance': '外观',

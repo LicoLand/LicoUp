@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// The single segmented-control recipe for the Token usage surface: one
@@ -86,7 +87,7 @@ final class _AgentUsageSegmentState extends State<AgentUsageSegment> {
                       ? Colors.white.withAlpha(8)
                       : Colors.black.withAlpha(8))
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(LicoRadius.chip),
           ),
           child: Text(
             widget.label,

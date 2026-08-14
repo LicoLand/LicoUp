@@ -10,6 +10,8 @@ import 'package:licoup/src/frontend/features/agents/ui/history_session_models.da
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// In-chat conversation switcher for the messaging header: a quiet icon
@@ -135,7 +137,7 @@ class _SwitcherButton extends StatelessWidget {
     final colors = context.licoColors;
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),
@@ -280,7 +282,7 @@ class _SwitcherConversationRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           hoverColor: colors.isDark
               ? Colors.white.withAlpha(8)
               : Colors.black.withAlpha(8),
@@ -290,7 +292,7 @@ class _SwitcherConversationRow extends StatelessWidget {
             decoration: BoxDecoration(
               // Solid brand-yellow selection with dark foreground.
               color: selected ? colors.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
             ),
             child: Row(
               children: [

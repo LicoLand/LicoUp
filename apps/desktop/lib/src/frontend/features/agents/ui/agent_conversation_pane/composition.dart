@@ -10,7 +10,6 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_virtual_machine_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/lico_plan_document_panel.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_group_roster.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -28,12 +27,14 @@ class AgentConversationActivePane extends StatelessWidget {
     required this.actions,
     required this.header,
     this.framed = true,
+    this.messageScrollController,
   });
 
   final AgentConversationPaneState state;
   final AgentConversationPaneActions actions;
   final Widget header;
   final bool framed;
+  final ScrollController? messageScrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -43,16 +44,15 @@ class AgentConversationActivePane extends StatelessWidget {
     final unavailableCopy = conversationSendAvailabilityCopy(
       strings: strings,
       reasonCode: state.sendGateReasonCode,
-      orchestration:
-          state.orchestrationSelected &&
-          !state.composerEnabled &&
-          state.sendGateReasonCode == 'orchestration_policy_required',
     );
     final messagingFlow =
         strategy.messageStyle == AgentsMessageStyle.participantFlow;
     final composer = RuntimeMessageComposer(
-      targetLabel: agentConversationTargetDisplayName(state.target),
+      targetLabel: state.conversationLabel.trim().isNotEmpty
+          ? state.conversationLabel.trim()
+          : agentConversationTargetDisplayName(state.target),
       initialDraft: state.composerDraft,
+      hasAttachments: state.hasAttachments,
       busy: state.turnActive,
       enabled: state.composerEnabled,
       modelOptions: state.modelOptions,
@@ -73,7 +73,13 @@ class AgentConversationActivePane extends StatelessWidget {
       onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
       floatingMatteCapsule: !mobileClient && messagingFlow,
       onAttach: actions.onAttach,
-      mentionBridge: actions.mentionBridge,
+      onPasteImage: actions.onPasteImage,
+      mentionTargets: state.participantTargets
+          .where(
+            (target) => state.composerMentionLabels.containsKey(target.target),
+          )
+          .toList(growable: false),
+      mentionLabels: state.composerMentionLabels,
     );
     final sendUnavailable = state.composerEnabled
         ? null
@@ -115,17 +121,6 @@ class AgentConversationActivePane extends StatelessWidget {
             onDeny: actions.onPermissionDeny,
           )
         : null;
-    final flywheelCapsule = state.orchestrationSelected
-        ? ComposerFlywheelCapsule(
-            mainAgentLabel: state.flywheelMainAgentLabel.isEmpty
-                ? strings.notConfigured
-                : state.flywheelMainAgentLabel,
-            mainAgentTarget: state.flywheelMainAgentTarget,
-            mentionSections: state.flywheelMentionSections,
-            onEdit: actions.onEditFlywheel ?? () {},
-            onMentionAgent: actions.onMentionFlywheelAgent,
-          )
-        : null;
     final licoProfileCapsule = state.showLicoProfileCapsule
         ? ComposerLicoProfileCapsule(
             selectedProfile: state.selectedLicoProfile,
@@ -138,7 +133,6 @@ class AgentConversationActivePane extends StatelessWidget {
                 state.workingDirectory.trim().isNotEmpty) ||
             state.modelOptions.isNotEmpty ||
             state.reasoningEffortOptions.isNotEmpty ||
-            flywheelCapsule != null ||
             licoProfileCapsule != null);
     final headerOverlayInset = !mobileClient && messagingFlow
         ? MessagingDesktopMetrics.conversationHeaderOverlayExtent
@@ -155,11 +149,18 @@ class AgentConversationActivePane extends StatelessWidget {
             state.liveMessages.isEmpty
         ? AgentConversationRecentSessions(
             sessions: state.recentSessions,
-            loading: state.loading,
+            runningSessionIds: state.runningRecentSessionIds,
+            loading: state.loading && !state.recentSessionsCached,
+            hasMore: state.recentSessionsHasMore,
+            loadingMore: state.recentSessionsLoadingMore,
+            onNewConversation: actions.onNewConversation ?? () {},
             onSelectSession: actions.onSelectSession,
+            onLoadMore: actions.onLoadMoreRecentSessions,
             topOverlayInset: headerOverlayInset,
+            bottomOverlayInset: composerOverlayInset,
           )
         : AgentConversationMessageList(
+            scrollController: messageScrollController,
             loading: state.loading,
             session: state.session,
             target: state.target,
@@ -177,40 +178,13 @@ class AgentConversationActivePane extends StatelessWidget {
         messagingFlow &&
         state.selectedLicoProfile == 'plan' &&
         state.planDocumentPath.trim().isNotEmpty;
-    final rosterTargets = {
-      for (final target in state.participantTargets) target.target: target,
-    };
-    final groupRosterWidget =
-        state.orchestrationSelected && state.groupRosterParticipants.isNotEmpty
-        ? MessagingGroupRoster(
-            participants: state.groupRosterParticipants,
-            targetsByAgentId: rosterTargets,
-          )
-        : null;
-    // Title capsule stays top-center; agent roster is a right-edge vertical
-    // capsule overlay (black veil + glass), independent of the header band.
-    // Positioned.fill is required so Align.centerRight wins — a shrink-wrapped
-    // Stack child would otherwise sit at top-start (left).
-    final groupRoster = groupRosterWidget == null
-        ? null
-        : Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.only(
-                right: MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
-              ),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: groupRosterWidget,
-              ),
-            ),
-          );
     final messagingHeader = header;
     if (mobileClient) {
       return Column(
         children: [
           // Console mobile surfaces the parity and VM chips above the
           // transcript; messaging keeps them inside the details sheet.
-          if (!state.orchestrationSelected && !messagingFlow)
+          if (!messagingFlow)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Align(
@@ -247,7 +221,6 @@ class AgentConversationActivePane extends StatelessWidget {
               selectedReasoningEffort: state.selectedReasoningEffort,
               defaultReasoningEffort: state.defaultReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
-              flywheel: flywheelCapsule,
               licoProfileCapsule: licoProfileCapsule,
             ),
           MobileComposerSurface(child: composer),
@@ -279,7 +252,6 @@ class AgentConversationActivePane extends StatelessWidget {
             selectedReasoningEffort: state.selectedReasoningEffort,
             defaultReasoningEffort: state.defaultReasoningEffort,
             onReasoningEffortChanged: actions.onReasoningEffortChanged,
-            flywheel: flywheelCapsule,
             licoProfileCapsule: licoProfileCapsule,
           ),
         composer,
@@ -302,7 +274,6 @@ class AgentConversationActivePane extends StatelessWidget {
                               alignment: Alignment.topCenter,
                               child: messagingHeader,
                             ),
-                            ?groupRoster,
                             Align(
                               alignment: Alignment.bottomCenter,
                               child: bottomDock,
@@ -314,6 +285,7 @@ class AgentConversationActivePane extends StatelessWidget {
                         width: 300,
                         child: LicoPlanDocumentPanel(
                           planPath: state.planDocumentPath,
+                          reader: state.planDocumentReader,
                           refreshToken:
                               state.liveMessages.length +
                               (state.turnActive ? 1 : 0),
@@ -329,7 +301,6 @@ class AgentConversationActivePane extends StatelessWidget {
                         alignment: Alignment.topCenter,
                         child: messagingHeader,
                       ),
-                      ?groupRoster,
                       Align(
                         alignment: Alignment.bottomCenter,
                         child: bottomDock,
@@ -367,7 +338,6 @@ class AgentConversationActivePane extends StatelessWidget {
               selectedReasoningEffort: state.selectedReasoningEffort,
               defaultReasoningEffort: state.defaultReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
-              flywheel: flywheelCapsule,
               licoProfileCapsule: licoProfileCapsule,
             ),
           composer,

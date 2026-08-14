@@ -12,7 +12,7 @@ use super::{
 };
 use anyhow::{anyhow, ensure};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeSet, env};
+use std::env;
 
 const CATALOG_ROOT_PATTERNS: &[&[&str]] = &[
     &[".config", "agents", "skills"],
@@ -72,33 +72,11 @@ where
         "skill trash requires the selected catalog target to exist"
     );
 
-    let original_skills = store.read_collection("skills")?;
-    let original_pins = store.read_collection("pins")?;
-    let affected_agents = remove_skill_state(
-        store,
-        &original_skills,
-        &original_pins,
-        &skill_id,
-        &target.install_dir,
-    )?;
-    if let Err(error) = move_to_trash(&target.install_dir) {
-        let _ = store.write_collection("skills", original_skills);
-        let _ = store.write_collection("pins", original_pins);
-        return Err(error);
-    }
-    if affected_agents.is_empty() {
-        let _ = store.activity_log().append(
-            "skill.trashed",
-            json!({"target": "local-catalog", "skillId": skill_id}),
-        );
-    } else {
-        for agent_id in &affected_agents {
-            let _ = store.activity_log().append(
-                "skill.trashed",
-                json!({"target": agent_id, "agentId": agent_id, "skillId": skill_id}),
-            );
-        }
-    }
+    move_to_trash(&target.install_dir)?;
+    let _ = store.activity_log().append(
+        "skill.trashed",
+        json!({"target": "local-catalog", "skillId": skill_id}),
+    );
     Ok(json!({
         "ok": true,
         "status": "trashed",
@@ -176,67 +154,6 @@ fn recognized_catalog_root(path: &Path) -> Option<PathBuf> {
         root.push(component.as_os_str());
     }
     Some(root)
-}
-
-fn remove_skill_state(
-    store: &ClientStateStore,
-    original_skills: &Value,
-    original_pins: &Value,
-    skill_id: &str,
-    install_dir: &Path,
-) -> Result<BTreeSet<String>> {
-    let affected_agents = affected_agents_for_path(original_skills, skill_id, install_dir);
-    if affected_agents.is_empty() {
-        return Ok(affected_agents);
-    }
-
-    let mut skills = original_skills.clone();
-    retain_other_records(&mut skills, skill_id, &affected_agents);
-    let mut pins = original_pins.clone();
-    retain_other_records(&mut pins, skill_id, &affected_agents);
-    store.write_collection("pins", pins)?;
-    if let Err(error) = store.write_collection("skills", skills) {
-        let _ = store.write_collection("pins", original_pins.clone());
-        return Err(error);
-    }
-    Ok(affected_agents)
-}
-
-fn affected_agents_for_path(
-    document: &Value,
-    skill_id: &str,
-    install_dir: &Path,
-) -> BTreeSet<String> {
-    document
-        .get("items")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|item| item.get("kind").and_then(Value::as_str) == Some("skill"))
-        .filter(|item| item.get("skillId").and_then(Value::as_str) == Some(skill_id))
-        .filter(|item| record_path_matches(item, install_dir))
-        .filter_map(|item| item.get("agentId").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect()
-}
-
-fn record_path_matches(item: &Value, install_dir: &Path) -> bool {
-    let Some(path) = item.get("path").and_then(Value::as_str) else {
-        return false;
-    };
-    absolute_lexical_path(Path::new(path)).is_ok_and(|resolved| resolved == install_dir)
-}
-
-fn retain_other_records(document: &mut Value, skill_id: &str, agents: &BTreeSet<String>) {
-    if let Some(items) = document.get_mut("items").and_then(Value::as_array_mut) {
-        items.retain(|item| {
-            !(item.get("skillId").and_then(Value::as_str) == Some(skill_id)
-                && item
-                    .get("agentId")
-                    .and_then(Value::as_str)
-                    .is_some_and(|agent| agents.contains(agent)))
-        });
-    }
 }
 
 fn move_to_system_trash(path: &Path) -> Result<()> {

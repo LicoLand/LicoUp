@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Shows the exact SSH destination selected for a VM-backed conversation.
@@ -34,7 +35,7 @@ class ConversationVirtualMachineDestinationChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: colors.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(LicoRadius.chip),
             border: Border.all(color: colors.primary.withValues(alpha: 0.3)),
           ),
           child: Row(

@@ -134,16 +134,16 @@ mod tests {
     use super::*;
 
     fn synthetic_home() -> PathBuf {
-        PathBuf::from("/synthetic/path/user")
+        std::env::temp_dir().join("licoup-agent-workspace-home-fixture")
     }
 
     #[test]
     fn personal_tree_roots_are_never_an_agent_workspace() {
         let home = synthetic_home();
+        let home_ancestor = home.parent().unwrap().to_path_buf();
         for unbounded in [
             PathBuf::from("/"),
-            PathBuf::from("/synthetic"),
-            PathBuf::from("/synthetic/path/user"),
+            home_ancestor,
             home.clone(),
             home.join("."),
             home.join("Movies"),

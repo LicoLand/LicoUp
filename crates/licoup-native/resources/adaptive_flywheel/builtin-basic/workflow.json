@@ -1,0 +1,49 @@
+{
+  "schema": "licoup.adaptive-flywheel.workflow.v1",
+  "metadata": {
+    "id": "licoup-basic",
+    "name": "LicoUp Basic Strategy",
+    "version": "1.0.0",
+    "description": "A small built-in delivery loop that authorizes its immutable Graph, designs work, executes ready work items, checks the result, and reaches a visible terminal state."
+  },
+  "limits": {
+    "maxParallelism": 8,
+    "maxWorksetItems": 256,
+    "maxAttempts": 3
+  },
+  "actorSlots": [
+    {"id": "designer", "kind": "actor", "label": "Designer", "required": true, "sessionPolicy": "new"},
+    {"id": "worker", "kind": "actor", "label": "Worker", "required": true, "sessionPolicy": "new"},
+    {"id": "reviewer", "kind": "actor", "label": "Reviewer", "required": true, "sessionPolicy": "sticky"},
+    {"id": "python", "kind": "runtime", "label": "Python runtime", "required": true, "sessionPolicy": "new"}
+  ],
+  "runtimes": [
+    {"id": "python", "kind": "python", "versionRequirement": ">=3.8.0"}
+  ],
+  "worksets": [
+    {"id": "tasks", "itemBinding": "id", "predecessorField": "prerequisites"},
+    {"id": "nodes", "itemBinding": "id", "predecessorField": "prerequisites"}
+  ],
+  "initial": "authorize",
+  "states": [
+    {"id": "design", "kind": "actor", "label": "Create delivery design", "instruction": "Produce one complete delivery design from the authorized input, with a bounded Task DAG, explicit acceptance oracles, risks, and a single full-regression frontier. Return a concise JSON-compatible result.", "binding": "designer", "retry": {"maxAttempts": 2, "transientOnly": true}},
+    {"id": "authorize", "kind": "authorization", "label": "Authorize exact semantics"},
+    {"id": "task-frontier", "kind": "workset", "label": "Run ready Tasks", "instruction": "Implement this ready Task as one minimal independently acceptable closure. Preserve unrelated work, run only the smallest relevant checks, and return the concrete result plus evidence.", "binding": "worker", "workset": "tasks", "retry": {"maxAttempts": 2, "transientOnly": true}},
+    {"id": "node-frontier", "kind": "workset", "label": "Run ready Nodes", "instruction": "Execute this ready Node only after its declared prerequisites have succeeded. Return bounded evidence and any blocker without widening scope.", "binding": "worker", "workset": "nodes", "retry": {"maxAttempts": 2, "transientOnly": true}},
+    {"id": "full-regression", "kind": "script", "label": "Run full regression once", "runtime": "python", "entry": "scripts/validate_design.py", "retry": {"maxAttempts": 2, "transientOnly": true}},
+    {"id": "review", "kind": "actor", "label": "Review and repair", "instruction": "Audit implementation, tests, evidence, and migration completeness in one sticky review session. Return JSON with repair=true for another review pass, blocked=true only for a genuine impasse, or both false when complete.", "binding": "reviewer", "retry": {"maxAttempts": 2, "transientOnly": true}},
+    {"id": "complete", "kind": "succeed", "label": "Delivery complete"},
+    {"id": "blocked", "kind": "blocked", "label": "Delivery blocked"}
+  ],
+  "transitions": [
+    {"id": "authorization-granted", "from": "authorize", "to": "design", "event": "success"},
+    {"id": "design-ready", "from": "design", "to": "task-frontier", "event": "success"},
+    {"id": "authorization-denied", "from": "authorize", "to": "blocked", "event": "failure"},
+    {"id": "tasks-ready", "from": "task-frontier", "to": "node-frontier", "event": "success"},
+    {"id": "nodes-ready", "from": "node-frontier", "to": "full-regression", "event": "success"},
+    {"id": "regression-green", "from": "full-regression", "to": "review", "event": "success"},
+    {"id": "review-repair", "from": "review", "to": "review", "event": "success", "guard": {"path": "repair", "equals": true}},
+    {"id": "review-blocked", "from": "review", "to": "blocked", "event": "success", "guard": {"path": "blocked", "equals": true}},
+    {"id": "review-complete", "from": "review", "to": "complete", "event": "success"}
+  ]
+}

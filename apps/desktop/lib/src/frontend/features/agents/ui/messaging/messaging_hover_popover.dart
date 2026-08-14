@@ -77,6 +77,7 @@ class MessagingHoverPopover extends StatefulWidget {
 class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
   final LayerLink _layerLink = LayerLink();
   final OverlayPortalController _portalController = OverlayPortalController();
+  final Object _tapRegionGroup = Object();
   bool _pinnedOpen = false;
   bool _hoveringTrigger = false;
   bool _hoveringCard = false;
@@ -99,10 +100,8 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
   void toggle() {
     _dismissTimer?.cancel();
     setState(() {
-      if (isOpen) {
+      if (_pinnedOpen) {
         _pinnedOpen = false;
-        _hoveringTrigger = false;
-        _hoveringCard = false;
       } else {
         _pinnedOpen = true;
       }
@@ -224,13 +223,17 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
     return OverlayPortal(
       controller: _portalController,
       overlayChildBuilder: (context) {
-        final card = MouseRegion(
-          onEnter: _onCardEnter,
-          onExit: _onCardExit,
-          child: Material(
-            color: Colors.transparent,
-            elevation: 0,
-            child: _buildOverlayCard(context, radius),
+        final card = TapRegion(
+          groupId: _tapRegionGroup,
+          onTapOutside: (_) => close(),
+          child: MouseRegion(
+            onEnter: _onCardEnter,
+            onExit: _onCardExit,
+            child: Material(
+              color: Colors.transparent,
+              elevation: 0,
+              child: _buildOverlayCard(context, radius),
+            ),
           ),
         );
         if (widget.anchorToWindowTopRight) {
@@ -263,16 +266,19 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
           ),
         );
       },
-      child: CompositedTransformTarget(
-        link: _layerLink,
-        child: MouseRegion(
-          onEnter: _onTriggerEnter,
-          onExit: _onTriggerExit,
-          child: widget.triggerBuilder(
-            context,
-            open: isOpen,
-            toggle: toggle,
-            close: close,
+      child: TapRegion(
+        groupId: _tapRegionGroup,
+        child: CompositedTransformTarget(
+          link: _layerLink,
+          child: MouseRegion(
+            onEnter: _onTriggerEnter,
+            onExit: _onTriggerExit,
+            child: widget.triggerBuilder(
+              context,
+              open: isOpen,
+              toggle: toggle,
+              close: close,
+            ),
           ),
         ),
       ),

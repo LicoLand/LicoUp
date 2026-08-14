@@ -80,9 +80,6 @@ final class MessagingDesktopAgentsPresentation
       child: DecoratedBox(
         key: key,
         decoration: BoxDecoration(
-          // Translucent wash over the shared chat canvas — no BackdropFilter
-          // so the card stays crisp on the opaque pane fill. Geometry and
-          // wash alphas come from MessagingDesktopMetrics only.
           color: MessagingDesktopMetrics.conversationListCardFill(
             isDark: colors.isDark,
           ),

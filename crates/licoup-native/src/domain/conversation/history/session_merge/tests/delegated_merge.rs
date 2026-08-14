@@ -59,6 +59,27 @@ fn nested_delegated_lineage_merges_leaf_to_root_without_flattening_children() {
 }
 
 #[test]
+fn running_delegated_task_marks_its_conversation_running() {
+    let main = session(
+        "main",
+        None,
+        false,
+        vec![json!({"role": "user", "text": "Start", "createdAt": 0})],
+    );
+    let mut child = session(
+        "child",
+        Some("main"),
+        true,
+        vec![json!({"role": "assistant", "text": "Working", "createdAt": 1})],
+    );
+    child["running"] = json!(true);
+
+    let merged = merge_delegated_subagent_sessions(vec![main, child]);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0]["running"], true);
+}
+
+#[test]
 fn card_without_a_timestamp_sits_after_the_conversation_flow_not_past_events() {
     let main = session(
         "main",

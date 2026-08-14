@@ -1,6 +1,51 @@
 use super::test_support::*;
 
 #[test]
+fn codex_runtime_activity_requires_open_rollout_and_unfinished_task() {
+    let dir = temp_dir("codex-runtime-activity");
+    let running = dir.join("rollout-running.jsonl");
+    let completed = dir.join("rollout-completed.jsonl");
+    fs::write(
+        &running,
+        [
+            r#"{"type":"event_msg","payload":{"type":"task_started"}}"#.to_string(),
+            format!(
+                "{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"agent_reasoning\",\"text\":\"{}\"}}}}",
+                "x".repeat(
+                    (super::super::codex::CODEX_RUNTIME_SCAN_CHUNK_BYTES as usize) + 128
+                )
+            ),
+            r#"{"type":"event_msg","payload":{"type":"agent_reasoning"}}"#.to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    fs::write(
+        &completed,
+        [
+            r#"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            r#"{"type":"event_msg","payload":{"type":"task_complete"}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let observation =
+        CodexRuntimeObservation::from_open_rollouts([running.clone(), completed.clone()]);
+    assert!(observation.is_running(&running));
+    assert!(!observation.is_running(&completed));
+    assert!(!CodexRuntimeObservation::from_open_rollouts([]).is_running(&running));
+
+    let mut sessions = vec![
+        json!({"sourcePath": running.to_string_lossy()}),
+        json!({"sourcePath": completed.to_string_lossy(), "running": true}),
+    ];
+    mark_codex_runtime_activity(&mut sessions, &observation);
+    assert_eq!(sessions[0]["running"], true);
+    assert!(sessions[1].get("running").is_none());
+}
+
+#[test]
 fn conversations_scan_codex_jsonl_history() {
     let dir = temp_dir("codex-history");
     let history = dir.join("history.jsonl");
@@ -241,10 +286,12 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
         .expect("reasoning card");
     assert_eq!(reasoning["cardType"], "reasoning");
     assert_eq!(reasoning["collapsed"], true);
-    assert_eq!(reasoning["providerSummary"], true);
-    assert_eq!(reasoning["cardSubtitle"], "Reasoning summary");
+    // Recorded chain of thought is the detail body; the provider summary
+    // becomes the collapsed headline preview instead of a separate card.
+    assert!(reasoning.get("providerSummary").is_none());
+    assert_eq!(reasoning["text"], "Private chain of thought");
     assert_eq!(
-        reasoning["text"],
+        reasoning["cardSubtitle"],
         "Checked the archive plan at [local path hidden] with authorization: [redacted] [redacted]"
     );
     let tool_call = messages
@@ -253,12 +300,19 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
         .expect("tool call card");
     assert_eq!(tool_call["cardType"], "tool-call");
     assert_eq!(tool_call["cardTitle"], "exec_command");
+    assert_eq!(
+        tool_call["text"],
+        "access_token: [redacted]\ncmd: rg Pact [local path hidden]"
+    );
     let tool_result = messages
         .iter()
         .find(|message| message["role"] == "tool_result")
         .expect("tool result card");
     assert_eq!(tool_result["cardType"], "tool-result");
-    assert_eq!(tool_result["text"], "The native tool result was recorded.");
+    assert_eq!(
+        tool_result["text"],
+        "access_token: [redacted]\nok: true\npath: [local path hidden]"
+    );
     let error = messages
         .iter()
         .find(|message| message["role"] == "error")
@@ -266,7 +320,6 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
     assert_eq!(error["cardType"], "error");
     assert_eq!(error["collapsed"], false);
     let serialized = serde_json::to_string(messages).unwrap();
-    assert!(!serialized.contains("Private chain of thought"));
     assert!(!serialized.contains("secret-value"));
     assert!(!serialized.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
     assert!(!messages.iter().any(|message| {
@@ -365,7 +418,7 @@ fn codex_adapter_extracts_real_user_request_from_app_wrapper() {
         &rollout,
         [
             r#"{"timestamp":"2026-06-03T10:53:36.044Z","type":"session_meta","payload":{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d"}}"#,
-            r##"{"timestamp":"2026-06-03T10:53:44.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# Files mentioned by the user:\n\n## codex-clipboard.png: fixture/codex-clipboard.png\n\n## My request for Codex:\n对话需要支持 Markdown 渲染\n<image name=[Image #1] path=\"fixture/codex-clipboard.png\">\nprivate image metadata\n</image>"}]}}"##,
+            r##"{"timestamp":"2026-06-03T10:53:44.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# Files mentioned by the user:\n\n## codex-clipboard.png: fixture/codex-clipboard.png\n\n## My request:\n对话需要支持 Markdown 渲染\n<image name=[Image #1] path=\"fixture/codex-clipboard.png\">\nprivate image metadata\n</image>"}]}}"##,
             r#"{"timestamp":"2026-06-03T10:53:50.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Markdown rendered"}]}}"#,
         ]
         .join("\n"),
@@ -380,9 +433,16 @@ fn codex_adapter_extracts_real_user_request_from_app_wrapper() {
 
     let session = &listed["sessions"].as_array().unwrap()[0];
     let messages = session["messages"].as_array().unwrap();
-    assert!(messages.iter().any(|message| {
-        message["role"] == "user" && message["text"] == "对话需要支持 Markdown 渲染"
-    }));
+    let user_message = messages
+        .iter()
+        .find(|message| message["role"] == "user")
+        .expect("user message");
+    assert_eq!(user_message["text"], "对话需要支持 Markdown 渲染");
+    assert_eq!(user_message["images"][0]["mediaType"], "image/png");
+    assert_eq!(
+        user_message["images"][0]["path"],
+        "fixture/codex-clipboard.png"
+    );
     assert!(!messages.iter().any(|message| {
         let text = message["text"].as_str().unwrap_or_default();
         text.contains("Files mentioned")

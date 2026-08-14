@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileWidgetsPage extends StatefulWidget {
@@ -347,7 +348,7 @@ class _MetricPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(color: colors.line.withAlpha(150)),
       ),
       child: Column(
@@ -387,7 +388,7 @@ class _WidgetCard extends StatelessWidget {
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         side: BorderSide(color: colors.line.withAlpha(150)),
       ),
       child: Padding(padding: const EdgeInsets.all(14), child: child),

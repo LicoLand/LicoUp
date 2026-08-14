@@ -190,6 +190,19 @@ test("outside, download-cache, registry, and symlink targets are rejected", (t) 
 
 test("repository build-producing Cargo scripts use the lifecycle wrapper", () => {
   const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  const cargoConfig = readFileSync(path.join(projectRoot, ".cargo", "config.toml"), "utf8");
+  const androidBuild = readFileSync(
+    path.join(projectRoot, "apps", "desktop", "android", "app", "build.gradle.kts"),
+    "utf8",
+  );
+  const macosProject = readFileSync(
+    path.join(projectRoot, "apps", "desktop", "macos", "Runner.xcodeproj", "project.pbxproj"),
+    "utf8",
+  );
+  const packageNativeBuild = readFileSync(
+    path.join(projectRoot, "apps", "desktop", "scripts", "package-client", "build", "native.mjs"),
+    "utf8",
+  );
   assert.equal(
     Object.entries(packageJson.scripts).filter(([, command]) =>
       /(?:^|&&|\|)\s*cargo\s+(?:build|clippy|run|test)\b/u.test(command)).length,
@@ -203,4 +216,16 @@ test("repository build-producing Cargo scripts use the lifecycle wrapper", () =>
     packageJson.scripts["client:artifacts:prune"],
     "node tools/scripts/client-test-artifacts.mjs prune",
   );
+  assert.match(cargoConfig, /target-dir = "build\/crates\/licoup-native\/target"/u);
+  assert.match(
+    androidBuild,
+    /repoRoot\.resolve\("build\/crates\/licoup-native\/target"\)/u,
+  );
+  assert.match(androidBuild, /tools\/scripts\/cargo-client\.mjs/u);
+  assert.doesNotMatch(androidBuild, /commandLine\(\s*"cargo"/u);
+  assert.doesNotMatch(androidBuild, /android-target/u);
+  assert.match(macosProject, /tools\/scripts\/cargo-client\.mjs/u);
+  assert.doesNotMatch(macosProject, /CARGO_TARGET_DIR=.*cargo build/u);
+  assert.match(packageNativeBuild, /cargo-client\.mjs/u);
+  assert.doesNotMatch(packageNativeBuild, /runPackageProcess\("cargo"/u);
 });
