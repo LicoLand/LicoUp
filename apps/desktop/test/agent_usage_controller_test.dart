@@ -6,6 +6,8 @@ import 'package:licoup/src/application/features/agents/contracts/agent_usage_gat
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 
+import 'fixtures/agent_usage_panel/usage_panel_fixtures.dart';
+
 void main() {
   test('shares one in-flight scan and keeps bounded report history', () async {
     final gateway = _FakeUsageGateway();
@@ -279,6 +281,26 @@ void main() {
       expect(gateway.lastHistoryDays, defaultAgentUsageScanHistoryDays);
       expect(controller.report, isNotNull);
       expect(controller.report?.totalTokens, 3000);
+    },
+  );
+
+  test(
+    'daily cache viewport carries the native workflow projection through',
+    () async {
+      final gateway = _FakeUsageGateway(report: syntheticWorkflowUsageReport());
+      final controller = _controller(gateway);
+      addTearDown(controller.dispose);
+
+      await controller.scan(showProgress: false);
+
+      expect(controller.report?.workflowTotalTokens, 52);
+      expect(controller.report?.workflows.single.nodes, hasLength(4));
+      await controller.setHistoryDays(7);
+      expect(controller.report?.workflowTotalTokens, 52);
+      expect(
+        controller.report?.workflows.single.roots.single.children,
+        hasLength(3),
+      );
     },
   );
 }

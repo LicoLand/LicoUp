@@ -3,16 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Stadium ends for messaging composer context capsules.
@@ -141,7 +138,7 @@ class ComposerWorkspaceCapsule extends StatelessWidget {
     final base = splitAt <= 0 ? display : display.substring(splitAt + 1);
     return Tooltip(
       message: fullPath,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         enabled: canChoose,
@@ -377,7 +374,7 @@ class _RuntimeCapsuleTrigger extends StatelessWidget {
     final colors = context.licoColors;
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         enabled: menuEnabled,
@@ -837,230 +834,6 @@ class _RuntimeSelectorOptionRow extends StatelessWidget {
   }
 }
 
-/// Orchestration / Lico group-entry capsule: shows the Current Conversation
-/// owner, hover-lists configured Adaptive Flywheel roles/agents for `@`
-/// mentions, and a circular edit affordance for the full Adaptive Flywheel.
-class ComposerFlywheelCapsule extends StatelessWidget {
-  const ComposerFlywheelCapsule({
-    super.key,
-    required this.mainAgentLabel,
-    required this.mainAgentTarget,
-    required this.mentionSections,
-    required this.onEdit,
-    this.onMentionAgent,
-  });
-
-  final String mainAgentLabel;
-  final TargetCandidate? mainAgentTarget;
-  final List<ComposerFlywheelMentionSection> mentionSections;
-  final VoidCallback onEdit;
-  final ValueChanged<ComposerFlywheelMentionEntry>? onMentionAgent;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final colors = context.licoColors;
-    final menuRadius = BorderRadius.circular(
-      AppleControlMetrics.menuCornerRadius,
-    );
-    final trigger = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        MessagingHoverPopover(
-          popoverKey: const Key('conversation-flywheel-selector-panel'),
-          targetAnchor: Alignment.topLeft,
-          followerAnchor: Alignment.bottomLeft,
-          offset: const Offset(0, -4),
-          maxWidth:
-              MessagingDesktopMetrics.composerFlywheelSelectorPopoverMaxWidth,
-          maxHeight:
-              MessagingDesktopMetrics.composerFlywheelSelectorPopoverMaxHeight,
-          borderRadius: menuRadius,
-          wrapInGlass: false,
-          readabilityVeil: true,
-          cardBuilder: (context, close) {
-            return _ComposerFlywheelMentionPanel(
-              borderRadius: menuRadius,
-              maxHeight: MessagingDesktopMetrics
-                  .composerFlywheelSelectorPopoverMaxHeight,
-              sections: mentionSections,
-              onMentionAgent: onMentionAgent == null
-                  ? null
-                  : (entry) {
-                      onMentionAgent!(entry);
-                      close();
-                    },
-            );
-          },
-          triggerBuilder:
-              (context, {required open, required toggle, required close}) {
-                return Tooltip(
-                  message: strings.mentionConfiguredAgents,
-                  waitDuration: const Duration(milliseconds: 400),
-                  child: Semantics(
-                    button: true,
-                    label: '${strings.currentConversation}: $mainAgentLabel',
-                    child: AppleGlassSurface(
-                      borderRadius: kComposerCapsuleBorderRadius,
-                      fillAlpha: colors.isDark ? 22 : 10,
-                      child: InkWell(
-                        key: const Key('conversation-flywheel-button'),
-                        onTap: onEdit,
-                        borderRadius: kComposerCapsuleBorderRadius,
-                        mouseCursor: SystemMouseCursors.click,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (mainAgentTarget case final target?)
-                                AgentBrandIcon(
-                                  target: target,
-                                  size: 15,
-                                  iconSize: 15,
-                                )
-                              else
-                                Icon(
-                                  Icons.auto_awesome,
-                                  size: 15,
-                                  color: colors.primaryStrong,
-                                ),
-                              const SizedBox(width: 7),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 320,
-                                ),
-                                child: Text(
-                                  mainAgentLabel,
-                                  key: const Key('conversation-flywheel-label'),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: colors.text.withAlpha(235),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -0.08,
-                                    height: 1.15,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                open
-                                    ? Icons.expand_less_rounded
-                                    : Icons.expand_more_rounded,
-                                size: 15,
-                                color: colors.textMuted.withAlpha(160),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-        ),
-        const SizedBox(width: 6),
-        Tooltip(
-          message: strings.edit,
-          waitDuration: const Duration(milliseconds: 400),
-          child: AppleGlassSurface(
-            borderRadius: BorderRadius.circular(999),
-            fillAlpha: colors.isDark ? 22 : 10,
-            child: InkWell(
-              key: const Key('conversation-flywheel-edit'),
-              onTap: onEdit,
-              customBorder: const CircleBorder(),
-              child: SizedBox.square(
-                dimension: 28,
-                child: Icon(
-                  Icons.edit_outlined,
-                  size: 14,
-                  color: colors.textMuted.withAlpha(200),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-    return trigger;
-  }
-}
-
-class _ComposerFlywheelMentionPanel extends StatelessWidget {
-  const _ComposerFlywheelMentionPanel({
-    required this.borderRadius,
-    required this.maxHeight,
-    required this.sections,
-    required this.onMentionAgent,
-  });
-
-  final BorderRadius borderRadius;
-  final double maxHeight;
-  final List<ComposerFlywheelMentionSection> sections;
-  final ValueChanged<ComposerFlywheelMentionEntry>? onMentionAgent;
-
-  static const double _agentCardWidth = 240;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-
-    Widget agentRow(ComposerFlywheelMentionEntry entry) {
-      final target = entry.target;
-      return MessagingGlassMenuItem(
-        key: Key('conversation-flywheel-mention-${entry.agentId}'),
-        dense: true,
-        label: '@${entry.displayLabel}',
-        leading: target != null
-            ? AgentBrandIcon(target: target, size: 16, iconSize: 16)
-            : Icon(
-                Icons.alternate_email_rounded,
-                size: 16,
-                color: colors.textMuted,
-              ),
-        onTap: onMentionAgent == null ? null : () => onMentionAgent!(entry),
-      );
-    }
-
-    final rows = <Widget>[
-      MessagingGlassMenuSectionHeader(label: strings.mentionConfiguredAgents),
-      if (sections.isEmpty)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: Text(
-            strings.mentionConfiguredAgentsEmpty,
-            style: TextStyle(color: colors.textMuted, fontSize: 12),
-          ),
-        )
-      else
-        for (final section in sections) ...[
-          MessagingGlassMenuSectionHeader(label: section.title),
-          for (final entry in section.entries) agentRow(entry),
-        ],
-    ];
-
-    return MessagingGlassOptionCard(
-      borderRadius: borderRadius,
-      width: _agentCardWidth,
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rows,
-        ),
-      ),
-    );
-  }
-}
-
 /// Compact Agent / Plan mode capsule for Lico Agent conversations.
 class ComposerLicoProfileCapsule extends StatelessWidget {
   const ComposerLicoProfileCapsule({
@@ -1268,8 +1041,7 @@ String composeRuntimeCapsuleLabel({
   return parts.join(' · ');
 }
 
-/// Daily Conversation / Current Conversation capsule text:
-/// `Agent · Model · Effort · Fast` (omit empty trailing parts).
+/// Adaptive Flywheel capsule text: `Agent · Model · Effort`.
 String composeOrchestrationAssignmentCapsuleLabel({
   required String agentLabel,
   String modelName = '',
@@ -1281,29 +1053,18 @@ String composeOrchestrationAssignmentCapsuleLabel({
 }) {
   final parts = <String>[];
   final agent = agentLabel.trim();
-  if (agent.isNotEmpty) {
-    parts.add(agent);
-  }
+  if (agent.isNotEmpty) parts.add(agent);
   final model = modelName.trim();
   if (model.isNotEmpty) {
     final displayed = (modelDisplayName ?? shortenComposerModelName)(model);
-    if (displayed.trim().isNotEmpty) {
-      parts.add(displayed.trim());
-    }
+    if (displayed.trim().isNotEmpty) parts.add(displayed.trim());
   }
   final effort = reasoningEffort.trim();
   if (effort.isNotEmpty) {
     final displayed = effortLabel(effort).trim();
-    if (displayed.isNotEmpty) {
-      parts.add(displayed);
-    }
+    if (displayed.isNotEmpty) parts.add(displayed);
   }
-  if (fast) {
-    final label = fastLabel.trim();
-    if (label.isNotEmpty) {
-      parts.add(label);
-    }
-  }
+  if (fast && fastLabel.trim().isNotEmpty) parts.add(fastLabel.trim());
   return parts.join(' · ');
 }
 

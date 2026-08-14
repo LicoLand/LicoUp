@@ -2,11 +2,25 @@ use super::model::ProtocolFailure;
 use serde_json::Value;
 use std::path::Path;
 
+pub(super) const MAX_IMAGE_ATTACHMENTS: usize = 4;
+pub(super) const SUPPORTED_IMAGE_MEDIA_TYPES: &[&str] =
+    &["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+/// Canonical ordered local-image input for `turn/start`. The runtime adapter
+/// already validated the files; this config parse only maps the request shape.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct LocalImageInput {
+    pub(super) name: String,
+    pub(super) media_type: String,
+    pub(super) path: String,
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct ProtocolConfig {
     pub(super) prompt: String,
     pub(super) requested_session_id: String,
     pub(super) session_path: Option<String>,
+    pub(super) local_images: Vec<LocalImageInput>,
     pub(super) cwd: Option<String>,
     pub(super) model: Option<String>,
     pub(super) reasoning_effort: Option<String>,
@@ -60,11 +74,13 @@ impl ProtocolConfig {
         let model = text_param(params, &["model", "modelId"]);
         let reasoning_effort = text_param(params, &["reasoningEffort", "reasoning_effort"])
             .or_else(|| spark_default_reasoning_effort(model.as_deref()));
+        let local_images = parse_local_images(params)?;
 
         Ok(Self {
             prompt: prompt.to_string(),
             requested_session_id,
             session_path,
+            local_images,
             cwd: cwd.map(|path| path.to_string_lossy().to_string()),
             model,
             reasoning_effort,
@@ -80,6 +96,65 @@ impl ProtocolConfig {
     pub(super) fn is_resume(&self) -> bool {
         !self.requested_session_id.is_empty() || self.session_path.is_some()
     }
+}
+
+fn parse_local_images(params: &Value) -> Result<Vec<LocalImageInput>, ProtocolFailure> {
+    let Some(raw) = params.get("attachments") else {
+        return Ok(Vec::new());
+    };
+    if raw.is_null() {
+        return Ok(Vec::new());
+    }
+    let Some(items) = raw.as_array() else {
+        return Err(attachment_failure());
+    };
+    if items.len() > MAX_IMAGE_ATTACHMENTS {
+        return Err(attachment_failure());
+    }
+    let mut images = Vec::with_capacity(items.len());
+    for item in items {
+        let Some(object) = item.as_object() else {
+            return Err(attachment_failure());
+        };
+        for key in object.keys() {
+            if !matches!(key.as_str(), "id" | "name" | "mediaType" | "path") {
+                return Err(attachment_failure());
+            }
+        }
+        let name = required_image_field(object, "name")?;
+        let media_type = required_image_field(object, "mediaType")?;
+        let path = required_image_field(object, "path")?;
+        if !SUPPORTED_IMAGE_MEDIA_TYPES.contains(&media_type.as_str()) {
+            return Err(attachment_failure());
+        }
+        images.push(LocalImageInput {
+            name,
+            media_type,
+            path,
+        });
+    }
+    Ok(images)
+}
+
+fn required_image_field(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<String, ProtocolFailure> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(attachment_failure)
+}
+
+fn attachment_failure() -> ProtocolFailure {
+    ProtocolFailure::new(
+        "codex_invalid_local_image",
+        "The requested Codex image attachment is not valid.",
+        "turn/configure",
+    )
 }
 
 pub(super) fn spark_default_reasoning_effort(model: Option<&str>) -> Option<String> {

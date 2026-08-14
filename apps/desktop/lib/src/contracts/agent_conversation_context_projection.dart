@@ -208,6 +208,12 @@ String _extractUserAuthoredText(String text) {
       text.substring(codexRequestIndex + '## My request for Codex:'.length),
     );
   }
+  final requestIndex = _findCaseInsensitive(text, '## My request:');
+  if (requestIndex >= 0) {
+    return _stripGeneratedContextBlocks(
+      text.substring(requestIndex + '## My request:'.length),
+    );
+  }
   final plainRequestIndex = _findCaseInsensitive(text, 'My request for Codex:');
   if (plainRequestIndex >= 0) {
     return _stripGeneratedContextBlocks(

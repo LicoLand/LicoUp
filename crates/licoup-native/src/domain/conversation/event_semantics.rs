@@ -90,10 +90,19 @@ pub fn execution_event_kind(card_type: &str, source_item_type: &str) -> &'static
 
 pub fn evidence_kind_from_source(source_kind: &str) -> &'static str {
     match source_kind.trim().to_ascii_lowercase().as_str() {
-        "jsonl" => "jsonl",
-        "json" => "json",
-        "sqlite" | "sqlite-row" | "db" => "sqlite-row",
-        "md" | "markdown" => "markdown",
+        "jsonl"
+        | "codex-session-store"
+        | "codex-archived-session-store"
+        | "kimi-code-session-store"
+        | "pi-session-store" => "jsonl",
+        "json" | "claude-global-state" | "cursor-cli-chats" => "json",
+        "sqlite"
+        | "sqlite-row"
+        | "db"
+        | "codex-session-index"
+        | "cursor-workspace-storage"
+        | "cursor-global-storage" => "sqlite-row",
+        "md" | "markdown" | "codex-memory" | "codex-rollout-summary" => "markdown",
         "txt" | "text" => "text",
         _ => "unknown",
     }

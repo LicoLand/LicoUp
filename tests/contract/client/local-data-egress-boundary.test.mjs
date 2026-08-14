@@ -20,15 +20,15 @@ const networkTokensByExtension = Object.freeze({
   ".swift": ["URLSession", "NWConnection", "URLSessionWebSocketTask"],
 });
 
-const reviewedEgressFiles = Object.freeze([
-  "apps/desktop/lib/src/backend/features/settings/services/client_update_service.dart",
+const reviewedRustEgressFiles = Object.freeze([
+  "crates/licoup-native/src/domain/client_update/github_source.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
   "crates/licoup-native/src/domain/lico_agent/transport.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
-  "crates/licoup-native/src/domain/skill_hub/source.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
+  "crates/licoup-native/src/platform/gateway_runtime/channels/telegram/transport.rs",
   "crates/licoup-native/src/platform/llm_gateway_server.rs",
   "crates/licoup-native/src/platform/llm_gateway_service.rs",
   "crates/licoup-native/src/platform/llm_gateway_transport.rs",
@@ -70,43 +70,93 @@ async function networkCapableSources() {
 }
 
 test("production network capability stays inside the reviewed client egress boundary", async () => {
-  assert.deepEqual(await networkCapableSources(), reviewedEgressFiles);
+  assert.deepEqual(await networkCapableSources(), reviewedRustEgressFiles);
 });
 
 test("GitHub package fetchers are bounded inbound GET-only sources", async () => {
-  const githubFetchers = [
-    "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
-    "crates/licoup-native/src/domain/skill_hub/source.rs",
-  ];
-  for (const relativePath of githubFetchers) {
-    const source = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
-    assert.match(source, /Url::parse\("https:\/\/api\.github\.com"\)/u);
-    assert.match(source, /\.get\(archive_url\.as_str\(\)\)/u);
-    assert.match(source, /api\.github\.com.*github\.com.*codeload\.github\.com/su);
+  const collaborationPath =
+    "crates/licoup-native/src/domain/collaboration_plugin/source.rs";
+  const updatePath =
+    "crates/licoup-native/src/domain/client_update/github_source.rs";
+  const [collaboration, update] = await Promise.all(
+    [collaborationPath, updatePath].map((relativePath) =>
+      fs.readFile(path.join(repoRoot, relativePath), "utf8"),
+    ),
+  );
+
+  assert.match(collaboration, /Url::parse\("https:\/\/api\.github\.com"\)/u);
+  assert.match(collaboration, /\.get\(archive_url\.as_str\(\)\)/u);
+  assert.match(collaboration, /MAX_GITHUB_ARCHIVE_BYTES/u);
+  assert.match(collaboration, /MAX_GITHUB_ARCHIVE_ENTRIES/u);
+  assert.match(collaboration, /MAX_GITHUB_ARCHIVE_DEPTH/u);
+  assert.match(collaboration, /api\.github\.com.*github\.com.*codeload\.github\.com/su);
+
+  assert.match(update, /DEFAULT_API_BASE: &str = "https:\/\/api\.github\.com"/u);
+  assert.match(update, /agent\.get\(&current\)/u);
+  assert.match(update, /MAX_REDIRECTS/u);
+  assert.match(update, /MAX_RELEASE_METADATA_BYTES/u);
+  assert.match(update, /MAX_ARTIFACT_DOWNLOAD_BYTES/u);
+  assert.match(update, /\.take\(max_bytes\.saturating_add\(1\)\)/u);
+
+  for (const [relativePath, source] of [
+    [collaborationPath, collaboration],
+    [updatePath, update],
+  ]) {
     for (const forbidden of [".post(", ".send_json(", 'set("Authorization"']) {
       assert.equal(source.includes(forbidden), false, `${relativePath} contains ${forbidden}`);
     }
   }
 });
 
-test("client updates are bounded to the signed LicoUp GitHub release channel", async () => {
-  const relativePath =
-    "apps/desktop/lib/src/backend/features/settings/services/client_update_service.dart";
-  const source = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
+test("reviewed runtime owners retain direction, endpoint, and data bounds", async () => {
+  const expectations = new Map([
+    ["crates/licoup-native/src/domain/lico_agent/transport.rs", [
+      'strip_prefix("http://")', 'host != "127.0.0.1"',
+      "TcpStream::connect_timeout", "set_read_timeout", "Content-Length",
+    ]],
+    ["crates/licoup-native/src/domain/provider_model_pricing.rs", [
+      'parsed.scheme() != "https"', ".timeout_connect(REFRESH_TIMEOUT)",
+      ".get(url)", "MAX_PRICE_PAGE_BYTES", ".take(MAX_PRICE_PAGE_BYTES + 1)",
+    ]],
+    ["crates/licoup-native/src/platform/badtower_station/http_io.rs", [
+      "HTTP_TIMEOUT_SECONDS", "MAX_ERROR_RESPONSE_BYTES", "read_bounded",
+      ".take(take_limit)",
+    ]],
+    ["crates/licoup-native/src/platform/gateway_runtime/channels/telegram/transport.rs", [
+      'DEFAULT_API_ROOT: &str = "https://api.telegram.org"',
+      "MAX_RESPONSE_BYTES", ".timeout_connect", ".send_json(body)",
+    ]],
+    ["crates/licoup-native/src/platform/llm_gateway_server.rs", [
+      "if !address.ip().is_loopback()", "MAX_HEADER_BYTES", "MAX_HEADERS",
+      "MAX_REQUESTS_PER_CONNECTION", "MAX_GATEWAY_BODY_BYTES",
+    ]],
+    ["crates/licoup-native/src/platform/llm_gateway_service.rs", [
+      "MAX_CONFIG_BYTES", "MAX_PID_BYTES", "TcpStream::connect_timeout",
+      'GET /health HTTP/1.1',
+    ]],
+    ["crates/licoup-native/src/platform/llm_gateway_transport.rs", [
+      "MAX_IN_FLIGHT", "MAX_COALESCED_WRITE_BYTES", ".post(&prepared.endpoint)",
+      'request.set("authorization"', "MAX_GATEWAY_BODY_BYTES",
+    ]],
+    ["crates/licoup-native/src/platform/local_service/http.rs", [
+      "MAX_HTTP_REQUEST_BODY_BYTES", "MAX_HTTP_RESPONSE_BODY_BYTES",
+      "MAX_HTTP_HEADER_BYTES", "MAX_HTTP_IN_FLIGHT", "is_https_or_loopback_http_url",
+    ]],
+    ["crates/licoup-native/src/platform/local_service/sse.rs", [
+      "MAX_SSE_LINE_BYTES", "MAX_SSE_FRAME_BYTES", "MAX_SSE_EVENTS_PER_STREAM",
+      "MAX_SSE_STREAMS", "http::validate_url", "http::validate_headers",
+    ]],
+    ["crates/licoup-native/src/platform/mcp_streamable_http.rs", [
+      "DEFAULT_MAX_MESSAGE_BYTES", "MAX_HTTP_HEADERS", "MAX_HTTP_HEADER_BYTES",
+      "MAX_HTTP_IN_FLIGHT", "validate_endpoint", ".post(endpoint.as_str())",
+    ]],
+  ]);
 
-  assert.match(
-    source,
-    /https:\/\/github\.com\/LicoLand\/LicoUp\/releases\/latest\/download\/LicoUp-update-stable\.json/u,
-  );
-  assert.match(source, /static const _maxMetadataBytes = 1024 \* 1024;/u);
-  assert.match(source, /static const _maxArtifactBytes = 1024 \* 1024 \* 1024;/u);
-  assert.match(source, /http\.Request\('GET', uri\)/u);
-  assert.match(source, /_requireGitHubReleaseAsset\(uri\)/u);
-  assert.match(source, /uri\.host != 'github\.com'/u);
-  assert.match(source, /\/LicoLand\/LicoUp\/releases\/download\//u);
-  assert.match(source, /LicoUp-macos-arm64-update\.tar\.gz/u);
-  for (const forbidden of ["http.post", "http.put", "http.patch", "'Authorization'"]) {
-    assert.equal(source.includes(forbidden), false, `${relativePath} contains ${forbidden}`);
+  for (const [relativePath, required] of expectations) {
+    const source = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
+    for (const token of required) {
+      assert.equal(source.includes(token), true, `${relativePath} missing ${token}`);
+    }
   }
 });
 
@@ -118,9 +168,11 @@ test("local assembly runtime networking is synthetic loopback inspection only", 
   const shutdownPath =
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs";
   const sandboxPath =
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/sandbox.rs";
+  const sandboxOwnerPath =
     "crates/licoup-native/src/platform/process_sandbox/seatbelt.rs";
-  const [apply, probe, shutdown, sandbox] = await Promise.all(
-    [applyPath, probePath, shutdownPath, sandboxPath].map((relativePath) =>
+  const [apply, probe, shutdown, sandbox, sandboxOwner] = await Promise.all(
+    [applyPath, probePath, shutdownPath, sandboxPath, sandboxOwnerPath].map((relativePath) =>
       fs.readFile(path.join(repoRoot, relativePath), "utf8"),
     ),
   );
@@ -141,14 +193,17 @@ test("local assembly runtime networking is synthetic loopback inspection only", 
   assert.match(shutdown, /"assemblyManifestDigestSha256"/u);
   assert.match(shutdown, /TcpListener::bind\(\("127\.0\.0\.1", 0\)\)/u);
 
-  assert.match(sandbox, /"platform-loopback-isolated-runtime-v1"/u);
-  assert.match(sandbox, /allow network-bind \(local tcp \\"localhost:\{port\}\\"\)/u);
-  assert.match(sandbox, /allow network-inbound \(local tcp \\"localhost:\{port\}\\"\)/u);
+  assert.match(sandbox, /process_sandbox::CAPABILITY_COLLABORATION_LOOPBACK/u);
+  assert.match(sandbox, /process_sandbox::collaboration_loopback_command/u);
+  assert.match(sandboxOwner, /"platform-loopback-isolated-runtime-v1"/u);
+  assert.match(sandboxOwner, /allow network-bind \(local tcp \\"localhost:\{port\}\\"\)/u);
+  assert.match(sandboxOwner, /allow network-inbound \(local tcp \\"localhost:\{port\}\\"\)/u);
   const runtimeLeaves = [
     [applyPath, apply],
     [probePath, probe],
     [shutdownPath, shutdown],
     [sandboxPath, sandbox],
+    [sandboxOwnerPath, sandboxOwner],
   ];
   for (const forbidden of [
     'params.get("url")',

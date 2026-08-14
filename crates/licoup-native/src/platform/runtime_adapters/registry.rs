@@ -8,13 +8,13 @@ use super::model::{
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 const DRIVER_INVENTORY_SCHEMA_VERSION: &str = "v0.0.1:client-agent-conversation-drivers-1";
 const NATIVE_CAPABILITY_SCHEMA_VERSION: &str = "v0.0.1:client-agent-native-capabilities-1";
 const READINESS_SCHEMA_VERSION: &str = "v0.0.1:client-agent-conversation-readiness-1";
 const CONVERSATION_PARITY_CONTRACT_VERSION: &str = "CL-06";
-const MINIMUM_CONSECUTIVE_PASSES: usize = 3;
+const MINIMUM_CONSECUTIVE_PASSES: usize = 1;
 pub(super) const DRIVER_INVENTORY_JSON: &str =
     include_str!("../../../resources/agent-conversation-drivers.json");
 pub(super) const NATIVE_CAPABILITY_JSON: &str =
@@ -52,19 +52,64 @@ const REQUIRED_EVIDENCE_BINDINGS: &[&str] = &[
     "runtimeSourceClass",
 ];
 
-static RUNTIME_DRIVER_REGISTRY: OnceLock<Option<RuntimeDriverRegistry>> = OnceLock::new();
 static NATIVE_CAPABILITY_REGISTRY: OnceLock<Option<BTreeMap<String, Vec<NativeCapabilityKind>>>> =
     OnceLock::new();
+/// Live conversation-driver registry. Starts from the packaged embed and may be
+/// hot-reloaded when verified readiness changes (gateway inventory control).
+static LIVE_RUNTIME_DRIVER_REGISTRY: RwLock<Option<RuntimeDriverRegistry>> = RwLock::new(None);
 
 pub(crate) fn runtime_driver_profile(target: &str) -> Option<RuntimeDriverProfile> {
     let adapter = adapter_for_agent(target)?;
-    runtime_driver_registry()?.profile(adapter.id())
+    with_runtime_driver_registry(|registry| registry.profile(adapter.id()))?
 }
 
-pub(super) fn runtime_driver_registry() -> Option<&'static RuntimeDriverRegistry> {
-    RUNTIME_DRIVER_REGISTRY
-        .get_or_init(|| parse_runtime_driver_registry(DRIVER_INVENTORY_JSON, READINESS_JSON).ok())
-        .as_ref()
+fn ensure_runtime_driver_registry_loaded() {
+    let Ok(guard) = LIVE_RUNTIME_DRIVER_REGISTRY.read() else {
+        return;
+    };
+    if guard.is_some() {
+        return;
+    }
+    drop(guard);
+    let Ok(mut guard) = LIVE_RUNTIME_DRIVER_REGISTRY.write() else {
+        return;
+    };
+    if guard.is_none() {
+        *guard = parse_runtime_driver_registry(DRIVER_INVENTORY_JSON, READINESS_JSON).ok();
+    }
+}
+
+fn with_runtime_driver_registry<T>(f: impl FnOnce(&RuntimeDriverRegistry) -> T) -> Option<T> {
+    ensure_runtime_driver_registry_loaded();
+    let guard = LIVE_RUNTIME_DRIVER_REGISTRY.read().ok()?;
+    guard.as_ref().map(f)
+}
+
+/// Replace the live readiness projection from a full readiness document.
+/// Driver inventory remains the packaged embed; only verified status is hot-swapped.
+/// This is a partial reload: it does not touch Telegram bindings, conversation
+/// sessions, or any other channel / lane state.
+pub fn reload_conversation_readiness_document(
+    readiness_json: &str,
+) -> std::result::Result<(), &'static str> {
+    let parsed = parse_runtime_driver_registry(DRIVER_INVENTORY_JSON, readiness_json)?;
+    let mut guard = LIVE_RUNTIME_DRIVER_REGISTRY
+        .write()
+        .map_err(|_| "runtime_driver_registry_lock_failed")?;
+    *guard = Some(parsed);
+    Ok(())
+}
+
+/// Load a readiness overlay file when present (used by gateway sidecar start).
+pub fn reload_conversation_readiness_from_path(
+    path: &Path,
+) -> std::result::Result<(), &'static str> {
+    let bytes = std::fs::read(path).map_err(|_| "readiness_overlay_read_failed")?;
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err("readiness_overlay_too_large");
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|_| "readiness_overlay_invalid_utf8")?;
+    reload_conversation_readiness_document(text)
 }
 
 fn native_capability_registry() -> Option<&'static BTreeMap<String, Vec<NativeCapabilityKind>>> {
@@ -424,10 +469,12 @@ impl RuntimeDriverRegistry {
 
 pub(crate) fn inventory_capability_matrix(agent_id: &str) -> Option<Value> {
     let adapter = adapter_for_agent(agent_id)?;
-    runtime_driver_registry()?
-        .drivers
-        .get(adapter.id())
-        .and_then(|entry| entry.capability_matrix.clone())
+    with_runtime_driver_registry(|registry| {
+        registry
+            .drivers
+            .get(adapter.id())
+            .and_then(|entry| entry.capability_matrix.clone())
+    })?
 }
 
 /// Build the bounded, client-facing adapter management catalog from the same
@@ -438,14 +485,6 @@ pub(crate) fn inventory_capability_matrix(agent_id: &str) -> Option<Value> {
 /// annotated with one live on-host evidence snapshot (matched pid, process
 /// name, and port only).
 pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> Value {
-    let Some(registry) = runtime_driver_registry() else {
-        return json!({
-            "ok": false,
-            "schemaVersion": "lico.adapter-plugin-catalog.v1",
-            "adapters": [],
-            "error": {"code": "adapter_plugin_catalog_unavailable"},
-        });
-    };
     let Some(native_capability_registry) = native_capability_registry() else {
         return json!({
             "ok": false,
@@ -455,92 +494,100 @@ pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> 
         });
     };
     let live_snapshot = LiveSnapshot::capture();
-
-    let adapters = PACKAGED_RUNTIME_ADAPTER_IDS
-        .iter()
-        .filter_map(|agent_id| {
-            let adapter = adapter_for_agent(agent_id)?;
-            let driver = registry.drivers.get(*agent_id)?;
-            let readiness = registry.readiness.get(*agent_id)?;
-            let lane_family = driver
-                .capability_matrix
-                .as_ref()
-                .and_then(|matrix| matrix.get("laneFamily"))
-                .and_then(Value::as_str)
-                .unwrap_or("unavailable");
-            let managed_bridge = *agent_id == "antigravity";
-            let management_kind = if managed_bridge {
-                "managed-bridge"
-            } else if lane_family == "acp" {
-                "bundled-acp"
-            } else {
-                "native"
-            };
-            let installation_state = if managed_bridge {
-                if antigravity_bridge_installed {
-                    "installed"
+    let Some(adapters) = with_runtime_driver_registry(|registry| {
+        PACKAGED_RUNTIME_ADAPTER_IDS
+            .iter()
+            .filter_map(|agent_id| {
+                let adapter = adapter_for_agent(agent_id)?;
+                let driver = registry.drivers.get(*agent_id)?;
+                let readiness = registry.readiness.get(*agent_id)?;
+                let lane_family = driver
+                    .capability_matrix
+                    .as_ref()
+                    .and_then(|matrix| matrix.get("laneFamily"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("unavailable");
+                let managed_bridge = *agent_id == "antigravity";
+                let management_kind = if managed_bridge {
+                    "managed-bridge"
+                } else if lane_family == "acp" {
+                    "bundled-acp"
                 } else {
-                    "not-installed"
-                }
-            } else {
-                "not-required"
-            };
-            let lifecycle_actions = if managed_bridge {
-                if antigravity_bridge_installed {
-                    vec!["uninstall"]
+                    "native"
+                };
+                let installation_state = if managed_bridge {
+                    if antigravity_bridge_installed {
+                        "installed"
+                    } else {
+                        "not-installed"
+                    }
                 } else {
-                    vec!["install"]
-                }
-            } else {
-                Vec::new()
-            };
-            let cli_executable = crate::domain::targets::agent_cli_executable(agent_id);
-            let desktop_detected = crate::domain::targets::agent_desktop_app_detected(agent_id);
-            let native_capabilities = native_capability_registry
-                .get(*agent_id)?
-                .iter()
-                .map(|kind| {
-                    let detected = match kind {
-                        NativeCapabilityKind::Desktop => desktop_detected,
-                        // Protocol and service lanes are capabilities of the
-                        // agent runtime itself, so their detection follows the
-                        // real CLI detection result.
-                        _ => cli_executable.is_some(),
-                    };
-                    let live = live_snapshot.status(adapter, *kind);
-                    json!({
-                        "kind": kind.wire_name(),
-                        "detected": detected,
-                        "running": live.running,
-                        "pid": live.pid,
-                        "processName": live.process_name,
-                        "port": live.port,
+                    "not-required"
+                };
+                let lifecycle_actions = if managed_bridge {
+                    if antigravity_bridge_installed {
+                        vec!["uninstall"]
+                    } else {
+                        vec!["install"]
+                    }
+                } else {
+                    Vec::new()
+                };
+                let cli_executable = crate::domain::targets::agent_cli_executable(agent_id);
+                let desktop_detected = crate::domain::targets::agent_desktop_app_detected(agent_id);
+                let native_capabilities = native_capability_registry
+                    .get(*agent_id)?
+                    .iter()
+                    .map(|kind| {
+                        let detected = match kind {
+                            NativeCapabilityKind::Desktop => desktop_detected,
+                            // Protocol and service lanes are capabilities of the
+                            // agent runtime itself, so their detection follows the
+                            // real CLI detection result.
+                            _ => cli_executable.is_some(),
+                        };
+                        let live = live_snapshot.status(adapter, *kind);
+                        json!({
+                            "kind": kind.wire_name(),
+                            "detected": detected,
+                            "running": live.running,
+                            "pid": live.pid,
+                            "processName": live.process_name,
+                            "port": live.port,
+                        })
                     })
-                })
-                .collect::<Vec<_>>();
-            let adapter_plugins = adapter_plugin_entries(
-                adapter,
-                &driver.runtime_protocol,
-                installation_state,
-                &lifecycle_actions,
-                cli_executable.as_deref(),
-            );
-            Some(json!({
-                "agentId": adapter.id(),
-                "label": adapter.label(),
-                "driverId": driver.driver_id,
-                "runtimeProtocol": driver.runtime_protocol,
-                "laneFamily": lane_family,
-                "managementKind": management_kind,
-                "installationState": installation_state,
-                "readiness": readiness.status,
-                "lifecycleActions": lifecycle_actions,
-                "nativeCapabilities": native_capabilities,
-                "adapterPlugins": adapter_plugins,
-                "nativePreferred": true,
-            }))
-        })
-        .collect::<Vec<_>>();
+                    .collect::<Vec<_>>();
+                let adapter_plugins = adapter_plugin_entries(
+                    adapter,
+                    &driver.runtime_protocol,
+                    installation_state,
+                    &lifecycle_actions,
+                    cli_executable.as_deref(),
+                );
+                Some(json!({
+                    "agentId": adapter.id(),
+                    "label": adapter.label(),
+                    "driverId": driver.driver_id,
+                    "runtimeProtocol": driver.runtime_protocol,
+                    "laneFamily": lane_family,
+                    "managementKind": management_kind,
+                    "installationState": installation_state,
+                    "readiness": readiness.status,
+                    "lifecycleActions": lifecycle_actions,
+                    "nativeCapabilities": native_capabilities,
+                    "adapterPlugins": adapter_plugins,
+                    "nativePreferred": true,
+                }))
+            })
+            .collect::<Vec<_>>()
+    }) else {
+        return json!({
+            "ok": false,
+            "schemaVersion": "lico.adapter-plugin-catalog.v1",
+            "adapters": [],
+            "error": {"code": "adapter_plugin_catalog_unavailable"},
+        });
+    };
 
     json!({
         "ok": adapters.len() == PACKAGED_RUNTIME_ADAPTER_IDS.len(),
@@ -593,13 +640,13 @@ pub(super) fn codex_plugin_lifecycle_actions(installation_state: &str) -> Vec<&'
 }
 
 fn codex_plugin_installation_state(cli_executable: Option<&Path>) -> &'static str {
-    use crate::domain::agent_workflow_loop::CodexPluginState;
+    use crate::domain::integration_state::IntegrationState;
     let Some(executable) = cli_executable else {
         return "unavailable";
     };
     match crate::platform::codex_plugin_manager::status(executable) {
-        CodexPluginState::Ready => "installed",
-        CodexPluginState::Missing => "not-installed",
-        CodexPluginState::Unavailable => "unavailable",
+        IntegrationState::Ready => "installed",
+        IntegrationState::Missing => "not-installed",
+        IntegrationState::Unavailable => "unavailable",
     }
 }

@@ -27,7 +27,7 @@ export function validateConfig(config) {
   );
   requireValue(canonicalClientSourceRootsMatch(config.sourceRoots),
     "receipt_source_roots_not_canonical");
-  const expectedTargetIds = ["macos-arm64", "android-arm64", "linux-glibc-arm64"];
+  const expectedTargetIds = ["macos-direct-arm64", "android-direct-arm64-v8a"];
   requireValue(
     JSON.stringify(Object.keys(config.targets || {})) === JSON.stringify(expectedTargetIds),
     "receipt_target_catalog_mismatch",
@@ -35,6 +35,7 @@ export function validateConfig(config) {
   for (const [targetId, spec] of Object.entries(config.targets)) {
     for (const field of [
       "platform",
+      "evidenceTargetId",
       "artifactKind",
       "artifactRef",
       "artifactDigestKind",
@@ -63,7 +64,7 @@ export function validateConfig(config) {
       Number.isInteger(spec.evidenceInvocation?.timeoutMs) &&
       spec.evidenceInvocation.timeoutMs > 0,
     `receipt_evidence_invocation_invalid:${targetId}`);
-    if (["macos", "linux"].includes(spec.platform)) {
+    if (spec.platform === "macos") {
       requireValue(text(spec.distributionManifestRef),
         `receipt_distribution_manifest_missing:${targetId}`);
     }

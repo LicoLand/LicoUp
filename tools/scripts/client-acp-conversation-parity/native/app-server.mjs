@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { parityModelForAgent } from "../agent-ids.mjs";
 import { AppServerClient } from "../clients/app-server-client.mjs";
 import { AcceptanceError, requireFact } from "../errors.mjs";
 
@@ -90,7 +91,7 @@ export async function runAppServerTurn(client, threadId, prompt, model = "", eff
 
 export async function nativeAppServerTurn(context, requestedSessionId, prompt) {
   const forcedModel = context.config.id === "codex"
-    ? (process.env.LICO_CODEX_PARITY_MODEL || "")
+    ? parityModelForAgent("codex")
     : "";
   const forcedEffort = context.config.id === "codex"
     ? (process.env.LICO_CODEX_PARITY_REASONING_EFFORT
@@ -139,7 +140,7 @@ export async function nativeAppServerTurn(context, requestedSessionId, prompt) {
 
 export async function nativeAppServerReadback(context, sessionId) {
   const forcedModel = context.config.id === "codex"
-    ? (process.env.LICO_CODEX_PARITY_MODEL || "")
+    ? parityModelForAgent("codex")
     : "";
   const forcedEffort = context.config.id === "codex"
     ? (process.env.LICO_CODEX_PARITY_REASONING_EFFORT

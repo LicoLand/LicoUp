@@ -121,7 +121,7 @@ export function materializeArtifactReceipts(
       entry.dependencies.every((dependency) =>
         text(dependency?.id) && text(dependency?.ref).startsWith("build/") &&
         SHA256.test(text(dependency?.digest)))) &&
-      receipts.every((entry) => entry.targetId !== "macos-arm64" ||
+      receipts.every((entry) => entry.targetId !== "macos-direct-arm64" ||
         (entry.dependencies.length === 1 &&
           entry.dependencies[0].id === "macos-user-presence-proof" &&
           entry.dependencies[0].ref ===

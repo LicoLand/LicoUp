@@ -21,3 +21,24 @@ String agentConversationTargetDisplayName(TargetCandidate target) {
       : target.label.trim();
   return agentProductLabel(fallback);
 }
+
+/// Short product labels for narrow, local-only identity surfaces. Full names
+/// remain the accessible/hover label; unknown products keep their full label.
+String agentConversationTargetCompactDisplayName(TargetCandidate target) {
+  return switch (agentConversationProductId(target.target)) {
+    'antigravity' => 'Antigravity',
+    'claude' || 'claude-code' => 'Claude',
+    'chatgpt' || 'codex' => 'Codex',
+    'copilot' || 'github-copilot' => 'Copilot',
+    'cursor' => 'Cursor',
+    'hermes' || 'hermes-agent' => 'Hermes',
+    'kilo' || 'kilo-code' => 'Kilo',
+    'kimi' || 'kimi-code' => 'Kimi',
+    'lico' || 'lico-agent' => 'Lico',
+    'openclaw' => 'OpenClaw',
+    'opencode' => 'OpenCode',
+    'pi' || 'pi-agent' || 'pi-coding-agent' => 'Pi',
+    'trae' || 'trae-agent' => 'Trae',
+    _ => agentConversationTargetDisplayName(target),
+  };
+}

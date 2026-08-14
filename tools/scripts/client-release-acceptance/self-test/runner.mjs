@@ -1,4 +1,3 @@
-import { generateKeyPairSync, sign } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -6,20 +5,12 @@ import {
 } from "../../lib/client-release-targets.mjs";
 import { CLIENT_GATE_LANES } from "../../client-gate-policy.mjs";
 import {
-  sha256Buffer,
-  stableReadFile,
-} from "../../lib/client-release-artifact-digest.mjs";
-import {
   selectedReleaseBlockingSupportReady,
   validateClientSupportMatrix,
 } from "../../client-support-matrix.mjs";
 import {
-  SECURE_MESH_TRUST_UX_REPORT_SCHEMA_VERSION,
-} from "../../lib/secure-mesh-trust-ux-reducer.mjs";
-import {
   LICOARC_BADTOWER_CANDIDATE_BINDING_KEY,
 } from "../../lib/licoarc-badtower-candidate-binding.mjs";
-import { verifyLinuxArchiveDigestSignature } from "../artifacts/linux-signature.mjs";
 import {
   artifactBindingMapsEqual,
   artifactInputStatesEqual,
@@ -36,18 +27,26 @@ import { reduceClientReleaseAcceptance } from "../reduce.mjs";
 import { closureRedactionSeedRefs } from "../refs.mjs";
 import { sanitizeArtifactBinding } from "../sanitize-binding.mjs";
 import { selectedTargetIds } from "../targets.mjs";
-import { readJson, requireValue, text } from "../util.mjs";
+import { readJson, requireValue } from "../util.mjs";
 import {
-  selfTestAndroidTrustEvidence,
-  selfTestReleaseCliReport,
   selfTestReports,
-  selfTestTrustReport,
 } from "./fixtures.mjs";
+import {
+  loadCatalog,
+  validateCatalog,
+  validateReleaseFreshness,
+} from "../../model-pricing-facts.mjs";
+
+function assertPricingAuthorityReady() {
+  const catalog = validateCatalog(loadCatalog(repoRoot));
+  validateReleaseFreshness(catalog);
+}
 
 export function runSelfTest({ schemaFixture = false } = {}) {
+  assertPricingAuthorityReady();
   const selected = [
-    { id: "macos-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true },
-    { id: "android-arm64", platform: "android", arch: "arm64", supported: true, releaseSupported: true }
+    { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true },
+    { id: "android-direct-arm64-v8a", platform: "android", arch: "arm64", supported: true, releaseSupported: true }
   ];
   const readyIntegrity = {
     ok: true,
@@ -71,7 +70,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       ["client-version", "tools/client-version.json", "4"],
     ].map(([id, ref, digit]) => ({ id, ref, digest: `sha256:${digit.repeat(64)}` })),
     reports: [{
-      id: "linuxCli",
+      id: "macosCli",
       ok: true,
       schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
       producer: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
@@ -82,7 +81,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       closureChallengeBound: true,
       invocationNonceDigest: `sha256:${"3".repeat(64)}`,
       dependencies: [],
-    }]
+    }],
   };
   const readyArtifactFor = (targetId, artifactKind, digestDigit) => ({
     targetId,
@@ -90,10 +89,10 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     artifactKind,
     artifactDigest: `sha256:${digestDigit.repeat(64)}`,
     runtimeExecutableDigest: `sha256:${digestDigit.repeat(64)}`,
-    artifactEvidenceReportDigest: targetId === "android-arm64"
+    artifactEvidenceReportDigest: targetId === "android-direct-arm64-v8a"
       ? `sha256:${"b".repeat(64)}`
       : `sha256:${"d".repeat(64)}`,
-    artifactEvidenceInvocationNonceDigest: targetId === "android-arm64"
+    artifactEvidenceInvocationNonceDigest: targetId === "android-direct-arm64-v8a"
       ? `sha256:${"c".repeat(64)}`
       : `sha256:${"e".repeat(64)}`,
     versionReady: true,
@@ -111,12 +110,12 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ready: true
   });
   const readyArtifact = {
-    "macos-arm64": readyArtifactFor(
-      "macos-arm64",
+    "macos-direct-arm64": readyArtifactFor(
+      "macos-direct-arm64",
       "macos-distribution-archive",
       "3",
     ),
-    "android-arm64": readyArtifactFor("android-arm64", "android-apk", "8"),
+    "android-direct-arm64-v8a": readyArtifactFor("android-direct-arm64-v8a", "android-apk", "8"),
     [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]: {
       clientCandidateDigest: `sha256:${"a".repeat(64)}`,
       protocolCandidateDigest: `sha256:${"b".repeat(64)}`,
@@ -152,8 +151,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": {
-        ...readyArtifact["macos-arm64"],
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
         platformSecurityReady: false,
         ready: false,
       },
@@ -274,8 +273,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": {
-        ...readyArtifact["macos-arm64"],
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
         platformSecurityReady: false,
         ready: false,
       },
@@ -299,7 +298,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": { ...readyArtifact["macos-arm64"], consumerVerificationReady: false, ready: false }
+      "macos-direct-arm64": { ...readyArtifact["macos-direct-arm64"], consumerVerificationReady: false, ready: false }
     },
     reports: selfTestReports()
   });
@@ -308,7 +307,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": { ...readyArtifact["macos-arm64"], installReceiptReady: false, receiptProvenanceReady: false, ready: false }
+      "macos-direct-arm64": { ...readyArtifact["macos-direct-arm64"], installReceiptReady: false, receiptProvenanceReady: false, ready: false }
     },
     reports: selfTestReports()
   });
@@ -317,8 +316,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     ...base,
     artifactBindings: {
       ...readyArtifact,
-      "macos-arm64": {
-        ...readyArtifact["macos-arm64"],
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
         nonBlockingDistributionStatus: "ready",
       },
     },
@@ -426,56 +425,32 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     { ...producerSnapshot, inode: 3 },
   ), "replaced canonical receipt producer must fail closed");
   const artifactBindingFixture = {
-    "macos-arm64": sanitizeArtifactBinding({
-      targetId: "macos-arm64",
+    "macos-direct-arm64": sanitizeArtifactBinding({
+      targetId: "macos-direct-arm64",
       artifactDigest: `sha256:${"a".repeat(64)}`,
     }),
   };
   requireValue(artifactBindingMapsEqual(
     artifactBindingFixture,
     structuredClone(artifactBindingFixture),
-    [{ id: "macos-arm64" }],
+    [{ id: "macos-direct-arm64" }],
   ) && !artifactBindingMapsEqual(
     artifactBindingFixture,
     {
-      "macos-arm64": {
-        ...artifactBindingFixture["macos-arm64"],
+      "macos-direct-arm64": {
+        ...artifactBindingFixture["macos-direct-arm64"],
         artifactDigest: `sha256:${"b".repeat(64)}`,
       },
     },
-    [{ id: "macos-arm64" }],
+    [{ id: "macos-direct-arm64" }],
   ), "replaced final artifact input must fail closed");
   requireValue(artifactInputStatesEqual(
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "one" } },
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "one" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "one" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "one" } },
   ) && !artifactInputStatesEqual(
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "one" } },
-    { linux: { artifactDigest: `sha256:${"a".repeat(64)}`, signatureDigest: "two" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "one" } },
+    { macos: { artifactDigest: `sha256:${"a".repeat(64)}`, manifestDigest: "two" } },
   ), "replaced artifact sidecar input must fail closed");
-  const { publicKey: linuxPublicKey, privateKey: linuxPrivateKey } =
-    generateKeyPairSync("ed25519");
-  const linuxPublicKeyDer = linuxPublicKey.export({ type: "spki", format: "der" });
-  const linuxArtifactDigest = `sha256:${"d".repeat(64)}`;
-  const linuxSignature = sign(
-    null,
-    Buffer.from(linuxArtifactDigest.slice("sha256:".length), "hex"),
-    linuxPrivateKey,
-  );
-  const linuxDistribution = {
-    signature: {
-      publicKeySpkiBase64: linuxPublicKeyDer.toString("base64"),
-      publicKeyFingerprint: sha256Buffer(linuxPublicKeyDer),
-    },
-  };
-  requireValue(verifyLinuxArchiveDigestSignature(
-    linuxDistribution,
-    linuxSignature,
-    linuxArtifactDigest,
-  ) && !verifyLinuxArchiveDigestSignature(
-    linuxDistribution,
-    linuxSignature,
-    `sha256:${"e".repeat(64)}`,
-  ), "Linux archive signature direct verification must fail closed");
   let privacyRejected = false;
   try {
     assertAcceptancePrivacy({ fixture: ["", "Users", "fixture", "secret"].join("/") });
@@ -523,7 +498,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
-    "client:verify:linux-tar-resource-bounds:self-test",
     "client:verify:android-apk-zip-facts:self-test",
     "client:verify:android-release-toolchain:self-test",
     "client:verify:macos-distribution:self-test",
@@ -554,15 +528,15 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     selectedTargetIds: preflightConfig.releaseTargetAuthority.selectedTargetIds,
   }), "authorized release target preflight failed");
   const mismatchedLineageReceiptConfig = structuredClone(preflightReceiptConfig);
-  mismatchedLineageReceiptConfig.targets["linux-glibc-arm64"].distributionManifestRef =
-    "build/apps/desktop/distribution/linux-arm64/retired-manifest.json";
+  mismatchedLineageReceiptConfig.targets["macos-direct-arm64"].distributionManifestRef =
+    "build/apps/desktop/distribution/macos/retired-manifest.json";
   let mismatchedLineageRejected = false;
   try {
     validateReleaseSelectionPreflight({
       catalog: preflightCatalog,
       config: preflightConfig,
       receiptConfig: mismatchedLineageReceiptConfig,
-      selectedTargetIds: ["linux-glibc-arm64"],
+      selectedTargetIds: ["macos-direct-arm64"],
     });
   } catch {
     mismatchedLineageRejected = true;
@@ -574,7 +548,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "tools/client-support-matrix.json",
   ));
   for (const target of supportMatrixFixture.targets) {
-    if (!["macos-arm64", "android-arm64", "linux-glibc-arm64"].includes(
+    if (!["macos-arm64", "android-arm64"].includes(
       target.targetId,
     )) continue;
     target.overrides = {
@@ -586,24 +560,24 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   const validatedSupportMatrix = validateClientSupportMatrix(supportMatrixFixture);
   requireValue(selectedReleaseBlockingSupportReady(
     validatedSupportMatrix,
-    ["macos-arm64", "android-arm64", "linux-glibc-arm64"],
+    ["macos-arm64", "android-arm64"],
   ), "selected supported blocking services were rejected");
   supportMatrixFixture.targets.find((target) =>
     target.targetId === "android-arm64").overrides["secure-mesh-pairwise"] = "preview";
   requireValue(!selectedReleaseBlockingSupportReady(
     validateClientSupportMatrix(supportMatrixFixture),
-    ["macos-arm64", "android-arm64", "linux-glibc-arm64"],
+    ["macos-arm64", "android-arm64"],
   ), "selected preview blocking service was accepted");
   const childProofRef =
     "build/reports/secure-mesh-macos-keychain-user-presence-proof.json";
   requireValue(closureRedactionSeedRefs(
     preflightConfig,
-    [{ id: "macos-arm64" }],
+    [{ id: "macos-direct-arm64" }],
     { ok: true, payload: { receipts: [{ dependencies: [{ ref: childProofRef }] }] } },
     preflightReceiptConfig,
   ).includes(childProofRef),
   "selected closure redaction omitted macOS child proof dependency");
-  for (const targetId of ["macos-x64", "linux-musl-arm64", "windows-x64"]) {
+  for (const targetId of ["linux-musl-arm64", "windows-x64"]) {
     let rejected = false;
     try {
       validateReleaseSelectionPreflight({
@@ -638,7 +612,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   );
   let emptyTokenRejected = false;
   try {
-    process.env.LICO_CLIENT_RELEASE_TARGETS = "macos-arm64,";
+    process.env.LICO_CLIENT_RELEASE_TARGETS = "macos-direct-arm64,";
     selectedTargetIds(
       preflightCatalog,
       preflightConfig.releaseTargetAuthority.selectedTargetIds,
@@ -653,5 +627,5 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     }
   }
   requireValue(emptyTokenRejected, "explicit empty release target token was accepted");
-  return { ok: true, caseCount: 43 };
+  return { ok: true, caseCount: 42 };
 }

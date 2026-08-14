@@ -98,37 +98,22 @@ if (manifest.schemaVersion !== "licomesh.android-release-toolchain-allowlist.v1"
   throw new Error("Android release toolchain allowlist is incomplete");
 }
 validateClientGateTopology();
-const androidJob = jobBlock(workflow, "build-android-arm64");
-if (!androidJob.includes("runs-on: [self-hosted, macOS, ARM64, lico-release, android]") ||
-  androidJob.includes("runs-on: ubuntu")) {
-  throw new Error("Android release workflow is not pinned to an approved host class");
+const prepareJob = jobBlock(workflow, "prepare");
+const publishJob = jobBlock(workflow, "publish");
+if (!workflow.includes("One or more comma-separated exact package targets") ||
+  !workflow.includes("client-release-workflow-binding.mjs") ||
+  !workflow.includes("--mode matrix --targets \"$TARGETS\"") ||
+  prepareJob.includes("LICO_CLIENT_RELEASE_TARGETS:") ||
+  !prepareJob.includes("matrix.target == 'android-direct-arm64-v8a'") ||
+  !prepareJob.includes("client:release:build -- --target \"$TARGET\"") ||
+  !prepareJob.includes("client:release:verify -- --target \"$TARGET\"") ||
+  !publishJob.includes("--targets \"${{ inputs.targets }}\"") ||
+  !publishJob.includes("Publish selected package set")) {
+  throw new Error("GitHub Release workflow is not bound to exact one-or-many package targets");
 }
-if (!androidJob.includes("LICO_CLIENT_RELEASE_TARGETS: android-arm64") ||
-  !androidJob.includes("LICO_ANDROID_TARGET_PLATFORM: android-arm64") ||
-  androidJob.indexOf("Build same-source macOS relay CLI prerequisite") < 0 ||
-  androidJob.indexOf("Build same-source macOS relay CLI prerequisite") >
-    androidJob.indexOf("Apply remote release validity strategy") ||
-  !androidJob.includes(
-    "run: npm run client:release:remote-strategy -- --expect build-success",
-  ) || androidJob.includes("client:verify:")) {
-  throw new Error("Android remote release strategy is not bound to same-source build success");
-}
-const macosJob = jobBlock(workflow, "build-macos");
-const linuxJob = jobBlock(workflow, "build-linux-arm64");
-if (!macosJob.includes("LICO_CLIENT_RELEASE_TARGETS: macos-arm64") ||
-  !macosJob.includes("Apply remote release validity strategy") ||
-  !linuxJob.includes("LICO_CLIENT_RELEASE_TARGETS: linux-glibc-arm64") ||
-  !linuxJob.includes("Apply remote release validity strategy") ||
-  [macosJob, linuxJob].some((job) => job.includes("client:verify:")) ||
-  workflow.includes("windows_x64:") ||
-  workflow.includes("\n  windows-x64:")) {
-  throw new Error("GitHub Release jobs are not bound to selected-target build-success strategy");
-}
-const publisherJobs = Object.values(CLIENT_RELEASE_TARGETS)
-  .map((target) => jobBlock(workflow, target.publishJob));
 const uploadPolicyReady =
   workflow.includes("permissions:\n  contents: read") &&
-  (workflow.match(/contents: write/gu) || []).length === 3 &&
+  (workflow.match(/contents: write/gu) || []).length === 1 &&
   publisher.includes('"release",\n      "create"') &&
   publisher.includes('"release", "edit"') &&
   publisher.includes('"release",\n      "upload"') &&
@@ -137,39 +122,17 @@ const uploadPolicyReady =
   publisher.includes("client-release-remote-asset-set.mjs") &&
   publisher.includes(".assets | map({name, size, digest})") &&
   publisher.includes("COPYFILE_EXCL") &&
-  publisher.includes("--clobber") &&
-  publisherJobs.every((job) =>
-    job.includes("client-github-release-publish.mjs") &&
-    job.includes("persist-credentials: false")) &&
-  !macosJob.includes("GH_TOKEN:") &&
-  !linuxJob.includes("GH_TOKEN:") &&
-  !androidJob.includes("GH_TOKEN:") &&
-  (workflow.match(/npm run client:gate:source/gu) || []).length === 0 &&
+  publishJob.includes("client-github-release-publish.mjs") &&
+  publishJob.includes("persist-credentials: false") &&
+  !prepareJob.includes("GH_TOKEN:") &&
+  !workflow.includes("npm run client:gate:") &&
   !workflow.includes("--generate-notes") &&
   !workflow.includes("yes |") &&
-  workflow.includes("Prepare ephemeral local integrity identity") &&
-  !workflow.includes("LICO_MACOS_SIGNING_IDENTITY") &&
-  !workflow.includes("LICO_MACOS_NOTARY_") &&
-  androidJob.includes("build/apps/desktop/android/release/LicoUp-android-arm64.apk") &&
-  androidJob.includes("build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256") &&
-  androidJob.includes("build/apps/desktop/android/release/lico-github-artifact.pem") &&
-  !androidJob.includes("build/apps/desktop/android/release/build-manifest.json") &&
-  !/path:\s*build\/apps\/desktop\/android\/release\/\s*$/mu.test(androidJob) &&
-  macosJob.indexOf("Prepare ephemeral local integrity identity") <
-    macosJob.indexOf("run: npm run client:install:macos") &&
-  macosJob.indexOf("run: npm run client:install:macos") <
-    macosJob.indexOf("run: npm run client:archive:macos-github-release") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/install-macos.sh") &&
-  !macosJob.includes("build/apps/desktop/runnable/macos/release/LicoUp-macos-arm64.zip") &&
-  !/path:\s*build\/apps\/desktop\/runnable\/macos\/release\/\s*$/mu.test(macosJob) &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem") &&
-  !linuxJob.includes("build/apps/desktop/distribution/linux-arm64/manifest.json") &&
-  !/path:\s*build\/apps\/desktop\/distribution\/linux-arm64\/\s*$/mu.test(linuxJob);
+  !workflow.includes("Materialize governed macOS platform-channel inputs") &&
+  !workflow.includes("LICO_MACOS_PROVISIONING_PROFILE_BASE64") &&
+  !workflow.includes("LICO_MACOS_NOTARY_KEY_BASE64") &&
+  !workflow.includes("licoup-notary-key.p8") &&
+  prepareJob.includes("build/releases/${{ needs.source.outputs.version }}/${{ matrix.target }}/*");
 if (!uploadPolicyReady) {
   throw new Error("GitHub Release upload policy exposes more than consumer verification artifacts");
 }
@@ -187,16 +150,13 @@ for (const forbidden of [
 const pinnedCargoAudit = "cargo install cargo-audit --version 0.22.2 --locked";
 const ciSourceJob = jobBlock(ciWorkflow, "source");
 const ciDependencyJob = jobBlock(ciWorkflow, "dependencies");
-const releaseDependencyJob = jobBlock(workflow, "preflight");
 if (
   ciSourceJob.includes(pinnedCargoAudit) ||
   !ciDependencyJob.includes(pinnedCargoAudit) ||
-  releaseDependencyJob.includes(pinnedCargoAudit) ||
-  macosJob.includes(pinnedCargoAudit) ||
-  linuxJob.includes(pinnedCargoAudit) ||
-  androidJob.includes(pinnedCargoAudit)
+  workflow.includes(pinnedCargoAudit) ||
+  prepareJob.includes(pinnedCargoAudit)
 ) {
-  throw new Error("Pinned cargo-audit must remain isolated to the local dependency policy job");
+  throw new Error("Pinned cargo-audit must remain isolated to dependency policy jobs");
 }
 if (!androidBuilder.includes("path.isAbsolute(keystorePath)") ||
   !androidGradle.includes("releaseStoreFile?.isAbsolute == true") ||
@@ -296,9 +256,7 @@ if (sanitizedEnvironment.HOME !== "/fixture-home" ||
 }
 console.log(JSON.stringify({
   ok: true,
-  approvedHostClassCovered: true,
-  explicitAndroidReleaseTargetSelected: true,
-  sameSourceRelayCliPrerequisiteBound: true,
+  oneOrManyExactPackageTargetsReady: true,
   pinnedDependencyAuditIsolated: true,
   toolDigestAllowlistReady: true,
   environmentInjectionRejected: true,

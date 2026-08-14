@@ -58,6 +58,7 @@ void main() {
       MessagingDesktopMetrics.mainCardCornerRadius,
     );
     expect(decoration.border!.top.width, MessagingDesktopMetrics.hairline);
+    expect(decoration.border!.top.color.a, 0);
     expect(
       decoration.boxShadow!.single.blurRadius,
       MessagingDesktopMetrics.mainContentCardShadowBlur,

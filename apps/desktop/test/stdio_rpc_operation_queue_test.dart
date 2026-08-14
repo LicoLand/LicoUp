@@ -154,4 +154,34 @@ void main() {
     expect(events, ['a', 'b']);
     expect(order, ['after']);
   });
+
+  test(
+    'detach releases the observer without waiting for active work',
+    () async {
+      final queue = StdioRpcOperationQueue();
+      final gate = Completer<void>();
+      final active = queue.serialize(() => gate.future);
+      var detached = false;
+
+      await queue.detach(() async {
+        detached = true;
+      });
+
+      expect(detached, isTrue);
+      expect(gate.isCompleted, isFalse);
+      await expectLater(
+        queue.serialize(() async {}),
+        throwsA(
+          isA<LicoClientRpcException>().having(
+            (error) => error.code,
+            'code',
+            'service_disposed',
+          ),
+        ),
+      );
+
+      gate.complete();
+      await active;
+    },
+  );
 }

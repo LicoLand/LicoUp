@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Opens the command-palette style conversation search. The palette indexes
@@ -415,10 +416,11 @@ class _GroupedHitList extends StatelessWidget {
     final rows = <Widget>[];
     if (featureHits.isNotEmpty) {
       rows.add(
-        _GroupHeader(
-          icon: Icons.bolt_outlined,
+        LicoGroupHeader(
           label: featuresGroupLabel,
           count: featureHits.length,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          leading: Icon(Icons.bolt_outlined, size: 15, color: colors.textMuted),
         ),
       );
       for (var index = 0; index < featureHits.length; index++) {
@@ -462,10 +464,15 @@ class _GroupedHitList extends StatelessWidget {
     }
     if (skillHits.isNotEmpty) {
       rows.add(
-        _GroupHeader(
-          icon: Icons.library_books_outlined,
+        LicoGroupHeader(
           label: skillsGroupLabel,
           count: skillHits.length,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          leading: Icon(
+            Icons.library_books_outlined,
+            size: 15,
+            color: colors.textMuted,
+          ),
         ),
       );
       for (var index = 0; index < skillHits.length; index++) {
@@ -532,10 +539,13 @@ class _GroupedHitList extends StatelessWidget {
           ? agentId
           : agentConversationTargetDisplayName(target);
       rows.add(
-        _GroupHeader(
+        LicoGroupHeader(
           label: name,
           count: groups[agentId]!.length,
-          target: target,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          leading: target != null
+              ? AgentBrandIcon(target: target, size: 18, iconSize: 12)
+              : null,
         ),
       );
       for (final hitIndex in groups[agentId]!) {
@@ -602,55 +612,5 @@ class _GroupedHitList extends StatelessWidget {
       }
     }
     return null;
-  }
-}
-
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader({
-    required this.label,
-    required this.count,
-    this.icon,
-    this.target,
-  });
-
-  final String label;
-  final int count;
-  final IconData? icon;
-  final TargetCandidate? target;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      child: Row(
-        children: [
-          if (target != null) ...[
-            AgentBrandIcon(target: target!, size: 18, iconSize: 12),
-            const SizedBox(width: 6),
-          ] else if (icon != null) ...[
-            Icon(icon, size: 15, color: colors.textMuted),
-            const SizedBox(width: 6),
-          ],
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          Text(
-            '$count',
-            style: TextStyle(color: colors.textMuted, fontSize: 11),
-          ),
-        ],
-      ),
-    );
   }
 }

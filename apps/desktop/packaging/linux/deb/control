@@ -1,0 +1,10 @@
+Package: licoup
+Version: ${LICOUP_VERSION}
+Architecture: ${LICOUP_DEB_ARCH}
+Maintainer: LicoLand <support@lico.land>
+Section: net
+Priority: optional
+Depends: libc6 (>= 2.31), libgtk-3-0, libstdc++6
+Homepage: https://github.com/LicoLand/LicoUp
+Description: Official LicoMesh client
+ LicoUp manages local AI agent conversations and secure peer connectivity.
