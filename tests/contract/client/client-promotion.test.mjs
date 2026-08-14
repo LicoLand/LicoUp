@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   PromotionError,
+  hasPromotableCommits,
   inferPromotionBase,
   promotionPlan,
   releaseTrainEdges,
@@ -23,6 +24,13 @@ test("promotion planner accepts only the three repository promotion edges", () =
       (error) => error instanceof PromotionError && error.code === "promotion_edge_invalid",
     );
   }
+});
+
+test("promotion accepts merge-history divergence only when the source has new commits", () => {
+  assert.equal(hasPromotableCommits("ahead"), true);
+  assert.equal(hasPromotableCommits("diverged"), true);
+  assert.equal(hasPromotableCommits("behind"), false);
+  assert.equal(hasPromotableCommits("identical"), false);
 });
 
 test("promotion planner rejects unsafe or non-action branch names", () => {
