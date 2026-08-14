@@ -85,6 +85,7 @@ function makeRunnableTree({
 function recordingPorts({
   digest = CURRENT_DIGEST,
   launchResult = true,
+  launchResults = null,
   stableResult = true,
 } = {}) {
   const calls = {
@@ -93,6 +94,7 @@ function recordingPorts({
     register: [],
     launch: [],
     observe: [],
+    launchWait: 0,
     quit: [],
     mkdir: [],
   };
@@ -128,7 +130,12 @@ function recordingPorts({
     },
     launchInstalled: (appPath) => {
       calls.launch.push(appPath);
-      return launchResult;
+      return launchResults === null
+        ? launchResult
+        : launchResults[calls.launch.length - 1] ?? false;
+    },
+    waitForLaunchRetry: () => {
+      calls.launchWait += 1;
     },
     observeStable: (appPath, windowMs) => {
       calls.observe.push({ appPath, windowMs });
@@ -293,6 +300,22 @@ test("launch targets the exact installed bundle path and never a bundle-id selec
   assert.equal(path.isAbsolute(calls.launch[0]), true);
 });
 
+test("launch retries a bounded transient LaunchServices failure", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+  const { calls, ports } = recordingPorts({ launchResults: [false, true] });
+
+  const result = runMacosInstaller(
+    { installDir, runnableRoot, launchInstalled: true },
+    ports,
+  );
+
+  assert.equal(result.launchVerified, true);
+  assert.equal(calls.launch.length, 2);
+  assert.equal(calls.launchWait, 1);
+  assert.ok(calls.launch.every((value) => value === path.join(installDir, APP_NAME)));
+});
+
 test("failed launch and bounded stable survival report only safe state", () => {
   const runnableRoot = makeRunnableTree();
   const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
@@ -307,6 +330,8 @@ test("failed launch and bounded stable survival report only safe state", () => {
       error.code === "macos_install_launch_failed" &&
       error.stage === "macos-install-launch-installed",
   );
+  assert.equal(failingLaunch.calls.launch.length, 3);
+  assert.equal(failingLaunch.calls.launchWait, 2);
 
   const stable = recordingPorts({ stableResult: true });
   const windowMs = 5_000;
