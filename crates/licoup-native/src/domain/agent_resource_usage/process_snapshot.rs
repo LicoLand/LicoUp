@@ -42,6 +42,7 @@ pub fn current_process_snapshots() -> Vec<ProcessSnapshot> {
 
 /// Parses a `ps -axo pid=,rss=,comm=` payload into rss-byte entries.
 /// Exposed for tests.
+#[cfg(any(test, target_os = "macos"))]
 pub fn parse_ps_rss_lines(text: &str) -> Vec<(i64, u64, String)> {
     let mut entries = Vec::new();
     for line in text.lines() {

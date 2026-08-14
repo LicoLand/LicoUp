@@ -1,7 +1,10 @@
 use super::support::*;
 
+#[cfg(target_os = "macos")]
 use flate2::{Compression, write::GzEncoder};
+#[cfg(target_os = "macos")]
 use std::io;
+#[cfg(target_os = "macos")]
 use tar::Builder;
 
 /// An unsigned candidate must be rejected before the native replacement
@@ -222,6 +225,7 @@ fn client_update_native_runner_target_guard_rejects_filesystem_roots() {
     assert!(ensure_guarded_target_for_test(Path::new("/fixture-root/LicoUp")).is_ok());
 }
 
+#[cfg(target_os = "macos")]
 fn write_app_archive(path: &Path, marker: &[u8]) {
     let encoder = GzEncoder::new(fs::File::create(path).unwrap(), Compression::default());
     let mut archive = Builder::new(encoder);
@@ -243,6 +247,7 @@ fn write_app_archive(path: &Path, marker: &[u8]) {
     archive.into_inner().unwrap().finish().unwrap();
 }
 
+#[cfg(target_os = "macos")]
 fn app_bundle_artifact(path: &Path) -> Value {
     json!({
         "targetId": TARGET_ID,

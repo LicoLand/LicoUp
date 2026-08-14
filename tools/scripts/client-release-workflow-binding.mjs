@@ -187,22 +187,23 @@ export function releaseWorkflowMatrix(targetValue) {
 function selfTest() {
   const correlation = "1".repeat(64);
   const sha = "2".repeat(40);
+  const tag = `v${versionAuthority.productVersion}`;
   const prepareTargets = "macos-direct-arm64,android-direct-arm64-v8a";
   const publishTargets = "android-direct-arm64-v8a";
   const digests = JSON.stringify({
     "android-direct-arm64-v8a": `sha256:${"4".repeat(64)}`,
   });
-  validateReleaseWorkflowRequest({ phase: "prepare", tag: "v0.1.0", targets: prepareTargets,
+  validateReleaseWorkflowRequest({ phase: "prepare", tag, targets: prepareTargets,
     correlation, ref: "refs/heads/release", sha, sourceRevision: "",
     prepareRunId: "", artifactDigests: "", signedManifestPresent: "false" });
-  validateReleaseWorkflowRequest({ phase: "publish", tag: "v0.1.0", targets: publishTargets,
+  validateReleaseWorkflowRequest({ phase: "publish", tag, targets: publishTargets,
     correlation, ref: "refs/heads/release", sha, sourceRevision: sha,
     prepareRunId: "7", artifactDigests: digests, signedManifestPresent: "false" });
   validatePrepareRunBinding({ id: 7, event: "workflow_dispatch", status: "completed",
     conclusion: "success", head_branch: "release", head_sha: sha,
     path: ".github/workflows/client-release.yml",
-    display_title: `prepare v0.1.0 ${prepareTargets} ${correlation}` },
-  { runId: "7", sourceRevision: sha, tag: "v0.1.0", targets: prepareTargets, correlation });
+    display_title: `prepare ${tag} ${prepareTargets} ${correlation}` },
+  { runId: "7", sourceRevision: sha, tag, targets: prepareTargets, correlation });
   const matrix = releaseWorkflowMatrix(prepareTargets);
   if (matrix.include.length !== 2) fail("release workflow matrix is not exact");
   process.stdout.write(`${JSON.stringify({ ok: true, caseCount: 4 })}\n`);
