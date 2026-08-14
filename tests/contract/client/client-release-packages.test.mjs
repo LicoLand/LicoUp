@@ -32,6 +32,9 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const script = "tools/scripts/client-release-packages.mjs";
 const builderScript = "apps/desktop/scripts/build-platform-release-package.mjs";
 const catalogPath = path.join(repoRoot, "tools/client-release-targets.json");
+const productVersion = JSON.parse(readFileSync(
+  path.join(repoRoot, "tools/client-version.json"), "utf8",
+)).productVersion;
 
 function currentHostId() {
   const platform = process.platform === "darwin" ? "darwin"
@@ -229,7 +232,7 @@ test("plan emits one or multiple independently staged package directories", () =
   const singlePlan = JSON.parse(single.stdout);
   assert.equal(singlePlan.targetCount, 1);
   assert.equal(singlePlan.targets[0].outputRef,
-    "build/releases/0.1.0/macos-direct-arm64");
+    `build/releases/${productVersion}/macos-direct-arm64`);
 
   const multiple = invoke([
     "plan", "--targets", "macos-direct-arm64,android-direct-arm64-v8a",
@@ -390,7 +393,7 @@ test("prepare matrix accepts every package-build target while publish stays rele
     assert.equal(entry.buildHost, target.buildHost);
   }
   const request = {
-    tag: "v0.1.0",
+    tag: `v${productVersion}`,
     correlation: "1".repeat(64),
     ref: "refs/heads/release",
     sha: "2".repeat(40),
