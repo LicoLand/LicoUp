@@ -31,6 +31,7 @@ bool messagingSidebarNavHosts(ClientSection section) =>
     section == ClientSection.agents ||
     section == ClientSection.skillHub ||
     section == ClientSection.pluginManagement ||
+    section == ClientSection.agentHub ||
     section == ClientSection.models ||
     section == ClientSection.mobileRelay ||
     section == ClientSection.settings;
@@ -54,9 +55,11 @@ ClientSection messagingSidebarNavTarget({
         : ClientSection.models,
   MessagingSidebarNavItem.conversations => ClientSection.agents,
   MessagingSidebarNavItem.skills =>
-    current == ClientSection.pluginManagement
-        ? ClientSection.pluginManagement
-        : ClientSection.skillHub,
+    current == ClientSection.skillHub ||
+            current == ClientSection.pluginManagement ||
+            current == ClientSection.agentHub
+        ? current
+        : ClientSection.agentHub,
   MessagingSidebarNavItem.settings => ClientSection.settings,
 };
 
@@ -69,7 +72,8 @@ bool messagingSidebarNavItemSelected({
   MessagingSidebarNavItem.conversations => current == ClientSection.agents,
   MessagingSidebarNavItem.skills =>
     current == ClientSection.skillHub ||
-        current == ClientSection.pluginManagement,
+        current == ClientSection.pluginManagement ||
+        current == ClientSection.agentHub,
   MessagingSidebarNavItem.settings => current == ClientSection.settings,
 };
 
@@ -120,8 +124,8 @@ ClientSection messagingCommunicationTarget(MessagingCommunicationItem item) =>
 
 int messagingCommunicationModelsPane(MessagingCommunicationItem item) =>
     item == MessagingCommunicationItem.chatChannels
-        ? messagingCommunicationModelsPaneChatChannels
-        : messagingCommunicationModelsPaneGateway;
+    ? messagingCommunicationModelsPaneChatChannels
+    : messagingCommunicationModelsPaneGateway;
 
 int messagingCommunicationModelsPaneIndex(LayoutScopedState? state) {
   final tab = state?.readIfDeclaredFor(
@@ -157,6 +161,7 @@ String messagingSidebarHeading(
   ClientSection.settings => strings.settings,
   ClientSection.skillHub => strings.skillsNav,
   ClientSection.pluginManagement => strings.pluginsNav,
+  ClientSection.agentHub => strings.agentHub,
   ClientSection.models =>
     modelsPane == messagingCommunicationModelsPaneChatChannels
         ? strings.chatChannels
@@ -171,6 +176,7 @@ IconData messagingSidebarDestinationIcon(ClientSection section) =>
       ClientSection.agents => Icons.chat_bubble_outline_rounded,
       ClientSection.skillHub => Icons.library_books_outlined,
       ClientSection.pluginManagement => Icons.extension_outlined,
+      ClientSection.agentHub => Icons.auto_awesome_outlined,
       ClientSection.monitoring => Icons.query_stats_outlined,
       ClientSection.models => Icons.key_outlined,
       ClientSection.mobileRelay => Icons.qr_code_2_rounded,
@@ -201,7 +207,8 @@ Widget messagingSidebarListFor({
     );
   }
   if (destination == ClientSection.skillHub ||
-      destination == ClientSection.pluginManagement) {
+      destination == ClientSection.pluginManagement ||
+      destination == ClientSection.agentHub) {
     return MessagingSkillPluginSidebarList(
       current: destination,
       onSelectDestination: onSelectDestination,
@@ -486,6 +493,7 @@ final class MessagingSkillPluginSidebarList extends StatelessWidget {
   final ValueChanged<ClientSection> onSelectDestination;
 
   static const _items = <ClientSection>[
+    ClientSection.agentHub,
     ClientSection.skillHub,
     ClientSection.pluginManagement,
   ];

@@ -13,6 +13,7 @@ const Set<ClientSection> messagingMainContentCardDestinations = <ClientSection>{
   ClientSection.agents,
   ClientSection.skillHub,
   ClientSection.pluginManagement,
+  ClientSection.agentHub,
   ClientSection.monitoring,
   ClientSection.models,
   ClientSection.mobileRelay,
@@ -131,26 +132,22 @@ final class MessagingDesktopSettingsPresentation
   @override
   EdgeInsetsGeometry get sectionHeaderPadding => const EdgeInsets.fromLTRB(
     20,
-    LicoContentSpacing.section,
+    LicoContentSpacing.item,
     20,
-    LicoContentSpacing.inline,
+    LicoContentSpacing.compact,
   );
 
   @override
-  EdgeInsetsGeometry get rowPadding =>
-      const EdgeInsets.fromLTRB(20, LicoContentSpacing.item, 20, 0);
+  EdgeInsetsGeometry get rowPadding => const EdgeInsets.fromLTRB(
+    20,
+    LicoContentSpacing.item,
+    20,
+    LicoContentSpacing.item,
+  );
 
   @override
   EdgeInsetsGeometry get selectorGridPadding =>
       const EdgeInsets.only(top: LicoContentSpacing.item);
-
-  @override
-  EdgeInsetsGeometry get selectorActionPadding => const EdgeInsets.fromLTRB(
-    LicoContentSpacing.item,
-    0,
-    LicoContentSpacing.item,
-    LicoContentSpacing.compact,
-  );
 
   @override
   Widget frameIndex(

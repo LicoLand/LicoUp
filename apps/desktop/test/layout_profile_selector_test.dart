@@ -109,9 +109,7 @@ void main() {
     }
   });
 
-  testWidgets('applies selections immediately and supports reset', (
-    tester,
-  ) async {
+  testWidgets('applies selections immediately', (tester) async {
     final runtime = buildFixtureLayoutRuntime();
     final repository = _FakePreferencesRepository(preferences: _preferences());
     final manager = _createManager(runtime: runtime, repository: repository);
@@ -128,11 +126,8 @@ void main() {
       LayoutProfileId.parse('atlas'),
     );
     expect(repository.layoutWriteCount, 1);
-
-    await tester.tap(find.byKey(const Key('layout-selector-reset')));
-    await tester.pumpAndSettle();
-    expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
-    expect(repository.layoutWriteCount, 2);
+    expect(find.byKey(const Key('layout-selector-reset')), findsNothing);
+    expect(find.text('Restore system default layout'), findsNothing);
   });
 
   testWidgets('localizes loading, committing, and bounded persistence errors', (
@@ -162,12 +157,7 @@ void main() {
 
     expect(find.byKey(const Key('layout-selector-committing')), findsOneWidget);
     expect(find.text('正在保存布局…'), findsOneWidget);
-    expect(
-      tester
-          .widget<TextButton>(find.byKey(const Key('layout-selector-reset')))
-          .onPressed,
-      isNull,
-    );
+    expect(find.byKey(const Key('layout-selector-reset')), findsNothing);
 
     repository.layoutWriteGate!.complete();
     await tester.pumpAndSettle();

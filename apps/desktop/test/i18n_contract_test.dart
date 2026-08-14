@@ -15,6 +15,17 @@ void main() {
     expect(chinese.byAgent, '智能体');
     expect(chinese.byModel, '模型');
     expect(chinese.features, '功能');
+    expect(chinese.agentHub, '智能体中心');
+    expect(chinese.adaptationDeep, '深度适配');
+    expect(chinese.adaptationPartial, '部分适配');
+    expect(chinese.agentHubInstalled, '已安装');
+    expect(chinese.agentHubNotInstalled, '未安装');
+    expect(chinese.agentHubExternal, '外部安装');
+    expect(chinese.agentHubFailed, '失败');
+    expect(chinese.agentHubVisit, '访问');
+    expect(chinese.agentHubVisitFailed, '无法打开主页');
+    expect(chinese.agentHubUpdate, '更新');
+    expect(chinese.agentHubUninstall, '卸载');
     expect(chinese.modelGateway, '模型网关');
     expect(chinese.mobilePairing, '移动配对');
     expect(chinese.chatChannels, '聊天频道');
@@ -22,6 +33,17 @@ void main() {
     expect(english.byAgent, 'By Agent');
     expect(english.byModel, 'By Model');
     expect(english.features, 'Features');
+    expect(english.agentHub, 'Agent Hub');
+    expect(english.adaptationDeep, 'Deep');
+    expect(english.adaptationPartial, 'Partial');
+    expect(english.agentHubInstalled, 'Installed');
+    expect(english.agentHubNotInstalled, 'Not installed');
+    expect(english.agentHubExternal, 'External');
+    expect(english.agentHubFailed, 'Failed');
+    expect(english.agentHubVisit, 'Visit →');
+    expect(english.agentHubVisitFailed, 'Unable to open homepage');
+    expect(english.agentHubUpdate, 'Update');
+    expect(english.agentHubUninstall, 'Uninstall');
     expect(english.modelGateway, 'Model Gateway');
     expect(english.mobilePairing, 'Mobile Pairing');
     expect(english.chatChannels, 'Chat Channels');
@@ -31,6 +53,8 @@ void main() {
   });
 
   test('layout catalog metadata and selection states are localized safely', () {
+    expect(chinese.general, '通用');
+    expect(english.general, 'General');
     expect(chinese.layoutProfile, '界面布局');
     expect(english.layoutProfile, 'Interface Layout');
     expect(

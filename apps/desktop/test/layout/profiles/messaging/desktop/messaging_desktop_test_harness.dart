@@ -23,6 +23,7 @@ const Set<ClientSection> messagingDesktopExpectedDestinations = <ClientSection>{
   ClientSection.monitoring,
   ClientSection.skillHub,
   ClientSection.pluginManagement,
+  ClientSection.agentHub,
   ClientSection.mobileRelay,
   ClientSection.models,
   ClientSection.settings,
