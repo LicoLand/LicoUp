@@ -43,6 +43,33 @@ pub fn read_private_text_bounded(path: &Path, max_bytes: usize) -> Result<Option
         .map_err(|_| anyhow!("private state text is not UTF-8"))
 }
 
+pub fn open_private_text_bounded(
+    path: &Path,
+    max_bytes: usize,
+) -> Result<Option<std::io::BufReader<fs::File>>> {
+    validation::ensure_private_state_parent(path)?;
+    let Some(path_metadata) = validation::state_marker_metadata(path)? else {
+        return Ok(None);
+    };
+    validation::validate_private_file_metadata(&path_metadata)?;
+    let file = validation::open_read_no_follow(path)?;
+    let opened_metadata = file.metadata()?;
+    validation::validate_private_file_metadata(&opened_metadata)?;
+    validation::ensure_same_file(&path_metadata, &opened_metadata)?;
+    ensure!(
+        opened_metadata.len() <= max_bytes as u64,
+        "private state file exceeds its bounded size"
+    );
+    Ok(Some(std::io::BufReader::new(file)))
+}
+
+pub fn validate_private_file_unchanged(path: &Path, opened: &fs::Metadata) -> Result<()> {
+    let stable_metadata = fs::symlink_metadata(path)
+        .map_err(|_| anyhow!("private security state marker changed while opening"))?;
+    validation::validate_private_file_metadata(&stable_metadata)?;
+    validation::ensure_same_file(opened, &stable_metadata)
+}
+
 pub fn private_state_marker_exists(path: &Path) -> Result<bool> {
     read_private_state_marker(path).map(|content| content.is_some())
 }

@@ -39,9 +39,19 @@ fn serve_request_fails_before_network_io_after_the_turn_deadline() {
     let failure = wait_post_json(
         "http://invalid.test/session/native/message",
         &json!({}),
-        Instant::now(),
+        Some(Instant::now()),
     )
     .unwrap_err();
     assert_eq!(failure.code, "acp_protocol_timeout");
     assert_eq!(failure.stage, "session/prompt");
+}
+
+#[test]
+fn serve_request_timeout_uses_the_remaining_turn_budget_and_zero_has_no_deadline() {
+    assert_eq!(remaining_turn_timeout(None).unwrap(), None);
+    let remaining = remaining_turn_timeout(Some(Instant::now() + Duration::from_secs(2)))
+        .unwrap()
+        .unwrap();
+    assert!(remaining > Duration::from_secs(1));
+    assert!(remaining <= Duration::from_secs(2));
 }

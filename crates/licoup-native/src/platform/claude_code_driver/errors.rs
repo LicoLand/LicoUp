@@ -1,5 +1,8 @@
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailure {
+pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);
+
+#[derive(Clone, Debug)]
+pub(in crate::platform) struct ProtocolFailurePayload {
     pub(in crate::platform) code: &'static str,
     pub(in crate::platform) message: &'static str,
     pub(in crate::platform) stage: &'static str,
@@ -11,9 +14,27 @@ pub(in crate::platform) struct ProtocolFailure {
     pub(in crate::platform) turn_status: Option<String>,
 }
 
+impl std::ops::Deref for ProtocolFailure {
+    type Target = ProtocolFailurePayload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ProtocolFailure {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl ProtocolFailure {
+    pub(in crate::platform) fn into_payload(self) -> ProtocolFailurePayload {
+        *self.0
+    }
+
     pub(super) fn new(code: &'static str, message: &'static str, stage: &'static str) -> Self {
-        Self {
+        Self(Box::new(ProtocolFailurePayload {
             code,
             message,
             stage,
@@ -23,7 +44,7 @@ impl ProtocolFailure {
             thread_id: None,
             turn_id: None,
             turn_status: None,
-        }
+        }))
     }
 
     pub(super) fn with_session(mut self, session_id: Option<&str>) -> Self {

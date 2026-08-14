@@ -129,13 +129,22 @@ impl CodexProtocol {
     fn turn_start_request(&self, thread_id: &str) -> Value {
         let mut params = Map::new();
         params.insert("threadId".to_string(), json!(thread_id));
-        params.insert(
-            "input".to_string(),
-            json!([{
+        let mut input = Vec::new();
+        if !self.config.prompt.is_empty() {
+            input.push(json!({
                 "type": "text",
                 "text": self.config.prompt
-            }]),
-        );
+            }));
+        }
+        for image in &self.config.local_images {
+            input.push(json!({
+                "type": "localImage",
+                "path": image.path,
+                "mediaType": image.media_type,
+                "name": image.name
+            }));
+        }
+        params.insert("input".to_string(), json!(input));
         if let Some(model) = self.config.model.as_ref() {
             params.insert("model".to_string(), json!(model));
         }

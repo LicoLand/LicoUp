@@ -24,10 +24,17 @@
     },
     {
       "id": "conversation",
-      "status": "planned",
+      "status": "active",
       "schema": "schemas/client_bridge/conversation.json",
       "rustOutput": "crates/licoup-native/src/ffi/generated/conversation.rs",
       "dartOutput": "apps/desktop/lib/src/contracts/generated/conversation.g.dart"
+    },
+    {
+      "id": "strategy",
+      "status": "active",
+      "schema": "schemas/client_bridge/strategy.json",
+      "rustOutput": "crates/licoup-native/src/ffi/generated/strategy.rs",
+      "dartOutput": "apps/desktop/lib/src/contracts/generated/strategy.g.dart"
     },
     {
       "id": "adapter_plugin",

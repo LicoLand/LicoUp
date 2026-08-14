@@ -2,7 +2,7 @@ use super::super::test_support::*;
 #[test]
 fn secure_mesh_envelope_command_is_transport_only() {
     let dir = temp_dir("mobile-relay-unverified-secure-command");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let command = json!({
         "type": SECURE_MESH_ENVELOPE_COMMAND,
         "payload": {
@@ -72,7 +72,7 @@ fn secure_envelope_validation_rejects_malicious_relay_shapes_before_decrypt() {
 #[test]
 fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     let dir = temp_dir("mobile-relay-e2ee-roundtrip");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -168,7 +168,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
 #[test]
 fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decrypt() {
     let dir = temp_dir("mobile-relay-file-key-envelope");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -332,7 +332,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 #[test]
 fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
     let dir = temp_dir("mobile-relay-file-key-envelope-boundary");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
@@ -388,7 +388,7 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
 #[test]
 fn mailbox_rotation_boundary_accepts_current_and_previous_epoch_only() {
     let dir = temp_dir("mobile-relay-mailbox-rotation-overlap");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);

@@ -12,32 +12,13 @@ void main() {
 
     for (final file in sources) {
       final source = file.readAsStringSync();
-      final sourceWithoutApprovedPlatformPorts = source
-          .replaceAll(
-            RegExp(
-              r"import 'package:licoup/src/platform/agents/[a-z_]+_store\.dart';",
-            ),
-            '',
-          )
-          .replaceAll(
-            "import 'package:licoup/src/platform/native_client/agent_service.dart';",
-            '',
-          )
-          .replaceAll(
-            "import 'package:licoup/src/platform/storage/portable_data_root.dart';",
-            '',
-          );
       expect(
         source,
         isNot(contains('/application/controller/client_controller.dart')),
         reason: file.path,
       );
       expect(source, isNot(contains('/backend/')), reason: file.path);
-      expect(
-        sourceWithoutApprovedPlatformPorts,
-        isNot(contains('/platform/')),
-        reason: file.path,
-      );
+      expect(source, isNot(contains('/platform/')), reason: file.path);
       expect(
         source,
         isNot(contains('TextEditingController')),
@@ -61,9 +42,6 @@ void main() {
     final usage = File(
       'lib/src/application/features/agents/controller/agent_usage_controller.dart',
     ).readAsStringSync();
-    final orchestration = File(
-      'lib/src/application/features/agents/orchestration/agent_orchestration_controller.dart',
-    ).readAsStringSync();
     final workspace = File(
       'lib/src/application/features/agents/workspace/agent_workspace_coordinator.dart',
     ).readAsStringSync();
@@ -79,6 +57,6 @@ void main() {
     );
     expect(usage, contains('AgentUsageGateway'));
     expect(usage, contains('acquirePollingOwner'));
-    expect(orchestration, contains('extends AgentConversationController'));
+    expect(conversation, contains('extends AgentWorkspaceCoordinator'));
   });
 }

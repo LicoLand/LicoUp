@@ -31,7 +31,8 @@ abstract final class MessagingDesktopMetrics {
   /// main content card edges).
   static const double conversationListCardInset = 4;
 
-  /// Corner radius of the floating conversation-list glass card.
+  /// Inner radius of the floating conversation-list glass card. The outer
+  /// content radius remains inner radius + card inset: 16 = 12 + 4.
   static const double conversationListCardCornerRadius = 12;
 
   /// Translucent card fill on the dark chat canvas — same alpha family as the
@@ -58,6 +59,26 @@ abstract final class MessagingDesktopMetrics {
 
   /// Drop-shadow Y offset of the floating list card.
   static const double conversationListCardShadowOffsetY = 4;
+
+  /// Empty bands between the group roster and the floating header/composer.
+  static const double groupRosterHeaderGap = 10;
+  static const double groupRosterComposerGap = 10;
+
+  /// Detached member capsule in the right transcript band. Its width matches
+  /// the group header capsule button (38 px avatar + 8 px vertical padding on
+  /// each side), so the two controls share one vertical axis and silhouette.
+  static const double groupRosterExtent = 54;
+  static const double groupRosterContentInset = 2;
+  static const double groupRosterScrollbarThickness = 2;
+  static const double groupRosterMinimumVisibleExtent = 128;
+  static const int groupRosterVisibleMemberCount = 5;
+  static const double groupRosterMemberExtent = 54;
+  static const double groupRosterMemberGap = 5;
+  static const double groupRosterVerticalInset = 5;
+  static const double groupRosterMaxVisibleExtent =
+      groupRosterVisibleMemberCount * groupRosterMemberExtent +
+      (groupRosterVisibleMemberCount - 1) * groupRosterMemberGap +
+      groupRosterVerticalInset * 2;
 
   /// Horizontal inset of the floating conversation-header capsule.
   static const double conversationHeaderCapsuleInsetH = 12;
@@ -126,12 +147,8 @@ abstract final class MessagingDesktopMetrics {
   /// Max height of the runtime selector hover popover (primary ± submenu).
   static const double composerRuntimeSelectorPopoverMaxHeight = 260;
 
-  /// Max height of the Flywheel agent/model hover picker (taller model lists).
-  static const double composerFlywheelSelectorPopoverMaxHeight = 360;
-
-  /// Max width of the Flywheel agent list plus detached model submenu
-  /// (agent max 260 + gap 8 + model max 240, with a little room for chrome).
-  static const double composerFlywheelSelectorPopoverMaxWidth = 520;
+  /// Max height of composer-adjacent option menus.
+  static const double composerOptionPopoverMaxHeight = 360;
 
   /// Max height of the bounded, scrollable runtime selector submenu.
   static const double composerRuntimeSelectorSubmenuMaxHeight = 220;
@@ -189,21 +206,21 @@ abstract final class MessagingDesktopMetrics {
             : userBubbleGlassBorderAlphaLight,
       );
 
-  /// Modest black veil on the notification bell popover (dark). Layered with
-  /// [conversationOverlayGlassFill] and blur so menu text stays readable
-  /// without an opaque slab. Lighter than [mainContentCardOverlayDarkAlpha].
-  static const int notificationPopoverVeilDarkAlpha = 50;
+  /// Black readability veil on floating conversation overlays (dark).
+  /// Layered with [conversationOverlayGlassFill] and blur so menus and
+  /// popovers remain distinct from live content without becoming opaque.
+  static const int conversationOverlayReadabilityVeilDarkAlpha = 84;
 
-  /// Modest black veil on the notification bell popover (light).
-  static const int notificationPopoverVeilLightAlpha = 26;
+  /// Lighter counterpart for floating overlays on the light preset.
+  static const int conversationOverlayReadabilityVeilLightAlpha = 40;
 
-  /// Black readability veil for the notification popover — use with overlay
-  /// glass, not as a standalone opaque panel.
-  static Color notificationPopoverVeilFill({required bool isDark}) =>
+  /// Shared black readability veil for floating conversation overlays — use
+  /// with overlay glass, not as a standalone opaque panel.
+  static Color conversationOverlayReadabilityVeilFill({required bool isDark}) =>
       Colors.black.withAlpha(
         isDark
-            ? notificationPopoverVeilDarkAlpha
-            : notificationPopoverVeilLightAlpha,
+            ? conversationOverlayReadabilityVeilDarkAlpha
+            : conversationOverlayReadabilityVeilLightAlpha,
       );
 
   /// Fill wash for the floating conversation-list card. Widgets must use this
@@ -273,13 +290,12 @@ abstract final class MessagingDesktopMetrics {
   /// read as a solid slab on bright VE.
   static const int mainContentCardOverlayLightAlpha = 40;
 
-  /// Hairline border alpha on the main content card (dark).
-  static const int mainContentCardBorderAlphaDark =
-      conversationListCardBorderAlphaDark;
+  /// The unified card has no painted rim. Native glass, fill, and elevation
+  /// establish its boundary without leaving a seam beside edge-grown rails.
+  static const int mainContentCardBorderAlphaDark = 0;
 
-  /// Hairline border alpha on the main content card (light).
-  static const int mainContentCardBorderAlphaLight =
-      conversationListCardBorderAlphaLight;
+  /// Light-preset counterpart of [mainContentCardBorderAlphaDark].
+  static const int mainContentCardBorderAlphaLight = 0;
 
   /// Drop-shadow alpha on the main content card (dark).
   static const int mainContentCardShadowAlphaDark =
@@ -417,7 +433,11 @@ abstract final class MessagingDesktopMetrics {
       chromeForegroundColor.withAlpha(chromeSearchPlaceholderAlpha);
 
   static const double searchFieldHeight = 32;
-  static const double searchFieldCornerRadius = 16;
+  static const double searchFieldCornerRadius = mainCardCornerRadius;
+
+  /// Vertical rhythm between stacked primary sidebar controls and the next
+  /// semantic row. Search → action and action → group label use one gap.
+  static const double sidebarPrimaryControlGap = 14;
 
   /// Left inset of the chrome band so its content clears the macOS
   /// traffic-light cluster (same reservation as the Dashboard top bar).

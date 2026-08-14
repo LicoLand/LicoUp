@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SecureMeshCapabilityCard extends StatefulWidget {
@@ -55,7 +56,7 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: cardFill,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(
           color: _focused ? colors.primary : colors.line,
           width: _focused ? 2 : 1,

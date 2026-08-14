@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
@@ -55,7 +56,7 @@ void main() {
       expect(agentGroup.authorIsUser, isFalse);
     });
 
-    test('breaks agent groups when the orchestration participant changes', () {
+    test('breaks agent groups when the participant changes', () {
       final entries = buildMessagingFlowEntries([
         _participantMessageItem(
           'k1',
@@ -585,6 +586,43 @@ void main() {
         .localToGlobal(Offset(agentGroup.size.width / 2, 0))
         .dx;
     expect(processCenter, closeTo(groupCenter, 1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('runtime log cards span and center in transcript column', (
+    tester,
+  ) async {
+    final chronological = [
+      _messageItem('k1', 'user', 'run it', _at(10, 0)),
+      ConversationLogTimelineItem('log-1', [
+        AgentConversationMessage(
+          id: 'log-event',
+          role: 'event',
+          text: 'synthetic runtime detail',
+          createdAt: _at(10, 1),
+          cardType: 'provider-event',
+        ),
+      ]),
+      _messageItem('k2', 'assistant', 'done', _at(10, 2)),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    expect(find.byType(ConversationLogEventRow), findsOneWidget);
+    final logCard = tester.renderObject<RenderBox>(
+      find.byKey(const Key('conversation-runtime-log-card')),
+    );
+    final agentGroup = tester.renderObject<RenderBox>(
+      find.byKey(const Key('messaging-agent-message-group')),
+    );
+
+    expect(logCard.size.width, closeTo(agentGroup.size.width, 1));
+    final logCenter = logCard
+        .localToGlobal(Offset(logCard.size.width / 2, 0))
+        .dx;
+    final groupCenter = agentGroup
+        .localToGlobal(Offset(agentGroup.size.width / 2, 0))
+        .dx;
+    expect(logCenter, closeTo(groupCenter, 1));
     expect(tester.takeException(), isNull);
   });
 }

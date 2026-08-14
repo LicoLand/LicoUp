@@ -614,17 +614,21 @@
       ]
     },
     {
-      "id": "macos-rust-secret-store-uses-single-system-auth-context",
-      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+      "id": "macos-rust-user-presence-uses-one-biometric-first-application-authorization",
+      "files": [
+        "crates/licoup-native/src/platform/user_presence.rs",
+        "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+        "crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs"
+      ],
       "tokens": [
-        "objc2_local_authentication::{LAContext, LAError, LAPolicy}",
+        "APPLICATION_AUTHORIZATION",
+        "LAPolicy::DeviceOwnerAuthenticationWithBiometrics",
+        "password_fallback_allowed",
+        "LAError::BiometryNotAvailable",
+        "LAError::BiometryNotEnrolled",
+        "setLocalizedFallbackTitle",
         "MacosAuthorizationContext",
-        "setInteractionNotAllowed",
-        "context.setInteractionNotAllowed(false)",
-        "context.setInteractionNotAllowed(true)",
-        "evaluatePolicy_localizedReason_reply",
-        "block2::RcBlock::new",
-        "canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)",
+        "effect_lock",
         "secure_mesh_authorization_required",
         "SecurityCapability::DataProtectionKeychain",
         "SecurityCapability::OsUserPresence",

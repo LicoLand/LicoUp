@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_card.dart';
+import 'package:licoup/src/frontend/features/models/ui/telegram_channel_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 /// Top-level Keys destination: the local LLM gateway entrypoint, model API
@@ -39,6 +40,11 @@ final class ModelsPanel extends StatelessWidget {
             authorization: controller.llmVaultAuthorization,
             lifecycleController: controller.llmGatewayLifecycleController,
           ),
+        ),
+        const SizedBox(height: 16),
+        TelegramChannelCard(
+          agentService: controller.agentService,
+          lifecycleController: controller.llmGatewayLifecycleController,
         ),
       ],
     );

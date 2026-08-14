@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/plugin_management/models/adapter
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AdapterPluginPanel extends StatefulWidget {
@@ -357,7 +358,7 @@ final class _AdapterCard extends StatelessWidget {
       elevation: 0,
       color: colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         side: BorderSide(color: colors.line),
       ),
       child: Padding(
@@ -372,7 +373,7 @@ final class _AdapterCard extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     color: colors.surfaceLow,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(LicoRadius.floating),
                   ),
                   child: Center(
                     child: AgentBrandIcon(
@@ -510,7 +511,7 @@ final class _CapabilityTile extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
       ),
       child: Row(
         children: [
@@ -519,7 +520,7 @@ final class _CapabilityTile extends StatelessWidget {
             height: 32,
             decoration: BoxDecoration(
               color: colors.brandSurface,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
             ),
             child: Icon(icon, size: 17, color: stateColor),
           ),
@@ -654,7 +655,7 @@ final class _AdapterPluginTile extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -666,7 +667,7 @@ final class _AdapterPluginTile extends StatelessWidget {
                 height: 32,
                 decoration: BoxDecoration(
                   color: colors.brandSurface,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(LicoRadius.chip),
                 ),
                 child: Icon(
                   _pluginIcon(plugin.id),

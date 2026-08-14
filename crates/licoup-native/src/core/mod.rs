@@ -26,7 +26,6 @@ pub mod secure_mesh_product_readiness;
 pub mod secure_mesh_response;
 pub mod secure_mesh_secret_store;
 pub mod secure_mesh_session_negotiation;
-pub mod secure_mesh_skill_sync;
 pub mod secure_mesh_sparse_pq_ratchet;
 pub mod secure_mesh_transparency;
 pub mod secure_mesh_trust;

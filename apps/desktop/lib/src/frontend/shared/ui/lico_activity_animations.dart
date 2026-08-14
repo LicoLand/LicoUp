@@ -240,13 +240,7 @@ class _LicoUpSpinnerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final inset = strokeWidth / 2;
-    final rect = Rect.fromLTWH(
-      inset,
-      inset,
-      size.width - strokeWidth,
-      size.height - strokeWidth,
-    );
+    final rect = licoSpinnerArcRect(size, strokeWidth);
     final track = Paint()
       ..color = color.withValues(alpha: 0.22)
       ..style = PaintingStyle.stroke
@@ -265,6 +259,19 @@ class _LicoUpSpinnerPainter extends CustomPainter {
   bool shouldRepaint(covariant _LicoUpSpinnerPainter oldDelegate) {
     return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
+}
+
+@visibleForTesting
+Rect licoSpinnerArcRect(Size size, double strokeWidth) {
+  final diameter = (size.shortestSide - strokeWidth).clamp(
+    0.0,
+    double.infinity,
+  );
+  return Rect.fromCenter(
+    center: size.center(Offset.zero),
+    width: diameter,
+    height: diameter,
+  );
 }
 
 /// Left-to-right shimmer used for the currently executing step or process title.

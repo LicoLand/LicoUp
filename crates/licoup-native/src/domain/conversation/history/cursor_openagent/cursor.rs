@@ -261,8 +261,8 @@ fn decode_workspace_location(raw: &str) -> Option<String> {
         return None;
     }
     if let Some(rest) = trimmed.strip_prefix("file://") {
-        // `file:///path` keeps the leading separator; a file URI with an authority names a
-        // remote host and is not a local project directory.
+        // A local file URI keeps the leading separator; a URI naming a remote
+        // host is not a local project directory.
         let path = rest.strip_prefix('/')?;
         return Some(decode_percent_escapes(&format!("/{path}")));
     }

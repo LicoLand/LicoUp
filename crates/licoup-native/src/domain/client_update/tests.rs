@@ -1,10 +1,10 @@
+mod archive;
 mod artifact_binding;
+mod github_source;
+mod native_runner;
 mod release_selection;
 mod revocation;
 mod signature_roles;
 mod staging_paths;
 mod support;
 mod workflow;
-
-#[cfg(target_os = "macos")]
-mod macos_runner;
