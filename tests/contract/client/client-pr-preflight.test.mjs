@@ -17,7 +17,7 @@ import {
 import { updateCommandArgs } from "../../../tools/scripts/client-macos-update-preflight.mjs";
 import {
   buildRulesets,
-  requiredStatusContexts,
+  promotionRequiredStatusContexts,
   rulesetPayloadMatches,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 import {
@@ -181,12 +181,12 @@ test("updater applies and rolls back through the real CLI surface", () => {
   assert.equal(updateCommandArgs("rollback", options).includes("--wait-for-script"), true);
 });
 
-test("Rulesets require merge commits and the exact four checks", () => {
-  assert.deepEqual(requiredStatusContexts,
+test("nightly Ruleset requires merge commits and the candidate checks", () => {
+  assert.deepEqual(promotionRequiredStatusContexts.nightly,
     ["Branch flow", "Commit identity", "Client required", "Auditor"]);
   const rulesets = buildRulesets(1);
   assert.equal(rulesets.filter((ruleset) => ruleset.rules.some((rule) =>
-    rule.type === "required_status_checks")).length, 1);
+    rule.type === "required_status_checks")).length, 3);
   assert.equal(rulesetPayloadMatches({ name: "x", extra: true }, { name: "x" }), true);
 });
 

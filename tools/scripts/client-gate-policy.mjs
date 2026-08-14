@@ -44,6 +44,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:deps:audit",
   ]),
   "release-policy": freezeLane([
+    "client:promotion:self-test",
     "client:pricing:release-check",
     "client:pr:preflight:self-test",
     "client:verify:release-artifact-io:self-test",
@@ -122,7 +123,6 @@ export const CLIENT_CI_JOBS = Object.freeze([
   "rust",
   "android",
   "dependencies",
-  "release-policy",
   "client-required",
 ]);
 
@@ -133,17 +133,6 @@ const DEPENDENCY_PATHS = new Set([
   "Cargo.lock",
   "apps/desktop/pubspec.yaml",
   "apps/desktop/pubspec.lock",
-]);
-
-const RELEASE_AUTHORITY_PATHS = new Set([
-  ".github/workflows/client-release.yml",
-  ".github/workflows/branch-flow.yml",
-  ".github/workflows/commit-identity.yml",
-  ".github/workflows/lico-auditor-gate.yml",
-  "tools/client-release-template.json",
-  "tools/client-remote-release-strategies.json",
-  "tools/client-release-targets.json",
-  "tools/client-version.json",
 ]);
 
 function normalizePath(value) {
@@ -193,30 +182,6 @@ function isAndroidPath(file) {
   );
 }
 
-function isReleasePolicyPath(file) {
-  return (
-    RELEASE_AUTHORITY_PATHS.has(file) ||
-    file === "tools/scripts/model-pricing-facts.mjs" ||
-    file === "tools/scripts/client-device-demo.mjs" ||
-    file.startsWith("crates/licoup-native/src/domain/provider_model_pricing/") ||
-    file.startsWith("tools/scripts/client-release") ||
-    file.startsWith("tools/scripts/client-pr-preflight") ||
-    file.startsWith("tools/scripts/client-auditor-preflight") ||
-    file.startsWith("tools/scripts/client-github-release") ||
-    file.startsWith("tools/scripts/client-consumer-verification") ||
-    file.startsWith("tools/scripts/client-artifact-verification") ||
-    file.startsWith("tools/scripts/client-review-signoff") ||
-    file.startsWith("tools/scripts/client-source-state-digest") ||
-    file.startsWith("tools/scripts/client-bounded-child-process") ||
-    file.startsWith("tools/scripts/client-linux-tar") ||
-    file.startsWith("tools/scripts/client-macos-") ||
-    file.startsWith("tools/scripts/client-android-apk") ||
-    file.startsWith("apps/desktop/scripts/build-") ||
-    file.startsWith("apps/desktop/scripts/archive-") ||
-    file.startsWith("apps/desktop/scripts/package-client")
-  );
-}
-
 export function classifyClientGatePaths(changedPaths) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
@@ -228,7 +193,6 @@ export function classifyClientGatePaths(changedPaths) {
     rust: false,
     android: false,
     dependencies: false,
-    "release-policy": false,
   };
 
   for (const file of normalized) {
@@ -236,7 +200,6 @@ export function classifyClientGatePaths(changedPaths) {
     if (isRustPath(file)) lanes.rust = true;
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
-    if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
   }
 
   return Object.freeze({
