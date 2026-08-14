@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { promotionRequiredStatusContexts } from "./repository-rulesets.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
@@ -82,7 +83,7 @@ function loadJson(relativePath) {
 
 function validateContract() {
   const template = loadJson("tools/client-release-template.json");
-  assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_invalid");
+  assert(template.schemaVersion === "licoup.client-release-template.v2", "release_template_invalid");
   assert(
     JSON.stringify(template.entryCommands) === JSON.stringify({
       nightly: "npm run client:release -- push nightly --version <version> --target <target>",
@@ -119,13 +120,15 @@ function validateContract() {
   assert(Array.isArray(template.candidatePreflight.targets["macos-arm64"]), "release_macos_preflight_missing");
   const supportedTargets = Object.keys(template.candidatePreflight.targets);
   assert(supportedTargets.length > 0, "release_targets_missing");
-  assert(
-    JSON.stringify(template.requiredPullRequestChecks) === JSON.stringify([
-      "Branch flow", "Commit identity", "Client required", "Auditor",
-    ]),
-    "release_required_checks_invalid",
-  );
+  assert(JSON.stringify(template.requiredPullRequestChecks) ===
+    JSON.stringify(promotionRequiredStatusContexts), "release_required_checks_invalid");
   return template;
+}
+
+function requiredChecks(template, destination) {
+  const checks = template.requiredPullRequestChecks?.[destination];
+  assert(Array.isArray(checks) && checks.length > 0, "release_required_checks_invalid");
+  return checks;
 }
 
 function assertRepository() {
@@ -297,7 +300,7 @@ async function pushNightly(options, template) {
     pr = { number: Number(url.split("/").at(-1)), mergedAt: null };
   }
   if (!pr.mergedAt) {
-    await waitForChecks(pr.number, template.requiredPullRequestChecks);
+    await waitForChecks(pr.number, requiredChecks(template, "nightly"));
     run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--merge", "--delete-branch"]);
   }
   process.stdout.write(`client_release=advanced destination=nightly version=${options.version}\n`);
@@ -328,7 +331,7 @@ async function pushPromotion(options, template) {
     pr = { number: Number(url.split("/").at(-1)), mergedAt: null };
   }
   if (!pr.mergedAt) {
-    await waitForChecks(pr.number, template.requiredPullRequestChecks);
+    await waitForChecks(pr.number, requiredChecks(template, base));
     run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--merge"]);
   }
   process.stdout.write(`client_release=advanced destination=${base} version=${options.version}\n`);

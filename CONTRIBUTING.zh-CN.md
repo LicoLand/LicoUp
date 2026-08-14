@@ -15,8 +15,10 @@ npm ci
 ```
 
 开发过程中只运行与改动直接相关的最小检查。交付前运行对应模块的定向测试。所有改动
-均确认有效后，只运行一次必需的 Node 源码策略，以及真正受影响的技术通道。各通道彼此
-独立并可并行；提交门禁不会构建或发布所有平台。
+均确认有效后，只运行一次必需的 Node 源码策略，以及真正受影响的 Flutter、Rust、
+Android 或依赖回归通道。各回归通道彼此独立并可并行。发布策略不是改动路径回归通道；
+它只在 `stable` → `release` 晋升边界运行，具体见[客户端分支晋升门禁](docs/releases/PROMOTION-GATES.zh-CN.md)。
+提交门禁不会构建或发布所有平台。
 
 ```bash
 npm run client:gate:source
@@ -24,7 +26,6 @@ npm run client:gate:flutter         # 仅 Flutter 改动
 npm run client:gate:rust            # 仅 Rust 改动
 npm run client:gate:android         # 仅 Android 改动
 npm run client:gate:dependencies    # 仅依赖权威文件改动
-npm run client:gate:release-policy  # 仅发布策略改动
 ```
 
 产生构建输出的测试共用一个受管编译目标。构建使用期间，测试运行器会持有活动租约；无论

@@ -51,7 +51,7 @@ function currentBranch() {
 function validateTemplate() {
   const template = readJson(templatePath);
   const version = readJson(path.join(repoRoot, "tools", "client-version.json"));
-  assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_schema_invalid");
+  assert(template.schemaVersion === "licoup.client-release-template.v2", "release_template_schema_invalid");
   assert(typeof template.entryCommands === "object", "release_entry_commands_invalid");
   assert(
     JSON.stringify(template.promotion?.branches) === JSON.stringify(["nightly", "stable", "release"]),
@@ -96,25 +96,15 @@ function validateTemplate() {
     assert(!workflow.includes(command), "release_remote_validation_forbidden");
   }
 
-  const [, protectedReleaseRuleset] = buildRulesets(1);
-  assert(
-    !protectedReleaseRuleset.rules.some(({ type }) => type === "required_linear_history"),
-    "release_nightly_linear_history_conflict",
-  );
-  const nightlyPullRequest = protectedReleaseRuleset.rules.find(({ type }) => type === "pull_request");
-  assert(
-    JSON.stringify(nightlyPullRequest?.parameters?.allowed_merge_methods) === JSON.stringify(["merge"]),
-    "release_nightly_ruleset_merge_method_invalid",
-  );
-  assert(
-    !protectedReleaseRuleset.rules.some(({ type }) => type === "required_linear_history"),
-    "release_promotion_linear_history_conflict",
-  );
-  const pullRequest = protectedReleaseRuleset.rules.find(({ type }) => type === "pull_request");
-  assert(
-    JSON.stringify(pullRequest?.parameters?.allowed_merge_methods) === JSON.stringify(["merge"]),
-    "release_promotion_ruleset_merge_method_invalid",
-  );
+  const promotionRulesets = buildRulesets(1).slice(1);
+  assert(promotionRulesets.length === 3, "release_promotion_ruleset_count_invalid");
+  for (const ruleset of promotionRulesets) {
+    assert(!ruleset.rules.some(({ type }) => type === "required_linear_history"),
+      "release_promotion_linear_history_conflict");
+    const pullRequest = ruleset.rules.find(({ type }) => type === "pull_request");
+    assert(JSON.stringify(pullRequest?.parameters?.allowed_merge_methods) ===
+      JSON.stringify(["merge"]), "release_promotion_ruleset_merge_method_invalid");
+  }
 
   const targets = template.candidatePreflight?.targets;
   assert(targets && typeof targets === "object", "release_candidate_targets_missing");
@@ -122,7 +112,8 @@ function validateTemplate() {
     assert(/^[a-z0-9-]+$/u.test(target), "release_target_invalid");
     assert(Array.isArray(lanes) && lanes.length > 0, "release_candidate_lanes_missing");
     assert(new Set(lanes).size === lanes.length, "release_candidate_lanes_duplicated");
-    assert(lanes[0] === "source" && lanes.at(-1) === "release-policy", "release_candidate_lane_order_invalid");
+    assert(lanes[0] === "source" && !lanes.includes("release-policy"),
+      "release_candidate_lane_order_invalid");
   }
   return { template, version };
 }
