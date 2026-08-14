@@ -4,7 +4,7 @@
 
 - Last updated: 2026-07-30
 - Status: Implemented capability overview
-- Scope: Desktop, mobile, Rust sidecar, ACP, MCP, platform adapters, local-agent workflows, the current retiring endpoint-protection Preview, and optional user-enabled Meshrix collaboration plugins.
+- Scope: Desktop, mobile, Rust sidecar, ACP, MCP, platform adapters, local-agent workflows, and the current retiring endpoint-protection Preview.
 - Staleness check: Reconciled with `PRODUCT.md`, `docs/STATUS.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, current endpoint-protection Preview contracts, and module-scoped regression catalog on 2026-07-30.
 
 ## Product Boundary
@@ -16,8 +16,7 @@ projection of those authorities.
 
 LicoUp is a local-first client. Flutter owns presentation and application
 coordination; Rust owns bounded local execution, protocol adaptation, local state,
-and cryptographic substrate. The default client does not require or start a
-Meshrix server.
+and cryptographic substrate.
 
 Built-in capabilities are limited to:
 
@@ -29,8 +28,7 @@ Built-in capabilities are limited to:
 
 Capabilities outside this scope are not built into the client, registered as
 commands, or shown in navigation. The default UI modules are **Agents**, **Token
-Usage**, **Skill Hub**, **Mobile Relay**, and **Settings**. Optional collaboration
-begins only after the user installs and enables the separate GitHub plugin.
+Usage**, **Skill Hub**, **Mobile Relay**, and **Settings**.
 
 ## Mandatory External-Transfer Contract
 
@@ -61,7 +59,7 @@ requires a separate direct approval for each file.
 | Flutter platform/backend | Implements narrow contracts and returns bounded business projections rather than raw process output. |
 | Rust local queue | Owns bounded admission, FIFO handoff, backpressure, and single-consumer ownership; it contains no UI or feature-specific policy. |
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
-| Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate; optional Meshrix behavior is not embedded here. |
+| Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate. |
 | Platform adapters | Own OS discovery, secure storage, authorization, paths, process launch, and packaging behind platform-neutral ports. |
 | [Endpoint-protection Preview](../STATUS.md) | Owns the current LicoUp implementation, private-key/Provider custody, user trust and approval, and local effects. This retiring implementation is not a Lico Arc Profile and has no future compatibility promise. |
 | Lico Arc Protocol Line | Owns stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics. LicoUp executes one pinned line; it does not redefine one. |
@@ -178,18 +176,18 @@ reducer.
 
 ## Scenario S-03 — Desktop Skill Management
 
-The client lists skills by agent, installs a selected GitHub-hosted skill, updates
-from a user-configured mirror or GitHub repository, deletes a skill from one or
-more selected agents, and aggregates skill invocation counts by time window.
+The client discovers skills already present in each local agent's skill root,
+displays their local metadata, and aggregates invocation counts by time window.
+It has no skill download, installation, update, rollback, or cross-device skill
+synchronization channel.
 
-Every write is previewed with target agents, destination roots, package digest,
-and affected files. Installation and update do not execute package code. Path
-escape, symlink escape, digest changes after preview, unsupported target roots,
-and partial multi-agent writes fail closed and retain a rollback record.
+Removal is an explicit local action bound to the selected skill identifier, exact
+catalog path, and current package digest. The selected directory is moved to the
+operating system Trash rather than permanently deleted. Path escape, symlink
+escape, a changed digest, or a non-catalog target fails closed.
 
-Regression: list/install/update/delete per target adapter, multi-agent atomicity,
-digest and path negative cases, rollback, refresh visibility, and time-window usage
-aggregation.
+Regression: local list/get/hide, exact-path Trash confirmation, digest and path
+negative cases, refresh visibility, and time-window usage aggregation.
 
 ## Scenario S-04 — Desktop Conversation Management and Backup
 
@@ -212,11 +210,24 @@ cancellation, and round-trip restore-read validation where supported.
 Usage reporting defaults to the latest thirty days and supports a manually chosen
 time window. Reports aggregate locally recorded token counts by agent or model
 from supported agents' authoritative local histories, with explicit source and
-deduplication boundaries.
+deduplication boundaries. The Workflow peer view consumes the current native
+delivery ledger projection: one Plan summary expands to Task and dispatch rows,
+with the named main conversation kept separate from subordinate totals. It
+shows numeric prompt, cached-input, completion, total, and exact-coverage facts
+only.
 
-No raw prompt, response, account, local path, or native identifier enters the
-report. Missing history, timezone changes, overlapping records, counter resets,
-or unknown model attribution remain explicit rather than silently fabricated.
+LicoUp is the scheduling authority and Adaptive Flywheel is the route-selection
+authority. A raw native conversation location is handed to a selected adapter
+privately; it is never part of the desktop report. The native ledger keeps active
+workflows and the newest twenty terminal rollups, while the client adds no second
+workflow store or token arithmetic.
+
+No raw prompt, response, account, local path, native identifier, summary,
+compaction detail, cache control, or tool payload enters the report or UI.
+Missing history, timezone changes, overlapping records, counter resets, or
+unknown model attribution remain explicit rather than silently fabricated. An
+empty workflow collection has a localized empty state while Agent and Model
+views remain available.
 
 Regression: agent/model dimensions, default and custom windows, timezone
 transitions, deduplication, cache invalidation, redaction, and empty/partial local
@@ -255,45 +266,6 @@ Regression: pairwise/group codec vectors, cross-platform bridge tests, trust and
 revocation UX, wrong-recipient/tamper/replay controls, opaque-relay conformance,
 message/result round trips, and physical-device verification when authorized.
 
-## Optional Plugin P-01 — Local Meshrix Deployment
-
-This capability is absent from the default startup and navigation. The user must
-enable collaboration, select a GitHub source, install the plugin, choose a local
-destination, and select the Meshrix server feature/plugin composition before the
-plugin may download and build it. Disable/uninstall removes the plugin-owned
-integration without changing the built-in client.
-
-The built-in host stores only a disabled capability flag and the declarative
-plugin contract. `collaboration status` never reads plugin files. A user must
-run `collaboration enable`, then create a GitHub-only `collaboration install
-plan`, review its source and SHA-256 package digest, and confirm the exact plan
-with `collaboration install apply`. Packages are bounded, reject links and
-executable files or directives, and expose their workflow catalog only through
-an explicit `collaboration workflow catalog` action. Disable and digest-bound
-uninstall remain separate manual actions.
-
-The workflow is local deployment only. It does not grant permission to transfer
-client or user information to the deployed service.
-
-Regression: disabled-by-default boundary, explicit enable/install, source and
-digest preview, selectable composition, cancellation, fail-closed source change,
-non-executable package validation, plugin disable/uninstall, and absence from
-default navigation.
-
-## Optional Plugin P-02 — Meshrix MCP Plugin Installation
-
-The user manually chooses one or more local agents and one or more Meshrix MCP
-plugins, reviews target configuration changes, and confirms the installation.
-No background, scheduled, startup, or agent-initiated installation is allowed.
-
-If an MCP operation would transfer a local file, the user must approve that exact
-file, destination, purpose, and digest for that operation. Batch or remembered
-approval is invalid.
-
-Regression: disabled-by-default boundary, manual target selection, plan/apply/
-rollback, multi-agent consistency, no automatic trigger, per-file approval,
-changed-digest rejection, cancellation, and fail-closed missing approval.
-
 ## Regression Closure
 
 `tools/regression/client-module-catalog.mjs` is the authority for independently
@@ -307,7 +279,9 @@ npm run client:regression -- --module <module-id>
 
 Run the smallest affected module set first. After all changed modules and
 integration edges pass, run `npm run client:gate:source` exactly once and run
-only the affected Flutter, Rust, Android, dependency, or release-policy lane.
-The lanes are independent and may run in parallel. The source policy never
+only the affected Flutter, Rust, Android, or dependency lane.
+Release policy is not a changed-path regression lane; it runs at the
+`stable` → `release` promotion boundary. The regression lanes are independent
+and may run in parallel. The source policy never
 installs platform toolchains, and the commit gate never builds or publishes
 every platform.

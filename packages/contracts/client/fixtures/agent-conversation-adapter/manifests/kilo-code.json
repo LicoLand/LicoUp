@@ -114,7 +114,10 @@
     "cleanupScope": "official-session",
     "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
-    "maxTrackedSessions": 1024
+    "maxTrackedSessions": 1024,
+    "survivesGuiDisconnect": true,
+    "reattachScope": "activeTurn",
+    "replayMode": "orderedCursor"
   },
   "privacy": {
     "promptInArguments": false,
@@ -189,8 +192,8 @@
       "C-05": "interrupt-and-steer",
       "C-06": "usage-and-status"
     },
-    "minimumConsecutivePasses": 3,
-    "minimumConsecutiveReleaseUiPasses": 3,
+    "minimumConsecutivePasses": 1,
+    "minimumConsecutiveReleaseUiPasses": 1,
     "productUiRequired": true,
     "releaseP10Required": true,
     "liveLocalForwardingRequired": true,

@@ -3,6 +3,7 @@ export const NATIVE_MANIFEST = "crates/licoup-native/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
+  "apps/desktop/test/flutter_test_config.dart",
   "apps/desktop/pubspec.lock",
   "apps/desktop/pubspec.yaml",
 ]);
@@ -13,6 +14,7 @@ export const RUST_COMPOSITION_INPUTS = Object.freeze([
   NATIVE_MANIFEST,
   "crates/licoup-native/src/core/mod.rs",
   "crates/licoup-native/src/domain/mod.rs",
+  "crates/licoup-native/src/domain/integration_state.rs",
   "crates/licoup-native/src/ffi/commands/mod.rs",
   "crates/licoup-native/src/ffi/mod.rs",
   "crates/licoup-native/src/lib.rs",
@@ -51,6 +53,7 @@ export const FAKE_AGENT_SERVICE_INPUTS = Object.freeze([
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_support.dart",
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_job_fixture.dart",
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_runtime_support.dart",
 ]);
 
 export function command(program, args, timeoutMs) {

@@ -15,6 +15,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
@@ -267,17 +268,11 @@ class _DetailsTrigger extends StatelessWidget {
   Widget _buildButton({required bool open, VoidCallback? onTap}) {
     return Tooltip(
       message: strings.details,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
         key: const Key('messaging-details-toggle'),
         onTap: onTap,
-        customBorder: capsuleButtons
-            ? RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
-                ),
-              )
-            : const CircleBorder(),
+        customBorder: const CircleBorder(),
         hoverColor: colors.isDark
             ? Colors.white.withAlpha(10)
             : Colors.black.withAlpha(12),
@@ -325,9 +320,7 @@ class _DetailsTrigger extends StatelessWidget {
   }
 }
 
-/// Square glass control whose height matches the identity capsule
-/// ([IntrinsicHeight] + stretch) and whose corner radius uses the same
-/// [MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius].
+/// Circular glass control whose diameter matches the identity capsule height.
 class _HeaderCapsuleButton extends StatelessWidget {
   const _HeaderCapsuleButton({required this.child});
 
@@ -335,9 +328,7 @@ class _HeaderCapsuleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(
-      MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
-    );
+    final radius = BorderRadius.circular(999);
     return AspectRatio(
       aspectRatio: 1,
       child: MessagingConversationOverlayGlass(

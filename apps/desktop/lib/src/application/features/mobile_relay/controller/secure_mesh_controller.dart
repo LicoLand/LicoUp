@@ -4,7 +4,6 @@ import 'package:licoup/src/application/features/mobile_relay/controller/secure_m
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_file_transfer_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_protocol_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_skill_transfer_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_status_controller.dart';
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
@@ -13,10 +12,8 @@ import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 final class SecureMeshController extends ChangeNotifier {
   factory SecureMeshController({
     required SecureMeshGateway gateway,
-    required SecureMeshSkillInstallGateway skillInstaller,
     required MobileRelayOperationGate operationGate,
     required MobileRelayFeatureStatusSink onStatus,
-    required void Function(Map<String, dynamic>? result) onSkillInstallResult,
     DateTime Function()? now,
   }) {
     final clock = now ?? DateTime.now;
@@ -35,14 +32,6 @@ final class SecureMeshController extends ChangeNotifier {
         report: reporter,
       ),
       fileController: fileController,
-      skillController: SecureMeshSkillTransferController(
-        skillInstaller: skillInstaller,
-        fileController: fileController,
-        operationGate: operationGate,
-        report: reporter,
-        onInstallResult: onSkillInstallResult,
-        now: clock,
-      ),
       approvalController: SecureMeshApprovalController(
         gateway: gateway,
         operationGate: operationGate,
@@ -61,13 +50,11 @@ final class SecureMeshController extends ChangeNotifier {
     required MobileRelayOperationGate operationGate,
     required SecureMeshStatusController statusController,
     required SecureMeshFileTransferController fileController,
-    required SecureMeshSkillTransferController skillController,
     required SecureMeshApprovalController approvalController,
     required SecureMeshProtocolController protocolController,
   }) : _operationGate = operationGate,
        _statusController = statusController,
        _fileController = fileController,
-       _skillController = skillController,
        _approvalController = approvalController,
        _protocolController = protocolController {
     for (final component in _components) {
@@ -78,14 +65,12 @@ final class SecureMeshController extends ChangeNotifier {
   final MobileRelayOperationGate _operationGate;
   final SecureMeshStatusController _statusController;
   final SecureMeshFileTransferController _fileController;
-  final SecureMeshSkillTransferController _skillController;
   final SecureMeshApprovalController _approvalController;
   final SecureMeshProtocolController _protocolController;
 
   List<ChangeNotifier> get _components => [
     _statusController,
     _fileController,
-    _skillController,
     _approvalController,
     _protocolController,
   ];
@@ -102,9 +87,6 @@ final class SecureMeshController extends ChangeNotifier {
   List<SecureMeshFileSyncTransfer> get fileTransfers =>
       _fileController.transfers;
   SecureMeshFileSyncTransfer? get fileDraft => _fileController.draft;
-  List<SecureMeshSkillSyncTransfer> get skillTransfers =>
-      _skillController.transfers;
-  SecureMeshSkillSyncTransfer? get skillDraft => _skillController.draft;
   List<SecureMeshApprovalRequest> get approvalInbox =>
       _approvalController.inbox;
   Map<String, dynamic>? get approvalLastAction =>
@@ -137,12 +119,6 @@ final class SecureMeshController extends ChangeNotifier {
 
   void replaceFileDraft(SecureMeshFileSyncTransfer? value) =>
       _fileController.replaceDraft(value);
-
-  void replaceSkillTransfers(List<SecureMeshSkillSyncTransfer> value) =>
-      _skillController.replaceTransfers(value);
-
-  void replaceSkillDraft(SecureMeshSkillSyncTransfer? value) =>
-      _skillController.replaceDraft(value);
 
   void replaceApprovalInbox(List<SecureMeshApprovalRequest> value) =>
       _approvalController.replaceInbox(value);
@@ -209,33 +185,6 @@ final class SecureMeshController extends ChangeNotifier {
 
   Future<void> confirmFileReceive({required bool userConfirmed}) =>
       _fileController.confirmReceive(userConfirmed: userConfirmed);
-
-  void beginSkillDraft({
-    required String skillId,
-    required String version,
-    required String sourceAgentId,
-    required String targetAgentId,
-    required String packageDigest,
-    required String packageFileName,
-    required int packageSize,
-    String mimeType = 'application/zip',
-    bool activate = false,
-  }) => _skillController.beginDraft(
-    skillId: skillId,
-    version: version,
-    sourceAgentId: sourceAgentId,
-    targetAgentId: targetAgentId,
-    packageDigest: packageDigest,
-    packageFileName: packageFileName,
-    packageSize: packageSize,
-    mimeType: mimeType,
-    activate: activate,
-  );
-
-  Future<void> prepareSkillTransfer() => _skillController.prepareTransfer();
-
-  Future<void> confirmSkillInstall({required bool userConfirmed}) =>
-      _skillController.confirmInstall(userConfirmed: userConfirmed);
 
   Future<void> ingestApproval({
     required String pendingOperationId,

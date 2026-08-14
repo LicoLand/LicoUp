@@ -3,8 +3,17 @@ use super::support::*;
 #[test]
 fn cli_dispatches_agent_pairing_and_skill_paths() {
     let dir = temp_cli_dir("dispatch-pairing-skill");
+    let skill_root = dir.join("skills");
+    let skill_dir = skill_root.join("review");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: review\ntitle: Review\nversion: local\n---\n",
+    )
+    .unwrap();
+    let skill_root = skill_root.canonicalize().unwrap();
     {
-        let _guard = cli_env_lock().lock().unwrap();
+        let _guard = cli_env_guard();
         let _portable = set_portable_dir(&dir);
 
         let requested = execute_cli(vec![
@@ -43,31 +52,66 @@ fn cli_dispatches_agent_pairing_and_skill_paths() {
         .unwrap();
         assert_eq!(json_payload(&approved)["status"], "approved");
 
-        let skill_list = execute_cli(vec![
+        let denied = execute_cli(vec![
             "skill".into(),
             "list".into(),
             "--agent".into(),
             "codex".into(),
+            "--skill-root".into(),
+            skill_root.to_string_lossy().into_owned(),
         ])
         .unwrap();
-        assert_eq!(json_payload(&skill_list)["ok"], true);
-        assert_eq!(
-            json_payload(&skill_list)["skills"]
-                .as_array()
-                .unwrap()
-                .len(),
-            0
-        );
+        assert_eq!(json_payload(&denied)["ok"], true);
+        assert_eq!(json_payload(&denied)["skills"].as_array().unwrap().len(), 0);
 
-        let get_unavailable = execute_cli(vec![
+        let denied_get = execute_cli(vec![
             "skill".into(),
             "get".into(),
             "review".into(),
             "--agent".into(),
             "codex".into(),
+            "--skill-root".into(),
+            skill_root.to_string_lossy().into_owned(),
         ])
         .unwrap();
-        assert_eq!(json_payload(&get_unavailable)["error"], "not_found");
+        assert_eq!(json_payload(&denied_get)["error"], "visibility_denied");
+
+        let revealed = execute_cli(vec![
+            "skill".into(),
+            "visibility".into(),
+            "set".into(),
+            "review".into(),
+            "--agent".into(),
+            "codex".into(),
+            "--hidden".into(),
+            "false".into(),
+        ])
+        .unwrap();
+        assert_eq!(json_payload(&revealed)["hidden"], false);
+
+        let skill_list = execute_cli(vec![
+            "skill".into(),
+            "list".into(),
+            "--agent".into(),
+            "codex".into(),
+            "--skill-root".into(),
+            skill_root.to_string_lossy().into_owned(),
+        ])
+        .unwrap();
+        assert_eq!(json_payload(&skill_list)["skills"][0]["skillId"], "review");
+
+        let skill_get = execute_cli(vec![
+            "skill".into(),
+            "get".into(),
+            "review".into(),
+            "--agent".into(),
+            "codex".into(),
+            "--skill-root".into(),
+            skill_root.to_string_lossy().into_owned(),
+        ])
+        .unwrap();
+        assert_eq!(json_payload(&skill_get)["ok"], true);
+        assert_eq!(json_payload(&skill_get)["skill"]["skillId"], "review");
 
         let visibility = execute_cli(vec![
             "skill".into(),
@@ -83,18 +127,17 @@ fn cli_dispatches_agent_pairing_and_skill_paths() {
         assert_eq!(json_payload(&visibility)["hidden"], true);
         assert_eq!(json_payload(&visibility)["skillId"], "review");
 
-        let pin = execute_cli(vec![
+        let hidden_get = execute_cli(vec![
             "skill".into(),
-            "pin".into(),
-            "set".into(),
+            "get".into(),
             "review".into(),
             "--agent".into(),
             "codex".into(),
-            "--version".into(),
-            "1.0.0".into(),
+            "--skill-root".into(),
+            skill_root.to_string_lossy().into_owned(),
         ])
         .unwrap();
-        assert_eq!(json_payload(&pin)["version"], "1.0.0");
+        assert_eq!(json_payload(&hidden_get)["error"], "hidden");
 
         let revoked = execute_cli(vec![
             "agents".into(),
@@ -122,7 +165,7 @@ fn cli_dispatches_skill_usage_scan_and_report_with_all_time_totals() {
     )
     .unwrap();
     {
-        let _guard = cli_env_lock().lock().unwrap();
+        let _guard = cli_env_guard();
         let _portable = set_portable_dir(&dir);
 
         let scan_args = || {

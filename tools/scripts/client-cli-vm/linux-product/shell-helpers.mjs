@@ -22,13 +22,13 @@ export function linuxProductReportRootPreparationCommand() {
   ].join(" && ");
 }
 
-export function linuxProductDistributionReportTreePreparationCommand() {
+export function linuxProductVerificationReportTreePreparationCommand() {
   return [
     "$HOME/lico-up/build",
     "$HOME/lico-up/build/apps",
     "$HOME/lico-up/build/apps/desktop",
-    "$HOME/lico-up/build/apps/desktop/distribution",
-    "$HOME/lico-up/build/apps/desktop/distribution/linux-arm64",
+    "$HOME/lico-up/build/apps/desktop/verification",
+    "$HOME/lico-up/build/apps/desktop/verification/linux-arm64",
   ]
     .map((directory) => `lico_owner_only_directory "${directory}"`)
     .join(" && ");

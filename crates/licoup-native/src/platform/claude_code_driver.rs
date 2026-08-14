@@ -23,6 +23,6 @@ pub(super) use model::{
     TransportLifecycle,
 };
 pub(super) use probe::probe;
-pub(super) use supervision::{cancel, cleanup_session, history, shutdown_all, steer};
+pub(super) use supervision::{cancel, cleanup_session, history, steer};
 #[cfg(test)]
 mod tests;

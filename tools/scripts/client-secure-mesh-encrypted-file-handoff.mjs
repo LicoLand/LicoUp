@@ -130,10 +130,10 @@ async function loadStationAcceptanceEvidence() {
 async function loadReleaseBuiltDesktopFilePolicyEvidence() {
   const reports = [
     {
-      targetId: process.arch === "arm64" ? "macos-arm64" : "macos-x64",
+      targetId: "macos-arm64",
       platform: "macos",
       osFamily: "macos",
-      arch: process.arch === "arm64" ? "arm64" : "x64",
+      arch: "arm64",
       report: physicalReportRefs.macosReleaseCliProof
     },
     {

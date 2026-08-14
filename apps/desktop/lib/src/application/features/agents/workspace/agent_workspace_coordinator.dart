@@ -4,23 +4,24 @@ import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_conversation_projection_repository.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
+import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/platform/agents/group_conversation_store.dart';
-import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
 abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
-  AgentService get agentService;
   AgentConversationGateway get conversationGateway;
   MobileAgentConversationGateway get mobileConversationGateway;
   List<TargetCandidate> get scannedTargets;
@@ -38,16 +39,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   ClientSection get agentWorkspaceCurrentSection;
   ClientApplicationStrings get agentWorkspaceStrings;
   Object get agentWorkspacePortableData;
+  AgentToolAllowlistRepository get agentToolAllowlistRepository;
   Future<Map<String, Object?>> agentWorkspaceReadSettingsState();
   Future<void> agentWorkspaceWriteSettingsState(Map<String, Object?> content);
-  Future<Map<String, Object?>> agentWorkspaceReadAdaptiveFlywheelState();
-  Future<void> agentWorkspaceWriteAdaptiveFlywheelState(
-    Map<String, Object?> content,
-  );
-  Future<void> loadAgentOrchestrationPolicy();
-  AgentConversationProjectionRepository
-  get agentConversationProjectionRepository;
-  Future<void> hydrateConversationProjectionCache();
+  Future<void> agentWorkspaceEnsureActivePlanDocument();
   Future<void> loadConversationToolAllowlists();
   void agentWorkspaceSelectDefaultConversationAgent({
     bool preferDirectAgent = false,
@@ -59,6 +54,15 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     String? displayChinese,
   });
   MessagingNotificationCenter get messagingNotificationCenter;
+
+  /// Platform-root byte reader for path-backed conversation images. Only the
+  /// application root binds the platform implementation; the frontend never
+  /// imports filesystem code.
+  ConversationImageByteReader get conversationImageByteReader;
+
+  /// Releases only client-owned temporary attachment files. Platform
+  /// implementations ignore user-selected files.
+  ConversationAttachmentRelease get conversationAttachmentRelease;
   void agentWorkspacePublishNotification({
     required String id,
     required String messageChinese,
@@ -66,12 +70,14 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     MessagingNotificationTone tone = MessagingNotificationTone.info,
     String code = '',
   });
+  ConversationPresentationSignals get conversationPresentationSignals;
   void agentWorkspaceNotifyStateChanged();
   void agentWorkspaceNotifyConversationStructureChanged({
     bool activeChanged = true,
   });
   void agentWorkspaceNotifyActiveConversationChanged();
   void agentWorkspaceNotifyLiveConversationChanged();
+  void agentWorkspaceRecordCurrentAgentView();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});
   String get relaySourceClientId;
   String get relaySourceClientLabel;
@@ -85,7 +91,6 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String get selectedConversationModel;
   String get selectedConversationReasoningEffort;
   String get selectedConversationLicoProfile;
-  bool get selectedConversationIsOrchestration;
   void recordConversationTabSendOutcome({
     required String agentId,
     required bool ok,
@@ -117,6 +122,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   bool canApplyConversationRequest(String agentId, int sequence);
   void conversationAttentionContextChanged({bool immediateActive = true});
   void stopConversationRefreshScheduling();
+  Future<bool> reattachActiveConversationTurn(
+    String agentId,
+    String sessionId,
+  ) async => false;
 
   bool get agentWorkspaceDisposed => lifecycleProjection.disposed;
   bool conversationMobileLoading = false;
@@ -125,6 +134,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   Map<String, String> newConversationWorkingDirectories = const {};
   Timer? conversationActiveRefreshTimer;
   Timer? conversationBackgroundRefreshTimer;
+  Timer? conversationCodexRuntimeRefreshTimer;
   final Set<String> conversationSessionLoadingTargets = <String>{};
   final Set<({String agentId, String sessionId})>
   conversationActiveRefreshTargets = <({String agentId, String sessionId})>{};
@@ -136,14 +146,19 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       ConversationLifecyclePhase.resumed;
   bool conversationViewFocused = true;
   final Set<String> conversationSessionLoadMoreTargets = <String>{};
+  Map<String, int> conversationSessionLoadMoreCountsByAgent = const {};
   Map<String, String> _selectedConversationSessionIdsByAgent = const {};
 
   Map<String, List<AgentConversationSession>> conversationSessionsByAgent =
       const {};
   Map<String, List<AgentConversationSession>>
-  durableConversationProjectionsByAgent = const {};
+  committedConversationTurnsByAgent = const {};
   Map<String, bool> conversationSessionsHasMoreByAgent = const {};
   String selectedConversationAgentId = '';
+
+  /// Session identity from the global current-view snapshot. Native history
+  /// confirms it after the restored agent catalog becomes available.
+  String currentViewRestoreSessionId = '';
   Map<String, String> pendingConversationNativeSessionIds = const {};
   Map<String, String> conversationModelsByAgent = const {};
   Map<String, String> conversationReasoningEffortsByAgent = const {};
@@ -156,6 +171,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String sendingConversationTurnId = '';
   Timer? conversationLiveReplyPublishTimer;
   String pendingConversationLiveReplyAgentId = '';
+  String pendingConversationLiveReplyScopeKey = '';
   String pendingConversationLiveReplyTurnId = '';
   String pendingConversationLiveReplyText = '';
   String pendingConversationLiveReplyParticipantAgentId = '';
@@ -167,6 +183,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String pendingPermissionRetryAgentId = '';
   String pendingPermissionRetryTool = '';
   String pendingPermissionRetryText = '';
+  List<ConversationAttachment> pendingPermissionRetryAttachments = const [];
 
   /// Per-agent tool allowlists ("allow and remember"): every send merges the
   /// remembered tools into `--allowedTools` so they are auto-approved.
@@ -204,21 +221,17 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   /// Cursor IDE composer ids that already received a one-time IDE→CLI handoff
   /// in this process (metadata + last assistant return).
   final Set<String> cursorIdeCliHandoffComposerIds = <String>{};
-  Map<String, List<AgentConversationMessage>> liveConversationMessagesByAgent =
+
+  /// Live turn messages and blackboard, keyed per conversation scope so the
+  /// progress card is part of one conversation's message stream and never
+  /// leaks into another conversation's timeline.
+  Map<String, List<AgentConversationMessage>> liveConversationMessagesByScope =
       const {};
   Map<String, ConversationTurnProcessState>
-  conversationTurnProcessStateByAgent = const {};
+  conversationTurnProcessStateByScope = const {};
   Map<String, AgentConversationTabActivity> conversationTabActivityByAgent =
       const {};
   Map<String, String> conversationSendErrorsByAgent = const {};
-
-  GroupRoster groupConversationRoster = GroupRoster.empty;
-  Map<String, GroupAgentSessionBinding> groupConversationAgentSessions =
-      const {};
-  String groupConversationLastLocalSessionId = '';
-
-  Map<String, Object?> orchestrationPolicyDraft = const {};
-  String activeOrchestrationPolicyRevision = '';
 
   Map<String, dynamic>? conversationArchiveResult;
   Map<String, dynamic>? conversationArchivePlan;
@@ -243,6 +256,128 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
 
   String get selectedNewConversationDraftToken =>
       newConversationDraftTokenFor(selectedConversationAgentId);
+
+  /// Stable identity of the composer's conversation scope: one slot per
+  /// selected session and one slot per active new-conversation draft. The
+  /// draft token distinguishes repeated new-conversation drafts for the same
+  /// agent, so clicking "new conversation" again starts with a fresh box.
+  String get conversationComposerScopeKey {
+    final agentId = selectedConversationAgentId.trim();
+    if (agentId.isEmpty) return '';
+    final draftToken = selectedNewConversationDraftToken.trim();
+    if (draftToken.isNotEmpty) return 'draft:$agentId:$draftToken';
+    final sessionId = selectedConversationSessionId.trim();
+    if (sessionId.isEmpty) return 'new:$agentId';
+    return 'session:$agentId:$sessionId';
+  }
+
+  String get conversationComposerDraft => conversationPresentationSignals
+      .composerDraftFor(conversationComposerScopeKey);
+
+  /// Pending image attachments for the current conversation scope, beside the
+  /// text draft. Bounded and immutable; cleared only after terminal success.
+  List<ConversationAttachment> get conversationComposerAttachments =>
+      conversationPresentationSignals.composerAttachmentsFor(
+        conversationComposerScopeKey,
+      );
+
+  /// Stable redacted picker outcome code for the current scope (empty when
+  /// the last picker interaction succeeded or none happened).
+  String get conversationAttachmentStatus => conversationPresentationSignals
+      .composerAttachmentStatusFor(conversationComposerScopeKey);
+
+  /// Whether the selected target transports images end to end: the packaged
+  /// `multimodal` capability truth intersected with desktop, direct-local,
+  /// non-VM transport. Every other adapter, Mobile Relay target, and VM target
+  /// stays attachment-unsupported.
+  bool get selectedConversationSupportsImageAttachments {
+    final target = selectedConversationAgent;
+    if (target == null || agentWorkspaceMobileRuntime) return false;
+    final matrix = target.conversationCapabilityMatrix;
+    if (matrix['multimodal'] != true) return false;
+    return target.location == 'local' &&
+        !target.hasValidVirtualMachineConnection;
+  }
+
+  /// Timeline projection for the selected conversation: the live turn
+  /// projection plus, while attachments are pending, a synthetic local draft
+  /// message carrying the ordered pending images and the current draft text.
+  /// The draft message reuses the existing message structure, so no tray,
+  /// chip family, or style token is added.
+  List<AgentConversationMessage> get selectedConversationTimelineMessages {
+    final live = selectedLiveConversationMessages;
+    final attachments = conversationComposerAttachments;
+    if (attachments.isEmpty) return live;
+    final scopeKey = conversationComposerScopeKey;
+    final identity = 'draft:$scopeKey:attachments';
+    return [
+      ...live,
+      AgentConversationMessage(
+        id: identity,
+        role: 'user',
+        text: conversationComposerDraft,
+        createdAt: DateTime.now().toUtc().toIso8601String(),
+        stableIdentity: identity,
+        images: [
+          for (final attachment in attachments)
+            AgentConversationImageAttachment(
+              mediaType: attachment.mediaType,
+              filePath: attachment.path,
+              name: attachment.name,
+            ),
+        ],
+      ),
+    ];
+  }
+
+  void updateConversationComposerDraft(String value) {
+    conversationPresentationSignals.replaceComposerDraft(
+      conversationComposerScopeKey,
+      value,
+    );
+  }
+
+  void clearConversationComposerDraft() {
+    conversationPresentationSignals.replaceComposerDraft(
+      conversationComposerScopeKey,
+      '',
+    );
+  }
+
+  void replaceConversationComposerAttachments(
+    List<ConversationAttachment> attachments, {
+    String statusCode = '',
+  }) {
+    conversationPresentationSignals.replaceComposerAttachments(
+      conversationComposerScopeKey,
+      attachments,
+    );
+    conversationPresentationSignals.replaceComposerAttachmentStatus(
+      conversationComposerScopeKey,
+      statusCode,
+    );
+    agentWorkspaceNotifyStateChanged();
+  }
+
+  void clearConversationComposerAttachments() {
+    replaceConversationComposerAttachments(const <ConversationAttachment>[]);
+  }
+
+  void clearConversationComposerAttachmentsForScope(String scopeKey) {
+    final attachments = conversationPresentationSignals.composerAttachmentsFor(
+      scopeKey,
+    );
+    conversationPresentationSignals.replaceComposerAttachments(
+      scopeKey,
+      const <ConversationAttachment>[],
+    );
+    conversationPresentationSignals.replaceComposerAttachmentStatus(
+      scopeKey,
+      '',
+    );
+    unawaited(conversationAttachmentRelease.releaseAttachments(attachments));
+    agentWorkspaceNotifyStateChanged();
+  }
 
   String newConversationDraftTokenFor(String agentId) =>
       (_newConversationDraftTokensByAgent[agentId.trim()] ?? '').trim();
@@ -286,8 +421,34 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     if (agentId.isNotEmpty) setSelectedConversationSessionId(agentId, value);
   }
 
+  /// Live messages of the in-flight turn, as part of the selected
+  /// conversation's own message stream. The turn blackboard is stored per
+  /// conversation scope, so another conversation's timeline simply has no
+  /// live entries of its own; nothing is hidden or restored on switch.
   List<AgentConversationMessage> get selectedLiveConversationMessages =>
-      liveConversationMessagesByAgent[selectedConversationAgentId] ?? const [];
+      liveConversationMessagesByScope[conversationComposerScopeKey] ?? const [];
+
+  /// Every live-projection scope key owned by [agentId], for agent-wide
+  /// resets (new-conversation start) without touching other agents.
+  List<String> conversationLiveScopeKeysForAgent(String agentId) {
+    final normalized = agentId.trim();
+    if (normalized.isEmpty) return const [];
+    final draftPrefix = 'draft:$normalized:';
+    final sessionPrefix = 'session:$normalized:';
+    final newPrefix = 'new:$normalized';
+    return [
+      for (final key in {
+        ...liveConversationMessagesByScope.keys,
+        ...conversationTurnProcessStateByScope.keys,
+      })
+        if (key.startsWith(draftPrefix) ||
+            key.startsWith(sessionPrefix) ||
+            key == newPrefix ||
+            key.startsWith('$newPrefix:'))
+          key,
+    ];
+  }
+
   bool get isLoadingConversations => agentWorkspaceMobileRuntime
       ? conversationMobileLoading
       : conversationSessionLoadingTargets.contains(selectedConversationAgentId);

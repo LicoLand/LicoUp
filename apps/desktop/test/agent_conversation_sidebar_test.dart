@@ -12,6 +12,21 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('native running fact survives session projection copies', () {
+    final session = AgentConversationSession.fromJson({
+      'id': 'running',
+      'agentId': 'codex',
+      'title': 'Running',
+      'running': true,
+      'messages': const <Object?>[],
+    });
+
+    expect(session.running, isTrue);
+    expect(session.withTitle('Renamed').running, isTrue);
+    expect(session.withWorkingDirectory('/fixture').running, isTrue);
+    expect(session.toJson()['running'], isTrue);
+  });
+
   test('conversation display names drop delivery-channel suffixes', () {
     expect(
       agentConversationTargetDisplayName(
@@ -32,6 +47,33 @@ void main() {
     expect(
       agentConversationTargetDisplayName(_target('custom-tool', '')),
       'custom-tool',
+    );
+  });
+
+  test('compact conversation names use local narrow-surface defaults', () {
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('github-copilot', 'GitHub Copilot'),
+      ),
+      'Copilot',
+    );
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('claude-code', 'Claude Code'),
+      ),
+      'Claude',
+    );
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('kimi-code', 'Kimi Code'),
+      ),
+      'Kimi',
+    );
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('custom-tool', 'My Custom Tool'),
+      ),
+      'My Custom Tool',
     );
   });
 
@@ -303,6 +345,99 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('running conversation spins and takes priority over completion', (
+    tester,
+  ) async {
+    await _pumpSidebar(
+      tester,
+      targets: [_target('codex', 'Codex')],
+      sessionsByAgent: {
+        'codex': [
+          _session('running', 'codex', 'Running session', updatedHoursAgo: 1),
+        ],
+      },
+      activityFor: (_) => AgentConversationTabActivity.workFinished,
+      runningFor: (session) => session.id == 'running',
+      onSelectSession: (_, _) {},
+    );
+
+    final running = find.byKey(const Key('agents-sidebar-running-running'));
+    expect(running, findsOneWidget);
+    expect(
+      find.byKey(const Key('agents-sidebar-activity-running')),
+      findsNothing,
+    );
+    expect(find.text('优先'), findsOneWidget);
+    final rotation = tester.widget<RotationTransition>(
+      find.descendant(of: running, matching: find.byType(RotationTransition)),
+    );
+    final before = rotation.turns.value;
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(rotation.turns.value, isNot(before));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'running conversations move above recency groups without duplicates',
+    (tester) async {
+      await _pumpSidebar(
+        tester,
+        targets: [_target('codex', 'Codex')],
+        sessionsByAgent: {
+          'codex': [
+            _session('idle', 'codex', 'Newest idle', updatedHoursAgo: 1),
+            _session(
+              'running',
+              'codex',
+              'Older running',
+              updatedHoursAgo: 20,
+              running: true,
+            ),
+          ],
+        },
+        runningFor: (session) => session.running,
+        onSelectSession: (_, _) {},
+      );
+
+      expect(find.text('优先'), findsOneWidget);
+      expect(find.text('Older running'), findsOneWidget);
+      expect(find.text('Newest idle'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Older running')).dy,
+        lessThan(tester.getTopLeft(find.text('Newest idle')).dy),
+      );
+      expect(
+        find.byKey(const Key('agents-sidebar-conversation-running')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('completed conversation activity dot breathes', (tester) async {
+    await _pumpSidebar(
+      tester,
+      targets: [_target('codex', 'Codex')],
+      sessionsByAgent: {
+        'codex': [
+          _session('finished', 'codex', 'Finished session', updatedHoursAgo: 1),
+        ],
+      },
+      activityFor: (_) => AgentConversationTabActivity.workFinished,
+      onSelectSession: (_, _) {},
+    );
+
+    final dot = find.byKey(const Key('agents-sidebar-activity-finished'));
+    expect(dot, findsOneWidget);
+    final fade = tester.widget<FadeTransition>(
+      find.ancestor(of: dot, matching: find.byType(FadeTransition)).first,
+    );
+    final before = fade.opacity.value;
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(fade.opacity.value, isNot(before));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('sidebar title bar precedes the New Chat action', (tester) async {
     var newConversationCount = 0;
     await _pumpSidebar(
@@ -482,6 +617,7 @@ AgentConversationSession _session(
   int? updatedHoursAgo,
   String? updatedAt,
   String workingDirectory = '',
+  bool running = false,
 }) {
   final effectiveUpdatedAt =
       updatedAt ??
@@ -498,6 +634,7 @@ AgentConversationSession _session(
     updatedAt: effectiveUpdatedAt,
     messages: const [],
     workingDirectory: workingDirectory,
+    running: running,
   );
 }
 
@@ -507,6 +644,7 @@ Future<void> _pumpSidebar(
   required Map<String, List<AgentConversationSession>> sessionsByAgent,
   required void Function(String agentId, String sessionId) onSelectSession,
   AgentConversationTabActivity Function(String agentId)? activityFor,
+  bool Function(AgentConversationSession session)? runningFor,
   ValueChanged<String>? onPrefetchSessions,
   VoidCallback? onNewConversation,
   VoidCallback? onAddTarget,
@@ -532,6 +670,7 @@ Future<void> _pumpSidebar(
             selectedSessionId: selectedSessionId,
             activityFor:
                 activityFor ?? (_) => AgentConversationTabActivity.none,
+            runningFor: runningFor,
             onSelectSession: onSelectSession,
             onPrefetchSessions: onPrefetchSessions,
             onNewConversation: onNewConversation ?? () {},

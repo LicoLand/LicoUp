@@ -2,7 +2,7 @@ use super::super::test_support::*;
 #[test]
 fn public_config_save_preserves_internal_mobile_token() {
     let dir = temp_dir("mobile-relay-preserve-token");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     let store = Arc::new(EphemeralSecretStore::new());
     config["pairingId"] = json!("pair-preserve");
@@ -37,7 +37,7 @@ fn public_config_save_preserves_internal_mobile_token() {
 #[test]
 fn native_secret_store_restores_selected_device_without_raw_json_overrides() {
     let dir = temp_dir("mobile-relay-native-secret-store-selected-device");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut config = default_config();
     config["pairingId"] = json!("pair-active");
@@ -115,7 +115,7 @@ fn native_secret_store_restores_selected_device_without_raw_json_overrides() {
 #[test]
 fn runtime_secret_overrides_require_platform_transport_marker() {
     let dir = temp_dir("mobile-relay-runtime-secret-overrides-marker");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     config["pairingId"] = json!("pair-active");
     config["mobileToken"] = json!("");
@@ -203,7 +203,7 @@ fn runtime_secret_overrides_reject_raw_token_fields() {
 #[test]
 fn e2ee_status_rejects_private_key_material_in_portable_config() {
     let dir = temp_dir("mobile-relay-e2ee-status-portable-secret-store");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,

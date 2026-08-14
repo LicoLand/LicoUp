@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { sanitizeError } from "../../../tools/scripts/lib/sanitize-error.mjs";
 
@@ -56,6 +57,15 @@ function plistHasString(plist, key, value) {
   return pattern.test(plist);
 }
 
+function executableArchitectures(executable) {
+  const result = spawnSync("/usr/bin/lipo", ["-archs", executable], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) return [];
+  return String(result.stdout || "").trim().split(/\s+/u).filter(Boolean);
+}
+
 async function main() {
   const missing = [];
   for (const { kind, root, appName } of roots) {
@@ -63,6 +73,15 @@ async function main() {
     const flutterSize = await fileSize(appExecutablePath(root, appName));
     if (flutterSize <= 0) {
       missing.push(`${appPath} missing non-empty Flutter executable`);
+    }
+    const flutterArchitectures = executableArchitectures(
+      appExecutablePath(root, appName),
+    );
+    if (
+      flutterArchitectures.length !== 1 ||
+      flutterArchitectures[0] !== "arm64"
+    ) {
+      missing.push(`${appPath} Flutter executable must contain only arm64`);
     }
     const plistPath = path.join(appPath, "Contents", "Info.plist");
     if (!(await fileExists(plistPath))) {
@@ -72,14 +91,20 @@ async function main() {
       if (!plistHasString(plist, "CFBundleName", "LicoUp")) {
         missing.push(`${appPath} CFBundleName must be LicoUp`);
       }
-      if (!plistHasString(plist, "CFBundleDisplayName", "Arc")) {
-        missing.push(`${appPath} CFBundleDisplayName must be Arc`);
+      if (!plistHasString(plist, "CFBundleDisplayName", "LicoUp")) {
+        missing.push(`${appPath} CFBundleDisplayName must be LicoUp`);
       }
     }
     for (const executableName of ["licoup"]) {
       const size = await fileSize(appExecutablePath(root, appName, executableName));
       if (size <= 0) {
         missing.push(`${appPath} missing non-empty ${executableName}`);
+      }
+      const architectures = executableArchitectures(
+        appExecutablePath(root, appName, executableName),
+      );
+      if (architectures.length !== 1 || architectures[0] !== "arm64") {
+        missing.push(`${appPath} ${executableName} must contain only arm64`);
       }
     }
     for (const relativePath of [

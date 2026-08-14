@@ -18,11 +18,19 @@ void main() {
     expect(signals.liveListenable.value, 1);
   });
 
-  test('composer draft is independent from renderer lifecycle', () {
+  test('composer drafts are scoped per conversation', () {
     final signals = ConversationPresentationSignals();
     addTearDown(signals.dispose);
 
-    signals.replaceComposerDraft('draft');
-    expect(signals.composerDraft, 'draft');
+    signals.replaceComposerDraft('session:codex:one', 'draft one');
+    signals.replaceComposerDraft('session:codex:two', 'draft two');
+
+    expect(signals.composerDraftFor('session:codex:one'), 'draft one');
+    expect(signals.composerDraftFor('session:codex:two'), 'draft two');
+    expect(signals.composerDraftFor('session:claude-code:one'), '');
+
+    signals.replaceComposerDraft('session:codex:one', '');
+    expect(signals.composerDraftFor('session:codex:one'), '');
+    expect(signals.composerDraftFor('session:codex:two'), 'draft two');
   });
 }

@@ -45,12 +45,10 @@ impl LaunchSpec {
         } else {
             None
         };
-        if reasoning_effort.as_deref().is_some_and(|effort| {
-            !driver
-                .launch_reasoning_values
-                .iter()
-                .any(|supported| *supported == effort)
-        }) {
+        if reasoning_effort
+            .as_deref()
+            .is_some_and(|effort| !driver.launch_reasoning_values.contains(&effort))
+        {
             return Err(ProtocolFailure::new(
                 "acp_setting_unsupported",
                 "The ACP agent cannot preserve one of the requested native session settings.",
