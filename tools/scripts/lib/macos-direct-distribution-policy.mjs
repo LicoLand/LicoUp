@@ -28,9 +28,7 @@ export const MACOS_DIRECT_PROTECTED_ENVIRONMENT = Object.freeze([
   "LICO_MACOS_RELEASE_SIGNER_SHA256",
   "LICO_MACOS_APP_IDENTIFIER_PREFIX",
   "LICO_MACOS_PROVISIONING_PROFILE",
-  "LICO_MACOS_NOTARY_KEY_ID",
-  "LICO_MACOS_NOTARY_ISSUER_ID",
-  "LICO_MACOS_NOTARY_KEY_PATH",
+  "LICO_MACOS_NOTARY_KEYCHAIN_PROFILE",
 ]);
 
 export const MACOS_DIRECT_FAILURE_CODES = Object.freeze([
@@ -46,6 +44,10 @@ export const MACOS_DIRECT_FAILURE_CODES = Object.freeze([
   "macos_distribution_profile_application_identifier_mismatch",
   "macos_distribution_profile_team_mismatch",
   "macos_distribution_package_missing",
+  "macos_distribution_privacy_manifest_invalid",
+  "macos_distribution_release_materials_missing",
+  "macos_distribution_license_materials_missing",
+  "macos_distribution_license_materials_invalid",
   "macos_distribution_camera_plugin_present",
   "macos_distribution_tool_missing",
   "macos_distribution_codesign_failed",
@@ -107,6 +109,7 @@ const MACOS_DIRECT_FINAL_DMG_KINDS = Object.freeze([
 const MACOS_DIRECT_LOCAL_ENTITLEMENT_KEYS = Object.freeze([
   "com.apple.security.network.client",
   "com.apple.security.files.user-selected.read-only",
+  "com.apple.security.cs.disable-library-validation",
 ]);
 
 const MACOS_DIRECT_PRODUCTION_ENTITLEMENT_KEYS = Object.freeze([
@@ -170,7 +173,7 @@ export function validateLocalEntitlements(entitlements) {
   if (source["get-task-allow"] === true) {
     errors.push("macos_distribution_entitlements_invalid");
   }
-  if (source["com.apple.security.cs.disable-library-validation"] === true) {
+  if (MACOS_DIRECT_LOCAL_ENTITLEMENT_KEYS.some((key) => source[key] !== true)) {
     errors.push("macos_distribution_entitlements_invalid");
   }
   for (const key of Object.keys(source)) {

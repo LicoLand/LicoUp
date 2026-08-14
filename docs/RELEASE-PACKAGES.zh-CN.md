@@ -53,8 +53,8 @@ build/releases/<产品版本>/
 
 | 目标家族 | 基线 | 原生格式 | 渠道 | 构建主机 | 更新权威 |
 | --- | --- | --- | --- | --- | --- |
-| macOS 直发（arm64、x64） | macOS 10.15 | DMG | 仅本机 Developer ID 渠道 | 对应 macOS 主机 | 签名 HTTP 清单 |
-| macOS App Store（arm64） | macOS 10.15 | PKG | App Store | macOS arm64 | App Store |
+| macOS 直发（arm64） | macOS 11.0 | DMG | 仅本机 Developer ID 渠道 | macOS arm64 | 签名 HTTP 清单 |
+| macOS App Store（arm64） | macOS 11.0 | PKG | App Store | macOS arm64 | App Store |
 | Windows 直发（x64） | Windows 10.0.19041 | MSIX | direct | Windows x64 | AppInstaller |
 | Windows Store（x64） | Windows 10.0.19041 | MSIX 上传包 | Microsoft Store | Windows x64 | Microsoft Store |
 | Debian（arm64、x64） | Debian 12 | DEB | APT 仓库 | 对应 Linux 主机 | APT 仓库 |
@@ -71,7 +71,7 @@ build/releases/<产品版本>/
 ARM、Alpine 与 AppImage 是有意分开的家族，不存在通用 Linux 发布包目标。
 
 `packageBuildSupported` 与 `releaseSupported` 是相互独立的事实。某个配方
-可以已经能够构建，但发布闭环仍被阻塞。两个 macOS 直发目标均明确禁止进入
+可以已经能够构建，但发布闭环仍被阻塞。macOS 直发目标明确禁止进入
 通用或远程发布构建器，只允许在获得明确授权后使用本机 Developer ID 协调器。配方不可构建
 时记录 `packageBlockers`；外部发布或回执不完整时记录 `releaseBlockers`。
 这些稳定类型代码（例如 `apt_repository_publication_not_implemented` 或
@@ -124,7 +124,7 @@ macOS 直发会直接失败；获得明确授权的本机操作方先运行
 
 ## 发布
 
-GitHub 工作流接受同样的逗号分隔精确目标，但拒绝两个 macOS 直发目标；macOS
+GitHub 工作流接受同样的逗号分隔精确目标，但拒绝 macOS 直发目标；macOS
 签名、公证、打包和发布保持仅限本机，并需要另行明确授权。prepare 阶段可以为所有
 `packageBuildSupported` 为 true 的目标建立独立矩阵任务，并选择目标声明的
 runner 标签。工作流会安装共享的 Node、Rust 与 Flutter 工具链；所属 runner

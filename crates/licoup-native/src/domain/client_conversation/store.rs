@@ -9,6 +9,7 @@ use rusqlite::{
     Connection, OptionalExtension, Row, Statement, TransactionBehavior, params, params_from_iter,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
@@ -53,13 +54,15 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
          CREATE TABLE IF NOT EXISTS events (
            id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
            sequence INTEGER NOT NULL, author_membership_id TEXT REFERENCES memberships(id), kind TEXT NOT NULL,
-           causation_id TEXT, correlation_id TEXT, created_at INTEGER NOT NULL, finalized INTEGER NOT NULL DEFAULT 0 CHECK(finalized IN (0,1)),
+           causation_id TEXT, correlation_id TEXT,
+           created_at INTEGER NOT NULL, finalized INTEGER NOT NULL DEFAULT 0 CHECK(finalized IN (0,1)),
            UNIQUE(conversation_id, sequence)
          );
          CREATE INDEX IF NOT EXISTS events_conversation_idx ON events(conversation_id, sequence);
          CREATE TABLE IF NOT EXISTS event_parts (
            id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-           ordinal INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL,
+           ordinal INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL,
+           runtime_cursor INTEGER, created_at INTEGER NOT NULL,
            UNIQUE(event_id, ordinal)
          );
          CREATE INDEX IF NOT EXISTS event_parts_event_idx ON event_parts(event_id, ordinal);
@@ -470,6 +473,17 @@ pub(super) struct DirectTurnExecutionContext {
     pub working_directory: Option<String>,
 }
 
+/// Private canonical ownership for one persistent desktop Agent turn. The
+/// dispatch id is also the opaque transport handle; conversation and
+/// membership ids are required on every later attach or control operation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConversationRuntimeScope {
+    pub dispatch_id: String,
+    pub conversation_id: String,
+    pub membership_id: String,
+    pub event_id: String,
+}
+
 impl ConversationStore {
     pub fn open(portable_root: &Path) -> StoreResult<Self> {
         let root = portable_root.join("client-state").join("conversations");
@@ -503,6 +517,13 @@ impl ConversationStore {
         self.with_connection(|connection| normalize_reserved_group_after_legacy_import(connection))
     }
 
+    /// Ensure the product-owned Local group exists in the canonical
+    /// Conversation store. Legacy imports are adopted into the stable identity
+    /// instead of creating a second group or reopening the retired JSON store.
+    pub(crate) fn ensure_default_local_group(&self) -> StoreResult<Conversation> {
+        self.with_connection(ensure_default_local_group_inner)
+    }
+
     pub fn db_path(&self) -> &Path {
         &self.pool.db_path
     }
@@ -531,6 +552,556 @@ impl ConversationStore {
         validate_identifier(&principal.id, "principal_id")?;
         validate_required_text(&principal.display_name, "principal_display_name")?;
         self.with_connection(|connection| upsert_principal(connection, principal))
+    }
+
+    /// Prepare one persistent runtime dispatch and commit its owning
+    /// Conversation facts before native execution starts. Direct Agent sends
+    /// receive (or reuse) a canonical one-Agent Conversation; group sends pass
+    /// their existing Conversation and Membership and therefore do not create
+    /// a competing transcript.
+    pub fn prepare_runtime_dispatch(
+        &self,
+        agent_id: &str,
+        session_id: &str,
+        text: &str,
+        conversation_id: Option<&str>,
+        membership_id: Option<&str>,
+        causation_id: Option<&str>,
+        requested_dispatch_id: Option<&str>,
+    ) -> StoreResult<ConversationRuntimeScope> {
+        validate_identifier(agent_id, "runtime_agent_id")?;
+        validate_required_text(text, "runtime_user_text")?;
+        if conversation_id.is_some() != membership_id.is_some() {
+            return Err(anyhow!("runtime_scope_incomplete"));
+        }
+        let dispatch_id = if let Some(requested) = requested_dispatch_id {
+            validate_identifier(requested, "dispatch_id")?;
+            requested.to_owned()
+        } else {
+            new_id("dispatch")
+        };
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let (conversation_id, membership_id, append_user) =
+                if let (Some(conversation_id), Some(membership_id)) =
+                    (conversation_id, membership_id)
+                {
+                    validate_identifier(conversation_id, "conversation_id")?;
+                    validate_identifier(membership_id, "membership_id")?;
+                    let eligible: Option<i64> = transaction
+                        .query_row(
+                            "SELECT 1 FROM memberships m JOIN principals p ON p.id=m.principal_id
+                             WHERE m.id=?1 AND m.conversation_id=?2 AND m.status='active'
+                               AND p.kind='agent' AND p.agent_id=?3",
+                            params![membership_id, conversation_id, agent_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    if eligible.is_none() {
+                        return Err(anyhow!("runtime_scope_mismatch"));
+                    }
+                    (
+                        conversation_id.to_owned(),
+                        membership_id.to_owned(),
+                        causation_id.is_none(),
+                    )
+                } else {
+                    let source_identity = runtime_source_identity(agent_id, session_id, &dispatch_id)?;
+                    let existing: Option<String> = if session_id.trim().is_empty() {
+                        None
+                    } else {
+                        transaction
+                            .query_row(
+                                "SELECT conversation_id FROM migration_provenance
+                                 WHERE source_kind='projection' AND source_identity=?1
+                                 UNION ALL
+                                 SELECT conversation_id FROM source_links
+                                 WHERE source_kind='agent-runtime' AND native_identity=?1
+                                 LIMIT 1",
+                                params![source_identity],
+                                |row| row.get(0),
+                            )
+                            .optional()?
+                    };
+                    let conversation_id = existing.unwrap_or_else(|| new_id("conversation"));
+                    let owner_principal = Principal {
+                        id: "human:local".to_owned(),
+                        kind: PrincipalKind::Human,
+                        display_name: "human:local".to_owned(),
+                        agent_id: None,
+                        created_at_unix_ms: now,
+                    };
+                    let agent_principal = Principal {
+                        id: format!("agent:{agent_id}"),
+                        kind: PrincipalKind::Agent,
+                        display_name: agent_id.to_owned(),
+                        agent_id: Some(agent_id.to_owned()),
+                        created_at_unix_ms: now,
+                    };
+                    upsert_principal(&transaction, &owner_principal)?;
+                    upsert_principal(&transaction, &agent_principal)?;
+                    let exists: Option<i64> = transaction
+                        .query_row(
+                            "SELECT 1 FROM conversations WHERE id=?1",
+                            params![conversation_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    if exists.is_none() {
+                        transaction.execute(
+                            "INSERT INTO conversations(
+                               id, title, archived, pinned, is_group, revision, created_at, updated_at
+                             ) VALUES (?1, ?2, 0, 0, 0, 0, ?3, ?3)",
+                            params![conversation_id, agent_id, now],
+                        )?;
+                        transaction.execute(
+                            "INSERT INTO memberships(
+                               id, conversation_id, principal_id, access, status, joined_at, left_at
+                             ) VALUES (?1, ?2, ?3, 'owner', 'active', ?4, NULL)",
+                            params![new_id("membership"), conversation_id, owner_principal.id, now],
+                        )?;
+                    }
+                    let membership_id: Option<String> = transaction
+                        .query_row(
+                            "SELECT m.id FROM memberships m JOIN principals p ON p.id=m.principal_id
+                             WHERE m.conversation_id=?1 AND m.status='active'
+                               AND p.kind='agent' AND p.agent_id=?2 LIMIT 1",
+                            params![conversation_id, agent_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    let membership_id = membership_id.unwrap_or_else(|| new_id("membership"));
+                    let membership_exists: Option<i64> = transaction
+                        .query_row(
+                            "SELECT 1 FROM memberships WHERE id=?1",
+                            params![membership_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    if membership_exists.is_none() {
+                        transaction.execute(
+                            "INSERT INTO memberships(
+                               id, conversation_id, principal_id, access, status, joined_at, left_at
+                             ) VALUES (?1, ?2, ?3, 'member', 'active', ?4, NULL)",
+                            params![membership_id, conversation_id, agent_principal.id, now],
+                        )?;
+                    }
+                    if !session_id.trim().is_empty() {
+                        transaction.execute(
+                            "INSERT INTO migration_provenance(source_kind, source_identity, conversation_id)
+                             VALUES ('projection', ?1, ?2)
+                             ON CONFLICT(source_kind, source_identity) DO NOTHING",
+                            params![source_identity, conversation_id],
+                        )?;
+                        transaction.execute(
+                            "INSERT INTO source_links(id, conversation_id, source_kind, native_identity)
+                             VALUES (?1, ?2, 'agent-runtime', ?3)
+                             ON CONFLICT(source_kind, native_identity) DO NOTHING",
+                            params![new_id("source"), conversation_id, source_identity],
+                        )?;
+                    }
+                    (conversation_id, membership_id, true)
+                };
+
+            transaction.execute(
+                "INSERT INTO conversation_dispatches(
+                   id, conversation_id, membership_id, operation, state, session_mode,
+                   runtime_conversation_path, error_code, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, 'send', 'accepted', ?4, NULL, NULL, ?5, ?5)",
+                params![
+                    dispatch_id,
+                    conversation_id,
+                    membership_id,
+                    if session_id.trim().is_empty() { "new" } else { "resume" },
+                    now,
+                ],
+            )?;
+            let turn_causation_id = if append_user {
+                let owner_membership: Option<String> = transaction
+                    .query_row(
+                        "SELECT m.id FROM memberships m JOIN principals p ON p.id=m.principal_id
+                         WHERE m.conversation_id=?1 AND m.status='active' AND p.kind='human'
+                         ORDER BY m.joined_at, m.id LIMIT 1",
+                        params![conversation_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                let user_event_id = new_id("event");
+                insert_event(
+                    &transaction,
+                    &user_event_id,
+                    &conversation_id,
+                    owner_membership.as_deref(),
+                    EventKind::Message,
+                    &[NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: text.to_owned(),
+                    }],
+                    causation_id,
+                    Some(&dispatch_id),
+                    true,
+                    false,
+                    now,
+                )?;
+                Some(user_event_id)
+            } else {
+                causation_id.map(str::to_owned)
+            };
+            let event_id = new_id("event");
+            insert_event(
+                &transaction,
+                &event_id,
+                &conversation_id,
+                Some(&membership_id),
+                EventKind::Message,
+                &[],
+                turn_causation_id.as_deref(),
+                Some(&dispatch_id),
+                false,
+                false,
+                now,
+            )?;
+            transaction.commit()?;
+            Ok(ConversationRuntimeScope {
+                dispatch_id,
+                conversation_id,
+                membership_id,
+                event_id,
+            })
+        })
+    }
+
+    /// Commit one replayable frame before it is published to any observer.
+    /// Large frames are split across canonical metadata parts while preserving
+    /// one runtime cursor.
+    pub fn append_runtime_frame(
+        &self,
+        scope: &ConversationRuntimeScope,
+        cursor: u64,
+        frame: &Value,
+    ) -> StoreResult<()> {
+        if cursor == 0 || cursor > i64::MAX as u64 {
+            return Err(anyhow!("runtime_cursor_invalid"));
+        }
+        let encoded = serde_json::to_string(frame)?;
+        let parts = runtime_frame_parts(&encoded);
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let state: Option<(String, i64)> = transaction
+                .query_row(
+                    "SELECT d.state, e.finalized FROM conversation_dispatches d
+                     JOIN events e ON e.id=?4 AND e.conversation_id=d.conversation_id
+                       AND e.correlation_id=d.id AND e.author_membership_id=d.membership_id
+                     WHERE d.id=?1 AND d.conversation_id=?2 AND d.membership_id=?3",
+                    params![
+                        scope.dispatch_id,
+                        scope.conversation_id,
+                        scope.membership_id,
+                        scope.event_id,
+                    ],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            if !matches!(state.as_ref(), Some((state, 0)) if matches!(state.as_str(), "accepted" | "running")) {
+                return Err(anyhow!("runtime_dispatch_not_active"));
+            }
+            let cursor_exists: Option<i64> = transaction
+                .query_row(
+                    "SELECT 1 FROM event_parts WHERE event_id=?1 AND runtime_cursor=?2 LIMIT 1",
+                    params![scope.event_id, cursor as i64],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if cursor_exists.is_some() {
+                return Err(anyhow!("runtime_cursor_duplicate"));
+            }
+            let mut ordinal: i64 = transaction.query_row(
+                "SELECT COALESCE(MAX(ordinal), -1)+1 FROM event_parts WHERE event_id=?1",
+                params![scope.event_id],
+                |row| row.get(0),
+            )?;
+            for part in runtime_semantic_parts(frame) {
+                insert_runtime_event_part(
+                    &transaction,
+                    &scope.conversation_id,
+                    &scope.event_id,
+                    ordinal,
+                    &part,
+                    None,
+                    now,
+                )?;
+                ordinal += 1;
+            }
+            for part in parts {
+                insert_runtime_event_part(
+                    &transaction,
+                    &scope.conversation_id,
+                    &scope.event_id,
+                    ordinal,
+                    &part,
+                    Some(cursor),
+                    now,
+                )?;
+                ordinal += 1;
+            }
+            transaction.execute(
+                "UPDATE conversation_dispatches SET state='running', updated_at=?2
+                 WHERE id=?1 AND state='accepted'",
+                params![scope.dispatch_id, now],
+            )?;
+            bump_revision(&transaction, &scope.conversation_id, now)?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Page committed frames for a single canonical turn. The composite
+    /// correlation/cursor index makes fallback proportional to returned data.
+    pub fn runtime_frames_after(
+        &self,
+        scope: &ConversationRuntimeScope,
+        after_cursor: u64,
+        through_cursor: u64,
+        limit: usize,
+    ) -> StoreResult<Vec<Value>> {
+        if after_cursor > through_cursor || through_cursor > i64::MAX as u64 {
+            return Err(anyhow!("runtime_cursor_invalid"));
+        }
+        let limit = limit.clamp(1, 512);
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT selected.runtime_cursor, p.ordinal, p.content
+                  FROM (
+                   SELECT parts.runtime_cursor FROM event_parts parts
+                   JOIN events event ON event.id=parts.event_id
+                   WHERE parts.event_id=?1 AND event.correlation_id=?2
+                     AND parts.runtime_cursor IS NOT NULL
+                     AND runtime_cursor>?3 AND runtime_cursor<=?4
+                   GROUP BY parts.runtime_cursor
+                   ORDER BY parts.runtime_cursor ASC LIMIT ?5
+                  ) selected
+                 JOIN event_parts p ON p.event_id=?1
+                   AND p.runtime_cursor=selected.runtime_cursor
+                 ORDER BY selected.runtime_cursor ASC, p.ordinal ASC",
+            )?;
+            let rows = statement.query_map(
+                params![
+                    scope.event_id,
+                    scope.dispatch_id,
+                    after_cursor as i64,
+                    through_cursor as i64,
+                    limit as i64,
+                ],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(2)?)),
+            )?;
+            let mut frames = Vec::new();
+            let mut current_cursor = None;
+            let mut encoded = String::new();
+            for row in rows {
+                let (cursor, content) = row?;
+                if current_cursor.is_some_and(|current| current != cursor) {
+                    frames.push(serde_json::from_str(&encoded)?);
+                    encoded.clear();
+                }
+                current_cursor = Some(cursor);
+                encoded.push_str(&content);
+            }
+            if current_cursor.is_some() {
+                frames.push(serde_json::from_str(&encoded)?);
+            }
+            Ok(frames)
+        })
+    }
+
+    /// Persist the terminal lifecycle and dispatch state in one canonical
+    /// transaction. Terminal metadata is not a replay cursor frame.
+    pub fn finish_runtime_dispatch(
+        &self,
+        scope: &ConversationRuntimeScope,
+        terminal: &Value,
+        state: DispatchState,
+        error_code: Option<&str>,
+    ) -> StoreResult<()> {
+        if !matches!(
+            state,
+            DispatchState::Completed | DispatchState::Failed | DispatchState::Cancelled
+        ) {
+            return Err(anyhow!("runtime_terminal_state_invalid"));
+        }
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let finalized: Option<i64> = transaction
+                .query_row(
+                    "SELECT finalized FROM events
+                     WHERE id=?1 AND conversation_id=?2 AND correlation_id=?3
+                       AND author_membership_id=?4 AND kind='message'",
+                    params![
+                        scope.event_id,
+                        scope.conversation_id,
+                        scope.dispatch_id,
+                        scope.membership_id,
+                    ],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if finalized != Some(0) {
+                return Err(anyhow!("runtime_dispatch_not_active"));
+            }
+            let changed = transaction.execute(
+                "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4
+                 WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
+                params![scope.dispatch_id, enum_wire(state)?, error_code, now],
+            )?;
+            if changed != 1 {
+                return Err(anyhow!("runtime_dispatch_not_active"));
+            }
+            let direct_turn_state = match state {
+                DispatchState::Completed => TurnState::Succeeded,
+                DispatchState::Cancelled => TurnState::Cancelled,
+                DispatchState::Failed => TurnState::Failed,
+                _ => unreachable!("terminal dispatch state validated above"),
+            };
+            transaction.execute(
+                "UPDATE direct_turns SET state=?2
+                 WHERE id=?1 AND conversation_id=?3 AND membership_id=?4 AND state='running'",
+                params![
+                    scope.dispatch_id,
+                    enum_wire(direct_turn_state)?,
+                    scope.conversation_id,
+                    scope.membership_id,
+                ],
+            )?;
+            let mut ordinal: i64 = transaction.query_row(
+                "SELECT COALESCE(MAX(ordinal), -1)+1 FROM event_parts WHERE event_id=?1",
+                params![scope.event_id],
+                |row| row.get(0),
+            )?;
+            let has_text: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM event_parts WHERE event_id=?1 AND kind='text')",
+                params![scope.event_id],
+                |row| row.get(0),
+            )?;
+            if state == DispatchState::Completed && !has_text {
+                if let Some(output) = terminal
+                    .get("output")
+                    .and_then(Value::as_str)
+                    .filter(|output| !output.is_empty())
+                {
+                    insert_runtime_event_part(
+                        &transaction,
+                        &scope.conversation_id,
+                        &scope.event_id,
+                        ordinal,
+                        &NewEventPart {
+                            id: String::new(),
+                            kind: EventPartKind::Text,
+                            content: output.to_owned(),
+                        },
+                        None,
+                        now,
+                    )?;
+                    ordinal += 1;
+                }
+            } else if state != DispatchState::Completed {
+                insert_runtime_event_part(
+                    &transaction,
+                    &scope.conversation_id,
+                    &scope.event_id,
+                    ordinal,
+                    &NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Diagnostic,
+                        content: runtime_terminal_diagnostic(terminal, error_code),
+                    },
+                    None,
+                    now,
+                )?;
+                ordinal += 1;
+            }
+            let lifecycle = serde_json::to_string(&serde_json::json!({
+                "lifecycle": enum_wire(state)?,
+            }))?;
+            insert_runtime_event_part(
+                &transaction,
+                &scope.conversation_id,
+                &scope.event_id,
+                ordinal,
+                &NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Metadata,
+                    content: lifecycle,
+                },
+                None,
+                now,
+            )?;
+            transaction.execute(
+                "UPDATE events SET finalized=1 WHERE id=?1 AND finalized=0",
+                params![scope.event_id],
+            )?;
+            bump_revision(&transaction, &scope.conversation_id, now)?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Bind the native session discovered after dispatch to the same canonical
+    /// Conversation without exposing it through public projections.
+    pub fn bind_runtime_session(
+        &self,
+        scope: &ConversationRuntimeScope,
+        agent_id: &str,
+        session_id: &str,
+        runtime_conversation_path: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> StoreResult<()> {
+        if session_id.trim().is_empty() {
+            return Ok(());
+        }
+        let source_identity = runtime_source_identity(agent_id, session_id, &scope.dispatch_id)?;
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            transaction.execute(
+                "INSERT INTO migration_provenance(source_kind, source_identity, conversation_id)
+                 VALUES ('projection', ?1, ?2)
+                 ON CONFLICT(source_kind, source_identity) DO NOTHING",
+                params![source_identity, scope.conversation_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO source_links(id, conversation_id, source_kind, native_identity)
+                 VALUES (?1, ?2, 'agent-runtime', ?3)
+                 ON CONFLICT(source_kind, native_identity) DO NOTHING",
+                params![new_id("source"), scope.conversation_id, source_identity],
+            )?;
+            transaction.execute(
+                "INSERT INTO runtime_bindings(
+                   id, conversation_id, membership_id, lane, availability, safe_reason,
+                   runtime_session_id, runtime_conversation_path, working_directory
+                 ) VALUES (?1, ?2, ?3, 'conversation', 'available', NULL, ?4, ?5, ?6)
+                 ON CONFLICT(conversation_id, membership_id, lane) DO UPDATE SET
+                   availability='available', safe_reason=NULL,
+                   runtime_session_id=excluded.runtime_session_id,
+                   runtime_conversation_path=COALESCE(excluded.runtime_conversation_path, runtime_bindings.runtime_conversation_path),
+                   working_directory=COALESCE(excluded.working_directory, runtime_bindings.working_directory)",
+                params![
+                    new_id("runtime"),
+                    scope.conversation_id,
+                    scope.membership_id,
+                    session_id,
+                    runtime_conversation_path,
+                    working_directory,
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(())
+        })
     }
 
     pub fn create_conversation(&self, title: &str, owner: Principal) -> StoreResult<Conversation> {
@@ -1173,37 +1744,61 @@ impl ConversationStore {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let (conversation_id, source_event_id, membership_id): (String, String, String) =
-                transaction.query_row(
-                    "SELECT conversation_id, source_event_id, membership_id
-                     FROM direct_turns WHERE id=?1 AND state='running'",
-                    params![turn_id],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )?;
-            let changed = transaction.execute(
-                "UPDATE direct_turns SET state=?2 WHERE id=?1 AND state='running'",
-                params![turn_id, enum_wire(terminal_state)?],
+            let (conversation_id, source_event_id, membership_id, current_state): (
+                String,
+                String,
+                String,
+                String,
+            ) = transaction.query_row(
+                "SELECT conversation_id, source_event_id, membership_id, state
+                 FROM direct_turns WHERE id=?1",
+                params![turn_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )?;
-            if changed != 1 {
+            let terminal_state_wire = enum_wire(terminal_state)?;
+            if current_state == "running" {
+                let changed = transaction.execute(
+                    "UPDATE direct_turns SET state=?2 WHERE id=?1 AND state='running'",
+                    params![turn_id, terminal_state_wire],
+                )?;
+                if changed != 1 {
+                    return Err(anyhow!("direct_turn_not_running"));
+                }
+            } else if current_state != terminal_state_wire {
                 return Err(anyhow!("direct_turn_not_running"));
             }
-            let event = insert_event(
-                &transaction,
-                &event_id,
-                &conversation_id,
-                Some(&membership_id),
-                EventKind::Message,
-                &[NewEventPart {
-                    id: String::new(),
-                    kind: part_kind,
-                    content: content.to_owned(),
-                }],
-                Some(&source_event_id),
-                Some(turn_id),
-                true,
-                false,
-                now,
-            )?;
+            let runtime_event_id: Option<String> = transaction
+                .query_row(
+                    "SELECT id FROM events
+                     WHERE conversation_id=?1 AND author_membership_id=?2
+                       AND causation_id=?3 AND correlation_id=?4
+                       AND kind='message' AND finalized=1
+                     ORDER BY sequence DESC LIMIT 1",
+                    params![conversation_id, membership_id, source_event_id, turn_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let event = if let Some(runtime_event_id) = runtime_event_id {
+                event_by_id(&transaction, &runtime_event_id)?
+            } else {
+                insert_event(
+                    &transaction,
+                    &event_id,
+                    &conversation_id,
+                    Some(&membership_id),
+                    EventKind::Message,
+                    &[NewEventPart {
+                        id: String::new(),
+                        kind: part_kind,
+                        content: content.to_owned(),
+                    }],
+                    Some(&source_event_id),
+                    Some(turn_id),
+                    true,
+                    false,
+                    now,
+                )?
+            };
             if terminal_state == TurnState::Succeeded
                 && (runtime_session_id.is_some()
                     || runtime_conversation_path.is_some()
@@ -1787,10 +2382,18 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4") => {}
+        Some("4" | "5") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "4" {
+        migrate_runtime_replay_v5(connection)?;
     }
     ensure_column(connection, "runtime_bindings", "runtime_session_id", "TEXT")?;
     ensure_column(
@@ -1863,12 +2466,178 @@ fn migrate_reserved_group_v4(connection: &mut Connection) -> StoreResult<()> {
     Ok(())
 }
 
+/// One-time schema transition to version 5: add the private per-part cursor
+/// used to reconstruct active-turn transport frames from their owning
+/// canonical Message Event. Existing Event content and ordering are untouched.
+fn migrate_runtime_replay_v5(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let has_runtime_cursor = {
+        let mut statement = transaction.prepare("PRAGMA table_info(event_parts)")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .iter()
+            .any(|column| column == "runtime_cursor")
+    };
+    if !has_runtime_cursor {
+        transaction.execute_batch("ALTER TABLE event_parts ADD COLUMN runtime_cursor INTEGER;")?;
+    }
+    transaction.execute_batch(
+        "CREATE INDEX IF NOT EXISTS event_parts_runtime_replay_idx
+         ON event_parts(event_id, runtime_cursor, ordinal)
+         WHERE runtime_cursor IS NOT NULL;",
+    )?;
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '5')
+         ON CONFLICT(key) DO UPDATE SET value='5'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn normalize_reserved_group_after_legacy_import(connection: &mut Connection) -> StoreResult<()> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     normalize_reserved_group(&transaction)?;
     rename_reserved_group(&transaction)?;
     transaction.commit()?;
     Ok(())
+}
+
+fn ensure_default_local_group_inner(
+    connection: &mut CountedConnection<'_>,
+) -> StoreResult<Conversation> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let canonical_exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM conversations WHERE id=?1)",
+        params![DEFAULT_LOCAL_AGENT_GROUP_ID],
+        |row| row.get(0),
+    )?;
+
+    if !canonical_exists {
+        if let Some(existing_id) = reserved_group_conversation_id(&transaction)? {
+            transaction.execute(
+                "INSERT INTO conversations(
+                   id, title, archived, pinned, is_group, revision, created_at, updated_at
+                 ) SELECT ?2, title, archived, pinned, 1, revision, created_at, updated_at
+                   FROM conversations WHERE id=?1",
+                params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
+            )?;
+            for table in [
+                "memberships",
+                "events",
+                "direct_turns",
+                "source_links",
+                "runtime_bindings",
+                "conversation_dispatches",
+                "migration_provenance",
+            ] {
+                transaction.execute(
+                    &format!("UPDATE {table} SET conversation_id=?2 WHERE conversation_id=?1"),
+                    params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
+                )?;
+            }
+            transaction.execute(
+                "UPDATE event_search SET conversation_id=?2 WHERE conversation_id=?1",
+                params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
+            )?;
+            transaction.execute(
+                "DELETE FROM conversations WHERE id=?1",
+                params![existing_id],
+            )?;
+        } else {
+            let now = now_ms();
+            transaction.execute(
+                "INSERT INTO conversations(
+                   id, title, archived, pinned, is_group, revision, created_at, updated_at
+                 ) VALUES (?1, ?2, 0, 1, 1, 0, ?3, ?3)",
+                params![
+                    DEFAULT_LOCAL_AGENT_GROUP_ID,
+                    DEFAULT_LOCAL_AGENT_GROUP_TITLE,
+                    now
+                ],
+            )?;
+        }
+    }
+
+    let now = now_ms();
+    let owner = Principal {
+        id: "human:local".into(),
+        kind: PrincipalKind::Human,
+        display_name: "Local User".into(),
+        agent_id: None,
+        created_at_unix_ms: now,
+    };
+    upsert_principal(&transaction, &owner)?;
+    let active_owner: Option<String> = transaction
+        .query_row(
+            "SELECT id FROM memberships
+             WHERE conversation_id=?1 AND principal_id=?2 AND status='active'
+             ORDER BY joined_at ASC, id ASC LIMIT 1",
+            params![DEFAULT_LOCAL_AGENT_GROUP_ID, owner.id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let membership_changed = if let Some(membership_id) = active_owner {
+        transaction.execute(
+            "UPDATE memberships SET access='owner'
+             WHERE id=?1 AND access<>'owner'",
+            params![membership_id],
+        )? > 0
+    } else {
+        let left_membership: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM memberships
+                 WHERE conversation_id=?1 AND principal_id=?2 AND status='left'
+                 ORDER BY joined_at ASC, id ASC LIMIT 1",
+                params![DEFAULT_LOCAL_AGENT_GROUP_ID, owner.id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(membership_id) = left_membership {
+            transaction.execute(
+                "UPDATE memberships
+                 SET access='owner', status='active', left_at=NULL
+                 WHERE id=?1",
+                params![membership_id],
+            )?;
+        } else {
+            transaction.execute(
+                "INSERT INTO memberships(
+                   id, conversation_id, principal_id, access, status, joined_at
+                 ) VALUES (?1, ?2, ?3, 'owner', 'active', ?4)",
+                params![
+                    new_id("membership"),
+                    DEFAULT_LOCAL_AGENT_GROUP_ID,
+                    owner.id,
+                    now
+                ],
+            )?;
+        }
+        true
+    };
+    let conversation_changed = transaction.execute(
+        "UPDATE conversations
+         SET title=CASE
+               WHEN trim(title)='' OR lower(trim(title)) IN ('lico', 'lico-group-default')
+               THEN ?2 ELSE title END,
+             archived=0, pinned=1, is_group=1,
+             revision=revision+1, updated_at=?3
+         WHERE id=?1 AND (
+           trim(title)='' OR lower(trim(title)) IN ('lico', 'lico-group-default') OR
+           archived<>0 OR pinned<>1 OR is_group<>1
+         )",
+        params![
+            DEFAULT_LOCAL_AGENT_GROUP_ID,
+            DEFAULT_LOCAL_AGENT_GROUP_TITLE,
+            now
+        ],
+    )? > 0;
+    if membership_changed && !conversation_changed {
+        bump_revision(&transaction, DEFAULT_LOCAL_AGENT_GROUP_ID, now)?;
+    }
+    transaction.commit()?;
+    self::get_inner(connection, DEFAULT_LOCAL_AGENT_GROUP_ID)
 }
 
 fn reserved_group_conversation_id(connection: &Connection) -> StoreResult<Option<String>> {
@@ -2210,6 +2979,20 @@ fn search_inner(
     Ok(events)
 }
 
+fn event_by_id(connection: &impl CountedSqlite, event_id: &str) -> StoreResult<ConversationEvent> {
+    let mut event = connection.query_row(
+        "SELECT id, conversation_id, sequence, author_membership_id, kind,
+         causation_id, correlation_id, created_at, finalized
+         FROM events WHERE id=?1",
+        params![event_id],
+        event_from_row,
+    )?;
+    if let Some(parts) = parts_batch(connection, &[event_id.to_owned()])?.remove(event_id) {
+        event.parts = parts;
+    }
+    Ok(event)
+}
+
 /// Load all event parts for one bounded event set with a single indexed
 /// query, folded by stable event identity and part ordinal.
 fn parts_batch(
@@ -2224,6 +3007,7 @@ fn parts_batch(
     let sql = format!(
         "SELECT id, event_id, ordinal, kind, content, created_at
          FROM event_parts WHERE event_id IN ({placeholders})
+           AND runtime_cursor IS NULL
          ORDER BY event_id ASC, ordinal ASC"
     );
     let mut statement = connection.prepare(&sql)?;
@@ -2655,6 +3439,185 @@ fn validate_required_text(value: &str, label: &str) -> StoreResult<()> {
 
 fn new_id(prefix: &str) -> String {
     format!("{prefix}:{}", Uuid::new_v4())
+}
+
+fn runtime_source_identity(
+    agent_id: &str,
+    session_id: &str,
+    dispatch_id: &str,
+) -> StoreResult<String> {
+    let identity = if session_id.trim().is_empty() {
+        format!("pending:{dispatch_id}")
+    } else {
+        format!("{}:{agent_id}:{session_id}", agent_id.len())
+    };
+    validate_identifier(&identity, "runtime_source_identity")?;
+    Ok(identity)
+}
+
+fn runtime_frame_parts(encoded: &str) -> Vec<NewEventPart> {
+    const CHUNK_BYTES: usize = 512 * 1024;
+    if encoded.is_empty() {
+        return vec![NewEventPart {
+            id: String::new(),
+            kind: EventPartKind::Metadata,
+            content: String::new(),
+        }];
+    }
+    let mut parts = Vec::with_capacity(encoded.len().div_ceil(CHUNK_BYTES));
+    let mut start = 0;
+    while start < encoded.len() {
+        let mut end = (start + CHUNK_BYTES).min(encoded.len());
+        while end > start && !encoded.is_char_boundary(end) {
+            end -= 1;
+        }
+        parts.push(NewEventPart {
+            id: String::new(),
+            kind: EventPartKind::Metadata,
+            content: encoded[start..end].to_owned(),
+        });
+        start = end;
+    }
+    parts
+}
+
+fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
+    let event = frame
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let payload = frame.get("payload").unwrap_or(&Value::Null);
+    let text = payload
+        .get("text")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty());
+    let part = match event {
+        "agent.turn.accepted" => Some((
+            EventPartKind::Metadata,
+            serde_json::json!({"lifecycle": "accepted"}).to_string(),
+        )),
+        "agent.message.completed" => text.map(|value| (EventPartKind::Text, value.to_owned())),
+        "agent.turn.processing" => {
+            let evidence = payload
+                .get("evidenceKind")
+                .and_then(Value::as_str)
+                .unwrap_or("activity");
+            match evidence {
+                "reasoning" | "plan" => Some((
+                    EventPartKind::Reasoning,
+                    text.unwrap_or(evidence).to_owned(),
+                )),
+                "tool" => Some((
+                    EventPartKind::ToolCall,
+                    payload
+                        .get("toolName")
+                        .and_then(Value::as_str)
+                        .filter(|value| !value.is_empty())
+                        .or(text)
+                        .unwrap_or("tool")
+                        .to_owned(),
+                )),
+                _ => Some((
+                    EventPartKind::Metadata,
+                    serde_json::json!({
+                        "lifecycle": "running",
+                        "evidenceKind": evidence,
+                    })
+                    .to_string(),
+                )),
+            }
+        }
+        "permission.denied" => Some((
+            EventPartKind::Diagnostic,
+            text.unwrap_or("permission denied").to_owned(),
+        )),
+        _ if event.contains("tool") && event.contains("result") => Some((
+            EventPartKind::ToolResult,
+            text.unwrap_or("tool result").to_owned(),
+        )),
+        _ if event.contains("tool") => Some((
+            EventPartKind::ToolCall,
+            payload
+                .get("toolName")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .or(text)
+                .unwrap_or("tool")
+                .to_owned(),
+        )),
+        _ if event.contains("artifact") => Some((
+            EventPartKind::Artifact,
+            text.unwrap_or("artifact").to_owned(),
+        )),
+        _ if event.contains("diagnostic") || event.contains("failed") => Some((
+            EventPartKind::Diagnostic,
+            text.unwrap_or("runtime diagnostic").to_owned(),
+        )),
+        _ => None,
+    };
+    part.into_iter()
+        .map(|(kind, content)| NewEventPart {
+            id: String::new(),
+            kind,
+            content,
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_runtime_event_part(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    event_id: &str,
+    ordinal: i64,
+    part: &NewEventPart,
+    runtime_cursor: Option<u64>,
+    now: i64,
+) -> StoreResult<()> {
+    if runtime_cursor.is_some_and(|cursor| cursor == 0 || cursor > i64::MAX as u64) {
+        return Err(anyhow!("runtime_cursor_invalid"));
+    }
+    if part.kind != EventPartKind::Text {
+        validate_text(&part.content, "event_part_content")?;
+    }
+    let part_id = if part.id.trim().is_empty() {
+        new_id("part")
+    } else {
+        part.id.clone()
+    };
+    connection.execute(
+        "INSERT INTO event_parts(
+           id, event_id, ordinal, kind, content, runtime_cursor, created_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            part_id,
+            event_id,
+            ordinal,
+            enum_wire(part.kind)?,
+            part.content,
+            runtime_cursor.map(|cursor| cursor as i64),
+            now,
+        ],
+    )?;
+    if matches!(part.kind, EventPartKind::Text | EventPartKind::Reasoning) {
+        connection.execute(
+            "INSERT INTO event_search(event_id, conversation_id, content) VALUES (?1, ?2, ?3)",
+            params![event_id, conversation_id, part.content],
+        )?;
+    }
+    Ok(())
+}
+
+fn runtime_terminal_diagnostic(terminal: &Value, error_code: Option<&str>) -> String {
+    let nested = terminal.get("error").unwrap_or(terminal);
+    let code = error_code
+        .or_else(|| nested.get("code").and_then(Value::as_str))
+        .unwrap_or("agent_conversation_dispatch_failed");
+    let stage = nested
+        .get("stage")
+        .and_then(Value::as_str)
+        .unwrap_or("conversation/dispatch");
+    serde_json::json!({"code": code, "stage": stage}).to_string()
 }
 
 fn now_ms() -> i64 {
@@ -3899,7 +4862,7 @@ mod tests {
 
         let custom_before = snapshot_group(&root, "custom-group");
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "4");
+        assert_eq!(schema_version(&root), "5");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -4045,7 +5008,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "4");
+        assert_eq!(schema_version(&root), "5");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -4065,7 +5028,52 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "4");
+        assert_eq!(schema_version(&root), "5");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn default_local_group_adopts_legacy_identity_without_losing_content() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let legacy = store
+            .create_group_with_id("legacy-local-group", "Lico", owner())
+            .unwrap();
+        store
+            .source_link(&legacy.id, "group", DEFAULT_LOCAL_AGENT_GROUP_ID)
+            .unwrap();
+        let owner = legacy.memberships[0].id.clone();
+        store
+            .append_event(
+                &legacy.id,
+                Some(&owner),
+                EventKind::Message,
+                &[NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "kept".into(),
+                }],
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+
+        let local = store.ensure_default_local_group().unwrap();
+
+        assert_eq!(local.id, DEFAULT_LOCAL_AGENT_GROUP_ID);
+        assert_eq!(local.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
+        assert_eq!(local.event_count, 1);
+        assert_eq!(local.memberships.len(), 1);
+        assert_eq!(store.list(false).unwrap().len(), 1);
+        assert!(store.get("legacy-local-group").is_err());
+        assert_eq!(
+            store
+                .page_events(DEFAULT_LOCAL_AGENT_GROUP_ID, None, 10)
+                .unwrap()
+                .events[0]
+                .parts[0]
+                .content,
+            "kept"
+        );
     }
 }

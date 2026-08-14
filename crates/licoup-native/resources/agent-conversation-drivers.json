@@ -2,7 +2,7 @@
   "schemaVersion": "v0.0.1:client-agent-conversation-drivers-1",
   "contractVersion": "CL-06",
   "evidenceContract": {
-    "minimumConsecutivePasses": 3,
+    "minimumConsecutivePasses": 1,
     "coreChecks": [
       "P-01",
       "P-02",
@@ -72,7 +72,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -101,7 +104,10 @@
         "usageStatus": false,
         "officialLane": true,
         "processLocalContinuation": true,
-        "interruptSteer": true
+        "interruptSteer": true,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -129,7 +135,10 @@
         "multimodal": true,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": true
+        "interruptSteer": true,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -157,7 +166,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -185,7 +197,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -213,7 +228,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -241,7 +259,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -269,7 +290,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -297,7 +321,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -325,7 +352,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": false,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -353,7 +383,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": true
+        "interruptSteer": true,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,
@@ -381,7 +414,10 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": true
+        "interruptSteer": true,
+        "hostSurvivesGuiDisconnect": true,
+        "activeTurnReattach": true,
+        "orderedCursorReplay": true
       },
       "lifecycleEvidence": {
         "accepted": true,

@@ -54,6 +54,10 @@ const privacyManifestPath = path.join(
   "apps/desktop/packaging/macos/PrivacyInfo.xcprivacy",
 );
 const catalogPath = path.join(repoRoot, "tools/client-release-targets.json");
+const architectureConfigPath = path.join(
+  repoRoot,
+  "apps/desktop/macos/Runner/Configs/Architecture.xcconfig",
+);
 const fixedNow = Date.parse("2026-08-11T00:00:00.000Z");
 
 function plistValue(source, key) {
@@ -158,13 +162,13 @@ test("product metadata and entitlement authorities are exact and minimal", () =>
   const localText = readFileSync(localEntitlementsPath, "utf8");
   const local = plistObject(localText);
   assert.equal(validateLocalEntitlements(local).ready, true);
+  assert.equal(local["com.apple.security.cs.disable-library-validation"], true);
   assert.equal(validateLocalEntitlements({
     ...localEntitlementsFixture,
-    "com.apple.security.cs.disable-library-validation": true,
+    "com.apple.security.cs.disable-library-validation": false,
   }).ready, false);
   assert.equal(local["get-task-allow"], undefined);
-  assert.equal(local["com.apple.security.cs.disable-library-validation"], undefined);
-  assert.equal(localText.includes("disable-library-validation"), false);
+  assert.equal(localText.includes("disable-library-validation"), true);
 
   const toolchain = [...MACOS_DIRECT_TOOLCHAIN];
   assert.deepEqual(toolchain.sort(), [
@@ -321,16 +325,18 @@ test("inspected signature evidence requires Developer ID OIDs and accepts verifi
   }).ready, false);
 });
 
-test("release catalog keeps local direct builds publication-blocked and App Store blockers durable", () => {
+test("macOS product and release catalogs are arm64 only", () => {
   const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
   const direct = catalog.targets.find((target) => target.id === "macos-direct-arm64");
-  const directX64 = catalog.targets.find((target) => target.id === "macos-direct-x64");
   const appStore = catalog.targets.find((target) => target.id === "macos-app-store-arm64");
+  const macosTargets = catalog.targets.filter((target) => target.platform === "macos");
+  assert.ok(macosTargets.length > 0);
+  assert.ok(macosTargets.every((target) =>
+    target.arch === "arm64" && target.runtimeTargetId === "macos-arm64" &&
+    target.baseline === "macos-11.0" && target.buildHost === "darwin-arm64"));
   assert.equal(direct.releaseSupported, false);
   assert.ok(direct.releaseBlockers.includes("macos_developer_id_platform_channel_local_only"));
   assert.ok(direct.releaseBlockers.includes("macos_github_release_publication_not_authorized"));
-  assert.equal(directX64.releaseSupported, false);
-  assert.ok(directX64.releaseBlockers.length > 0);
   assert.equal(appStore.releaseSupported, false);
   for (const blocker of [
     "macos_app_store_sandbox_required",
@@ -343,8 +349,29 @@ test("release catalog keeps local direct builds publication-blocked and App Stor
   }
 });
 
+test("macOS Xcode and CocoaPods builds enforce Apple Silicon", () => {
+  const architecture = readFileSync(architectureConfigPath, "utf8");
+  const podfile = readFileSync(path.join(repoRoot, "apps/desktop/macos/Podfile"), "utf8");
+  const debugConfig = readFileSync(
+    path.join(repoRoot, "apps/desktop/macos/Runner/Configs/Debug.xcconfig"),
+    "utf8",
+  );
+  const releaseConfig = readFileSync(
+    path.join(repoRoot, "apps/desktop/macos/Runner/Configs/Release.xcconfig"),
+    "utf8",
+  );
+  assert.match(architecture, /^ARCHS = arm64$/mu);
+  assert.match(architecture, /^EXCLUDED_ARCHS = x86_64$/mu);
+  assert.match(architecture, /^ONLY_ACTIVE_ARCH = YES$/mu);
+  assert.match(debugConfig, /#include "Architecture\.xcconfig"/u);
+  assert.match(releaseConfig, /#include "Architecture\.xcconfig"/u);
+  assert.match(podfile, /platform :osx, '11\.0'/u);
+  assert.match(podfile, /config\.build_settings\['ARCHS'\] = 'arm64'/u);
+  assert.match(podfile, /config\.build_settings\['EXCLUDED_ARCHS'\] = 'x86_64'/u);
+});
+
 test("remote release recipes expose no macOS direct packaging path", () => {
-  for (const targetId of ["macos-direct-arm64", "macos-direct-x64"]) {
+  for (const targetId of ["macos-direct-arm64"]) {
     const recipe = describePlatformReleasePackages({ targetId });
     assert.deepEqual(recipe.commands, []);
     assert.deepEqual(recipe.credentialEnv, []);
@@ -366,15 +393,32 @@ test("downstream macOS verifiers consume the corrected entitlement authority", (
   const distributionBuilder = readFileSync(
     path.join(repoRoot, "apps/desktop/scripts/build-macos-distribution.mjs"), "utf8",
   );
-  assert.ok(releasePreflight.includes("ProductionRelease.entitlements"));
-  assert.ok(updatePreflight.includes("ProductionRelease.entitlements"));
+  for (const verifier of [releasePreflight, updatePreflight]) {
+    assert.ok(verifier.includes(
+      "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements",
+    ));
+    assert.equal(verifier.includes(
+      "apps/desktop/macos/Runner/ProductionRelease.entitlements",
+    ), false);
+  }
   assert.equal(packageManifest.includes("client:install:macos:identity"), false);
   assert.equal(localInstall.includes("client-macos-local-identity-install.mjs"), false);
   assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
     "LICO_MACOS_SIGNING_IDENTITY",
   ), true);
+  assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
+    "LICO_MACOS_NOTARY_KEYCHAIN_PROFILE",
+  ), true);
   assert.ok(distributionBuilder.includes("developerIdApplication !== true"));
   assert.ok(distributionBuilder.includes('"notarytool", "submit"'));
+  assert.ok(distributionBuilder.includes('"--keychain-profile", notaryKeychainProfile'));
+  for (const removedCredential of [
+    "LICO_MACOS_NOTARY_KEY_ID",
+    "LICO_MACOS_NOTARY_ISSUER_ID",
+    "LICO_MACOS_NOTARY_KEY_PATH",
+  ]) {
+    assert.equal(distributionBuilder.includes(removedCredential), false);
+  }
   for (const cargoNoticeControl of [
     '"metadata"',
     '"--locked"',

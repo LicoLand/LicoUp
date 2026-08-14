@@ -32,7 +32,11 @@ pub(super) fn session_from_messages_with_title(
 ) -> Value {
     let updated_at = system_time(metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH));
     let created_at = system_time(metadata.created().unwrap_or(SystemTime::UNIX_EPOCH));
-    let source_client = source_client_for_session(adapter, path, source_kind, &messages);
+    let mut tagged_messages = messages;
+    for message in &mut tagged_messages {
+        super::message_projection::normalize_generated_metadata_message(message);
+    }
+    let source_client = source_client_for_session(adapter, path, source_kind, &tagged_messages);
     let host_app = host_app_for_path(adapter, path);
     let host_app_label_value = host_app_label(&host_app);
     let source_client_label_value = source_client_label(&source_client);
@@ -40,9 +44,8 @@ pub(super) fn session_from_messages_with_title(
     let title = explicit_title
         .as_deref()
         .and_then(|title| normalized_explicit_title(adapter, title))
-        .or_else(|| title_from_messages(&messages))
+        .or_else(|| title_from_messages(&tagged_messages))
         .unwrap_or_else(|| fallback_conversation_title(adapter, path));
-    let mut tagged_messages = messages;
     for message in &mut tagged_messages {
         ensure_message_semantic_layer(message);
         // A source without any message timestamp keeps one stable session

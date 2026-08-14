@@ -5,6 +5,13 @@ const _conversationMethods = <String>{
   'agent.conversation.capabilities',
   'agent.conversation.cancel',
   'agent.conversation.steer',
+  'agent.conversation.active',
+};
+
+const _persistentConversationMethods = <String>{
+  'agent.conversation.cancel',
+  'agent.conversation.steer',
+  'agent.conversation.active',
 };
 
 const _clientMethods = <String>{
@@ -25,7 +32,7 @@ bool validStdioRpcStructuredMethod(String method) =>
     _conversationMethods.contains(method) || _clientMethods.contains(method);
 
 bool stdioRpcMethodUsesConversationLane(String method) =>
-    _conversationMethods.contains(method);
+    _persistentConversationMethods.contains(method);
 
 bool stdioRpcMethodIsUnboundedClientTurn(
   String method,

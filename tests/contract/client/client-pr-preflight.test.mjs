@@ -83,7 +83,7 @@ test("release template binds one or more exact package targets", () => {
     catalog.targets.filter((target) => target.packageBuildSupported)
       .map((target) => target.id).sort(),
   );
-  assert.equal(Object.keys(template.candidatePreflight.targets).length, 18);
+  assert.equal(Object.keys(template.candidatePreflight.targets).length, 17);
 });
 
 test("dependency bootstrap is lockfile-exact without duplicate network audit", () => {
@@ -134,7 +134,6 @@ test("pre-push parser is bounded and target stages include real closure", () => 
 test("release preflight runs each selected platform demo exactly once", () => {
   assert.deepEqual(deviceDemoPlatformsForTargets([
     "macos-direct-arm64",
-    "macos-direct-x64",
     "android-direct-arm64-v8a",
     "windows-direct-x64",
     "android-play-arm64-v8a",
@@ -151,10 +150,18 @@ test("release preflight runs each selected platform demo exactly once", () => {
 });
 
 test("DMG and launch oracles reject extra entries and process replacement", () => {
+  const canonicalLayout = [
+    "Applications",
+    "LicoUp License.txt",
+    "LicoUp Open Source Notice.txt",
+    "LicoUp Privacy Policy.html",
+    "LicoUp.app",
+    "Third-Party Notices.txt",
+  ];
   assert.equal(validateMacosDmgLayout(
-    ["Applications", "LicoUp.app"], "/Applications"), true);
+    canonicalLayout, "/Applications"), true);
   assert.throws(() => validateMacosDmgLayout(
-    ["Applications", "LicoUp.app", "outside.txt"], "/Applications"));
+    [...canonicalLayout, "outside.txt"], "/Applications"));
   assert.equal(stableLaunchSnapshots([[7], [7], [7, 8]]), true);
   assert.equal(stableLaunchSnapshots([[7], [8]]), false);
 });

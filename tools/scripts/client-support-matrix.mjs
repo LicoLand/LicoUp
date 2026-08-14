@@ -283,6 +283,8 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "",
     "A build target is not a support claim.",
     "",
+    "LicoUp for macOS supports Apple Silicon (`arm64`) on macOS 11 or later. Intel (`x86_64`) Macs and Rosetta are outside the supported product boundary; no Intel app or update package is produced.",
+    "",
     "| Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |",
     "| --- | --- | --- | --- | --- | --- |"
   ];
@@ -323,12 +325,12 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "This table projects the native driver inventory. Runtime protocol and capability fields remain owned by that inventory.",
     "Lifecycle evidence columns describe whether the lane can emit a native receipt for that stage. `submitted` is always a local client fact. On each turn, the UI shows only receipts actually observed; unsupported or absent stages are skipped and are never inferred from a later response or terminal result.",
     "",
-    "| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | GUI-exit survival | Active-turn reattach | Ordered cursor replay | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const driver of drivers) {
     const adapterReadiness = readiness.get(driver.agentId);
-    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${yesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${yesNo(driver.capabilityMatrix.exactResume)} | ${yesNo(driver.capabilityMatrix.streaming)} | ${yesNo(driver.lifecycleEvidence.accepted)} | ${yesNo(driver.lifecycleEvidence.processing)} | ${yesNo(driver.lifecycleEvidence.responding)} | ${yesNo(driver.lifecycleEvidence.completed)} | ${yesNo(driver.capabilityMatrix.interruptSteer)} |`);
+    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${yesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${yesNo(driver.capabilityMatrix.exactResume)} | ${yesNo(driver.capabilityMatrix.streaming)} | ${yesNo(driver.capabilityMatrix.hostSurvivesGuiDisconnect)} | ${yesNo(driver.capabilityMatrix.activeTurnReattach)} | ${yesNo(driver.capabilityMatrix.orderedCursorReplay)} | ${yesNo(driver.lifecycleEvidence.accepted)} | ${yesNo(driver.lifecycleEvidence.processing)} | ${yesNo(driver.lifecycleEvidence.responding)} | ${yesNo(driver.lifecycleEvidence.completed)} | ${yesNo(driver.capabilityMatrix.interruptSteer)} |`);
   }
   lines.push(
     "",
@@ -379,6 +381,8 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "",
     "可以构建，不代表已经支持。",
     "",
+    "LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。",
+    "",
     "| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |",
     "| --- | --- | --- | --- | --- | --- |"
   ];
@@ -419,12 +423,12 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "本表投影原生驱动清单。运行协议和能力字段仍由该清单负责。",
     "生命周期证据列表示该通道是否能为对应阶段发出原生回执。“已发送”始终是客户端本地事实。每一轮中，界面只展示实际观测到的回执；不支持或未到达的阶段直接跳过，不得通过后续回复或终态结果倒推。",
     "",
-    "| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | GUI 退出后续跑 | 活动轮次重附着 | 有序游标重放 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const driver of drivers) {
     const adapterReadiness = readiness.get(driver.agentId);
-    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${chineseYesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${chineseYesNo(driver.capabilityMatrix.exactResume)} | ${chineseYesNo(driver.capabilityMatrix.streaming)} | ${chineseYesNo(driver.lifecycleEvidence.accepted)} | ${chineseYesNo(driver.lifecycleEvidence.processing)} | ${chineseYesNo(driver.lifecycleEvidence.responding)} | ${chineseYesNo(driver.lifecycleEvidence.completed)} | ${chineseYesNo(driver.capabilityMatrix.interruptSteer)} |`);
+    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${chineseYesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${chineseYesNo(driver.capabilityMatrix.exactResume)} | ${chineseYesNo(driver.capabilityMatrix.streaming)} | ${chineseYesNo(driver.capabilityMatrix.hostSurvivesGuiDisconnect)} | ${chineseYesNo(driver.capabilityMatrix.activeTurnReattach)} | ${chineseYesNo(driver.capabilityMatrix.orderedCursorReplay)} | ${chineseYesNo(driver.lifecycleEvidence.accepted)} | ${chineseYesNo(driver.lifecycleEvidence.processing)} | ${chineseYesNo(driver.lifecycleEvidence.responding)} | ${chineseYesNo(driver.lifecycleEvidence.completed)} | ${chineseYesNo(driver.capabilityMatrix.interruptSteer)} |`);
   }
   lines.push(
     "",

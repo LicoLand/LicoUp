@@ -55,7 +55,10 @@ import {
 import { validateReport } from "./validate.mjs";
 
 export function main() {
-  requireValue(process.platform === "darwin", "macos_platform_required");
+  requireValue(
+    process.platform === "darwin" && process.arch === "arm64",
+    "macos_arm64_platform_required",
+  );
   removeContainedReportIfExists(repoRoot, reportRef);
   const inheritedClosure = text(process.env.LICO_CLIENT_RELEASE_CLOSURE_CHALLENGE);
   const challenge = inheritedClosure
@@ -212,7 +215,7 @@ export function main() {
     codeResourcesDigest: sha256File(signatureResources),
   }), "utf8"));
   const receipt = {
-    targetId: process.arch === "arm64" ? "macos-arm64" : "macos-x64",
+    targetId: "macos-arm64",
     productVersion: text(clientVersion.productVersion),
     buildNumber: clientVersion.buildNumber,
     appVersion,

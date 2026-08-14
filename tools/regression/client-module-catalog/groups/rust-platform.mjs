@@ -8,6 +8,12 @@ import {
   defineModule,
 } from "../helpers.mjs";
 
+const nativeBinaryCheck = (binary) => command(
+  "cargo",
+  ["check", "--manifest-path", NATIVE_MANIFEST, "--bin", binary],
+  10 * 60_000,
+);
+
 export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.ffi.typed-error-chain",
@@ -21,7 +27,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/bin/licoup/tests/rpc/error.rs",
       ],
       command: rustBinaryTests(
-        "licoup",
+        "licoup-cli",
         "tests::rpc::error::typed_client_error_metadata_survives_command_and_terminal_rpc_frames",
       ),
     }),
@@ -42,7 +48,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "tests/contract/client/client-state-contract.test.mjs",
       ],
       command: rustBinaryTests(
-        "licoup",
+        "licoup-cli",
         "tests::rpc::state::",
       ),
     }),
@@ -284,6 +290,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Local service facade composition and separation from ACP JSONL ownership",
       inputs: [
         "crates/licoup-native/src/platform/local_service.rs",
+        "crates/licoup-native/src/platform/local_service/turn_control.rs",
         "crates/licoup-native/src/platform/local_service/tests/mod.rs",
         "crates/licoup-native/src/platform/local_service/tests/composition.rs",
       ],
@@ -609,6 +616,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Vendor-neutral ACP process runtime facade and immutable driver identity",
       inputs: [
         "crates/licoup-native/src/platform/acp_driver_runtime.rs",
+        "crates/licoup-native/src/platform/acp_driver_runtime/control.rs",
         "crates/licoup-native/src/platform/acp_driver_runtime/tests/mod.rs",
         "crates/licoup-native/src/platform/acp_driver_runtime/tests/composition.rs",
       ],
@@ -1062,6 +1070,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Claude Code bounded interrupt and fail-closed permission control messages",
       inputs: [
         "crates/licoup-native/src/platform/claude_code_driver/control.rs",
+        "crates/licoup-native/src/platform/claude_code_driver/approval.rs",
         "crates/licoup-native/src/platform/claude_code_driver/tests/control.rs",
       ],
       command: rustLayer("platform::claude_code_driver::tests::control::"),
@@ -1383,6 +1392,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi bounded RPC orchestration, streaming, timeout, stderr, and child-tree cleanup",
       inputs: [
         "crates/licoup-native/src/platform/pi_driver/execution.rs",
+        "crates/licoup-native/src/platform/pi_driver/active_control.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/execution.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::execution::"),
@@ -1393,6 +1403,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenCode stable facade and split module composition",
       inputs: [
         "crates/licoup-native/src/platform/opencode_driver.rs",
+        "crates/licoup-native/src/platform/opencode_driver/control.rs",
         "crates/licoup-native/src/platform/opencode_driver/tests/mod.rs",
         "crates/licoup-native/src/platform/opencode_driver/tests/composition.rs",
       ],
@@ -1573,6 +1584,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Codex app-server composition, public contract, static errors, limits, and aggregate regression",
       inputs: [
         "crates/licoup-native/src/platform/codex_app_server.rs",
+        "crates/licoup-native/src/platform/codex_app_server/model_catalog.rs",
         "crates/licoup-native/src/platform/codex_app_server/contract.rs",
         "crates/licoup-native/src/platform/codex_app_server/error.rs",
         "crates/licoup-native/src/platform/codex_app_server/limits.rs",
@@ -1629,6 +1641,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Fail-closed server-request and approval ownership boundary",
       inputs: [
         "crates/licoup-native/src/platform/codex_app_server/protocol/control.rs",
+        "crates/licoup-native/src/platform/codex_app_server/active_control.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/control.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::control::"),
@@ -1741,16 +1754,54 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Remaining unsplit native platform adapters and shared utilities",
       inputs: [
         "crates/licoup-native/src/platform/agent_workspace.rs",
-        "crates/licoup-native/src/platform/antigravity_driver.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/auth.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/errors.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/execution.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/hooks.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/mod.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/model.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/probe.rs",
+        "crates/licoup-native/src/platform/antigravity_driver/tests.rs",
+        "crates/licoup-native/src/platform/antigravity_subagent_mcp_manager.rs",
+        "crates/licoup-native/src/platform/client_autostart.rs",
         "crates/licoup-native/src/platform/conversation_lane.rs",
         "crates/licoup-native/src/platform/copilot_driver.rs",
         "crates/licoup-native/src/platform/cursor_driver.rs",
+        "crates/licoup-native/src/platform/cursor_driver/errors.rs",
+        "crates/licoup-native/src/platform/cursor_driver/events.rs",
+        "crates/licoup-native/src/platform/cursor_driver/execution.rs",
+        "crates/licoup-native/src/platform/cursor_driver/io.rs",
+        "crates/licoup-native/src/platform/cursor_driver/model.rs",
+        "crates/licoup-native/src/platform/cursor_driver/probe.rs",
+        "crates/licoup-native/src/platform/cursor_driver/tests.rs",
+        "crates/licoup-native/src/platform/cursor_driver/update_watcher.rs",
+        "crates/licoup-native/src/platform/gateway_runtime/**",
         "crates/licoup-native/src/platform/kimi_code_driver.rs",
+        "crates/licoup-native/src/platform/lico_agent_driver.rs",
+        "crates/licoup-native/src/platform/lico_agent_driver/**",
+        "crates/licoup-native/src/platform/llm_api_key_vault.rs",
+        "crates/licoup-native/src/platform/llm_gateway_autostart.rs",
+        "crates/licoup-native/src/platform/llm_gateway_client_auth.rs",
+        "crates/licoup-native/src/platform/llm_gateway_credentials_control.rs",
+        "crates/licoup-native/src/platform/llm_gateway_inventory_control.rs",
+        "crates/licoup-native/src/platform/llm_gateway_server.rs",
+        "crates/licoup-native/src/platform/llm_gateway_service.rs",
+        "crates/licoup-native/src/platform/llm_gateway_transport.rs",
+        "crates/licoup-native/src/platform/llm_gateway_usage.rs",
         "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-native/src/platform/process_sandbox/mod.rs",
+        "crates/licoup-native/src/platform/process_sandbox/seatbelt.rs",
         "crates/licoup-native/src/platform/process_supervisor.rs",
+        "crates/licoup-native/src/platform/pty_transport.rs",
+        "crates/licoup-native/src/platform/remote_acp_history.rs",
+        "crates/licoup-native/src/platform/remote_hermes_gateway_history.rs",
         "crates/licoup-native/src/platform/secure_mesh_capability_probe.rs",
         "crates/licoup-native/src/platform/turn_event_emit.rs",
+        "crates/licoup-native/src/platform/subagent_mcp_ensure.rs",
         "crates/licoup-native/src/platform/url_security.rs",
+        "crates/licoup-native/src/platform/virtual_machine.rs",
+        "crates/licoup-native/tests/fixtures/claude_process_local_test_lock.rs",
+        "crates/licoup-native/tests/fixtures/fake_lico_agent.rs",
         "crates/licoup-native/tests/fixtures/fake_cursor_agent.rs",
         "crates/licoup-native/resources/agent-conversation-drivers.json",
         "crates/licoup-native/resources/agent-conversation-evidence.json",
@@ -1775,6 +1826,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-ffi",
       summary: "Remaining native command handlers without a dedicated bridge closure",
       inputs: [
+        "crates/licoup-native/src/ffi/generated/conversation.rs",
+        "crates/licoup-native/src/ffi/generated/mod.rs",
         "crates/licoup-native/src/ffi/commands/adapter.rs",
         "crates/licoup-native/src/ffi/commands/agent_conversation.rs",
         "crates/licoup-native/src/ffi/commands/agent_usage.rs",
@@ -1877,12 +1930,35 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.bin.lico-agent",
+      kind: "rust-ffi",
+      summary: "First-party local agent executable composition",
+      inputs: ["crates/licoup-native/src/bin/lico-agent.rs"],
+      command: nativeBinaryCheck("lico-agent"),
+    }),
+  defineModule({
+      id: "rust.bin.lico-gateway",
+      kind: "rust-ffi",
+      summary: "Local messaging gateway executable composition",
+      inputs: ["crates/licoup-native/src/bin/lico-gateway.rs"],
+      command: nativeBinaryCheck("lico-gateway"),
+    }),
+  defineModule({
+      id: "rust.bin.lico-llm-gateway",
+      kind: "rust-ffi",
+      summary: "Local LLM gateway executable composition",
+      inputs: ["crates/licoup-native/src/bin/lico-llm-gateway.rs"],
+      command: nativeBinaryCheck("lico-llm-gateway"),
+    }),
+  defineModule({
       id: "rust.bin.licoup",
       kind: "rust-ffi",
       summary: "Native client CLI composition, presentation, and shared test support",
       inputs: [
         "crates/licoup-native/src/bin/licoup.rs",
+        "crates/licoup-native/src/bin/licoup/conversation_host.rs",
         "crates/licoup-native/src/bin/licoup/presentation.rs",
+        "crates/licoup-native/src/bin/licoup/private_stdin_json.rs",
         "crates/licoup-native/src/bin/licoup/tests.rs",
         "crates/licoup-native/src/bin/licoup/tests/support.rs",
       ],
@@ -1917,15 +1993,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/bin/licoup/tests/skill_commands.rs",
       ],
       command: rustBinaryTests("licoup-cli", "tests::skill_commands::"),
-    }),
-  defineModule({
-      id: "rust.bin.licoup.conversation-commands",
-      kind: "rust-ffi",
-      summary: "Native conversation and snapshot CLI command regressions",
-      inputs: [
-        "crates/licoup-native/src/bin/licoup/tests/conversation_commands.rs",
-      ],
-      command: rustBinaryTests("licoup-cli", "tests::conversation_commands::"),
     }),
   defineModule({
       id: "rust.bin.licoup.parsing",
