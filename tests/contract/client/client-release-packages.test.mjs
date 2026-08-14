@@ -47,7 +47,7 @@ function currentHostId() {
 function wrongHostTarget() {
   const host = currentHostId();
   const target = readCatalogDocument().targets.find((candidate) =>
-    !candidate.builder.hosts.includes(host));
+    candidate.releaseSupported === false && !candidate.builder.hosts.includes(host));
   assert.ok(target, `fixture needs a target outside ${host}`);
   return target;
 }
