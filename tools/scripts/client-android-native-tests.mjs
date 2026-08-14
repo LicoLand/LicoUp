@@ -131,6 +131,21 @@ try {
     "app:testDebugUnitTest",
     ...testClasses.flatMap((name) => ["--tests", name])
   ];
+  const dependencyBootstrap = spawnSync(path.join(androidRoot, "gradlew"), [
+    ...args.filter((arg) => arg !== "--offline")
+  ], {
+    cwd: androidRoot,
+    env,
+    encoding: "utf8",
+    timeout: 10 * 60 * 1000,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (dependencyBootstrap.status !== 0) {
+    const output = redactOutput(
+      `${dependencyBootstrap.stdout || ""}\n${dependencyBootstrap.stderr || ""}`
+    );
+    throw new Error(`Android native dependency bootstrap failed.\n${output}`);
+  }
   const result = spawnSync(path.join(androidRoot, "gradlew"), args, {
     cwd: androidRoot,
     env,

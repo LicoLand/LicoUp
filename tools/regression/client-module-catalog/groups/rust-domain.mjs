@@ -2,6 +2,75 @@ import { rustLayer, rustIntegrationTest, defineModule } from "../helpers.mjs";
 
 export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
+      id: "rust.domain.adaptive-flywheel",
+      kind: "rust-domain",
+      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
+      inputs: [
+        "crates/licoup-native/src/domain/adaptive_flywheel/**",
+        "crates/licoup-native/resources/adaptive_flywheel/**",
+        "crates/licoup-native/src/core/safe_archive.rs",
+        "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
+        "crates/licoup-native/src/platform/strategy_runtime/**",
+      ],
+      command: rustLayer("domain::adaptive_flywheel::"),
+    }),
+  defineModule({
+      id: "rust.domain.agent-intelligence-catalog",
+      kind: "rust-domain",
+      summary: "Built-in local intelligence catalog and bounded product metadata",
+      inputs: [
+        "crates/licoup-native/src/domain/agent_intelligence_catalog.rs",
+        "crates/licoup-native/src/domain/agent_intelligence_catalog/**",
+      ],
+      command: rustLayer("domain::agent_intelligence_catalog::tests::"),
+    }),
+  defineModule({
+      id: "rust.domain.agent-resource-usage",
+      kind: "rust-domain",
+      summary: "Local agent process attribution, sampling, and resource usage projection",
+      inputs: [
+        "crates/licoup-native/src/domain/agent_resource_usage.rs",
+        "crates/licoup-native/src/domain/agent_resource_usage/**",
+      ],
+      command: rustLayer("domain::agent_resource_usage::"),
+    }),
+  defineModule({
+      id: "rust.domain.lico-agent",
+      kind: "rust-domain",
+      summary: "First-party local agent loop, profiles, tools, events, and transport",
+      inputs: ["crates/licoup-native/src/domain/lico_agent/**"],
+      command: rustLayer("domain::lico_agent::"),
+    }),
+  defineModule({
+      id: "rust.domain.llm-gateway",
+      kind: "rust-domain",
+      summary: "Local LLM gateway policy, credentials, catalog, configuration, and streaming",
+      inputs: [
+        "crates/licoup-native/src/domain/llm_api_key_vault.rs",
+        "crates/licoup-native/src/domain/llm_gateway.rs",
+        "crates/licoup-native/src/domain/llm_gateway_agent_config.rs",
+        "crates/licoup-native/src/domain/llm_gateway_default_catalog.rs",
+        "crates/licoup-native/src/domain/llm_gateway_stream.rs",
+      ],
+      command: rustLayer("domain::llm_"),
+    }),
+  defineModule({
+      id: "rust.domain.model-planning",
+      kind: "rust-domain",
+      summary: "Bounded local model planning and selection",
+      inputs: ["crates/licoup-native/src/domain/model_planning.rs"],
+      command: rustLayer("domain::model_planning::tests::"),
+    }),
+  defineModule({
+      id: "rust.domain.client-conversations",
+      kind: "rust-domain",
+      summary: "Canonical Conversation messaging, membership, indexed events, direct mentions, and migration",
+      inputs: [
+        "crates/licoup-native/src/domain/client_conversation/**",
+      ],
+      command: rustLayer("domain::client_conversation::"),
+    }),
+  defineModule({
       id: "rust.domain.mcp-adapter",
       kind: "rust-domain",
       summary: "Exact-scope MCP preview-to-authorization, one-shot execution, response validation, and projection",
@@ -35,8 +104,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/contract.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
+        "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
       ],
-      command: rustLayer("domain::agent_usage::tests::"),
+      command: rustLayer("domain::agent_usage::"),
     }),
   defineModule({
       id: "rust.domain.agent-usage.window",
@@ -60,6 +130,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/openclaw.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/runtime.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
       ],
       command: rustLayer("domain::agent_usage::agent_usage_native::"),
@@ -365,6 +437,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/conversation/history/mod.rs",
         "crates/licoup-native/src/domain/conversation/history/tests.rs",
         "crates/licoup-native/src/domain/conversation/history/tests/test_support.rs",
+        "crates/licoup-native/src/domain/conversation/history/delegated_transcripts.rs",
+        "crates/licoup-native/src/domain/conversation/history/project_workspace.rs",
+        "crates/licoup-native/src/domain/conversation/history/projection_cache.rs",
       ],
       command: rustLayer(
         "domain::conversation::history::tests::split_history_module_composition_keeps_the_public_schema",
@@ -428,6 +503,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::conversation::history::tests::query"),
     }),
   defineModule({
+      id: "rust.domain.agent-conversations.catalog",
+      kind: "rust-domain",
+      summary: "Bounded browse catalog, page hydration, and native runtime facts",
+      inputs: [
+        "crates/licoup-native/src/domain/conversation/history/catalog.rs",
+        "crates/licoup-native/src/domain/conversation/history/tests/catalog.rs",
+      ],
+      command: rustLayer("domain::conversation::history::tests::catalog::"),
+    }),
+  defineModule({
       id: "rust.domain.agent-conversations.parser-kimi",
       kind: "rust-domain",
       summary: "Kimi Code wire parser and usage records",
@@ -464,6 +549,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/domain/conversation/history/cursor_openagent.rs",
         "crates/licoup-native/src/domain/conversation/history/cursor_openagent/composition.rs",
+        "crates/licoup-native/src/domain/conversation/history/cursor_openagent/cursor_cli.rs",
         "crates/licoup-native/src/domain/conversation/history/cursor_openagent/tests/mod.rs",
         "crates/licoup-native/src/domain/conversation/history/cursor_openagent/tests/composition.rs",
       ],
@@ -1955,6 +2041,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.domain.mobile-relay.badtower-acceptance",
+      kind: "rust-domain",
+      summary: "BadTower-backed mobile relay acceptance scenarios",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay/tests/badtower_acceptance.rs",
+        "crates/licoup-native/src/domain/mobile_relay/tests/badtower_acceptance/**",
+      ],
+      command: rustLayer("domain::mobile_relay::tests::badtower_acceptance::"),
+    }),
+  defineModule({
       id: "rust.domain.targets",
       kind: "rust-domain",
       summary: "Target public facade, shared support, and test composition",
@@ -2038,6 +2134,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Concurrent target discovery and inspect orchestration",
       inputs: [
         "crates/licoup-native/src/domain/targets/discovery.rs",
+        "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
         "crates/licoup-native/src/domain/targets/tests/discovery.rs",
       ],
       command: rustLayer("domain::targets::tests::discovery::"),
@@ -2086,7 +2183,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Local model catalog orchestration and test composition",
       inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/builtin.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/mod.rs",
+        "crates/licoup-native/src/domain/targets/model_catalog/pi.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/tests.rs",
       ],
       command: rustLayer("domain::targets::model_catalog::tests::"),
@@ -2196,16 +2295,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::tests::pairing_catalog::"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.install",
-      kind: "rust-domain",
-      summary: "Skill installation planning, conflict policy, apply, and visible result",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/install.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/install.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::install::"),
-    }),
-  defineModule({
       id: "rust.domain.skill-hub.package",
       kind: "rust-domain",
       summary: "Bounded skill package inspection, identifiers, file walks, and digests",
@@ -2215,26 +2304,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::package::tests"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.rollback",
-      kind: "rust-domain",
-      summary: "Skill installation snapshots, ownership checks, and rollback boundaries",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/snapshot.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/rollback.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::rollback::"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.transaction",
-      kind: "rust-domain",
-      summary: "Crash-safe skill install journal, commit, and recovery transaction",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/transaction.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/transaction.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::transaction::"),
-    }),
-  defineModule({
       id: "rust.domain.skill-hub.discovery",
       kind: "rust-domain",
       summary: "Explicit local skill root discovery",
@@ -2242,26 +2311,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/skill_hub/discovery.rs",
       ],
       command: rustLayer("domain::skill_hub::discovery::tests"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.update",
-      kind: "rust-domain",
-      summary: "Digest-bound transactional skill update preview and apply",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/update.rs",
-      ],
-      command: rustLayer("domain::skill_hub::update::tests::"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.auto-update",
-      kind: "rust-domain",
-      summary: "User-enabled due scheduling, cross-process exclusion, and bounded skill update retries",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/auto_update.rs",
-        "crates/licoup-native/src/domain/skill_hub/auto_update/**",
-        "crates/licoup-native/src/ffi/commands/skill.rs",
-      ],
-      command: rustLayer("domain::skill_hub::auto_update::tests::"),
     }),
   defineModule({
       id: "rust.domain.skill-hub.delete",
@@ -2291,15 +2340,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/tests/skill_usage_backfill_cases.rs",
       ],
       command: rustIntegrationTest("skill_usage_backfill_cases"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.source",
-      kind: "rust-domain",
-      summary: "Explicit local mirror and bounded GitHub skill source validation",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/source.rs",
-      ],
-      command: rustLayer("domain::skill_hub::source::tests"),
     }),
   defineModule({
       id: "rust.domain.optional-collaboration",
@@ -2561,15 +2601,14 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::client_update::tests::workflow::"),
     }),
   defineModule({
-      id: "rust.domain.client-update.macos-runner",
+      id: "rust.domain.client-update.native-runner",
       kind: "rust-domain",
       summary: "Safe signed archive extraction and redacted macOS app lifecycle",
       inputs: [
-        "crates/licoup-native/src/domain/client_update/macos_runner.rs",
-        "crates/licoup-native/src/domain/client_update/macos_runner/**",
-        "crates/licoup-native/src/domain/client_update/tests/macos_runner.rs",
+        "crates/licoup-native/src/domain/client_update/native_runner/**",
+        "crates/licoup-native/src/domain/client_update/tests/native_runner.rs",
       ],
-      command: rustLayer("domain::client_update::tests::macos_runner::"),
+      command: rustLayer("domain::client_update::tests::native_runner::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-mls",

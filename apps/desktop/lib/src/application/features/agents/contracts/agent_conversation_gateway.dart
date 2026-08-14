@@ -1,4 +1,5 @@
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
 abstract interface class AgentConversationGateway {
@@ -28,6 +29,7 @@ abstract interface class AgentConversationGateway {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
@@ -35,6 +37,7 @@ abstract interface class AgentConversationGateway {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
@@ -86,6 +89,31 @@ abstract interface class AgentConversationGateway {
   });
   Future<Map<String, dynamic>> getSnapshotRoot();
   Future<Map<String, dynamic>> setSnapshotRoot({required String path});
+}
+
+/// Optional desktop capability implemented by the client-local CLI host.
+abstract interface class PersistentAgentConversationGateway {
+  Future<List<Map<String, dynamic>>> activeTurns({
+    required String agentId,
+    String sessionId = '',
+  });
+
+  Stream<AgentDispatchEvent> attachActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    int afterCursor = 0,
+  });
+
+  Future<AgentDispatchTurnResult> steerActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    required String text,
+  });
+
+  Future<AgentDispatchCancelResult> cancelActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+  });
 }
 
 abstract interface class MobileAgentConversationGateway {

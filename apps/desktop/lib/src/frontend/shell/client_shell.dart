@@ -79,7 +79,7 @@ class _ClientShellState extends State<ClientShell>
     final media = MediaQuery.of(context);
     final colors = context.licoColors;
     final mobile = _isMobileShell(context);
-    final section = _effectiveSection(context);
+    final section = controller.currentSection;
     final environment = LayoutEnvironment.fromConstraints(
       surface: mobile
           ? LayoutRuntimeSurface.mobile
@@ -135,17 +135,6 @@ class _ClientShellState extends State<ClientShell>
       ClientSection.mobileRelay => MobileRelayPanel(controller: controller),
       ClientSection.models => ModelsPanel(controller: controller),
       ClientSection.settings => SettingsPanel(controller: controller),
-    };
-  }
-
-  ClientSection _effectiveSection(BuildContext context) {
-    final section = controller.currentSection;
-    if (!_isMobileShell(context)) {
-      return section;
-    }
-    return switch (section) {
-      ClientSection.agents || ClientSection.settings => section,
-      _ => ClientSection.agents,
     };
   }
 

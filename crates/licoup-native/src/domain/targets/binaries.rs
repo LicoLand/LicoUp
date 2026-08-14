@@ -801,11 +801,16 @@ mod tests {
         fs::write(&executable, "chatgpt").unwrap();
 
         assert_eq!(
-            find_macos_app_executable("ChatGPT.app", "ChatGPT", &[root.clone()]),
+            find_macos_app_executable("ChatGPT.app", "ChatGPT", std::slice::from_ref(&root)),
             Some(executable)
         );
         assert!(
-            find_macos_app_executable("Antigravity.app", "Antigravity", &[root.clone()]).is_none()
+            find_macos_app_executable(
+                "Antigravity.app",
+                "Antigravity",
+                std::slice::from_ref(&root),
+            )
+            .is_none()
         );
         assert!(find_macos_app_executable("ChatGPT.app", "Other", &[root]).is_none());
     }
@@ -840,7 +845,7 @@ mod tests {
         .unwrap();
         fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
 
-        let found = find_cursor_binary_in_dirs(&[dir.clone()], &serde_json::json!({}));
+        let found = find_cursor_binary_in_dirs(std::slice::from_ref(&dir), &serde_json::json!({}));
         assert_eq!(found.as_deref(), Some(agent.as_path()));
         assert!(!cursor_binary_supports_acp(&agent, &serde_json::json!({})));
     }

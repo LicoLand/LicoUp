@@ -92,8 +92,8 @@ void registerAgentsWorkspaceStateScenarios() {
       ];
       controller.selectedConversationAgentId = 'codex';
       controller.isSendingConversationMessage = true;
-      controller.liveConversationMessagesByAgent = {
-        'codex': const [
+      controller.liveConversationMessagesByScope = {
+        'new:codex': const [
           AgentConversationMessage(
             id: 'live-user',
             role: 'user',

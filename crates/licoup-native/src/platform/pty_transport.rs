@@ -497,7 +497,12 @@ mod tests {
 
     #[test]
     fn terminate_tree_unblocks_master_read() {
-        let (mut child, master) = spawn_sh("printf ready; sleep 30");
+        // Establish the long-lived descendant before reporting readiness.
+        // Printing first left a race where termination could land between the
+        // shell write and its `sleep` spawn, so the test was not actually
+        // observing a stable process tree under parallel load.
+        let (mut child, master) =
+            spawn_sh("sleep 30 & sleeper=$!; printf ready; wait \"$sleeper\"");
         let (sender, receiver) = mpsc::channel();
         let handle = thread::spawn(move || read_master(master, sender, None));
         let deadline = Instant::now() + Duration::from_secs(5);

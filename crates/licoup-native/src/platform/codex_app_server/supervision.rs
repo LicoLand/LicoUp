@@ -112,7 +112,7 @@ pub(super) fn run_protocol_loop(
                             }
                         }
                         ProtocolEffect::Complete(outcome) => {
-                            return (Some(outcome), None, None, false);
+                            return (Some(*outcome), None, None, false);
                         }
                         ProtocolEffect::Fail(failure) => {
                             return (None, Some(protocol.contextualize(failure)), None, false);

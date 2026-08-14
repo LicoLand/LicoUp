@@ -8,9 +8,13 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 /// Second-layer conversation list: a flat, newest-first list of every
 /// conversation across agents, grouped into muted time sections (today,
@@ -28,8 +32,10 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
     required this.activityFor,
     required this.onSelectSession,
     required this.onNewConversation,
+    this.runningFor,
     this.onPrefetchSessions,
     this.onArchive,
+    this.onAdaptiveFlywheel,
     this.onAddTarget,
     this.onRefresh,
     this.allowManualTargetActions = true,
@@ -44,12 +50,14 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
   final AgentConversationTabActivity Function(String agentId) activityFor;
   final void Function(String agentId, String sessionId) onSelectSession;
   final VoidCallback onNewConversation;
+  final bool Function(AgentConversationSession session)? runningFor;
 
   /// Kicks a first-page session load for one agent. Invoked once on first
   /// build for every conversation agent without loaded sessions, mirroring
   /// the messaging contact list's prefetch.
   final ValueChanged<String>? onPrefetchSessions;
   final VoidCallback? onArchive;
+  final VoidCallback? onAdaptiveFlywheel;
   final VoidCallback? onAddTarget;
 
   /// Reloads the conversation list. Wired to the header refresh button that
@@ -195,6 +203,16 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                 buttonKey: const Key('agents-sidebar-backup-conversations'),
               ),
             ),
+          if (widget.onAdaptiveFlywheel != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+              child: _NewConversationGuideButton(
+                onPressed: widget.onAdaptiveFlywheel!,
+                label: 'Adaptive Flywheel',
+                icon: Icons.account_tree_outlined,
+                buttonKey: const Key('agents-sidebar-adaptive-flywheel'),
+              ),
+            ),
           Expanded(
             child: widget.targets.isEmpty
                 ? _SidebarEmptyAgents(
@@ -203,10 +221,12 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                     allowManualTargetActions: widget.allowManualTargetActions,
                     onAddTarget: widget.onAddTarget,
                   )
-                : _SidebarConversationListView(
+                : SidebarConversationListView(
                     entries: entries,
                     selectedSessionId: widget.selectedSessionId,
                     earlierExpanded: _earlierExpanded,
+                    showAgentIcons: true,
+                    runningFor: widget.runningFor,
                     onToggleEarlier: () =>
                         setState(() => _earlierExpanded = !_earlierExpanded),
                     onSelectSession: widget.onSelectSession,
@@ -337,13 +357,16 @@ SidebarTimeGroup sidebarTimeGroupFor(DateTime updatedLocal, DateTime nowLocal) {
   return SidebarTimeGroup.earlier;
 }
 
-class _SidebarConversationListView extends StatelessWidget {
-  const _SidebarConversationListView({
+class SidebarConversationListView extends StatelessWidget {
+  const SidebarConversationListView({
+    super.key,
     required this.entries,
     required this.selectedSessionId,
     required this.earlierExpanded,
     required this.onToggleEarlier,
     required this.onSelectSession,
+    this.runningFor,
+    this.showAgentIcons = true,
   });
 
   final List<SidebarConversationEntry> entries;
@@ -351,6 +374,8 @@ class _SidebarConversationListView extends StatelessWidget {
   final bool earlierExpanded;
   final VoidCallback onToggleEarlier;
   final void Function(String agentId, String sessionId) onSelectSession;
+  final bool Function(AgentConversationSession session)? runningFor;
+  final bool showAgentIcons;
 
   @override
   Widget build(BuildContext context) {
@@ -367,6 +392,34 @@ class _SidebarConversationListView extends StatelessWidget {
       );
     }
     final items = <Widget>[];
+    final runningSessionIds = <String>{};
+    final runningEntries = entries
+        .where((entry) {
+          final running = runningFor?.call(entry.session) ?? false;
+          if (running) runningSessionIds.add(entry.session.id);
+          return running;
+        })
+        .toList(growable: false);
+    if (runningEntries.isNotEmpty) {
+      items.add(
+        LicoGroupHeader(
+          label: strings.priority,
+          padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
+        ),
+      );
+      for (final entry in runningEntries) {
+        items.add(
+          _SidebarConversationRow(
+            key: Key('agents-sidebar-conversation-${entry.session.id}'),
+            entry: entry,
+            selected: entry.session.id == selectedSessionId,
+            running: true,
+            showAgentIcon: showAgentIcons,
+            onTap: () => onSelectSession(entry.owner.id, entry.session.id),
+          ),
+        );
+      }
+    }
     var currentHeader = '';
     var earlierCount = 0;
     var earlierHeaderIndex = -1;
@@ -374,6 +427,9 @@ class _SidebarConversationListView extends StatelessWidget {
     // group renders expanded even before the user opens it.
     var earlierContainsSelected = false;
     for (final entry in entries) {
+      if (runningSessionIds.contains(entry.session.id)) {
+        continue;
+      }
       final updated =
           DateTime.tryParse(entry.session.updatedAt.trim())?.toLocal() ?? now;
       final group = sidebarTimeGroupFor(updated, now);
@@ -403,6 +459,8 @@ class _SidebarConversationListView extends StatelessWidget {
               key: Key('agents-sidebar-conversation-${entry.session.id}'),
               entry: entry,
               selected: entry.session.id == selectedSessionId,
+              running: runningFor?.call(entry.session) ?? false,
+              showAgentIcon: showAgentIcons,
               onTap: () => onSelectSession(entry.owner.id, entry.session.id),
             ),
           );
@@ -411,23 +469,32 @@ class _SidebarConversationListView extends StatelessWidget {
       }
       if (header != currentHeader) {
         currentHeader = header;
-        items.add(_SidebarTimeGroupHeader(label: header));
+        items.add(
+          LicoGroupHeader(
+            label: header,
+            padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
+          ),
+        );
       }
       items.add(
         _SidebarConversationRow(
           key: Key('agents-sidebar-conversation-${entry.session.id}'),
           entry: entry,
           selected: entry.session.id == selectedSessionId,
+          running: runningFor?.call(entry.session) ?? false,
+          showAgentIcon: showAgentIcons,
           onTap: () => onSelectSession(entry.owner.id, entry.session.id),
         ),
       );
     }
     if (earlierHeaderIndex >= 0) {
-      items[earlierHeaderIndex] = _SidebarEarlierGroupHeader(
+      items[earlierHeaderIndex] = LicoGroupHeader(
         label: strings.earlier,
         count: earlierCount,
         expanded: earlierExpanded || earlierContainsSelected,
         onToggle: onToggleEarlier,
+        toggleKey: const Key('agents-sidebar-earlier-toggle'),
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
       );
     }
     return ListView(
@@ -437,116 +504,20 @@ class _SidebarConversationListView extends StatelessWidget {
   }
 }
 
-class _SidebarTimeGroupHeader extends StatelessWidget {
-  const _SidebarTimeGroupHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
-/// The collapsible Earlier section header: chevron, label, and a row count.
-/// Collapsed by default; tapping toggles the session-scoped expansion.
-class _SidebarEarlierGroupHeader extends StatelessWidget {
-  const _SidebarEarlierGroupHeader({
-    required this.label,
-    required this.count,
-    required this.expanded,
-    required this.onToggle,
-  });
-
-  final String label;
-  final int count;
-  final bool expanded;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: const Key('agents-sidebar-earlier-toggle'),
-          onTap: onToggle,
-          borderRadius: BorderRadius.circular(8),
-          hoverColor: colors.isDark
-              ? Colors.white.withAlpha(8)
-              : Colors.black.withAlpha(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              children: [
-                Icon(
-                  expanded
-                      ? Icons.expand_more_rounded
-                      : Icons.chevron_right_rounded,
-                  size: 15,
-                  color: colors.textMuted,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.4,
-                      height: 1,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$count',
-                  maxLines: 1,
-                  style: TextStyle(
-                    color: colors.textMuted.withAlpha(170),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    height: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SidebarConversationRow extends StatelessWidget {
   const _SidebarConversationRow({
     super.key,
     required this.entry,
     required this.selected,
+    required this.running,
+    required this.showAgentIcon,
     required this.onTap,
   });
 
   final SidebarConversationEntry entry;
   final bool selected;
+  final bool running;
+  final bool showAgentIcon;
   final VoidCallback onTap;
 
   @override
@@ -570,6 +541,17 @@ class _SidebarConversationRow extends StatelessWidget {
       AgentConversationTabActivity.workFinished => strings.agentTabWorkFinished,
       AgentConversationTabActivity.none => '',
     };
+    final activityDot = activityColor == null
+        ? null
+        : Container(
+            key: Key('agents-sidebar-activity-${session.id}'),
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: activityColor,
+            ),
+          );
     final titleColor = colors.text;
     final subtitleColor = colors.textMuted;
     return Padding(
@@ -578,7 +560,7 @@ class _SidebarConversationRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(LicoRadius.floating),
           hoverColor: colors.isDark
               ? Colors.white.withAlpha(8)
               : Colors.black.withAlpha(8),
@@ -593,7 +575,7 @@ class _SidebarConversationRow extends StatelessWidget {
                         ? Colors.white.withAlpha(26)
                         : Colors.black.withAlpha(16))
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -614,21 +596,31 @@ class _SidebarConversationRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (activityColor != null)
+                    if (running)
+                      Tooltip(
+                        message: strings.working,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: SizedBox.square(
+                            key: Key('agents-sidebar-running-${session.id}'),
+                            dimension: 13,
+                            child: LicoSpinningRefreshIcon(
+                              size: 13,
+                              color: selected ? colors.text : colors.textMuted,
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (activityDot != null)
                       Tooltip(
                         message: activityTooltip,
-                        child: Container(
-                          key: Key('agents-sidebar-activity-${session.id}'),
-                          width: 7,
-                          height: 7,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            // The signal stays semantic even on the selected
-                            // row: approval amber and finished blue are
-                            // meaning, not decoration.
-                            color: activityColor,
-                          ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child:
+                              entry.activity ==
+                                  AgentConversationTabActivity.workFinished
+                              ? _SidebarPulsingActivityDot(child: activityDot)
+                              : activityDot,
                         ),
                       ),
                   ],
@@ -636,14 +628,16 @@ class _SidebarConversationRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    AgentBrandIcon(
-                      target: entry.brandTarget,
-                      size: 14,
-                      iconSize: 10,
-                      selected: selected,
-                      detected: entry.brandDetected,
-                    ),
-                    const SizedBox(width: 6),
+                    if (showAgentIcon) ...[
+                      AgentBrandIcon(
+                        target: entry.brandTarget,
+                        size: 14,
+                        iconSize: 10,
+                        selected: selected,
+                        detected: entry.brandDetected,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     Expanded(
                       child: Text(
                         project,
@@ -664,6 +658,62 @@ class _SidebarConversationRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SidebarPulsingActivityDot extends StatefulWidget {
+  const _SidebarPulsingActivityDot({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SidebarPulsingActivityDot> createState() =>
+      _SidebarPulsingActivityDotState();
+}
+
+class _SidebarPulsingActivityDotState extends State<_SidebarPulsingActivityDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: LicoMotion.loopLong,
+    );
+    final curve = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    _opacity = Tween<double>(begin: 0.48, end: 1).animate(curve);
+    _scale = Tween<double>(begin: 0.82, end: 1.18).animate(curve);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller
+        ..stop()
+        ..value = 1;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return widget.child;
+    return FadeTransition(
+      opacity: _opacity,
+      child: ScaleTransition(scale: _scale, child: widget.child),
     );
   }
 }
@@ -692,7 +742,7 @@ class _NewConversationGuideButton extends StatelessWidget {
       child: InkWell(
         key: buttonKey,
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
         hoverColor: interactionColor,
         focusColor: interactionColor,
         splashColor: colors.primary.withAlpha(20),

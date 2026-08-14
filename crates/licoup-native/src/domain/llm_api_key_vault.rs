@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::core::secure_mesh_secret_store::SecretBytes;
 
 pub const LLM_API_KEY_INVENTORY_SCHEMA: &str = "licoup.llm-api-key-inventory.v1";
-pub const GATEWAY_CREDENTIAL_HANDOFF_SCHEMA: &str = "licoup.llm-gateway-credential-handoff.v1";
+pub const GATEWAY_CREDENTIAL_HANDOFF_SCHEMA: &str = "licoup.llm-gateway-credential-handoff.v2";
 pub const MAX_LLM_API_KEYS: usize = 64;
 pub const MAX_LLM_API_KEY_BYTES: usize = 8 * 1024;
 pub const MAX_LLM_API_KEY_LABEL_BYTES: usize = 96;
@@ -316,6 +316,51 @@ pub trait GatewayCredentialEpochSource: Send + Sync {
     fn active_epoch(&self) -> Result<Option<String>>;
 }
 
+/// One authorized credential carried by an ephemeral gateway handoff.
+///
+/// Identity and expiry travel with the secret so authorization selection and
+/// storage validity remain enforceable after the sidecar has started.
+pub(crate) struct GatewayCredential {
+    credential_id: String,
+    secret: SecretBytes,
+    expires_at_epoch_seconds: Option<u64>,
+}
+
+impl GatewayCredential {
+    pub(crate) fn new(
+        credential_id: String,
+        secret: SecretBytes,
+        expires_at_epoch_seconds: Option<u64>,
+    ) -> Result<Self> {
+        ensure!(
+            uuid::Uuid::parse_str(&credential_id)
+                .is_ok_and(|value| value.to_string() == credential_id),
+            "llm_api_key_credential_id_invalid"
+        );
+        if let Some(expires_at) = expires_at_epoch_seconds {
+            ensure!(expires_at > 0, "llm_api_key_expires_at_invalid");
+        }
+        Ok(Self {
+            credential_id,
+            secret,
+            expires_at_epoch_seconds,
+        })
+    }
+
+    fn is_expired(&self, now_epoch_seconds: u64) -> bool {
+        self.expires_at_epoch_seconds
+            .is_some_and(|expires_at| now_epoch_seconds >= expires_at)
+    }
+
+    fn copy_for_lease(&self) -> Self {
+        Self {
+            credential_id: self.credential_id.clone(),
+            secret: self.secret.copy_for_persistent_read(),
+            expires_at_epoch_seconds: self.expires_at_epoch_seconds,
+        }
+    }
+}
+
 /// A portable, JSON-encodable projection of unlocked gateway credentials.
 ///
 /// The handoff carries secret material between the unlocking process and one
@@ -323,7 +368,7 @@ pub trait GatewayCredentialEpochSource: Send + Sync {
 /// disk. Parsing fails closed so a truncated or tampered document can never
 /// become a partial credential set.
 pub struct GatewayCredentialHandoff {
-    credentials: BTreeMap<LlmApiKeyProvider, Vec<SecretBytes>>,
+    credentials: BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
     lease_days: GatewayCredentialLeaseDays,
     epoch: String,
 }
@@ -333,8 +378,20 @@ impl GatewayCredentialHandoff {
         self.credentials.keys().copied()
     }
 
+    pub(crate) fn retain_credential_ids(&mut self, credential_ids: &BTreeSet<String>) {
+        for credentials in self.credentials.values_mut() {
+            credentials.retain(|credential| credential_ids.contains(&credential.credential_id));
+        }
+        self.credentials
+            .retain(|_, credentials| !credentials.is_empty());
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.credentials.is_empty()
+    }
+
     pub(crate) fn new(
-        credentials: BTreeMap<LlmApiKeyProvider, Vec<SecretBytes>>,
+        credentials: BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
         lease_days: GatewayCredentialLeaseDays,
         epoch: String,
     ) -> Result<Self> {
@@ -342,11 +399,7 @@ impl GatewayCredentialHandoff {
             uuid::Uuid::parse_str(&epoch).is_ok_and(|value| value.to_string() == epoch),
             "llm_api_key_lease_epoch_invalid"
         );
-        ensure!(
-            credentials.values().map(Vec::len).sum::<usize>() <= MAX_LLM_API_KEYS
-                && credentials.values().all(|values| !values.is_empty()),
-            "llm_api_key_lease_inventory_invalid"
-        );
+        validate_gateway_credentials(&credentials, "llm_api_key_lease_inventory_invalid")?;
         Ok(Self {
             credentials,
             lease_days,
@@ -366,8 +419,12 @@ impl GatewayCredentialHandoff {
                     "provider": provider.as_str(),
                     "keys": keys
                         .iter()
-                        .map(|key| key.expose_bytes().to_vec())
-                        .collect::<Vec<Vec<u8>>>(),
+                        .map(|key| serde_json::json!({
+                            "credentialId": key.credential_id,
+                            "expiresAtEpochSeconds": key.expires_at_epoch_seconds,
+                            "secret": key.secret.expose_bytes().to_vec(),
+                        }))
+                        .collect::<Vec<serde_json::Value>>(),
                 })
             })
             .collect();
@@ -422,10 +479,18 @@ impl GatewayCredentialHandoff {
             .get("credentials")
             .and_then(serde_json::Value::as_array)
             .ok_or_else(invalid)?;
-        let mut credentials = BTreeMap::<LlmApiKeyProvider, Vec<SecretBytes>>::new();
+        let mut credentials = BTreeMap::<LlmApiKeyProvider, Vec<GatewayCredential>>::new();
+        let mut credential_ids = BTreeSet::new();
         let mut total_keys = 0usize;
         for entry in entries {
-            let provider_value = entry
+            let entry_object = entry.as_object().ok_or_else(invalid)?;
+            ensure!(
+                entry_object
+                    .keys()
+                    .all(|field| matches!(field.as_str(), "provider" | "keys")),
+                "llm_api_key_handoff_invalid"
+            );
+            let provider_value = entry_object
                 .get("provider")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(invalid)?;
@@ -437,15 +502,43 @@ impl GatewayCredentialHandoff {
                 !credentials.contains_key(&provider),
                 "llm_api_key_handoff_invalid"
             );
-            let keys = entry
+            let keys = entry_object
                 .get("keys")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(invalid)?;
             ensure!(!keys.is_empty(), "llm_api_key_handoff_invalid");
             let mut secrets = Vec::with_capacity(keys.len());
             for key in keys {
-                let key_bytes = key
-                    .as_array()
+                let key_object = key.as_object().ok_or_else(invalid)?;
+                ensure!(
+                    key_object.keys().all(|field| matches!(
+                        field.as_str(),
+                        "credentialId" | "expiresAtEpochSeconds" | "secret"
+                    )),
+                    "llm_api_key_handoff_invalid"
+                );
+                let credential_id = key_object
+                    .get("credentialId")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(invalid)?
+                    .to_owned();
+                ensure!(
+                    credential_ids.insert(credential_id.clone()),
+                    "llm_api_key_handoff_invalid"
+                );
+                let expires_at_epoch_seconds = match key_object.get("expiresAtEpochSeconds") {
+                    Some(value) if value.is_null() => None,
+                    Some(value) => Some(
+                        value
+                            .as_u64()
+                            .filter(|value| *value > 0)
+                            .ok_or_else(invalid)?,
+                    ),
+                    None => return Err(invalid()),
+                };
+                let key_bytes = key_object
+                    .get("secret")
+                    .and_then(serde_json::Value::as_array)
                     .ok_or_else(invalid)?
                     .iter()
                     .map(|byte| {
@@ -454,7 +547,14 @@ impl GatewayCredentialHandoff {
                             .ok_or_else(invalid)
                     })
                     .collect::<Result<Vec<u8>>>()?;
-                secrets.push(SecretBytes::try_from_bytes(key_bytes).map_err(|_| invalid())?);
+                secrets.push(
+                    GatewayCredential::new(
+                        credential_id,
+                        SecretBytes::try_from_bytes(key_bytes).map_err(|_| invalid())?,
+                        expires_at_epoch_seconds,
+                    )
+                    .map_err(|_| invalid())?,
+                );
             }
             total_keys += secrets.len();
             ensure!(
@@ -489,7 +589,7 @@ struct LeaseValidationState {
 /// one running gateway process, not a persisted bypass of platform user
 /// authentication.
 pub struct GatewayCredentialLease {
-    credentials: BTreeMap<LlmApiKeyProvider, Vec<SecretBytes>>,
+    credentials: BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
     lease_days: GatewayCredentialLeaseDays,
     expires_at: Instant,
     epoch: String,
@@ -500,7 +600,8 @@ pub struct GatewayCredentialLease {
 impl GatewayCredentialLease {
     /// A healthy local Gateway is allowed to run before any provider is
     /// connected. Model requests fail closed with CredentialUnavailable until
-    /// an authorized handoff is installed by restarting the sidecar.
+    /// an authorized handoff is installed into the live lease (hot apply) or
+    /// supplied at sidecar spawn.
     pub fn disconnected() -> Self {
         Self {
             credentials: BTreeMap::new(),
@@ -516,7 +617,7 @@ impl GatewayCredentialLease {
     }
 
     pub(crate) fn new(
-        credentials: BTreeMap<LlmApiKeyProvider, Vec<SecretBytes>>,
+        credentials: BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
         lease_days: GatewayCredentialLeaseDays,
         epoch: String,
         epoch_source: Arc<dyn GatewayCredentialEpochSource>,
@@ -525,11 +626,7 @@ impl GatewayCredentialLease {
             uuid::Uuid::parse_str(&epoch).is_ok_and(|value| value.to_string() == epoch),
             "llm_api_key_lease_epoch_invalid"
         );
-        ensure!(
-            credentials.values().map(Vec::len).sum::<usize>() <= MAX_LLM_API_KEYS
-                && credentials.values().all(|values| !values.is_empty()),
-            "llm_api_key_lease_inventory_invalid"
-        );
+        validate_gateway_credentials(&credentials, "llm_api_key_lease_inventory_invalid")?;
         let expires_at = Instant::now()
             .checked_add(lease_days.duration())
             .ok_or_else(|| anyhow!("llm_api_key_lease_expiry_invalid"))?;
@@ -559,9 +656,7 @@ impl GatewayCredentialLease {
             .map(|(provider, keys)| {
                 (
                     *provider,
-                    keys.iter()
-                        .map(SecretBytes::copy_for_persistent_read)
-                        .collect(),
+                    keys.iter().map(GatewayCredential::copy_for_lease).collect(),
                 )
             })
             .collect();
@@ -589,14 +684,33 @@ impl GatewayCredentialLease {
     }
 
     pub fn resolve(&self, provider: LlmApiKeyProvider) -> Result<SecretBytes> {
-        let credential = self
+        self.resolve_candidates(provider)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("llm_api_key_credential_unavailable"))
+    }
+
+    pub fn resolve_candidates(&self, provider: LlmApiKeyProvider) -> Result<Vec<SecretBytes>> {
+        let provider_credentials = self
             .credentials
             .get(&provider)
-            .and_then(|values| values.first())
-            .map(SecretBytes::copy_for_persistent_read)
+            .filter(|values| !values.is_empty())
             .ok_or_else(|| anyhow!("llm_api_key_credential_unavailable"))?;
         self.ensure_active()?;
-        Ok(credential)
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| anyhow!("llm_api_key_clock_invalid"))?
+            .as_secs();
+        let credentials = provider_credentials
+            .iter()
+            .filter(|credential| !credential.is_expired(now))
+            .map(|credential| credential.secret.copy_for_persistent_read())
+            .collect::<Vec<_>>();
+        ensure!(
+            !credentials.is_empty(),
+            "llm_api_key_credential_unavailable"
+        );
+        Ok(credentials)
     }
 
     fn ensure_active(&self) -> Result<()> {
@@ -641,6 +755,123 @@ impl fmt::Debug for GatewayCredentialLease {
     }
 }
 
+/// Process-local, replaceable credential lease for a running Gateway.
+///
+/// Workers resolve secrets under a short read lock; authorize/clear hot-apply
+/// replaces the whole lease without restarting the sidecar.
+pub struct GatewayCredentialSlot {
+    inner: Mutex<GatewayCredentialLease>,
+    selection_cursor: [std::sync::atomic::AtomicUsize; 3],
+}
+
+impl GatewayCredentialSlot {
+    pub fn new(lease: GatewayCredentialLease) -> Self {
+        Self {
+            inner: Mutex::new(lease),
+            selection_cursor: std::array::from_fn(|_| std::sync::atomic::AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn disconnected() -> Self {
+        Self::new(GatewayCredentialLease::disconnected())
+    }
+
+    pub fn contains_provider(&self, provider: LlmApiKeyProvider) -> bool {
+        self.inner
+            .lock()
+            .map(|lease| lease.contains_provider(provider))
+            .unwrap_or(false)
+    }
+
+    pub fn resolve(&self, provider: LlmApiKeyProvider) -> Result<SecretBytes> {
+        self.resolve_candidates(provider)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("llm_api_key_credential_unavailable"))
+    }
+
+    /// Returns every currently valid credential in rotating order. Callers
+    /// may fail over across this bounded list without repeatedly unlocking or
+    /// favoring one key forever.
+    pub fn resolve_candidates(&self, provider: LlmApiKeyProvider) -> Result<Vec<SecretBytes>> {
+        let mut candidates = self
+            .inner
+            .lock()
+            .map_err(|_| anyhow!("llm_api_key_lease_validation_unavailable"))?
+            .resolve_candidates(provider)?;
+        let index = match provider {
+            LlmApiKeyProvider::Kimi => 0,
+            LlmApiKeyProvider::DeepSeek => 1,
+            LlmApiKeyProvider::Kilo => 2,
+        };
+        let start = self.selection_cursor[index].fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % candidates.len();
+        candidates.rotate_left(start);
+        Ok(candidates)
+    }
+
+    pub fn replace(&self, lease: GatewayCredentialLease) -> Result<()> {
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| anyhow!("llm_api_key_lease_validation_unavailable"))?;
+        *guard = lease;
+        Ok(())
+    }
+
+    pub fn clear(&self) -> Result<()> {
+        self.replace(GatewayCredentialLease::disconnected())
+    }
+
+    pub fn install_handoff(
+        &self,
+        handoff: GatewayCredentialHandoff,
+        epoch_source: Arc<dyn GatewayCredentialEpochSource>,
+    ) -> Result<()> {
+        self.replace(GatewayCredentialLease::from_handoff(handoff, epoch_source)?)
+    }
+
+    pub fn connected(&self) -> bool {
+        self.inner
+            .lock()
+            .map(|lease| !lease.credentials.is_empty())
+            .unwrap_or(false)
+    }
+}
+
+impl fmt::Debug for GatewayCredentialSlot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GatewayCredentialSlot")
+            .field("connected", &self.connected())
+            .finish()
+    }
+}
+
+fn validate_gateway_credentials(
+    credentials: &BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
+    error_code: &'static str,
+) -> Result<()> {
+    ensure!(
+        credentials.values().all(|values| !values.is_empty())
+            && credentials.values().map(Vec::len).sum::<usize>() <= MAX_LLM_API_KEYS,
+        error_code
+    );
+    let mut ids = BTreeSet::new();
+    for credential in credentials.values().flatten() {
+        ensure!(
+            uuid::Uuid::parse_str(&credential.credential_id)
+                .is_ok_and(|value| value.to_string() == credential.credential_id)
+                && ids.insert(credential.credential_id.as_str())
+                && credential
+                    .expires_at_epoch_seconds
+                    .is_none_or(|expires_at| expires_at > 0),
+            error_code
+        );
+    }
+    Ok(())
+}
+
 fn validate_label(label: &str) -> Result<()> {
     ensure!(
         label == label.trim()
@@ -674,6 +905,15 @@ mod tests {
         fn active_epoch(&self) -> Result<Option<String>> {
             Ok(self.0.lock().unwrap().clone())
         }
+    }
+
+    fn test_credential(secret: &str) -> GatewayCredential {
+        GatewayCredential::new(
+            uuid::Uuid::new_v4().to_string(),
+            SecretBytes::try_from_string(secret.to_owned()).unwrap(),
+            None,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -715,6 +955,35 @@ mod tests {
                 .to_string(),
             "llm_api_key_credential_unavailable"
         );
+    }
+
+    #[test]
+    fn credential_slot_hot_applies_handoff_without_replacing_the_arc() {
+        let slot = GatewayCredentialSlot::disconnected();
+        assert!(!slot.connected());
+        let mut credentials = BTreeMap::new();
+        credentials.insert(
+            LlmApiKeyProvider::DeepSeek,
+            vec![test_credential("fixture-key-123456")],
+        );
+        let epoch = uuid::Uuid::new_v4().to_string();
+        let handoff = GatewayCredentialHandoff::new(
+            credentials,
+            GatewayCredentialLeaseDays::Seven,
+            epoch.clone(),
+        )
+        .unwrap();
+        slot.install_handoff(
+            handoff,
+            Arc::new(TestEpochSource(StdMutex::new(Some(epoch)))),
+        )
+        .unwrap();
+        assert!(slot.connected());
+        assert!(slot.contains_provider(LlmApiKeyProvider::DeepSeek));
+        assert!(slot.resolve(LlmApiKeyProvider::DeepSeek).is_ok());
+        slot.clear().unwrap();
+        assert!(!slot.connected());
+        assert!(slot.resolve(LlmApiKeyProvider::DeepSeek).is_err());
     }
 
     #[test]
@@ -832,7 +1101,7 @@ mod tests {
         let mut credentials = BTreeMap::new();
         credentials.insert(
             LlmApiKeyProvider::DeepSeek,
-            vec![SecretBytes::try_from_string("synthetic-key-12345".to_owned()).unwrap()],
+            vec![test_credential("synthetic-key-12345")],
         );
         let lease = GatewayCredentialLease::new(
             credentials,
@@ -854,22 +1123,75 @@ mod tests {
         assert!(lease.resolve(LlmApiKeyProvider::DeepSeek).is_err());
     }
 
-    fn handoff_test_credentials() -> BTreeMap<LlmApiKeyProvider, Vec<SecretBytes>> {
+    #[test]
+    fn lease_filters_expired_credentials_and_rotates_valid_candidates() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let epoch = uuid::Uuid::new_v4().to_string();
+        let source = Arc::new(TestEpochSource(StdMutex::new(Some(epoch.clone()))));
+        let credentials = BTreeMap::from([(
+            LlmApiKeyProvider::Kimi,
+            vec![
+                GatewayCredential::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    SecretBytes::try_from_string("expired-key-12345".to_owned()).unwrap(),
+                    Some(now),
+                )
+                .unwrap(),
+                GatewayCredential::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    SecretBytes::try_from_string("active-key-one-12345".to_owned()).unwrap(),
+                    Some(now + 60),
+                )
+                .unwrap(),
+                GatewayCredential::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    SecretBytes::try_from_string("active-key-two-12345".to_owned()).unwrap(),
+                    None,
+                )
+                .unwrap(),
+            ],
+        )]);
+        let slot = GatewayCredentialSlot::new(
+            GatewayCredentialLease::new(
+                credentials,
+                GatewayCredentialLeaseDays::Seven,
+                epoch,
+                source,
+            )
+            .unwrap(),
+        );
+
+        let first = slot.resolve_candidates(LlmApiKeyProvider::Kimi).unwrap();
+        let second = slot.resolve_candidates(LlmApiKeyProvider::Kimi).unwrap();
+        assert_eq!(first.len(), 2);
+        assert_eq!(second.len(), 2);
+        assert_ne!(first[0].expose_bytes(), second[0].expose_bytes());
+        assert!(
+            first
+                .iter()
+                .all(|credential| credential.expose_bytes() != b"expired-key-12345")
+        );
+    }
+
+    fn handoff_test_credentials() -> BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>> {
         let mut credentials = BTreeMap::new();
         credentials.insert(
             LlmApiKeyProvider::Kimi,
             vec![
-                SecretBytes::try_from_string("synthetic-kimi-key-1".to_owned()).unwrap(),
-                SecretBytes::try_from_string("synthetic-kimi-key-2".to_owned()).unwrap(),
+                test_credential("synthetic-kimi-key-1"),
+                test_credential("synthetic-kimi-key-2"),
             ],
         );
         credentials.insert(
             LlmApiKeyProvider::DeepSeek,
-            vec![SecretBytes::try_from_string("synthetic-deepseek-key-1".to_owned()).unwrap()],
+            vec![test_credential("synthetic-deepseek-key-1")],
         );
         credentials.insert(
             LlmApiKeyProvider::Kilo,
-            vec![SecretBytes::try_from_string("synthetic-kilo-key-1".to_owned()).unwrap()],
+            vec![test_credential("synthetic-kilo-key-1")],
         );
         credentials
     }
@@ -882,6 +1204,14 @@ mod tests {
             "credentials": credentials,
         }))
         .unwrap()
+    }
+
+    fn handoff_key(secret: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "credentialId": uuid::Uuid::new_v4().to_string(),
+            "expiresAtEpochSeconds": null,
+            "secret": secret,
+        })
     }
 
     fn assert_handoff_invalid(payload: &[u8]) {
@@ -908,14 +1238,17 @@ mod tests {
         assert_eq!(parsed.epoch, epoch);
         let kimi = &parsed.credentials[&LlmApiKeyProvider::Kimi];
         assert_eq!(kimi.len(), 2);
-        assert_eq!(kimi[0].expose_bytes(), b"synthetic-kimi-key-1");
-        assert_eq!(kimi[1].expose_bytes(), b"synthetic-kimi-key-2");
+        assert_eq!(kimi[0].secret.expose_bytes(), b"synthetic-kimi-key-1");
+        assert_eq!(kimi[1].secret.expose_bytes(), b"synthetic-kimi-key-2");
         let deepseek = &parsed.credentials[&LlmApiKeyProvider::DeepSeek];
         assert_eq!(deepseek.len(), 1);
-        assert_eq!(deepseek[0].expose_bytes(), b"synthetic-deepseek-key-1");
+        assert_eq!(
+            deepseek[0].secret.expose_bytes(),
+            b"synthetic-deepseek-key-1"
+        );
         let kilo = &parsed.credentials[&LlmApiKeyProvider::Kilo];
         assert_eq!(kilo.len(), 1);
-        assert_eq!(kilo[0].expose_bytes(), b"synthetic-kilo-key-1");
+        assert_eq!(kilo[0].secret.expose_bytes(), b"synthetic-kilo-key-1");
 
         let restored = GatewayCredentialLease::from_handoff(parsed, source).unwrap();
         assert_eq!(restored.lease_days(), GatewayCredentialLeaseDays::Thirty);
@@ -944,7 +1277,7 @@ mod tests {
 
     #[test]
     fn handoff_rejects_malformed_documents() {
-        let kimi_entry = serde_json::json!({"provider": "kimi", "keys": [[1, 2, 3]]});
+        let kimi_entry = serde_json::json!({"provider": "kimi", "keys": [handoff_key(serde_json::json!([1, 2, 3]))]});
         // Unparseable payload.
         assert_handoff_invalid(b"not-json");
         // Wrong schema version.
@@ -969,7 +1302,7 @@ mod tests {
         assert_handoff_invalid(&serde_json::to_vec(&bad_epoch).unwrap());
         // Unknown provider.
         assert_handoff_invalid(&handoff_document(
-            serde_json::json!([{"provider": "openai", "keys": [[1, 2, 3]]}]),
+            serde_json::json!([{"provider": "openai", "keys": [handoff_key(serde_json::json!([1, 2, 3]))]}]),
         ));
         // Duplicate provider.
         assert_handoff_invalid(&handoff_document(serde_json::json!([
@@ -981,19 +1314,21 @@ mod tests {
         ));
         // Empty key byte array.
         assert_handoff_invalid(&handoff_document(
-            serde_json::json!([{"provider": "kimi", "keys": [[]]}]),
+            serde_json::json!([{"provider": "kimi", "keys": [handoff_key(serde_json::json!([]))]}]),
         ));
         // Byte value outside 0-255.
         assert_handoff_invalid(&handoff_document(
-            serde_json::json!([{"provider": "kimi", "keys": [[256]]}]),
+            serde_json::json!([{"provider": "kimi", "keys": [handoff_key(serde_json::json!([256]))]}]),
         ));
         // One key exceeding MAX_SECRET_BYTES.
         let oversize_key = vec![0u8; crate::core::secure_mesh_secret_store::MAX_SECRET_BYTES + 1];
         assert_handoff_invalid(&handoff_document(
-            serde_json::json!([{"provider": "kimi", "keys": [oversize_key]}]),
+            serde_json::json!([{"provider": "kimi", "keys": [handoff_key(serde_json::json!(oversize_key))]}]),
         ));
         // Total key count above MAX_LLM_API_KEYS.
-        let too_many_keys = vec![serde_json::json!([1, 2, 3]); MAX_LLM_API_KEYS + 1];
+        let too_many_keys = (0..=MAX_LLM_API_KEYS)
+            .map(|_| handoff_key(serde_json::json!([1, 2, 3])))
+            .collect::<Vec<_>>();
         assert_handoff_invalid(&handoff_document(
             serde_json::json!([{"provider": "kimi", "keys": too_many_keys}]),
         ));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 final class OptionalCollaborationWorkflowPlanReview extends StatelessWidget {
   const OptionalCollaborationWorkflowPlanReview({
@@ -29,7 +30,7 @@ final class OptionalCollaborationWorkflowPlanReview extends StatelessWidget {
     return Material(
       key: Key('$keyPrefix-plan-review'),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(LicoRadius.floating),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(

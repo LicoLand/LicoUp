@@ -20,6 +20,12 @@ Android 或依赖回归通道。各回归通道彼此独立并可并行。发布
 它只在 `stable` → `release` 晋升边界运行，具体见[客户端分支晋升门禁](docs/releases/PROMOTION-GATES.zh-CN.md)。
 提交门禁不会构建或发布所有平台。
 
+一旦主动启动完整回归，本次验证闭环就自动扩展到它暴露的全部问题。严禁在仍有已知
+失败、陈旧快照、布局溢出、超时或偶发用例时交付。必须定位并修复权威实现，增加或收紧
+定向回归；更新任何视觉快照前都要先检查实际差异。修复过程中只重跑受影响的测试切片；
+所有问题清零后，再运行一次最终完整回归并要求全部通过。若外部条件确实阻止闭环，必须
+停止并取得维护者的明确决定，不得把问题标记为“既有”或“超出范围”后继续交付。
+
 ```bash
 npm run client:gate:source
 npm run client:gate:flutter         # 仅 Flutter 改动
@@ -67,35 +73,6 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 其它 Agent 或 bot。把人类代码归到 Agent 联系方式名下属于虚假身份信息和来源追溯
 违规，本地 hook 与远程 Ruleset 都会拒绝。开发者必须亲自审查并接受改动后才能提交。
 
-所有改动都必须先落到上游临时分支。普通分支必须使用能说明改动目的的动作前缀，推荐
-`feature/<topic>`、`fix/<topic>`、`docs/<topic>`、`refactor/<topic>`、
-`test/<topic>` 或 `chore/<topic>`；发布候选使用
-`release-candidate/v<version>-<target>`。全分支元数据 Ruleset 在临时分支创建时同样生效，首个
-提交无法绕过身份门禁。临时分支只能通过 Pull Request 创建合并提交进入 `nightly`，严禁
-以 rebase 或 squash 方式合入，也严禁把改动直接写入长期分支。
-
-## 发布前门禁
-
-发布准备由 `tools/client-release-template.json` 统一定义，严禁在失败后临时拼装并逐次
-试探远端 runner 命令。每个阶段只执行一个有边界的命令：
-
-```bash
-npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
-npm run client:release -- push stable --version 0.1.1 --target macos-arm64
-npm run client:release -- push release --version 0.1.1 --target macos-arm64
-npm run client:release -- publish --version 0.1.1 --target macos-arm64
-```
-
-第一个命令必须先创建含版本与目标平台的 `release-candidate/` 临时分支，之后记录唯一
-发布目标、修改一次版本号，只运行公共门禁和该平台对应的 Pull Request 门禁并创建唯一发布提交。临时分支通过全部
-声明为必需的 LicoUp Pull Request 校验后，必须创建合并提交进入 `nightly`，不得以 rebase
-或 squash 方式合入。后两个推送命令分别独立完成
-同一目标的 `nightly -> stable` 与 `stable -> release`，目标不一致时必须失败关闭；最后一个命令才执行该目标的安装、实时发布验收、归档和发布，并持续监控到明确
-结果，不设置操作者侧终止超时。macOS 的同一 `publish` 动作还必须下载远端构建的升级
-产物，使用仅存于本机的升级密钥签署 `LicoUp-update-stable.json`，验证远端升级资产集合后
-才公开 Release。每个命令都可以独立重跑。任何阶段都严禁关闭、绕过或
-修改活动 Rulesets。
-
 ## 隐私规则
 
 - 严禁提交秘密、本地路径、用户内容、账户数据、设备信息、日志或原始运行时报告。
@@ -131,7 +108,69 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
   `docs/reports/`。这两个路径只在本地使用。
 - 不要把本地技能或临时脚本加入仓库。
 
+## 维护的模型与定价表
+
+每个维护中的模型、Agent、基准、能力表和定价表都只有一个当前的已提交权威来源。
+表的新鲜度只使用非空 ISO 日期字段 `last_updated`；不得增加表级
+`schema_version`、`catalog_version`、`as_of`、`snapshot_date`，也不得保留并行或
+带版本的副本。发布前必须复核每个官方 HTTPS 来源、刷新日期，并删除已经停止提供的
+行。当前目录旁不得保留生成文件或兼容定价来源。
+
+## 发布冻结期间并行开发下一版本
+
+LicoUp 只使用一条发布列车。发布窗口从最新且已验证的 `nightly` 切出候选时开始。
+只有在完成下文要求的最终公开下载、来源与摘要校验、公开路径安装、稳定启动和已发布
+更新检查后，发布窗口才会成功关闭；也可以先明确宣布放弃发布并使候选失效，再关闭
+窗口。
+
+窗口期间可以继续开发下一版本，但必须保持隔离：
+
+- 冻结候选与下一版本分支必须使用不同的 Git worktree。严禁把候选 worktree、构建
+  输出或预检收据用于下一版本开发。
+- 下一版本使用 `feature/<topic>`、`fix/<topic>` 等带动作前缀的普通分支。该分支
+  可以构建和测试下一版本，但无权准备、晋级或发布被冻结版本。
+- 冻结所有进入 `nightly` 的普通合并，只允许发布候选晋级。如果发现发布阻断问题，
+  必须先使候选失效，再通过普通 Pull Request 合入一个经批准的聚焦修复，然后重新
+  创建候选。
+- 窗口关闭前，严禁把下一版本或无关改动合入 `nightly`、`stable` 或 `release`。
+  发布验证成功或明确放弃后，解除 `nightly` 冻结，再通过普通 merge-commit Pull
+  Request 合入下一版本分支。
+
+例如，这可以保证 `0.1.1` 的开发不会改变被冻结的 `0.1.0` 发布，但不会创建两条
+可以同时晋级的 `stable` 或 `release` 发布通道。
+
 ## 合并请求检查
+
+开始发布前，产品改动、重构、迁移、发布工具、Workflow、Ruleset、身份策略和
+Auditor 策略必须分别通过普通 Pull Request 完成。发布候选必须从最新且已验证的
+`nightly` 创建，只能包含规范发布命令产生的版本、构建号、目标和发布清单改动。
+严禁把整个工作树复制进候选，也不得携带已知门禁失败、未完成迁移、陈旧检查器或
+意外路径。运行预检前必须完整检查 `origin/nightly...HEAD` 差异。
+
+使用干净、已提交且命名为 `release-candidate/v<version>-<target>` 的分支，并在
+目标的真实平台运行唯一的本地预检：
+
+```bash
+npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target
+```
+
+预检会对同一候选执行构建、签名、归档、安装、更新、回滚和真实启动，然后
+写入被忽略且已脱敏的收据。pre-push Hook 只核验该收据，不会重复昂贵步骤。
+预检是最终验收，不是开发循环。如果它发现发布专用差异之外的缺陷，候选立即失效。
+应在普通分支修复权威实现、合入 `nightly` 后重新创建候选；严禁在失败候选上修改
+产品代码、检查器、Workflow 或 Ruleset。
+
+发布候选 Pull Request 一经创建，其 HEAD、Required Checks、Ruleset、分支拓扑、
+身份权威、Auditor 策略、Workflow 契约和制品契约全部冻结。收据缺失或失效时不得
+创建或更新候选。Required Checks 必须逐字为 `Branch flow`、`Commit identity`、
+`Client required` 和 `Auditor`。首个无法解释的远程失败必须冻结发布；发布窗口内
+禁止修复 Pull Request、重复 publish 或修改任何冻结权威。
+
+远程构建成功、晋升合并、Workflow 成功或生成草稿都不代表发布成功。只有重新下载
+最终公开制品、验证绑定的来源和摘要、按公开路径安装、确认稳定启动并验证公开更新
+链路后，才能宣布成功。草稿公开前可以对账；一旦公开，tag、来源 revision 和资产集
+不可变。损坏的公开 Release 必须先获得明确批准的纠正发布计划，并使用新的已验证
+来源及新构建号或版本；严禁原地替换资产。
 
 - 改动只有一个清晰范围。
 - 原生 CLI 或生成契约的改动，在同一改动内保持 Flutter 与 Rust 两侧一致。

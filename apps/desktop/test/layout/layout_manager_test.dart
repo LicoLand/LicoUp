@@ -255,6 +255,31 @@ void main() {
   );
 
   test(
+    'locale write waits for an active layout commit instead of dropping',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences())
+        ..layoutWriteGate = Completer<void>();
+      final manager = createManager(repository);
+      await manager.initialize();
+
+      final selection = manager.selectLayout(LayoutProfileId.parse('atlas'));
+      await repository.layoutWriteStarted.future;
+      final locale = manager.setLocalePreference('zh');
+
+      repository.layoutWriteGate!.complete();
+      expect(await selection, isTrue);
+      expect(await locale, isTrue);
+      expect(
+        manager.preferences?.layoutProfileId,
+        LayoutProfileId.parse('atlas'),
+      );
+      expect(manager.preferences?.localePreference, 'zh');
+      expect(repository.preferences, manager.preferences);
+      manager.dispose();
+    },
+  );
+
+  test(
     'unavailable recovery cannot overwrite a later layout selection',
     () async {
       final repository = FakePreferencesRepository(

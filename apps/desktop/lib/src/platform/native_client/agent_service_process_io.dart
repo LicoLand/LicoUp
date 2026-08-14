@@ -73,6 +73,21 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         request,
       );
     }
+    if (_persistentStdioRpcEnabled && _isClientConversationExecute(args)) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      return _stdioRpcTransport.executeStructured(
+        'client.conversation.execute',
+        request,
+      );
+    }
     late Process process;
     try {
       final cli = await _processContext.resolveCliBinary();
@@ -155,7 +170,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         args.length >= 3 &&
         args[0] == 'agent' &&
         args[1] == 'conversation' &&
-        args[2] == 'send') {
+        (args[2] == 'send' || args[2] == 'attach')) {
       late dynamic request;
       try {
         request = jsonDecode(stdinText);
@@ -165,7 +180,10 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       if (request is! Map<String, dynamic>) {
         throw const LicoClientRpcException('invalid_request');
       }
-      yield* _stdioRpcTransport.streamConversation(request);
+      yield* _stdioRpcTransport.streamConversation({
+        ...request,
+        if (args[2] == 'attach') '_rpcOperation': 'attach',
+      });
       return;
     }
     final stdinBytes = utf8.encode(stdinText);
@@ -271,9 +289,17 @@ String? _conversationControlOperation(List<String> args) {
     'capabilities',
     'cancel',
     'steer',
+    'active',
   };
   return controls.contains(args[2]) ? args[2] : null;
 }
+
+bool _isClientConversationExecute(List<String> args) =>
+    args.length == 4 &&
+    args[0] == 'conversation' &&
+    args[1] == 'execute' &&
+    args[2] == '--stdin-json' &&
+    args[3] == 'true';
 
 Future<_BoundedProcessOutput> _collectBoundedProcessOutput(
   Stream<List<int>> stream,

@@ -307,7 +307,8 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
     ControlDisposition::Accepted
 }
 
-pub(in crate::platform) fn shutdown_all() -> ControlDisposition {
+#[cfg(test)]
+pub(in crate::platform) fn clear_all_for_test() -> ControlDisposition {
     let managed = {
         let Ok(mut registry) = supervisor().lock() else {
             return ControlDisposition::TransportUnavailable;

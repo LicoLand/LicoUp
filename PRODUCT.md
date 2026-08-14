@@ -97,7 +97,6 @@ synchronized release.
 - LicoUp holds private keys, selects and invokes local Providers, executes a
   pinned Protocol Line, and owns plaintext, history, backups, endpoint
   admission, approval, local effects, and the User's final trust decision.
-- Meshrix owns local plugin, service, operation, and execution admission.
 - A Station owns no trust decision.
 
 These states must remain distinct and must never collapse into a generic
@@ -124,6 +123,12 @@ Transport protection does not prevent the approved destination from reading
 the exact content deliberately sent to it. A Protected Transfer to a Peer
 Endpoint is distinct from an external service request.
 
+A Communication Channel on the Gateway Runtime is an admitted external channel.
+Enabling the runtime and approving a Telegram DM pairing grants a scoped bridge
+authorization for that bot and Telegram user to exchange ordinary turns with a
+bound local Agent. Revoking pairing ends the grant. Content sent through
+Telegram remains readable by Telegram.
+
 ## Platform and release model
 
 LicoUp targets desktop and mobile platforms through independent adaptation and
@@ -140,7 +145,6 @@ LicoUp does not:
   website;
 - define, stabilize, or silently fork a product-specific endpoint wire
   protocol;
-- require Meshrix for its default conversation experience;
 - make an official network a mandatory or privileged trust root;
 - treat build availability, preview status, generated artifacts, or plans as
   release or support evidence;

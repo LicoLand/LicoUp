@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { READINESS_FILE, READINESS_SCHEMA_VERSION } from "./constants.mjs";
 import { ReducerError, fail } from "./errors.mjs";
+import { maybeReloadGatewayInventory } from "./gateway-reload.mjs";
 import { loadCanonicalInputs } from "./inputs.mjs";
 import { canonicalJson, parseJson } from "./json.mjs";
 import { reduceConversationParity } from "./reduce.mjs";
@@ -76,8 +77,19 @@ export function runCli(argv = process.argv.slice(2)) {
   });
 
   if (options.write) {
-    writeFileSync(READINESS_FILE, `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
-    return receipt("write", result);
+    const nextText = `${JSON.stringify(result, null, 2)}\n`;
+    let previousText = null;
+    if (existsSync(READINESS_FILE)) {
+      previousText = readFileSync(READINESS_FILE, "utf8");
+    }
+    writeFileSync(READINESS_FILE, nextText, { mode: 0o600 });
+    const receiptBody = receipt("write", result);
+    if (previousText !== nextText) {
+      receiptBody.gatewayReload = maybeReloadGatewayInventory(nextText);
+    } else {
+      receiptBody.gatewayReload = { attempted: false, reason: "unchanged" };
+    }
+    return receiptBody;
   }
   if (options.check) {
     const current = parseJson(

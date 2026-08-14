@@ -13,6 +13,28 @@ class ClientUpdateSettingsCard extends StatelessWidget {
 
   final ClientController controller;
 
+  void _checkFromGithub() {
+    unawaited(controller.checkClientUpdateFromGithub());
+  }
+
+  void _downloadFromGithub() {
+    unawaited(controller.downloadClientUpdateFromGithub());
+  }
+
+  void _applyAndRestart() {
+    unawaited(
+      controller.applyClientUpdateThenExit(() {
+        // The detached native update script replaces the installation and
+        // relaunches the new version after this process exits.
+        controller.clientProcessLifecycle.exitSuccess();
+      }),
+    );
+  }
+
+  void _rollback() {
+    unawaited(controller.rollbackClientUpdate());
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
@@ -69,6 +91,12 @@ class ClientUpdateSettingsCard extends StatelessWidget {
           ),
           _InfoLine(label: strings.channel, value: status.channel),
           _InfoLine(
+            label: strings.updateSource,
+            value: controller.clientUpdateSource == 'github'
+                ? strings.updateSourceGithub
+                : strings.updateSourceLocal,
+          ),
+          _InfoLine(
             label: strings.status,
             value: _phaseLabel(strings, status.phase),
           ),
@@ -84,21 +112,6 @@ class ClientUpdateSettingsCard extends StatelessWidget {
             value: status.productionReady ? strings.yes : strings.no,
           ),
           const SizedBox(height: LicoContentSpacing.item),
-          Material(
-            color: Colors.transparent,
-            child: SwitchListTile.adaptive(
-              key: const Key('client-update-auto-download-wifi'),
-              contentPadding: EdgeInsets.zero,
-              title: Text(strings.autoDownloadUpdatesOverWifi),
-              subtitle: Text(strings.autoDownloadUpdatesOverWifiHint),
-              value: controller.autoDownloadClientUpdatesOverWifi,
-              onChanged: busy
-                  ? null
-                  : (value) => unawaited(
-                      controller.setAutoDownloadClientUpdatesOverWifi(value),
-                    ),
-            ),
-          ),
           Wrap(
             spacing: LicoContentSpacing.compact,
             runSpacing: LicoContentSpacing.compact,
@@ -111,18 +124,15 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                 child: Text(strings.refresh),
               ),
               FilledButton(
-                key: const Key('client-update-check'),
-                onPressed: busy
-                    ? null
-                    : () => unawaited(controller.checkClientUpdate()),
+                key: const Key('client-update-check-github'),
+                onPressed: busy ? null : _checkFromGithub,
                 child: Text(strings.checkUpdate),
               ),
               OutlinedButton(
-                key: const Key('client-update-download'),
+                key: const Key('client-update-download-github'),
                 onPressed: busy || !status.updateAvailable
                     ? null
-                    : () =>
-                          unawaited(controller.downloadClientUpdateArtifact()),
+                    : _downloadFromGithub,
                 child: Text(strings.downloadUpdate),
               ),
               OutlinedButton(
@@ -137,11 +147,28 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                 child: Text(strings.verifyUpdate),
               ),
               OutlinedButton(
-                key: const Key('client-update-apply'),
+                key: const Key('client-update-apply-plan'),
                 onPressed: busy || status.phase != ClientUpdatePhase.verified
                     ? null
-                    : () => unawaited(controller.applyClientUpdate()),
-                child: Text(strings.installUpdate),
+                    : () => unawaited(controller.planClientUpdateApply()),
+                child: Text(strings.planUpdateInstall),
+              ),
+              FilledButton(
+                key: const Key('client-update-apply-restart'),
+                onPressed:
+                    busy ||
+                        (status.phase != ClientUpdatePhase.verified &&
+                            status.phase != ClientUpdatePhase.applied)
+                    ? null
+                    : _applyAndRestart,
+                child: Text(strings.applyUpdateRestart),
+              ),
+              OutlinedButton(
+                key: const Key('client-update-rollback'),
+                onPressed: busy || status.phase != ClientUpdatePhase.rolledBack
+                    ? null
+                    : _rollback,
+                child: Text(strings.rollbackUpdate),
               ),
             ],
           ),
@@ -163,6 +190,7 @@ class ClientUpdateSettingsCard extends StatelessWidget {
       ClientUpdatePhase.verified => strings.clientUpdatePhaseVerified,
       ClientUpdatePhase.applyPlanned => strings.clientUpdatePhaseApplyPlanned,
       ClientUpdatePhase.applied => strings.clientUpdatePhaseApplied,
+      ClientUpdatePhase.rolledBack => strings.clientUpdatePhaseRolledBack,
       ClientUpdatePhase.failed => strings.clientUpdatePhaseFailed,
     };
   }

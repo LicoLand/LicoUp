@@ -226,6 +226,10 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
             scan_config.clone(),
         ));
     }
+    if adapter == HistoryAdapter::Codex {
+        let observation = CodexRuntimeObservation::capture();
+        mark_codex_runtime_activity(&mut sessions, &observation);
+    }
     if adapter == HistoryAdapter::Codex && !scan_config.has_single_session_filter() {
         apply_codex_session_index_titles(params, &mut sessions);
     }

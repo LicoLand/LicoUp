@@ -35,13 +35,9 @@ export async function checkConversationBridges(context, { packagedTargets, conve
       ".dart"
     )
   ]);
-  const agentOrchestrationControllerSource = await readJoinedText([
-    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_controller.dart",
-    ...await collectSourceFiles(
-      "apps/desktop/lib/src/application/features/agents/orchestration",
-      ".dart"
-    )
-  ]);
+  const conversationContractSource = await readText(
+    "apps/desktop/lib/src/contracts/generated/conversation.g.dart"
+  );
   const agentConversationGatewayAdapterSource = await readDartSourceByBasename(
     "agent_conversation_gateway_adapter.dart"
   );
@@ -58,12 +54,25 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     "direct agent conversation state must depend on the gateway port through its composition adapter"
   );
   assert(
-    agentOrchestrationControllerSource.includes("agentOrchestrationManagerTarget") &&
-      agentOrchestrationControllerSource.includes("agentOrchestrationSubordinates"),
-    "main-agent selection must derive the subordinate pool locally without owning workflow authority"
+    conversationContractSource.includes("enum ConversationPrincipalKind") &&
+      conversationContractSource.includes("enum ConversationMembershipAccess") &&
+      conversationContractSource.includes("enum ConversationMembershipStatus") &&
+      conversationContractSource.includes("enum ConversationTurnState") &&
+      conversationContractSource.includes("conversation.message.post"),
+    "direct and group collaboration must share the generated canonical Conversation contract"
+  );
+  assert(
+    !await exists(
+      "apps/desktop/lib/src/application/features/agents/orchestration"
+    ) &&
+      !await exists("apps/desktop/lib/src/contracts/agent_orchestration_target.dart"),
+    "retired Flutter orchestration owners must stay removed"
   );
   for (const [relativePath, source] of [
-    ["agent_conversation_gateway.dart", agentConversationGatewaySource]
+    ["agent_conversation_gateway.dart", agentConversationGatewaySource],
+    ["agent_workspace_coordinator.dart", agentWorkspaceCoordinatorSource],
+    ["agent_conversation_controller.dart", agentConversationControllerSource],
+    ["conversation.g.dart", conversationContractSource]
   ]) {
     assert(
       !source.includes("package:licoup/src/backend/") &&

@@ -1,13 +1,11 @@
 use std::collections::HashMap;
-use std::ffi::c_void;
 use std::fmt;
 use std::ptr;
 use std::sync::{
     Arc, Condvar, Mutex, OnceLock,
     atomic::{AtomicBool, Ordering},
-    mpsc,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::{Result, anyhow};
 use core_foundation::base::{CFType, TCFType};
@@ -18,9 +16,6 @@ use core_foundation::string::CFString;
 use core_foundation_sys::base::{CFGetTypeID, CFRelease, CFTypeRef};
 use core_foundation_sys::data::CFDataRef;
 use core_foundation_sys::string::CFStringRef;
-use objc2::rc::Retained;
-use objc2_foundation::{NSError, NSString};
-use objc2_local_authentication::{LAContext, LAError, LAPolicy};
 use security_framework::access_control::{ProtectionMode, SecAccessControl};
 use security_framework_sys::access_control::kSecAccessControlUserPresence;
 use security_framework_sys::base::{
@@ -55,27 +50,9 @@ macro_rules! security_framework_static {
 }
 
 const MACOS_AUTHORIZATION_CACHE_MAX_BATCHES: usize = 16;
-const SYSTEM_AUTHORIZATION_TIMEOUT: Duration = Duration::from_secs(120);
 const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
 
 static TEST_USER_PRESENCE_DISABLED: AtomicBool = AtomicBool::new(false);
-
-#[derive(Clone)]
-struct ApplicationAuthorization {
-    context: Retained<LAContext>,
-    effect_lock: Arc<Mutex<()>>,
-}
-
-// SAFETY: the retained LAContext is used only by synchronous
-// LocalAuthentication/Security.framework calls. All Keychain effects that use
-// the context are serialized by effect_lock.
-unsafe impl Send for ApplicationAuthorization {}
-// SAFETY: see the Send justification above; callers only clone the retained
-// reference and never mutate LAContext outside the serialized native APIs.
-unsafe impl Sync for ApplicationAuthorization {}
-
-static APPLICATION_AUTHORIZATION: OnceLock<Mutex<Option<ApplicationAuthorization>>> =
-    OnceLock::new();
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MacosKeychainBackend {
@@ -85,44 +62,12 @@ enum MacosKeychainBackend {
 
 static SELECTED_KEYCHAIN_BACKEND: OnceLock<Option<MacosKeychainBackend>> = OnceLock::new();
 
-fn application_authorization() -> &'static Mutex<Option<ApplicationAuthorization>> {
-    APPLICATION_AUTHORIZATION.get_or_init(|| Mutex::new(None))
-}
-
-fn cached_application_authorization() -> Result<Option<ApplicationAuthorization>> {
-    application_authorization()
-        .lock()
-        .map(|authorization| authorization.clone())
-        .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))
-}
-
-fn remember_application_authorization(authorization: ApplicationAuthorization) -> Result<()> {
-    *application_authorization()
-        .lock()
-        .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))? =
-        Some(authorization);
-    Ok(())
-}
-
-fn forget_application_authorization() {
-    if let Ok(mut authorization) = application_authorization().lock() {
-        *authorization = None;
-    }
-}
-
 #[derive(Clone)]
 pub struct MacosAuthorizationContext {
     batch_binding_digest: [u8; 32],
-    context: Option<Retained<LAContext>>,
+    context: Option<crate::platform::user_presence::UserPresenceSession>,
     effect_lock: Arc<Mutex<()>>,
 }
-
-// SAFETY: the retained LAContext is only submitted to synchronous
-// LocalAuthentication/Security.framework APIs. Effect submission is serialized by effect_lock.
-unsafe impl Send for MacosAuthorizationContext {}
-// SAFETY: consumers borrow the retained context immutably and effect_lock prevents concurrent
-// Security.framework use of one native context.
-unsafe impl Sync for MacosAuthorizationContext {}
 
 impl MacosAuthorizationContext {
     pub fn authorize(
@@ -151,17 +96,11 @@ impl MacosAuthorizationContext {
         }))
     }
 
-    fn native_context(&self) -> Result<&LAContext> {
-        self.context
-            .as_deref()
-            .ok_or_else(|| anyhow!("secure_mesh_presence_native_context_unavailable"))
-    }
-
     fn as_cf_type(&self) -> Result<CFType> {
-        let context = self.native_context()?;
-        let pointer = (context as *const LAContext).cast::<c_void>() as CFTypeRef;
-        // SAFETY: self retains the Objective-C object for the returned get-rule wrapper.
-        Ok(unsafe { CFType::wrap_under_get_rule(pointer) })
+        self.context
+            .as_ref()
+            .map(crate::platform::user_presence::UserPresenceSession::as_cf_type)
+            .ok_or_else(|| anyhow!("secure_mesh_presence_native_context_unavailable"))
     }
 }
 
@@ -1379,7 +1318,7 @@ fn status_result(operation: &'static str, status: i32) -> Result<()> {
         // A lock, logout, credential change, or invalidated LAContext revokes
         // the process-scoped grant. The next explicit operation authenticates
         // again instead of silently falling back to a password prompt.
-        forget_application_authorization();
+        crate::platform::user_presence::invalidate();
         return Err(anyhow!("secure_mesh_authorization_required"));
     }
     let code = match operation {
@@ -1403,44 +1342,25 @@ impl LocalAuthenticationPrompt {
 
 impl MacosPresencePromptPort for LocalAuthenticationPrompt {
     fn prompt(&mut self, request: &SecretStorePresenceBatchRequest) -> Result<PresenceDecision> {
-        if let Some(cached) = cached_application_authorization()? {
-            self.context = Some(MacosAuthorizationContext {
-                batch_binding_digest: [0; 32],
-                context: Some(cached.context),
-                effect_lock: cached.effect_lock,
-            });
-            return Ok(PresenceDecision::Approved);
+        match crate::platform::user_presence::authorize(
+            request.reason(),
+            "secure-mesh-secret-store",
+        ) {
+            Ok(session) => {
+                let effect_lock = session.effect_lock();
+                self.context = Some(MacosAuthorizationContext {
+                    batch_binding_digest: [0; 32],
+                    context: Some(session),
+                    effect_lock,
+                });
+                Ok(PresenceDecision::Approved)
+            }
+            Err(error) if user_presence_was_cancelled(&error) => Ok(PresenceDecision::Cancelled),
+            Err(error) if error.to_string() == "user_presence_authorization_timed_out" => {
+                Ok(PresenceDecision::TimedOut)
+            }
+            Err(_) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
         }
-        // SAFETY: LAContext::new returns a retained initialized Objective-C object.
-        let context = unsafe { LAContext::new() };
-        let reason = NSString::from_str(request.reason());
-        // SAFETY: all Objective-C values remain retained for these synchronous property updates.
-        unsafe {
-            context.setLocalizedReason(&reason);
-            context.setInteractionNotAllowed(false);
-            context.setTouchIDAuthenticationAllowableReuseDuration(
-                MAX_SECRET_STORE_PRESENCE_GRANT_TTL.as_secs_f64(),
-            );
-        }
-        let policy = preferred_system_authorization_policy(&context)?;
-        let decision = evaluate_system_authorization_once(&context, policy, &reason)?;
-        if decision == PresenceDecision::Approved {
-            // Keep the successfully evaluated context alive for this app
-            // process. Keychain operations receive it explicitly and are not
-            // allowed to open their own password prompts.
-            unsafe { context.setInteractionNotAllowed(true) };
-            let authorization = ApplicationAuthorization {
-                context: context.clone(),
-                effect_lock: Arc::new(Mutex::new(())),
-            };
-            remember_application_authorization(authorization.clone())?;
-            self.context = Some(MacosAuthorizationContext {
-                batch_binding_digest: [0; 32],
-                context: Some(authorization.context),
-                effect_lock: authorization.effect_lock,
-            });
-        }
-        Ok(decision)
     }
 
     fn take_authorization_context(&mut self) -> Option<MacosAuthorizationContext> {
@@ -1448,68 +1368,19 @@ impl MacosPresencePromptPort for LocalAuthenticationPrompt {
     }
 }
 
-fn preferred_system_authorization_policy(context: &LAContext) -> Result<LAPolicy> {
-    // Device-owner authentication is one native flow: macOS can satisfy it
-    // with Touch ID or a single password fallback without a second app prompt.
-    // SAFETY: context is retained and the policy is SDK-defined.
-    unsafe {
-        context
-            .canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)
-            .map_err(|_| anyhow!("secure_mesh_presence_native_authentication_unavailable"))?;
-    }
-    Ok(LAPolicy::DeviceOwnerAuthentication)
-}
-
-fn evaluate_system_authorization_once(
-    context: &LAContext,
-    policy: LAPolicy,
-    reason: &NSString,
-) -> Result<PresenceDecision> {
-    let (sender, receiver) = mpsc::channel();
-    let reply = block2::RcBlock::new(move |success: objc2::runtime::Bool, error: *mut NSError| {
-        let error_code = if error.is_null() {
-            None
-        } else {
-            // SAFETY: the callback owns a valid NSError pointer for this call.
-            Some(unsafe { (*error).code() })
-        };
-        let _ = sender.send((success.as_bool(), error_code));
-    });
-    // SAFETY: context, reason, and retained block remain valid for submission.
-    unsafe {
-        context.evaluatePolicy_localizedReason_reply(policy, reason, &reply);
-    }
-    match receiver.recv_timeout(SYSTEM_AUTHORIZATION_TIMEOUT) {
-        Ok((true, _)) => Ok(PresenceDecision::Approved),
-        Ok((false, Some(code)))
-            if code == LAError::UserCancel.0
-                || code == LAError::SystemCancel.0
-                || code == LAError::AppCancel.0 =>
-        {
-            Ok(PresenceDecision::Cancelled)
-        }
-        Ok((false, _)) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            // SAFETY: context remains retained and invalidate is the documented cancellation.
-            unsafe { context.invalidate() };
-            Ok(PresenceDecision::TimedOut)
-        }
-        Err(_) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
-    }
+fn user_presence_was_cancelled(error: &anyhow::Error) -> bool {
+    let code = error.to_string();
+    code.ends_with(":user_cancelled")
+        || code.ends_with(":system_cancelled")
+        || code.ends_with(":application_cancelled")
+        || code.ends_with(":password_fallback_blocked")
 }
 
 pub fn available() -> bool {
     if TEST_USER_PRESENCE_DISABLED.load(Ordering::SeqCst) || cfg!(test) {
         return false;
     }
-    // SAFETY: constructor returns a retained initialized context.
-    let context = unsafe { LAContext::new() };
-    // SAFETY: context is live and the policy value is SDK-defined.
-    unsafe {
-        context
-            .canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)
-            .is_ok()
-    }
+    crate::platform::user_presence::available()
 }
 
 pub fn capability_facts() -> Vec<CapabilityFact> {
@@ -1543,35 +1414,6 @@ fn sec_string_value(value: CFStringRef) -> CFType {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct ApplicationAuthorizationReset;
-
-    impl Drop for ApplicationAuthorizationReset {
-        fn drop(&mut self) {
-            forget_application_authorization();
-        }
-    }
-
-    #[test]
-    fn application_authorization_reuses_one_native_context_until_revoked() {
-        let _reset = ApplicationAuthorizationReset;
-        forget_application_authorization();
-        // SAFETY: constructing LAContext does not evaluate a policy or display
-        // system UI; the test only verifies retained process-local identity.
-        let context = unsafe { LAContext::new() };
-        remember_application_authorization(ApplicationAuthorization {
-            context,
-            effect_lock: Arc::new(Mutex::new(())),
-        })
-        .unwrap();
-
-        let first = cached_application_authorization().unwrap().unwrap();
-        let second = cached_application_authorization().unwrap().unwrap();
-        assert!(std::ptr::eq::<LAContext>(&*first.context, &*second.context));
-
-        forget_application_authorization();
-        assert!(cached_application_authorization().unwrap().is_none());
-    }
 
     #[test]
     fn update_failure_never_falls_through_to_add() {

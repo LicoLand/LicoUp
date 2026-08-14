@@ -1,6 +1,6 @@
 use super::super::generated_context::{
-    background_context_prompt_text, extract_user_authored_text, generated_control_text,
-    strip_generated_context_blocks,
+    background_context_prompt_text, extract_user_authored_text, extract_user_image_attachments,
+    generated_control_text, strip_generated_context_blocks,
 };
 
 #[test]
@@ -11,6 +11,27 @@ fn generated_context_blocks_are_removed_without_dropping_trailing_user_text() {
         extract_user_authored_text("## My request for Codex:\nDo the bounded change"),
         "\nDo the bounded change"
     );
+    assert_eq!(
+        extract_user_authored_text("## My request:\nRender the screenshot"),
+        "\nRender the screenshot"
+    );
+    assert_eq!(
+        extract_user_authored_text(
+            "<timestamp>Saturday</timestamp>\n<userquery>Keep the real question</userquery>"
+        ),
+        "Keep the real question"
+    );
+}
+
+#[test]
+fn generated_image_wrapper_projects_a_typed_local_attachment() {
+    let text = "# Files mentioned by the user:\n\n## screenshot.png: /fixture-root/screenshot.png\n\n## My request:\nRender this image\n<image name=[Image #1] path=\"/fixture-root/screenshot.png\">\nprivate image metadata\n</image>";
+    let images = extract_user_image_attachments(text);
+
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0]["mediaType"], "image/png");
+    assert_eq!(images[0]["path"], "/fixture-root/screenshot.png");
+    assert_eq!(images[0]["name"], "screenshot.png");
 }
 
 #[test]

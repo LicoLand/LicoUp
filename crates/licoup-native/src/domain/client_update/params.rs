@@ -3,10 +3,17 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Result, bail, ensure};
 use serde_json::Value;
 
-pub(super) fn product_version() -> String {
-    option_env!("LICO_CLIENT_PRODUCT_VERSION")
+pub(super) fn product_version(params: &Value) -> Result<String> {
+    if let Some(override_version) = json_text(params, &["currentVersion", "current-version"]) {
+        ensure!(
+            semver::Version::parse(&override_version).is_ok(),
+            "client update currentVersion is not valid semantic versioning"
+        );
+        return Ok(override_version);
+    }
+    Ok(option_env!("LICO_CLIENT_PRODUCT_VERSION")
         .unwrap_or("0.0.1-alpha")
-        .to_string()
+        .to_string())
 }
 
 pub(super) fn json_text(params: &Value, keys: &[&str]) -> Option<String> {
@@ -53,7 +60,6 @@ pub(super) fn selected_target_id(params: &Value) -> Result<String> {
 fn default_target_id() -> Result<String> {
     let target = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => "macos-arm64",
-        ("macos", "x86_64") => "macos-x64",
         ("windows", "aarch64") => "windows-arm64",
         ("windows", "x86_64") => "windows-x64",
         ("linux", "aarch64") => "linux-glibc-arm64",
@@ -90,6 +96,19 @@ pub(super) fn validate_relative_file_name(value: &str, label: &str) -> Result<St
         "{label} must be a single relative file name"
     );
     Ok(value.to_string())
+}
+
+pub(super) fn bool_param(params: &Value, key: &str) -> Result<bool> {
+    match params.get(key) {
+        None => Ok(false),
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(Value::String(text)) => match text.trim() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => bail!("{key} must be true or false"),
+        },
+        Some(_) => bail!("{key} must be true or false"),
+    }
 }
 
 pub(super) fn validate_bundle_id(value: &str) -> Result<String> {
