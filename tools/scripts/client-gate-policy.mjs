@@ -90,7 +90,8 @@ export const CLIENT_GATE_LANES = Object.freeze({
 
 export const CLIENT_RELEASE_TARGETS = Object.freeze({
   "macos-direct-arm64": Object.freeze({
-    publicationBlocked: true,
+    publicationBlocked: false,
+    localOnly: true,
     artifactName: "licoup-macos-direct-arm64",
     installerArtifact: "LicoUp-macos-arm64.dmg",
     updateArtifact: "LicoUp-macos-arm64-update.zip",
@@ -105,6 +106,7 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
   }),
   "android-direct-arm64-v8a": Object.freeze({
     publicationBlocked: false,
+    localOnly: false,
     artifactName: "licoup-android-direct-arm64-v8a",
     installerArtifact: "LicoUp-android-arm64.apk",
     files: Object.freeze([
