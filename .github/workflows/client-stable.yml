@@ -1,0 +1,49 @@
+name: Stable client
+
+on:
+  pull_request:
+    branches:
+      - stable
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-client-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  stable-client:
+    name: Stable client
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      LICO_CLIENT_RELEASE_TARGETS: macos-arm64
+    steps:
+      - name: Verify promotion source
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"
+          test "$HEAD_BRANCH" = nightly
+          test "$(uname -m)" = arm64
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.44.2"
+          cache: true
+      - run: npm ci
+      - name: Populate the locked Flutter package cache
+        working-directory: apps/desktop
+        run: flutter pub get --enforce-lockfile
+      - name: Build the stable client once
+        run: npm run client:build:macos
+      - name: Install, launch, and prove stable survival
+        run: npm run client:install:macos -- --launch-installed --verify-stable
