@@ -2,10 +2,10 @@
 
 use super::argv::{self, ArgvKind};
 use super::contract::{
-    RecipeRegistryDocument, ADAPTATION_DEEP, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, HOST_SCOPE,
-    PARTIAL_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY, SCHEMA_VERSION,
+    ADAPTATION_DEEP, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, HOST_SCOPE, PARTIAL_ADAPTATION_ID,
+    PLUGIN_MANAGEMENT_BOUNDARY, RecipeRegistryDocument, SCHEMA_VERSION,
 };
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{Result, anyhow, ensure};
 use std::sync::OnceLock;
 use url::Url;
 

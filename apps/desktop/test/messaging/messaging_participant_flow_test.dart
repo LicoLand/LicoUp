@@ -471,6 +471,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'scroll-to-latest appears when not at bottom and tap jumps to latest',
+    (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      final chronological = [
+        for (var index = 0; index < 40; index++)
+          _messageItem(
+            'k$index',
+            index.isEven ? 'user' : 'assistant',
+            'message-$index',
+            _at(1, 0, index),
+          ),
+      ];
+      await _pumpFlow(
+        tester,
+        chronological.reversed.toList(),
+        scrollController: controller,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('conversation-scroll-to-latest')),
+        findsNothing,
+      );
+      expect(controller.hasClients, isTrue);
+      expect(controller.position.maxScrollExtent, greaterThan(48));
+
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('conversation-scroll-to-latest')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('conversation-scroll-to-latest')));
+      await tester.pump();
+
+      expect(controller.offset, 0);
+      expect(
+        find.byKey(const Key('conversation-scroll-to-latest')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('subagent cards inside the paging window appear on scroll', (
     tester,
   ) async {
@@ -704,8 +752,9 @@ ConversationProcessTimelineItem _processItem(
 
 Future<void> _pumpFlow(
   WidgetTester tester,
-  List<ConversationTimelineItem> newestFirst,
-) async {
+  List<ConversationTimelineItem> newestFirst, {
+  ScrollController? scrollController,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -732,6 +781,7 @@ Future<void> _pumpFlow(
               confidence: 1,
               adapterStatus: 'implemented',
             ),
+            scrollController: scrollController,
           ),
         ),
       ),

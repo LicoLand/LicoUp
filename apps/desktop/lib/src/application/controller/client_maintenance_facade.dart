@@ -34,10 +34,18 @@ mixin ClientMaintenanceFacade {
 
   String get clientUpdateRepo => clientUpdateController.repo;
 
+  String get clientUpdateSourceAddress => clientUpdateController.sourceAddress;
+
   bool get isClientUpdateBusy => clientUpdateController.busy;
 
-  Future<void> refreshClientUpdateStatus({String channel = 'stable'}) =>
-      clientUpdateController.refresh(channel: channel);
+  bool get canCheckClientUpdate => clientUpdateController.canCheckUpdate;
+
+  bool get canDownloadClientUpdate => clientUpdateController.canDownloadUpdate;
+
+  bool get canApplyClientUpdate => clientUpdateController.canApplyUpdate;
+
+  Future<void> hydrateClientUpdateIdentity({String channel = 'stable'}) =>
+      clientUpdateController.hydrateIdentity(channel: channel);
 
   Future<void> checkClientUpdate({
     required String manifestPath,
@@ -51,8 +59,9 @@ mixin ClientMaintenanceFacade {
     revocationPath: revocationPath,
   );
 
-  Future<void> checkClientUpdateFromGithub({String repo = 'LicoLand/LicoUp'}) =>
-      clientUpdateController.checkGithub(repo: repo);
+  Future<void> checkClientUpdateFromGithub({
+    String repo = kClientUpdateGithubRepo,
+  }) => clientUpdateController.checkGithub(repo: repo);
 
   Future<void> downloadClientUpdateArtifact({required String sourcePath}) =>
       clientUpdateController.download(sourcePath: sourcePath);
@@ -60,14 +69,8 @@ mixin ClientMaintenanceFacade {
   Future<void> downloadClientUpdateFromGithub() =>
       clientUpdateController.downloadGithub();
 
-  Future<void> verifyClientUpdateArtifact() => clientUpdateController.verify();
-
-  Future<void> planClientUpdateApply() => clientUpdateController.planApply();
-
   Future<void> applyClientUpdateThenExit(void Function() exitClient) =>
       clientUpdateController.applyThenExit(exitClient);
-
-  Future<void> rollbackClientUpdate() => clientUpdateController.rollback();
 
   Future<void> openDirectoryPath(String path, {String caption = ''}) =>
       directoryPathController.open(path, caption: caption);

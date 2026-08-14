@@ -38,6 +38,11 @@ final class AgentHubRecipe {
     this.channelKind = '',
     this.summary = '',
     this.homepage = '',
+    this.installedVersion = '',
+    this.latestVersion = '',
+    this.updateAvailable = false,
+    this.version = '',
+    this.installChannels = const [],
   });
 
   final String id;
@@ -52,6 +57,11 @@ final class AgentHubRecipe {
   final String channelKind;
   final String summary;
   final String homepage;
+  final String installedVersion;
+  final String latestVersion;
+  final bool updateAvailable;
+  final String version;
+  final List<AgentHubInstallChannel> installChannels;
 
   /// Package-manager chip: planned/detected kind, else recipe preferred.
   String get channelChipLabel {
@@ -67,6 +77,46 @@ final class AgentHubRecipe {
       _ => kind,
     };
   }
+
+  /// Concrete installed version from native. Empty when the agent is not
+  /// installed or the probe could not parse a version — never `latest`
+  /// or a localized "unknown".
+  String get versionLabel {
+    final raw = installedVersion.trim();
+    if (raw.isEmpty) {
+      return '';
+    }
+    final lower = raw.toLowerCase();
+    if (lower == 'latest' ||
+        lower == 'latest-stable' ||
+        lower == 'vendor-latest') {
+      return '';
+    }
+    return raw;
+  }
+
+  List<AgentHubInstallChannel> get pickerChannels {
+    if (installChannels.isNotEmpty) {
+      return installChannels;
+    }
+    final kind = selectedChannelKind.trim().isEmpty
+        ? channelKind.trim()
+        : selectedChannelKind.trim();
+    if (kind.isEmpty) {
+      return const [];
+    }
+    return [AgentHubInstallChannel(id: kind, kind: kind)];
+  }
+
+  bool get isOwned => ownership == 'owned';
+
+  bool get isExternal =>
+      ownership == 'external' || ownership == 'external_protected';
+
+  /// Footer 更新/卸载 follow presence, not LicoUp ownership. Discovered
+  /// brew/npm installs are `external` until Hub owns them; the card still
+  /// shows manage actions so the corner is never blank for a present agent.
+  bool get showsManageActions => present;
 
   Uri? get officialHomepage {
     final uri = Uri.tryParse(homepage.trim());
@@ -97,7 +147,72 @@ final class AgentHubRecipe {
       channelKind: (card['channelKind'] as String? ?? '').trim(),
       summary: (card['summary'] as String? ?? '').trim(),
       homepage: (card['homepage'] as String? ?? '').trim(),
+      installedVersion: (card['installedVersion'] as String? ?? '').trim(),
+      latestVersion: (card['latestVersion'] as String? ?? '').trim(),
+      updateAvailable: card['updateAvailable'] == true,
+      version: (card['version'] as String? ?? '').trim(),
+      installChannels: AgentHubInstallChannel.listFromNative(
+        card['installChannels'],
+      ),
     );
+  }
+}
+
+final class AgentHubInstallChannel {
+  const AgentHubInstallChannel({
+    required this.id,
+    required this.kind,
+    this.versionPolicy = 'latest',
+    this.officialSource = '',
+    this.commandPreview = '',
+  });
+
+  final String id;
+  final String kind;
+  final String versionPolicy;
+  final String officialSource;
+  final String commandPreview;
+
+  String get chipLabel {
+    return switch (kind) {
+      'npm' => 'npm',
+      'homebrew' => 'brew',
+      'winget' => 'winget',
+      'official-artifact' => 'official',
+      '' => 'official',
+      _ => kind,
+    };
+  }
+
+  Uri? get httpsSource {
+    final uri = Uri.tryParse(officialSource.trim());
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'https' ||
+        uri.host.isEmpty) {
+      return null;
+    }
+    return uri;
+  }
+
+  static List<AgentHubInstallChannel> listFromNative(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final card = Map<String, dynamic>.from(item);
+          return AgentHubInstallChannel(
+            id: (card['id'] as String? ?? '').trim(),
+            kind: (card['kind'] as String? ?? '').trim(),
+            versionPolicy: (card['versionPolicy'] as String? ?? 'latest')
+                .trim(),
+            officialSource: (card['officialSource'] as String? ?? '').trim(),
+            commandPreview: (card['commandPreview'] as String? ?? '').trim(),
+          );
+        })
+        .where((channel) => channel.id.isNotEmpty)
+        .toList();
   }
 }
 
@@ -117,10 +232,14 @@ final class AgentHubPlanRequest {
   const AgentHubPlanRequest({
     required this.recipeId,
     this.operation = 'install',
+    this.channelId = '',
+    this.version = 'latest',
   });
 
   final String recipeId;
   final String operation;
+  final String channelId;
+  final String version;
 }
 
 final class AgentHubConfirmRequest {
@@ -133,11 +252,15 @@ final class AgentHubInstallRequest {
   const AgentHubInstallRequest({
     required this.recipeId,
     this.operation = 'install',
+    this.channelId = '',
+    this.version = 'latest',
     this.cancel = false,
   });
 
   final String recipeId;
   final String operation;
+  final String channelId;
+  final String version;
   final bool cancel;
 }
 
@@ -203,6 +326,10 @@ abstract interface class AgentHubCapabilityPort {
 /// Callers must not invent a GUI argv/stdio product path. Recipe identity
 /// comes from the native warehouse catalog, never a second Dart recipe list.
 abstract interface class AgentHubEnginePort {
+  /// Last successful catalog snapshot. Long-lived engines keep this across
+  /// destination rebuilds so Hub can paint immediately on reopen.
+  AgentHubCatalogSnapshot? get cachedCatalog;
+
   Future<AgentHubCatalogSnapshot> catalog();
 
   Future<AgentHubOperationResult> plan(AgentHubPlanRequest request);

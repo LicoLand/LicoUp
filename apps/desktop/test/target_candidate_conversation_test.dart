@@ -36,12 +36,42 @@ void main() {
         adapterStatus: 'implemented',
         adapterCapabilities: const {'conversationDriver': 'implemented'},
         location: 'virtual-machine',
+        manual: true,
         runtimeConnection: {
           'kind': 'ssh',
           'host': 'vm.example',
           'remoteExecutable': 'openclaw',
           'workingDirectory': workingDirectory,
         },
+      );
+      final automaticVirtualMachine = TargetCandidate(
+        target: 'hermes',
+        label: 'Hermes Agent',
+        kind: 'cli',
+        status: 'detected',
+        configured: true,
+        confidence: 1,
+        binaryPath: 'hermes',
+        adapterStatus: 'implemented',
+        adapterCapabilities: const {'conversationDriver': 'implemented'},
+        location: 'virtual-machine',
+        scanSource: 'virtual-machine-orbstack',
+        runtimeConnection: {
+          'kind': 'ssh',
+          'host': 'orb',
+          'remoteExecutable': 'hermes',
+          'workingDirectory': workingDirectory,
+          'runtimeProtocol': 'hermes-tui-gateway',
+        },
+      );
+      final absentLocal = TargetCandidate(
+        target: 'openclaw',
+        label: 'OpenClaw',
+        kind: 'cli',
+        status: 'not-detected',
+        configured: false,
+        confidence: 0.15,
+        adapterStatus: 'implemented',
       );
       final unsupportedVirtualMachine = TargetCandidate(
         target: 'codex',
@@ -65,6 +95,8 @@ void main() {
       expect(virtualMachine.isConversationAgent, isTrue);
       expect(virtualMachine.canRelayRuntime, isTrue);
       expect(virtualMachine.remoteWorkingDirectory, workingDirectory);
+      expect(automaticVirtualMachine.isConversationAgent, isFalse);
+      expect(absentLocal.isConversationAgent, isFalse);
       expect(unsupportedVirtualMachine.isConversationAgent, isFalse);
     },
   );

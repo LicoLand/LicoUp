@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+export 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 
 const _appearanceSegmentLabelWidth = 72.0;
 const _appearanceToggleWidth = 320.0;
@@ -27,14 +29,23 @@ class SettingsDropdownRow<T> extends StatelessWidget {
     required this.title,
     required this.value,
     required this.items,
-    required this.onChanged,
+    required this.onSelected,
+    this.dropdownKey,
+    this.locked = false,
+    this.enabled = true,
   });
 
   final IconData icon;
   final String title;
   final T? value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
+  final List<SettingsDropdownItem<T>> items;
+  final ValueChanged<T> onSelected;
+  final Key? dropdownKey;
+
+  /// Appearance locks this instance. Language and other siblings stay
+  /// interactive unless they pass [locked] themselves.
+  final bool locked;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -56,12 +67,13 @@ class SettingsDropdownRow<T> extends StatelessWidget {
               Expanded(child: Text(title, style: titleStyle)),
             ],
           );
-          final dropdown = DropdownButtonFormField<T>(
-            initialValue: value,
-            isExpanded: true,
-            decoration: _dropdownDecorationWithoutLabel(),
+          final dropdown = SettingsDropdownList<T>(
+            key: dropdownKey,
             items: items,
-            onChanged: onChanged,
+            value: value,
+            onSelected: onSelected,
+            locked: locked,
+            enabled: enabled,
           );
           if (compact) {
             return Column(
@@ -81,103 +93,6 @@ class SettingsDropdownRow<T> extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 320),
                 child: dropdown,
               ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-InputDecoration _dropdownDecorationWithoutLabel() {
-  return const InputDecoration(
-    floatingLabelBehavior: FloatingLabelBehavior.never,
-  );
-}
-
-class SettingsLocaleToggleRow extends StatelessWidget {
-  const SettingsLocaleToggleRow({
-    super.key,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
-    final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
-      color: colors.text,
-      fontWeight: FontWeight.w600,
-    );
-    final segments = [
-      for (final preference in LocalePreference.values)
-        (value: preference, label: strings.localePreferenceLabel(preference)),
-    ];
-    final toggle = SizedBox(
-      width: _appearanceToggleWidth,
-      child: DecoratedBox(
-        key: const Key('settings-locale-toggle'),
-        decoration: BoxDecoration(
-          color: colors.surfaceLow,
-          borderRadius: BorderRadius.circular(LicoRadius.chip),
-          border: Border.all(color: colors.line),
-        ),
-        child: Row(
-          children: [
-            for (var index = 0; index < segments.length; index++) ...[
-              if (index > 0)
-                Container(width: 1, height: 20, color: colors.line),
-              Expanded(
-                child: _DayNightSegment(
-                  key: Key('settings-locale-${segments[index].value}'),
-                  label: _appearanceSegmentLabel(segments[index].label),
-                  selected: value == segments[index].value,
-                  enabled: true,
-                  onTap: () => onChanged(segments[index].value),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-
-    return Padding(
-      padding: presentation.rowPadding,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 560;
-          final titleRow = Row(
-            children: [
-              Icon(
-                Icons.language_outlined,
-                color: colors.textSecondary,
-                size: 18,
-              ),
-              const SizedBox(width: LicoContentSpacing.compact),
-              Expanded(child: Text(strings.language, style: titleStyle)),
-            ],
-          );
-          if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                titleRow,
-                const SizedBox(height: LicoContentSpacing.compact),
-                toggle,
-              ],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: titleRow),
-              const SizedBox(width: LicoContentSpacing.item),
-              toggle,
             ],
           );
         },
@@ -297,7 +212,6 @@ class SettingsDayNightToggleRow extends StatelessWidget {
 
 class _DayNightSegment extends StatelessWidget {
   const _DayNightSegment({
-    super.key,
     required this.label,
     required this.selected,
     required this.enabled,

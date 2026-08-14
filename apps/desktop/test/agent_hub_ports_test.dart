@@ -33,6 +33,17 @@ List<Map<String, dynamic>> _nativeCards() {
         'channelKind': _channelKind(_ids[index]),
         'summary': _summary(_ids[index]),
         'homepage': _homepage(_ids[index]),
+        'installedVersion': '',
+        'latestVersion': '',
+        'updateAvailable': false,
+        'version': '',
+        'installChannels': [
+          {
+            'id': _channelKind(_ids[index]),
+            'kind': _channelKind(_ids[index]),
+            'versionPolicy': 'latest',
+          },
+        ],
       },
   ];
 }
@@ -103,6 +114,12 @@ void main() {
       );
       expect(snapshot.recipes.first.channelKind, 'homebrew');
       expect(snapshot.recipes.first.channelChipLabel, 'brew');
+      expect(snapshot.recipes.first.versionLabel, isEmpty);
+      expect(snapshot.recipes.first.updateAvailable, isFalse);
+      expect(snapshot.recipes.first.latestVersion, isEmpty);
+      expect(snapshot.recipes.first.installChannels, isNotEmpty);
+      expect(engine.cachedCatalog, isNotNull);
+      expect(engine.cachedCatalog!.recipes, hasLength(8));
       expect(
         snapshot.recipes
             .singleWhere((recipe) => recipe.id == 'pi')
@@ -134,6 +151,37 @@ void main() {
       ]);
     },
   );
+
+  test('native card projects installed version and updateAvailable flag', () {
+    final recipe = AgentHubRecipe.fromNativeCard(<String, dynamic>{
+      'id': 'codex',
+      'label': 'Codex',
+      'adaptation': 'deep',
+      'present': true,
+      'ownership': 'owned',
+      'installedVersion': '0.42.1',
+      'latestVersion': '0.43.0',
+      'updateAvailable': true,
+      'version': '0.42.1',
+    });
+    expect(recipe.versionLabel, '0.42.1');
+    expect(recipe.latestVersion, '0.43.0');
+    expect(recipe.updateAvailable, isTrue);
+    expect(recipe.versionLabel.contains('latest'), isFalse);
+
+    final unknown = AgentHubRecipe.fromNativeCard(<String, dynamic>{
+      'id': 'cursor',
+      'label': 'Cursor',
+      'adaptation': 'deep',
+      'present': true,
+      'installedVersion': '',
+      'latestVersion': '',
+      'updateAvailable': false,
+      'version': 'latest',
+    });
+    expect(unknown.versionLabel, isEmpty);
+    expect(unknown.updateAvailable, isFalse);
+  });
 
   test(
     'plan reuses the catalog discovery snapshot and never scans per card',
@@ -167,6 +215,7 @@ void main() {
       expect(planned.status, AgentHubOperationStatus.completed);
       expect(planned.nativeStatus, 'planned');
       expect(stdinPayloads, hasLength(1));
+      expect(stdinPayloads.single['version'], 'latest');
       final candidates = stdinPayloads.single['discoveryCandidates'] as List;
       expect(candidates, hasLength(8));
       expect(candidates.map((item) => (item as Map)['target']).toList(), _ids);
@@ -264,9 +313,63 @@ void main() {
     const port = UnwiredAgentHubEngine();
     final catalog = await port.catalog();
     final plan = await port.plan(const AgentHubPlanRequest(recipeId: 'codex'));
+    expect(port.cachedCatalog, isNull);
     expect(catalog.recipes, isEmpty);
     expect(plan.status, AgentHubOperationStatus.nativeNotWired);
     expect(plan.ok, isFalse);
+  });
+
+  test('native engine keeps one in-memory catalog cache owner', () async {
+    var catalogCalls = 0;
+    final engine = NativeAgentHubEngine(
+      invoke: (arguments) async {
+        expect(arguments, ['agent-hub', 'catalog']);
+        catalogCalls += 1;
+        return <String, dynamic>{
+          'ok': true,
+          'scanGeneration': catalogCalls,
+          'cards': _nativeCards(),
+        };
+      },
+    );
+    expect(engine.cachedCatalog, isNull);
+    final first = await engine.catalog();
+    expect(first.scanGeneration, 1);
+    expect(engine.cachedCatalog!.scanGeneration, 1);
+    final second = await engine.catalog();
+    expect(second.scanGeneration, 2);
+    expect(engine.cachedCatalog!.scanGeneration, 2);
+    expect(catalogCalls, 2);
+  });
+
+  test('plan forwards selected channel and version in stdin json', () async {
+    Map<String, dynamic>? payload;
+    final engine = NativeAgentHubEngine(
+      invoke: (arguments) async {
+        if (arguments[1] == 'catalog') {
+          return <String, dynamic>{'ok': true, 'cards': _nativeCards()};
+        }
+        payload =
+            jsonDecode(arguments[arguments.indexOf('--stdin-json') + 1])
+                as Map<String, dynamic>;
+        return <String, dynamic>{
+          'ok': true,
+          'status': 'planned',
+          'confirmation': 'agent-hub:install:codex:npm:token',
+          'ownership': 'none',
+        };
+      },
+    );
+    await engine.catalog();
+    await engine.plan(
+      const AgentHubPlanRequest(
+        recipeId: 'codex',
+        channelId: 'npm',
+        version: 'latest',
+      ),
+    );
+    expect(payload!['channelId'], 'npm');
+    expect(payload!['version'], 'latest');
   });
 
   test('external installs stay protected and skip apply argv', () async {
@@ -298,6 +401,12 @@ void main() {
           .singleWhere((recipe) => recipe.id == 'opencode')
           .ownership,
       'external',
+    );
+    expect(
+      snapshot.recipes
+          .singleWhere((recipe) => recipe.id == 'opencode')
+          .showsManageActions,
+      isTrue,
     );
     final planned = await engine.plan(
       const AgentHubPlanRequest(recipeId: 'opencode'),

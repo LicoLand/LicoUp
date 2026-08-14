@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'signed update slice enforces check-download-verify-plan order',
+    'download verifies internally so apply can run without chrome steps',
     () async {
       final gateway = _FakeClientUpdateGateway();
       final updates = <ClientUpdateStatusUpdate>[];
@@ -25,14 +25,14 @@ void main() {
         publicKeysPath: ' keys.json ',
       );
       await controller.download(sourcePath: 'client-update.bin');
-      await controller.verify();
-      await controller.planApply();
 
-      expect(gateway.calls, ['check', 'download', 'verify', 'apply']);
+      expect(gateway.calls, ['status', 'check', 'download', 'verify']);
       expect(controller.manifestPath, 'manifest.json');
       expect(controller.publicKeysPath, 'keys.json');
       expect(controller.artifactReceiptId, startsWith('sha256:'));
-      expect(controller.status.phase, ClientUpdatePhase.applyPlanned);
+      expect(controller.status.phase, ClientUpdatePhase.verified);
+      expect(controller.canDownloadUpdate, isFalse);
+      expect(controller.canApplyUpdate, isTrue);
       expect(controller.busy, isFalse);
     },
   );
@@ -54,6 +54,9 @@ void main() {
 
     expect(controller.status.phase, ClientUpdatePhase.failed);
     expect(controller.status.errorCode, 'client_update_check_failed');
+    expect(controller.status.updateAvailable, isFalse);
+    expect(controller.canDownloadUpdate, isFalse);
+    expect(controller.canApplyUpdate, isFalse);
     expect(updates.last.errorCode, 'client_update_check_failed');
   });
 
@@ -75,43 +78,52 @@ void main() {
 
     expect(controller.status.phase, ClientUpdatePhase.failed);
     expect(controller.status.errorCode, 'client_update_download_failed');
+    expect(controller.canApplyUpdate, isFalse);
     expect(updates.last.errorCode, 'client_update_download_failed');
   });
 
-  test(
-    'github source runs the full check-download-verify-apply-restart flow',
-    () async {
-      final gateway = _FakeClientUpdateGateway();
-      final updates = <ClientUpdateStatusUpdate>[];
-      var exited = false;
-      final controller = ClientUpdateController(
-        gateway: gateway,
-        agentService: _NoopAgentCommandRunner(),
-        onStatus: updates.add,
-        dataDirectory: () async => '/data/lico',
-      );
-      addTearDown(controller.dispose);
+  test('github source check-download-apply uses the running version', () async {
+    final gateway = _FakeClientUpdateGateway();
+    final updates = <ClientUpdateStatusUpdate>[];
+    var exited = false;
+    final controller = ClientUpdateController(
+      gateway: gateway,
+      agentService: _NoopAgentCommandRunner(),
+      onStatus: updates.add,
+      dataDirectory: () async => '/data/lico',
+    );
+    addTearDown(controller.dispose);
 
-      await controller.checkGithub(repo: 'LicoLand/LicoUp');
-      expect(controller.source, 'github');
-      expect(controller.status.phase, ClientUpdatePhase.updateAvailable);
-      expect(controller.status.availableVersion, '1.1.0');
+    await controller.hydrateIdentity();
+    expect(controller.status.currentVersion, '1.0.0');
+    expect(controller.sourceAddress, kClientUpdateGithubReleasesUrl);
 
-      await controller.downloadGithub();
-      expect(controller.status.phase, ClientUpdatePhase.downloaded);
+    await controller.checkGithub(repo: kClientUpdateGithubRepo);
+    expect(controller.source, 'github');
+    expect(controller.status.phase, ClientUpdatePhase.updateAvailable);
+    expect(controller.status.availableVersion, '1.1.0');
+    expect(controller.status.currentVersion, '1.0.0');
+    expect(controller.canDownloadUpdate, isTrue);
+    expect(controller.canApplyUpdate, isFalse);
+    expect(
+      controller.sourceAddress,
+      'https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0',
+    );
 
-      await controller.verify();
-      expect(controller.status.phase, ClientUpdatePhase.verified);
+    await controller.downloadGithub();
+    expect(controller.status.phase, ClientUpdatePhase.verified);
+    expect(controller.canDownloadUpdate, isFalse);
+    expect(controller.canApplyUpdate, isTrue);
 
-      await controller.applyThenExit(() => exited = true);
-      expect(controller.status.phase, ClientUpdatePhase.applied);
-      expect(exited, isTrue);
-      expect(gateway.calls, ['check', 'download', 'verify', 'apply']);
-    },
-  );
+    await controller.applyThenExit(() => exited = true);
+    expect(controller.status.phase, ClientUpdatePhase.applied);
+    expect(exited, isTrue);
+    expect(gateway.calls, ['status', 'check', 'download', 'verify', 'apply']);
+    expect(gateway.currentVersions, everyElement('1.0.0'));
+  });
 
   test('applyThenExit only exits after the applied phase confirms', () async {
-    final gateway = _FakeClientUpdateGateway()..failCheck = false;
+    final gateway = _FakeClientUpdateGateway();
     final updates = <ClientUpdateStatusUpdate>[];
     final controller = ClientUpdateController(
       gateway: gateway,
@@ -121,38 +133,19 @@ void main() {
     addTearDown(controller.dispose);
 
     var exited = false;
-    // Nothing verified yet: apply must be rejected without exiting.
     await controller.applyThenExit(() => exited = true);
     expect(exited, isFalse);
     expect(updates.last.errorCode, 'client_update_apply_invalid');
 
     await controller.checkGithub();
     await controller.downloadGithub();
-    await controller.verify();
     await controller.applyThenExit(() => exited = true);
     expect(exited, isTrue);
     expect(controller.status.phase, ClientUpdatePhase.applied);
   });
 
-  test('github rollback restores the applied phase state', () async {
-    final gateway = _FakeClientUpdateGateway();
-    final controller = ClientUpdateController(
-      gateway: gateway,
-      agentService: _NoopAgentCommandRunner(),
-      onStatus: (_) {},
-    );
-    addTearDown(controller.dispose);
-
-    await controller.checkGithub();
-    await controller.downloadGithub();
-    await controller.verify();
-    await controller.rollback();
-    expect(controller.status.phase, ClientUpdatePhase.rolledBack);
-    expect(gateway.calls.last, 'rollback');
-  });
-
   test(
-    'startup silent check swallows failures without disturbing state',
+    'failed check keeps the running version and does not enable download',
     () async {
       final gateway = _FakeClientUpdateGateway()..failCheck = true;
       final controller = ClientUpdateController(
@@ -162,15 +155,25 @@ void main() {
       );
       addTearDown(controller.dispose);
 
+      await controller.hydrateIdentity();
+      expect(controller.status.currentVersion, '1.0.0');
+      expect(controller.status.phase, ClientUpdatePhase.idle);
+
       await controller.checkGithub();
       expect(controller.status.phase, ClientUpdatePhase.failed);
       expect(controller.status.errorCode, 'client_update_check_failed');
+      expect(controller.status.currentVersion, '1.0.0');
+      expect(controller.status.updateAvailable, isFalse);
+      expect(controller.canCheckUpdate, isTrue);
+      expect(controller.canDownloadUpdate, isFalse);
+      expect(controller.canApplyUpdate, isFalse);
     },
   );
 }
 
 final class _FakeClientUpdateGateway implements ClientUpdateGateway {
   final List<String> calls = [];
+  final List<String> currentVersions = [];
   bool failCheck = false;
   bool mismatchDownloadReceipt = false;
 
@@ -179,12 +182,20 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     currentVersion: '1.0.0',
     channel: 'stable',
     availableVersion: '1.1.0',
-    updateAvailable: true,
+    updateAvailable: phase == ClientUpdatePhase.updateAvailable,
     artifactSha256: 'sha256:artifact',
     artifactReceiptId: 'sha256:receipt',
     manifestSha256: 'sha256:manifest',
     targetId: 'test-target',
+    githubReleaseUrl: 'https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0',
   );
+
+  void _record(String call, String currentVersion) {
+    calls.add(call);
+    if (currentVersion.isNotEmpty) {
+      currentVersions.add(currentVersion);
+    }
+  }
 
   @override
   Future<ClientUpdateStatus> apply({
@@ -195,11 +206,12 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
-    calls.add('apply');
+    _record('apply', currentVersion);
     return _status(
       execute ? ClientUpdatePhase.applied : ClientUpdatePhase.applyPlanned,
     );
@@ -213,11 +225,12 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
-    calls.add('rollback');
+    _record('rollback', currentVersion);
     return _status(ClientUpdatePhase.rolledBack);
   }
 
@@ -229,11 +242,12 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
-    calls.add('check');
+    _record('check', currentVersion);
     if (failCheck) throw StateError('check_failed');
     return _status(ClientUpdatePhase.updateAvailable);
   }
@@ -247,11 +261,12 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
-    calls.add('download');
+    _record('download', currentVersion);
     final status = _status(ClientUpdatePhase.downloaded);
     return mismatchDownloadReceipt
         ? status.copyWith(artifactReceiptId: 'sha256:substituted')
@@ -263,9 +278,17 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     required AgentCommandRunner agentService,
     String channel = 'stable',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stateRoot = '',
-  }) async => _status(ClientUpdatePhase.upToDate);
+    String currentVersion = '',
+  }) async {
+    _record('status', currentVersion);
+    return const ClientUpdateStatus(
+      phase: ClientUpdatePhase.idle,
+      currentVersion: '1.0.0',
+      channel: 'stable',
+    );
+  }
 
   @override
   Future<ClientUpdateStatus> verify({
@@ -275,11 +298,12 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
-    calls.add('verify');
+    _record('verify', currentVersion);
     return _status(ClientUpdatePhase.verified);
   }
 }

@@ -7,17 +7,20 @@ pub(crate) mod confirmation;
 pub(crate) mod contract;
 pub(crate) mod engine;
 pub(crate) mod ownership;
+pub(crate) mod package_versions;
 pub(crate) mod recipes;
 pub(crate) mod selector;
+pub(crate) mod version;
+pub(crate) mod version_check;
 
 use anyhow::Result;
 use serde_json::Value;
 
 pub use contract::{
-    contract_surface, AgentRecipe, InstallChannel, PlatformInstallCapabilities,
-    RecipeRegistryDocument, SCHEMA_VERSION,
+    AgentRecipe, InstallChannel, PlatformInstallCapabilities, RecipeRegistryDocument,
+    SCHEMA_VERSION, contract_surface,
 };
-pub use engine::{apply, apply_with, plan, plan_with, HubContext};
+pub use engine::{HubContext, apply, apply_with, plan, plan_with};
 pub use recipes::registry;
 
 pub fn catalog(params: &Value) -> Result<Value> {

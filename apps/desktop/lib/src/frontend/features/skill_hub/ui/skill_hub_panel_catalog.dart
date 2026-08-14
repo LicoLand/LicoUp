@@ -140,7 +140,7 @@ class SkillCollection extends StatelessWidget {
           maxCrossAxisExtent: 340,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.35,
+          mainAxisExtent: 248,
         ),
         delegate: SliverChildBuilderDelegate((context, index) {
           return _SkillCard(controller: controller, skill: skills[index]);
@@ -218,22 +218,14 @@ class _SkillCard extends StatelessWidget {
                       colors: colors,
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: colors.text,
-                      ),
-                    ),
+                    SkillCardTitle(title: title, color: colors.text),
                     if (author.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         author,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        softWrap: true,
                         style: TextStyle(
                           fontSize: 11,
                           color: colors.textMuted,
@@ -242,19 +234,11 @@ class _SkillCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 6),
-                    Expanded(
-                      child: Text(
-                        description.isNotEmpty
-                            ? description
-                            : strings.noDescription,
-                        maxLines: author.isNotEmpty ? 2 : 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.textMuted,
-                          height: 1.35,
-                        ),
-                      ),
+                    SkillCardDescription(
+                      text: description.isNotEmpty
+                          ? description
+                          : strings.noDescription,
+                      color: colors.textMuted,
                     ),
                   ],
                 ),

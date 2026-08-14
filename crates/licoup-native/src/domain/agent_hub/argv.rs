@@ -1,7 +1,7 @@
 //! Argv-only runner. Network responses never enter a shell.
 
-use anyhow::{anyhow, ensure, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, ensure};
+use serde_json::{Value, json};
 use std::process::{Command, Stdio};
 
 const SHELL_PROGRAMS: &[&str] = &[
