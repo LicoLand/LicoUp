@@ -145,6 +145,12 @@ abstract final class MessagingDesktopMetrics {
   /// sit above the floating composer.
   static const double conversationComposerCapsuleRowExtent = 40;
 
+  /// Circular jump-to-latest control above the floating composer.
+  static const double conversationScrollToLatestExtent = 36;
+
+  /// Gap between the jump-to-latest control and the composer overlay.
+  static const double conversationScrollToLatestGap = 8;
+
   /// Deprecated alias — use [conversationComposerCapsuleRowExtent].
   static const double conversationComposerWorkspaceChipExtent =
       conversationComposerCapsuleRowExtent;

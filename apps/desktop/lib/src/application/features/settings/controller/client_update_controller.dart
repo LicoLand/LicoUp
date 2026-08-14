@@ -48,8 +48,8 @@ final class ClientUpdateController extends ChangeNotifier {
   String _channel = 'stable';
   String _revocationPath = '';
   String _artifactReceiptId = '';
-  String _source = 'local';
-  String _repo = 'LicoLand/LicoUp';
+  String _source = 'github';
+  String _repo = kClientUpdateGithubRepo;
   String _stagingRoot = '';
   String _stateRoot = '';
   bool _rootsResolved = false;
@@ -65,31 +65,46 @@ final class ClientUpdateController extends ChangeNotifier {
   String get repo => _repo;
   bool get busy => _busy;
 
-  Future<void> refresh({String channel = 'stable'}) async {
+  String get sourceAddress => clientUpdatePublicSourceAddress(
+    repo: _repo,
+    githubReleaseUrl: _status.githubReleaseUrl,
+  );
+
+  bool get canCheckUpdate => !_busy;
+  bool get canDownloadUpdate =>
+      !_busy &&
+      _status.updateAvailable &&
+      !_artifactDownloaded &&
+      _status.phase == ClientUpdatePhase.updateAvailable;
+  bool get canApplyUpdate =>
+      !_busy &&
+      _artifactVerified &&
+      (_status.phase == ClientUpdatePhase.verified ||
+          _status.phase == ClientUpdatePhase.applyPlanned);
+
+  /// Reads the running product version from native client-update identity
+  /// without treating a status failure as a user-facing check failure.
+  Future<void> hydrateIdentity({String channel = 'stable'}) async {
     if (!_begin()) return;
-    _clearArtifactBinding();
+    _channel = channel.trim().isEmpty ? 'stable' : channel.trim();
     await _resolveRoots();
     try {
-      _status = await _gateway.status(
+      final next = await _gateway.status(
         agentService: _agentService,
-        channel: channel,
-        source: _source,
+        channel: _channel,
+        source: 'local',
         repo: _repo,
         stateRoot: _stateRoot,
-      );
-      _report('客户端更新状态已刷新。', 'Client update status refreshed.');
-    } catch (_) {
-      _status = ClientUpdateStatus(
-        phase: ClientUpdatePhase.failed,
         currentVersion: _status.currentVersion,
-        channel: channel,
-        errorCode: 'client_update_status_failed',
       );
-      _report(
-        '客户端更新状态刷新失败。',
-        'Client update status refresh failed.',
-        errorCode: 'client_update_status_failed',
-      );
+      if (next.currentVersion.isNotEmpty) {
+        _status = _status.copyWith(
+          currentVersion: next.currentVersion,
+          channel: next.channel.isEmpty ? _status.channel : next.channel,
+        );
+      }
+    } catch (_) {
+      // Identity hydrate must not paint a failed check.
     } finally {
       _end();
     }
@@ -97,11 +112,15 @@ final class ClientUpdateController extends ChangeNotifier {
 
   /// One-click GitHub release source check that uses the bundled public keys
   /// and requires no local manifest or keys files.
-  Future<void> checkGithub({String repo = 'LicoLand/LicoUp'}) async {
+  Future<void> checkGithub({String repo = kClientUpdateGithubRepo}) async {
     if (_busy) return;
     _clearArtifactBinding();
     _source = 'github';
-    _repo = repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim();
+    _repo = repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim();
+    if (_status.currentVersion.isEmpty) {
+      await hydrateIdentity(channel: _channel);
+      if (_busy) return;
+    }
     await _runCheck(
       chinese: '正在从 GitHub 发布源检查已签名的客户端更新。',
       english:
@@ -131,6 +150,10 @@ final class ClientUpdateController extends ChangeNotifier {
     _publicKeysPath = publicKeysPath.trim();
     _channel = channel.trim().isEmpty ? 'stable' : channel.trim();
     _revocationPath = revocationPath.trim();
+    if (_status.currentVersion.isEmpty) {
+      await hydrateIdentity(channel: _channel);
+      if (_busy) return;
+    }
     await _runCheck(
       chinese: '正在检查已签名的客户端更新。',
       english: 'Checking for a signed client update.',
@@ -145,6 +168,7 @@ final class ClientUpdateController extends ChangeNotifier {
     _status = _status.copyWith(
       phase: ClientUpdatePhase.checking,
       errorCode: '',
+      updateAvailable: false,
     );
     _report(chinese, english);
     notifyListeners();
@@ -160,6 +184,7 @@ final class ClientUpdateController extends ChangeNotifier {
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
+        currentVersion: _status.currentVersion,
       );
       if (checked.updateAvailable &&
           (checked.artifactReceiptId.isEmpty ||
@@ -168,7 +193,7 @@ final class ClientUpdateController extends ChangeNotifier {
               checked.targetId.isEmpty)) {
         throw StateError('client_update_check_missing_artifact_receipt');
       }
-      _status = checked;
+      _status = _adopt(checked);
       _artifactReceiptId = checked.artifactReceiptId;
       _report(
         _status.updateAvailable
@@ -190,7 +215,7 @@ final class ClientUpdateController extends ChangeNotifier {
     }
   }
 
-  /// Local flow: stage an artifact from a local file.
+  /// Local flow: stage an artifact from a local file, then verify it.
   Future<void> download({required String sourcePath}) async {
     if (_busy) return;
     if (!_hasCheckedArtifact || sourcePath.trim().isEmpty) {
@@ -206,7 +231,8 @@ final class ClientUpdateController extends ChangeNotifier {
     await _downloadStaged(sourcePath: sourcePath);
   }
 
-  /// GitHub flow: stream the signed artifact url from the cached manifest.
+  /// GitHub flow: stream the signed artifact url from the cached manifest,
+  /// then verify the staged file so apply can be enabled.
   Future<void> downloadGithub() async {
     if (_busy) return;
     if (!_hasCheckedArtifact || _source != 'github') {
@@ -238,12 +264,14 @@ final class ClientUpdateController extends ChangeNotifier {
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
+        currentVersion: _status.currentVersion,
       );
       _requireMatchingReceipt(downloaded, 'download');
-      _status = downloaded;
+      _status = _adopt(downloaded);
       _artifactDownloaded = true;
       _artifactVerified = false;
-      _report('更新包已暂存。', 'Update artifact staged.');
+      await _verifyUnlocked();
+      _report('更新包已下载到本地并完成校验。', 'Update artifact downloaded and verified.');
     } catch (_) {
       _artifactDownloaded = false;
       _artifactVerified = false;
@@ -270,24 +298,8 @@ final class ClientUpdateController extends ChangeNotifier {
       return;
     }
     _begin();
-    _status = _status.copyWith(phase: ClientUpdatePhase.verifying);
-    notifyListeners();
-    await _resolveRoots();
     try {
-      final verified = await _gateway.verify(
-        agentService: _agentService,
-        manifestPath: _manifestPath,
-        publicKeysPath: _publicKeysPath,
-        channel: _channel,
-        revocationPath: _revocationPath,
-        source: _source,
-        repo: _repo,
-        stagingRoot: _stagingRoot,
-        stateRoot: _stateRoot,
-      );
-      _requireMatchingReceipt(verified, 'verify');
-      _status = verified;
-      _artifactVerified = true;
+      await _verifyUnlocked();
       _report(
         '更新包签名与摘要校验通过。',
         'Update artifact signature and digest verified.',
@@ -303,6 +315,27 @@ final class ClientUpdateController extends ChangeNotifier {
     } finally {
       _end();
     }
+  }
+
+  Future<void> _verifyUnlocked() async {
+    _status = _status.copyWith(phase: ClientUpdatePhase.verifying);
+    notifyListeners();
+    await _resolveRoots();
+    final verified = await _gateway.verify(
+      agentService: _agentService,
+      manifestPath: _manifestPath,
+      publicKeysPath: _publicKeysPath,
+      channel: _channel,
+      revocationPath: _revocationPath,
+      source: _source,
+      repo: _repo,
+      stagingRoot: _stagingRoot,
+      stateRoot: _stateRoot,
+      currentVersion: _status.currentVersion,
+    );
+    _requireMatchingReceipt(verified, 'verify');
+    _status = _adopt(verified);
+    _artifactVerified = true;
   }
 
   Future<void> planApply() async {
@@ -344,9 +377,10 @@ final class ClientUpdateController extends ChangeNotifier {
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
+        currentVersion: _status.currentVersion,
       );
       _requireMatchingReceipt(applied, 'apply');
-      _status = applied;
+      _status = _adopt(applied);
       _report(
         execute ? '更新安装已调度，客户端即将重启。' : '已生成更新安装计划（未实际执行）。',
         execute
@@ -391,9 +425,10 @@ final class ClientUpdateController extends ChangeNotifier {
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
+        currentVersion: _status.currentVersion,
       );
       _requireMatchingReceipt(rolledBack, 'rollback');
-      _status = rolledBack;
+      _status = _adopt(rolledBack);
       _report('已调度回滚，客户端即将重启。', 'Rollback scheduled; the client will restart.');
     } catch (_) {
       _fail('client_update_rollback_failed');
@@ -411,6 +446,11 @@ final class ClientUpdateController extends ChangeNotifier {
       (_manifestPath.isNotEmpty || _source == 'github') &&
       _artifactReceiptId.isNotEmpty &&
       _status.updateAvailable;
+
+  ClientUpdateStatus _adopt(ClientUpdateStatus next) {
+    if (next.currentVersion.isNotEmpty) return next;
+    return next.copyWith(currentVersion: _status.currentVersion);
+  }
 
   void _requireMatchingReceipt(ClientUpdateStatus next, String phase) {
     if (next.artifactReceiptId.isEmpty ||
@@ -453,6 +493,7 @@ final class ClientUpdateController extends ChangeNotifier {
     _status = _status.copyWith(
       phase: ClientUpdatePhase.failed,
       errorCode: code,
+      updateAvailable: false,
     );
   }
 

@@ -166,6 +166,9 @@ class _MessagingContactListState extends State<MessagingContactList> {
     final groups = <_MessagingContactGroup>[];
     final indexByName = <String, int>{};
     for (final target in widget.targets) {
+      if (!target.isConversationAgent) {
+        continue;
+      }
       final name = agentConversationTargetDisplayName(target);
       final key = name.toLowerCase();
       final index = indexByName[key];

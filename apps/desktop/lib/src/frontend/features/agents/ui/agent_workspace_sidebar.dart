@@ -265,6 +265,9 @@ List<List<TargetCandidate>> mergeSidebarTargetGroups(
   final groups = <List<TargetCandidate>>[];
   final indexByName = <String, int>{};
   for (final target in targets) {
+    if (!target.isConversationAgent) {
+      continue;
+    }
     final name = agentConversationTargetDisplayName(target).toLowerCase();
     final index = indexByName[name];
     if (index == null) {

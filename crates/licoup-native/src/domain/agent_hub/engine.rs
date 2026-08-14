@@ -1,20 +1,20 @@
 //! Plan/apply/update/uninstall lifecycle. Argv-only after one confirmation.
 
-use super::argv::{validate_program_args, ArgvKind, ArgvRunner, ProcessArgvRunner};
+use super::argv::{ArgvKind, ArgvRunner, ProcessArgvRunner, validate_program_args};
 use super::capabilities::capabilities_from_params;
 use super::confirmation::{self, install_argv_for};
 use super::contract::{
-    HubEvent, InstallChannel, InstallOwnership, PlatformInstallCapabilities, LIFECYCLE_APPLYING,
-    LIFECYCLE_AVAILABLE, LIFECYCLE_CONFIRMED, LIFECYCLE_FAILED, LIFECYCLE_NEEDS_LOGIN,
-    LIFECYCLE_PLANNED, LIFECYCLE_RESCANNING, LIFECYCLE_VERIFYING, OWNERSHIP_EXTERNAL,
-    OWNERSHIP_OWNED,
+    HubEvent, InstallChannel, InstallOwnership, LIFECYCLE_APPLYING, LIFECYCLE_AVAILABLE,
+    LIFECYCLE_CONFIRMED, LIFECYCLE_FAILED, LIFECYCLE_NEEDS_LOGIN, LIFECYCLE_PLANNED,
+    LIFECYCLE_RESCANNING, LIFECYCLE_VERIFYING, OWNERSHIP_EXTERNAL, OWNERSHIP_OWNED,
+    PlatformInstallCapabilities,
 };
 use super::ownership::{self, store_from_params};
 use super::recipes::{self, agent_recipe};
 use super::selector;
 use crate::platform::client_state::ClientStateStore;
-use anyhow::{anyhow, ensure, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, ensure};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub struct HubContext {
@@ -80,15 +80,33 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         }));
     }
 
-    let selected = if operation != "install" {
-        let record = owned.ok_or_else(|| anyhow!("external_install_protected"))?;
+    let requested_channel = params
+        .get("channelId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let selected = if let Some(requested) = requested_channel {
+        let channel = selector::channel_by_id(agent, requested)?;
+        if operation == "install" {
+            ensure!(
+                selector::channel_matches(channel, &ctx.capabilities),
+                "channel_unavailable"
+            );
+        } else {
+            let record = owned
+                .as_ref()
+                .ok_or_else(|| anyhow!("external_install_protected"))?;
+            ensure!(requested == record.channel_id, "channel_mismatch");
+        }
+        channel
+    } else if operation != "install" {
+        let record = owned
+            .as_ref()
+            .ok_or_else(|| anyhow!("external_install_protected"))?;
         selector::channel_by_id(agent, &record.channel_id)?
     } else {
         selector::select_channel(agent, &ctx.capabilities)?.channel
     };
-    if let Some(requested) = params.get("channelId").and_then(Value::as_str) {
-        ensure!(requested == selected.id, "channel_mismatch");
-    }
     let argv = argv_for(&operation, &ctx.capabilities.os, selected);
     argv_guard(&argv, selected)?;
     let confirmation = confirmation::token(&operation, &agent_id, selected);
@@ -200,7 +218,7 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
             channel_id: channel.id.clone(),
             channel_kind: channel.kind.clone(),
             package_coordinate: channel.package_coordinate.clone(),
-            installed_version: "latest-stable".to_string(),
+            installed_version: super::version::concrete_display(&requested_version(params)),
             ownership: OWNERSHIP_OWNED.to_string(),
             lifecycle: if agent.requires_login {
                 LIFECYCLE_NEEDS_LOGIN.to_string()
@@ -265,10 +283,22 @@ fn substitute_placeholders(arg: &str, params: &Value) -> String {
         .get("installRef")
         .and_then(Value::as_str)
         .unwrap_or("install");
+    let version = requested_version(params);
     arg.replace("{staging}", staging)
         .replace("{artifact}", artifact)
         .replace("{script}", script)
         .replace("{install}", install)
+        .replace("{version}", &version)
+}
+
+fn requested_version(params: &Value) -> String {
+    params
+        .get("version")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("latest")
+        .to_string()
 }
 
 fn agent_id(params: &Value) -> Result<String> {

@@ -51,6 +51,45 @@ void main() {
     expect(next, ['codex', 'opencode', 'missing']);
   });
 
+  test('conversation order keeps host installs and drops automatic VMs', () {
+    final workingDirectory = ['', 'srv', 'project'].join('/');
+    final ordered = TargetPolicy.orderedConversationTargets(
+      targets: [
+        _target('codex'),
+        TargetCandidate(
+          target: 'hermes',
+          label: 'Hermes Agent',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          binaryPath: 'hermes',
+          adapterStatus: 'implemented',
+          location: 'virtual-machine',
+          scanSource: 'virtual-machine-orbstack',
+          runtimeConnection: {
+            'kind': 'ssh',
+            'host': 'orb',
+            'remoteExecutable': 'hermes',
+            'workingDirectory': workingDirectory,
+            'runtimeProtocol': 'hermes-tui-gateway',
+          },
+        ),
+        TargetCandidate(
+          target: 'openclaw',
+          label: 'OpenClaw',
+          kind: 'cli',
+          status: 'not-detected',
+          configured: false,
+          confidence: 0.15,
+          adapterStatus: 'implemented',
+        ),
+      ],
+      persistedOrder: const ['hermes', 'openclaw', 'codex'],
+    );
+    expect(ordered.map((target) => target.target), ['codex']);
+  });
+
   test(
     'controller probes concurrently and publishes one settled snapshot',
     () async {

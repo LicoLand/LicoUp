@@ -1,8 +1,8 @@
 use super::super::*;
 use super::support::{portable_params, test_store};
 use crate::domain::agent_hub::argv::RecordingArgvRunner;
-use crate::domain::agent_hub::engine::{apply_with, plan_with, HubContext};
-use serde_json::{json, Value};
+use crate::domain::agent_hub::engine::{HubContext, apply_with, plan_with};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 fn macos_params(name: &str) -> Value {
@@ -55,9 +55,11 @@ fn apply_is_argv_only_and_records_fixed_package_manager_arguments() {
             "@mariozechner/pi-coding-agent".to_string()
         ]
     );
-    assert!(recorded
-        .iter()
-        .all(|(_, args)| !args.join(" ").contains('|')));
+    assert!(
+        recorded
+            .iter()
+            .all(|(_, args)| !args.join(" ").contains('|'))
+    );
 }
 
 #[test]
@@ -141,4 +143,20 @@ fn public_plan_entry_selects_cursor_official_artifact_without_shell_pipe() {
         .collect::<Vec<_>>();
     assert_eq!(argv[0], "tar");
     assert!(!argv.join(" ").contains('|'));
+}
+
+#[test]
+fn plan_honors_requested_install_channel_instead_of_auto_select() {
+    let mut params = macos_params("channel-pick");
+    params["agentId"] = json!("codex");
+    params["channelId"] = json!("npm");
+    params["version"] = json!("latest");
+    let planned = plan(&params).unwrap();
+    assert_eq!(planned["status"], "planned");
+    assert_eq!(planned["selectedChannel"]["id"], "npm");
+    assert_eq!(planned["selectedChannel"]["kind"], "npm");
+    assert_eq!(
+        planned["selectedChannel"]["argv"],
+        json!(["npm", "install", "-g", "@openai/codex"])
+    );
 }

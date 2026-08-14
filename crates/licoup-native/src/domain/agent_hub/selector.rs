@@ -1,7 +1,7 @@
 //! Deterministic channel ranking for one Agent against one capability snapshot.
 
 use super::contract::{AgentRecipe, InstallChannel, PlatformInstallCapabilities};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 #[derive(Clone, Debug)]
 pub struct SelectedChannel<'a> {
@@ -35,7 +35,23 @@ pub fn select_channel<'a>(
     Ok(SelectedChannel { channel })
 }
 
-fn channel_matches(channel: &InstallChannel, capabilities: &PlatformInstallCapabilities) -> bool {
+pub fn available_channels<'a>(
+    agent: &'a AgentRecipe,
+    capabilities: &PlatformInstallCapabilities,
+) -> Vec<&'a InstallChannel> {
+    let mut candidates = agent
+        .channels
+        .iter()
+        .filter(|channel| channel_matches(channel, capabilities))
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|channel| rank_key(channel));
+    candidates
+}
+
+pub fn channel_matches(
+    channel: &InstallChannel,
+    capabilities: &PlatformInstallCapabilities,
+) -> bool {
     if !channel.selectable {
         return false;
     }

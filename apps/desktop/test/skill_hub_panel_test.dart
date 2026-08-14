@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -222,6 +224,174 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'skill card description ellipsizes at the end of three full lines',
+    (tester) async {
+      const longDescription =
+          'alpha bravo charlie delta echo foxtrot golf hotel '
+          'india juliet kilo lima mike november oscar papa quebec '
+          'romeo sierra tango uniform victor whiskey xray yankee zulu '
+          'wrapped line three continues with extra sample words so the '
+          'card body must ellipsize after exactly three lines of text';
+      final controller = _skillHubController()
+        ..skillHubSkills = const [
+          {
+            'skillId': 'sample-wrap-skill',
+            'title': 'flutter-implement-json-serialization',
+            'author': 'Sample Author',
+            'description': longDescription,
+            'version': '1.0.0',
+            'isPublic': false,
+            'path': '/skills/sample-wrap-skill',
+            'usedByAgents': <String>[],
+          },
+        ];
+      addTearDown(controller.dispose);
+
+      await _pumpSkillHub(
+        tester,
+        controller: controller,
+        locale: const Locale('en'),
+      );
+
+      final title = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(SkillCardTitle),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(title.maxLines, SkillCardTitle.maxLines);
+      expect(title.overflow, TextOverflow.ellipsis);
+      expect(title.softWrap, isTrue);
+
+      final description = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(SkillCardDescription),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(description.maxLines, 3);
+      expect(description.overflow, TextOverflow.ellipsis);
+      expect(description.softWrap, isTrue);
+
+      final paragraph = _descriptionParagraph(tester);
+      expect(paragraph.didExceedMaxLines, isTrue);
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: longDescription.length),
+      );
+      expect(_lineCount(boxes), 3);
+      expect(
+        paragraph.size.height,
+        closeTo(SkillCardDescription.reservedHeight, 0.5),
+      );
+      for (final box in boxes) {
+        expect(box.bottom, lessThanOrEqualTo(paragraph.size.height + 0.5));
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('skill card short description is not clipped mid-glyph', (
+    tester,
+  ) async {
+    const shortDescription = 'Short.';
+    final controller = _skillHubController()
+      ..skillHubSkills = const [
+        {
+          'skillId': 'sample-short-skill',
+          'title': 'Short Skill',
+          'author': 'Sample Author',
+          'description': shortDescription,
+          'version': 'local',
+          'isPublic': false,
+          'path': '/skills/sample-short-skill',
+          'usedByAgents': <String>[],
+        },
+      ];
+    addTearDown(controller.dispose);
+
+    await _pumpSkillHub(
+      tester,
+      controller: controller,
+      locale: const Locale('en'),
+    );
+
+    final paragraph = _descriptionParagraph(tester);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    final boxes = paragraph.getBoxesForSelection(
+      const TextSelection(baseOffset: 0, extentOffset: shortDescription.length),
+    );
+    expect(boxes, isNotEmpty);
+    final origin = paragraph.localToGlobal(Offset.zero);
+    final cardRect = tester.getRect(find.byType(Card));
+    for (final box in boxes) {
+      expect(box.bottom - box.top, greaterThanOrEqualTo(12));
+      expect(box.bottom, lessThanOrEqualTo(paragraph.size.height + 0.5));
+      final rect = Rect.fromLTRB(
+        origin.dx + box.left,
+        origin.dy + box.top,
+        origin.dx + box.right,
+        origin.dy + box.bottom,
+      );
+      expect(cardRect.inflate(0.5).contains(rect.topLeft), isTrue);
+      expect(cardRect.inflate(0.5).contains(rect.bottomRight), isTrue);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'skill card title wraps a long name instead of mid-token ellipsis',
+    (tester) async {
+      const titleText = 'flutter-implement-json-serialization';
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 160,
+                child: SkillCardTitle(title: titleText, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final title = tester.widget<Text>(find.text(titleText));
+      expect(title.maxLines, 2);
+      expect(title.overflow, TextOverflow.ellipsis);
+      expect(title.softWrap, isTrue);
+
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(
+          of: find.byType(SkillCardTitle),
+          matching: find.byType(RichText),
+        ),
+      );
+      final boxes = paragraph.getBoxesForSelection(
+        const TextSelection(baseOffset: 0, extentOffset: titleText.length),
+      );
+      expect(_lineCount(boxes), greaterThan(1));
+      expect(_lineCount(boxes), lessThanOrEqualTo(2));
+      expect(boxes.first.right - boxes.first.left, greaterThan(120));
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+RenderParagraph _descriptionParagraph(WidgetTester tester) {
+  return tester.renderObject<RenderParagraph>(
+    find.descendant(
+      of: find.byType(SkillCardDescription),
+      matching: find.byType(RichText),
+    ),
+  );
+}
+
+int _lineCount(List<TextBox> boxes) {
+  return boxes.map((box) => box.top.round()).toSet().length;
 }
 
 Future<void> _pumpSkillHub(

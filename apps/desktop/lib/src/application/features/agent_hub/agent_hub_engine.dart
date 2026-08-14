@@ -10,6 +10,9 @@ final class UnwiredAgentHubEngine implements AgentHubEnginePort {
   const UnwiredAgentHubEngine();
 
   @override
+  AgentHubCatalogSnapshot? get cachedCatalog => null;
+
+  @override
   Future<AgentHubCatalogSnapshot> catalog() async {
     return const AgentHubCatalogSnapshot(recipes: [], ok: false);
   }
@@ -80,13 +83,38 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
   final List<Map<String, dynamic>> _discovery = [];
   final Map<String, String> _confirmations = {};
   final Set<String> _confirmed = {};
+  final Map<String, String> _plannedChannels = {};
+  final Map<String, String> _plannedVersions = {};
+  AgentHubCatalogSnapshot? _cachedCatalog;
+
+  @override
+  AgentHubCatalogSnapshot? get cachedCatalog => _cachedCatalog;
 
   @override
   Future<AgentHubCatalogSnapshot> catalog() async {
     try {
       final raw = await _invoke(const ['agent-hub', 'catalog']);
-      return _ingestCatalog(raw);
+      final snapshot = _ingestCatalog(raw);
+      if (snapshot.ok) {
+        _cachedCatalog = snapshot;
+        return snapshot;
+      }
+      if (_cachedCatalog != null) {
+        return AgentHubCatalogSnapshot(
+          recipes: _cachedCatalog!.recipes,
+          scanGeneration: _cachedCatalog!.scanGeneration,
+          ok: false,
+        );
+      }
+      return snapshot;
     } on Object {
+      if (_cachedCatalog != null) {
+        return AgentHubCatalogSnapshot(
+          recipes: _cachedCatalog!.recipes,
+          scanGeneration: _cachedCatalog!.scanGeneration,
+          ok: false,
+        );
+      }
       return const AgentHubCatalogSnapshot(recipes: [], ok: false);
     }
   }
@@ -107,9 +135,18 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
         '--operation',
         request.operation,
         '--stdin-json',
-        jsonEncode({'discoveryCandidates': _discovery}),
+        jsonEncode(_stdinPayload(request.channelId, request.version)),
       ]);
-      return _planResult(recipeId, raw);
+      final result = _planResult(recipeId, raw);
+      if (result.ok) {
+        if (request.channelId.trim().isNotEmpty) {
+          _plannedChannels[recipeId] = request.channelId.trim();
+        }
+        if (request.version.trim().isNotEmpty) {
+          _plannedVersions[recipeId] = request.version.trim();
+        }
+      }
+      return result;
     } on Object {
       return _failed(AgentHubLifecycleAction.plan, recipeId);
     }
@@ -155,6 +192,12 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
     }
     await _ensureDiscovery();
     try {
+      final channelId = request.channelId.trim().isNotEmpty
+          ? request.channelId.trim()
+          : (_plannedChannels[recipeId] ?? '');
+      final version = request.version.trim().isNotEmpty
+          ? request.version.trim()
+          : (_plannedVersions[recipeId] ?? 'latest');
       final raw = await _invoke([
         'agent-hub',
         'apply',
@@ -166,7 +209,7 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
         token,
         if (request.cancel) '--cancel',
         '--stdin-json',
-        jsonEncode({'discoveryCandidates': _discovery}),
+        jsonEncode(_stdinPayload(channelId, version)),
       ]);
       final result = _applyResult(recipeId, raw);
       if (result.ok) {
@@ -212,10 +255,17 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
   Future<AgentHubOperationResult> _managedApply(
     AgentHubLifecycleAction action,
     String recipeId,
-    String operation,
-  ) async {
+    String operation, {
+    String channelId = '',
+    String version = 'latest',
+  }) async {
     final planned = await plan(
-      AgentHubPlanRequest(recipeId: recipeId, operation: operation),
+      AgentHubPlanRequest(
+        recipeId: recipeId,
+        operation: operation,
+        channelId: channelId,
+        version: version,
+      ),
     );
     if (planned.status == AgentHubOperationStatus.externalProtected) {
       return AgentHubOperationResult(
@@ -250,7 +300,12 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
       );
     }
     final applied = await install(
-      AgentHubInstallRequest(recipeId: recipeId, operation: operation),
+      AgentHubInstallRequest(
+        recipeId: recipeId,
+        operation: operation,
+        channelId: channelId,
+        version: version,
+      ),
     );
     return AgentHubOperationResult(
       status: applied.status,
@@ -268,7 +323,7 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
     String recipeId,
   ) async {
     final snapshot = await catalog();
-    if (!snapshot.ok) {
+    if (!snapshot.ok && snapshot.recipes.isEmpty) {
       return _failed(action, recipeId);
     }
     final recipe = snapshot.recipes
@@ -312,6 +367,14 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
       return;
     }
     await catalog();
+  }
+
+  Map<String, dynamic> _stdinPayload(String channelId, String version) {
+    return <String, dynamic>{
+      'discoveryCandidates': _discovery,
+      if (channelId.trim().isNotEmpty) 'channelId': channelId.trim(),
+      if (version.trim().isNotEmpty) 'version': version.trim(),
+    };
   }
 
   AgentHubCatalogSnapshot _ingestCatalog(Map<String, dynamic> raw) {
