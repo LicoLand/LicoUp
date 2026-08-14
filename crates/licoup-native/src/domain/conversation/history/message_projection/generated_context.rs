@@ -17,20 +17,73 @@ pub(super) fn extract_user_authored_text(text: &str) -> String {
     } else {
         text
     };
-    unwrap_user_query(&strip_generated_context_blocks(request_text))
+    let unwrapped = unwrap_user_query(&strip_generated_context_blocks(request_text));
+    strip_generated_context_blocks(&unwrapped)
 }
 
+/// Keep only the text between Cursor `<userquery>` wrappers. A missing close
+/// tag fails closed: strip the raw markers and keep remaining visible text.
 fn unwrap_user_query(text: &str) -> String {
-    let trimmed = text.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    const OPEN: &str = "<userquery>";
-    const CLOSE: &str = "</userquery>";
-    if lower.starts_with(OPEN) && lower.ends_with(CLOSE) {
-        return trimmed[OPEN.len()..trimmed.len() - CLOSE.len()]
-            .trim()
-            .to_string();
+    const PAIRS: [(&str, &str); 2] = [
+        ("<userquery>", "</userquery>"),
+        ("<user_query>", "</user_query>"),
+    ];
+    let lower = text.to_ascii_lowercase();
+    let mut best_match: Option<(usize, usize)> = None;
+    let mut unclosed_open: Option<(usize, usize)> = None;
+    for (open, close) in PAIRS {
+        let Some(open_at) = lower.find(open) else {
+            continue;
+        };
+        let inner_start = open_at + open.len();
+        if let Some(close_rel) = lower[inner_start..].find(close) {
+            let inner_end = inner_start + close_rel;
+            if best_match
+                .map(|(start, _)| inner_start < start)
+                .unwrap_or(true)
+            {
+                best_match = Some((inner_start, inner_end));
+            }
+        } else if unclosed_open.map(|(at, _)| open_at < at).unwrap_or(true) {
+            unclosed_open = Some((open_at, inner_start));
+        }
     }
-    text.to_string()
+    if let Some((start, end)) = best_match {
+        return strip_userquery_markers(text[start..end].trim());
+    }
+    if let Some((open_at, inner_start)) = unclosed_open {
+        let mut visible = String::with_capacity(text.len());
+        visible.push_str(&text[..open_at]);
+        visible.push_str(&text[inner_start..]);
+        return strip_userquery_markers(&visible);
+    }
+    strip_userquery_markers(text)
+}
+
+fn strip_userquery_markers(text: &str) -> String {
+    const MARKERS: [&str; 4] = [
+        "<userquery>",
+        "</userquery>",
+        "<user_query>",
+        "</user_query>",
+    ];
+    let mut result = text.to_string();
+    loop {
+        let lower = result.to_ascii_lowercase();
+        let mut found: Option<(usize, usize)> = None;
+        for marker in MARKERS {
+            if let Some(at) = lower.find(marker) {
+                if found.map(|(pos, _)| at < pos).unwrap_or(true) {
+                    found = Some((at, marker.len()));
+                }
+            }
+        }
+        let Some((at, len)) = found else {
+            break;
+        };
+        result.replace_range(at..at + len, "");
+    }
+    result
 }
 
 pub(in crate::domain::conversation::history) fn extract_user_image_attachments(

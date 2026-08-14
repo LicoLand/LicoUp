@@ -62,6 +62,7 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
+        currentVersion: '1.0.0',
       );
       await service.download(
         agentService: runner,
@@ -69,6 +70,7 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
+        currentVersion: '1.0.0',
       );
       await service.apply(
         agentService: runner,
@@ -77,6 +79,7 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
+        currentVersion: '1.0.0',
       );
       await service.rollback(
         agentService: runner,
@@ -84,6 +87,7 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
+        currentVersion: '1.0.0',
       );
 
       expect(runner.calls, hasLength(4));
@@ -100,6 +104,7 @@ void main() {
         );
         expect(args, isNot(contains('--manifest-path')));
         expect(args, isNot(contains('--public-keys-path')));
+        expect(args, containsAll(['--current-version', '1.0.0']));
       }
       expect(runner.calls[2], containsAll(['--execute', 'true']));
     },

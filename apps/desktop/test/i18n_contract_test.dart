@@ -26,6 +26,8 @@ void main() {
     expect(chinese.agentHubVisitFailed, '无法打开主页');
     expect(chinese.agentHubUpdate, '更新');
     expect(chinese.agentHubUninstall, '卸载');
+    expect(chinese.agentHubDownloadSource, '下载源');
+    expect(chinese.agentHubPendingCommand, '即将执行的命令');
     expect(chinese.modelGateway, '模型网关');
     expect(chinese.mobilePairing, '移动配对');
     expect(chinese.chatChannels, '聊天频道');
@@ -44,6 +46,8 @@ void main() {
     expect(english.agentHubVisitFailed, 'Unable to open homepage');
     expect(english.agentHubUpdate, 'Update');
     expect(english.agentHubUninstall, 'Uninstall');
+    expect(english.agentHubDownloadSource, 'Download source');
+    expect(english.agentHubPendingCommand, 'Command to run');
     expect(english.modelGateway, 'Model Gateway');
     expect(english.mobilePairing, 'Mobile Pairing');
     expect(english.chatChannels, 'Chat Channels');
@@ -90,6 +94,32 @@ void main() {
       expect(english.statusCaptionLabel('ChatGPT'), 'ChatGPT');
     },
   );
+
+  test('client update settings uses the three-action labels', () {
+    expect(chinese.checkUpdate, '检查更新');
+    expect(english.checkUpdate, 'Check Update');
+    expect(chinese.downloadToLocal, '下载到本地');
+    expect(english.downloadToLocal, 'Download to local');
+    expect(chinese.updateAndRestart, '更新并重启');
+    expect(english.updateAndRestart, 'Update and Restart');
+    expect(chinese.sourceAddress, '源地址');
+    expect(english.sourceAddress, 'Source address');
+  });
+
+  test('settings copy names archive, backup, and data directories', () {
+    expect(chinese.archivedConversations, '归档');
+    expect(english.archivedConversations, 'Archived');
+    expect(chinese.portableData, 'LicoUp 数据目录');
+    expect(english.portableData, 'LicoUp Data Directory');
+    expect(chinese.conversationArchiveRoot, 'LicoUp 备份目录');
+    expect(english.conversationArchiveRoot, 'LicoUp Backup Directory');
+    expect(chinese.localePreferenceLabel('system'), '系统');
+    expect(chinese.localePreferenceLabel('zh'), '中文');
+    expect(chinese.localePreferenceLabel('en'), 'English');
+    expect(english.localePreferenceLabel('system'), 'System');
+    expect(english.localePreferenceLabel('zh'), '中文');
+    expect(english.localePreferenceLabel('en'), 'English');
+  });
 
   test(
     'controller status display switches locale without rewriting source state',
