@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   BETA_STAGE_ORDER,
   deriveManagedReleaseConfig,
+  extractProvisioningProfilePayload,
   MacosReleaseToolError,
   parseCodeSigningIdentities,
   redactMacosReleaseToolFailure,
@@ -46,6 +47,25 @@ function fixture() {
     profileDigest: `sha256:${"c".repeat(64)}`,
   };
 }
+
+test("setup preserves certificates while removing non-JSON profile payloads", () => {
+  const payload = extractProvisioningProfilePayload(`<?xml version="1.0" encoding="UTF-8"?>
+    <plist version="1.0"><dict>
+      <key>TeamIdentifier</key><array><string>TEAM123456</string></array>
+      <key>ExpirationDate</key><date>2099-01-01T00:00:00Z</date>
+      <key>DeveloperCertificates</key><array>
+        <data>QUJD</data>
+        <data>REVG\nR0g=</data>
+      </array>
+      <key>DER-Encoded-Profile</key><data>SU5URVJOQUw=</data>
+    </dict></plist>`);
+  assert.deepEqual(payload.developerCertificates, ["QUJD", "REVGR0g="]);
+  assert.equal(payload.sanitizedXml.includes("DeveloperCertificates"), false);
+  assert.equal(payload.sanitizedXml.includes("DER-Encoded-Profile"), false);
+  assert.equal(/<data(?:\s|>)/u.test(payload.sanitizedXml), false);
+  assert.equal(payload.sanitizedXml.includes("<date>"), false);
+  assert.ok(payload.sanitizedXml.includes("<string>2099-01-01T00:00:00Z</string>"));
+});
 
 test("setup resolves one profile-bound Developer ID identity", () => {
   const source = `
