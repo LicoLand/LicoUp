@@ -35,6 +35,7 @@ final class ClientConversationController extends ChangeNotifier {
   List<ClientConversationSummary> _archivedSummaries = const [];
   ClientConversation? _selectedConversation;
   List<ClientConversationEvent> _events = const [];
+  final Map<String, _CachedClientConversation> _conversationCache = {};
   final ClientConversationRecentParticipants _recentParticipants =
       ClientConversationRecentParticipants();
   List<String> _availableConversationAgentIds = const [];
@@ -84,6 +85,7 @@ final class ClientConversationController extends ChangeNotifier {
         'includeArchived': false,
       }),
     );
+    _discardStaleConversationSnapshots();
     if (_selectedConversationId.isNotEmpty &&
         !_summaries.any(
           (conversation) => conversation.id == _selectedConversationId,
@@ -96,18 +98,42 @@ final class ClientConversationController extends ChangeNotifier {
   });
 
   Future<void> selectConversation(String conversationId) async {
-    await _guard('open', () async {
-      final normalized = conversationId.trim();
-      if (normalized.isEmpty) {
-        _clearSelection();
-        return;
-      }
-      final changed = _selectedConversationId != normalized;
-      _selectedConversationId = normalized;
-      _draft = '';
-      if (changed) _onSelectionChanged?.call(normalized);
-      await _loadSelected();
-    });
+    final normalized = conversationId.trim();
+    if (normalized.isEmpty) {
+      clearSelection();
+      return;
+    }
+    if (_disposed) return;
+    if (_selectedConversationId == normalized &&
+        _selectedConversation?.id == normalized) {
+      return;
+    }
+    final changed = _selectedConversationId != normalized;
+    _selectedConversationId = normalized;
+    _draft = '';
+    final cached = _conversationCache[normalized];
+    if (cached == null) {
+      _selectedConversation = null;
+      _events = const [];
+      _recentParticipants.clear();
+    } else {
+      _applySelectedSnapshot(cached.conversation, cached.events);
+    }
+    if (changed) _onSelectionChanged?.call(normalized);
+    _notifyListeners();
+    if (cached != null) return;
+    await _waitUntilIdle();
+    if (_disposed || _selectedConversationId != normalized) return;
+    final loadedWhileWaiting = _conversationCache[normalized];
+    if (loadedWhileWaiting != null) {
+      _applySelectedSnapshot(
+        loadedWhileWaiting.conversation,
+        loadedWhileWaiting.events,
+      );
+      _notifyListeners();
+      return;
+    }
+    await _guard('open', _loadSelected);
   }
 
   void clearSelection() {
@@ -339,6 +365,21 @@ final class ClientConversationController extends ChangeNotifier {
         'includeArchived': false,
       }),
     );
+    _discardStaleConversationSnapshots();
+  }
+
+  void _discardStaleConversationSnapshots() {
+    final summariesById = {
+      for (final summary in _summaries) summary.id: summary,
+    };
+    _conversationCache.removeWhere((id, cached) {
+      final summary = summariesById[id];
+      if (summary == null) return true;
+      final conversation = cached.conversation;
+      return summary.revision != conversation.revision ||
+          summary.updatedAtUnixMs != conversation.updatedAtUnixMs ||
+          summary.eventCount != conversation.eventCount;
+    });
   }
 
   Future<void> _refreshArchivedWithoutGuard() async {
@@ -376,8 +417,21 @@ final class ClientConversationController extends ChangeNotifier {
         }),
       ),
     );
+    final events = List<ClientConversationEvent>.unmodifiable(page.events);
+    _conversationCache[id] = _CachedClientConversation(
+      conversation: conversation,
+      events: events,
+    );
+    if (_selectedConversationId != id) return;
+    _applySelectedSnapshot(conversation, events);
+  }
+
+  void _applySelectedSnapshot(
+    ClientConversation conversation,
+    List<ClientConversationEvent> events,
+  ) {
     _selectedConversation = conversation;
-    _events = page.events;
+    _events = events;
     _recentParticipants.applySnapshot(
       conversation: conversation,
       events: _events,
@@ -464,6 +518,16 @@ final class ClientConversationController extends ChangeNotifier {
     _disposed = true;
     super.dispose();
   }
+}
+
+final class _CachedClientConversation {
+  const _CachedClientConversation({
+    required this.conversation,
+    required this.events,
+  });
+
+  final ClientConversation conversation;
+  final List<ClientConversationEvent> events;
 }
 
 List<ClientConversationSummary> _summaryList(Object? value) => value is List

@@ -12,11 +12,12 @@
 
 可以构建，不代表已经支持。
 
+LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。
+
 | 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |
 | --- | --- | --- | --- | --- | --- |
 | windows-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
 | windows-arm64 | 不可用 | 未声明 | 未验证 | 未验证 | 未验证 |
-| macos-x64 | 可用 | 未声明 | 支持 | 预览 | 预览 |
 | macos-arm64 | 可用 | 未声明 | 支持 | 预览 | 预览 |
 | linux-glibc-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
 | linux-glibc-arm64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
@@ -33,7 +34,6 @@
 | 发布包目标 | 运行目标 | 平台 | 渠道 | 格式 | 架构 | 包构建 | 可发布 | 更新权威 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | 可用 | 不可选入 | signed-http-manifest |
-| macos-direct-x64 | macos-x64 | macos | direct | dmg | x64 | 可用 | 不可选入 | signed-http-manifest |
 | macos-app-store-arm64 | macos-arm64 | macos | app-store | pkg | arm64 | 可用 | 不可选入 | store-managed |
 | windows-direct-x64 | windows-x64 | windows | direct | msix | x64 | 可用 | 不可选入 | appinstaller |
 | windows-store-x64 | windows-x64 | windows | microsoft-store | msixupload | x64 | 可用 | 不可选入 | store-managed |
@@ -68,20 +68,20 @@
 本表投影原生驱动清单。运行协议和能力字段仍由该清单负责。
 生命周期证据列表示该通道是否能为对应阶段发出原生回执。“已发送”始终是客户端本地事实。每一轮中，界面只展示实际观测到的回执；不支持或未到达的阶段直接跳过，不得通过后续回复或终态结果倒推。
 
-| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| openclaw | conversation | unverified | 否 | openclaw-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| claude-code | conversation | unverified | 否 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| codex | conversation | unverified | 否 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| opencode | conversation | unverified | 否 | opencode-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| copilot | conversation | unverified | 否 | copilot-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| kilo-code | conversation | unverified | 否 | kilo-code-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| cursor | conversation | unverified | 否 | cursor-agent-cli-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | GUI 退出后续跑 | 活动轮次重附着 | 有序游标重放 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| openclaw | conversation | unverified | 否 | openclaw-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| claude-code | conversation | unverified | 否 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| codex | conversation | unverified | 否 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| opencode | conversation | unverified | 否 | opencode-serve-http-v1 | serve-http | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| copilot | conversation | unverified | 否 | copilot-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| kilo-code | conversation | unverified | 否 | kilo-code-serve-http-v1 | serve-http | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| cursor | conversation | unverified | 否 | cursor-agent-cli-v1 | cli | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
 
 ## 原生能力清单
 

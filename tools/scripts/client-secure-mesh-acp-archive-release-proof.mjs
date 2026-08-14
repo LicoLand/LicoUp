@@ -85,7 +85,7 @@ function runNativeTest(filter) {
 async function loadReleaseBuiltDesktopEvidence() {
   const reports = [
     {
-      targetId: process.arch === "arm64" ? "macos-arm64" : "macos-x64",
+      targetId: "macos-arm64",
       platform: "macos",
       report: physicalReportRefs.macosReleaseCliProof
     },

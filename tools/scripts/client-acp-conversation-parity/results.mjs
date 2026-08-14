@@ -171,6 +171,8 @@ export function aggregateResult(agentId, strict, packaged, rounds, selfTestEvide
     })),
     consecutivePasses: releaseUi && corePassed ? completed : 0,
     officialNativeLane: every("nativeToArc") && every("arcToNative"),
+    openNew: every("openNew"),
+    exactResume: every("exactResume"),
     nativeToArc: every("nativeToArc"),
     arcToNative: every("arcToNative"),
     realSessionIds: every("realSessionIds"),

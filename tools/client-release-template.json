@@ -26,7 +26,6 @@
     "refPrefix": "release-candidate/",
     "targets": {
       "macos-direct-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
-      "macos-direct-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
       "macos-app-store-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
       "windows-direct-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],
       "windows-store-x64": ["source", "flutter", "rust", "dependencies", "release-policy"],

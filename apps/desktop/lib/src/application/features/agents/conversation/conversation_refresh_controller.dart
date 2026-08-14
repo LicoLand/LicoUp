@@ -120,6 +120,19 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
       return;
     }
+    if (!isSendingConversationMessage &&
+        await reattachActiveConversationTurn(
+          agentId,
+          selectedConversationSessionId.trim(),
+        )) {
+      if (_conversationRefreshTargetIsCurrent(agentId)) {
+        _scheduleActiveConversationRefresh(
+          agentId,
+          conversationRefreshPolicy.activeDelay(conversationRefreshPriority),
+        );
+      }
+      return;
+    }
     if (isSendingConversationMessage) {
       // A streamed turn is in progress: the native transcript only holds the
       // half-persisted user message, and a readback must not run under the

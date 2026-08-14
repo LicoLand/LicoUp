@@ -47,7 +47,6 @@
   "targets": [
     { "targetId": "windows-x64", "profile": "desktop", "buildSupported": true, "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
     { "targetId": "windows-arm64", "profile": "desktop", "buildSupported": false },
-    { "targetId": "macos-x64", "profile": "desktop", "buildSupported": true, "overrides": { "client-shell": "supported", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
     { "targetId": "macos-arm64", "profile": "desktop", "buildSupported": true, "overrides": { "client-shell": "supported", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
     { "targetId": "linux-glibc-x64", "profile": "desktop", "buildSupported": true, "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
     { "targetId": "linux-glibc-arm64", "profile": "desktop", "buildSupported": true, "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },

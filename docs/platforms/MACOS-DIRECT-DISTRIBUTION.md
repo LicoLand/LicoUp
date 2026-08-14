@@ -57,6 +57,36 @@ following in a single local release run:
 No remote workflow may publish a macOS direct artifact. Publication, upload,
 and release-page mutation require separate explicit authorization.
 
+## Local tool
+
+Run this once on a release workstation:
+
+```sh
+npm run client:release:macos:setup
+```
+
+The tool interactively selects the Developer ID provisioning profile, stores a
+validated copy and minimal signing configuration in a private local directory,
+and asks Apple `notarytool` to store notarization credentials in the system
+Keychain. It then performs one disposable signing probe so the operator can
+complete the `codesign` Keychain authorization in one place. Source, build
+reports, and terminal output do not retain certificate, account, key, or local
+path values.
+
+The ordinary internal-test workflow is one command:
+
+```sh
+npm run client:release:macos:beta
+```
+
+It requires a clean worktree and runs the source gate, release-policy gate,
+toolchain preflight, Developer ID package, app and DMG notarization/stapling/
+Gatekeeper acceptance, exact-DMG installation, and stable launch in a fixed
+order. The final redacted local receipt binds the current revision, source
+tree, version, build number, release template, and artifact digest. The command
+does not push a branch, upload an artifact, create a Release, or perform any
+remote publication; formal publication remains a separately authorized action.
+
 ## Primary Apple references
 
 - [Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates)

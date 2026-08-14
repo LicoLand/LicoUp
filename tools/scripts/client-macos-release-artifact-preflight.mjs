@@ -32,7 +32,7 @@ const checksumPath = `${archivePath}.sha256`;
 const installedApp = "/Applications/LicoUp.app";
 const bundleId = "land.lico.licoup";
 const entitlementsPath = path.join(repoRoot,
-  "apps/desktop/macos/Runner/ProductionRelease.entitlements");
+  "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements");
 const reportRef = "reports/client-macos-release-artifact-preflight.json";
 const maximumOutputBytes = 16 * 1024 * 1024;
 
@@ -63,8 +63,16 @@ function pause(milliseconds) {
 }
 
 export function validateMacosDmgLayout(entries, applicationsLink) {
-  requireValue(Array.isArray(entries) && entries.length === 2 &&
-    entries[0] === "Applications" && entries[1] === "LicoUp.app" &&
+  const expectedEntries = [
+    "Applications",
+    "LicoUp License.txt",
+    "LicoUp Open Source Notice.txt",
+    "LicoUp Privacy Policy.html",
+    "LicoUp.app",
+    "Third-Party Notices.txt",
+  ];
+  requireValue(Array.isArray(entries) &&
+    JSON.stringify(entries) === JSON.stringify(expectedEntries) &&
     applicationsLink === "/Applications", "audit_archive_layout_invalid");
   return true;
 }
@@ -163,11 +171,20 @@ function verifyChecksum() {
 }
 
 function selfTest() {
-  validateMacosDmgLayout(["Applications", "LicoUp.app"], "/Applications");
+  const canonicalEntries = [
+    "Applications",
+    "LicoUp License.txt",
+    "LicoUp Open Source Notice.txt",
+    "LicoUp Privacy Policy.html",
+    "LicoUp.app",
+    "Third-Party Notices.txt",
+  ];
+  validateMacosDmgLayout(canonicalEntries, "/Applications");
   for (const [entries, link] of [
-    [["LicoUp.app"], "/Applications"],
-    [["Applications", "LicoUp.app", "unexpected.txt"], "/Applications"],
-    [["Applications", "LicoUp.app"], "/fixture-root/Applications"],
+    [canonicalEntries.filter((entry) => entry !== "Third-Party Notices.txt"),
+      "/Applications"],
+    [[...canonicalEntries, "unexpected.txt"], "/Applications"],
+    [canonicalEntries, "/fixture-root/Applications"],
   ]) {
     let rejected = false;
     try { validateMacosDmgLayout(entries, link); } catch { rejected = true; }

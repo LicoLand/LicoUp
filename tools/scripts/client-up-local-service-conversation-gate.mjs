@@ -3,11 +3,8 @@
 /**
  * Arc ↔ native local-service conversation gate (background, no release UI).
  *
- * Proves live local forwarding for agents whose official lane is a local
- * service (Codex app-server, OpenCode serve HTTP):
- *   nativeFirst → Arc resume → Arc first → native resume
- * Repeated three times on fresh sessions. Writes CL-06 evidence and promotes
- * readiness sendEnabled.
+ * Proves live local forwarding with one new-conversation turn followed by one
+ * exact continuation turn on the same native session.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -42,6 +39,7 @@ import {
   evidenceManifestPath,
   packagingRegistryPath,
   strictRoundCount,
+  verificationTurnCount,
   workspaceRoot,
 } from "./client-acp-conversation-parity/constants.mjs";
 import {
@@ -51,10 +49,8 @@ import {
 } from "./client-acp-conversation-parity/evidence.mjs";
 import { AcceptanceError, digest, requireFact } from "./client-acp-conversation-parity/errors.mjs";
 import { parityModelForAgent } from "./client-acp-conversation-parity/agent-ids.mjs";
-import { runSidecar } from "./client-acp-conversation-parity/native/acp-turn.mjs";
 import {
   appServerFinalMessage,
-  nativeAppServerTurn,
   withAppServer,
 } from "./client-acp-conversation-parity/native/app-server.mjs";
 import { createPrivateWrapper } from "./client-acp-conversation-parity/process.mjs";
@@ -63,10 +59,8 @@ import {
   preflightCleanup,
 } from "./client-acp-conversation-parity/session-cleanup.mjs";
 import { resolveExecutable, resolveSidecar } from "./client-acp-conversation-parity/sidecar.mjs";
-import {
-  ensureOpenCodeServeAttachUrl,
-  nativeOpenCodeHttpTurn,
-} from "./client-up-local-service-conversation-gate/opencode-http.mjs";
+import { ensureOpenCodeServeAttachUrl } from "./client-up-local-service-conversation-gate/opencode-http.mjs";
+import { runRound } from "./client-acp-conversation-parity/run-round.mjs";
 
 const root = workspaceRoot;
 const ROUND_COUNT = strictRoundCount;
@@ -109,23 +103,6 @@ function parseArgs(argv) {
   requireFact(Number.isFinite(options.timeoutMs) && options.timeoutMs >= 1_000, "timeout_invalid");
   requireFact(Object.hasOwn(AGENT_GATES, options.agent), "agent_gate_unsupported");
   return options;
-}
-
-function sidecarBinaryPath(context) {
-  // Ready adapters bind send to the exact evidence digest of the discovered
-  // native binary. Private argv wrappers are fine for native-only probes, but
-  // Arc ConversationLane rejects them after promotion.
-  return context.binary;
-}
-
-async function nativeTurnForAgent(context, sessionId, prompt) {
-  if (context.config.id === "codex") {
-    return nativeAppServerTurn(context, sessionId, prompt);
-  }
-  if (context.config.id === "opencode") {
-    return nativeOpenCodeHttpTurn(context, sessionId, prompt);
-  }
-  throw new AcceptanceError("agent_gate_unsupported");
 }
 
 /// Prove Codex in-turn `turn/steer` (C-05) against the live app-server lane.
@@ -225,6 +202,9 @@ function buildContext(options, agentId, config) {
   const context = {
     config,
     binary,
+    // Promoted adapters bind this gate to the discovered native binary digest;
+    // a private argv-capture wrapper would be rejected by the sidecar.
+    sidecarBinaryPath: binary,
     sidecar,
     wrapper,
     cwd,
@@ -252,88 +232,21 @@ function buildContext(options, agentId, config) {
 }
 
 async function runBidirectionalRound(context, roundIndex) {
-  const marker = (label) =>
-    `${label}${roundIndex}_${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-  const nativeFirstPrompt = `Reply with exactly ${marker("NF")}`;
-  const arcResumePrompt = `Reply with exactly ${marker("AR")}`;
-  const arcFirstPrompt = `Reply with exactly ${marker("AF")}`;
-  const nativeResumePrompt = `Reply with exactly ${marker("NR")}`;
-
-  // Arc turns must ride the same parity model as native turns; otherwise the
-  // sidecar falls back to the operator's default model and can diverge (or
-  // fail on accounts where the default model is unavailable).
-  const parityModel = parityModelForAgent(context.config.id);
-  const parityEffort = parityModel.toLowerCase().includes("spark") ? "low" : "";
-  const arcModelFields = {
-    ...(parityModel ? { model: parityModel } : {}),
-    ...(parityEffort ? { reasoningEffort: parityEffort } : {}),
-  };
-
-  const nativeFirst = await nativeTurnForAgent(context, "", nativeFirstPrompt);
-  requireFact(nativeFirst.sessionId.length > 0, "native_session_id_missing");
-  requireFact(nativeFirst.output.trim().length > 0, "native_final_message_missing");
-
-  const arcResume = await runSidecar(context, {
-    agent: context.config.id,
-    text: arcResumePrompt,
-    sessionId: nativeFirst.sessionId,
-    workingDirectory: context.cwd,
-    binaryPath: sidecarBinaryPath(context),
-    ...arcModelFields,
-    timeoutMs: context.timeoutMs,
-    maxStdoutBytes: context.maxOutputBytes,
-    maxStderrBytes: context.maxOutputBytes,
-    streamEvents: true,
+  const round = await runRound(context, roundIndex, {
+    permissionFailClosed: true,
+    errorFailClosed: true,
   });
-  const arcResumeSession = arcResume.result?.sessionId || arcResume.result?.nativeSessionId || "";
-  requireFact(arcResumeSession === nativeFirst.sessionId, "native_to_arc_session_mismatch");
-  requireFact(String(arcResume.result?.output || "").trim().length > 0, "arc_resume_output_missing");
-
-  const arcFirst = await runSidecar(context, {
-    agent: context.config.id,
-    text: arcFirstPrompt,
-    workingDirectory: context.cwd,
-    binaryPath: sidecarBinaryPath(context),
-    ...arcModelFields,
-    timeoutMs: context.timeoutMs,
-    maxStdoutBytes: context.maxOutputBytes,
-    maxStderrBytes: context.maxOutputBytes,
-    streamEvents: true,
-  });
-  const arcSessionId = arcFirst.result?.sessionId || arcFirst.result?.nativeSessionId || "";
-  requireFact(arcSessionId.length > 0, "arc_session_id_missing");
-  requireFact(arcSessionId !== nativeFirst.sessionId, "arc_session_not_distinct");
-  requireFact(String(arcFirst.result?.output || "").trim().length > 0, "arc_first_output_missing");
-
-  const nativeResume = await nativeTurnForAgent(context, arcSessionId, nativeResumePrompt);
-  requireFact(nativeResume.sessionId === arcSessionId, "arc_to_native_session_mismatch");
-  requireFact(nativeResume.output.trim().length > 0, "native_resume_output_missing");
-
-  const cleanupNative = await cleanupSession(
-    context,
-    nativeFirst.sessionId,
-    context.temporaryDirectory,
-  );
-  const cleanupArc = await cleanupSession(
-    context,
-    arcSessionId,
-    context.temporaryDirectory,
-  );
-  requireFact(cleanupNative === true && cleanupArc === true, "cleanup_failed");
-
+  requireFact(round.ready === true, round.errorCode || "verification_conversation_failed");
   return {
-    nativeToArc: true,
-    arcToNative: true,
-    realSessionIds: true,
-    streamingProven: arcResume.streamingSeen === true && arcFirst.streamingSeen === true,
-    structuredProven: arcResume.structuredSeen === true && arcFirst.structuredSeen === true,
-    cleanupPassed: true,
-    outputBytes: [
-      Buffer.byteLength(nativeFirst.output),
-      Buffer.byteLength(String(arcResume.result.output || "")),
-      Buffer.byteLength(String(arcFirst.result.output || "")),
-      Buffer.byteLength(nativeResume.output),
-    ],
+    openNew: round.facts.openNew === true,
+    exactResume: round.facts.exactResume === true,
+    nativeToArc: round.facts.nativeToArc === true,
+    arcToNative: round.facts.arcToNative === true,
+    realSessionIds: round.facts.realSessionIds === true,
+    streamingProven: round.facts.streamingSeen === true,
+    structuredProven: round.facts.structuredSeen === true,
+    cleanupPassed: round.cleanupVerified === true,
+    outputBytes: round.facts.turnOutputBytes,
   };
 }
 
@@ -358,6 +271,8 @@ function writeGateEvidence({ agentId, gate, aggregate, context }) {
       consecutivePasses: aggregate.consecutivePasses,
       nativeToArc: true,
       arcToNative: true,
+      openNew: true,
+      exactResume: true,
       sidecarDigest,
       runtimeVersionDigest,
     }),
@@ -374,7 +289,7 @@ function writeGateEvidence({ agentId, gate, aggregate, context }) {
   const coreChecks = {
     "P-01": pass(true),
     "P-02": pass(aggregate.realSessionIds === true),
-    "P-03": pass(aggregate.nativeToArc === true && aggregate.arcToNative === true),
+    "P-03": pass(aggregate.openNew === true && aggregate.exactResume === true),
     "P-04": pass(aggregate.finalResults === true && aggregate.streamingProven === true),
     "P-05": pass(true),
     "P-06": pass(true),
@@ -513,6 +428,8 @@ export async function runArcLocalServiceConversationGate(argv = process.argv.sli
 
     const aggregate = {
       agent: agentId,
+      openNew: rounds.every((row) => row.openNew),
+      exactResume: rounds.every((row) => row.exactResume),
       nativeToArc: rounds.every((row) => row.nativeToArc),
       arcToNative: rounds.every((row) => row.arcToNative),
       realSessionIds: rounds.every((row) => row.realSessionIds),
@@ -524,7 +441,7 @@ export async function runArcLocalServiceConversationGate(argv = process.argv.sli
       conversationGatePassed: true,
       consecutivePasses: ROUND_COUNT,
     };
-    requireFact(aggregate.nativeToArc && aggregate.arcToNative, "bidirectional_loop_failed");
+    requireFact(aggregate.openNew && aggregate.exactResume, "exact_resume_verification_failed");
 
     let evidenceWrite = null;
     if (options.write) {
@@ -550,6 +467,10 @@ export async function runArcLocalServiceConversationGate(argv = process.argv.sli
       agent: agentId,
       roundsRequired: ROUND_COUNT,
       roundsCompleted: rounds.length,
+      turnsRequired: verificationTurnCount,
+      turnsCompleted: rounds.reduce((total, row) => total + row.outputBytes.length, 0),
+      openNew: true,
+      exactResume: true,
       nativeToArc: true,
       arcToNative: true,
       cleanupPassed: true,

@@ -128,7 +128,7 @@ void registerClientHistoryRefreshScenarios() {
   );
 
   test(
-    'loadConversationSessions grows pages by 10 20 50 then repeated 100',
+    'loadConversationSessions grows pages by 10 on every reach to the end',
     () async {
       final pagedSessions = List.generate(220, (index) {
         final updatedAt = DateTime.utc(
@@ -180,14 +180,14 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '21',
+        '11',
         '--offset',
         '10',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(30));
+      expect(controller.selectedConversationSessions, hasLength(20));
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-029',
+        'native-codex-019',
       );
       expect(controller.selectedConversationSessionsHasMore, isTrue);
 
@@ -200,14 +200,14 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '51',
+        '21',
         '--offset',
-        '30',
+        '20',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(80));
+      expect(controller.selectedConversationSessions, hasLength(40));
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-079',
+        'native-codex-039',
       );
       expect(controller.selectedConversationSessionsHasMore, isTrue);
 
@@ -220,14 +220,14 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '101',
+        '31',
         '--offset',
-        '80',
+        '40',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(180));
+      expect(controller.selectedConversationSessions, hasLength(70));
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-179',
+        'native-codex-069',
       );
       expect(controller.selectedConversationSessionsHasMore, isTrue);
 
@@ -240,15 +240,47 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '101',
+        '41',
         '--offset',
-        '180',
+        '70',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(220));
+      expect(controller.selectedConversationSessions, hasLength(110));
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-219',
+        'native-codex-109',
       );
+      expect(controller.selectedConversationSessionsHasMore, isTrue);
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.conversationStreamCalls, 6);
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '51',
+        '--offset',
+        '110',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(160));
+      expect(controller.selectedConversationSessionsHasMore, isTrue);
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.conversationStreamCalls, 7);
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '61',
+        '--offset',
+        '160',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(220));
       expect(controller.selectedConversationSessionsHasMore, isFalse);
     },
   );
@@ -309,7 +341,7 @@ void registerClientHistoryRefreshScenarios() {
 
       await controller.loadConversationSessions('codex');
       await controller.loadMoreConversationSessions('codex');
-      expect(controller.selectedConversationSessions, hasLength(30));
+      expect(controller.selectedConversationSessions, hasLength(20));
 
       service.conversationSessions['codex'] = [
         conversationSessionJson(
@@ -322,12 +354,12 @@ void registerClientHistoryRefreshScenarios() {
       ];
       await controller.refreshConversationSessions('codex');
 
-      expect(controller.selectedConversationSessions, hasLength(31));
+      expect(controller.selectedConversationSessions, hasLength(21));
       expect(
         controller.selectedConversationSessions.map((session) => session.id),
         containsAll([
           'native-codex-new',
-          for (var index = 0; index < 30; index += 1) 'native-codex-$index',
+          for (var index = 0; index < 20; index += 1) 'native-codex-$index',
         ]),
       );
 
@@ -339,16 +371,16 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '51',
+        '21',
         '--offset',
-        '31',
+        '21',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(81));
+      expect(controller.selectedConversationSessions, hasLength(41));
       expect(
         controller.selectedConversationSessions.map((session) => session.id),
         containsAll([
           'native-codex-new',
-          for (var index = 0; index < 80; index += 1) 'native-codex-$index',
+          for (var index = 0; index < 40; index += 1) 'native-codex-$index',
         ]),
       );
     },

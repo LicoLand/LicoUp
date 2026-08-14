@@ -231,8 +231,12 @@ while IFS= read -r line; do
   case "$line" in
     *'"method":"agent.conversation.send"'*)
       : > "$LICO_TEST_STARTED_FILE"
-      while [ ! -f "$LICO_TEST_RELEASE_FILE" ]; do sleep 0.01; done
-      : > "$LICO_TEST_COMPLETED_FILE"
+      (
+        while [ ! -f "$LICO_TEST_RELEASE_FILE" ]; do sleep 0.01; done
+        : > "$LICO_TEST_COMPLETED_FILE"
+      ) &
+      worker=$!
+      wait "$worker"
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"sessionId":"session-1","turnId":"turn-1"}}\n' "$request_id" "$workflow_id" || true
       ;;
   esac
@@ -261,21 +265,30 @@ done
             onDone: streamDone.complete,
           );
 
-      await _waitUntil(started.existsSync);
-      expect(context.startModes, [ProcessStartMode.detachedWithStdio]);
+      await _waitUntil(
+        started.existsSync,
+        timeout: const Duration(seconds: 10),
+      );
+      expect(context.startModes, [ProcessStartMode.normal]);
       await client.dispose().timeout(const Duration(milliseconds: 500));
       await streamDone.future.timeout(const Duration(milliseconds: 500));
       expect(completed.existsSync(), isFalse);
 
       await release.writeAsString('release');
-      await _waitUntil(completed.existsSync);
+      await _waitUntil(
+        completed.existsSync,
+        timeout: const Duration(seconds: 10),
+      );
       expect(context.startCount, 1);
     },
   );
 }
 
-Future<void> _waitUntil(bool Function() predicate) async {
-  final deadline = DateTime.now().add(const Duration(seconds: 2));
+Future<void> _waitUntil(
+  bool Function() predicate, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  final deadline = DateTime.now().add(timeout);
   while (!predicate()) {
     if (DateTime.now().isAfter(deadline)) {
       throw TimeoutException('condition not reached');

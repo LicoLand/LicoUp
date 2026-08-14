@@ -61,10 +61,12 @@ unaffected language or platform lanes to run.
 
 ## Commit identity and authorship
 
-Every commit must carry exactly one developer identity. Its Git `Author` and
-`Committer` name and email must match the account currently authenticated by
-GitHub CLI. After cloning the repository, and whenever `gh auth` changes to a
-different account, install the repository policy:
+Every newly created commit must carry exactly one authenticated developer
+identity. The repository Git identity must match the account currently
+authenticated by GitHub CLI. Existing human-authored history keeps its original
+Author and Committer metadata when it is consolidated or published. After
+cloning the repository, and whenever `gh auth` changes to a different account,
+install the repository policy:
 
 ```bash
 npm run repo:identity:install
@@ -73,18 +75,23 @@ npm run repo:identity:verify
 
 The installer uses the account's canonical GitHub noreply address and enables
 the repository-controlled `pre-commit`, `commit-msg`, and `pre-push` hooks.
-The hooks inspect every outgoing commit, not only `HEAD`. Missing, redirected,
-modified, symbolic-link, or non-executable policy files fail closed. Never use
-`--no-verify`, change `core.hooksPath`, or otherwise bypass these gates.
+The hooks inspect every commit that is not already reachable from the selected
+remote, not only `HEAD`. They reject Agent-shaped Authors, Committers, and
+attribution lines while allowing historical human identities and GitHub's merge
+service. Missing, redirected, modified, symbolic-link, or non-executable policy
+files fail closed. Never use `--no-verify`, change `core.hooksPath`, or otherwise
+bypass these gates.
 
 An Agent may assist a developer, but it must never replace, overwrite, or claim
 the developer's authorship. An Agent's name, email, or other contact details
 must not appear as an Author, Committer, co-author, sign-off, attribution
-trailer, or identity-shaped line. This includes Claude Code, Cursor, Codex,
-Copilot, and every other Agent or bot. Claiming human work under an Agent's
-contact details is false identity information and a provenance violation; the
-local hooks and remote Rulesets reject it. The developer must review and accept
-the change personally before committing it.
+trailer, or identity-shaped line. Known Agent and bot identity forms are
+rejected locally and remotely, and all attribution trailers are forbidden so an
+unknown Agent cannot enter the contributor graph as a secondary identity. No
+metadata rule can identify an Agent that deliberately impersonates an ordinary
+human identity; the trust boundary for that case is the repository-controlled
+hook, the authenticated GitHub identity, and the developer's personal review
+before committing.
 
 ## Privacy rules
 
@@ -230,7 +237,7 @@ never replace an asset in place.
 - New or changed tests use made-up, redacted data.
 - Public documentation has matching English and Chinese text.
 - No sensitive values or raw runtime output are included.
-- Commit Author and Committer match the current `gh` account, with no second
-  signature, attribution trailer, Agent identity, or bypassed hook.
+- New commits use the current `gh` account; published history contains no Agent
+  Author, Committer, attribution trailer, or bypassed hook.
 
 LicoUp uses the `AGPL-3.0-or-later` license.

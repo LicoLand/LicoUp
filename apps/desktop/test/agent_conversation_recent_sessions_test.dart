@@ -197,6 +197,25 @@ void main() {
     expect(find.text('暂无原生智能体历史'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('running recent conversation shows the shared activity spinner', (
+    tester,
+  ) async {
+    await _pumpRecentSessions(
+      tester,
+      sessions: [_session('running-session', 'Active work')],
+      runningSessionIds: const {'running-session'},
+      onSelectSession: (_) {},
+    );
+
+    expect(
+      find.byKey(
+        const Key('agent-conversation-recent-running-running-session'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 AgentConversationSession _session(String id, String title) {
@@ -219,6 +238,7 @@ Future<void> _pumpRecentSessions(
   WidgetTester tester, {
   required List<AgentConversationSession> sessions,
   required ValueChanged<String> onSelectSession,
+  Set<String> runningSessionIds = const {},
   bool loading = false,
   bool hasMore = false,
   bool loadingMore = false,
@@ -243,6 +263,7 @@ Future<void> _pumpRecentSessions(
           height: height,
           child: AgentConversationRecentSessions(
             sessions: sessions,
+            runningSessionIds: runningSessionIds,
             loading: loading,
             hasMore: hasMore,
             loadingMore: loadingMore,

@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -12,6 +13,7 @@ class AgentConversationRecentSessions extends StatelessWidget {
   const AgentConversationRecentSessions({
     super.key,
     required this.sessions,
+    this.runningSessionIds = const {},
     required this.loading,
     this.hasMore = false,
     this.loadingMore = false,
@@ -23,6 +25,7 @@ class AgentConversationRecentSessions extends StatelessWidget {
   });
 
   final List<AgentConversationSession> sessions;
+  final Set<String> runningSessionIds;
   final bool loading;
   final bool hasMore;
   final bool loadingMore;
@@ -50,6 +53,7 @@ class AgentConversationRecentSessions extends StatelessWidget {
               builder: (context, constraints) {
                 final recent = _RecentSessionsList(
                   sessions: sessions,
+                  runningSessionIds: runningSessionIds,
                   loading: loading,
                   hasMore: hasMore,
                   loadingMore: loadingMore,
@@ -150,6 +154,7 @@ class _NewConversationCard extends StatelessWidget {
 class _RecentSessionsList extends StatefulWidget {
   const _RecentSessionsList({
     required this.sessions,
+    required this.runningSessionIds,
     required this.loading,
     required this.hasMore,
     required this.loadingMore,
@@ -159,6 +164,7 @@ class _RecentSessionsList extends StatefulWidget {
   });
 
   final List<AgentConversationSession> sessions;
+  final Set<String> runningSessionIds;
   final bool loading;
   final bool hasMore;
   final bool loadingMore;
@@ -260,6 +266,7 @@ class _RecentSessionsListState extends State<_RecentSessionsList> {
             return _RecentSessionRow(
               key: Key('agent-conversation-recent-${session.id}'),
               session: session,
+              running: widget.runningSessionIds.contains(session.id),
               onTap: () => widget.onSelectSession(session.id),
             );
           },
@@ -278,10 +285,12 @@ class _RecentSessionRow extends StatefulWidget {
   const _RecentSessionRow({
     super.key,
     required this.session,
+    required this.running,
     required this.onTap,
   });
 
   final AgentConversationSession session;
+  final bool running;
   final VoidCallback onTap;
 
   @override
@@ -332,6 +341,16 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
                       ),
                     ),
                   ),
+                  if (widget.running) ...[
+                    const SizedBox(width: 8),
+                    LicoSpinningRefreshIcon(
+                      key: Key(
+                        'agent-conversation-recent-running-${session.id}',
+                      ),
+                      size: 13,
+                      color: colors.textMuted,
+                    ),
+                  ],
                   if (updatedLabel.isNotEmpty) ...[
                     const SizedBox(width: 10),
                     Text(

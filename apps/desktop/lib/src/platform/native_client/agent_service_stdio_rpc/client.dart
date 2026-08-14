@@ -18,7 +18,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       _sessionManager = StdioRpcSessionManager(processContext: processContext),
       _chat = StdioRpcSessionManager(
         processContext: processContext,
-        preserveActiveWork: true,
+        arguments: const ['rpc', 'conversation'],
       );
 
   final NativeCliProcessContext _processContext;
