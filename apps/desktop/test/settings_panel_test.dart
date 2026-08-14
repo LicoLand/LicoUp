@@ -39,9 +39,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('语言'), findsOneWidget);
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('英文').last);
+    expect(find.text('通用'), findsWidgets);
+    await tester.tap(find.byKey(const Key('settings-locale-en')));
     await tester.pumpAndSettle();
 
     expect(controller.localePreference, LocalePreference.english);
@@ -92,8 +91,10 @@ void main() {
       expect(find.text('下一个'), findsNothing);
       expect(find.bySemanticsLabel('界面布局'), findsOneWidget);
       expect(find.text('正在加载布局…'), findsOneWidget);
+      expect(find.text('通用'), findsWidgets);
       expect(find.text('语言'), findsOneWidget);
       expect(find.byIcon(Icons.language_outlined), findsWidgets);
+      expect(find.byKey(const Key('settings-locale-toggle')), findsOneWidget);
       expect(find.text('跟随系统'), findsNWidgets(2));
       expect(find.text('明亮'), findsOneWidget);
       expect(find.text('暗黑'), findsOneWidget);
@@ -278,7 +279,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
+      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -320,7 +321,7 @@ void main() {
         home: Scaffold(
           body: SizedBox(
             width: 980,
-            height: 460,
+            height: 720,
             child: SettingsPanel(controller: controller),
           ),
         ),
@@ -339,11 +340,12 @@ void main() {
 
     // Initially the first section is selected with the solid accent and a
     // dark foreground.
-    expect(indexForeground('Appearance'), colors.textOnPrimary);
+    expect(indexForeground('General'), colors.textOnPrimary);
+    expect(indexForeground('Appearance'), isNot(colors.textOnPrimary));
     final selectedContainer = tester
         .widgetList<Container>(
           find.ancestor(
-            of: find.text('Appearance'),
+            of: find.text('General'),
             matching: find.byType(Container),
           ),
         )
@@ -354,23 +356,84 @@ void main() {
 
     // Scroll to the bottom: the spy selection follows into the archived
     // conversations section, away from Appearance.
-    final scrollable = find.byKey(const Key('settings-content-scroll'));
-    await tester.drag(scrollable, const Offset(0, -3200));
+    final contentScrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Archived conversations'),
+      360,
+      scrollable: contentScrollable,
+    );
+    await tester.drag(contentScrollable, const Offset(0, -240));
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(indexForeground('Archived'), colors.textOnPrimary);
-    expect(indexForeground('Storage'), isNot(colors.textOnPrimary));
-    expect(indexForeground('Appearance'), isNot(colors.textOnPrimary));
+    expect(indexForeground('General'), isNot(colors.textOnPrimary));
+    expect(
+      [
+        indexForeground('Archived'),
+        indexForeground('Diagnostics'),
+        indexForeground('Storage'),
+      ].contains(colors.textOnPrimary),
+      isTrue,
+    );
 
     // Clicking the first sidebar entry animates the content back to its
     // section, and the selection follows.
-    await tester.tap(find.text('Appearance').first);
+    await tester.tap(find.text('General').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump();
-    expect(indexForeground('Appearance'), colors.textOnPrimary);
+    expect(indexForeground('General'), colors.textOnPrimary);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings sidebar lists sections in the canonical order', (
+    tester,
+  ) async {
+    final controller = ClientController(agentService: FakeAgentService());
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Scaffold(
+          body: SizedBox(
+            width: 980,
+            height: 1400,
+            child: SettingsPanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    const expected = ['通用', '外观', '更新', '启动', '工具', '存储', '诊断', '已归档'];
+    final labels = tester
+        .widgetList<Text>(find.byType(Text))
+        .where((candidate) => candidate.style?.fontSize == 12.5)
+        .map((candidate) => candidate.data)
+        .whereType<String>()
+        .toList();
+    expect(labels, expected);
+    expect(find.text('语言'), findsOneWidget);
+    expect(find.byKey(const Key('settings-locale-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('layout-selector-reset')), findsNothing);
+    expect(find.text('恢复系统默认布局'), findsNothing);
   });
 }
 

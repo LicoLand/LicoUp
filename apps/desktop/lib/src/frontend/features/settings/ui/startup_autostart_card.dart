@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -122,14 +123,10 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
     return Padding(
       key: const Key('startup-autostart-card'),
-      padding: const EdgeInsets.fromLTRB(
-        LicoContentSpacing.item,
-        LicoContentSpacing.compact,
-        LicoContentSpacing.item,
-        LicoContentSpacing.item,
-      ),
+      padding: presentation.rowPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

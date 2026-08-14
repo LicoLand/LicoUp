@@ -22,7 +22,7 @@ pub(super) struct TimezoneTransition {
 }
 
 impl UsageWindow {
-    pub(super) fn from_params(params: &Value) -> Self {
+    pub(crate) fn from_params(params: &Value) -> Self {
         let days = params
             .get("historyDays")
             .and_then(number_value)
@@ -51,8 +51,20 @@ impl UsageWindow {
         }
     }
 
-    pub(super) fn contains(&self, date: &str) -> bool {
+    pub(crate) fn contains(&self, date: &str) -> bool {
         date >= self.start.as_str() && date <= self.end.as_str()
+    }
+
+    pub(crate) fn start(&self) -> &str {
+        &self.start
+    }
+
+    pub(crate) fn end(&self) -> &str {
+        &self.end
+    }
+
+    pub(crate) fn days(&self) -> u64 {
+        self.days
     }
 
     pub(super) fn date_key(&self, value: &str) -> Option<String> {

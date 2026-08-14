@@ -128,9 +128,6 @@ final class _SettingsPresentation implements LayoutSettingsPresentation {
   EdgeInsetsGeometry get sectionHeaderPadding => EdgeInsets.zero;
 
   @override
-  EdgeInsetsGeometry get selectorActionPadding => EdgeInsets.zero;
-
-  @override
   EdgeInsetsGeometry get selectorGridPadding => EdgeInsets.zero;
 
   @override

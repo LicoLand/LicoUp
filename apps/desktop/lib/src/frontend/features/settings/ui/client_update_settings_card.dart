@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -42,14 +43,10 @@ class ClientUpdateSettingsCard extends StatelessWidget {
     final status = controller.clientUpdateStatus;
     final busy = controller.isClientUpdateBusy;
 
+    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
     return Padding(
       key: const Key('client-update-settings-card'),
-      padding: const EdgeInsets.fromLTRB(
-        LicoContentSpacing.item,
-        LicoContentSpacing.compact,
-        LicoContentSpacing.item,
-        LicoContentSpacing.item,
-      ),
+      padding: presentation.rowPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

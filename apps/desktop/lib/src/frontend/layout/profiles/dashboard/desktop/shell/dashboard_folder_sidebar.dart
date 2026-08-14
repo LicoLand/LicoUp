@@ -33,6 +33,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
   final ValueChanged<int>? onSelectSettingsSection;
 
   static const _sections = [
+    ClientSection.agentHub,
     ClientSection.agents,
     ClientSection.skillHub,
     ClientSection.pluginManagement,
@@ -121,6 +122,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
         ClientSection.agents => strings.conversationListNav,
         ClientSection.skillHub => strings.skillsNav,
         ClientSection.pluginManagement => strings.pluginsNav,
+        ClientSection.agentHub => strings.agentHub,
         ClientSection.mobileRelay => strings.mobileNav,
         ClientSection.monitoring => strings.statsNav,
         ClientSection.models => strings.keys,
@@ -131,6 +133,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
     ClientSection.agents => Icons.psychology_outlined,
     ClientSection.skillHub => Icons.library_books_outlined,
     ClientSection.pluginManagement => Icons.extension_outlined,
+    ClientSection.agentHub => Icons.auto_awesome_outlined,
     ClientSection.mobileRelay => Icons.phonelink_outlined,
     ClientSection.monitoring => Icons.query_stats_outlined,
     ClientSection.models => Icons.key_outlined,

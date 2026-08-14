@@ -358,6 +358,13 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.controller.appPresentationListenable,
+      builder: (context, _) => _buildPanel(context),
+    );
+  }
+
+  Widget _buildPanel(BuildContext context) {
     final mobileClient = isMobileClientPlatform(context);
 
     if (mobileClient) {
@@ -438,11 +445,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
           itemCount: sections.length * 2 - 1,
           itemBuilder: (context, index) {
             if (index.isOdd) {
-              // One hairline between adjacent settings sections keeps the
-              // canonical section order visually separated.
+              // Equal space above and below the hairline; section headers
+              // and rows use the same vertical token so the gap stays even.
               return Divider(
                 key: Key('settings-section-divider-${sections[index ~/ 2].id}'),
-                height: 1,
+                height: LicoContentSpacing.item,
                 color: context.licoColors.line,
               );
             }
@@ -465,6 +472,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
     // Navigation identity (icon and label) comes from the shared section
     // catalog so the shell navigation and any in-page rail never drift.
     Widget childFor(String id) => switch (id) {
+      'general' => _GeneralSettings(
+        controller: widget.controller,
+        colors: colors,
+        strings: strings,
+      ),
       'appearance' => _AppearanceSettings(
         controller: widget.controller,
         colors: colors,
@@ -649,6 +661,43 @@ class _IndexItemState extends State<_IndexItem> {
   }
 }
 
+class _GeneralSettings extends StatelessWidget {
+  const _GeneralSettings({
+    required this.controller,
+    required this.colors,
+    required this.strings,
+  });
+
+  final ClientController controller;
+  final LicoThemeColors colors;
+  final LicoStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LicoSectionHeader(
+          title: strings.general,
+          leading: Icon(
+            Icons.tune_outlined,
+            size: 18,
+            color: colors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
+        ),
+        SettingsLocaleToggleRow(
+          value: LocalePreference.normalize(controller.localePreference),
+          onChanged: (value) {
+            unawaited(controller.setLocalePreference(value));
+          },
+        ),
+      ],
+    );
+  }
+}
+
 class _AppearanceSettings extends StatelessWidget {
   const _AppearanceSettings({
     required this.controller,
@@ -691,24 +740,6 @@ class _AppearanceSettings extends StatelessWidget {
             color: colors.textSecondary,
           ),
           padding: presentation.sectionHeaderPadding,
-        ),
-        SettingsDropdownRow<String>(
-          icon: Icons.language_outlined,
-          title: strings.language,
-          value: LocalePreference.normalize(controller.localePreference),
-          items: LocalePreference.values
-              .map(
-                (value) => DropdownMenuItem(
-                  value: value,
-                  child: Text(strings.localePreferenceLabel(value)),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value != null) {
-              unawaited(controller.setLocalePreference(value));
-            }
-          },
         ),
         SettingsDayNightToggleRow(
           selection: appearanceBrightnessSelectionFor(
@@ -762,6 +793,7 @@ class _AppearanceSettings extends StatelessWidget {
           path: controller.appearancePresetDirectoryPath,
           icon: Icons.folder_copy_outlined,
           readOnly: true,
+          padding: presentation.rowPadding,
           onOpen: (path) => controller.openDirectoryPath(
             path,
             caption: strings.appearancePresetDirectory,
@@ -823,6 +855,7 @@ class _StorageSettings extends StatelessWidget {
           path: controller.portableDataPath,
           icon: Icons.folder_outlined,
           readOnly: true,
+          padding: presentation.rowPadding,
           onOpen: (path) =>
               controller.openDirectoryPath(path, caption: strings.portableData),
         ),
@@ -831,6 +864,7 @@ class _StorageSettings extends StatelessWidget {
           label: strings.snapshotRootPath,
           controller: controller.snapshotRootController,
           icon: Icons.inventory_2_outlined,
+          padding: presentation.rowPadding,
           enabled: !controller.isSavingSnapshotRoot,
           busy: controller.isSavingSnapshotRoot,
           onOpen: (path) => controller.openDirectoryPath(
@@ -909,6 +943,21 @@ class _MobileSettingsBody extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: LicoContentSpacing.item),
       children: [
         LicoSectionHeader(
+          title: strings.general,
+          leading: Icon(
+            Icons.tune_outlined,
+            size: 18,
+            color: colors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
+        ),
+        SettingsLocaleToggleRow(
+          value: LocalePreference.normalize(controller.localePreference),
+          onChanged: (value) {
+            unawaited(controller.setLocalePreference(value));
+          },
+        ),
+        LicoSectionHeader(
           title: strings.appearance,
           leading: Icon(
             Icons.palette_outlined,
@@ -916,24 +965,6 @@ class _MobileSettingsBody extends StatelessWidget {
             color: colors.textSecondary,
           ),
           padding: presentation.sectionHeaderPadding,
-        ),
-        SettingsDropdownRow<String>(
-          icon: Icons.language_outlined,
-          title: strings.language,
-          value: LocalePreference.normalize(controller.localePreference),
-          items: LocalePreference.values
-              .map(
-                (value) => DropdownMenuItem(
-                  value: value,
-                  child: Text(strings.localePreferenceLabel(value)),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value != null) {
-              unawaited(controller.setLocalePreference(value));
-            }
-          },
         ),
         SettingsDayNightToggleRow(
           selection: appearanceBrightnessSelectionFor(

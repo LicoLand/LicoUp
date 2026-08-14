@@ -11,6 +11,8 @@ import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart';
+import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
@@ -37,11 +39,15 @@ class _ClientShellState extends State<ClientShell>
   final _agentsHomeKey = GlobalKey<MobileAgentsHomeState>();
   final _focusCoordinator = LayoutFocusCoordinator();
   late ClientLayoutChromeAdapter _layoutChromeAdapter;
+  late NativeAgentHubEngine _agentHubEngine;
 
   @override
   void initState() {
     super.initState();
     _layoutChromeAdapter = ClientLayoutChromeAdapter(controller);
+    _agentHubEngine = NativeAgentHubEngine(
+      invoke: controller.agentService.runCli,
+    );
   }
 
   @override
@@ -50,6 +56,9 @@ class _ClientShellState extends State<ClientShell>
     if (!identical(oldWidget.controller, controller)) {
       _layoutChromeAdapter.dispose();
       _layoutChromeAdapter = ClientLayoutChromeAdapter(controller);
+      _agentHubEngine = NativeAgentHubEngine(
+        invoke: controller.agentService.runCli,
+      );
     }
   }
 
@@ -138,6 +147,10 @@ class _ClientShellState extends State<ClientShell>
         pane: modelsPanelPaneOf(context),
       ),
       ClientSection.settings => SettingsPanel(controller: controller),
+      ClientSection.agentHub => AgentHubPanel(
+        engine: _agentHubEngine,
+        openHomepage: controller.runtimePlatformBridge.openHttps,
+      ),
     };
   }
 
@@ -163,5 +176,6 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.mobileRelay => strings.mobilePairing,
         ClientSection.models => strings.modelGateway,
         ClientSection.settings => strings.settings,
+        ClientSection.agentHub => strings.agentHub,
       };
 }

@@ -4,13 +4,12 @@ import 'package:licoup/src/application/features/agents/controller/agent_usage_da
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 void main() {
-  test('viewport projection slices cached days without rescanning source', () {
-    final cache = AgentUsageDailyCache();
-    cache.ingestReport(_reportWithDailyUsage(windowDays: 90), replace: true);
+  test('viewport projection slices one native report without merging', () {
+    final source = _reportWithDailyUsage(windowDays: 90);
 
-    final seven = cache.projectViewport(7);
-    final thirty = cache.projectViewport(30);
-    final ninety = cache.projectViewport(90);
+    final seven = projectViewport(source, 7);
+    final thirty = projectViewport(source, 30);
+    final ninety = projectViewport(source, 90);
 
     expect(seven?.windowDays, 7);
     expect(seven?.totalTokens, 700);
@@ -20,10 +19,7 @@ void main() {
     expect(ninety?.totalTokens, 9000);
   });
 
-  test('incremental today merge replaces one day bucket', () {
-    final cache = AgentUsageDailyCache();
-    cache.ingestReport(_reportWithDailyUsage(windowDays: 90), replace: true);
-
+  test('a one-day native projection replaces rather than merging days', () {
     final today = agentUsageWindowDateKeys(1).single;
     final todayReport = AgentUsageReport(
       schemaVersion: AgentUsageReport.currentSchemaVersion,
@@ -56,137 +52,97 @@ void main() {
       window: const {'days': 1},
     );
 
-    cache.mergeReport(todayReport);
-
-    expect(cache.hasFullCoverage(), isTrue);
-    expect(cache.projectViewport(7)?.totalTokens, 600 + 999);
-    expect(cache.hasFreshToday(), isTrue);
+    final viewport = projectViewport(todayReport, 7);
+    expect(viewport?.totalTokens, 999);
+    expect(viewport?.windowDays, 7);
   });
 
-  test('retained report loads viewport immediately before backfill', () {
-    final cache = AgentUsageDailyCache();
-    cache.ingestReport(_reportWithDailyUsage(windowDays: 30), replace: true);
-
-    expect(cache.hasFullCoverage(), isFalse);
-    final viewport = cache.projectViewport(30);
+  test('partial native window still projects the requested viewport', () {
+    final source = _reportWithDailyUsage(windowDays: 30);
+    final viewport = projectViewport(source, 30);
     expect(viewport?.windowDays, 30);
     expect(viewport?.totalTokens, 3000);
   });
 
-  test(
-    'multi-agent 90-day retained report projects non-empty 30-day viewport',
-    () {
-      final cache = AgentUsageDailyCache();
-      cache.ingestReport(_multiAgentReport(windowDays: 90), replace: true);
-
-      final viewport = cache.projectViewport(30);
-      expect(viewport, isNotNull);
-      expect(viewport!.agents, hasLength(3));
-      expect(viewport.totalTokens, greaterThan(0));
-      expect(viewport.agent('cursor')?.totalTokens, 3000);
-      expect(viewport.agent('codex')?.totalTokens, 3000);
-      expect(viewport.agent('claude-code')?.totalTokens, 3000);
-      expect(
-        (viewport.agent('cursor')?.history['dailyUsage'] as List).length,
-        30,
-      );
-    },
-  );
-
-  test(
-    'merging stale 90-day and fresh 30-day reports keeps recent buckets',
-    () {
-      final cache = AgentUsageDailyCache();
-      final staleAnchor = DateTime.now().toLocal().subtract(
-        const Duration(days: 60),
-      );
-      cache.ingestReports([
-        _reportWithDailyUsage(
-          windowDays: 90,
-          generatedAt: staleAnchor.toUtc().toIso8601String(),
-          anchor: staleAnchor,
-          agentId: 'antigravity',
-          agentLabel: 'Antigravity',
-        ),
-        _reportWithDailyUsage(
-          windowDays: 30,
-          generatedAt: DateTime.now().toUtc().toIso8601String(),
-          agents: {'cursor': ('Cursor', 100), 'codex': ('Codex', 200)},
-        ),
-      ], replace: true);
-
-      final viewport = cache.projectViewport(30);
-      expect(viewport?.totalTokens, 9000);
-      expect(viewport?.agent('cursor')?.totalTokens, 3000);
-      expect(viewport?.agent('codex')?.totalTokens, 6000);
-      expect(viewport?.agent('antigravity')?.totalTokens, 0);
-    },
-  );
-
-  test('snapshot-only aggregate totals survive viewport projection', () {
-    final cache = AgentUsageDailyCache();
-    cache.ingestReport(
-      AgentUsageReport(
-        schemaVersion: AgentUsageReport.currentSchemaVersion,
-        generatedAt: DateTime.now().toUtc().toIso8601String(),
-        summary: const {
-          'agentCount': 1,
-          'totalTokens': 140,
-          'confidence': 'high',
-        },
-        agents: [
-          AgentUsageAgentSummary(
-            agentId: 'codex',
-            label: 'Codex',
-            status: 'detected',
-            history: {
-              'totalTokens': 140,
-              'modelUsage': {'gpt-5.4': 140},
-            },
-            confidence: 'high',
-          ),
-        ],
-        warnings: const [],
-        window: const {'days': 90},
-      ),
-      replace: true,
-    );
-
-    expect(cache.hasFullCoverage(), isFalse);
-    expect(cache.projectViewport(30)?.totalTokens, 140);
+  test('multi-agent native report projects a non-empty 30-day viewport', () {
+    final source = _multiAgentReport(windowDays: 90);
+    final viewport = projectViewport(source, 30);
+    expect(viewport, isNotNull);
+    expect(viewport!.agents, hasLength(3));
+    expect(viewport.totalTokens, greaterThan(0));
+    expect(viewport.agent('cursor')?.totalTokens, 3000);
+    expect(viewport.agent('codex')?.totalTokens, 3000);
+    expect(viewport.agent('claude-code')?.totalTokens, 3000);
+    expect((viewport.agent('cursor')?.history['dailyUsage'] as List).length, 30);
   });
 
-  test('detected agents without exact metadata survive cache projection', () {
-    final cache = AgentUsageDailyCache();
-    cache.ingestReport(
-      AgentUsageReport(
-        schemaVersion: AgentUsageReport.currentSchemaVersion,
-        generatedAt: DateTime.now().toUtc().toIso8601String(),
-        summary: const {'agentCount': 2, 'totalTokens': 0},
-        agents: const [
-          AgentUsageAgentSummary(
-            agentId: 'antigravity',
-            label: 'Antigravity',
-            status: 'detected',
-            history: {},
-            confidence: 'unavailable',
-          ),
-          AgentUsageAgentSummary(
-            agentId: 'cursor',
-            label: 'Cursor',
-            status: 'detected',
-            history: {},
-            confidence: 'unavailable',
-          ),
-        ],
-        warnings: const [],
-        window: const {'days': 90},
-      ),
-      replace: true,
+  test('newest native projection is the only Flutter owner', () {
+    final fresh = _reportWithDailyUsage(
+      windowDays: 30,
+      generatedAt: DateTime.now().toUtc().toIso8601String(),
+      agents: {'cursor': ('Cursor', 100), 'codex': ('Codex', 200)},
+    );
+    final viewport = projectViewport(fresh, 30);
+    expect(viewport?.totalTokens, 9000);
+    expect(viewport?.agent('cursor')?.totalTokens, 3000);
+    expect(viewport?.agent('codex')?.totalTokens, 6000);
+    expect(viewport?.agent('antigravity'), isNull);
+  });
+
+  test('snapshot-only aggregate totals survive viewport projection', () {
+    final source = AgentUsageReport(
+      schemaVersion: AgentUsageReport.currentSchemaVersion,
+      generatedAt: DateTime.now().toUtc().toIso8601String(),
+      summary: const {
+        'agentCount': 1,
+        'totalTokens': 140,
+        'confidence': 'high',
+      },
+      agents: [
+        AgentUsageAgentSummary(
+          agentId: 'codex',
+          label: 'Codex',
+          status: 'detected',
+          history: {
+            'totalTokens': 140,
+            'modelUsage': {'gpt-5.4': 140},
+          },
+          confidence: 'high',
+        ),
+      ],
+      warnings: const [],
+      window: const {'days': 90},
     );
 
-    final viewport = cache.projectViewport(30);
-    expect(cache.hasFullCoverage(), isTrue);
+    expect(projectViewport(source, 30)?.totalTokens, 140);
+  });
+
+  test('detected agents without exact metadata survive projection', () {
+    final source = AgentUsageReport(
+      schemaVersion: AgentUsageReport.currentSchemaVersion,
+      generatedAt: DateTime.now().toUtc().toIso8601String(),
+      summary: const {'agentCount': 2, 'totalTokens': 0},
+      agents: const [
+        AgentUsageAgentSummary(
+          agentId: 'antigravity',
+          label: 'Antigravity',
+          status: 'detected',
+          history: {},
+          confidence: 'unavailable',
+        ),
+        AgentUsageAgentSummary(
+          agentId: 'cursor',
+          label: 'Cursor',
+          status: 'detected',
+          history: {},
+          confidence: 'unavailable',
+        ),
+      ],
+      warnings: const [],
+      window: const {'days': 90},
+    );
+
+    final viewport = projectViewport(source, 30);
     expect(viewport?.agents.map((agent) => agent.agentId), [
       'antigravity',
       'cursor',

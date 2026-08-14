@@ -7,6 +7,7 @@ use std::fmt;
 
 mod adapter;
 mod agent_conversation;
+mod agent_hub;
 mod agent_usage;
 mod autostart;
 mod client_conversation;
@@ -1411,6 +1412,103 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: agent_conversation::handle_agents_pair,
         help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "agent_hub.rs",
+        handler_name: "handle_catalog",
+        path: &["agent-hub", "catalog"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: agent_hub::handle_catalog,
+        help: "Project Agent Hub cards from warehouse recipes and one discovery snapshot",
+    });
+    table.register_command(CommandSpec {
+        source_module: "agent_hub.rs",
+        handler_name: "handle_plan",
+        path: &["agent-hub", "plan"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "operation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: agent_hub::handle_plan,
+        help: "Plan one Agent Hub install, update, or uninstall",
+    });
+    table.register_command(CommandSpec {
+        source_module: "agent_hub.rs",
+        handler_name: "handle_apply",
+        path: &["agent-hub", "apply"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "operation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+            OptionSpec {
+                name: "cancel",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: agent_hub::handle_apply,
+        help: "Apply one confirmed Agent Hub plan",
     });
     table.register_command(CommandSpec {
         source_module: "agent_usage.rs",

@@ -28,4 +28,30 @@ class RuntimePlatformBridge implements DirectoryOpener {
     final result = await Process.run(command, [directoryPath]);
     return DirectoryOpenResult(exitCode: result.exitCode);
   }
+
+  /// Opens an official HTTPS homepage with the desktop URL handler.
+  ///
+  /// Mobile runtimes and non-HTTPS URIs fail closed.
+  Future<bool> openHttps(Uri uri) async {
+    if (uri.scheme.toLowerCase() != 'https' || uri.host.isEmpty) {
+      return false;
+    }
+    if (isMobileClientRuntime) {
+      return false;
+    }
+    final executable = isMacos
+        ? 'open'
+        : isWindows
+        ? 'rundll32'
+        : 'xdg-open';
+    final arguments = isWindows
+        ? <String>['url.dll,FileProtocolHandler', uri.toString()]
+        : <String>[uri.toString()];
+    try {
+      final result = await Process.run(executable, arguments);
+      return result.exitCode == 0;
+    } on Object {
+      return false;
+    }
+  }
 }

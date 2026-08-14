@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +39,42 @@ void main() {
     expect(find.text('English'), findsOneWidget);
   });
 
+  testWidgets('locale toggle row invokes the locale callback', (tester) async {
+    var preference = 'zh';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: LayoutDestinationPresentationScope(
+            settings: const _TestSettingsPresentation(),
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return SettingsLocaleToggleRow(
+                  value: preference,
+                  onChanged: (value) => setState(() => preference = value),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('settings-locale-toggle')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('settings-locale-en')));
+    await tester.pump();
+    expect(preference, 'en');
+  });
+
   test('settings component library does not depend on panel internals', () {
     const root = 'lib/src/frontend/features/settings/ui';
     final panel = File('$root/settings_panel.dart').readAsStringSync();
@@ -69,8 +107,6 @@ final class _TestSettingsPresentation implements LayoutSettingsPresentation {
   EdgeInsetsGeometry get rowPadding => EdgeInsets.zero;
   @override
   EdgeInsetsGeometry get sectionHeaderPadding => EdgeInsets.zero;
-  @override
-  EdgeInsetsGeometry get selectorActionPadding => EdgeInsets.zero;
   @override
   EdgeInsetsGeometry get selectorGridPadding => EdgeInsets.zero;
 

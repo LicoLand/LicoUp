@@ -418,6 +418,7 @@ IconData _destinationIcon(ClientSection destination) => switch (destination) {
   ClientSection.monitoring => Icons.monitor_heart_outlined,
   ClientSection.skillHub => Icons.auto_awesome_mosaic_outlined,
   ClientSection.pluginManagement => Icons.extension_outlined,
+  ClientSection.agentHub => Icons.auto_awesome_outlined,
   ClientSection.mobileRelay => Icons.phonelink_ring_outlined,
   ClientSection.models => Icons.key_outlined,
   ClientSection.settings => Icons.tune_rounded,
