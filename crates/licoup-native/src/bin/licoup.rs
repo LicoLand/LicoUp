@@ -13,6 +13,8 @@ use std::{
     },
 };
 
+#[path = "licoup/conversation_host.rs"]
+mod conversation_host;
 #[path = "licoup/presentation.rs"]
 mod presentation;
 #[path = "licoup/private_stdin_json.rs"]
@@ -43,6 +45,18 @@ fn main() -> Result<()> {
         }));
         let stdin = io::stdin();
         return serve_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
+    }
+    if args.as_slice() == ["rpc", "conversation"] {
+        panic::set_hook(Box::new(|_| {
+            eprintln!("licoup conversation RPC proxy terminated unexpectedly");
+        }));
+        return conversation_host::serve_proxy();
+    }
+    if args.as_slice() == ["rpc", "conversation-host"] {
+        panic::set_hook(Box::new(|_| {
+            eprintln!("licoup conversation RPC host terminated unexpectedly");
+        }));
+        return conversation_host::serve_host();
     }
     let args = materialize_private_stdin_json(args, io::stdin().lock())?;
     match licoup_native::ffi::commands::execute_cli(args)? {

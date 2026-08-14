@@ -248,21 +248,31 @@ void main() {
     },
   );
 
-  test('KT protocol component maps status to the desktop CLI', () async {
-    final dispatch = FakeMobileRelayDispatch(
-      cliResult: const {'ok': true, 'privateKeyMaterial': 'redacted'},
-    );
+  test('desktop protocol actions fail before any dispatch', () async {
+    final dispatch = FakeMobileRelayDispatch();
     final operations = SecureMeshProtocolOperations(dispatch: dispatch);
 
-    final response = await operations.executeSecureMeshKtRequest(
-      agentService: FakeAgentCommandRunner(),
-      request: const SecureMeshKtRequest.status(),
+    final unsupported = isA<UnsupportedError>().having(
+      (error) => error.message,
+      'message',
+      secureMeshProtocolMobileOnlyErrorCode,
+    );
+    await expectLater(
+      operations.executeSecureMeshKtRequest(
+        request: const SecureMeshKtRequest.status(),
+      ),
+      throwsA(unsupported),
+    );
+    await expectLater(
+      operations.executeSecureMeshMlsRequest(
+        request: const SecureMeshMlsRequest.status(),
+      ),
+      throwsA(unsupported),
     );
 
-    expect(response.value['ok'], isTrue);
-    expect(dispatch.cliCalls, [
-      ['mobile', 'relay', 'kt', 'status'],
-    ]);
+    expect(dispatch.cliCalls, isEmpty);
+    expect(dispatch.privateCliCalls, isEmpty);
+    expect(dispatch.mobileCalls, isEmpty);
   });
 
   test('MLS protocol component uses its dedicated mobile action', () async {
@@ -280,6 +290,33 @@ void main() {
     expect(dispatch.mobileCalls.single.action, 'secure_mesh.mls.status');
     expect(dispatch.mobileCalls.single.authorize, isFalse);
   });
+
+  test(
+    'KT protocol component uses its generated protected mobile action',
+    () async {
+      final dispatch = FakeMobileRelayDispatch(
+        isIOS: true,
+        mobileResult: const {'ok': true, 'privateKeyMaterial': 'redacted'},
+      );
+      final operations = SecureMeshProtocolOperations(dispatch: dispatch);
+
+      final response = await operations.executeSecureMeshKtRequest(
+        request: SecureMeshKtRequest.publicationRequest(endpointKind: 'device'),
+      );
+
+      expect(response.value['ok'], isTrue);
+      expect(dispatch.cliCalls, isEmpty);
+      expect(
+        dispatch.mobileCalls.single.action,
+        'secure_mesh.kt.publicationRequest',
+      );
+      expect(dispatch.mobileCalls.single.authorize, isTrue);
+      expect(dispatch.mobileCalls.single.params, {
+        'endpointKind': 'device',
+        'allowInteraction': true,
+      });
+    },
+  );
 
   test(
     'file and approval substrate stays on its dedicated CLI surface',

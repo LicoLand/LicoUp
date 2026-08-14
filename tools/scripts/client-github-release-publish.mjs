@@ -19,10 +19,21 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { CLIENT_RELEASE_TARGETS } from "./client-gate-policy.mjs";
 import { sha256File } from "./lib/client-release-artifact-digest.mjs";
+import {
+  loadClientReleaseTargetCatalog,
+  selectClientReleaseTargets,
+} from "./lib/client-release-targets.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const buildRoot = path.join(repoRoot, "build");
 const manifestName = "LicoUp-consumer-verification.json";
+const correctiveReleaseNotes = [
+  "LicoUp v0.1.0 build 2 replaces the damaged v0.1.0 artifacts.",
+  "",
+  "macOS direct-distribution artifacts are not published by this workflow.",
+  "",
+  "Verify every download with LicoUp-consumer-verification.json and the signed update manifest.",
+].join("\n");
 
 function fail(message) {
   throw new Error(message);
@@ -33,7 +44,8 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!flag?.startsWith("--") || value === undefined) fail("invalid publish arguments");
+    if (!flag?.startsWith("--") || value === undefined ||
+      result[flag.slice(2)] !== undefined) fail("invalid publish arguments");
     result[flag.slice(2)] = value;
   }
   return result;
@@ -110,9 +122,22 @@ function tryReleaseView(tag, repository) {
   return parsed;
 }
 
+export function releaseStateDecision(release, sourceSha, publish) {
+  if (release === null) {
+    return Object.freeze({ createDraft: true, publish: false });
+  }
+  if (release.targetCommitish !== sourceSha) {
+    fail("GitHub Release source revision does not match this workflow");
+  }
+  return Object.freeze({
+    createDraft: false,
+    publish: publish === true && release.isDraft === true,
+  });
+}
+
 function ensureRelease({ tag, repository, sourceSha }) {
   let release = tryReleaseView(tag, repository);
-  if (!release) {
+  if (releaseStateDecision(release, sourceSha, false).createDraft) {
     run("gh", [
       "release",
       "create",
@@ -124,7 +149,7 @@ function ensureRelease({ tag, repository, sourceSha }) {
       "--title",
       tag,
       "--notes",
-      "Verified LicoUp artifacts. See LicoUp-consumer-verification.json.\n\nmacOS one-line install:\n\n```bash\ncurl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash\n```",
+      correctiveReleaseNotes,
       "--draft",
     ]);
     release = tryReleaseView(tag, repository);
@@ -168,8 +193,7 @@ function downloadExistingAssets({ release, tag, repository, assetsRoot }) {
 
 export function mergeIncomingTarget({ target, incomingRoot, assetsRoot }) {
   const incoming = regularFiles(incomingRoot);
-  const expected = [...CLIENT_RELEASE_TARGETS[target].files]
-    .sort((left, right) => left.localeCompare(right));
+  const expected = [...CLIENT_RELEASE_TARGETS[target].files].sort();
   const actual = incoming.map((entry) => entry.name);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     fail("incoming artifact set does not exactly match the selected target");
@@ -207,10 +231,8 @@ export function mergeIncomingTarget({ target, incomingRoot, assetsRoot }) {
 function selectedTargetArgument(assetsRoot) {
   const names = new Set(regularFiles(assetsRoot).map((entry) => entry.name));
   return Object.entries(CLIENT_RELEASE_TARGETS)
-    .map(([target, topology]) => {
-      const selected = topology.files.some((name) => names.has(name));
-      return `${target}=${selected}`;
-    })
+    .filter(([, topology]) => topology.files.every((name) => names.has(name)))
+    .map(([target]) => target)
     .join(",");
 }
 
@@ -228,17 +250,99 @@ function buildManifest({ tag, assetsRoot }) {
   ]);
 }
 
+function preserveExistingGeneratedAsset(assetsRoot, name) {
+  const filePath = path.join(assetsRoot, name);
+  const info = lstatSync(filePath, { throwIfNoEntry: false });
+  if (!info) return null;
+  if (!info.isFile() || info.isSymbolicLink()) {
+    fail("existing generated Release metadata is not a regular file");
+  }
+  const digest = sha256File(filePath, { maxBytes: 1024 * 1024 });
+  unlinkSync(filePath);
+  return digest;
+}
+
+function generatedAssetNeedsUpload(assetsRoot, name, previousDigest) {
+  const filePath = path.join(assetsRoot, name);
+  const digest = sha256File(filePath, { maxBytes: 1024 * 1024 });
+  const decision = generatedAssetDecision(previousDigest, digest);
+  if (decision === "reject") {
+    fail("generated Release metadata conflicts with the immutable existing asset");
+  }
+  return decision === "upload";
+}
+
+export function generatedAssetDecision(previousDigest, nextDigest) {
+  if (!digestPatternForGeneratedAsset(nextDigest)) {
+    fail("generated Release metadata digest is invalid");
+  }
+  if (previousDigest === null) return "upload";
+  if (!digestPatternForGeneratedAsset(previousDigest) || previousDigest !== nextDigest) {
+    return "reject";
+  }
+  return "reuse";
+}
+
+function digestPatternForGeneratedAsset(value) {
+  return /^sha256:[a-f0-9]{64}$/u.test(String(value || ""));
+}
+
+const updateManifestName = "LicoUp-update-manifest.json";
+const updatePublicKeysName = "LicoUp-update-public-keys.json";
+
+function buildUpdateManifest({ tag, assetsRoot, repository }) {
+  const encodedManifest = String(
+    process.env.LICO_SIGNED_UPDATE_MANIFEST_BASE64 || "",
+  ).trim();
+  if (encodedManifest) {
+    if (!/^[A-Za-z0-9+/=]{1,524288}$/u.test(encodedManifest)) {
+      fail("signed update manifest encoding is invalid");
+    }
+    const manifestBytes = Buffer.from(encodedManifest, "base64");
+    if (manifestBytes.length === 0 || manifestBytes.length > 256 * 1024 ||
+      manifestBytes.toString("base64") !== encodedManifest) {
+      fail("signed update manifest encoding is invalid");
+    }
+    JSON.parse(manifestBytes.toString("utf8"));
+    writeFileSync(path.join(assetsRoot, updateManifestName), manifestBytes, {
+      mode: 0o644,
+      flag: "wx",
+    });
+    copyFileSync(
+      path.join(repoRoot, "crates/licoup-native/resources/client-update-public-keys.json"),
+      path.join(assetsRoot, updatePublicKeysName),
+      constants.COPYFILE_EXCL,
+    );
+    return Object.freeze({ generated: true, source: "local-offline-signing" });
+  }
+  if (!process.env.LICO_UPDATE_OFFLINE_ROOT_KEY || !process.env.LICO_UPDATE_ONLINE_CHANNEL_KEY) {
+    return Object.freeze({ generated: false, reason: "update signing keys are not configured" });
+  }
+  run(process.execPath, [
+    "tools/scripts/client-update-manifest.mjs",
+    "--assets",
+    assetsRoot,
+    "--output",
+    path.join(assetsRoot, updateManifestName),
+    "--public-keys-output",
+    path.join(assetsRoot, updatePublicKeysName),
+    "--tag",
+    tag,
+    "--repo",
+    repository,
+    "--targets",
+    selectedTargetArgument(assetsRoot),
+  ]);
+  return Object.freeze({ generated: true });
+}
+
 function verifyRemoteAssets({ tag, repository, assetsRoot }) {
+  const encodedTag = encodeURIComponent(tag);
   const remote = run(
     "gh",
     [
-      "release",
-      "view",
-      tag,
-      "--repo",
-      repository,
-      "--json",
-      "assets",
+      "api",
+      `repos/${repository}/releases/tags/${encodedTag}`,
       "--jq",
       ".assets | map({name, size, digest})",
     ],
@@ -260,14 +364,26 @@ function verifyRemoteAssets({ tag, repository, assetsRoot }) {
   }
 }
 
-export function publishTarget(args) {
-  const target = args.target || "";
-  if (!CLIENT_RELEASE_TARGETS[target]) fail("unsupported release target");
+function selectedPublishTargets(value) {
+  const ids = String(value || "").split(",");
+  if (ids.length === 0 || ids.some((id) => !id || id !== id.trim()) ||
+    new Set(ids).size !== ids.length) fail("invalid release target selection");
+  const selected = selectClientReleaseTargets(
+    loadClientReleaseTargetCatalog(), ids,
+  );
+  if (selected.some((target) => !CLIENT_RELEASE_TARGETS[target.id])) {
+    fail("unsupported release target");
+  }
+  return selected.map((target) => target.id);
+}
+
+export function publishTargets(args) {
+  const targets = selectedPublishTargets(args.targets);
   const tag = args.tag || "";
   if (!/^[A-Za-z0-9][A-Za-z0-9._+-]{0,126}$/u.test(tag)) fail("invalid release tag");
   if (!["true", "false"].includes(args.publish || "")) fail("invalid publish selection");
   const repository = process.env.GITHUB_REPOSITORY || "";
-  const sourceSha = process.env.GITHUB_SHA || "";
+  const sourceSha = process.env.LICO_RELEASE_SOURCE_REVISION || "";
   if (
     !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository) ||
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(sourceSha) ||
@@ -275,7 +391,11 @@ export function publishTarget(args) {
   ) {
     fail("GitHub publication environment is incomplete");
   }
-  const incomingRoot = containedBuildDirectory(args.incoming, "incoming artifacts");
+  if (targets.some((target) => target.startsWith("macos-direct-")) &&
+    !String(process.env.LICO_SIGNED_UPDATE_MANIFEST_BASE64 || "").trim()) {
+    fail("macOS publication requires a locally signed update manifest");
+  }
+  const incomingRoot = containedBuildDirectory(args["incoming-root"], "incoming artifacts");
   const assetsRoot = containedBuildDirectory(args.assets, "merged assets");
   const buildInfo = lstatSync(buildRoot, { throwIfNoEntry: false });
   if (
@@ -301,34 +421,60 @@ export function publishTarget(args) {
 
   const release = ensureRelease({ tag, repository, sourceSha });
   downloadExistingAssets({ release, tag, repository, assetsRoot });
-  const merged = mergeIncomingTarget({ target, incomingRoot, assetsRoot });
+  const previousManifestDigest = preserveExistingGeneratedAsset(assetsRoot, manifestName);
+  const previousUpdateManifestDigest = preserveExistingGeneratedAsset(
+    assetsRoot, updateManifestName);
+  const previousUpdateKeysDigest = preserveExistingGeneratedAsset(
+    assetsRoot, updatePublicKeysName);
+  const merged = targets.map((target) => {
+    const targetRoot = path.join(incomingRoot, target);
+    const targetInfo = lstatSync(targetRoot, { throwIfNoEntry: false });
+    if (!targetInfo?.isDirectory() || targetInfo.isSymbolicLink() ||
+      realpathSync(targetRoot) !== targetRoot) {
+      fail("incoming target artifact directory is missing");
+    }
+    return mergeIncomingTarget({ target, incomingRoot: targetRoot, assetsRoot });
+  });
   buildManifest({ tag, assetsRoot });
-  if (merged.upload.length > 0) {
+  const updateManifest = buildUpdateManifest({ tag, assetsRoot, repository });
+  const artifactUploads = merged.flatMap((entry) => entry.upload);
+  if (artifactUploads.length > 0) {
     run("gh", [
       "release",
       "upload",
       tag,
       "--repo",
       repository,
-      ...merged.upload.map((entry) => path.relative(repoRoot, entry.path)),
+      ...artifactUploads.map((entry) => path.relative(repoRoot, entry.path)),
     ]);
   }
-  run("gh", [
-    "release",
-    "upload",
-    tag,
-    "--repo",
-    repository,
-    path.relative(repoRoot, path.join(assetsRoot, manifestName)),
-    "--clobber",
-  ]);
+  if (generatedAssetNeedsUpload(assetsRoot, manifestName, previousManifestDigest)) {
+    run("gh", [
+      "release", "upload", tag, "--repo", repository,
+      path.relative(repoRoot, path.join(assetsRoot, manifestName)),
+    ]);
+  }
+  if (updateManifest.generated) {
+    const upload = [];
+    if (generatedAssetNeedsUpload(assetsRoot, updateManifestName,
+      previousUpdateManifestDigest)) upload.push(updateManifestName);
+    if (generatedAssetNeedsUpload(assetsRoot, updatePublicKeysName,
+      previousUpdateKeysDigest)) upload.push(updatePublicKeysName);
+    if (upload.length > 0) {
+      run("gh", ["release", "upload", tag, "--repo", repository,
+        ...upload.map((name) => path.relative(repoRoot, path.join(assetsRoot, name)))]);
+    }
+  } else if (previousUpdateManifestDigest || previousUpdateKeysDigest) {
+    fail("existing update metadata cannot be reproduced by this candidate");
+  }
   verifyRemoteAssets({ tag, repository, assetsRoot });
-  if (args.publish === "true") {
+  if (releaseStateDecision(release, sourceSha, args.publish === "true").publish) {
     run("gh", ["release", "edit", tag, "--repo", repository, "--draft=false"]);
   }
   return Object.freeze({
     ok: true,
-    target,
+    targets: Object.freeze(targets),
+    targetCount: targets.length,
     mergedTargetCount: Object.values(CLIENT_RELEASE_TARGETS)
       .filter((topology) => topology.files.every((name) =>
         lstatSync(path.join(assetsRoot, name), { throwIfNoEntry: false })?.isFile()))
@@ -337,7 +483,7 @@ export function publishTarget(args) {
 }
 
 function main() {
-  const result = publishTarget(parseArgs(process.argv.slice(2)));
+  const result = publishTargets(parseArgs(process.argv.slice(2)));
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

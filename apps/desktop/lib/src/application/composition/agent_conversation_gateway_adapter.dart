@@ -1,11 +1,12 @@
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class AgentConversationGatewayAdapter
-    implements AgentConversationGateway {
+    implements AgentConversationGateway, PersistentAgentConversationGateway {
   const AgentConversationGatewayAdapter({
     required this.service,
     required this.runner,
@@ -13,6 +14,50 @@ final class AgentConversationGatewayAdapter
 
   final AgentConversationService service;
   final AgentCommandRunner runner;
+
+  @override
+  Future<List<Map<String, dynamic>>> activeTurns({
+    required String agentId,
+    String sessionId = '',
+  }) => service.activeTurns(
+    runner: runner,
+    agentId: agentId,
+    sessionId: sessionId,
+  );
+
+  @override
+  Stream<AgentDispatchEvent> attachActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    int afterCursor = 0,
+  }) => service.attachActiveTurn(
+    runner: runner,
+    turnHandle: turnHandle,
+    conversationId: conversationId,
+    afterCursor: afterCursor,
+  );
+
+  @override
+  Future<AgentDispatchTurnResult> steerActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    required String text,
+  }) => service.steerActiveTurn(
+    runner: runner,
+    turnHandle: turnHandle,
+    conversationId: conversationId,
+    text: text,
+  );
+
+  @override
+  Future<AgentDispatchCancelResult> cancelActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+  }) => service.cancelActiveTurn(
+    runner: runner,
+    turnHandle: turnHandle,
+    conversationId: conversationId,
+  );
 
   @override
   Future<List<AgentConversationSession>> loadSessions({
@@ -60,12 +105,14 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.send(
     runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
+    attachments: attachments,
     bind: bind,
   );
   @override
@@ -73,6 +120,7 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     try {
@@ -81,6 +129,7 @@ final class AgentConversationGatewayAdapter
         agentId: agentId,
         text: text,
         sessionId: sessionId,
+        attachments: attachments,
         bind: bind,
       )) {
         yield event;

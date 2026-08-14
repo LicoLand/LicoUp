@@ -1,10 +1,9 @@
 use super::{
-    agent_id, append_activity, bool_param, collection_items_mut, find_skill, get_approved_pairing,
-    is_explicitly_revealed, is_hidden, local_skill_discovery_requested, pairing_required, skill_id,
-    timestamp, upsert_policy_item, visible_skills,
+    agent_id, append_activity, bool_param, collection_items_mut, get_approved_pairing,
+    is_explicitly_revealed, is_hidden, pairing_required, skill_id, timestamp, upsert_policy_item,
 };
 use crate::platform::client_state::ClientStateStore;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde_json::{Value, json};
 
 /// Read-only catalog queries stay strict: they never create pairing state as
@@ -18,12 +17,8 @@ pub(super) fn list(store: &ClientStateStore, params: &Value) -> Result<Value> {
     if !has_approved_pairing(store, &agent_id)? {
         return Ok(pairing_required(&agent_id));
     }
-    let mut skills = visible_skills(store, &agent_id)?;
-    for discovered in if local_skill_discovery_requested(params) {
-        super::discovery::discover(&agent_id, params).unwrap_or_default()
-    } else {
-        Vec::new()
-    } {
+    let mut skills = Vec::<Value>::new();
+    for discovered in super::discovery::discover(&agent_id, params).unwrap_or_default() {
         let discovered_id = discovered
             .get("skillId")
             .and_then(Value::as_str)
@@ -64,15 +59,13 @@ pub(super) fn get(store: &ClientStateStore, params: &Value) -> Result<Value> {
         return Ok(pairing_required(&agent_id));
     }
     let skill_id = skill_id(params)?;
-    let skill = find_skill(store, &agent_id, &skill_id)?.or_else(|| {
-        if !local_skill_discovery_requested(params) {
-            return None;
-        }
-        super::discovery::discover(&agent_id, params)
-            .ok()?
-            .into_iter()
-            .find(|skill| skill.get("skillId").and_then(Value::as_str) == Some(skill_id.as_str()))
-    });
+    let skill = super::discovery::discover(&agent_id, params)
+        .ok()
+        .and_then(|skills| {
+            skills.into_iter().find(|skill| {
+                skill.get("skillId").and_then(Value::as_str) == Some(skill_id.as_str())
+            })
+        });
     let Some(skill) = skill else {
         return Ok(json!({
             "ok": false,
@@ -146,49 +139,6 @@ pub(super) fn visibility(store: &ClientStateStore, params: &Value) -> Result<Val
         "agentId": agent_id,
         "skillId": skill_id,
         "hidden": hidden
-    }))
-}
-
-pub(super) fn pin(store: &ClientStateStore, params: &Value) -> Result<Value> {
-    let agent_id = agent_id(params)?;
-    let skill_id = skill_id(params)?;
-    let version = params
-        .get("version")
-        .and_then(Value::as_str)
-        .or_else(|| {
-            params
-                .get("positionals")
-                .and_then(Value::as_array)
-                .and_then(|items| items.get(1))
-                .and_then(Value::as_str)
-        })
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| anyhow!("skill pin requires --version <version>"))?
-        .to_string();
-    let mut document = store.read_collection("pins")?;
-    let items = collection_items_mut(&mut document)?;
-    upsert_policy_item(
-        items,
-        &agent_id,
-        &skill_id,
-        json!({
-            "agentId": agent_id,
-            "skillId": skill_id,
-            "version": version,
-            "updatedAt": timestamp()
-        }),
-    );
-    store.write_collection("pins", document)?;
-    append_activity(
-        store,
-        "skill.pinned",
-        json!({"target": agent_id, "agentId": agent_id, "skillId": skill_id, "version": version}),
-    )?;
-    Ok(json!({
-        "ok": true,
-        "agentId": agent_id,
-        "skillId": skill_id,
-        "version": version
     }))
 }
 

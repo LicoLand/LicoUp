@@ -137,6 +137,57 @@ fn native_history_ignores_command_tags_and_status_titles() {
 }
 
 #[test]
+fn generated_notifications_are_collapsed_metadata_and_never_session_titles() {
+    let dir = temp_dir("native-generated-metadata");
+    fs::write(
+        dir.join("metadata-session.json"),
+        r#"{
+          "sessions": [{
+            "sessionId": "metadata-session",
+            "messages": [
+              {"role": "user", "content": "<task-notification><status>failed</status><summary>Synthetic task failed</summary></task-notification>"},
+              {"role": "user", "content": "Keep this real request"},
+              {"role": "assistant", "content": "Done"}
+            ]
+          }]
+        }"#,
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+    let exact = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy(),
+        "sessionIds": ["metadata-session"]
+    }))
+    .unwrap();
+
+    for result in [&listed, &exact] {
+        let session = &result["sessions"][0];
+        assert_eq!(session["title"], "Keep this real request");
+        let messages = session["messages"].as_array().unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message["role"] == "user")
+                .count(),
+            1
+        );
+        let metadata = messages
+            .iter()
+            .find(|message| message["role"] == "metadata")
+            .unwrap();
+        assert_eq!(metadata["layer"], "execution");
+        assert_eq!(metadata["cardType"], "metadata");
+        assert_eq!(metadata["collapsed"], true);
+    }
+}
+
+#[test]
 fn vscode_hosted_copilot_files_keep_copilot_as_source_client() {
     let dir = temp_dir("vscode-hosted-copilot");
     let transcript_dir = dir.join(
@@ -162,6 +213,22 @@ fn vscode_hosted_copilot_files_keep_copilot_as_source_client() {
     assert_eq!(sessions[0]["sourceClient"], "copilot");
     assert_eq!(sessions[0]["hostApp"], "vscode");
     assert_eq!(sessions[0]["sourceLabel"], "vscode: copilot");
+}
+
+#[test]
+fn cli_provenance_labels_do_not_claim_desktop_or_ide_ownership() {
+    let cursor_source = super::super::session_metadata::source_client_for_session(
+        HistoryAdapter::Cursor,
+        std::path::Path::new(".cursor/projects/project/agent-transcripts/session/store.db"),
+        "cursor-cli-projects",
+        &[],
+    );
+    assert_eq!(cursor_source, "cursor-agent");
+    assert_eq!(
+        super::super::session_metadata::source_label("cursor", &cursor_source),
+        "cursor: cursor agent cli"
+    );
+    assert_eq!(HistoryAdapter::Codex.label(), "Codex - CLI");
 }
 
 #[test]

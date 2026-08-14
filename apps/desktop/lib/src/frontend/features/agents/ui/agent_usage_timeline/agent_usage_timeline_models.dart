@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-enum AgentUsageChartGrouping { agent, model }
+enum AgentUsageChartGrouping { agent, model, workflow }
 
 const int agentUsageWaveSeriesLimit = 10;
 const int agentUsageShareSeriesLimit = 15;

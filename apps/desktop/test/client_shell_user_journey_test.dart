@@ -56,25 +56,11 @@ void main() {
           find.byKey(Key('messaging-desktop-destination-${section.name}')),
           findsOneWidget,
         );
-        // Known in-flight: several messaging destinations overflow their card
-        // at 200% text scale in a minimum-size window (RenderFlex overflow,
-        // tracked by agents_workspace_layout_test's narrow-window failure).
-        // One frame can report two overflow errors, which the framework then
-        // bundles into a 'Multiple exceptions' wrapper. Navigation itself
-        // must never produce any other kind of exception.
-        var exception = tester.takeException();
-        while (exception != null) {
-          final message = '$exception';
-          if (!message.contains('overflowed') &&
-              !message.startsWith('Multiple exceptions')) {
-            expect(
-              exception,
-              isNull,
-              reason: '${section.name} must fit at 200% text scale',
-            );
-          }
-          exception = tester.takeException();
-        }
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${section.name} must fit at 200% text scale',
+        );
       }
 
       await tester.tap(find.byKey(const Key('messaging-rail-settings-button')));

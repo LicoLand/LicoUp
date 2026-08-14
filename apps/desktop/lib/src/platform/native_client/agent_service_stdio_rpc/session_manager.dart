@@ -5,14 +5,22 @@ import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/sessio
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcSessionManager {
-  StdioRpcSessionManager({required NativeCliProcessContext processContext})
-    : _processContext = processContext;
+  StdioRpcSessionManager({
+    required NativeCliProcessContext processContext,
+    this.arguments = const ['rpc', 'stdio'],
+  }) : _processContext = processContext;
 
   final NativeCliProcessContext _processContext;
+
+  final List<String> arguments;
   StdioRpcSession? _session;
   var _generation = 0;
+  var _closed = false;
 
   Future<StdioRpcSession> ensureSession() async {
+    if (_closed) {
+      throw const LicoClientRpcException('service_disposed');
+    }
     final processGeneration = _generation;
     final current = _session;
     if (current != null && current.usable) {
@@ -36,10 +44,12 @@ class StdioRpcSessionManager {
     final executable = cli?.path ?? 'licoup-cli';
     late Process process;
     try {
-      process = await _processContext.startProcess(executable, const [
-        'rpc',
-        'stdio',
-      ], environment);
+      process = await _processContext.startProcess(
+        executable,
+        arguments,
+        environment,
+        mode: ProcessStartMode.normal,
+      );
     } on Object {
       throw const LicoClientRpcException('start_failed');
     }
@@ -64,6 +74,12 @@ class StdioRpcSessionManager {
   }
 
   Future<void> invalidateAndDiscard() {
+    _generation += 1;
+    return discard(kill: true);
+  }
+
+  Future<void> detachAndClose() {
+    _closed = true;
     _generation += 1;
     return discard(kill: true);
   }

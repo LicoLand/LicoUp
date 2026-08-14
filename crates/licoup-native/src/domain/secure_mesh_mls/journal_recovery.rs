@@ -3,7 +3,9 @@ use serde::Serialize;
 use serde_json::Value;
 use time::OffsetDateTime;
 
-use crate::core::secure_mesh_mls::{SecureMeshMlsGroup, SecureMeshMlsParticipant};
+use crate::core::secure_mesh_mls::{
+    SecureMeshMlsDurableStore, SecureMeshMlsGroup, SecureMeshMlsParticipant,
+};
 use crate::core::secure_mesh_mls_product::{
     SecureMeshMlsOperationRecord, SecureMeshMlsOperationState, SecureMeshMlsSecurityLedger,
 };
@@ -11,7 +13,7 @@ use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
 
 use super::group_state::{group_status_json, reconcile_group_metadata};
 use super::input_codec::hex_sha256;
-use super::participant_runtime::LocalParticipantRuntime;
+use super::participant_runtime::{LocalParticipantRuntime, group_state_store};
 
 pub(super) fn open_security_ledger() -> Result<SecureMeshMlsSecurityLedger> {
     SecureMeshMlsSecurityLedger::open(
@@ -36,6 +38,7 @@ pub(super) fn journal_operation_identity<T: Serialize>(
 }
 
 pub(super) fn recover_incomplete_writer_operations(
+    group_store: &mut Option<SecureMeshMlsDurableStore>,
     participant: &SecureMeshMlsParticipant,
     identity: &DeviceTrustPublicIdentity,
 ) -> Result<()> {
@@ -66,8 +69,13 @@ pub(super) fn recover_incomplete_writer_operations(
                             &observed,
                             OffsetDateTime::now_utc().unix_timestamp(),
                         )?;
-                        let _ =
-                            finish_journaled_operation(&mut ledger, operation, &group, identity)?;
+                        let _ = finish_journaled_operation(
+                            group_state_store(group_store)?,
+                            &mut ledger,
+                            operation,
+                            &group,
+                            identity,
+                        )?;
                     } else if operation.base_metadata.as_ref() == Some(&observed) {
                         ledger.reset_crypto_prepared_operation_for_retry(
                             &operation.operation_id,
@@ -89,7 +97,13 @@ pub(super) fn recover_incomplete_writer_operations(
                     operation.expected_metadata.as_ref() == Some(&observed),
                     "secure mesh MLS committed operation snapshot diverges"
                 );
-                let _ = finish_journaled_operation(&mut ledger, operation, &group, identity)?;
+                let _ = finish_journaled_operation(
+                    group_state_store(group_store)?,
+                    &mut ledger,
+                    operation,
+                    &group,
+                    identity,
+                )?;
             }
             _ => {
                 return Err(anyhow!(
@@ -131,6 +145,7 @@ pub(super) fn abort_empty_prepared_on_error<T>(
 }
 
 pub(super) fn resume_journaled_operation(
+    group_store: &mut SecureMeshMlsDurableStore,
     ledger: &mut SecureMeshMlsSecurityLedger,
     mut record: SecureMeshMlsOperationRecord,
     group: Option<&SecureMeshMlsGroup>,
@@ -195,10 +210,11 @@ pub(super) fn resume_journaled_operation(
             "secure mesh MLS operation journal detected selected-custody rollback"
         );
     }
-    finish_journaled_operation(ledger, record, group, identity).map(Some)
+    finish_journaled_operation(group_store, ledger, record, group, identity).map(Some)
 }
 
 fn finish_journaled_operation(
+    group_store: &mut SecureMeshMlsDurableStore,
     ledger: &mut SecureMeshMlsSecurityLedger,
     mut record: SecureMeshMlsOperationRecord,
     group: &SecureMeshMlsGroup,
@@ -206,7 +222,7 @@ fn finish_journaled_operation(
 ) -> Result<Value> {
     if record.state == SecureMeshMlsOperationState::CryptoCommitted {
         journal_failpoint("after_crypto_commit_before_metadata")?;
-        let durable = reconcile_group_metadata(group, identity)?;
+        let durable = reconcile_group_metadata(group_store, group, identity)?;
         let group_status = group_status_json(group, &durable);
         let mut final_response = record
             .response
@@ -243,7 +259,7 @@ fn finish_journaled_operation(
 }
 
 pub(super) fn commit_staged_journaled_operation(
-    runtime: &LocalParticipantRuntime<'_>,
+    runtime: &mut LocalParticipantRuntime<'_>,
     ledger: &mut SecureMeshMlsSecurityLedger,
     staged: SecureMeshMlsOperationRecord,
     group: &SecureMeshMlsGroup,
@@ -257,7 +273,13 @@ pub(super) fn commit_staged_journaled_operation(
         &observed,
         OffsetDateTime::now_utc().unix_timestamp(),
     )?;
-    finish_journaled_operation(ledger, committed, group, runtime.identity)
+    finish_journaled_operation(
+        group_state_store(&mut *runtime.group_store)?,
+        ledger,
+        committed,
+        group,
+        runtime.identity,
+    )
 }
 
 #[cfg(not(test))]

@@ -44,10 +44,9 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:deps:audit",
   ]),
   "release-policy": freezeLane([
-    "client:release:self-test",
-    "client:install:macos:github:self-test",
-    "client:update-release:finalize:self-test",
-    "client:release:preflight:check",
+    "client:promotion:self-test",
+    "client:pricing:release-check",
+    "client:pr:preflight:self-test",
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
@@ -57,17 +56,23 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:android-release-toolchain:self-test",
     "client:verify:consumer-verification-manifest:self-test",
     "client:verify:remote-release-assets:self-test",
+    "client:verify:update-manifest:self-test",
+    "client:verify:release-workflow-binding:self-test",
+    "client:release:packages:self-test",
+    "client:release:macos:self-test",
     "client:verify:macos-distribution:self-test",
+    "client:verify:macos-distribution-policy:self-test",
     "client:verify:review-signoff:self-test",
     "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
     "client:verify:macos-nested-code-bounds:self-test",
+    "client:verify:macos-release-artifact:self-test",
+    "client:verify:macos-update-preflight:self-test",
     "client:verify:package-client:self-test",
     "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
     "client:verify:android-physical-install-launch:self-test",
     "client:verify:secure-mesh-macos-capabilities:self-test",
-    "client:install:macos:identity:self-test",
     "client:verify:secure-mesh-linux-node-matrix:self-test",
     "client:cli:vm:self-test",
     "client:verify:artifact-verification-receipts:self-test",
@@ -79,39 +84,34 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:secure-mesh-e2ee-evidence:readiness-self-test",
     "client:verify:secure-mesh-e2ee-evidence:leak-scan-self-test",
     "client:verify:client-release-acceptance:self-test",
+    "client:demo:device:self-test",
   ]),
 });
 
 export const CLIENT_RELEASE_TARGETS = Object.freeze({
-  "macos-arm64": Object.freeze({
-    buildJob: "build-macos",
-    publishJob: "publish-macos",
-    artifactName: "licoup-macos",
+  "macos-direct-arm64": Object.freeze({
+    publicationBlocked: true,
+    artifactName: "licoup-macos-direct-arm64",
+    installerArtifact: "LicoUp-macos-arm64.dmg",
+    updateArtifact: "LicoUp-macos-arm64-update.zip",
     files: Object.freeze([
-      "LicoUp-macos-arm64.zip",
-      "LicoUp-macos-arm64.zip.sha256",
-      "install-macos.sh",
+      "LicoUp-macos-arm64.dmg",
+      "LicoUp-macos-arm64.dmg.sha256",
+      "LicoUp-macos-arm64-update.zip",
+      "LicoUp-macos-arm64-update.zip.sha256",
+      "LicoUp-macos-arm64.build.json",
+      "LicoUp-macos-direct-arm64.package.json",
     ]),
   }),
-  "linux-glibc-arm64": Object.freeze({
-    buildJob: "build-linux-arm64",
-    publishJob: "publish-linux-arm64",
-    artifactName: "licoup-linux-arm64",
-    files: Object.freeze([
-      "LicoUp-linux-arm64.tar.gz",
-      "LicoUp-linux-arm64.tar.gz.sha256",
-      "LicoUp-linux-arm64.tar.gz.sig",
-      "linux-release-verification-key.pem",
-    ]),
-  }),
-  "android-arm64": Object.freeze({
-    buildJob: "build-android-arm64",
-    publishJob: "publish-android-arm64",
-    artifactName: "licoup-android-arm64",
+  "android-direct-arm64-v8a": Object.freeze({
+    publicationBlocked: false,
+    artifactName: "licoup-android-direct-arm64-v8a",
+    installerArtifact: "LicoUp-android-arm64.apk",
     files: Object.freeze([
       "LicoUp-android-arm64.apk",
       "LicoUp-android-arm64.apk.sha256",
-      "lico-github-artifact.pem",
+      "LicoUp-android-arm64.build.json",
+      "LicoUp-android-direct-arm64-v8a.package.json",
     ]),
   }),
 });
@@ -123,7 +123,6 @@ export const CLIENT_CI_JOBS = Object.freeze([
   "rust",
   "android",
   "dependencies",
-  "release-policy",
   "client-required",
 ]);
 
@@ -134,12 +133,6 @@ const DEPENDENCY_PATHS = new Set([
   "Cargo.lock",
   "apps/desktop/pubspec.yaml",
   "apps/desktop/pubspec.lock",
-]);
-
-const RELEASE_AUTHORITY_PATHS = new Set([
-  ".github/workflows/client-release.yml",
-  "tools/client-release-targets.json",
-  "tools/client-version.json",
 ]);
 
 function normalizePath(value) {
@@ -189,27 +182,7 @@ function isAndroidPath(file) {
   );
 }
 
-function isReleasePolicyPath(file) {
-  return (
-    RELEASE_AUTHORITY_PATHS.has(file) ||
-    file.startsWith("tools/scripts/client-release") ||
-    file.startsWith("tools/scripts/client-update-release") ||
-    file.startsWith("tools/scripts/client-github-release") ||
-    file.startsWith("tools/scripts/client-consumer-verification") ||
-    file.startsWith("tools/scripts/client-artifact-verification") ||
-    file.startsWith("tools/scripts/client-review-signoff") ||
-    file.startsWith("tools/scripts/client-source-state-digest") ||
-    file.startsWith("tools/scripts/client-bounded-child-process") ||
-    file.startsWith("tools/scripts/client-linux-tar") ||
-    file.startsWith("tools/scripts/client-macos-") ||
-    file.startsWith("tools/scripts/client-android-apk") ||
-    file.startsWith("apps/desktop/scripts/build-") ||
-    file.startsWith("apps/desktop/scripts/archive-") ||
-    file.startsWith("apps/desktop/scripts/package-client")
-  );
-}
-
-export function classifyClientGatePaths(changedPaths, { releaseTarget = null } = {}) {
+export function classifyClientGatePaths(changedPaths) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
   }
@@ -220,7 +193,6 @@ export function classifyClientGatePaths(changedPaths, { releaseTarget = null } =
     rust: false,
     android: false,
     dependencies: false,
-    "release-policy": false,
   };
 
   for (const file of normalized) {
@@ -228,10 +200,6 @@ export function classifyClientGatePaths(changedPaths, { releaseTarget = null } =
     if (isRustPath(file)) lanes.rust = true;
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
-    if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
-  }
-  if (normalized.includes("tools/client-version.json") && releaseTarget === "android-arm64") {
-    lanes.android = true;
   }
 
   return Object.freeze({

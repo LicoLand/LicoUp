@@ -44,13 +44,12 @@ impl SecureMeshMlsGroup {
         aad: &[u8],
         message: &[u8],
     ) -> Result<Vec<u8>> {
-        let protocol_message: ProtocolMessage =
-            MlsMessageIn::tls_deserialize_exact(message.to_vec())
-                .context("secure mesh MLS application message deserialization failed")?
-                .try_into_protocol_message()
-                .map_err(|_| {
-                    anyhow!("secure mesh MLS message is not an application protocol message")
-                })?;
+        let protocol_message: ProtocolMessage = MlsMessageIn::tls_deserialize_exact(message)
+            .context("secure mesh MLS application message deserialization failed")?
+            .try_into_protocol_message()
+            .map_err(|_| {
+                anyhow!("secure mesh MLS message is not an application protocol message")
+            })?;
         self.open_application_message_with_sender_verifier(
             receiver,
             aad,
