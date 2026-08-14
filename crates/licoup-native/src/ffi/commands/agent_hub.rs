@@ -1,4 +1,4 @@
-use super::{admitted_params, AdmittedCommand, CliExecution};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 use serde_json::{Map, Value};
 
@@ -54,8 +54,8 @@ pub(super) fn handle_apply(command: AdmittedCommand) -> Result<CliExecution> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{execute_cli, CliExecution};
-    use serde_json::{json, Value};
+    use super::super::{CliExecution, execute_cli};
+    use serde_json::{Value, json};
     use std::env;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -128,8 +128,10 @@ mod tests {
         assert_eq!(value["ok"], true);
         assert_eq!(value["status"], "planned");
         assert_eq!(value["selectedChannel"]["kind"], "homebrew");
-        assert!(value["confirmation"]
-            .as_str()
-            .is_some_and(|token| token.starts_with("agent-hub:")));
+        assert!(
+            value["confirmation"]
+                .as_str()
+                .is_some_and(|token| token.starts_with("agent-hub:"))
+        );
     }
 }

@@ -182,6 +182,7 @@ mixin ClientLifecycleFacade
   /// found the Settings card naturally shows the update-available state.
   Future<void> checkClientUpdateSilently() async {
     try {
+      await hydrateClientUpdateIdentity();
       await checkClientUpdateFromGithub();
     } catch (_) {}
   }

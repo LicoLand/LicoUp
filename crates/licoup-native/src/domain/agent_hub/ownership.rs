@@ -5,7 +5,7 @@ use crate::platform::client_state::ClientStateStore;
 use crate::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
 };
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;

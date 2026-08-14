@@ -94,9 +94,9 @@ class LicoStrings {
   String get english => isChinese ? '英文' : 'English';
   String localePreferenceLabel(String value) {
     return switch (LocalePreference.normalize(value)) {
-      LocalePreference.chinese => chinese,
-      LocalePreference.english => english,
-      _ => followSystem,
+      LocalePreference.chinese => '中文',
+      LocalePreference.english => 'English',
+      _ => isChinese ? '系统' : 'System',
     };
   }
 }

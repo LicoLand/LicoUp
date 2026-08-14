@@ -687,9 +687,20 @@ class _GeneralSettings extends StatelessWidget {
           ),
           padding: presentation.sectionHeaderPadding,
         ),
-        SettingsLocaleToggleRow(
+        SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-locale-dropdown'),
+          icon: Icons.language_outlined,
+          title: strings.language,
           value: LocalePreference.normalize(controller.localePreference),
-          onChanged: (value) {
+          items: [
+            for (final preference in LocalePreference.values)
+              SettingsDropdownItem(
+                value: preference,
+                label: strings.localePreferenceLabel(preference),
+                key: Key('settings-locale-$preference'),
+              ),
+          ],
+          onSelected: (value) {
             unawaited(controller.setLocalePreference(value));
           },
         ),
@@ -763,23 +774,20 @@ class _AppearanceSettings extends StatelessWidget {
           },
         ),
         SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-appearance-dropdown'),
           icon: Icons.palette_outlined,
           title: strings.appearancePreset,
           value: selectedPresetId,
-          items: selectablePresets
-              .map(
-                (config) => DropdownMenuItem(
-                  value: config.id,
-                  child: Text(
-                    config.labelFor(strings.isChinese ? 'zh-CN' : 'en'),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: (presetId) {
-            if (presetId != null) {
-              unawaited(controller.setAppearancePreset(presetId));
-            }
+          locked: true,
+          items: [
+            for (final config in selectablePresets)
+              SettingsDropdownItem(
+                value: config.id,
+                label: config.labelFor(strings.isChinese ? 'zh-CN' : 'en'),
+              ),
+          ],
+          onSelected: (presetId) {
+            unawaited(controller.setAppearancePreset(presetId));
           },
         ),
         LayoutProfileSelector(
@@ -951,9 +959,20 @@ class _MobileSettingsBody extends StatelessWidget {
           ),
           padding: presentation.sectionHeaderPadding,
         ),
-        SettingsLocaleToggleRow(
+        SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-locale-dropdown'),
+          icon: Icons.language_outlined,
+          title: strings.language,
           value: LocalePreference.normalize(controller.localePreference),
-          onChanged: (value) {
+          items: [
+            for (final preference in LocalePreference.values)
+              SettingsDropdownItem(
+                value: preference,
+                label: strings.localePreferenceLabel(preference),
+                key: Key('settings-locale-$preference'),
+              ),
+          ],
+          onSelected: (value) {
             unawaited(controller.setLocalePreference(value));
           },
         ),
@@ -988,23 +1007,20 @@ class _MobileSettingsBody extends StatelessWidget {
           },
         ),
         SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-appearance-dropdown'),
           icon: Icons.palette_outlined,
           title: strings.appearancePreset,
           value: selectedPresetId,
-          items: selectablePresets
-              .map(
-                (config) => DropdownMenuItem(
-                  value: config.id,
-                  child: Text(
-                    config.labelFor(strings.isChinese ? 'zh-CN' : 'en'),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: (presetId) {
-            if (presetId != null) {
-              unawaited(controller.setAppearancePreset(presetId));
-            }
+          locked: true,
+          items: [
+            for (final config in selectablePresets)
+              SettingsDropdownItem(
+                value: config.id,
+                label: config.labelFor(strings.isChinese ? 'zh-CN' : 'en'),
+              ),
+          ],
+          onSelected: (presetId) {
+            unawaited(controller.setAppearancePreset(presetId));
           },
         ),
         LayoutProfileSelector(

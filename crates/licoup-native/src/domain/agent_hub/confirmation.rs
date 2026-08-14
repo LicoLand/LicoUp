@@ -1,7 +1,7 @@
 //! Single confirmation token bound to one planned Agent Hub action.
 
 use super::contract::InstallChannel;
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{Result, anyhow, ensure};
 use sha2::{Digest, Sha256};
 
 pub fn token(operation: &str, agent_id: &str, channel: &InstallChannel) -> String {

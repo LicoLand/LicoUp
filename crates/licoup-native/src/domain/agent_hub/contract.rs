@@ -1,7 +1,7 @@
 //! Agent Hub contract: recipe registry, capabilities, ownership, and lifecycle.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const SCHEMA_VERSION: &str = "v0.0.1:client-agent-install-recipes-1";
 pub const HOST_SCOPE: &str = "desktop";
@@ -183,6 +183,10 @@ pub struct DiscoveryFact {
     pub present: bool,
     pub location: String,
     pub scan_source: String,
+    #[serde(default)]
+    pub installed_version: String,
+    #[serde(default)]
+    pub latest_version: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

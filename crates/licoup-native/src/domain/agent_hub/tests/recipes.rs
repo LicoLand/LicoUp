@@ -56,17 +56,21 @@ fn first_batch_recipes_load_with_fixed_ids_and_adaptation_tags() {
         .find(|agent| agent.id == "openclaw")
         .unwrap();
     assert!(openclaw.connection_modes.contains(&"local".to_string()));
-    assert!(openclaw
-        .connection_modes
-        .contains(&"virtual-machine".to_string()));
+    assert!(
+        openclaw
+            .connection_modes
+            .contains(&"virtual-machine".to_string())
+    );
     let hermes = registry
         .agents
         .iter()
         .find(|agent| agent.id == "hermes")
         .unwrap();
-    assert!(hermes
-        .connection_modes
-        .contains(&"virtual-machine".to_string()));
+    assert!(
+        hermes
+            .connection_modes
+            .contains(&"virtual-machine".to_string())
+    );
 }
 
 #[test]

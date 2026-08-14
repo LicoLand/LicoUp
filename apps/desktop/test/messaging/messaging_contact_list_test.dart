@@ -56,6 +56,52 @@ void main() {
     expect(searchCount, 1);
   });
 
+  testWidgets(
+    'contact list shows host-local agents and hides Hub-absent installs',
+    (tester) async {
+      final workingDirectory = ['', 'srv', 'project'].join('/');
+      await _pumpContacts(
+        tester,
+        targets: [
+          _target('codex', 'Codex'),
+          TargetCandidate(
+            target: 'hermes',
+            label: 'Hermes Agent',
+            kind: 'cli',
+            status: 'detected',
+            configured: true,
+            confidence: 1,
+            binaryPath: 'hermes',
+            adapterStatus: 'implemented',
+            location: 'virtual-machine',
+            scanSource: 'virtual-machine-orbstack',
+            runtimeConnection: {
+              'kind': 'ssh',
+              'host': 'orb',
+              'remoteExecutable': 'hermes',
+              'workingDirectory': workingDirectory,
+              'runtimeProtocol': 'hermes-tui-gateway',
+            },
+          ),
+          TargetCandidate(
+            target: 'openclaw',
+            label: 'OpenClaw',
+            kind: 'cli',
+            status: 'not-detected',
+            configured: false,
+            confidence: 0.15,
+            adapterStatus: 'implemented',
+          ),
+        ],
+        sessionsByAgent: const {},
+      );
+
+      expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
+      expect(find.byKey(const Key('messaging-contact-hermes')), findsNothing);
+      expect(find.byKey(const Key('messaging-contact-openclaw')), findsNothing);
+    },
+  );
+
   testWidgets('dark circular identity wells use pure black', (tester) async {
     await _pumpContacts(
       tester,
@@ -887,7 +933,7 @@ void main() {
     expect(find.text('存储'), findsOneWidget);
     expect(find.text('诊断'), findsOneWidget);
     expect(find.text('启动'), findsOneWidget);
-    expect(find.text('已归档'), findsOneWidget);
+    expect(find.text('归档'), findsOneWidget);
     expect(find.byKey(const Key('messaging-contact-codex')), findsNothing);
     expect(
       find.byKey(const Key('messaging-sidebar-bottom-nav')),

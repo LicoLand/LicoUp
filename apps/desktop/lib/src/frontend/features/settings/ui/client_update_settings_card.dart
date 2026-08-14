@@ -9,39 +9,61 @@ import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart'
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-class ClientUpdateSettingsCard extends StatelessWidget {
+class ClientUpdateSettingsCard extends StatefulWidget {
   const ClientUpdateSettingsCard({super.key, required this.controller});
 
   final ClientController controller;
 
+  @override
+  State<ClientUpdateSettingsCard> createState() =>
+      _ClientUpdateSettingsCardState();
+}
+
+class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(widget.controller.hydrateClientUpdateIdentity());
+  }
+
   void _checkFromGithub() {
-    unawaited(controller.checkClientUpdateFromGithub());
+    unawaited(widget.controller.checkClientUpdateFromGithub());
   }
 
   void _downloadFromGithub() {
-    unawaited(controller.downloadClientUpdateFromGithub());
+    unawaited(widget.controller.downloadClientUpdateFromGithub());
   }
 
   void _applyAndRestart() {
     unawaited(
-      controller.applyClientUpdateThenExit(() {
+      widget.controller.applyClientUpdateThenExit(() {
         // The detached native update script replaces the installation and
         // relaunches the new version after this process exits.
-        controller.clientProcessLifecycle.exitSuccess();
+        widget.controller.clientProcessLifecycle.exitSuccess();
       }),
     );
-  }
-
-  void _rollback() {
-    unawaited(controller.rollbackClientUpdate());
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final controller = widget.controller;
     final status = controller.clientUpdateStatus;
     final busy = controller.isClientUpdateBusy;
+    final canCheck = !busy;
+    final canDownload =
+        !busy &&
+        status.updateAvailable &&
+        status.phase == ClientUpdatePhase.updateAvailable;
+    final canApply =
+        !busy &&
+        (status.phase == ClientUpdatePhase.verified ||
+            status.phase == ClientUpdatePhase.applyPlanned);
+    final sourceAddress = clientUpdatePublicSourceAddress(
+      repo: controller.clientUpdateRepo,
+      githubReleaseUrl: status.githubReleaseUrl,
+    );
 
     final presentation = LayoutDestinationPresentationScope.settingsOf(context);
     return Padding(
@@ -89,13 +111,12 @@ class ClientUpdateSettingsCard extends StatelessWidget {
           _InfoLine(label: strings.channel, value: status.channel),
           _InfoLine(
             label: strings.updateSource,
-            value: controller.clientUpdateSource == 'github'
-                ? strings.updateSourceGithub
-                : strings.updateSourceLocal,
+            value: strings.updateSourceGithub,
           ),
           _InfoLine(
-            label: strings.status,
-            value: _phaseLabel(strings, status.phase),
+            key: const Key('client-update-source-address'),
+            label: strings.sourceAddress,
+            value: sourceAddress,
           ),
           if (status.availableVersion.isNotEmpty)
             _InfoLine(
@@ -104,68 +125,25 @@ class ClientUpdateSettingsCard extends StatelessWidget {
             ),
           if (status.artifactSha256.isNotEmpty)
             _InfoLine(label: strings.digest, value: status.artifactSha256),
-          _InfoLine(
-            label: strings.productionReady,
-            value: status.productionReady ? strings.yes : strings.no,
-          ),
           const SizedBox(height: LicoContentSpacing.item),
           Wrap(
             spacing: LicoContentSpacing.compact,
             runSpacing: LicoContentSpacing.compact,
             children: [
-              FilledButton.tonal(
-                key: const Key('client-update-refresh-status'),
-                onPressed: busy
-                    ? null
-                    : () => unawaited(controller.refreshClientUpdateStatus()),
-                child: Text(strings.refresh),
-              ),
               FilledButton(
                 key: const Key('client-update-check-github'),
-                onPressed: busy ? null : _checkFromGithub,
+                onPressed: canCheck ? _checkFromGithub : null,
                 child: Text(strings.checkUpdate),
               ),
               OutlinedButton(
-                key: const Key('client-update-download-github'),
-                onPressed: busy || !status.updateAvailable
-                    ? null
-                    : _downloadFromGithub,
-                child: Text(strings.downloadUpdate),
-              ),
-              OutlinedButton(
-                key: const Key('client-update-verify'),
-                onPressed:
-                    busy ||
-                        (status.phase != ClientUpdatePhase.downloaded &&
-                            status.phase != ClientUpdatePhase.verified &&
-                            status.phase != ClientUpdatePhase.applyPlanned)
-                    ? null
-                    : () => unawaited(controller.verifyClientUpdateArtifact()),
-                child: Text(strings.verifyUpdate),
-              ),
-              OutlinedButton(
-                key: const Key('client-update-apply-plan'),
-                onPressed: busy || status.phase != ClientUpdatePhase.verified
-                    ? null
-                    : () => unawaited(controller.planClientUpdateApply()),
-                child: Text(strings.planUpdateInstall),
+                key: const Key('client-update-download-local'),
+                onPressed: canDownload ? _downloadFromGithub : null,
+                child: Text(strings.downloadToLocal),
               ),
               FilledButton(
                 key: const Key('client-update-apply-restart'),
-                onPressed:
-                    busy ||
-                        (status.phase != ClientUpdatePhase.verified &&
-                            status.phase != ClientUpdatePhase.applied)
-                    ? null
-                    : _applyAndRestart,
-                child: Text(strings.applyUpdateRestart),
-              ),
-              OutlinedButton(
-                key: const Key('client-update-rollback'),
-                onPressed: busy || status.phase != ClientUpdatePhase.rolledBack
-                    ? null
-                    : _rollback,
-                child: Text(strings.rollbackUpdate),
+                onPressed: canApply ? _applyAndRestart : null,
+                child: Text(strings.updateAndRestart),
               ),
             ],
           ),
@@ -173,28 +151,10 @@ class ClientUpdateSettingsCard extends StatelessWidget {
       ),
     );
   }
-
-  String _phaseLabel(LicoStrings strings, ClientUpdatePhase phase) {
-    return switch (phase) {
-      ClientUpdatePhase.idle => strings.clientUpdatePhaseIdle,
-      ClientUpdatePhase.checking => strings.clientUpdatePhaseChecking,
-      ClientUpdatePhase.upToDate => strings.clientUpdatePhaseUpToDate,
-      ClientUpdatePhase.updateAvailable =>
-        strings.clientUpdatePhaseUpdateAvailable,
-      ClientUpdatePhase.downloading => strings.clientUpdatePhaseDownloading,
-      ClientUpdatePhase.downloaded => strings.clientUpdatePhaseDownloaded,
-      ClientUpdatePhase.verifying => strings.clientUpdatePhaseVerifying,
-      ClientUpdatePhase.verified => strings.clientUpdatePhaseVerified,
-      ClientUpdatePhase.applyPlanned => strings.clientUpdatePhaseApplyPlanned,
-      ClientUpdatePhase.applied => strings.clientUpdatePhaseApplied,
-      ClientUpdatePhase.rolledBack => strings.clientUpdatePhaseRolledBack,
-      ClientUpdatePhase.failed => strings.clientUpdatePhaseFailed,
-    };
-  }
 }
 
 class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.label, required this.value});
+  const _InfoLine({super.key, required this.label, required this.value});
 
   final String label;
   final String value;
