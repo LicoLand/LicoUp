@@ -27,13 +27,15 @@ import {
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const buildRoot = path.join(repoRoot, "build");
 const manifestName = "LicoUp-consumer-verification.json";
-const correctiveReleaseNotes = [
-  "LicoUp v0.1.0 build 2 replaces the damaged v0.1.0 artifacts.",
-  "",
-  "macOS direct-distribution artifacts are not published by this workflow.",
-  "",
-  "Verify every download with LicoUp-consumer-verification.json and the signed update manifest.",
-].join("\n");
+function releaseNotes(tag) {
+  return [
+    `LicoUp ${tag} for Apple Silicon.`,
+    "",
+    "This release contains the Developer ID signed and Apple-notarized macOS package.",
+    "",
+    "Verify every download with LicoUp-consumer-verification.json and the signed update manifest.",
+  ].join("\n");
+}
 
 function fail(message) {
   throw new Error(message);
@@ -149,7 +151,7 @@ function ensureRelease({ tag, repository, sourceSha }) {
       "--title",
       tag,
       "--notes",
-      correctiveReleaseNotes,
+      releaseNotes(tag),
       "--draft",
     ]);
     release = tryReleaseView(tag, repository);

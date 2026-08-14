@@ -209,10 +209,11 @@ test("selection preserves request order and separates build from release support
   });
   assert.equal(linux[0].packageBuildSupported, true);
   assert.equal(linux[0].releaseSupported, false);
-  assert.throws(() => selectClientReleaseTargets(catalog, ["macos-direct-arm64"], {
+  const macos = selectClientReleaseTargets(catalog, ["macos-direct-arm64"], {
     requireBuildSupported: true,
     requireReleaseSupported: true,
-  }), /outside closure authority/u);
+  });
+  assert.equal(macos[0].releaseSupported, true);
   assert.throws(() => selectClientReleaseTargets(catalog, ["linux-deb-arm64"], {
     requireBuildSupported: true,
     requireReleaseSupported: true,
