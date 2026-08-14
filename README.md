@@ -73,6 +73,13 @@ LicoUp targets macOS, Windows, Linux, Android, and iOS.
 scenarios do not upload local paths, logs, conversation history, usage
 records, credentials, or plaintext user content to a service.
 
+**Optional collaboration stays opt-in.** The optional LicoMesh collaboration
+package is not loaded by the default client. Installing it requires an
+immutable GitHub commit and an independently imported signing key, and this
+repository does not bundle that server runner. Installation, assembly, and
+startup remain separate explicit actions; none grants permission to transfer
+user content.
+
 **Endpoint-protected peer-transfer preview.** The current source path encrypts
 content with selected peer keys before network I/O, and the receiving endpoint
 authenticates and verifies it before use. LicoUp treats transport as untrusted

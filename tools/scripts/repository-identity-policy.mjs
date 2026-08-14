@@ -23,14 +23,22 @@ const managedPolicyPaths = Object.freeze([
   ".githooks/pre-commit",
   ".githooks/commit-msg",
   ".githooks/pre-push",
+  "package.json",
+  "tools/client-release-template.json",
+  "tools/scripts/client-auditor-preflight.mjs",
+  "tools/scripts/client-gate-policy.mjs",
+  "tools/scripts/client-gate.mjs",
+  "tools/scripts/client-pr-preflight.mjs",
+  "tools/scripts/repository-rulesets.mjs",
   "tools/scripts/repository-identity-policy.mjs",
   "tools/scripts/lib/repository-sensitive-file-policy.mjs",
-  "tools/scripts/repository-rulesets.mjs",
 ]);
 const prohibitedAttributionTrailer =
   /(?:^|\r?\n)[ \t]*(?:co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \t]*:/iu;
 const agentIdentityLine =
   /(?:^|\r?\n)[ \t]*(?:claude(?: code)?|cursor(?: agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\r\n<]*(?:agent|bot))[^\r\n]*<[^\r\n>]+>/iu;
+const agentIdentityValue =
+  /(?:\[bot\]|(?:^|[^a-z0-9])(?:claude(?:[ ._+-]*code)?|cursor(?:[ ._+-]*agent)?|github[ ._+-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)(?:[^a-z0-9]|$))/iu;
 const forbiddenStagedPrefixes = Object.freeze([
   ".agents/",
   ".claude/",
@@ -144,18 +152,21 @@ export function assertCommitMessage(message) {
   }
 }
 
-export function assertCommitRecord(record, identity) {
-  const expectedEmail = canonicalGitHubEmail(identity);
-  if (record.authorName !== identity.login || record.authorEmail !== expectedEmail) {
+export function isAgentIdentity(name, email) {
+  return agentIdentityValue.test(`${name || ""} <${email || ""}>`);
+}
+
+export function assertCommitRecord(record) {
+  if (isAgentIdentity(record.authorName, record.authorEmail)) {
     reject(
-      "AUTHOR_IDENTITY_MISMATCH",
-      "The commit Author must be the authenticated GitHub CLI developer.",
+      "AGENT_AUTHOR_IDENTITY_FORBIDDEN",
+      "An Agent must not appear as the commit Author.",
     );
   }
-  if (record.committerName !== identity.login || record.committerEmail !== expectedEmail) {
+  if (isAgentIdentity(record.committerName, record.committerEmail)) {
     reject(
-      "COMMITTER_IDENTITY_MISMATCH",
-      "The commit Committer must be the authenticated GitHub CLI developer.",
+      "AGENT_COMMITTER_IDENTITY_FORBIDDEN",
+      "An Agent must not appear as the commit Committer.",
     );
   }
   assertCommitMessage(record.message);
@@ -537,7 +548,9 @@ export function outgoingCommits(input, remoteName, execute = run) {
     const [, localObjectId, , remoteObjectId] = fields;
     if (zeroObjectId.test(localObjectId)) continue;
     const args = ["rev-list", localObjectId];
-    if (!zeroObjectId.test(remoteObjectId)) {
+    if (zeroObjectId.test(remoteObjectId)) {
+      args.push("--not", `--remotes=${remoteName}`);
+    } else {
       args.push(`^${remoteObjectId}`);
     }
     const result = execute("git", args, {
@@ -591,11 +604,11 @@ function commitMessage(messagePath) {
 }
 
 async function prePush(remoteName) {
-  const identity = verifyLocalIdentityAndPolicy();
+  verifyLocalIdentityAndPolicy();
   const input = readFileSync(0, "utf8");
   const commits = outgoingCommits(input, remoteName);
   for (const commit of commits) {
-    assertCommitRecord(readCommitRecord(commit), identity);
+    assertCommitRecord(readCommitRecord(commit));
   }
   const checks = outgoingObjectChecks(outgoingCommitEntries(commits));
   if (checks.status === "reject") {

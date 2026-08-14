@@ -1,5 +1,4 @@
 use super::support::*;
-use serde_json::json;
 use std::fs;
 
 #[test]
@@ -87,7 +86,24 @@ fn cli_wraps_client_conversation_results_for_the_desktop_runner() {
         .unwrap();
         let payload = json_payload(&result);
         assert_eq!(payload["ok"], true);
-        assert_eq!(payload["result"], json!([]));
+        let conversations = payload["result"].as_array().unwrap();
+        assert_eq!(
+            conversations.len(),
+            1,
+            "startup pins exactly one canonical Local group"
+        );
+        assert_eq!(conversations[0]["id"], "lico-group-default");
+        assert_eq!(conversations[0]["title"], "Local");
+        assert_eq!(conversations[0]["isGroup"], true);
+        assert_eq!(conversations[0]["pinned"], true);
+        assert_eq!(conversations[0]["archived"], false);
+        assert_eq!(conversations[0]["eventCount"], 0);
+        assert_eq!(conversations[0]["membershipCount"], 1);
+        assert_eq!(conversations[0]["revision"], 1);
+        assert!(
+            conversations[0].get("updatedAtUnixMs").is_some(),
+            "canonical Local projection keeps its recency fact"
+        );
     }
     let _ = fs::remove_dir_all(dir);
 }

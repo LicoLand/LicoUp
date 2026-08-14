@@ -46,6 +46,7 @@ impl ConversationService {
         // Startup admission is migration-first. A failed migration is returned
         // to the transport and never falls back to the retired JSON readers.
         migrate_legacy_state(&store, portable_root)?;
+        store.ensure_default_local_group()?;
         Ok(Self::from_store(store))
     }
 
@@ -56,6 +57,23 @@ impl ConversationService {
                 crate::platform::dispatch_lane_operation("send", params)
             }),
         }
+    }
+
+    /// Route native Agent work through a process-owned coordinator while
+    /// keeping Conversation orchestration and persistence in this service.
+    pub fn with_native_turn_sender(
+        mut self,
+        native_turn_sender: impl Fn(
+            &Value,
+        ) -> std::result::Result<
+            Value,
+            crate::platform::runtime_adapters::RuntimeAdapterError,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.native_turn_sender = Arc::new(native_turn_sender);
+        self
     }
 
     #[cfg(test)]
@@ -70,10 +88,7 @@ impl ConversationService {
         + Sync
         + 'static,
     ) -> Self {
-        Self {
-            store,
-            native_turn_sender: Arc::new(native_turn_sender),
-        }
+        Self::from_store(store).with_native_turn_sender(native_turn_sender)
     }
 
     pub fn store(&self) -> &ConversationStore {
@@ -397,6 +412,10 @@ impl ConversationService {
             "text": context.source_content,
             "streamEvents": false,
             "timeoutMs": 0,
+            "conversationId": context.turn.conversation_id,
+            "membershipId": context.turn.membership_id,
+            "causationId": context.turn.source_event_id,
+            "dispatchId": context.turn.id,
         });
         if let Some(session_id) = context.runtime_session_id.as_deref() {
             params["sessionId"] = json!(session_id);
@@ -633,6 +652,47 @@ mod tests {
     }
 
     #[test]
+    fn product_startup_restores_one_canonical_default_local_group() {
+        let root = std::env::temp_dir().join(format!(
+            "lico-conversation-service-default-{}",
+            uuid::Uuid::new_v4()
+        ));
+
+        let service = ConversationService::open(&root).unwrap();
+        let groups = service.store().list(false).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, super::super::DEFAULT_LOCAL_AGENT_GROUP_ID);
+        assert_eq!(
+            groups[0].title,
+            super::super::DEFAULT_LOCAL_AGENT_GROUP_TITLE
+        );
+        assert!(groups[0].pinned);
+        assert!(groups[0].is_group);
+        let local = service
+            .store()
+            .get(super::super::DEFAULT_LOCAL_AGENT_GROUP_ID)
+            .unwrap();
+        assert_eq!(local.memberships.len(), 1);
+        assert_eq!(local.memberships[0].principal.id, "human:local");
+        assert_eq!(local.memberships[0].access, MembershipAccess::Owner);
+        drop(service);
+
+        let reopened = ConversationService::open(&root).unwrap();
+        assert_eq!(reopened.store().list(false).unwrap().len(), 1);
+        assert_eq!(
+            reopened
+                .store()
+                .get(super::super::DEFAULT_LOCAL_AGENT_GROUP_ID)
+                .unwrap()
+                .memberships
+                .len(),
+            1
+        );
+        drop(reopened);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn direct_turn_fanout_is_bounded_parallel_and_preserves_receipt_order() {
         let in_flight = Arc::new((Mutex::new(0usize), Condvar::new()));
         let release = Arc::new((Mutex::new(false), Condvar::new()));
@@ -823,6 +883,10 @@ mod tests {
         assert_eq!(calls[0]["agentId"], "one");
         assert_eq!(calls[0]["text"], "Please answer");
         assert_eq!(calls[0]["timeoutMs"], 0);
+        assert_eq!(calls[0]["conversationId"], conversation_id);
+        assert_eq!(calls[0]["membershipId"], agent_id);
+        assert_eq!(calls[0]["causationId"], posted["event"]["id"]);
+        assert_eq!(calls[0]["dispatchId"], posted["directTurns"][0]["id"]);
         assert!(calls[0].get("maxStdoutBytes").is_none());
         drop(calls);
         let events = service
@@ -840,6 +904,85 @@ mod tests {
             posted["event"]["id"].as_str().map(str::to_owned)
         );
         assert!(events.iter().any(|event| event.id == posted["event"]["id"]));
+    }
+
+    #[test]
+    fn persistent_group_dispatch_finalizes_one_canonical_agent_event() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime_store = store.clone();
+        let service =
+            ConversationService::from_store(store).with_native_turn_sender(move |params| {
+                let scope = runtime_store
+                    .prepare_runtime_dispatch(
+                        params["agentId"].as_str().unwrap(),
+                        "",
+                        params["text"].as_str().unwrap(),
+                        params["conversationId"].as_str(),
+                        params["membershipId"].as_str(),
+                        params["causationId"].as_str(),
+                        params["dispatchId"].as_str(),
+                    )
+                    .unwrap();
+                runtime_store
+                    .append_runtime_frame(
+                        &scope,
+                        1,
+                        &json!({
+                            "event": "agent.message.completed",
+                            "sessionId": "session-fixture",
+                            "turnId": "turn-fixture",
+                            "payload": {"text": "agent answer"}
+                        }),
+                    )
+                    .unwrap();
+                runtime_store
+                    .finish_runtime_dispatch(
+                        &scope,
+                        &json!({"ok": true, "output": "agent answer"}),
+                        crate::domain::client_conversation::DispatchState::Completed,
+                        None,
+                    )
+                    .unwrap();
+                Ok(json!({
+                    "ok": true,
+                    "output": "agent answer",
+                    "nativeSessionId": "session-fixture"
+                }))
+            });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "one answer",
+                "mentionedMembershipIds": [agent_id]
+            }))
+            .unwrap();
+
+        assert_eq!(posted["directTurns"][0]["state"], "succeeded");
+        let turn_id = posted["directTurns"][0]["id"].as_str().unwrap();
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        let replies = events
+            .iter()
+            .filter(|event| event.correlation_id.as_deref() == Some(turn_id))
+            .collect::<Vec<_>>();
+        assert_eq!(replies.len(), 1);
+        assert!(replies[0].finalized);
+        assert_eq!(
+            replies[0]
+                .parts
+                .iter()
+                .filter(|part| part.kind == super::super::EventPartKind::Text)
+                .count(),
+            1
+        );
+        assert_eq!(replies[0].parts[0].content, "agent answer");
     }
 
     #[test]

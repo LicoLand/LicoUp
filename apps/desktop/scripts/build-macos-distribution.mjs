@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { inflateSync } from "node:zlib";
+import { gzipSync, unzipSync } from "node:zlib";
 import { packageClient } from "./package-client.mjs";
 import {
   artifactTreeDigest,
@@ -316,14 +316,57 @@ function decodeProvisioningProfile(executor, toolEnvironment, profilePath) {
   if (decoded.status !== 0) {
     throw new MacosDistributionError("macos_distribution_profile_invalid");
   }
-  const converted = executor("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", "-"], {
-    env: toolEnvironment,
-    input: String(decoded.stdout || ""),
-  });
-  if (converted.status !== 0) {
+  const profileXml = String(decoded.stdout || "");
+  const extract = (key, format, { required = true } = {}) => {
+    const result = executor(
+      "/usr/bin/plutil",
+      ["-extract", key, format, "-o", "-", "--", "-"],
+      {
+        env: toolEnvironment,
+        input: profileXml,
+        maxBuffer: commandOutputLimit,
+      },
+    );
+    if (result.status !== 0 || result.error) {
+      if (!required) return null;
+      throw new MacosDistributionError("macos_distribution_profile_invalid");
+    }
+    return String(result.stdout || "").trim();
+  };
+  const parseExtractedJson = (key) => {
+    try {
+      return JSON.parse(extract(key, "json"));
+    } catch (error) {
+      if (error instanceof MacosDistributionError) throw error;
+      throw new MacosDistributionError("macos_distribution_profile_invalid");
+    }
+  };
+  const developerCertificates = [];
+  const certificateLimit = 64;
+  for (let index = 0; index < certificateLimit; index += 1) {
+    const certificate = extract(`DeveloperCertificates.${index}`, "raw", {
+      required: false,
+    });
+    if (certificate === null) break;
+    developerCertificates.push(certificate);
+  }
+  if (developerCertificates.length === certificateLimit &&
+    extract(`DeveloperCertificates.${certificateLimit}`, "raw", {
+      required: false,
+    }) !== null) {
     throw new MacosDistributionError("macos_distribution_profile_invalid");
   }
-  return parsePlistText(String(converted.stdout || "{}"));
+  return {
+    Name: extract("Name", "raw", { required: false }) || "",
+    UUID: extract("UUID", "raw", { required: false }) || "",
+    ProvisionsAllDevices: extract("ProvisionsAllDevices", "raw", {
+      required: false,
+    }) === "true",
+    DeveloperCertificates: developerCertificates,
+    TeamIdentifier: parseExtractedJson("TeamIdentifier"),
+    ExpirationDate: extract("ExpirationDate", "raw"),
+    Entitlements: parseExtractedJson("Entitlements"),
+  };
 }
 
 function inspectProvisioningProfileCertificates(profile, executor, toolEnvironment) {
@@ -632,9 +675,9 @@ export function installMacosReleaseMaterials(
   fs.copyFile(licenseSource, materials.license);
   fs.copyFile(openSourceNoticeSource, materials.openSourceNotice);
   try {
-    const notices = inflateSync(fs.readBuffer(flutterNoticesPath(appPath, fs)), {
-      maxOutputLength: thirdPartyNoticesLimit,
-    });
+    const notices = decodeFlutterNotices(
+      fs.readBuffer(flutterNoticesPath(appPath, fs)),
+    );
     const rustNotices = rustThirdPartyNotices(architecture);
     const combinedNotices = [
       "Flutter and Dart dependencies",
@@ -653,6 +696,14 @@ export function installMacosReleaseMaterials(
     throw new MacosDistributionError("macos_distribution_license_materials_invalid");
   }
   return materials;
+}
+
+export function decodeFlutterNotices(archive) {
+  try {
+    return unzipSync(archive, { maxOutputLength: thirdPartyNoticesLimit });
+  } catch {
+    throw new MacosDistributionError("macos_distribution_license_materials_invalid");
+  }
 }
 
 function redactedCommandArgs(kind, args) {
@@ -730,10 +781,10 @@ export function coordinatePlatformChannel({
   const identity = requireEnvironment(env, "LICO_MACOS_SIGNING_IDENTITY");
   const profilePath = requireEnvironment(env, "LICO_MACOS_PROVISIONING_PROFILE");
   requireContainedFile(fs, profilePath, "macos_distribution_credentials_missing");
-  const keyId = requireEnvironment(env, "LICO_MACOS_NOTARY_KEY_ID");
-  const issuer = requireEnvironment(env, "LICO_MACOS_NOTARY_ISSUER_ID");
-  const keyPath = requireEnvironment(env, "LICO_MACOS_NOTARY_KEY_PATH");
-  requireContainedFile(fs, keyPath, "macos_distribution_credentials_missing");
+  const notaryKeychainProfile = requireEnvironment(
+    env,
+    "LICO_MACOS_NOTARY_KEYCHAIN_PROFILE",
+  );
   const identifierPrefix = requireEnvironment(env, "LICO_MACOS_APP_IDENTIFIER_PREFIX");
   const signingKeychain = String(env.LICO_MACOS_RELEASE_SIGNING_KEYCHAIN || "").trim();
   const signingKeychainArgs = signingKeychain ? ["--keychain", signingKeychain] : [];
@@ -761,11 +812,11 @@ export function coordinatePlatformChannel({
   fs.rm(runnableManifestPath, { force: true });
   capture({ kind: "stale-manifest-remove", program: "", args: [] });
 
-  const packaged = packageRunnable({
-    platform: "macos",
-    mode: "release",
-    productionEntitlements: true,
-  });
+  const packaged = packageRunnable([
+    "--platform", "macos",
+    "--mode", "release",
+    "--production-entitlements",
+  ]);
   const appPath = packaged?.runnable?.appPath;
   if (!appPath || !fs.exists(appPath) || !fs.exists(resolvedEntitlements)) {
     throw new MacosDistributionError("macos_distribution_package_missing");
@@ -866,7 +917,7 @@ export function coordinatePlatformChannel({
   try {
     run("app-notarize", "/usr/bin/xcrun", [
       "notarytool", "submit", submissionZip,
-      "--key", keyPath, "--key-id", keyId, "--issuer", issuer, "--wait",
+      "--keychain-profile", notaryKeychainProfile, "--wait",
     ], "macos_distribution_notarization_failed", { timeout: 30 * 60 * 1000 });
   } finally {
     fs.rm(submissionZip, { force: true });
@@ -920,7 +971,7 @@ export function coordinatePlatformChannel({
   ], "macos_distribution_dmg_sign_failed");
   run("dmg-notarize", "/usr/bin/xcrun", [
     "notarytool", "submit", dmgPath,
-    "--key", keyPath, "--key-id", keyId, "--issuer", issuer, "--wait",
+    "--keychain-profile", notaryKeychainProfile, "--wait",
   ], "macos_distribution_notarization_failed", { timeout: 30 * 60 * 1000 });
   run("dmg-staple", "/usr/bin/xcrun", ["stapler", "staple", dmgPath],
     "macos_distribution_staple_failed");
@@ -1135,14 +1186,16 @@ async function runSelfTest() {
   const injected = minimalReleaseToolEnvironment({
     HOME: "/fixture-home",
     LICO_MACOS_SIGNING_IDENTITY: marker,
-    LICO_MACOS_NOTARY_KEY_PATH: marker,
-    LICO_MACOS_NOTARY_KEY_ID: marker,
-    LICO_MACOS_NOTARY_ISSUER_ID: marker,
+    LICO_MACOS_NOTARY_KEYCHAIN_PROFILE: marker,
     DYLD_INSERT_LIBRARIES: marker,
   }, { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" });
   if (Object.values(injected).includes(marker) ||
     Object.hasOwn(injected, "DYLD_INSERT_LIBRARIES")) {
     throw new Error("macos_distribution_tool_environment_not_minimal");
+  }
+  const noticesFixture = Buffer.from("synthetic flutter notices", "utf8");
+  if (!decodeFlutterNotices(gzipSync(noticesFixture)).equals(noticesFixture)) {
+    throw new Error("macos_distribution_flutter_notices_decode_failed");
   }
 
   const selfTest = await import("../../../tests/contract/client/macos-direct-distribution-self-test.mjs");
