@@ -1,6 +1,6 @@
 {
   "name": "@licoland/licoup",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LicoUp is the open-source official LicoMesh client repository.",
   "private": false,
   "license": "AGPL-3.0-or-later",
