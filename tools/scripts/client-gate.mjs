@@ -156,7 +156,7 @@ function validateCiTopology() {
     "npm run client:gate:source",
     "CI source job must invoke the canonical source gate",
   );
-  for (const lane of ["flutter", "rust", "android", "dependencies", "release-policy"]) {
+  for (const lane of ["flutter", "rust", "android", "dependencies"]) {
     const block = jobBlock(workflow, lane);
     const outputName = lane.replaceAll("-", "_");
     assertIncludes(
@@ -178,11 +178,15 @@ function validateCiTopology() {
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
     required,
-    "needs: [source, flutter, rust, android, dependencies, release-policy]",
+    "needs: [source, flutter, rust, android, dependencies]",
     "required CI reducer must observe every independent lane",
   );
   assertIncludes(required, "if: always()", "required CI reducer must always report lane failures");
   for (const forbidden of [
+    "\n  push:",
+    "workflow_dispatch:",
+    "release_policy",
+    "client:gate:release-policy",
     "client:build:",
     "client:archive:",
     "client:package:",
@@ -193,6 +197,118 @@ function validateCiTopology() {
     "gh release",
   ]) {
     assertExcludes(workflow, forbidden, `client CI must not perform release target work: ${forbidden}`);
+  }
+}
+
+function validatePromotionTopology() {
+  const stable = readText(".github/workflows/client-stable.yml");
+  const stableJob = jobBlock(stable, "stable-client");
+  if (JSON.stringify(workflowJobIds(stable)) !== JSON.stringify(["stable-client"])) {
+    fail("stable promotion workflow must expose only Stable client");
+  }
+  for (const token of [
+    "branches:\n      - stable",
+    "name: Stable client",
+    "runs-on: macos-15",
+    "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
+    "TARGET_REPOSITORY: ${{ github.repository }}",
+    'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
+    'test "$HEAD_BRANCH" = nightly',
+    'test "$(uname -m)" = arm64',
+    "LICO_CLIENT_RELEASE_TARGETS: macos-arm64",
+    "npm run client:install:macos",
+    "npm run client:verify:secure-mesh-macos-capabilities",
+  ]) {
+    assertIncludes(stable, token, `stable promotion workflow is missing: ${token}`);
+  }
+  if ((stableJob.match(/npm run client:install:macos/gmu) || []).length !== 1) {
+    fail("stable promotion must build and install exactly once");
+  }
+  if ((stableJob.match(/npm run client:verify:secure-mesh-macos-capabilities/gmu) || []).length !== 1) {
+    fail("stable promotion must launch and prove survival exactly once");
+  }
+  const stableOrder = [
+    "name: Verify promotion source",
+    "uses: actions/checkout@",
+    "name: Prepare ephemeral local integrity identity",
+    "run: npm run client:install:macos",
+    "run: npm run client:verify:secure-mesh-macos-capabilities",
+  ].map((token) => stableJob.indexOf(token));
+  if (stableOrder.some((index) => index < 0) ||
+    stableOrder.some((index, position) => position > 0 && index <= stableOrder[position - 1])) {
+    fail("stable promotion must guard, install once, then launch and prove survival");
+  }
+  for (const token of [
+    "\n  push:",
+    "workflow_dispatch:",
+    "client:build:",
+    "client:package:",
+    "client:archive:",
+    "actions/upload-artifact",
+    "actions/download-artifact",
+    "gh release",
+    "client-github-release-publish",
+    "npm publish",
+    "GH_TOKEN:",
+    "secrets.",
+    "LICO_MACOS_SIGNING_IDENTITY",
+    "LICO_MACOS_NOTARY_",
+  ]) {
+    assertExcludes(stable, token, `stable promotion must not publish or rebuild: ${token}`);
+  }
+
+  const ready = readText(".github/workflows/client-release-ready.yml");
+  const readyJob = jobBlock(ready, "release-ready");
+  if (JSON.stringify(workflowJobIds(ready)) !== JSON.stringify(["release-ready"])) {
+    fail("release promotion workflow must expose only Release ready");
+  }
+  for (const token of [
+    "branches:\n      - release",
+    "name: Release ready",
+    "runs-on: ubuntu-24.04",
+    "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
+    "TARGET_REPOSITORY: ${{ github.repository }}",
+    'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
+    'test "$HEAD_BRANCH" = stable',
+    "npm run client:gate:topology",
+    "npm run client:gate:release-policy",
+  ]) {
+    assertIncludes(ready, token, `release promotion workflow is missing: ${token}`);
+  }
+  const readyOrder = [
+    "name: Verify promotion source",
+    "uses: actions/checkout@",
+    "run: npm run client:gate:topology",
+    "run: npm run client:gate:release-policy",
+  ].map((token) => readyJob.indexOf(token));
+  if (readyOrder.some((index) => index < 0) ||
+    readyOrder.some((index, position) => position > 0 && index <= readyOrder[position - 1])) {
+    fail("release promotion must guard before its ordered Node-only policy checks");
+  }
+  for (const token of [
+    "\n  push:",
+    "workflow_dispatch:",
+    "client:build:",
+    "client:package:",
+    "client:archive:",
+    "client:install:",
+    "client:run:",
+    "client:verify:",
+    "client:release:",
+    "flutter-action",
+    "rust-toolchain",
+    "actions/setup-java",
+    "actions/upload-artifact",
+    "actions/download-artifact",
+    "npm publish",
+    "gh release",
+    "client-github-release-publish",
+    "contents: write",
+    "id-token: write",
+    "GH_TOKEN:",
+    "secrets.",
+  ]) {
+    assertExcludes(ready, token, `release readiness must be build-free: ${token}`);
   }
 }
 
@@ -440,6 +556,7 @@ function validateReleaseTopology() {
 export function validateClientGateTopology() {
   validatePackageTopology();
   validateCiTopology();
+  validatePromotionTopology();
   validateReleaseTopology();
   return Object.freeze({
     ok: true,

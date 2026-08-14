@@ -123,7 +123,6 @@ export const CLIENT_CI_JOBS = Object.freeze([
   "rust",
   "android",
   "dependencies",
-  "release-policy",
   "client-required",
 ]);
 
@@ -134,12 +133,6 @@ const DEPENDENCY_PATHS = new Set([
   "Cargo.lock",
   "apps/desktop/pubspec.yaml",
   "apps/desktop/pubspec.lock",
-]);
-
-const RELEASE_AUTHORITY_PATHS = new Set([
-  ".github/workflows/client-release.yml",
-  "tools/client-release-targets.json",
-  "tools/client-version.json",
 ]);
 
 function normalizePath(value) {
@@ -189,26 +182,6 @@ function isAndroidPath(file) {
   );
 }
 
-function isReleasePolicyPath(file) {
-  return (
-    RELEASE_AUTHORITY_PATHS.has(file) ||
-    file.startsWith("tools/scripts/client-release") ||
-    file.startsWith("tools/scripts/client-update-release") ||
-    file.startsWith("tools/scripts/client-github-release") ||
-    file.startsWith("tools/scripts/client-consumer-verification") ||
-    file.startsWith("tools/scripts/client-artifact-verification") ||
-    file.startsWith("tools/scripts/client-review-signoff") ||
-    file.startsWith("tools/scripts/client-source-state-digest") ||
-    file.startsWith("tools/scripts/client-bounded-child-process") ||
-    file.startsWith("tools/scripts/client-linux-tar") ||
-    file.startsWith("tools/scripts/client-macos-") ||
-    file.startsWith("tools/scripts/client-android-apk") ||
-    file.startsWith("apps/desktop/scripts/build-") ||
-    file.startsWith("apps/desktop/scripts/archive-") ||
-    file.startsWith("apps/desktop/scripts/package-client")
-  );
-}
-
 export function classifyClientGatePaths(changedPaths, { releaseTarget = null } = {}) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
@@ -220,7 +193,6 @@ export function classifyClientGatePaths(changedPaths, { releaseTarget = null } =
     rust: false,
     android: false,
     dependencies: false,
-    "release-policy": false,
   };
 
   for (const file of normalized) {
@@ -228,7 +200,6 @@ export function classifyClientGatePaths(changedPaths, { releaseTarget = null } =
     if (isRustPath(file)) lanes.rust = true;
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
-    if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
   }
   if (normalized.includes("tools/client-version.json") && releaseTarget === "android-arm64") {
     lanes.android = true;

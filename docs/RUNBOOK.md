@@ -88,9 +88,11 @@ Common focused checks are:
 
 Run `npm run client:gate:source` once after all focused checks pass. Then run
 only the affected `client:gate:flutter`, `client:gate:rust`,
-`client:gate:android`, `client:gate:dependencies`, or
-`client:gate:release-policy` lane. These lanes are independent and may run in
-parallel. Source policy is Node-only; it does not install platform toolchains
+`client:gate:android`, or `client:gate:dependencies` lane. These regression
+lanes are independent and may run in parallel. Release policy belongs only to
+the `stable` → `release` promotion gate described in
+[`releases/PROMOTION-GATES.md`](releases/PROMOTION-GATES.md). Source policy is
+Node-only; it does not install platform toolchains
 and is not authorization for live services, runtime-data capture, device
 installation, signing, publication, or store operations.
 

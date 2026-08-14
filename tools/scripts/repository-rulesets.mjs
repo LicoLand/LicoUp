@@ -7,14 +7,22 @@ import { pathToFileURL } from "node:url";
 
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
-const promotionBranchesRulesetName = "LicoUp protected release flow";
 const identityStatusContext = "Commit identity";
-const requiredStatusContexts = Object.freeze([
+const leadingPromotionStatusContexts = Object.freeze([
   "Branch flow",
   identityStatusContext,
-  "Client required",
-  "Auditor",
 ]);
+const promotionRequiredStatusContexts = Object.freeze({
+  nightly: Object.freeze([...leadingPromotionStatusContexts, "Client required", "Auditor"]),
+  stable: Object.freeze([...leadingPromotionStatusContexts, "Stable client", "Auditor"]),
+  release: Object.freeze([...leadingPromotionStatusContexts, "Release ready", "Auditor"]),
+});
+const promotionRulesetNames = Object.freeze({
+  nightly: "LicoUp nightly regression",
+  stable: "LicoUp stable client",
+  release: "LicoUp release readiness",
+});
+const obsoletePromotionRulesetName = "LicoUp protected release flow";
 const githubNoreplyHostPattern = ["users", "noreply", "github", "com"].join("\\.");
 const canonicalNoreplyPattern = `^[0-9]+\\+[A-Za-z0-9][A-Za-z0-9-]{0,38}@${githubNoreplyHostPattern}$`;
 const canonicalCommitterPattern =
@@ -72,12 +80,12 @@ function metadataRule(type, name, pattern, negate) {
   };
 }
 
-function requiredStatusChecksRule(actionsIntegrationId) {
+function requiredStatusChecksRule(actionsIntegrationId, contexts) {
   return {
     type: "required_status_checks",
     parameters: {
       do_not_enforce_on_create: true,
-      required_status_checks: requiredStatusContexts.map((context) => ({
+      required_status_checks: contexts.map((context) => ({
         context,
         integration_id: actionsIntegrationId,
       })),
@@ -90,8 +98,7 @@ export function buildRulesets(actionsIntegrationId) {
   if (!Number.isSafeInteger(actionsIntegrationId) || actionsIntegrationId <= 0) {
     reject("ACTIONS_INTEGRATION_INVALID", "The GitHub Actions integration ID is invalid.");
   }
-  return [
-    {
+  const identityRuleset = {
       name: allBranchesRulesetName,
       target: "branch",
       enforcement: "active",
@@ -119,19 +126,15 @@ export function buildRulesets(actionsIntegrationId) {
           true,
         ),
       ],
-    },
-    {
-      name: promotionBranchesRulesetName,
+    };
+  const promotionRulesets = Object.entries(promotionRulesetNames).map(([branch, name]) => ({
+      name,
       target: "branch",
       enforcement: "active",
       bypass_actors: [],
       conditions: {
         ref_name: {
-          include: [
-            "refs/heads/nightly",
-            "refs/heads/stable",
-            "refs/heads/release",
-          ],
+          include: [`refs/heads/${branch}`],
           exclude: [],
         },
       },
@@ -149,10 +152,10 @@ export function buildRulesets(actionsIntegrationId) {
             required_review_thread_resolution: true,
           },
         },
-        requiredStatusChecksRule(actionsIntegrationId),
+        requiredStatusChecksRule(actionsIntegrationId, promotionRequiredStatusContexts[branch]),
       ],
-    },
-  ];
+    }));
+  return [identityRuleset, ...promotionRulesets];
 }
 
 function canonicalJson(value) {
@@ -284,6 +287,19 @@ function applyRuleset(payload, existing) {
   }
 }
 
+function removeObsoletePromotionRuleset(existing) {
+  const obsolete = existing.filter((ruleset) => ruleset.name === obsoletePromotionRulesetName);
+  if (obsolete.length > 1) {
+    reject("DUPLICATE_RULESET", "More than one obsolete promotion Ruleset exists.");
+  }
+  if (obsolete.length === 1) {
+    gh(["api", "-X", "DELETE", `repos/${repository}/rulesets/${obsolete[0].id}`, "--silent"], {
+      code: "RULESET_APPLY_FAILED",
+      message: "The obsolete shared promotion Ruleset could not be removed.",
+    });
+  }
+}
+
 function removeLegacyBranchProtection(defaultBranch) {
   const endpoint = `repos/${repository}/branches/${encodeURIComponent(defaultBranch)}/protection`;
   if (!ghOptional(["api", endpoint, "--silent"]).ok) return "absent";
@@ -306,8 +322,15 @@ function rulesetDigest(desired) {
   return createHash("sha256").update(canonicalJson(desired)).digest("hex");
 }
 
+export function assertReleaseDefaultBranch(repositoryDetails) {
+  if (repositoryDetails?.default_branch !== "release") {
+    reject("DEFAULT_BRANCH_INVALID", "The repository default branch must remain release.");
+  }
+}
+
 function verify({ repositoryDetails, desired } = {}) {
   const details = repositoryDetails || assertRepositoryAccess({ requireAdmin: false });
+  assertReleaseDefaultBranch(details);
   const expected = desired || buildRulesets(actionsIntegrationId());
   const summaries = repositoryRulesets();
   const activeBranchNames = summaries
@@ -316,7 +339,7 @@ function verify({ repositoryDetails, desired } = {}) {
   const expectedNames = expected.map((ruleset) => ruleset.name).sort();
   if (JSON.stringify(activeBranchNames) !== JSON.stringify(expectedNames)) {
     reject("RULESET_AUTHORITY_CONFLICT",
-      "Active branch Rulesets do not exactly match the two managed authorities.");
+      "Active branch Rulesets do not exactly match the managed branch authorities.");
   }
   for (const payload of expected) {
     const matches = summaries.filter((ruleset) => ruleset.name === payload.name);
@@ -334,6 +357,7 @@ function verify({ repositoryDetails, desired } = {}) {
 
 function apply() {
   const repositoryDetails = assertRepositoryAccess({ requireAdmin: true });
+  assertReleaseDefaultBranch(repositoryDetails);
   const existing = repositoryRulesets();
   const desired = buildRulesets(actionsIntegrationId());
   for (const payload of desired) {
@@ -343,6 +367,7 @@ function apply() {
     }
     applyRuleset(payload, matches[0]);
   }
+  removeObsoletePromotionRuleset(existing);
   const legacy = removeLegacyBranchProtection(repositoryDetails.default_branch);
   verify({ repositoryDetails, desired });
   process.stdout.write(`rulesets=applied count=${desired.length} legacy_branch_protection=${legacy}\n`);
@@ -371,7 +396,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   allBranchesRulesetName,
-  promotionBranchesRulesetName,
   identityStatusContext,
-  requiredStatusContexts,
+  promotionRulesetNames,
+  promotionRequiredStatusContexts,
 };

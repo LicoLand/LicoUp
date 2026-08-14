@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licoup.client-release-template.v1",
+  "schemaVersion": "licoup.client-release-template.v2",
   "entryCommands": {
     "nightly": "npm run client:release -- push nightly --version <version> --target <target>",
     "stable": "npm run client:release -- push stable --version <version> --target <target>",
@@ -11,12 +11,11 @@
     "mergeMethod": "merge",
     "rulesetMutation": "forbidden"
   },
-  "requiredPullRequestChecks": [
-    "Branch flow",
-    "Commit identity",
-    "Client required",
-    "Auditor"
-  ],
+  "requiredPullRequestChecks": {
+    "nightly": ["Branch flow", "Commit identity", "Client required", "Auditor"],
+    "stable": ["Branch flow", "Commit identity", "Stable client", "Auditor"],
+    "release": ["Branch flow", "Commit identity", "Release ready", "Auditor"]
+  },
   "publication": {
     "workflow": ".github/workflows/client-release.yml",
     "ref": "release",
@@ -36,9 +35,9 @@
   "candidatePreflight": {
     "refPrefix": "release-candidate/",
     "targets": {
-      "macos-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
-      "linux-glibc-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
-      "android-arm64": ["source", "flutter", "rust", "android", "dependencies", "release-policy"]
+      "macos-arm64": ["source", "flutter", "rust", "dependencies"],
+      "linux-glibc-arm64": ["source", "flutter", "rust", "dependencies"],
+      "android-arm64": ["source", "flutter", "rust", "android", "dependencies"]
     }
   }
 }

@@ -138,8 +138,8 @@ npm run client:verify:closure-producer-writer:self-test
 npm run client:verify:client-release-acceptance:self-test
 ```
 
-`client:gate:release-policy` runs these side-effect-free release tests only when
-release authority changes. It is independent from the Node-only source policy
+`client:gate:release-policy` runs these side-effect-free release tests only for
+the `stable` → `release` promotion. It is independent from the Node-only source policy
 and from all platform build lanes. The real reducer, which may install, launch,
 or start a bounded platform session for an explicitly selected target, is
 invoked through `client:verify:product-line-security` only. The GitHub artifact
