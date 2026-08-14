@@ -72,7 +72,7 @@ test("changed paths select only their independent technology lanes", () => {
   );
   assert.deepEqual(
     selectedOptionalLanes(["tools/scripts/client-device-demo.mjs"]),
-    ["release-policy"],
+    [],
   );
   assert.deepEqual(
     selectedOptionalLanes(["package.json"]),
