@@ -11,6 +11,7 @@ enum ClientSection {
   mobileRelay,
   models,
   settings,
+  agentHub,
 }
 
 final class SemanticDestinationDescriptor {

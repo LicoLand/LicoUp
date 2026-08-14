@@ -5,6 +5,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/components/dashboard_desktop_component_kit.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/agents_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/agent_hub_destination.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/skill_hub_destination.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/mobile_relay_destination.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/monitoring_destination.dart';
@@ -81,6 +82,7 @@ _dashboardDesktopDestinationBuilders() => {
   ClientSection.skillHub: dashboardDesktopSkillHubDestinationBuilder,
   ClientSection.pluginManagement:
       dashboardDesktopPluginManagementDestinationBuilder,
+  ClientSection.agentHub: dashboardDesktopAgentHubDestinationBuilder,
   ClientSection.mobileRelay: dashboardDesktopMobileRelayDestinationBuilder,
   ClientSection.models: dashboardDesktopModelsDestinationBuilder,
   ClientSection.settings: dashboardDesktopSettingsDestinationBuilder,

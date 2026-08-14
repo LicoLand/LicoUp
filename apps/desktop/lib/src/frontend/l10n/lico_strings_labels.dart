@@ -335,6 +335,19 @@ extension LicoStringsLabels on LicoStrings {
   String get conversationListNav => isChinese ? '对话' : 'Chats';
   String get skillsNav => isChinese ? '技能' : 'Skills';
   String get pluginsNav => isChinese ? '插件' : 'Plugins';
+  String get adaptationDeep => isChinese ? '深度适配' : 'Deep';
+  String get adaptationPartial => isChinese ? '部分适配' : 'Partial';
+  String get agentHubInstalled => isChinese ? '已安装' : 'Installed';
+  String get agentHubNotInstalled => isChinese ? '未安装' : 'Not installed';
+  String get agentHubExternal => isChinese ? '外部安装' : 'External';
+  String get agentHubFailed => isChinese ? '失败' : 'Failed';
+  String get agentHubCatalogFailed =>
+      isChinese ? '无法加载智能体目录' : 'Unable to load agent catalog';
+  String get agentHubVisit => isChinese ? '访问' : 'Visit →';
+  String get agentHubVisitFailed =>
+      isChinese ? '无法打开主页' : 'Unable to open homepage';
+  String get agentHubUpdate => isChinese ? '更新' : 'Update';
+  String get agentHubUninstall => isChinese ? '卸载' : 'Uninstall';
   String get mobileNav => isChinese ? '移动' : 'Mobile';
   String get statsNav => isChinese ? '统计' : 'Stats';
   String get statsPanel => isChinese ? '统计面板' : 'Statistics';
@@ -760,8 +773,6 @@ extension LicoStringsLabels on LicoStrings {
   String get layoutProfileDescription => isChinese
       ? '选择整套组件风格、页面排布与交互外观。'
       : 'Choose a complete component, arrangement, and interaction system.';
-  String get resetLayout =>
-      isChinese ? '恢复系统默认布局' : 'Restore system default layout';
   String get layoutLoading => isChinese ? '正在加载布局…' : 'Loading layouts…';
   String get layoutCommitting => isChinese ? '正在保存布局…' : 'Saving layout…';
   String get currentLayout => isChinese ? '当前布局' : 'Current layout';

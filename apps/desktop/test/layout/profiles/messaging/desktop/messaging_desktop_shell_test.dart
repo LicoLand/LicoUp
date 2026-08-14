@@ -3,12 +3,58 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'messaging_desktop_test_harness.dart';
 
 void main() {
+  test('single-pane destinations share one main-pane page inset', () {
+    expect(
+      MessagingDesktopMetrics.mainPanePadding,
+      const EdgeInsets.fromLTRB(24, 20, 24, 40),
+    );
+  });
+
+  test('features tab defaults to agent hub and keeps hosted destinations', () {
+    expect(
+      messagingSidebarNavTarget(
+        item: MessagingSidebarNavItem.skills,
+        current: ClientSection.agents,
+      ),
+      ClientSection.agentHub,
+    );
+    expect(
+      messagingSidebarNavTarget(
+        item: MessagingSidebarNavItem.skills,
+        current: ClientSection.models,
+      ),
+      ClientSection.agentHub,
+    );
+    expect(
+      messagingSidebarNavTarget(
+        item: MessagingSidebarNavItem.skills,
+        current: ClientSection.agentHub,
+      ),
+      ClientSection.agentHub,
+    );
+    expect(
+      messagingSidebarNavTarget(
+        item: MessagingSidebarNavItem.skills,
+        current: ClientSection.skillHub,
+      ),
+      ClientSection.skillHub,
+    );
+    expect(
+      messagingSidebarNavTarget(
+        item: MessagingSidebarNavItem.skills,
+        current: ClientSection.pluginManagement,
+      ),
+      ClientSection.pluginManagement,
+    );
+  });
+
   for (final width in <double>[900, 1280]) {
     testWidgets('shell renders band and unified card at $width', (
       tester,
@@ -25,10 +71,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(
-        find.byKey(const Key('messaging-destination-rail')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('messaging-destination-rail')), findsNothing);
       expect(find.byKey(const Key('messaging-chrome-band')), findsOneWidget);
       expect(find.byKey(const Key('messaging-topstrip-search')), findsNothing);
       expect(
@@ -136,12 +179,14 @@ void main() {
       findsNothing,
     );
     expect(
-      tester.widget<Icon>(
-        find.descendant(
-          of: find.byKey(const Key('messaging-topstrip-search')),
-          matching: find.byType(Icon),
-        ),
-      ).icon,
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('messaging-topstrip-search')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .icon,
       Icons.search_rounded,
     );
   });
@@ -294,21 +339,136 @@ void main() {
       find.byKey(const Key('messaging-sidebar-skill-plugin-list')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('messaging-sidebar-list-skillHub')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-sidebar-list-skillHub')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('messaging-sidebar-list-agentHub')),
+      findsOneWidget,
+    );
+    final hubIcon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('messaging-sidebar-list-agentHub')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(hubIcon.icon, Icons.auto_awesome_outlined);
+    expect(
+      tester
+          .getTopLeft(find.byKey(const Key('messaging-sidebar-list-agentHub')))
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('messaging-sidebar-list-skillHub')),
+            )
+            .dy,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(find.byKey(const Key('messaging-sidebar-list-skillHub')))
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
+            )
+            .dy,
+      ),
+    );
     expect(find.byKey(const Key('skill-plugin-hub-toggle')), findsNothing);
     expect(find.byKey(const Key('messaging-sidebar-search')), findsNothing);
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-skills')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-conversations')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-communication')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-settings')),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
     );
     await tester.pump();
     expect(harness.selections, [ClientSection.pluginManagement]);
+
+    await tester.tap(find.byKey(const Key('messaging-sidebar-list-agentHub')));
+    await tester.pump();
+    expect(harness.selections, [
+      ClientSection.pluginManagement,
+      ClientSection.agentHub,
+    ]);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('entering features opens agent hub', (tester) async {
+    configureMessagingTestView(tester, const Size(1280, 700));
+    final harness = MessagingDesktopHarness();
+    await tester.pumpWidget(
+      MessagingDesktopTestShell(
+        environment: messagingDesktopEnvironment(width: 1280, height: 700),
+        activeDestination: ClientSection.settings,
+        content: MessagingDesktopFixtureContent(harness),
+        harness: harness,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+    await tester.pump();
+    expect(harness.selections, [ClientSection.agentHub]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'reselecting features keeps skills and plugins without yanking to hub',
+    (tester) async {
+      configureMessagingTestView(tester, const Size(1280, 700));
+      final skillHarness = MessagingDesktopHarness();
+      await tester.pumpWidget(
+        MessagingDesktopTestShell(
+          environment: messagingDesktopEnvironment(width: 1280, height: 700),
+          activeDestination: ClientSection.skillHub,
+          content: MessagingDesktopFixtureContent(skillHarness),
+          harness: skillHarness,
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+      await tester.pump();
+      expect(skillHarness.selections, [ClientSection.skillHub]);
+
+      final pluginHarness = MessagingDesktopHarness();
+      await tester.pumpWidget(
+        MessagingDesktopTestShell(
+          environment: messagingDesktopEnvironment(width: 1280, height: 700),
+          activeDestination: ClientSection.pluginManagement,
+          content: MessagingDesktopFixtureContent(pluginHarness),
+          harness: pluginHarness,
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+      await tester.pump();
+      expect(pluginHarness.selections, [ClientSection.pluginManagement]);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('communication hosts gateway, pairing, and chat-channel rows', (
     tester,
@@ -359,7 +519,9 @@ void main() {
     expect(find.byKey(const Key('messaging-sidebar-search')), findsNothing);
     expect(
       tester
-          .getTopLeft(find.byKey(const Key('messaging-sidebar-list-modelGateway')))
+          .getTopLeft(
+            find.byKey(const Key('messaging-sidebar-list-modelGateway')),
+          )
           .dy,
       lessThan(
         tester
@@ -396,36 +558,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('keys destination uses the shared foundation and communication list', (
-    tester,
-  ) async {
-    configureMessagingTestView(tester, const Size(1280, 700));
-    final harness = MessagingDesktopHarness();
-    await tester.pumpWidget(
-      MessagingDesktopTestShell(
-        environment: messagingDesktopEnvironment(width: 1280, height: 700),
-        activeDestination: ClientSection.models,
-        content: MessagingDesktopFixtureContent(harness),
-        harness: harness,
-      ),
-    );
-    await tester.pump();
+  testWidgets(
+    'keys destination uses the shared foundation and communication list',
+    (tester) async {
+      configureMessagingTestView(tester, const Size(1280, 700));
+      final harness = MessagingDesktopHarness();
+      await tester.pumpWidget(
+        MessagingDesktopTestShell(
+          environment: messagingDesktopEnvironment(width: 1280, height: 700),
+          activeDestination: ClientSection.models,
+          content: MessagingDesktopFixtureContent(harness),
+          harness: harness,
+        ),
+      );
+      await tester.pump();
 
-    expect(
-      find.byKey(const Key('messaging-sidebar-foundation')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('messaging-sidebar-communication-list')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('messaging-fake-content-models')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('messaging-contact-list')), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.byKey(const Key('messaging-sidebar-foundation')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('messaging-sidebar-communication-list')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('messaging-fake-content-models')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('messaging-contact-list')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('hosted lists use the shared resizable sidebar column', (
     tester,
@@ -468,7 +631,10 @@ void main() {
     final resized = tester
         .getSize(find.byKey(const Key('messaging-sidebar-column')))
         .width;
-    expect(resized, greaterThan(MessagingDesktopMetrics.conversationListExtent));
+    expect(
+      resized,
+      greaterThan(MessagingDesktopMetrics.conversationListExtent),
+    );
 
     await tester.pumpWidget(
       MessagingDesktopTestShell(

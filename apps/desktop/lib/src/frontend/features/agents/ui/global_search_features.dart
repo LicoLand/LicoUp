@@ -72,6 +72,12 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
 
   return [
     section(
+      ClientSection.agentHub,
+      strings.agentHub,
+      Icons.auto_awesome_outlined,
+      const ['agent', 'hub', '智能体中心', '适配'],
+    ),
+    section(
       ClientSection.agents,
       strings.agents,
       Icons.psychology_outlined,

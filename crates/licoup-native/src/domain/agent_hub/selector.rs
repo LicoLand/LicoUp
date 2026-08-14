@@ -1,0 +1,112 @@
+//! Deterministic channel ranking for one Agent against one capability snapshot.
+
+use super::contract::{AgentRecipe, InstallChannel, PlatformInstallCapabilities};
+use anyhow::{anyhow, Result};
+
+#[derive(Clone, Debug)]
+pub struct SelectedChannel<'a> {
+    pub channel: &'a InstallChannel,
+}
+
+pub fn select_channel<'a>(
+    agent: &'a AgentRecipe,
+    capabilities: &PlatformInstallCapabilities,
+) -> Result<SelectedChannel<'a>> {
+    if !super::capabilities::desktop_os(&capabilities.os) {
+        return Err(anyhow!("unsupported_platform"));
+    }
+    if agent
+        .unsupported
+        .iter()
+        .any(|item| item.oses.iter().any(|os| os == &capabilities.os))
+    {
+        return Err(anyhow!("unsupported_platform"));
+    }
+    let mut candidates = agent
+        .channels
+        .iter()
+        .filter(|channel| channel_matches(channel, capabilities))
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|channel| rank_key(channel));
+    let channel = candidates
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("channel_unavailable"))?;
+    Ok(SelectedChannel { channel })
+}
+
+fn channel_matches(channel: &InstallChannel, capabilities: &PlatformInstallCapabilities) -> bool {
+    if !channel.selectable {
+        return false;
+    }
+    if !channel.oses.iter().any(|os| os == &capabilities.os) {
+        return false;
+    }
+    if !channel.architectures.is_empty()
+        && !channel
+            .architectures
+            .iter()
+            .any(|arch| arch == &capabilities.architecture)
+    {
+        return false;
+    }
+    if channel.elevation != "none" {
+        return false;
+    }
+    match channel.requires_manager.as_str() {
+        "none" | "" => true,
+        manager => capabilities.managers.iter().any(|item| item == manager),
+    }
+}
+
+fn rank_key(channel: &InstallChannel) -> (i32, i32, String) {
+    let preferred = match (channel.official_recommended, channel.licoup_verified) {
+        (true, true) => 0,
+        (false, true) => 1,
+        (true, false) => 2,
+        (false, false) => 3,
+    };
+    (preferred, channel.priority, channel.id.clone())
+}
+
+pub fn channel_by_id<'a>(agent: &'a AgentRecipe, channel_id: &str) -> Result<&'a InstallChannel> {
+    agent
+        .channels
+        .iter()
+        .find(|channel| channel.id == channel_id)
+        .ok_or_else(|| anyhow!("channel_unavailable"))
+}
+
+/// Recipe-preferred channel for Hub chips when no planned/detected channel exists.
+pub fn preferred_channel(agent: &AgentRecipe) -> Option<&InstallChannel> {
+    let mut candidates = agent
+        .channels
+        .iter()
+        .filter(|channel| channel.selectable)
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        candidates = agent.channels.iter().collect();
+    }
+    candidates.sort_by_key(|channel| rank_key(channel));
+    candidates.into_iter().next()
+}
+
+/// Chip source: detected/owned channel, else the planned OS channel, else recipe preferred.
+pub fn chip_channel_kind(
+    agent: &AgentRecipe,
+    selected: Option<&SelectedChannel<'_>>,
+    record: Option<&super::contract::InstallOwnership>,
+) -> String {
+    if let Some(kind) = record
+        .map(|item| item.channel_kind.trim())
+        .filter(|kind| !kind.is_empty())
+    {
+        return kind.to_string();
+    }
+    if let Some(selected) = selected {
+        return selected.channel.kind.clone();
+    }
+    preferred_channel(agent)
+        .map(|channel| channel.kind.clone())
+        .unwrap_or_default()
+}

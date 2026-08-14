@@ -7,6 +7,7 @@ import 'package:licoup/src/application/features/agents/agent_product_names.dart'
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -39,7 +40,7 @@ final class _AdapterPluginPanelState extends State<AdapterPluginPanel> {
       listenable: controller,
       builder: (context, _) => ListView(
         key: const Key('adapter-plugin-panel'),
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+        padding: MessagingDesktopMetrics.mainPanePadding,
         children: [
           Row(
             children: [
