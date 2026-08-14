@@ -2,12 +2,8 @@ name: Client CI
 
 on:
   pull_request:
-  push:
     branches:
       - nightly
-      - stable
-      - release
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,7 +23,6 @@ jobs:
       rust: ${{ steps.plan.outputs.rust }}
       android: ${{ steps.plan.outputs.android }}
       dependencies: ${{ steps.plan.outputs.dependencies }}
-      release_policy: ${{ steps.plan.outputs.release_policy }}
       changed_count: ${{ steps.plan.outputs.changed_count }}
       change_digest: ${{ steps.plan.outputs.change_digest }}
     steps:
@@ -185,25 +180,10 @@ jobs:
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: npm run client:gate:dependencies
 
-  release-policy:
-    name: Release policy contracts
-    if: ${{ needs.plan.outputs.release_policy == 'true' }}
-    needs: plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - run: npm ci
-      - run: npm run client:gate:release-policy
-
   client-required:
     name: Client required
     if: always()
-    needs: [source, flutter, rust, android, dependencies, release-policy]
+    needs: [source, flutter, rust, android, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
@@ -212,7 +192,6 @@ jobs:
       RUST_RESULT: ${{ needs.rust.result }}
       ANDROID_RESULT: ${{ needs.android.result }}
       DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
-      RELEASE_POLICY_RESULT: ${{ needs['release-policy'].result }}
     steps:
       - name: Reduce independent gate results
         run: |
@@ -224,8 +203,7 @@ jobs:
             "$FLUTTER_RESULT" \
             "$RUST_RESULT" \
             "$ANDROID_RESULT" \
-            "$DEPENDENCIES_RESULT" \
-            "$RELEASE_POLICY_RESULT"
+            "$DEPENDENCIES_RESULT"
           do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "A selected client gate did not succeed" >&2

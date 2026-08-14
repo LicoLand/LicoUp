@@ -16,6 +16,8 @@ authority.
 - [Changelog](../CHANGELOG.md)
 - [Governed release status](releases/README.md) ·
   [版本发布状态](releases/README.zh-CN.md)
+- [Client promotion gates](releases/PROMOTION-GATES.md) ·
+  [客户端分支晋升门禁](releases/PROMOTION-GATES.zh-CN.md)
 - [Security](../SECURITY.md) · [安全](../SECURITY.zh-CN.md)
 - [License](../LICENSE)
 

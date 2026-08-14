@@ -39,13 +39,14 @@ test("identity reads retry only their bounded read operation", () => {
 });
 import {
   allBranchesRulesetName,
+  assertReleaseDefaultBranch,
   buildRulesets,
   boundedRead,
   identityStatusContext,
   planRulesetApply,
-  promotionBranchesRulesetName,
+  promotionRulesetNames,
+  promotionRequiredStatusContexts,
   pushRulesetCapability,
-  requiredStatusContexts,
   sensitivePublicationRulesetName,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 
@@ -139,15 +140,15 @@ test("pull request identity workflow requires a User or verified GitHub merge se
   assert.match(workflow, /has_forbidden_attribution/u);
 });
 
-test("three Rulesets cover identity, the release flow, and push publication without bypass", () => {
+test("branch-scoped Rulesets cover identity, every promotion edge, and push publication", () => {
   const integrationId = 15368;
   const rulesets = buildRulesets(integrationId);
-  assert.equal(rulesets.length, 3);
+  assert.equal(rulesets.length, 5);
   assert.deepEqual(
     rulesets.map(({ name }) => name),
     [
       allBranchesRulesetName,
-      promotionBranchesRulesetName,
+      ...Object.values(promotionRulesetNames),
       sensitivePublicationRulesetName,
     ],
   );
@@ -156,7 +157,9 @@ test("three Rulesets cover identity, the release flow, and push publication with
     assert.deepEqual(ruleset.bypass_actors, []);
   }
 
-  const [identityRuleset, promotionRuleset, pushRuleset] = rulesets;
+  const [identityRuleset, ...rest] = rulesets;
+  const promotionRulesets = rest.slice(0, 3);
+  const pushRuleset = rest.at(-1);
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
   const authorRule = identityRuleset.rules.find(
@@ -183,22 +186,23 @@ test("three Rulesets cover identity, the release flow, and push publication with
   assert.match(messageRule.parameters.pattern, /co-authored-by/u);
   assert.match(messageRule.parameters.pattern, /cursor/u);
 
-  for (const requiredType of [
-    "deletion",
-    "non_fast_forward",
-    "pull_request",
-    "required_status_checks",
-  ]) {
-    assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
-  }
-  const statusRule = promotionRuleset.rules.find(
-    ({ type }) => type === "required_status_checks",
-  );
-  assert.deepEqual(statusRule.parameters.required_status_checks,
-    requiredStatusContexts.map((context) => ({ context, integration_id: integrationId })));
   assert.equal(identityStatusContext, "Commit identity");
-  assert.deepEqual(promotionRuleset.conditions.ref_name.include,
-    ["refs/heads/nightly", "refs/heads/stable", "refs/heads/release"]);
+  for (const [index, branch] of ["nightly", "stable", "release"].entries()) {
+    const promotionRuleset = promotionRulesets[index];
+    for (const requiredType of [
+      "deletion", "non_fast_forward", "pull_request", "required_status_checks",
+    ]) {
+      assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
+    }
+    const statusRule = promotionRuleset.rules.find(
+      ({ type }) => type === "required_status_checks",
+    );
+    assert.deepEqual(statusRule.parameters.required_status_checks,
+      promotionRequiredStatusContexts[branch]
+        .map((context) => ({ context, integration_id: integrationId })));
+    assert.deepEqual(promotionRuleset.conditions.ref_name.include,
+      [`refs/heads/${branch}`]);
+  }
 
   assert.equal(pushRuleset.target, "push");
   assert.equal(Object.hasOwn(pushRuleset, "conditions"), false);
@@ -519,19 +523,16 @@ test("push Ruleset capability requires an internal/private Team or Enterprise re
   assert.equal(pushRulesetCapability(null), false);
 });
 
-test("unsupported public push target fails before any remote mutation", () => {
-  const calls = [];
-  const recorder = { apply(payload) { calls.push(payload.name); } };
+test("unsupported public push target still plans branch authorities", () => {
   const plan = planRulesetApply({ visibility: "public", plan: { name: "free" } }, 15368);
-  assert.deepEqual(plan, { status: "unsupported", code: "PUSH_RULESET_UNSUPPORTED" });
-  assert.throws(() => {
-    if (plan.status !== "supported") throw new Error(plan.code);
-    for (const payload of plan.desired) recorder.apply(payload);
-  }, (error) => error.message === "PUSH_RULESET_UNSUPPORTED");
-  assert.equal(calls.length, 0, "the mutation recorder must see zero calls");
+  assert.equal(plan.status, "branch-only");
+  assert.equal(plan.code, "PUSH_RULESET_UNSUPPORTED");
+  assert.deepEqual(plan.desired.map(({ name }) => name),
+    [allBranchesRulesetName, ...Object.values(promotionRulesetNames)]);
+  assert.ok(plan.desired.every(({ target }) => target === "branch"));
 });
 
-test("supported push target plans all three Rulesets in deterministic order", () => {
+test("supported push target plans all five Rulesets in deterministic order", () => {
   const calls = [];
   const recorder = { apply(payload) { calls.push(payload.name); } };
   for (const planName of ["team", "enterprise"]) {
@@ -540,13 +541,24 @@ test("supported push target plans all three Rulesets in deterministic order", ()
     assert.deepEqual(plan.desired.map(({ name }) => name),
       [
         allBranchesRulesetName,
-        promotionBranchesRulesetName,
+        ...Object.values(promotionRulesetNames),
         sensitivePublicationRulesetName,
       ]);
-    assert.deepEqual(plan.desired.slice(0, 2).map(({ target }) => target), ["branch", "branch"]);
-    assert.equal(plan.desired[2].target, "push");
-    assert.deepEqual(plan.desired[2].bypass_actors, []);
+    assert.deepEqual(plan.desired.slice(0, 4).map(({ target }) => target),
+      ["branch", "branch", "branch", "branch"]);
+    assert.equal(plan.desired[4].target, "push");
+    assert.deepEqual(plan.desired[4].bypass_actors, []);
     for (const payload of plan.desired) recorder.apply(payload);
   }
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 10);
+});
+
+test("release remains the required default branch", () => {
+  assert.doesNotThrow(() => assertReleaseDefaultBranch({ default_branch: "release" }));
+  assert.throws(() => assertReleaseDefaultBranch({ default_branch: "nightly" }),
+    (error) => error?.code === "DEFAULT_BRANCH_INVALID");
+  const source = readFileSync(path.resolve("tools/scripts/repository-rulesets.mjs"), "utf8");
+  assert.doesNotMatch(source, /default_branch=/u);
+  assert.doesNotMatch(source, /--default-branch/u);
+  assert.doesNotMatch(source, /["']PATCH["']/u);
 });
