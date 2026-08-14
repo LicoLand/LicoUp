@@ -178,6 +178,7 @@
     "client:release:packages:self-test": "node --test tests/contract/client/client-release-packages.test.mjs",
     "client:release:macos:setup": "node tools/scripts/client-macos-release-tool.mjs setup",
     "client:release:macos:beta": "node tools/scripts/client-macos-release-tool.mjs beta",
+    "client:release:macos:publish": "node tools/scripts/client-macos-release-publish.mjs",
     "client:release:macos:self-test": "node --test tests/contract/client/client-macos-release-tool.test.mjs",
     "client:verify:windows-file-security": "node tests/verify-windows-file-security-boundary.mjs",
     "client:cli:vm:list": "node tools/scripts/client-cli-vm.mjs list",
