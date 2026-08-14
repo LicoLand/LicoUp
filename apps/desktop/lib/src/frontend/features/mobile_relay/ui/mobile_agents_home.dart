@@ -1,14 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_add_agent.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_local_agent.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_pair_device_scanner.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_surface_gestures.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -62,7 +63,6 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
                 (target) => target.visibleInClient,
               ),
             )
-            .where((target) => !isAgentOrchestrationTargetId(target.target))
             .toList(growable: false);
         final devices = controller.mobileRelayConfig.deviceTabs;
         final activeTarget = _activeTarget(targets);
@@ -240,7 +240,14 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
     await showDialog<void>(
       context: context,
       barrierDismissible: !controller.isMobileRelayBusy,
-      builder: (context) => PairDeviceDialog(onClaim: _claimMobilePairingText),
+      builder: (context) => PairDeviceDialog(
+        onClaim: _claimMobilePairingText,
+        scannerPreviewBuilder:
+            defaultTargetPlatform == TargetPlatform.android ||
+                defaultTargetPlatform == TargetPlatform.iOS
+            ? (context, onDetect) => MobilePairDeviceScanner(onDetect: onDetect)
+            : null,
+      ),
     );
   }
 

@@ -17,7 +17,7 @@ import {
 import { linuxProductBootstrapCommand } from "../linux-product/bootstrap.mjs";
 import { linuxProductCommand } from "../linux-product/command.mjs";
 import {
-  linuxProductDistributionReportTreePreparationCommand,
+  linuxProductVerificationReportTreePreparationCommand,
   linuxProductOwnerOnlyDirectoryFunction,
   linuxProductReportRootPreparationCommand,
 } from "../linux-product/shell-helpers.mjs";
@@ -37,7 +37,7 @@ export function runScriptSelfTest() {
   const ownerOnlyDirectoryFunction = linuxProductOwnerOnlyDirectoryFunction();
   const reportRootPreparation = linuxProductReportRootPreparationCommand();
   const distributionReportTreePreparation =
-    linuxProductDistributionReportTreePreparationCommand();
+    linuxProductVerificationReportTreePreparationCommand();
   const productBootstrapCommand = linuxProductBootstrapCommand(ubuntu);
   const requiredTokens = [
     "--self-test",
@@ -64,7 +64,7 @@ export function runScriptSelfTest() {
   }
   for (const token of [
     "client:build:linux",
-    "client:archive:linux-arm64",
+    "client:verify:linux-bundle-carrier",
     "client-secure-mesh-linux-vm-package-receipt.mjs",
     "client-secure-mesh-linux-node-matrix.mjs",
     "linux-vm-acceptance",

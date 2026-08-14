@@ -28,7 +28,7 @@ void registerAgentConversationFilteringScenarios() {
           'id': 'msg-user',
           'role': 'user',
           'text':
-              '# Files mentioned by the user:\n\n## clip.png: ${['', 'private', 'tmp', 'clip.png'].join('/')}\n\n## My request for Codex:\n真正的用户问题\n<image name=[Image #1] path="${['', 'private', 'tmp', 'clip.png'].join('/')}">\nprivate image metadata\n</image>',
+              '# Files mentioned by the user:\n\n## clip.png: ${['', 'fixture-root', 'clip.png'].join('/')}\n\n## My request:\n真正的用户问题\n<image name=[Image #1] path="${['', 'fixture-root', 'clip.png'].join('/')}">\nprivate image metadata\n</image>',
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
@@ -50,9 +50,7 @@ void registerAgentConversationFilteringScenarios() {
       session.messages.any(
         (message) =>
             message.text.contains('Apps (Connectors)') ||
-            message.text.contains(
-              ['', 'private', 'tmp', 'clip.png'].join('/'),
-            ) ||
+            message.text.contains(['', 'fixture-root', 'clip.png'].join('/')) ||
             message.text.contains('You are Codex'),
       ),
       isFalse,
@@ -294,7 +292,7 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
       ],
     });
 
-    expect(session.messageCount, 3);
+    expect(session.messageCount, 4);
     expect(session.messages[1].isSubagentCard, isTrue);
     expect(
       session.messages[1].cardTitle,
@@ -304,10 +302,11 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
       session.messages[1].childMessages.single.text,
       'Worker found one candidate finding.',
     );
-    expect(
-      session.messages.any((message) => message.role == 'subagent_prompt'),
-      isFalse,
+    final prompt = session.messages.singleWhere(
+      (message) => message.role == 'subagent_prompt',
     );
+    expect(prompt.isSubagentCard, isTrue);
+    expect(prompt.isDisplayable, isTrue);
   });
 }
 

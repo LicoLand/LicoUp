@@ -13,9 +13,10 @@ const requiredFutureModules = [
   "activity-snapshots",
   "settings",
   "subagents-mcp",
-  "codex-plugin",
+  "conversations-mcp",
+  "gateway-sidecar",
   "lico-agent-sidecar",
-  "llm-gateway-sidecar"
+  "codex-plugin"
 ];
 const allFutureModules = [...requiredFutureModules];
 const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";

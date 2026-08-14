@@ -202,8 +202,6 @@ class TargetCandidate {
   bool get supportsNativeInterruptSteer =>
       conversationCapabilityMatrix['interruptSteer'] == true;
 
-  bool get canInstallSkill => supportsAction('skill.install');
-
   /// ACP lane support from adapter conversation metadata (not invented).
   bool get supportsAcpPlugin {
     final laneFamily = conversationCapabilityMatrix['laneFamily']

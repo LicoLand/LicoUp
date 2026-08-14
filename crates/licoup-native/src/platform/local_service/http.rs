@@ -34,7 +34,7 @@ pub(in crate::platform) fn get_json(url: &str, timeout: Duration) -> Result<Valu
     let _permit = request_gate()
         .acquire(CONCURRENCY_WAIT)
         .map_err(map_limit_failure)?;
-    let request = agent(timeout).get(url.as_str());
+    let request = control_agent().get(url.as_str()).timeout(timeout);
     let response = map_response(request.call())?;
     decode_json(response)
 }
@@ -52,9 +52,32 @@ pub(in crate::platform) fn post_json(
     let _permit = request_gate()
         .acquire(CONCURRENCY_WAIT)
         .map_err(map_limit_failure)?;
-    let request = agent(timeout)
+    let request = control_agent()
         .post(url.as_str())
+        .timeout(timeout)
         .set("Content-Type", "application/json");
+    let response = map_response(request.send_bytes(&bytes))?;
+    decode_json(response)
+}
+
+pub(in crate::platform) fn post_json_with_optional_timeout(
+    url: &str,
+    body: &Value,
+    timeout: Option<Duration>,
+) -> Result<Value, HttpFailure> {
+    let url = validate_url(url)?;
+    let bytes = serde_json::to_vec(body).map_err(|_| HttpFailure::Serialize)?;
+    if bytes.len() > MAX_HTTP_REQUEST_BODY_BYTES {
+        return Err(HttpFailure::BodyTooLarge);
+    }
+    let _permit = request_gate()
+        .acquire(CONCURRENCY_WAIT)
+        .map_err(map_limit_failure)?;
+    let mut request = control_agent().post(url.as_str());
+    if let Some(timeout) = timeout {
+        request = request.timeout(timeout);
+    }
+    let request = request.set("Content-Type", "application/json");
     let response = map_response(request.send_bytes(&bytes))?;
     decode_json(response)
 }
@@ -64,7 +87,7 @@ pub(in crate::platform) fn probe_status(url: &str, timeout: Duration) -> Result<
     let _permit = request_gate()
         .acquire(CONCURRENCY_WAIT)
         .map_err(map_limit_failure)?;
-    match agent(timeout).get(url.as_str()).call() {
+    match control_agent().get(url.as_str()).timeout(timeout).call() {
         Ok(response) => {
             validate_headers(&response)?;
             Ok(response.status())
@@ -106,16 +129,21 @@ pub(in crate::platform) fn validate_headers(response: &ureq::Response) -> Result
     Ok(())
 }
 
-fn agent(timeout: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        // Native serve adapters are local control planes. Never inherit a
-        // process proxy here: loopback abort/prompt traffic must stay local,
-        // deterministic, and independent from proxy environment state.
-        .try_proxy_from_env(false)
-        .timeout_connect(timeout.min(Duration::from_secs(2)))
-        .timeout_read(timeout)
-        .timeout_write(timeout)
-        .build()
+/// One shared client owned by the local serving control plane. Health probes,
+/// attach probes, and turn-control operations all reuse this client so warm
+/// traffic reuses its connection pool; per-request deadlines are applied on
+/// each request instead of rebuilding an agent.
+fn control_agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            // Native serve adapters are local control planes. Never inherit a
+            // process proxy here: loopback abort/prompt traffic must stay local,
+            // deterministic, and independent from proxy environment state.
+            .try_proxy_from_env(false)
+            .timeout_connect(Duration::from_secs(2))
+            .build()
+    })
 }
 
 fn map_response(

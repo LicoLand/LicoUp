@@ -5,22 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/endpoint_configuration.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 enum _GatewayServiceState { detecting, running, stopped, unhealthy, unknown }
 
-/// Local LLM Gateway endpoint, lifecycle, readiness, and local usage summary.
+/// Local LLM Gateway endpoint, lifecycle, and readiness.
 /// Credential authorization and process startup share one explicit card action.
 ///
 /// When [belowDivider] is set, that widget is placed after the gateway controls
-/// divider and before the local usage summary — keeping sibling cards unnested.
+/// card — keeping sibling cards unnested.
 final class LlmGatewayCard extends StatefulWidget {
   const LlmGatewayCard({
     super.key,
@@ -57,9 +52,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
   bool _credentialsApplied = false;
   bool _modelReady = false;
   int _servicePort = defaultLlmGatewayPort;
-  List<_GatewayUsageDay> _usageDays = const [];
-  int _usageWindowDays = 30;
-  Timer? _usageRefresh;
 
   @override
   void initState() {
@@ -78,12 +70,7 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
         if (widget.lifecycleController == null) {
           await _detectService();
         }
-        await _loadUsage();
       }),
-    );
-    _usageRefresh = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => unawaited(_loadUsage()),
     );
   }
 
@@ -104,8 +91,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
   void dispose() {
     widget.authorization.removeListener(_projectionChanged);
     widget.lifecycleController?.removeListener(_lifecycleChanged);
-    _usageRefresh?.cancel();
-    _usageRefresh = null;
     _urlController.dispose();
     super.dispose();
   }
@@ -253,25 +238,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     }
   }
 
-  Future<void> _loadUsage() async {
-    try {
-      final payload = await widget.agentService.runCli(const [
-        'llm-gateway',
-        'service',
-        'usage',
-      ]);
-      final days = (payload['days'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(_GatewayUsageDay.fromJson)
-          .where((day) => day.date != null)
-          .toList(growable: false);
-      if (mounted) setState(() => _usageDays = days);
-    } catch (_) {
-      // Gateway counters are secondary presentation data. Lifecycle controls
-      // remain available when an old sidecar has no usage projection yet.
-    }
-  }
-
   Future<void> _startService() async {
     if (_busy) return;
     final strings = LicoStrings.of(context);
@@ -326,7 +292,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
             ? strings.llmGatewayStarted
             : strings.llmGatewayStartFailed;
       });
-      await _loadUsage();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -366,7 +331,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
         _messageIsError = false;
         _message = strings.llmGatewayStopped;
       });
-      await _loadUsage();
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -418,66 +382,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     final pid = _servicePid;
     if (pid == null) return '-';
     return _processName.isEmpty ? '$pid' : '$pid  ·  $_processName';
-  }
-
-  List<_GatewayUsageDay> get _visibleUsageDays {
-    final today = DateTime.now().toUtc();
-    final start = DateTime.utc(
-      today.year,
-      today.month,
-      today.day,
-    ).subtract(Duration(days: _usageWindowDays - 1));
-    return [
-      for (final day in _usageDays)
-        if (day.date != null && !day.date!.isBefore(start)) day,
-    ];
-  }
-
-  int _agentRequests(String agent) => _visibleUsageDays.fold<int>(
-    0,
-    (total, day) => total + (day.agents[agent] ?? 0),
-  );
-
-  AgentUsageTimelineData _gatewayModelTimeline() {
-    final today = DateTime.now().toUtc();
-    final first = DateTime.utc(
-      today.year,
-      today.month,
-      today.day,
-    ).subtract(Duration(days: _usageWindowDays - 1));
-    final byDate = {
-      for (final day in _visibleUsageDays) _dateKey(day.date!): day.models,
-    };
-    final snapshots = <AgentUsageSnapshot>[];
-    final totals = <String, double>{};
-    for (var offset = 0; offset < _usageWindowDays; offset += 1) {
-      final date = first.add(Duration(days: offset));
-      final values = <String, double>{
-        for (final entry in (byDate[_dateKey(date)] ?? const {}).entries)
-          entry.key: entry.value.toDouble(),
-      };
-      for (final entry in values.entries) {
-        totals.update(
-          entry.key,
-          (value) => value + entry.value,
-          ifAbsent: () => entry.value,
-        );
-      }
-      snapshots.add(AgentUsageSnapshot(time: date.toLocal(), values: values));
-    }
-    final labels = totals.keys.toList()
-      ..sort((left, right) {
-        final count = (totals[right] ?? 0).compareTo(totals[left] ?? 0);
-        return count != 0 ? count : left.compareTo(right);
-      });
-    return AgentUsageTimelineData(
-      snapshots: snapshots,
-      series: [for (final label in labels) AgentUsageSeries(label: label)],
-      seriesTotals: Map.unmodifiable(totals),
-      shareSeriesLabels: List.unmodifiable(labels),
-      groupTotal: totals.values.fold<double>(0, (sum, value) => sum + value),
-      hasDailyBreakdown: _usageDays.isNotEmpty,
-    );
   }
 
   Widget _buildControls(BuildContext context) {
@@ -564,231 +468,21 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     );
   }
 
-  Widget _buildUsage(BuildContext context) {
-    final chinese = LicoStrings.of(context).isChinese;
-    final colors = context.licoColors;
-    final modelTimeline = _gatewayModelTimeline();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final cards = [
-              _GatewayAgentUsageCard(
-                target: 'codex',
-                label: 'Codex',
-                requests: _agentRequests('codex'),
-                chinese: chinese,
-              ),
-              _GatewayAgentUsageCard(
-                target: 'claude-code',
-                label: 'Claude Code',
-                requests: _agentRequests('claude-code'),
-                chinese: chinese,
-              ),
-            ];
-            if (constraints.maxWidth < 620) {
-              return Column(
-                children: [
-                  for (final card in cards)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: card,
-                    ),
-                ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: cards[0]),
-                const SizedBox(width: 12),
-                Expanded(child: cards[1]),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 20),
-        if (modelTimeline.isEmpty)
-          Container(
-            key: const ValueKey('gateway-model-usage-empty'),
-            height: 180,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: colors.surfaceLow,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colors.line.withAlpha(90)),
-            ),
-            child: Text(
-              chinese ? '暂无 Gateway API 请求' : 'No Gateway API requests yet',
-              style: TextStyle(color: colors.textMuted),
-            ),
-          )
-        else
-          AgentUsageWaveOverview(
-            grouping: AgentUsageChartGrouping.model,
-            timeline: modelTimeline,
-            onGroupingChanged: (_) {},
-            windowDays: _usageWindowDays,
-            windowBusy: false,
-            onWindowChanged: (days) => setState(() => _usageWindowDays = days),
-            showGroupingControl: false,
-            title: chinese ? 'API 请求次数' : 'API requests',
-            tooltipSemanticLabel: (date) => chinese
-                ? '${_dateKey(date)} Gateway API 请求次数'
-                : '${_dateKey(date)} Gateway API requests',
-          ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final belowDivider = widget.belowDivider;
+    final controls = Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: _buildControls(context),
+      ),
+    );
     if (belowDivider == null) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildControls(context),
-              const Divider(height: 32),
-              _buildUsage(context),
-            ],
-          ),
-        ),
-      );
+      return controls;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: _buildControls(context),
-          ),
-        ),
-        const SizedBox(height: 16),
-        belowDivider,
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: _buildUsage(context),
-          ),
-        ),
-      ],
+      children: [controls, const SizedBox(height: 16), belowDivider],
     );
   }
 }
-
-final class _GatewayAgentUsageCard extends StatelessWidget {
-  const _GatewayAgentUsageCard({
-    required this.target,
-    required this.label,
-    required this.requests,
-    required this.chinese,
-  });
-
-  final String target;
-  final String label;
-  final int requests;
-  final bool chinese;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Container(
-      key: ValueKey('gateway-agent-$target'),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.line.withAlpha(110)),
-      ),
-      child: Row(
-        children: [
-          AgentBrandIcon(
-            target: TargetCandidate(
-              target: target,
-              label: label,
-              kind: 'cli',
-              status: 'detected',
-              configured: true,
-              confidence: 1,
-              adapterStatus: 'native',
-            ),
-            size: 34,
-            iconSize: 24,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          Icon(
-            Icons.model_training_outlined,
-            color: colors.textSecondary,
-            size: 20,
-          ),
-          const SizedBox(width: 7),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                formatAgentUsageNumber(requests),
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              Text(
-                chinese ? 'API 请求' : 'API requests',
-                style: TextStyle(color: colors.textMuted, fontSize: 11),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-final class _GatewayUsageDay {
-  const _GatewayUsageDay({
-    required this.date,
-    required this.agents,
-    required this.models,
-  });
-
-  final DateTime? date;
-  final Map<String, int> agents;
-  final Map<String, int> models;
-
-  factory _GatewayUsageDay.fromJson(Map<String, dynamic> json) {
-    Map<String, int> counts(Object? source) {
-      if (source is! Map) return const {};
-      return {
-        for (final entry in source.entries)
-          if (entry.value is num)
-            entry.key.toString(): (entry.value as num).toInt(),
-      };
-    }
-
-    final rawDate = DateTime.tryParse((json['date'] ?? '').toString());
-    final date = rawDate == null
-        ? null
-        : DateTime.utc(rawDate.year, rawDate.month, rawDate.day);
-    return _GatewayUsageDay(
-      date: date,
-      agents: Map.unmodifiable(counts(json['agents'])),
-      models: Map.unmodifiable(counts(json['models'])),
-    );
-  }
-}
-
-String _dateKey(DateTime date) =>
-    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

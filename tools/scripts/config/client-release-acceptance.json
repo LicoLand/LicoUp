@@ -5,9 +5,8 @@
   "releaseTargetAuthority": {
     "schemaVersion": "licomesh.client-release-target-authority.v1",
     "selectedTargetIds": [
-      "macos-arm64",
-      "android-arm64",
-      "linux-glibc-arm64"
+      "macos-direct-arm64",
+      "android-direct-arm64-v8a"
     ]
   },
   "maxClockSkewMs": 5000,
@@ -30,7 +29,6 @@
     "acpArchive",
     "androidPlatformCrypto",
     "macosCli",
-    "linuxCli",
     "redaction"
   ],
   "artifactReceipt": {
@@ -57,31 +55,23 @@
       "ref": "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
       "schemaVersion": "licomesh.secure-mesh.android-platform-crypto-acceptance.v1",
       "producer": "tools/scripts/client-android-native-tests.mjs",
-      "targetIds": ["android-arm64"],
+      "targetIds": ["android-direct-arm64-v8a"],
       "timeoutMs": 600000
     },
     "macosCli": {
       "ref": "build/reports/secure-mesh-release-cli-proof-macos.json",
       "schemaVersion": "licomesh.secure-mesh.release-cli-proof-report.v1",
       "producer": "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
-      "targetIds": ["macos-arm64"],
+      "targetIds": ["macos-direct-arm64"],
       "args": ["--cli", "/Applications/LicoUp.app/Contents/MacOS/licoup-cli", "--platform", "macos", "--report", "build/reports/secure-mesh-release-cli-proof-macos.json"],
-      "timeoutMs": 180000
-    },
-    "linuxCli": {
-      "ref": "build/reports/secure-mesh-release-cli-proof-linux.json",
-      "schemaVersion": "licomesh.secure-mesh.release-cli-proof-report.v1",
-      "producer": "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
-      "targetIds": ["linux-glibc-arm64"],
-      "args": ["--cli", "build/apps/desktop/bundles/linux/release/bundle/licoup-cli", "--platform", "ubuntu-linux-arm64", "--report", "build/reports/secure-mesh-release-cli-proof-linux.json"],
       "timeoutMs": 180000
     },
     "redaction": { "ref": "build/reports/secure-mesh-report-redaction.json", "schemaVersion": "licomesh.secure-mesh.report-redaction-verifier.v1", "producer": "tools/scripts/client-secure-mesh-report-redaction-verify.mjs" }
   },
   "artifacts": {
-    "macos-arm64": {
+    "macos-direct-arm64": {
       "artifactKind": "macos-distribution-archive",
-      "ref": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
+      "ref": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
       "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
       "installArtifactRef": "build/apps/desktop/runnable/macos/release/LicoUp.app",
       "entitlementsRef": "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements",
@@ -89,18 +79,11 @@
       "requiredArchitecture": "arm64",
       "consumerVerificationPolicy": "provenance-or-verifiable-signature"
     },
-    "android-arm64": {
+    "android-direct-arm64-v8a": {
       "artifactKind": "android-apk",
       "ref": "build/apps/desktop/android/release/app-release.apk",
       "packageName": "land.lico.licoup",
       "requiredArchitecture": "arm64-v8a",
-      "consumerVerificationPolicy": "provenance-or-verifiable-signature"
-    },
-    "linux-glibc-arm64": {
-      "artifactKind": "linux-tar-archive",
-      "ref": "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz",
-      "distributionManifestRef": "build/apps/desktop/distribution/linux-arm64/manifest.json",
-      "requiredArchitecture": "arm64",
       "consumerVerificationPolicy": "provenance-or-verifiable-signature"
     }
   }

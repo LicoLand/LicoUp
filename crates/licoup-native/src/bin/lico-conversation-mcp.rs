@@ -1,12 +1,10 @@
-//! Local MCP server for querying LicoUp-owned conversations.
+//! Local MCP server for the canonical client-owned Conversation authority.
 //!
 //! Tools: list / get / search / export / import against the parent-owned
-//! projection store. Does not rewrite third-party native agent history.
+//! indexed SQLite store. Does not rewrite third-party native agent history.
 
-use licoup_native::domain::owned_conversations::{
-    OwnedConversationMatchMode, export_owned_conversations, get_owned_conversation,
-    import_owned_conversations, list_owned_conversations, search_owned_conversations,
-};
+use licoup_native::domain::client_conversation::ConversationService;
+use licoup_native::platform::paths::portable_data_dir;
 use serde_json::{Map, Value, json};
 use std::{
     io::{self, BufRead, Write},
@@ -41,6 +39,7 @@ fn main() -> ExitCode {
 struct ServerState {
     initialized: AtomicBool,
     output: Mutex<io::Stdout>,
+    conversation_service: Mutex<Option<ConversationService>>,
 }
 
 impl ServerState {
@@ -48,6 +47,7 @@ impl ServerState {
         Self {
             initialized: AtomicBool::new(false),
             output: Mutex::new(io::stdout()),
+            conversation_service: Mutex::new(None),
         }
     }
 }
@@ -196,41 +196,56 @@ fn call_tool(shared: &ServerState, id: Value, params: Option<&Value>) {
         write_json(&shared.output, rpc_error(id, -32602));
         return;
     }
-    let response = match execute_tool(name, &arguments) {
+    let response = match execute_tool(shared, name, &arguments) {
         Ok(value) => tool_success(id, value),
         Err(code) => tool_error(id, code),
     };
     write_json(&shared.output, response);
 }
 
-fn execute_tool(name: &str, arguments: &Value) -> Result<Value, String> {
+fn execute_tool(shared: &ServerState, name: &str, arguments: &Value) -> Result<Value, String> {
     let object = arguments
         .as_object()
         .ok_or_else(|| "invalid_arguments".to_owned())?;
     match name {
         "lico_conversation_list" => {
-            ensure_only_keys(object, &["limit"])?;
+            ensure_only_keys(object, &["limit", "includeArchived"])?;
+            let value = service_execute(
+                shared,
+                json!({
+                    "action": "conversation.list",
+                    "includeArchived": object.get("includeArchived").and_then(Value::as_bool).unwrap_or(false)
+                }),
+            )?;
             let limit = object
                 .get("limit")
                 .and_then(Value::as_u64)
                 .unwrap_or(50)
-                .min(100) as usize;
-            list_owned_conversations(limit).map_err(|error| error.to_string())
+                .clamp(1, 100) as usize;
+            let conversations = value.as_array().cloned().unwrap_or_default();
+            Ok(json!({
+                "ok": true,
+                "total": conversations.len(),
+                "count": conversations.len().min(limit),
+                "conversations": conversations.into_iter().take(limit).collect::<Vec<_>>()
+            }))
         }
         "lico_conversation_get" => {
-            ensure_only_keys(object, &["conversationId", "id"])?;
+            ensure_only_keys(object, &["conversationId"])?;
             let id = object
                 .get("conversationId")
-                .or_else(|| object.get("id"))
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             if id.trim().is_empty() {
                 return Err("conversation_id_required".into());
             }
-            get_owned_conversation(id).map_err(|error| error.to_string())
+            service_execute(
+                shared,
+                json!({"action": "conversation.get", "conversationId": id}),
+            )
         }
         "lico_conversation_search" => {
-            ensure_only_keys(object, &["query", "matchMode", "limit"])?;
+            ensure_only_keys(object, &["query", "limit"])?;
             let query = object
                 .get("query")
                 .and_then(Value::as_str)
@@ -238,19 +253,17 @@ fn execute_tool(name: &str, arguments: &Value) -> Result<Value, String> {
             if query.trim().is_empty() {
                 return Err("query_required".into());
             }
-            let mode = OwnedConversationMatchMode::parse(
-                object
-                    .get("matchMode")
-                    .and_then(Value::as_str)
-                    .unwrap_or("keyword"),
-            )
-            .map_err(|error| error.to_string())?;
             let limit = object
                 .get("limit")
                 .and_then(Value::as_u64)
                 .unwrap_or(50)
                 .min(100) as usize;
-            search_owned_conversations(query, mode, limit).map_err(|error| error.to_string())
+            let events = service_execute(
+                shared,
+                json!({"action": "conversation.events.search", "query": query, "limit": limit}),
+            )?;
+            let count = events.as_array().map(Vec::len).unwrap_or(0);
+            Ok(json!({"ok": true, "count": count, "events": events}))
         }
         "lico_conversation_export" => {
             ensure_only_keys(object, &["path", "conversationIds"])?;
@@ -271,10 +284,13 @@ fn execute_tool(name: &str, arguments: &Value) -> Result<Value, String> {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            export_owned_conversations(path, &ids).map_err(|error| error.to_string())
+            service_execute(
+                shared,
+                json!({"action": "conversation.export", "path": path, "conversationIds": ids}),
+            )
         }
         "lico_conversation_import" => {
-            ensure_only_keys(object, &["path", "replaceExisting"])?;
+            ensure_only_keys(object, &["path"])?;
             let path = object
                 .get("path")
                 .and_then(Value::as_str)
@@ -282,14 +298,35 @@ fn execute_tool(name: &str, arguments: &Value) -> Result<Value, String> {
             if path.trim().is_empty() {
                 return Err("path_required".into());
             }
-            let replace = object
-                .get("replaceExisting")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            import_owned_conversations(path, replace).map_err(|error| error.to_string())
+            service_execute(
+                shared,
+                json!({"action": "conversation.import", "path": path}),
+            )
         }
         _ => Err("tool_not_found".into()),
     }
+}
+
+/// Execute through the single process-owned Conversation service, opening it
+/// lazily on the first tool call so every request reuses the same bounded
+/// SQLite pool instead of opening per-call connections.
+fn service_execute(shared: &ServerState, request: Value) -> Result<Value, String> {
+    let mut slot = shared
+        .conversation_service
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    let service = match slot.as_ref() {
+        Some(service) => service.clone(),
+        None => {
+            let root =
+                portable_data_dir().map_err(|_| "conversation_state_unavailable".to_owned())?;
+            let service = ConversationService::open(&root).map_err(|error| error.to_string())?;
+            *slot = Some(service.clone());
+            service
+        }
+    };
+    drop(slot);
+    service.execute(request).map_err(|error| error.to_string())
 }
 
 fn ensure_only_keys(object: &Map<String, Value>, allowed: &[&str]) -> Result<(), String> {
@@ -305,7 +342,7 @@ fn tool_catalog() -> Vec<Value> {
     vec![
         json!({
             "name": "lico_conversation_list",
-            "description": "List LicoUp-owned conversations (local projections and the Lico group room).",
+            "description": "List canonical client-owned Conversations with exact indexed counts.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -316,24 +353,23 @@ fn tool_catalog() -> Vec<Value> {
         }),
         json!({
             "name": "lico_conversation_get",
-            "description": "Exact lookup of one LicoUp-owned conversation by local id or nativeSessionId.",
+            "description": "Exact lookup of one canonical Conversation by stable id.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "conversationId": {"type": "string", "minLength": 1, "maxLength": 256},
-                    "id": {"type": "string", "minLength": 1, "maxLength": 256}
+                    "conversationId": {"type": "string", "minLength": 1, "maxLength": 256}
                 },
+                "required": ["conversationId"],
                 "additionalProperties": false
             }
         }),
         json!({
             "name": "lico_conversation_search",
-            "description": "Search LicoUp-owned conversations by keyword or regular expression across title, ids, paths, and message text.",
+            "description": "Search canonical structured Event text through the bounded FTS index.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "minLength": 1, "maxLength": 4096},
-                    "matchMode": {"type": "string", "enum": ["keyword", "regex"]},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100}
                 },
                 "required": ["query"],
@@ -359,12 +395,11 @@ fn tool_catalog() -> Vec<Value> {
         }),
         json!({
             "name": "lico_conversation_import",
-            "description": "Import a LicoUp-owned conversation export bundle into the local projection store. Never writes third-party native history.",
+            "description": "Import a current canonical Conversation bundle without overwriting an identity collision. Never writes third-party native history.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "minLength": 1, "maxLength": 4096},
-                    "replaceExisting": {"type": "boolean"}
+                    "path": {"type": "string", "minLength": 1, "maxLength": 4096}
                 },
                 "required": ["path"],
                 "additionalProperties": false

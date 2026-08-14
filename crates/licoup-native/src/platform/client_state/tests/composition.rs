@@ -21,7 +21,7 @@ fn facade_exposes_only_stable_state_owners_and_operations() {
 fn owner_types_have_no_transitive_owner_fields() {
     assert_eq!(
         std::mem::size_of::<super::super::ClientStateStore>(),
-        std::mem::size_of::<PathBuf>()
+        std::mem::size_of::<PathBuf>() + std::mem::size_of::<std::sync::Arc<()>>()
     );
     assert_eq!(
         std::mem::size_of::<super::super::ActivityLog>(),

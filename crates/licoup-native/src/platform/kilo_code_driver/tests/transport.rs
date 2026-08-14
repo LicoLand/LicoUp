@@ -36,8 +36,15 @@ fn free_gateway_routes_keep_the_nested_kilo_model_identifier() {
 
 #[test]
 fn expired_deadline_prevents_http_request() {
-    let failure = wait_post_json("http://invalid.test", &json!({}), Instant::now()).unwrap_err();
+    let failure =
+        wait_post_json("http://invalid.test", &json!({}), Some(Instant::now())).unwrap_err();
     assert_eq!(failure.code, "acp_protocol_timeout");
+
+    // An expired deadline fails before any network I/O; no deadline (timeoutMs
+    // 0 contract) must not be mistaken for an expired one and proceeds to the
+    // transport instead.
+    let failure = wait_post_json("http://invalid.test", &json!({}), None).unwrap_err();
+    assert_eq!(failure.code, "acp_protocol_write_failed");
 }
 
 #[test]
@@ -83,8 +90,12 @@ fn exact_resume_does_not_relabel_terminal_http_output_as_streaming() {
 
     let endpoint = kilo_code_serve::ServeEndpoint::new("127.0.0.1", port);
     let config = test_config("private-kilo-resume-prompt", "existing-kilo-native");
-    let outcome = execute_via_serve(&endpoint, &config, Instant::now() + Duration::from_secs(5))
-        .expect("exact resume serve turn");
+    let outcome = execute_via_serve(
+        &endpoint,
+        &config,
+        Some(Instant::now() + Duration::from_secs(5)),
+    )
+    .expect("exact resume serve turn");
     assert_eq!(outcome.session_id, "existing-kilo-native");
     assert_eq!(outcome.output, "kilo resumed");
     assert_eq!(outcome.turn_status, "end_turn");

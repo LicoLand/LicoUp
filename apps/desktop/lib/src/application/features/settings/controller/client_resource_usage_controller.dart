@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/platform/client_resource_usage_probe.dart';
+import 'package:licoup/src/platform/system_memory_capacity.dart';
 
 const int clientResourceUsageMaxSamples = 180;
 const Duration clientResourceUsageSamplingInterval = Duration(seconds: 5);
@@ -61,6 +62,8 @@ final class ClientResourceUsageController extends ChangeNotifier {
   int get sessionReadBytes => _sessionReadBytes;
 
   int get sessionWriteBytes => _sessionWriteBytes;
+
+  int? get totalMemoryBytes => readSystemTotalMemoryBytes();
 
   void start({Duration interval = clientResourceUsageSamplingInterval}) {
     if (_disposed || _probe == null || _timer != null) {

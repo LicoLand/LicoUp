@@ -431,7 +431,9 @@ Claude Opus 4.6 (Thinking)
         let executable = dir.join("agent-models");
         fs::write(
             &executable,
-            "#!/bin/sh\nprintf 'gemini-3.6-flash-medium\x5cnclaude-opus-4-6-thinking\x5cngpt-oss-120b-medium\x5cn'\n",
+            r#"#!/bin/sh
+printf 'gemini-3.6-flash-medium\nclaude-opus-4-6-thinking\ngpt-oss-120b-medium\n'
+"#,
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
@@ -571,7 +573,9 @@ mod cursor {
         let executable = dir.join("cursor-agent");
         fs::write(
             &executable,
-            "#!/bin/sh\nprintf 'Available models\x5cn\x5cnauto - Auto (default)\x5cncursor-grok-4.5-high - Cursor Grok 4.5\x5cncomposer-2.5 - Composer 2.5 (current)\x5cn'\n",
+            r#"#!/bin/sh
+printf 'Available models\n\nauto - Auto (default)\ncursor-grok-4.5-high - Cursor Grok 4.5\ncomposer-2.5 - Composer 2.5 (current)\n'
+"#,
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
@@ -624,7 +628,9 @@ mod cursor {
         let executable = dir.join("cursor-agent");
         fs::write(
             &executable,
-            "#!/bin/sh\nprintf 'Available models\x5cn\x5cncomposer-2.5 - Composer 2.5 (current)\x5cn'\n",
+            r#"#!/bin/sh
+printf 'Available models\n\ncomposer-2.5 - Composer 2.5 (current)\n'
+"#,
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();

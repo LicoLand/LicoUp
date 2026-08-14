@@ -170,6 +170,14 @@ final class AgentUsageGroupingSwitch extends StatelessWidget {
               ? null
               : () => onChanged(AgentUsageChartGrouping.model),
         ),
+        AgentUsageSegment(
+          key: const Key('agent-usage-grouping-workflow'),
+          label: strings.byWorkflow,
+          selected: grouping == AgentUsageChartGrouping.workflow,
+          onTap: grouping == AgentUsageChartGrouping.workflow
+              ? null
+              : () => onChanged(AgentUsageChartGrouping.workflow),
+        ),
       ],
     );
   }

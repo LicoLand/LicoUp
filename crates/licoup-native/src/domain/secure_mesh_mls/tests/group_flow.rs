@@ -33,7 +33,13 @@ fn group_create_reconciles_one_authoritative_local_projection() {
     )
     .unwrap();
 
-    let record = reconcile_group_metadata(&group, &identity).unwrap();
+    let mut group_store = crate::platform::secure_mesh_mls_store::open(
+        crate::domain::mobile_relay::secure_mesh_mls_state_dir()
+            .unwrap()
+            .join("group-state.sqlite3"),
+    )
+    .unwrap();
+    let record = reconcile_group_metadata(&mut group_store, &group, &identity).unwrap();
     let status = group_status_json(&group, &record);
     assert_eq!(status["memberCount"], 1);
     assert_eq!(status["active"], true);

@@ -31,16 +31,10 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
                         "acknowledgeReceiptId",
                         command.option_text("acknowledge-receipt-id"),
                     ),
-                    ("leaseSeconds", command.option_text("lease-seconds")),
-                    ("limit", command.option_text("limit")),
                     ("type", command.option_text("type")),
                     ("disposableProof", command.option_text("disposable-proof")),
                 ],
-                &[
-                    ("body", command.option_json("body")),
-                    ("payload", command.option_json("payload")),
-                    ("secureEnvelope", command.option_json("secure-envelope")),
-                ],
+                &[("body", command.option_json("body"))],
                 &[],
             )
         });

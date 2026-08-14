@@ -1,4 +1,4 @@
-use super::support::{scan_params, temp_dir, token_event};
+use super::support::{codex_database_path, scan_params, temp_dir, token_event};
 use crate::domain::agent_usage;
 use rusqlite::Connection;
 use std::fs;
@@ -56,12 +56,7 @@ fn parser_rolls_up_all_history_without_losing_windowed_token_deltas() {
     let history = &result["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 10);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 1);
-    let database_path = fs::read_dir(&state_root)
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .find(|path| path.extension().and_then(|value| value.to_str()) == Some("sqlite3"))
-        .unwrap();
+    let database_path = codex_database_path(&state_root);
     let connection = Connection::open(database_path).unwrap();
     let retained_rows = connection
         .query_row("SELECT COUNT(*) FROM usage_daily_totals", [], |row| {
@@ -83,12 +78,7 @@ fn current_day_details_are_compacted_after_the_calendar_rolls_over() {
     let mut params = scan_params(&history_root, &state_root);
     let first = agent_usage::scan(&params).unwrap();
     assert_eq!(first["summary"]["totalTokens"], 10);
-    let database_path = fs::read_dir(&state_root)
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .find(|path| path.extension().and_then(|value| value.to_str()) == Some("sqlite3"))
-        .unwrap();
+    let database_path = codex_database_path(&state_root);
     let connection = Connection::open(&database_path).unwrap();
     assert_eq!(
         connection

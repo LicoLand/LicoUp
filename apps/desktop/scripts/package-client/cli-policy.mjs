@@ -22,6 +22,7 @@ export const packageClientRuntime = Object.freeze((() => {
     canonicalPackagingConfigRef: "apps/desktop/packaging.modules.json",
     canonicalBundleManifestRef:
       "package-metadata/licoup/packaging-modules.json",
+    macosArm64TargetId: "macos-arm64",
     windowsX64TargetId: "windows-x64",
     windowsX64RustTarget: "x86_64-pc-windows-msvc",
     bundleId: "land.lico.licoup",
@@ -179,6 +180,7 @@ export function validateReleaseBuildPolicy(options) {
 }
 
 export function validatePackagingOptions(options, environment = process.env) {
+  validateMacosPackagingHost(options);
   if (options.platform === "windows") {
     options.targetId ||= String(
       environment.LICO_WINDOWS_TARGET || packageClientRuntime.windowsX64TargetId,
@@ -200,6 +202,21 @@ export function validatePackagingOptions(options, environment = process.env) {
     packageFailure("production_entitlements_require_release");
   }
   return options;
+}
+
+export function validateMacosPackagingHost(
+  options,
+  hostPlatform = process.platform,
+  hostArch = process.arch,
+) {
+  if (
+    options.platform === "macos" &&
+    options.dryRun !== true &&
+    (hostPlatform !== "darwin" || hostArch !== "arm64")
+  ) {
+    packageFailure("macos_arm64_host_required");
+  }
+  return true;
 }
 
 export function normalizePlatform(value) {

@@ -847,14 +847,6 @@ pub fn process_local_history(params: &Value) -> Result<Value> {
     Ok(history)
 }
 
-/// Drain every Claude process-local transport owned by this native host.
-pub fn shutdown_all_conversations() -> Result<()> {
-    match super::claude_code_driver::shutdown_all() {
-        super::claude_code_driver::ControlDisposition::Accepted => Ok(()),
-        _ => Err(anyhow!("process_local_shutdown_failed")),
-    }
-}
-
 /// Steer is intentionally a distinct lane operation. No packaged driver may
 /// alias cancel or a second send into steer; adapters must expose a native,
 /// exactly-once in-flight control channel before their inventory capability is

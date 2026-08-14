@@ -1,6 +1,6 @@
 //! Agent-agnostic Subagent MCP status/plan/install dispatcher.
 
-use crate::domain::agent_workflow_loop::CodexPluginState;
+use crate::domain::integration_state::IntegrationState;
 use crate::platform::{antigravity_subagent_mcp_manager, codex_plugin_manager};
 use std::path::Path;
 
@@ -73,9 +73,9 @@ pub fn status(
                 return SubagentMcpEnsureState::Unavailable;
             };
             match codex_plugin_manager::status(path) {
-                CodexPluginState::Ready => SubagentMcpEnsureState::Ready,
-                CodexPluginState::Missing => SubagentMcpEnsureState::Missing,
-                CodexPluginState::Unavailable => SubagentMcpEnsureState::Unavailable,
+                IntegrationState::Ready => SubagentMcpEnsureState::Ready,
+                IntegrationState::Missing => SubagentMcpEnsureState::Missing,
+                IntegrationState::Unavailable => SubagentMcpEnsureState::Unavailable,
             }
         }
         "antigravity" => {
@@ -86,9 +86,9 @@ pub fn status(
                 return SubagentMcpEnsureState::Unavailable;
             };
             match antigravity_subagent_mcp_manager::status(&path) {
-                CodexPluginState::Ready => SubagentMcpEnsureState::Ready,
-                CodexPluginState::Missing => SubagentMcpEnsureState::Missing,
-                CodexPluginState::Unavailable => SubagentMcpEnsureState::Unavailable,
+                IntegrationState::Ready => SubagentMcpEnsureState::Ready,
+                IntegrationState::Missing => SubagentMcpEnsureState::Missing,
+                IntegrationState::Unavailable => SubagentMcpEnsureState::Unavailable,
             }
         }
         _ => SubagentMcpEnsureState::Unsupported,

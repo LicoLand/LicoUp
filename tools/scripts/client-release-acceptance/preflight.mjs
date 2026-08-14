@@ -13,9 +13,13 @@ export function validateReleaseSelectionPreflight({
   const releaseSupportedIds = catalog.targets
     .filter((target) => target.releaseSupported === true)
     .map((target) => target.id);
-  requireValue(JSON.stringify([...releaseSupportedIds].sort()) ===
-    JSON.stringify([...authorityIds].sort()),
-    "release-supported catalog targets do not match selected target authority");
+  const authorityTargets = authorityIds.map((targetId) =>
+    catalog.targets.find((target) => target.id === targetId));
+  requireValue(
+    authorityTargets.every((target) => target?.packageBuildSupported === true) &&
+      releaseSupportedIds.every((targetId) => authorityIds.includes(targetId)),
+    "package acceptance authority does not cover the release-supported targets",
+  );
   requireValue(
     receiptConfig?.schemaVersion ===
       "licomesh.client-artifact-verification-receipts-config.v3" &&
@@ -30,14 +34,13 @@ export function validateReleaseSelectionPreflight({
     authorityIds.filter((id) => requestedTargetIds.includes(id)),
   ), "release target selection is not in canonical authority order");
   const targetEvidenceByTarget = {
-    "macos-arm64": "macosCli",
-    "android-arm64": "androidPlatformCrypto",
-    "linux-glibc-arm64": "linuxCli",
+    "macos-direct-arm64": "macosCli",
+    "android-direct-arm64-v8a": "androidPlatformCrypto",
   };
   for (const targetId of requestedTargetIds) {
     const target = catalog.targets.find((entry) => entry.id === targetId);
-    requireValue(target?.releaseSupported === true && authorityIds.includes(targetId),
-      `selected target is outside release authority: ${targetId}`);
+    requireValue(target?.packageBuildSupported === true && authorityIds.includes(targetId),
+      `selected target is outside package acceptance authority: ${targetId}`);
     const artifact = config.artifacts[targetId];
     const receipt = receiptConfig.targets[targetId];
     const evidenceId = targetEvidenceByTarget[targetId];
@@ -46,6 +49,7 @@ export function validateReleaseSelectionPreflight({
       `selected target closure specification is missing: ${targetId}`);
     requireValue(
       receipt.platform === target.platform &&
+        receipt.evidenceTargetId === target.runtimeTargetId &&
         receipt.artifactKind === artifact.artifactKind &&
         receipt.artifactRef === artifact.ref &&
         text(receipt.distributionManifestRef) ===
@@ -58,7 +62,7 @@ export function validateReleaseSelectionPreflight({
       JSON.stringify(targetEvidence.targetIds) === JSON.stringify([targetId]),
       `selected target evidence specification mismatch: ${targetId}`,
     );
-    if (targetId === "macos-arm64") {
+    if (targetId === "macos-direct-arm64") {
       requireValue(receipt.evidenceArtifactKind === "macos-app-bundle" &&
         receipt.evidenceArtifactRef === artifact.installArtifactRef,
       "macOS install evidence is not bound to the distribution lineage");

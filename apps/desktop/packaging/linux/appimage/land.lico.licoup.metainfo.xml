@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>land.lico.licoup</id>
+  <name>LicoUp</name>
+  <summary>Official LicoMesh client</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <launchable type="desktop-id">LicoUp.desktop</launchable>
+  <url type="homepage">https://github.com/LicoLand/LicoUp</url>
+</component>

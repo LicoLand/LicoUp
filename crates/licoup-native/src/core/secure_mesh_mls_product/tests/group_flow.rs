@@ -458,9 +458,9 @@ fn secure_mesh_mls_product_remove_is_identity_exact_journaled_and_excludes_file_
         panic!("removed-member group capability extension must remain active");
     };
     assert!(matches!(
-        roster_transition,
+        roster_transition.as_ref(),
         SecureMeshMlsRosterTransition::MemberRemoved { member_endpoint_id }
-            if member_endpoint_id == charlie.identity.endpoint_id
+            if member_endpoint_id == &charlie.identity.endpoint_id
     ));
     assert_eq!(
         member_capability_proofs

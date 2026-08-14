@@ -5,8 +5,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::antigravity;
 use super::generated_context::{
-    background_context_prompt_text, extract_user_authored_text, generated_control_text,
-    strip_generated_context_blocks,
+    background_context_prompt_text, extract_user_authored_text, extract_user_image_attachments,
+    generated_control_text, strip_generated_context_blocks,
 };
 use super::semantic::{
     HistoryMessageKind, delegated_subagent_prompt_title, humanize_history_semantic,
@@ -14,7 +14,7 @@ use super::semantic::{
 };
 use super::structured_privacy::{
     sanitize_structured_event_text, sanitize_structured_label, structured_event_text,
-    structured_reasoning_summary,
+    structured_reasoning_detail, structured_reasoning_summary,
 };
 use crate::domain::conversation::history::query_filter::{display_path, message_id};
 use crate::domain::conversation::source_catalog::HistoryAdapter;
@@ -28,14 +28,27 @@ pub(in crate::domain::conversation::history) fn plain_history_message(
     text: &str,
     created_at: Option<String>,
 ) -> Option<Value> {
-    let text = clean_native_message_text(adapter, role, text)?;
+    let images = if matches!(role, "user" | "human") {
+        extract_user_image_attachments(text)
+    } else {
+        Vec::new()
+    };
+    let text = clean_native_message_text(adapter, role, text);
+    if text.is_none() && images.is_empty() {
+        return None;
+    }
     let mut message = json!({
         "id": native_history_message_id(adapter, path, index, block_index),
         "role": role,
-        "text": text,
+        "text": text.unwrap_or_default(),
         "createdAt": created_at.unwrap_or_default(),
         "sourcePath": display_path(path)
     });
+    if !images.is_empty()
+        && let Some(object) = message.as_object_mut()
+    {
+        object.insert("images".to_string(), json!(images));
+    }
     crate::domain::conversation_semantic::annotate_message_layer(
         &mut message,
         crate::domain::conversation_semantic::SemanticLayer::Thread,
@@ -59,7 +72,7 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
             "tool_call",
             "tool-call",
             "Tool call",
-            "Native agent activity",
+            "Native agent activity".to_string(),
             "Invocation details are hidden.",
             true,
         ),
@@ -67,7 +80,7 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
             "tool_result",
             "tool-result",
             "Tool result",
-            "Native agent result",
+            "Native agent result".to_string(),
             "The native tool result was recorded.",
             true,
         ),
@@ -75,7 +88,7 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
             "reasoning",
             "reasoning",
             "Reasoning",
-            "Sensitive details hidden",
+            "Sensitive details hidden".to_string(),
             "Reasoning details are redacted.",
             true,
         ),
@@ -83,7 +96,7 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
             "metadata",
             "metadata",
             "Metadata",
-            "Sensitive details hidden",
+            "Sensitive details hidden".to_string(),
             "Sensitive native metadata is hidden.",
             true,
         ),
@@ -91,7 +104,7 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
             "error",
             "error",
             "Error",
-            "Native agent error",
+            "Native agent error".to_string(),
             "The native agent reported an error.",
             false,
         ),
@@ -99,21 +112,35 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
             "event",
             "event",
             "Native event",
-            "Native agent event",
+            "Native agent event".to_string(),
             "Native event details are hidden.",
             true,
         ),
     };
     let title = structured_event_title(value, &normalized_semantic, default_title);
+    // Reasoning prefers the recorded chain-of-thought detail; the provider
+    // summary remains the collapsed headline preview (or the whole body when
+    // no thinking was recorded by the provider).
+    let reasoning_detail = if kind == HistoryMessageKind::Reasoning {
+        structured_reasoning_detail(value).and_then(|text| sanitize_structured_event_text(&text))
+    } else {
+        None
+    };
     let provider_summary = if kind == HistoryMessageKind::Reasoning {
         structured_reasoning_summary(value).and_then(|text| sanitize_structured_event_text(&text))
     } else {
         None
     };
-    let provider_summary_visible = provider_summary.is_some();
-    let text = provider_summary.unwrap_or_else(|| structured_event_text(kind, value, fallback));
+    let provider_summary_visible = provider_summary.is_some() && reasoning_detail.is_none();
+    let text = match (&reasoning_detail, &provider_summary) {
+        (Some(detail), _) => detail.clone(),
+        (None, Some(summary)) => summary.clone(),
+        (None, None) => structured_event_text(kind, value, fallback),
+    };
     let subtitle = if provider_summary_visible {
-        "Reasoning summary"
+        "Reasoning summary".to_string()
+    } else if reasoning_detail.is_some() {
+        reasoning_detail_subtitle(provider_summary.as_deref())
     } else {
         subtitle
     };
@@ -156,6 +183,28 @@ fn structured_event_title(value: &Value, semantic: &str, fallback: &str) -> Stri
         return humanize_history_semantic(semantic);
     }
     fallback.to_string()
+}
+
+/// When full thinking is recorded the provider summary becomes the collapsed
+/// headline preview (single line, ≤96 chars) instead of the generic
+/// "Sensitive details hidden" line.
+fn reasoning_detail_subtitle(summary: Option<&str>) -> String {
+    let Some(summary) = summary else {
+        return String::new();
+    };
+    let first_line = summary
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or(summary)
+        .trim();
+    if first_line.is_empty() {
+        return String::new();
+    }
+    if first_line.chars().count() <= 96 {
+        first_line.to_string()
+    } else {
+        format!("{}…", first_line.chars().take(93).collect::<String>())
+    }
 }
 
 pub(in crate::domain::conversation::history) fn native_history_message_id(

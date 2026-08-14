@@ -91,7 +91,7 @@ function fullEvidence(agentId = "codex") {
         driverInventoryDigest: inventoryDigest,
         evidenceDigest: "",
         officialNativeLane: true,
-        consecutivePasses: 3,
+        consecutivePasses: 1,
         conversationGatePassed: true,
         cleanupPassed: true,
         privacyPassed: true,
@@ -135,8 +135,8 @@ test("complete evidence is the only route to ready", () => {
   assert.equal(codex.status, "ready");
   assert.equal(codex.sendEnabled, true);
   assert.equal(codex.coreChecks.passed, 10);
-  assert.equal(codex.conditionalChecks.nativeSupported, 3);
-  assert.equal(codex.conditionalChecks.passed, 3);
+  assert.equal(codex.conditionalChecks.nativeSupported, 4);
+  assert.equal(codex.conditionalChecks.passed, 4);
   assert.equal(codex.evidenceBinding.agentId, "codex");
   assert.equal(codex.evidenceBinding.driverId, "codex-app-server");
   assert.equal(result.summary.ready, 1);
@@ -198,7 +198,7 @@ test("missing evidence and missing checks never pass", () => {
   assert.equal(resultFor(incomplete).sendEnabled, false);
 
   const tooFewRuns = fullEvidence();
-  tooFewRuns.adapters[0].consecutivePasses = 2;
+  tooFewRuns.adapters[0].consecutivePasses = 0;
   refreshDigest(tooFewRuns);
   const shortRun = reduceConversationParity({
     packagingRegistry,
@@ -345,16 +345,46 @@ test("inventory discloses current native transports and fail-closed capability g
     "cursor",
     "hermes",
     "kilo-code",
-    "lico-agent",
     "kimi-code",
+    "lico-agent",
     "openclaw",
     "opencode",
   ]);
   for (const driver of inventory.drivers) {
     assert.equal(
+      driver.capabilityMatrix?.hostSurvivesGuiDisconnect,
+      true,
+      `${driver.agentId} must use the shared GUI-independent host`,
+    );
+    assert.equal(
+      driver.capabilityMatrix?.activeTurnReattach,
+      true,
+      `${driver.agentId} must expose active-turn reattachment`,
+    );
+    assert.equal(
+      driver.capabilityMatrix?.orderedCursorReplay,
+      true,
+      `${driver.agentId} must expose ordered cursor replay`,
+    );
+    assert.equal(
       driver.capabilityMatrix?.cancel,
       supervisedCancel.has(driver.agentId),
       `${driver.agentId} cancel must match its bounded active-turn control handle`,
+    );
+  }
+
+  for (const capability of [
+    "hostSurvivesGuiDisconnect",
+    "activeTurnReattach",
+    "orderedCursorReplay",
+  ]) {
+    const incomplete = structuredClone(inventory);
+    delete incomplete.drivers[0].capabilityMatrix[capability];
+    assert.throws(
+      () => reduceConversationParity({ packagingRegistry, inventory: incomplete }),
+      (error) =>
+        error instanceof ReducerError && error.code === "driver_inventory_invalid",
+      `${capability} must be mandatory without a compatibility fallback`,
     );
   }
 });
@@ -457,7 +487,7 @@ test("a fully forged ready resource is rejected by the release check", () => {
   codex.conversationGatePassed = true;
   codex.cleanupPassed = true;
   codex.privacyPassed = true;
-  codex.consecutivePasses = 3;
+  codex.consecutivePasses = 1;
   codex.coreChecks.passed = codex.coreChecks.required;
   codex.conditionalChecks.nativeSupported = 0;
   codex.conditionalChecks.passed = 0;

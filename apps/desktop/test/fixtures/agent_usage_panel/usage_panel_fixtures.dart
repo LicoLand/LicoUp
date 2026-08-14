@@ -63,6 +63,166 @@ AgentUsageReport snapshotOnlyReport({
   );
 }
 
+/// Shared current-generation 52-Token workflow fixture used by contract,
+/// controller, widget, localization, and rendered-evidence tests. Unknown
+/// content/location fields are intentional canaries: the Dart model must drop
+/// them before any UI projection.
+AgentUsageReport syntheticWorkflowUsageReport({
+  String workflowSchema = agentUsageWorkflowReportSchema,
+}) {
+  Map<String, dynamic> node({
+    required String id,
+    required String role,
+    required String agent,
+    required String model,
+    required String state,
+    required String dispatch,
+    String? parent,
+    String? task,
+    required int prompt,
+    required int cached,
+    required int completion,
+    String accuracy = 'exact',
+  }) {
+    return {
+      'nodeId': id,
+      'parentNodeId': ?parent,
+      'planCode': 'PLAN-TREE',
+      'planRevision': 2,
+      'taskCode': ?task,
+      'phase': role,
+      'dispatchId': dispatch,
+      'role': role,
+      'attempt': 1,
+      'agentId': agent,
+      'model': model,
+      'accuracy': accuracy,
+      'sessionMode': 'resume',
+      'state': state,
+      'usageSettlement': 'ready',
+      'usage': {
+        'promptTokens': prompt,
+        'cachedInputTokens': cached,
+        'completionTokens': completion,
+        'totalTokens': prompt + completion,
+      },
+      'path': 'private-workflow-location-canary',
+      'prompt': 'private-prompt-canary',
+      'reply': 'private-reply-canary',
+      'toolPayload': 'private-tool-canary',
+    };
+  }
+
+  final rootId = 'delivery-tree-root';
+  final nodes = [
+    node(
+      id: rootId,
+      role: 'main',
+      agent: 'main-agent',
+      model: 'main-model',
+      state: 'completed',
+      dispatch: 'delivery-tree-root-dispatch',
+      prompt: 10,
+      cached: 2,
+      completion: 3,
+    ),
+    node(
+      id: 'designer-node',
+      parent: rootId,
+      role: 'designer',
+      agent: 'agent-designer',
+      model: 'model-designer',
+      state: 'completed',
+      dispatch: 'designer-dispatch',
+      task: 'DESIGN',
+      prompt: 10,
+      cached: 2,
+      completion: 2,
+    ),
+    node(
+      id: 'worker-node',
+      parent: rootId,
+      role: 'worker',
+      agent: 'agent-worker',
+      model: 'model-worker',
+      state: 'completed',
+      dispatch: 'worker-dispatch',
+      task: 'IMPLEMENT',
+      prompt: 6,
+      cached: 1,
+      completion: 2,
+    ),
+    node(
+      id: 'reviewer-node',
+      parent: rootId,
+      role: 'reviewer',
+      agent: 'agent-reviewer',
+      model: 'model-reviewer',
+      state: 'completed',
+      dispatch: 'reviewer-dispatch',
+      task: 'REVIEW',
+      prompt: 15,
+      cached: 3,
+      completion: 4,
+    ),
+  ];
+  return AgentUsageReport.fromJson({
+    'ok': true,
+    'schemaVersion': AgentUsageReport.currentSchemaVersion,
+    'mode': AgentUsageReport.currentMode,
+    'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+    'generatedAt': '2026-08-09T00:00:00Z',
+    'summary': {'agentCount': 1, 'totalTokens': 0, 'confidence': 'high'},
+    'agents': [
+      {
+        'agentId': 'codex',
+        'label': 'Codex',
+        'status': 'detected',
+        'history': const {'totalTokens': 12},
+        'confidence': 'high',
+      },
+    ],
+    'workflow': {
+      'ok': true,
+      'schemaVersion': workflowSchema,
+      'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
+      'resultKind': agentUsageWorkflowResultKind,
+      'summary': const {
+        'promptTokens': 41,
+        'cachedInputTokens': 8,
+        'completionTokens': 11,
+        'totalTokens': 52,
+        'exactCount': 4,
+        'estimatedCount': 0,
+      },
+      'workflows': [
+        {
+          'workflowId': 'delivery-tree',
+          'planCode': 'PLAN-TREE',
+          'planRevision': 2,
+          'state': 'completed',
+          'terminalCorrelation': 'terminal-tree',
+          'totals': {
+            'promptTokens': 41,
+            'cachedInputTokens': 8,
+            'completionTokens': 11,
+            'totalTokens': 52,
+            'exactCount': 4,
+            'estimatedCount': 0,
+          },
+          'nodes': nodes,
+          'roots': const [],
+          'nativePath': 'private-workflow-location-canary',
+          'summary': 'private-summary-canary',
+        },
+      ],
+    },
+    'workflows': const [],
+    'workflowSummary': const {},
+    'warnings': const [],
+  });
+}
+
 AgentUsageReport equalModelUsageReport() {
   final now = DateTime.now();
   final date =

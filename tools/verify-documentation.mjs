@@ -127,7 +127,7 @@ for (const required of requiredFiles) {
 
 for (const root of localRoots) {
   try {
-    execFileSync("git", ["check-ignore", "-q", root], {
+    execFileSync("git", ["check-ignore", "-q", `${root}/`], {
       cwd: repoRoot,
       stdio: "ignore",
     });

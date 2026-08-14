@@ -20,7 +20,7 @@ pub(super) use rand::rngs::OsRng;
 pub(super) use serde_json::{Value, json};
 pub(super) use sha2::{Digest, Sha256};
 pub(super) use std::collections::HashSet;
-pub(super) use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+pub(super) use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(super) fn manifest_fixture() -> SecureMeshFileManifest {
     SecureMeshFileManifest {
@@ -288,7 +288,7 @@ pub(super) fn pairwise_file_context(
     message_id: &str,
 ) -> SecureMeshContentContext {
     let created_at = OffsetDateTime::now_utc();
-    let expires_at = created_at + time::Duration::minutes(5);
+    let expires_at = created_at + Duration::minutes(10);
     SecureMeshContentContext::new(
         general_purpose::URL_SAFE_NO_PAD.encode(&Sha256::digest(envelope_id.as_bytes())[..24]),
         message_id,

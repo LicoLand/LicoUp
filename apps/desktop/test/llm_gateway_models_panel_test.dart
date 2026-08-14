@@ -194,11 +194,14 @@ void main() {
             expires: _daysFromNow(20),
           ),
         ];
+      final serviceRunner = _FakeServiceRunner()
+        ..statusResult = _statusPayload(state: 'stopped', managed: false)
+        ..startError = StateError('synthetic start failure');
       final lifecycle = LlmGatewayLifecycleController(
-        agentService: _FakeServiceRunner()
-          ..statusResult = _statusPayload(state: 'stopped', managed: false),
+        agentService: serviceRunner,
         readSettings: () async => const {},
         monitorInterval: Duration.zero,
+        recoveryRetryDelay: Duration.zero,
       );
       await lifecycle.initialize();
       await _pumpCredentials(tester, runner, lifecycleController: lifecycle);
@@ -280,9 +283,10 @@ void main() {
           ]),
         ),
       );
+      expect(serviceRunner.calls.where((args) => args[2] == 'start'), isEmpty);
       expect(
-        serviceRunner.calls.where((args) => args[2] == 'start'),
-        hasLength(1),
+        serviceRunner.calls.where((args) => args[2] == 'status'),
+        isNotEmpty,
       );
       expect(
         tester
@@ -367,10 +371,7 @@ void main() {
         ]),
       ),
     );
-    expect(
-      serviceRunner.calls.where((args) => args[2] == 'start'),
-      hasLength(1),
-    );
+    expect(serviceRunner.calls.where((args) => args[2] == 'start'), isEmpty);
     expect(
       tester
           .widget<Switch>(find.byKey(Key('credential-authorize-$credentialId')))
@@ -493,8 +494,6 @@ void main() {
     );
     final field = tester.widget<TextField>(urlField);
     expect(field.controller!.text, 'http://127.0.0.1:18080');
-    expect(find.text('Codex'), findsOneWidget);
-    expect(find.text('Claude Code'), findsOneWidget);
 
     await tester.enterText(urlField, 'https://gateway.example.test');
     await tester.tap(find.byTooltip('保存 Gateway URL'));
@@ -526,7 +525,7 @@ void main() {
     ]);
     expect(find.byKey(const Key('gateway-service-status')), findsOneWidget);
     expect(find.text('运行中'), findsOneWidget);
-    expect(find.text('42189  ·  lico-llm-gateway'), findsOneWidget);
+    expect(find.text('42189  ·  lico-gateway'), findsOneWidget);
     expect(find.text('检测中…'), findsNothing);
   });
 
@@ -554,7 +553,7 @@ void main() {
 
     expect(runner.calls.where((args) => args[2] == 'status'), isEmpty);
     expect(find.text('运行中'), findsOneWidget);
-    expect(find.text('42189  ·  lico-llm-gateway'), findsOneWidget);
+    expect(find.text('42189  ·  lico-gateway'), findsOneWidget);
     lifecycle.dispose();
   });
 
@@ -583,36 +582,19 @@ void main() {
     expect(find.text('Gateway 已启动。'), findsOneWidget);
   });
 
-  testWidgets('gateway cards and model chart use gateway request counters', (
-    tester,
-  ) async {
-    final today = DateTime.now().toUtc();
-    final day =
-        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-    final runner = _FakeServiceRunner()
-      ..usageResult = {
-        'ok': true,
-        'schemaVersion': 'licoup.llm-gateway-usage.v1',
-        'days': [
-          {
-            'date': day,
-            'agents': {'codex': 2, 'claude-code': 3},
-            'models': {'kimi-k2': 4, 'deepseek-chat': 1},
-          },
-        ],
-      };
+  testWidgets('gateway card omits API request statistics', (tester) async {
+    final runner = _FakeServiceRunner();
     await _pumpGateway(tester, _FakeSettings({}), runner);
     await tester.pumpAndSettle();
 
     expect(
       runner.calls,
-      contains(equals(const ['llm-gateway', 'service', 'usage'])),
+      isNot(contains(equals(const ['llm-gateway', 'service', 'usage']))),
     );
-    expect(find.text('API 请求次数'), findsOneWidget);
-    expect(find.text('kimi-k2'), findsOneWidget);
-    expect(find.text('deepseek-chat'), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
+    expect(find.text('API 请求次数'), findsNothing);
+    expect(find.text('暂无 Gateway API 请求'), findsNothing);
+    expect(find.text('API 请求'), findsNothing);
+    expect(find.byKey(const Key('gateway-model-usage-empty')), findsNothing);
   });
 
   testWidgets('start runs the service and refreshes from the payload', (
@@ -865,7 +847,7 @@ Map<String, dynamic> _statusPayload({
   'state': state,
   'managed': managed,
   'pid': pid,
-  'processName': pid == null ? null : 'lico-llm-gateway',
+  'processName': pid == null ? null : 'lico-gateway',
   'port': port,
   'credentialsLoaded': credentialsApplied,
   'credentialsApplied': credentialsApplied,
@@ -895,11 +877,6 @@ final class _FakeServiceRunner implements AgentCommandRunner {
     ],
   };
   Completer<Map<String, dynamic>>? authorizationCompletion;
-  Map<String, dynamic> usageResult = {
-    'ok': true,
-    'schemaVersion': 'licoup.llm-gateway-usage.v1',
-    'days': const [],
-  };
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {
@@ -910,8 +887,6 @@ final class _FakeServiceRunner implements AgentCommandRunner {
         return completion == null ? authorizationResult : completion.future;
       case 'list':
         return const {'ok': true, 'entries': [], 'leaseDays': 7};
-      case 'usage':
-        return usageResult;
       case 'status':
         final error = statusError;
         if (error != null) throw error;
