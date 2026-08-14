@@ -6,13 +6,6 @@ manifests.
 
 ## Unreleased
 
-## 0.1.0 — 2026-08-08
-
-- Added signed GitHub update discovery, Wi-Fi background download, digest and
-  dual-role Ed25519 verification, safe macOS app replacement, rollback, and
-  restart.
-- Published the first stable macOS ARM64 GitHub distribution under AGPL-3.0-or-later.
-
 - Continuing a Cursor IDE-listed conversation from LicoUp now opens a new Agent
   CLI session and injects a one-time handoff (composer id, `state.vscdb`
   key prefixes, and the last IDE assistant return) instead of resuming the IDE
@@ -54,6 +47,16 @@ manifests.
   the local LLM Gateway routes claude-sonnet-4-6, claude-opus-4-7, and
   claude-haiku-4-5 to the matching anthropic/claude-* upstream models across all
   three client protocols.
+
+## 0.1.1 — 2026-08-14
+
+- Restored the current conversation selection, cached history pagination,
+  activity indicators, canonical Local group, collapsed Agent metadata, group
+  member scrolling, and the requested product logo across the desktop client.
+- Bound macOS delivery to arm64-only packages and an exact verified runnable
+  that installs and launches without rebuilding.
+- Synchronized the client, native crate, Flutter bundle, compatibility matrix,
+  and release-governance version sources at `0.1.1`.
 
 ## 0.1.0-alpha — 2026-07-25
 

@@ -8,11 +8,11 @@ import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:licoup/src/frontend/features/settings/ui/agent_resource_usage_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
 import 'package:licoup/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
-import 'package:licoup/src/frontend/features/settings/ui/client_resource_usage_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/diagnostics_resource_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_log_export_tile.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_section_catalog.dart';
@@ -25,6 +25,7 @@ import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.d
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _settingsSectionIds = settingsSectionIdOrder;
@@ -476,14 +477,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
       ),
       'storage' => _StorageSettings(controller: widget.controller),
       'startup' => StartupAutostartCard(controller: widget.controller),
+      'archived-conversations' => ArchivedConversationsSettingsSection(
+        controller: widget.controller.clientConversationController,
+      ),
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SettingsLogExportTile(controller: widget.controller),
           const SizedBox(height: LicoContentSpacing.item),
-          const ClientResourceUsageCard(),
-          const SizedBox(height: LicoContentSpacing.item),
-          AgentResourceUsageCard(
+          DiagnosticsResourceSection(
             gateway: AgentResourceUsageGatewayAdapter(
               runner: widget.controller.agentService,
             ),
@@ -662,6 +664,7 @@ class _AppearanceSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
     final isDark = isResolvedAppearanceDark(
       controller.appearancePresetId,
       controller.appearancePresetConfigs,
@@ -680,10 +683,14 @@ class _AppearanceSettings extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SettingsSectionHeader(
+        LicoSectionHeader(
           title: strings.appearance,
-          icon: Icons.palette_outlined,
-          colors: colors,
+          leading: Icon(
+            Icons.palette_outlined,
+            size: 18,
+            color: colors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
         ),
         SettingsDropdownRow<String>(
           icon: Icons.language_outlined,
@@ -797,13 +804,18 @@ class _StorageSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
+    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SettingsSectionHeader(
+        LicoSectionHeader(
           title: strings.storageAndData,
-          icon: Icons.inventory_2_outlined,
-          colors: context.licoColors,
+          leading: Icon(
+            Icons.inventory_2_outlined,
+            size: 18,
+            color: context.licoColors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
         ),
         DirectoryPathField(
           title: strings.portableData,
@@ -875,6 +887,7 @@ class _MobileSettingsBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
+    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
     final isDark = isResolvedAppearanceDark(
       controller.appearancePresetId,
       controller.appearancePresetConfigs,
@@ -895,10 +908,14 @@ class _MobileSettingsBody extends StatelessWidget {
       controller: scrollController,
       padding: const EdgeInsets.symmetric(vertical: LicoContentSpacing.item),
       children: [
-        _SettingsSectionHeader(
+        LicoSectionHeader(
           title: strings.appearance,
-          icon: Icons.palette_outlined,
-          colors: colors,
+          leading: Icon(
+            Icons.palette_outlined,
+            size: 18,
+            color: colors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
         ),
         SettingsDropdownRow<String>(
           icon: Icons.language_outlined,
@@ -965,40 +982,6 @@ class _MobileSettingsBody extends StatelessWidget {
           surface: LayoutRuntimeSurface.mobile,
         ),
       ],
-    );
-  }
-}
-
-class _SettingsSectionHeader extends StatelessWidget {
-  const _SettingsSectionHeader({
-    required this.title,
-    required this.icon,
-    required this.colors,
-  });
-
-  final String title;
-  final IconData icon;
-  final LicoThemeColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
-    return Padding(
-      padding: presentation.sectionHeaderPadding,
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: colors.textSecondary),
-          const SizedBox(width: LicoContentSpacing.compact),
-          Expanded(
-            child: Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -71,7 +71,7 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     !existsSync(artifacts.releaseCliProof) ||
     !existsSync(artifacts.archive) ||
     !existsSync(artifacts.signature) ||
-    !existsSync(artifacts.distributionManifest) ||
+    !existsSync(artifacts.verificationManifest) ||
     !existsSync(artifacts.sourceManifest)
   ) {
     throw new Error("Linux product acceptance artifacts are incomplete.");
@@ -87,7 +87,7 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     stableReadFile(artifacts.releaseCliProof, { maxBytes: 2 * 1024 * 1024 }).toString("utf8"),
   );
   const distribution = JSON.parse(
-    stableReadFile(artifacts.distributionManifest, {
+    stableReadFile(artifacts.verificationManifest, {
       maxBytes: 2 * 1024 * 1024,
     }).toString("utf8"),
   );
@@ -122,6 +122,10 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     receipt.sourceBinding.archiveDigest !== archiveDigest ||
     nodeMatrix.sourceBinding.archiveDigest !== archiveDigest ||
     distribution.targetId !== "linux-glibc-arm64" ||
+    distribution.schemaVersion !== "licomesh.client-linux.verification-carrier.v1" ||
+    distribution.mode !== "verification" ||
+    distribution.verificationReady !== true ||
+    distribution.publicReleaseBlocked !== true ||
     distribution.sourceStateDigest !== expectedSourceDigest ||
     distribution.productVersion !== clientVersion.productVersion ||
     distribution.buildNumber !== clientVersion.buildNumber ||
@@ -136,7 +140,7 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     distribution.signature?.algorithm !== "Ed25519" ||
     distribution.signature?.payload !== "archive-sha256-digest" ||
     distribution.signature?.keyId !== "linux-vm-acceptance" ||
-    distribution.signature?.file !== "LicoUp-linux-arm64.tar.gz.sig" ||
+    distribution.signature?.file !== "LicoUp-linux-arm64-verification.tar.gz.sig" ||
     distribution.sha256 !== archiveDigest.slice("sha256:".length) ||
     receipt.sourceBinding.bundleManifestDigest !== distribution.bundleManifestDigest ||
     nodeMatrix.sourceBinding.bundleManifestDigest !== distribution.bundleManifestDigest ||

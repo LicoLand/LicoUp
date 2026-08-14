@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
@@ -143,7 +144,7 @@ final class _WarningBlock extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Color.lerp(blockBackground, error, 0.12)!,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(color: Color.lerp(borderColor, error, 0.7)!),
       ),
       child: Padding(

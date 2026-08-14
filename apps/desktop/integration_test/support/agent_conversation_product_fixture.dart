@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -13,7 +14,7 @@ final acceptanceAgentId = _safeEnvironmentValue(
 );
 final acceptanceAgentModel = _safeEnvironmentValue(
   'LICO_AGENT_CONVERSATION_PRODUCT_MODEL',
-  'gpt-5.3-codex-spark',
+  _verificationModelForAgent(acceptanceAgentId),
   allowSpaces: true,
 );
 const acceptanceNativeSessionId = 'acceptance-native-session';
@@ -148,6 +149,7 @@ class AcceptanceConversationService extends AgentConversationService {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) {
     if (agentId != acceptanceAgentId) {
@@ -226,6 +228,42 @@ String _safeEnvironmentValue(
     throw StateError('acceptance_environment_invalid');
   }
   return value;
+}
+
+/// Reads `tools/scripts/config/agent-conversation-verification-models.toml`.
+/// Keeps product-e2e defaults aligned with the Node verification gates.
+String _verificationModelForAgent(String agentId) {
+  final candidates = <String>[
+    if (Platform.script.scheme == 'file')
+      File.fromUri(
+        Platform.script.resolve(
+          '../../../tools/scripts/config/'
+          'agent-conversation-verification-models.toml',
+        ),
+      ).path,
+    '${Directory.current.path}/tools/scripts/config/'
+        'agent-conversation-verification-models.toml',
+    '${Directory.current.path}/../../tools/scripts/config/'
+        'agent-conversation-verification-models.toml',
+  ];
+  final file = candidates
+      .map(File.new)
+      .cast<File?>()
+      .firstWhere((candidate) => candidate!.existsSync(), orElse: () => null);
+  if (file == null) {
+    throw StateError('verification_models_missing');
+  }
+  final keyPattern = RegExp(
+    '^\\s*(?:${RegExp.escape(agentId)}|"${RegExp.escape(agentId)}")'
+    '\\s*=\\s*"([^"]+)"\\s*\$',
+    multiLine: true,
+  );
+  final match = keyPattern.firstMatch(file.readAsStringSync());
+  final model = match?.group(1)?.trim() ?? '';
+  if (model.isEmpty) {
+    throw StateError('verification_model_missing:$agentId');
+  }
+  return model;
 }
 
 class AcceptanceRequest {

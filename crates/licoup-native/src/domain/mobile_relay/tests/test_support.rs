@@ -283,10 +283,110 @@ pub(super) fn opened_result_payload(mobile_config: &Value, envelope: &Value) -> 
     serde_json::from_slice::<Value>(&opened).unwrap()
 }
 
-pub(super) fn temp_dir(name: &str) -> PathBuf {
+pub(super) struct TestTempDir {
+    path: PathBuf,
+    cleanup_pending: bool,
+}
+
+impl TestTempDir {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            cleanup_pending: true,
+        }
+    }
+
+    pub(super) fn close(mut self) -> std::io::Result<()> {
+        let result = self.cleanup();
+        if result.is_ok() {
+            self.cleanup_pending = false;
+        }
+        result
+    }
+
+    fn cleanup(&self) -> std::io::Result<()> {
+        let Some(metadata) = fs::symlink_metadata(&self.path)
+            .map(Some)
+            .or_else(|error| {
+                (error.kind() == std::io::ErrorKind::NotFound)
+                    .then_some(None)
+                    .ok_or(error)
+            })?
+        else {
+            return Ok(());
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "test temporary root was replaced by a symlink",
+            ));
+        }
+        fs::remove_dir_all(&self.path)
+    }
+}
+
+impl std::ops::Deref for TestTempDir {
+    type Target = PathBuf;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
+
+impl AsRef<std::path::Path> for TestTempDir {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for TestTempDir {
+    fn drop(&mut self) {
+        if self.cleanup_pending {
+            let _ = self.cleanup();
+        }
+    }
+}
+
+pub(super) fn temp_dir(name: &str) -> TestTempDir {
     let dir = env::temp_dir().join(format!("licoup-{}-{}", name, Uuid::new_v4()));
     fs::create_dir_all(&dir).unwrap();
-    dir
+    TestTempDir::new(dir)
+}
+
+#[test]
+fn pairing_test_temp_dir_cleans_on_normal_return_and_unwind() {
+    let normal_path = {
+        let dir = temp_dir("mobile-relay-guard-normal");
+        let path = dir.to_path_buf();
+        assert!(path.is_dir());
+        path
+    };
+    assert!(!normal_path.exists());
+
+    let observed = std::cell::RefCell::new(None);
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let dir = temp_dir("mobile-relay-guard-unwind");
+        observed.replace(Some(dir.to_path_buf()));
+        panic!("synthetic guard unwind");
+    }));
+    assert!(unwind.is_err());
+    assert!(!observed.into_inner().unwrap().exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn pairing_test_temp_dir_refuses_symlink_replacement() {
+    use std::os::unix::fs::symlink;
+
+    let external = temp_dir("mobile-relay-guard-symlink-external");
+    let guarded = temp_dir("mobile-relay-guard-symlink-root");
+    let guarded_path = guarded.to_path_buf();
+    fs::remove_dir(&guarded_path).unwrap();
+    symlink(external.as_ref(), &guarded_path).unwrap();
+    let error = guarded.close().unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(external.is_dir());
+    fs::remove_file(guarded_path).unwrap();
 }
 
 #[derive(Clone, Debug)]

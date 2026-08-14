@@ -31,7 +31,7 @@ pub(super) struct ProtocolOutcome {
 #[derive(Debug)]
 pub(super) enum ProtocolEffect {
     Send(Value),
-    Complete(ProtocolOutcome),
+    Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
 }
 
@@ -367,21 +367,20 @@ impl AcpProtocol {
                 None,
             );
         }
-        let text = update.agent_message_text().map(str::to_owned);
+        if let Some(text) = update.agent_message_text() {
+            self.output.push_str(text);
+            super::super::turn_event_emit::emit_agent_message_chunk(
+                self.session_id.as_deref().unwrap_or_default(),
+                &self.turn_id,
+                text,
+            );
+        }
         let skill_events =
             super::super::skill_invocation_projection::project_skill_invocations(update.payload());
         if skill_events.is_empty() {
             self.events.push(update.into_payload());
         } else {
             self.events.extend(skill_events);
-        }
-        if let Some(text) = text {
-            self.output.push_str(&text);
-            super::super::turn_event_emit::emit_agent_message_chunk(
-                self.session_id.as_deref().unwrap_or_default(),
-                &self.turn_id,
-                &text,
-            );
         }
         Vec::new()
     }
@@ -547,7 +546,7 @@ impl AcpProtocol {
             failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
-        vec![ProtocolEffect::Complete(ProtocolOutcome {
+        vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
             output: std::mem::take(&mut self.output),
             events: std::mem::take(&mut self.events),
             session_id: self.session_id.clone().unwrap_or_default(),
@@ -556,7 +555,7 @@ impl AcpProtocol {
             turn_status: stop_reason,
             effective: effective_settings(&self.config, &self.config_options, self.modes.as_ref()),
             capabilities: self.capabilities.clone(),
-        })]
+        }))]
     }
 }
 

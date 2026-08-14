@@ -1,18 +1,23 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
-import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -21,6 +26,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     super.key,
     required this.targetLabel,
     required this.initialDraft,
+    this.hasAttachments = false,
     required this.busy,
     required this.enabled,
     required this.modelOptions,
@@ -40,11 +46,14 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.onChooseWorkingDirectory,
     this.floatingMatteCapsule = false,
     this.onAttach,
-    this.mentionBridge,
+    this.onPasteImage,
+    this.mentionTargets = const [],
+    this.mentionLabels = const {},
   });
 
   final String targetLabel;
   final String initialDraft;
+  final bool hasAttachments;
   final bool busy;
   final bool enabled;
   final List<String> modelOptions;
@@ -75,23 +84,20 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// the left of [floatingMatteCapsule] composer fields.
   final VoidCallback? onAttach;
 
-  /// Optional bridge for inserting Adaptive Flywheel `@agent` mention chips.
-  final ComposerMentionBridge? mentionBridge;
+  /// Tries to consume the active paste as an image attachment. Returning
+  /// false delegates to Flutter's native text paste unchanged.
+  final Future<bool> Function()? onPasteImage;
+
+  /// Active group members available to the composer's @ mention picker.
+  /// Ordinary one-to-one conversations leave this empty.
+  final List<TargetCandidate> mentionTargets;
+
+  /// Agent id to the exact membership display name recognized by the group
+  /// dispatch parser. The visible compact product name remains local UI copy.
+  final Map<String, String> mentionLabels;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
-}
-
-class _ComposerMentionChip {
-  const _ComposerMentionChip({
-    required this.agentId,
-    required this.displayLabel,
-    this.target,
-  });
-
-  final String agentId;
-  final String displayLabel;
-  final TargetCandidate? target;
 }
 
 class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
@@ -100,7 +106,11 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   LayoutFocusCoordinator? _layoutFocusCoordinator;
   bool _focused = false;
   late bool _hasText;
-  final List<_ComposerMentionChip> _mentionChips = [];
+  int? _mentionStart;
+  String _mentionQuery = '';
+  int _mentionSelection = 0;
+  final ScrollController _mentionScrollController = ScrollController();
+  late final _ComposerPasteAction _pasteAction;
 
   @override
   void initState() {
@@ -109,15 +119,25 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     _hasText = widget.initialDraft.trim().isNotEmpty;
     _controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
-    widget.mentionBridge?.bind(_insertAgentMention);
+    _pasteAction = _ComposerPasteAction(
+      () => widget.onPasteImage?.call() ?? Future<bool>.value(false),
+    );
   }
 
   @override
   void didUpdateWidget(covariant RuntimeMessageComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.mentionBridge != widget.mentionBridge) {
-      oldWidget.mentionBridge?.unbind(_insertAgentMention);
-      widget.mentionBridge?.bind(_insertAgentMention);
+    // The draft is scoped per conversation: switching conversations (or a
+    // successful send clearing the current draft) replaces the text without
+    // recreating this widget. The store echoes every keystroke, so a rebuild
+    // passes the same text back and this sync stays a no-op while typing.
+    if (oldWidget.initialDraft != widget.initialDraft &&
+        widget.initialDraft != _controller.text) {
+      final restored = widget.initialDraft;
+      _controller.value = TextEditingValue(
+        text: restored,
+        selection: TextSelection.collapsed(offset: restored.length),
+      );
     }
   }
 
@@ -141,7 +161,6 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   @override
   void dispose() {
-    widget.mentionBridge?.unbind(_insertAgentMention);
     _layoutFocusCoordinator?.unregister(
       LayoutFocusTargets.composerField,
       _focusNode,
@@ -149,83 +168,156 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     _controller
       ..removeListener(_onTextChanged)
       ..dispose();
+    _mentionScrollController.dispose();
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();
     super.dispose();
   }
 
-  void _insertAgentMention({
-    required String agentId,
-    required String displayLabel,
-    TargetCandidate? target,
-  }) {
-    final id = agentId.trim();
-    final label = displayLabel.trim().isNotEmpty ? displayLabel.trim() : id;
-    if (id.isEmpty || label.isEmpty || !widget.enabled) {
-      return;
-    }
-    final token = composerAgentMentionToken(label);
-    if (token.isEmpty) {
-      return;
-    }
-    final selection = _controller.selection;
-    final text = _controller.text;
-    final start = selection.isValid ? selection.start : text.length;
-    final end = selection.isValid ? selection.end : start;
-    final before = start > 0 ? text.substring(0, start) : '';
-    final after = end < text.length ? text.substring(end) : '';
-    final needsLeadingSpace =
-        before.isNotEmpty && !RegExp(r'\s$').hasMatch(before);
-    final needsTrailingSpace = after.isEmpty || !RegExp(r'^\s').hasMatch(after);
-    final insertion =
-        '${needsLeadingSpace ? ' ' : ''}$token${needsTrailingSpace ? ' ' : ''}';
-    final next = text.replaceRange(start, end, insertion);
-    final caret = start + insertion.length;
-    _controller.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: caret),
-    );
-    if (!_mentionChips.any((chip) => chip.agentId == id)) {
-      setState(() {
-        _mentionChips.add(
-          _ComposerMentionChip(
-            agentId: id,
-            displayLabel: label,
-            target: target,
-          ),
-        );
-      });
-    }
-    _focusNode.requestFocus();
-  }
-
-  void _removeMentionChip(_ComposerMentionChip chip) {
-    final token = composerAgentMentionToken(chip.displayLabel);
-    var next = _controller.text;
-    if (token.isNotEmpty) {
-      next = next.replaceFirst('$token ', token);
-      next = next.replaceFirst(token, '');
-      next = next.replaceAll(RegExp(r'  +'), ' ');
-    }
-    _controller.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(
-        offset: next.length.clamp(0, next.length),
-      ),
-    );
-    setState(
-      () => _mentionChips.removeWhere((item) => item.agentId == chip.agentId),
-    );
-  }
-
   void _onTextChanged() {
     widget.onDraftChanged(_controller.text);
-    final next = _controller.text.trim().isNotEmpty || _mentionChips.isNotEmpty;
-    if (next == _hasText || !mounted) {
-      return;
-    }
+    final next = _controller.text.trim().isNotEmpty;
+    final mentionChanged = _syncMentionQuery();
+    if (!mounted || (next == _hasText && !mentionChanged)) return;
     setState(() => _hasText = next);
+  }
+
+  bool _syncMentionQuery() {
+    final previousStart = _mentionStart;
+    final previousQuery = _mentionQuery;
+    final selection = _controller.selection;
+    _mentionStart = null;
+    _mentionQuery = '';
+    if (widget.mentionTargets.isNotEmpty &&
+        selection.isValid &&
+        selection.isCollapsed) {
+      final caret = selection.extentOffset;
+      final beforeCaret = _controller.text.substring(0, caret);
+      final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCaret);
+      if (match != null) {
+        _mentionStart = match.start + (match.group(1)?.length ?? 0);
+        _mentionQuery = match.group(2) ?? '';
+      }
+    }
+    if (_mentionStart != previousStart || _mentionQuery != previousQuery) {
+      _mentionSelection = 0;
+      _resetMentionScroll();
+      return true;
+    }
+    return false;
+  }
+
+  List<TargetCandidate> get _mentionSuggestions {
+    if (_mentionStart == null) return const [];
+    final query = _mentionQuery.toLowerCase();
+    return widget.mentionTargets
+        .where((target) {
+          if (query.isEmpty) return true;
+          final membershipLabel = widget.mentionLabels[target.target] ?? '';
+          return membershipLabel.toLowerCase().contains(query) ||
+              agentConversationTargetDisplayName(
+                target,
+              ).toLowerCase().contains(query) ||
+              agentConversationTargetCompactDisplayName(
+                target,
+              ).toLowerCase().contains(query) ||
+              target.target.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  KeyEventResult _handleMentionKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final suggestions = _mentionSuggestions;
+    if (suggestions.isEmpty) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _mentionSelection = (_mentionSelection + 1) % suggestions.length;
+      });
+      _revealMentionSelection(suggestions);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _mentionSelection =
+            (_mentionSelection - 1 + suggestions.length) % suggestions.length;
+      });
+      _revealMentionSelection(suggestions);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.tab) {
+      _insertMention(suggestions[_mentionSelection]);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() {
+        _mentionStart = null;
+        _mentionQuery = '';
+      });
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _resetMentionScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_mentionScrollController.hasClients) {
+        _mentionScrollController.jumpTo(0);
+      }
+    });
+  }
+
+  void _revealMentionSelection(List<TargetCandidate> suggestions) {
+    final selectedIndex = _mentionSelection;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          selectedIndex >= suggestions.length ||
+          !_mentionScrollController.hasClients) {
+        return;
+      }
+      const rowExtent = _ComposerMentionSuggestions.rowExtent;
+      final position = _mentionScrollController.position;
+      final itemStart = selectedIndex * rowExtent;
+      final itemEnd = itemStart + rowExtent;
+      final viewportStart = position.pixels;
+      final viewportEnd = viewportStart + position.viewportDimension;
+      final targetOffset = switch ((itemStart, itemEnd)) {
+        _ when itemStart < viewportStart => itemStart,
+        _ when itemEnd > viewportEnd => itemEnd - position.viewportDimension,
+        _ => viewportStart,
+      };
+      final bounded = targetOffset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((bounded - viewportStart).abs() < 0.5) return;
+      _mentionScrollController.animateTo(
+        bounded,
+        duration: context.motion(LicoMotion.short),
+        curve: LicoMotion.standard,
+      );
+    });
+  }
+
+  void _insertMention(TargetCandidate target) {
+    final start = _mentionStart;
+    final selection = _controller.selection;
+    if (start == null || !selection.isValid || !selection.isCollapsed) return;
+    final label = (widget.mentionLabels[target.target] ?? '').trim().isEmpty
+        ? agentConversationTargetDisplayName(target)
+        : widget.mentionLabels[target.target]!.trim();
+    final replacement = '@$label ';
+    final caret = selection.extentOffset;
+    final text = _controller.text;
+    final next = text.replaceRange(start, caret, replacement);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+    _mentionStart = null;
+    _mentionQuery = '';
+    _focusNode.requestFocus();
   }
 
   void _onFocusChanged() {
@@ -238,24 +330,15 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   Future<void> _submit() async {
     final text = _controller.text.trim();
-    if ((text.isEmpty && _mentionChips.isEmpty) || !widget.enabled) {
+    if ((text.isEmpty && !widget.hasAttachments) || !widget.enabled) {
       return;
     }
-    final chips = List<_ComposerMentionChip>.from(_mentionChips);
     _controller.clear();
-    if (_mentionChips.isNotEmpty) {
-      setState(() => _mentionChips.clear());
-    }
     final consumed = await widget.onSend(text);
     if (!consumed && mounted && _controller.text.trim().isEmpty) {
       _controller
         ..text = text
         ..selection = TextSelection.collapsed(offset: text.length);
-      setState(() {
-        _mentionChips
-          ..clear()
-          ..addAll(chips);
-      });
       _focusNode.requestFocus();
     }
   }
@@ -267,7 +350,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final strings = LicoStrings.of(context);
     final mobileClient = isMobileClientPlatform(context);
     final interactive = widget.enabled;
-    final canSend = interactive && _hasText;
+    final canSend = interactive && (_hasText || widget.hasAttachments);
     final fieldRadius = BorderRadius.circular(
       widget.floatingMatteCapsule
           ? MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius
@@ -279,56 +362,43 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_mentionChips.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final chip in _mentionChips)
-                    _ComposerAgentMentionChip(
-                      key: Key('composer-agent-mention-${chip.agentId}'),
-                      label: chip.displayLabel,
-                      target: chip.target,
-                      enabled: interactive,
-                      onDeleted: interactive
-                          ? () => _removeMentionChip(chip)
-                          : null,
-                    ),
-                ],
-              ),
-            ),
-          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    minLines: 1,
-                    maxLines: 4,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _submit(),
-                    enabled: interactive,
-                    style: theme.textTheme.bodyLarge,
-                    decoration: InputDecoration(
-                      hintText: interactive
-                          ? strings.messageTarget(widget.targetLabel)
-                          : null,
-                      hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                        color: colors.textDisabled,
+                  child: Actions(
+                    actions: widget.onPasteImage == null
+                        ? const <Type, Action<Intent>>{}
+                        : <Type, Action<Intent>>{PasteTextIntent: _pasteAction},
+                    child: Focus(
+                      onKeyEvent: _handleMentionKey,
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _submit(),
+                        enabled: interactive,
+                        style: theme.textTheme.bodyLarge,
+                        decoration: InputDecoration(
+                          hintText: interactive
+                              ? strings.messageTarget(widget.targetLabel)
+                              : null,
+                          hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                            color: colors.textDisabled,
+                          ),
+                          isDense: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
-                      isDense: true,
-                      filled: false,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
                 ),
@@ -361,6 +431,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             focused: _focused && interactive,
             child: fieldBody,
           );
+    final mentionSuggestions = _mentionSuggestions;
     return Padding(
       padding: mobileClient
           ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
@@ -397,6 +468,16 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             ),
             const SizedBox(height: 8),
           ],
+          if (mentionSuggestions.isNotEmpty) ...[
+            _ComposerMentionSuggestions(
+              targets: mentionSuggestions,
+              labels: widget.mentionLabels,
+              selectedIndex: _mentionSelection,
+              scrollController: _mentionScrollController,
+              onSelected: _insertMention,
+            ),
+            const SizedBox(height: 8),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -420,64 +501,151 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   }
 }
 
-/// Encapsulated `@agent` chip shown inside the composer field glass.
-class _ComposerAgentMentionChip extends StatelessWidget {
-  const _ComposerAgentMentionChip({
-    super.key,
-    required this.label,
-    required this.enabled,
-    this.target,
-    this.onDeleted,
+final class _ComposerPasteAction extends Action<PasteTextIntent> {
+  _ComposerPasteAction(this.onPasteImage);
+
+  final Future<bool> Function() onPasteImage;
+  bool _pending = false;
+
+  @override
+  Object? invoke(PasteTextIntent intent) {
+    if (_pending) return null;
+    final nativePaste = callingAction;
+    _pending = true;
+    onPasteImage()
+        .then((consumed) {
+          if (!consumed) nativePaste?.invoke(intent);
+        })
+        .onError((_, _) {
+          nativePaste?.invoke(intent);
+        })
+        .whenComplete(() => _pending = false);
+    return null;
+  }
+
+  @override
+  bool isEnabled(PasteTextIntent intent) =>
+      !_pending && (callingAction?.isEnabled(intent) ?? false);
+
+  @override
+  bool consumesKey(PasteTextIntent intent) =>
+      callingAction?.consumesKey(intent) ?? true;
+}
+
+class _ComposerMentionSuggestions extends StatelessWidget {
+  const _ComposerMentionSuggestions({
+    required this.targets,
+    required this.labels,
+    required this.selectedIndex,
+    required this.scrollController,
+    required this.onSelected,
   });
 
+  static const double rowExtent = 54;
+
+  final List<TargetCandidate> targets;
+  final Map<String, String> labels;
+  final int selectedIndex;
+  final ScrollController scrollController;
+  final ValueChanged<TargetCandidate> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = math.min(targets.length * rowExtent + 8, 224.0);
+    return MessagingGlassOptionCard(
+      key: const Key('agent-conversation-mention-suggestions'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      constraints: BoxConstraints(maxHeight: height),
+      child: SizedBox(
+        height: height,
+        child: ListView.builder(
+          key: const Key('agent-conversation-mention-list'),
+          controller: scrollController,
+          padding: EdgeInsets.zero,
+          itemExtent: rowExtent,
+          itemCount: targets.length,
+          itemBuilder: (context, index) {
+            final target = targets[index];
+            return _ComposerMentionSuggestionRow(
+              key: Key('agent-conversation-mention-${target.target}'),
+              target: target,
+              label: (labels[target.target] ?? '').trim().isEmpty
+                  ? agentConversationTargetDisplayName(target)
+                  : labels[target.target]!.trim(),
+              selected: index == selectedIndex,
+              onTap: () => onSelected(target),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerMentionSuggestionRow extends StatelessWidget {
+  const _ComposerMentionSuggestionRow({
+    super.key,
+    required this.target,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TargetCandidate target;
   final String label;
-  final bool enabled;
-  final TargetCandidate? target;
-  final VoidCallback? onDeleted;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Material(
-      color: colors.isDark
-          ? colors.accent.withAlpha(36)
-          : colors.accent.withAlpha(28),
-      borderRadius: BorderRadius.circular(999),
+      key: Key('agent-conversation-mention-surface-${target.target}'),
+      color: selected
+          ? (colors.isDark
+                ? Colors.white.withAlpha(24)
+                : Colors.black.withAlpha(18))
+          : Colors.transparent,
       child: InkWell(
-        onTap: onDeleted,
-        borderRadius: BorderRadius.circular(999),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (target case final target?)
-                AgentBrandIcon(target: target, size: 14, iconSize: 14)
-              else
-                Icon(
-                  Icons.alternate_email_rounded,
-                  size: 13,
-                  color: colors.accent,
-                ),
-              const SizedBox(width: 5),
-              Text(
-                '@$label',
-                style: TextStyle(
-                  color: colors.text.withAlpha(235),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  height: 1.1,
-                ),
-              ),
-              if (enabled && onDeleted != null) ...[
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.close_rounded,
-                  size: 13,
-                  color: colors.textMuted.withAlpha(180),
+        onTap: onTap,
+        child: SizedBox(
+          height: 54,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                MessagingAgentAvatar(target: target, size: 36, iconSize: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '@${target.target}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -506,7 +674,7 @@ class _ComposerAttachCapsuleButton extends StatelessWidget {
     );
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         enabled: enabled,

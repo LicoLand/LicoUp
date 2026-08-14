@@ -2,6 +2,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  copyFile,
   lstat,
   mkdir,
   mkdtemp,
@@ -38,6 +39,7 @@ const unsafeEvidenceTextPatterns = Object.freeze([
     /(?:\badb\b[^\r\n]*\s-s\s+(?!\$)[^\s]+|\bANDROID_SERIAL\s*=\s*(?!\$)[^\s]+)/u
   ]
 ]);
+const publicationCandidateListLimit = 16 * 1024 * 1024;
 
 function sha256(value) {
   return createHash("sha256").update(String(value), "utf8").digest("hex");
@@ -69,6 +71,38 @@ function redactedFailure(reasonCode, relativePath, privateDetail = "") {
     path: relativePath,
     digest: sha256(`${reasonCode}\0${relativePath}\0${String(privateDetail)}`)
   };
+}
+
+async function materializePublicationCandidateRoot(root = repoRoot) {
+  const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-source-candidate-"));
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: publicationCandidateListLimit,
+      },
+    );
+    const candidates = [...new Set(String(stdout).split("\0").filter(Boolean))];
+    for (const candidate of candidates) {
+      const relative = safeRelativePath(root, candidate);
+      if (relative === null || relative !== candidate.split(path.sep).join("/")) {
+        throw new Error("publication candidate path is invalid");
+      }
+      const source = path.join(root, ...relative.split("/"));
+      const metadata = await lstat(source).catch(() => null);
+      if (!metadata || !metadata.isFile() || metadata.isSymbolicLink()) continue;
+      const target = path.join(temporary, ...relative.split("/"));
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(source, target);
+    }
+    return temporary;
+  } catch (error) {
+    await rm(temporary, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function canonicalFailureReason(rule) {
@@ -153,6 +187,27 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
   };
 }
 
+export function excludeValidatedWorktreePointerFindings(canonical, pointerValid) {
+  if (!pointerValid) return canonical;
+  const worktreeMetadataReasons = new Set([
+    "LICOMESH_DEV_MACHINE_HOST",
+    "LICOMESH_DEV_MACHINE_PATH",
+    "LICOMESH_DEV_MACHINE_USER",
+  ]);
+  const failures = canonical.failures.filter((failure) =>
+    failure.path !== ".git" || !worktreeMetadataReasons.has(failure.reasonCode));
+  return { ...canonical, ok: failures.length === 0, failures };
+}
+
+async function hasValidatedWorktreePointer(scanRoot) {
+  const metadataPath = path.join(scanRoot, ".git");
+  const metadata = await lstat(metadataPath).catch(() => null);
+  if (!metadata?.isFile() || metadata.isSymbolicLink() || metadata.size > 4096) return false;
+  const text = await readFile(metadataPath, "utf8").catch(() => "");
+  const match = /^gitdir: ([^\0\r\n]+)\n?$/u.exec(text);
+  return Boolean(match && path.isAbsolute(match[1]));
+}
+
 function validateCanonicalFindingForRoot(finding, scanRoot) {
   if (scanRoot === repoRoot) {
     return validateCanonicalFinding(finding);
@@ -183,13 +238,8 @@ function isAuditorDelegationEnabled(environment = process.env) {
   return (
     environment.LICO_AUDITOR_GATE_DELEGATED === "1" &&
     environment.GITHUB_ACTIONS === "true" &&
-    (
-      (environment.GITHUB_WORKFLOW === "Client CI" && environment.GITHUB_JOB === "source") ||
-      (
-        environment.GITHUB_WORKFLOW === "Client GitHub release artifact" &&
-        environment.GITHUB_JOB === "preflight"
-      )
-    )
+    environment.GITHUB_WORKFLOW === "Client CI" &&
+    environment.GITHUB_JOB === "source"
   );
 }
 
@@ -224,7 +274,11 @@ async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
     exitCode = Number.isInteger(error?.code) ? error.code : -1;
   }
-  return parseCanonicalResult(stdout, exitCode, scanRoot);
+  const parsed = parseCanonicalResult(stdout, exitCode, scanRoot);
+  return excludeValidatedWorktreePointerFindings(
+    parsed,
+    scanRoot === repoRoot && await hasValidatedWorktreePointer(scanRoot),
+  );
 }
 
 function isRedacted(value) {
@@ -362,6 +416,19 @@ async function runSelfTest() {
       temporary
     );
     requireSelfTest(cleanProtocolResult.ok === true, "SELF_TEST_CLEAN_PROTOCOL_RESULT_REJECTED");
+    const worktreeFiltered = excludeValidatedWorktreePointerFindings({
+      ok: false,
+      scannedFiles: 2,
+      failures: [
+        redactedFailure("LICOMESH_DEV_MACHINE_PATH", ".git", "fixture"),
+        redactedFailure("LICOMESH_DEV_MACHINE_PATH", "source.mjs", "fixture"),
+      ],
+    }, true);
+    requireSelfTest(
+      worktreeFiltered.ok === false && worktreeFiltered.failures.length === 1 &&
+      worktreeFiltered.failures[0].path === "source.mjs",
+      "SELF_TEST_WORKTREE_POINTER_SCOPE_TOO_BROAD",
+    );
 
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
@@ -447,43 +514,28 @@ async function runSelfTest() {
       }),
       "SELF_TEST_GITHUB_AUDITOR_DELEGATION_REJECTED"
     );
-    requireSelfTest(
-      isAuditorDelegationEnabled({
-        LICO_AUDITOR_GATE_DELEGATED: "1",
-        GITHUB_ACTIONS: "true",
-        GITHUB_WORKFLOW: "Client GitHub release artifact",
-        GITHUB_JOB: "preflight"
-      }),
-      "SELF_TEST_RELEASE_AUDITOR_DELEGATION_REJECTED"
-    );
     for (const incompleteEnvironment of [
       {
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       },
       {
         LICO_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_WORKFLOW: "Client CI",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       },
       {
         LICO_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Another workflow",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       },
       {
         LICO_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
         GITHUB_JOB: "another-job"
-      },
-      {
-        LICO_AUDITOR_GATE_DELEGATED: "1",
-        GITHUB_ACTIONS: "true",
-        GITHUB_WORKFLOW: "Client GitHub release artifact",
-        GITHUB_JOB: "source"
       }
     ]) {
       requireSelfTest(
@@ -501,7 +553,8 @@ async function runSelfTest() {
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
         missingCanonicalScannerFailedClosed: true,
-        auditorDelegationRestrictedToClientGitHubJob: true
+        auditorDelegationRestrictedToClientGitHubJob: true,
+        validatedWorktreePointerMetadataExcluded: true
       }
     };
   } finally {
@@ -523,10 +576,27 @@ if (selfTestOnly) {
   }
 } else {
   const delegatedToAuditor = isAuditorDelegationEnabled();
-  const canonical = await runCanonicalScan(repoRoot, "lico-dev", {
-    allowAuditorDelegation: true
-  });
-  const local = await scanEvidenceFiles(repoRoot);
+  let candidateRoot = "";
+  let canonical;
+  let local;
+  try {
+    candidateRoot = await materializePublicationCandidateRoot();
+    canonical = await runCanonicalScan(candidateRoot, "lico-dev", {
+      allowAuditorDelegation: true
+    });
+    local = await scanEvidenceFiles(candidateRoot);
+  } catch {
+    canonical = {
+      ok: false,
+      scannedFiles: 0,
+      failures: [redactedFailure("LICOMESH_DEV_CANDIDATE_SCAN_FAILED", ".")]
+    };
+    local = { scannedFiles: 0, failures: [] };
+  } finally {
+    if (candidateRoot) {
+      await rm(candidateRoot, { recursive: true, force: true });
+    }
+  }
   const report = buildReport(
     canonical,
     local,

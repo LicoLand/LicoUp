@@ -5,18 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   late _FakeSecureMeshGateway gateway;
-  late _RecordingSkillInstaller installer;
   late SecureMeshController controller;
 
   setUp(() {
     gateway = _FakeSecureMeshGateway();
-    installer = _RecordingSkillInstaller();
     controller = SecureMeshController(
       gateway: gateway,
-      skillInstaller: installer,
       operationGate: MobileRelayOperationGate(),
       onStatus: (_) {},
-      onSkillInstallResult: (_) {},
       now: () => DateTime.utc(2026, 1, 2, 3, 4, 5),
     );
   });
@@ -44,41 +40,6 @@ void main() {
 
       expect(controller.fileDraft?.status, SecureMeshFileSyncStatus.confirmed);
       expect(gateway.fileConfirmationCalls, 2);
-    },
-  );
-
-  test(
-    'skill component installs only after file receive confirmation',
-    () async {
-      controller.beginSkillDraft(
-        skillId: 'demo-skill',
-        version: '1.0.0',
-        sourceAgentId: 'source-agent',
-        targetAgentId: 'target-agent',
-        packageDigest:
-            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-        packageFileName: 'demo-skill.zip',
-        packageSize: 32,
-      );
-      controller.setFileDestination('/approved');
-
-      await controller.prepareSkillTransfer();
-
-      expect(
-        controller.skillDraft?.status,
-        SecureMeshSkillSyncStatus.awaitingInstall,
-      );
-      expect(installer.calls, 0);
-
-      await controller.confirmSkillInstall(userConfirmed: true);
-
-      expect(
-        controller.skillDraft?.status,
-        SecureMeshSkillSyncStatus.installed,
-      );
-      expect(installer.calls, 1);
-      expect(installer.agent, 'target-agent');
-      expect(installer.name, 'demo-skill');
     },
   );
 
@@ -247,23 +208,4 @@ final class _FakeSecureMeshGateway implements SecureMeshGateway {
   @override
   Future<SecureMeshKtResponse> executeKt(SecureMeshKtRequest request) async =>
       SecureMeshKtResponse.fromJson(const {'ok': true});
-}
-
-final class _RecordingSkillInstaller implements SecureMeshSkillInstallGateway {
-  int calls = 0;
-  String agent = '';
-  String name = '';
-
-  @override
-  Future<Map<String, dynamic>> applyInstall({
-    required String agent,
-    required String sourcePath,
-    required String name,
-    required bool pin,
-  }) async {
-    calls += 1;
-    this.agent = agent;
-    this.name = name;
-    return const {'ok': true};
-  }
 }

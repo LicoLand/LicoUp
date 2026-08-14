@@ -22,6 +22,9 @@
 | 能力 | 状态 | 当前源码边界 |
 | --- | --- | --- |
 | 本机智能体发现与会话 | 源码中已实现 | 桌面与原生客户端包含本机和明确配置的智能体适配及会话流程。 |
+| 统一 Conversation 后端 | 源码中已实现 | Rust 以一个带索引的 SQLite/WAL 存储作为单聊与群聊、对等 Human/Agent Membership、结构化 Event、Conversation Role、角色池飞轮、不可变运行快照及私有运行时绑定的唯一权威。生成的 Rust/Dart 契约暴露同一组封闭 action；当前不宣称已经提供新群聊与飞轮的产品界面。 |
+| 旧群聊与编排存储 | 已移除 | 单例群聊房间、固定 Designer/Worker/Reviewer 拓扑、JSON 对话投影、TOML 飞轮权威及文件式下属交接均不再作为活动实现保留。一次性原生迁移只在校验完成后导入受支持的自有状态并移除旧存储。 |
+| Gateway Runtime（LLM + Communication Channel） | 源码中已实现 | 单一 `lico-gateway` 进程托管 LLM Gateway 回环层与 Telegram Communication Channel（已配对私聊、`/agent` `/session`、conversation lane）。verified readiness 变更走局部热加载（`gateway inventory reload` / `inventory.sock`：新 ready 准入，绑定/会话保留，不重启进程）。`llm-gateway` CLI 仍为生命周期别名。Channel 仅私聊；发布证据尚未包含对真实 BotFather bot 的验证。 |
 | 技能、历史、备份与用量 | 源码中已实现 | 当前第一阶段存在相应本机客户端模块。 |
 | 完整 Lico Arc 端点 Protocol Line | 未实现 | LicoUp 当前没有可执行的 Lico Arc 自有 Pairwise Protection、Generic Message、Reliable Exchange、协商或 Transport Profile。下方候选外层信封 adapter 不是这条完整端点线路。 |
 | 端点保护 | 待直接退役的预览实现 | Secure Client Mesh 当前通过客户端专用 `licomesh.*` 端点 profile 执行配对、认证加密、新鲜性与防重放处理，以及端点认证结果。它不是 Lico Arc Profile，不承诺未来互操作；完整固定 Lico Arc Protocol Line 可用后将直接替换并退役。 |
@@ -88,6 +91,6 @@
 3. BadTower adapter 只执行有界租约、发送、接收和删除运输操作；
 4. 只有端点认证、解密、新鲜性和防重放检查全部成功后，才会删除信封。
 
-退役的客户端专用通讯站表面已在同一次迁移中移除。不存在永久双线路，也不存在
-Meshrix 或通讯站翻译网关。内层 `licomesh.*` 端点预览当前仍然存在并单独等待
+退役的客户端专用通讯站表面已在同一次迁移中移除。不存在永久双线路或通讯站翻译网关。
+内层 `licomesh.*` 端点预览当前仍然存在并单独等待
 直接退役；本文不会把它误报为已经移除。

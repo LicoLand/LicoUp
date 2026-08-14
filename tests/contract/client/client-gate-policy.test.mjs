@@ -19,7 +19,7 @@ import {
 import { validateClientGateTopology } from "../../../tools/scripts/client-gate.mjs";
 import {
   mergeIncomingTarget,
-  publishTarget,
+  publishTargets,
 } from "../../../tools/scripts/client-github-release-publish.mjs";
 
 function selectedOptionalLanes(paths) {
@@ -36,7 +36,6 @@ test("source policy is mandatory without selecting platform toolchains", () => {
     rust: false,
     android: false,
     dependencies: false,
-    "release-policy": false,
   });
   assert.deepEqual(selectedOptionalLanes(["docs/RUNBOOK.md"]), []);
   for (const forbidden of [
@@ -69,7 +68,11 @@ test("changed paths select only their independent technology lanes", () => {
   );
   assert.deepEqual(
     selectedOptionalLanes([".github/workflows/client-release.yml"]),
-    ["release-policy"],
+    [],
+  );
+  assert.deepEqual(
+    selectedOptionalLanes(["tools/scripts/client-device-demo.mjs"]),
+    [],
   );
   assert.deepEqual(
     selectedOptionalLanes(["package.json"]),
@@ -79,13 +82,6 @@ test("changed paths select only their independent technology lanes", () => {
     selectedOptionalLanes(["tools/scripts/client-gate-policy.mjs"]),
     [],
   );
-});
-
-test("release target selects only its platform-specific lane", () => {
-  const versionPath = ["tools/client-version.json"];
-  assert.equal(classifyClientGatePaths(versionPath, { releaseTarget: "macos-arm64" }).lanes.android, false);
-  assert.equal(classifyClientGatePaths(versionPath, { releaseTarget: "linux-glibc-arm64" }).lanes.android, false);
-  assert.equal(classifyClientGatePaths(versionPath, { releaseTarget: "android-arm64" }).lanes.android, true);
 });
 
 test("gate policy rejects paths that escape the repository", () => {
@@ -106,18 +102,34 @@ test("CI and release workflows implement the declared topology", () => {
   assert.equal(result.releaseTargetCount, Object.keys(CLIENT_RELEASE_TARGETS).length);
 });
 
+test("ordinary regression lanes never run real-device demonstrations", () => {
+  for (const scripts of Object.values(CLIENT_GATE_LANES)) {
+    assert.equal(
+      scripts.some((script) =>
+        script.startsWith("client:demo:device:") &&
+        script !== "client:demo:device:self-test"),
+      false,
+    );
+  }
+  assert.equal(
+    CLIENT_GATE_LANES["release-policy"].filter((script) =>
+      script === "client:demo:device:self-test").length,
+    1,
+  );
+});
+
 test("publisher fails closed before external mutation on an invalid request", () => {
   assert.throws(
-    () => publishTarget({
-      target: "unsupported-target",
+    () => publishTargets({
+      targets: "unsupported-target",
       tag: "v1",
       publish: "false",
     }),
-    /unsupported release target/u,
+    /unknown package targets/u,
   );
   assert.throws(
-    () => publishTarget({
-      target: "macos-arm64",
+    () => publishTargets({
+      targets: "android-direct-arm64-v8a",
       tag: "invalid tag",
       publish: "false",
     }),
@@ -125,32 +137,49 @@ test("publisher fails closed before external mutation on an invalid request", ()
   );
 });
 
-test("publisher appends one exact target and permits only identical recovery", () => {
+test("publisher merges one or many exact targets and permits only identical recovery", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "lico-publisher-contract-"));
   const incoming = path.join(root, "incoming");
+  const androidIncoming = path.join(root, "android-incoming");
   const assets = path.join(root, "assets");
   try {
     mkdirSync(incoming);
+    mkdirSync(androidIncoming);
     mkdirSync(assets);
-    for (const file of CLIENT_RELEASE_TARGETS["macos-arm64"].files) {
+    for (const file of CLIENT_RELEASE_TARGETS["macos-direct-arm64"].files) {
       writeFileSync(path.join(incoming, file), `fixture:${file}`);
     }
     const first = mergeIncomingTarget({
-      target: "macos-arm64",
+      target: "macos-direct-arm64",
       incomingRoot: incoming,
       assetsRoot: assets,
     });
-    assert.equal(first.upload.length, 3);
+    assert.equal(
+      first.upload.length,
+      CLIENT_RELEASE_TARGETS["macos-direct-arm64"].files.length,
+    );
     const recovery = mergeIncomingTarget({
-      target: "macos-arm64",
+      target: "macos-direct-arm64",
       incomingRoot: incoming,
       assetsRoot: assets,
     });
     assert.equal(recovery.upload.length, 0);
-    writeFileSync(path.join(incoming, "LicoUp-macos-arm64.zip"), "conflict");
+    for (const file of CLIENT_RELEASE_TARGETS["android-direct-arm64-v8a"].files) {
+      writeFileSync(path.join(androidIncoming, file), `fixture:${file}`);
+    }
+    const secondTarget = mergeIncomingTarget({
+      target: "android-direct-arm64-v8a",
+      incomingRoot: androidIncoming,
+      assetsRoot: assets,
+    });
+    assert.equal(
+      secondTarget.upload.length,
+      CLIENT_RELEASE_TARGETS["android-direct-arm64-v8a"].files.length,
+    );
+    writeFileSync(path.join(incoming, "LicoUp-macos-arm64.dmg"), "conflict");
     assert.throws(
       () => mergeIncomingTarget({
-        target: "macos-arm64",
+        target: "macos-direct-arm64",
         incomingRoot: incoming,
         assetsRoot: assets,
       }),
@@ -187,7 +216,6 @@ test("change planner emits only bounded booleans, counts, and a digest", () => {
       "rust",
       "android",
       "dependencies",
-      "release_policy",
       "changed_count",
       "change_digest",
     ]);

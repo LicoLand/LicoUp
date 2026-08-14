@@ -16,13 +16,14 @@ pub(super) fn merge_delegated_subagent_sessions(sessions: Vec<Value>) -> Vec<Val
     merge_explicit_parent_child_lineages(&mut indexed_sessions);
 
     let mut main_sessions = Vec::<(usize, i128, Value)>::new();
-    let mut subagent_cards = Vec::<(usize, i128, Value)>::new();
+    let mut subagent_cards = Vec::<(usize, i128, Value, bool)>::new();
     for (index, order_key, session) in indexed_sessions {
         let Some(session) = session else {
             continue;
         };
         if let Some(card) = subagent_card_from_session(&session) {
-            subagent_cards.push((index, order_key, card));
+            let running = session.get("running").and_then(Value::as_bool) == Some(true);
+            subagent_cards.push((index, order_key, card, running));
         } else {
             main_sessions.push((index, order_key, session));
         }
@@ -31,11 +32,14 @@ pub(super) fn merge_delegated_subagent_sessions(sessions: Vec<Value>) -> Vec<Val
     if main_sessions.is_empty() {
         return Vec::new();
     }
-    for (card_index, card_order_key, card) in subagent_cards {
+    for (card_index, card_order_key, card, running) in subagent_cards {
         if let Some(parent_index) =
             nearest_main_session_index(&main_sessions, card_index, card_order_key)
         {
             insert_subagent_card_into_session(&mut main_sessions[parent_index].2, card);
+            if running {
+                mark_session_running(&mut main_sessions[parent_index].2);
+            }
         }
     }
     main_sessions
@@ -109,15 +113,25 @@ fn merge_explicit_parent_child_lineages(indexed_sessions: &mut [(usize, i128, Op
         let Some(child_session) = indexed_sessions[child_index].2.take() else {
             continue;
         };
+        let child_running = child_session.get("running").and_then(Value::as_bool) == Some(true);
         if let Some(card) = subagent_card_from_session(&child_session)
             && let Some(parent_session) = indexed_sessions[parent_index].2.as_mut()
         {
             insert_subagent_card_into_session(parent_session, card);
+            if child_running {
+                mark_session_running(parent_session);
+            }
         }
         remaining_children[parent_index] = remaining_children[parent_index].saturating_sub(1);
         if parent_by_child[parent_index].is_some() && remaining_children[parent_index] == 0 {
             ready.push_back(parent_index);
         }
+    }
+}
+
+fn mark_session_running(session: &mut Value) {
+    if let Some(object) = session.as_object_mut() {
+        object.insert("running".to_string(), Value::Bool(true));
     }
 }
 

@@ -38,6 +38,7 @@ final class ClientSettingsComponentAssembly {
        updateController = ClientUpdateController(
          gateway: clientUpdateService,
          agentService: agentService,
+         dataDirectory: () async => (await portableData.dataDirectory()).path,
          onStatus: (update) => reportStatus(
            chinese: update.chinese,
            english: update.english,

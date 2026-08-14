@@ -75,6 +75,7 @@ fn main() {
     let mut stream = false;
     let mut awaiting_steer = false;
     let mut guided = false;
+    let mut credential_error = false;
     for line in io::stdin().lock().lines() {
         let line = line.unwrap();
         let id = request_id(&line);
@@ -82,7 +83,7 @@ fn main() {
             state_requests += 1;
             println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_state\",\"success\":true,\"data\":{{\"sessionId\":\"{}\"}}}}", id, session_id);
             io::stdout().flush().unwrap();
-            if state_requests > 1 {
+            if state_requests > 1 && !credential_error {
                 std::thread::sleep(std::time::Duration::from_secs(5));
             }
         } else if line.contains("\"type\":\"prompt\"") {
@@ -94,6 +95,13 @@ fn main() {
             println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}}", id);
             if line.contains("steer-case") {
                 awaiting_steer = true;
+                io::stdout().flush().unwrap();
+                continue;
+            }
+            if line.contains("credential-case") {
+                credential_error = true;
+                println!("{{\"type\":\"message_end\",\"message\":{{\"role\":\"assistant\",\"content\":[],\"stopReason\":\"error\",\"errorMessage\":\"503: {{\\\"code\\\":\\\"gateway_credential_unavailable\\\"}}\"}}}}");
+                println!("{{\"type\":\"agent_settled\"}}");
                 io::stdout().flush().unwrap();
                 continue;
             }
@@ -116,8 +124,12 @@ fn main() {
             println!("{{\"type\":\"agent_settled\"}}");
             io::stdout().flush().unwrap();
         } else if line.contains("\"type\":\"get_last_assistant_text\"") {
-            let text = if guided { "pi-guided" } else if stream { "one-two" } else { "pi-ok" };
-            println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"success\":true,\"data\":{{\"text\":\"{}\"}}}}", id, text);
+            if credential_error {
+                println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"success\":true,\"data\":{{\"text\":null}}}}", id);
+            } else {
+                let text = if guided { "pi-guided" } else if stream { "one-two" } else { "pi-ok" };
+                println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"success\":true,\"data\":{{\"text\":\"{}\"}}}}", id, text);
+            }
             io::stdout().flush().unwrap();
         }
     }

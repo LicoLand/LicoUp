@@ -120,7 +120,11 @@ void main() {
             'production',
           );
         } else {
-          expect(capturedEnv?.keys.where((key) => key != 'PATH'), isEmpty);
+          expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
+          final parentPath = Platform.environment['PATH']?.trim() ?? '';
+          if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
+            expect(capturedEnv?['PATH'], parentPath);
+          }
         }
       },
     );

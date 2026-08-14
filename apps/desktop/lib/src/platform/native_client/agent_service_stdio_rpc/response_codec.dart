@@ -107,10 +107,17 @@ class StdioRpcConversationDecoder {
     final kind = decoded['kind'];
     if (kind == 'event') {
       final event = decoded['event'];
+      final persistent =
+          event is Map<String, dynamic> &&
+          (event['turnHandle'] ?? '').toString().trim().isNotEmpty &&
+          (event['conversationId'] ?? '').toString().trim().isNotEmpty &&
+          event['cursor'] is int &&
+          (event['cursor'] as int) > 0;
       if (event is! Map<String, dynamic> ||
           (event['event'] ?? '').toString().trim().isEmpty ||
-          (event['sessionId'] ?? '').toString().trim().isEmpty ||
-          (event['turnId'] ?? '').toString().trim().isEmpty) {
+          (!persistent &&
+              ((event['sessionId'] ?? '').toString().trim().isEmpty ||
+                  (event['turnId'] ?? '').toString().trim().isEmpty))) {
         throw const StdioRpcProtocolViolation();
       }
       return StdioRpcConversationEvent(Map<String, dynamic>.from(event));

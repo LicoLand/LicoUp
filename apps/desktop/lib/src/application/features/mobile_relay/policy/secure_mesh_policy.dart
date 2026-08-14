@@ -2,7 +2,6 @@ import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 abstract final class SecureMeshPolicy {
   static const int maximumFileTransfers = 12;
-  static const int maximumSkillTransfers = 12;
   static const int maximumApprovals = 24;
 
   static Map<String, dynamic> statusProjection(Map<String, dynamic> value) =>
@@ -31,10 +30,6 @@ abstract final class SecureMeshPolicy {
     Map<String, dynamic> value,
   ) => _project(value, _approvalActionKeys);
 
-  static Map<String, dynamic> installActionProjection(
-    Map<String, dynamic> value,
-  ) => _project(value, _installActionKeys);
-
   static SecureMeshApprovalRequest publicApproval(
     SecureMeshApprovalRequest request,
   ) => request.copyWith(
@@ -52,15 +47,6 @@ abstract final class SecureMeshPolicy {
       if (item.id != transfer.id) item,
     transfer,
   ], maximumFileTransfers);
-
-  static List<SecureMeshSkillSyncTransfer> upsertSkillTransfer(
-    List<SecureMeshSkillSyncTransfer> current,
-    SecureMeshSkillSyncTransfer transfer,
-  ) => _bounded([
-    for (final item in current)
-      if (item.id != transfer.id) item,
-    transfer,
-  ], maximumSkillTransfers);
 
   static List<SecureMeshApprovalRequest> upsertApproval(
     List<SecureMeshApprovalRequest> current,
@@ -190,11 +176,5 @@ abstract final class SecureMeshPolicy {
     'plaintextRelayBlocked',
     'trustedEndpointCount',
     'itemCount',
-  };
-  static const Set<String> _installActionKeys = {
-    ..._commonKeys,
-    'snapshotId',
-    'installed',
-    'activated',
   };
 }

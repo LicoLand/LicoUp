@@ -86,12 +86,18 @@ export function validateClientSupportMatrix(raw) {
       `manual integration ${service.id} must not block a client release`);
   }
   const releaseCatalog = loadClientReleaseTargetCatalog();
-  const releaseTargetIds = releaseCatalog.targets.map((target) => target.id);
   const matrixTargetIds = raw.targets.map((target) => target.targetId);
   requireValue(new Set(matrixTargetIds).size === matrixTargetIds.length, "support matrix target ids must be unique");
-  requireValue(JSON.stringify([...matrixTargetIds].sort()) === JSON.stringify([...releaseTargetIds].sort()),
-    "support matrix must contain exactly one row for every release target");
+  const matrixTargetIdSet = new Set(matrixTargetIds);
+  requireValue(releaseCatalog.targets.every((target) =>
+    matrixTargetIdSet.has(target.runtimeTargetId)),
+  "every release package target must reference a known runtime target");
   const rows = raw.targets.map((target) => {
+    requireValue(typeof target.buildSupported === "boolean",
+      `target ${target.targetId} must declare buildSupported`);
+    requireValue(target.deviceClass === undefined ||
+      ["physical-phone", "simulator"].includes(target.deviceClass),
+    `target ${target.targetId} has an invalid deviceClass`);
     const defaults = raw.defaults?.[target.profile];
     requireValue(defaults && typeof defaults === "object", `unknown support matrix profile: ${target.profile}`);
     const statuses = { ...defaults, ...(target.overrides || {}) };
@@ -100,7 +106,12 @@ export function validateClientSupportMatrix(raw) {
     for (const id of serviceIds) {
       requireValue(allowedStatuses.has(statuses[id]), `target ${target.targetId} has invalid status for ${id}`);
     }
-    return { targetId: target.targetId, statuses };
+    return {
+      targetId: target.targetId,
+      buildSupported: target.buildSupported,
+      deviceClass: target.deviceClass || "",
+      statuses,
+    };
   });
   return { services: raw.services, releaseCatalog, rows };
 }
@@ -257,7 +268,6 @@ function capabilityRole(capabilityList, locale) {
 }
 
 function renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities) {
-  const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
     "# LicoUp Compatibility",
     "",
@@ -273,15 +283,28 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "",
     "A build target is not a support claim.",
     "",
-    "| Target | Build | GitHub Release eligible | Physical/device evidence | Store publication | Client | Peer encryption | Mobile relay |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    "LicoUp for macOS supports Apple Silicon (`arm64`) on macOS 11 or later. Intel (`x86_64`) Macs and Rosetta are outside the supported product boundary; no Intel app or update package is produced.",
+    "",
+    "| Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |",
+    "| --- | --- | --- | --- | --- | --- |"
   ];
   for (const row of validated.rows) {
-    const target = targetById.get(row.targetId);
-    const deviceEvidence = target.deviceClass === "simulator"
+    const deviceEvidence = row.deviceClass === "simulator"
       ? "simulator only"
       : "not claimed";
-    lines.push(`| ${row.targetId} | ${target.supported ? "available" : "unavailable"} | ${target.releaseSupported ? "eligible" : "not eligible"} | ${deviceEvidence} | not claimed | ${selectedStatus(row, "client-shell")} | ${selectedStatus(row, "secure-mesh-pairwise")} | ${selectedStatus(row, "mobile-relay")} |`);
+    lines.push(`| ${row.targetId} | ${row.buildSupported ? "available" : "unavailable"} | ${deviceEvidence} | ${selectedStatus(row, "client-shell")} | ${selectedStatus(row, "secure-mesh-pairwise")} | ${selectedStatus(row, "mobile-relay")} |`);
+  }
+  lines.push(
+    "",
+    "## Release package targets",
+    "",
+    "Runtime targets and release packages are intentionally different authorities. Each row below is one native package for one distribution channel; selecting several rows produces several independent package directories.",
+    "",
+    "| Package target | Runtime target | Platform | Channel | Format | Architecture | Package build | Release eligible | Update authority |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const target of validated.releaseCatalog.targets) {
+    lines.push(`| ${target.id} | ${target.runtimeTargetId} | ${target.platform} | ${target.channel} | ${target.packageFormat} | ${target.arch} | ${target.packageBuildSupported ? "available" : "blocked"} | ${target.releaseSupported ? "eligible" : "not eligible"} | ${target.update.kind} |`);
   }
   lines.push(
     "",
@@ -291,7 +314,8 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "- `preview` means the feature is still changing.",
     "- `unverified` means there is no current support claim.",
     "- `unsupported` means the feature must not be presented as available.",
-    "- `eligible` means a release operator may explicitly select that target; it does not mean any current release includes it.",
+    "- `eligible` means a release operator may explicitly select that exact package target; it does not mean any current release includes it.",
+    "- A generic Linux archive is an internal verification carrier, not an installable release package. Linux distribution uses native package or repository targets.",
     "- Feature status does not establish native-host, physical-device, biometric, hardware-custody, or cross-device evidence. Those claims remain `not claimed`; a simulator row proves only its simulator closure.",
     "- Store publication is not claimed by this matrix and requires a separate channel-specific result.",
     "- Peer content is encrypted by the sending client. Sensitive runtime data stays local.",
@@ -301,12 +325,12 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "This table projects the native driver inventory. Runtime protocol and capability fields remain owned by that inventory.",
     "Lifecycle evidence columns describe whether the lane can emit a native receipt for that stage. `submitted` is always a local client fact. On each turn, the UI shows only receipts actually observed; unsupported or absent stages are skipped and are never inferred from a later response or terminal result.",
     "",
-    "| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | GUI-exit survival | Active-turn reattach | Ordered cursor replay | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const driver of drivers) {
     const adapterReadiness = readiness.get(driver.agentId);
-    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${yesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${yesNo(driver.capabilityMatrix.exactResume)} | ${yesNo(driver.capabilityMatrix.streaming)} | ${yesNo(driver.lifecycleEvidence.accepted)} | ${yesNo(driver.lifecycleEvidence.processing)} | ${yesNo(driver.lifecycleEvidence.responding)} | ${yesNo(driver.lifecycleEvidence.completed)} | ${yesNo(driver.capabilityMatrix.interruptSteer)} |`);
+    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${yesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${yesNo(driver.capabilityMatrix.exactResume)} | ${yesNo(driver.capabilityMatrix.streaming)} | ${yesNo(driver.capabilityMatrix.hostSurvivesGuiDisconnect)} | ${yesNo(driver.capabilityMatrix.activeTurnReattach)} | ${yesNo(driver.capabilityMatrix.orderedCursorReplay)} | ${yesNo(driver.lifecycleEvidence.accepted)} | ${yesNo(driver.lifecycleEvidence.processing)} | ${yesNo(driver.lifecycleEvidence.responding)} | ${yesNo(driver.lifecycleEvidence.completed)} | ${yesNo(driver.capabilityMatrix.interruptSteer)} |`);
   }
   lines.push(
     "",
@@ -342,7 +366,6 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
 }
 
 function renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities) {
-  const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
     "# LicoUp 兼容性",
     "",
@@ -358,15 +381,28 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "",
     "可以构建，不代表已经支持。",
     "",
-    "| 目标 | 构建 | 可选入 GitHub Release | 真机/设备证据 | 商店发布 | 客户端 | 对端加密 | 移动中转 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    "LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。",
+    "",
+    "| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |",
+    "| --- | --- | --- | --- | --- | --- |"
   ];
   for (const row of validated.rows) {
-    const target = targetById.get(row.targetId);
-    const deviceEvidence = target.deviceClass === "simulator"
+    const deviceEvidence = row.deviceClass === "simulator"
       ? "仅模拟器"
       : "未声明";
-    lines.push(`| ${row.targetId} | ${target.supported ? "可用" : "不可用"} | ${target.releaseSupported ? "可选入" : "不可选入"} | ${deviceEvidence} | 未声明 | ${chineseStatus[selectedStatus(row, "client-shell")]} | ${chineseStatus[selectedStatus(row, "secure-mesh-pairwise")]} | ${chineseStatus[selectedStatus(row, "mobile-relay")]} |`);
+    lines.push(`| ${row.targetId} | ${row.buildSupported ? "可用" : "不可用"} | ${deviceEvidence} | ${chineseStatus[selectedStatus(row, "client-shell")]} | ${chineseStatus[selectedStatus(row, "secure-mesh-pairwise")]} | ${chineseStatus[selectedStatus(row, "mobile-relay")]} |`);
+  }
+  lines.push(
+    "",
+    "## 发布包目标",
+    "",
+    "运行目标和发布包目标是有意分离的两套权威。下表每一行只代表一个分发渠道的一种原生包；同时选择多行时，会生成多个相互独立的发布包目录。",
+    "",
+    "| 发布包目标 | 运行目标 | 平台 | 渠道 | 格式 | 架构 | 包构建 | 可发布 | 更新权威 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const target of validated.releaseCatalog.targets) {
+    lines.push(`| ${target.id} | ${target.runtimeTargetId} | ${target.platform} | ${target.channel} | ${target.packageFormat} | ${target.arch} | ${target.packageBuildSupported ? "可用" : "阻塞"} | ${target.releaseSupported ? "可选入" : "不可选入"} | ${target.update.kind} |`);
   }
   lines.push(
     "",
@@ -376,7 +412,8 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "- “预览”表示功能仍在变化。",
     "- “未验证”表示当前没有支持声明。",
     "- “不支持”表示界面不得把该功能显示为可用。",
-    "- “可选入”表示发布人员可以明确选择该目标，不表示任何当前发布已经包含它。",
+    "- “可选入”表示发布人员可以明确选择该精确发布包目标，不表示任何当前发布已经包含它。",
+    "- 通用 Linux 压缩包只可作为内部验证载体，不是可安装发布包；Linux 分发必须使用原生包或软件仓库目标。",
     "- 功能状态不能证明原生宿主、真机、生物识别、硬件密钥保管或跨设备证据；这些结论保持“未声明”，模拟器行只证明模拟器闭环。",
     "- 本矩阵不声明商店发布；商店发布必须有独立的渠道结论。",
     "- 对端内容由发送客户端加密，敏感运行时数据留在本机。",
@@ -386,12 +423,12 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "本表投影原生驱动清单。运行协议和能力字段仍由该清单负责。",
     "生命周期证据列表示该通道是否能为对应阶段发出原生回执。“已发送”始终是客户端本地事实。每一轮中，界面只展示实际观测到的回执；不支持或未到达的阶段直接跳过，不得通过后续回复或终态结果倒推。",
     "",
-    "| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | GUI 退出后续跑 | 活动轮次重附着 | 有序游标重放 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const driver of drivers) {
     const adapterReadiness = readiness.get(driver.agentId);
-    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${chineseYesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${chineseYesNo(driver.capabilityMatrix.exactResume)} | ${chineseYesNo(driver.capabilityMatrix.streaming)} | ${chineseYesNo(driver.lifecycleEvidence.accepted)} | ${chineseYesNo(driver.lifecycleEvidence.processing)} | ${chineseYesNo(driver.lifecycleEvidence.responding)} | ${chineseYesNo(driver.lifecycleEvidence.completed)} | ${chineseYesNo(driver.capabilityMatrix.interruptSteer)} |`);
+    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${chineseYesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${chineseYesNo(driver.capabilityMatrix.exactResume)} | ${chineseYesNo(driver.capabilityMatrix.streaming)} | ${chineseYesNo(driver.capabilityMatrix.hostSurvivesGuiDisconnect)} | ${chineseYesNo(driver.capabilityMatrix.activeTurnReattach)} | ${chineseYesNo(driver.capabilityMatrix.orderedCursorReplay)} | ${chineseYesNo(driver.lifecycleEvidence.accepted)} | ${chineseYesNo(driver.lifecycleEvidence.processing)} | ${chineseYesNo(driver.lifecycleEvidence.responding)} | ${chineseYesNo(driver.lifecycleEvidence.completed)} | ${chineseYesNo(driver.capabilityMatrix.interruptSteer)} |`);
   }
   lines.push(
     "",

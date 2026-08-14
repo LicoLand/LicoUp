@@ -34,8 +34,9 @@ abstract interface class NativeCliProcessContext {
   Future<Process> startProcess(
     String executable,
     List<String> arguments,
-    Map<String, String>? environment,
-  );
+    Map<String, String>? environment, {
+    ProcessStartMode mode = ProcessStartMode.normal,
+  });
 }
 
 /// Persistent stdio transport used only on supported desktop runtimes.
