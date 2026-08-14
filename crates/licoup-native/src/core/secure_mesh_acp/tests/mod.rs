@@ -50,7 +50,7 @@ fn binding_fixture(class: SecureMeshAcpPayloadClass) -> SecureMeshAcpEnvelopeBin
 
 fn context_fixture(session_id: &str) -> SecureMeshContentContext {
     let created_at = OffsetDateTime::now_utc();
-    let expires_at = created_at + Duration::minutes(5);
+    let expires_at = created_at + Duration::minutes(10);
     SecureMeshContentContext::new(
         general_purpose::URL_SAFE_NO_PAD.encode(&Sha256::digest(b"env-acp-1")[..24]),
         "msg-acp-1",

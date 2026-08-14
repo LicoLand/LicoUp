@@ -2,7 +2,7 @@ use super::super::test_support::*;
 #[test]
 fn e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_session() {
     let dir = temp_dir("mobile-relay-e2ee-status-platform-secret-store");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
@@ -110,7 +110,7 @@ fn e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_sessio
 #[test]
 fn e2ee_status_reports_only_confirmed_negotiated_durable_session() {
     let dir = temp_dir("mobile-relay-e2ee-status-confirmed-session");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
     with_mobile_relay_secret_store_override(store_override, || {
@@ -151,7 +151,7 @@ fn e2ee_status_reports_only_confirmed_negotiated_durable_session() {
 #[test]
 fn public_config_get_does_not_begin_secret_store_authorization_session() {
     let dir = temp_dir("mobile-relay-public-config-no-authorization");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut config = default_config();
     config["pairingId"] = json!("pair-public-no-auth");
@@ -199,7 +199,7 @@ fn public_config_get_does_not_begin_secret_store_authorization_session() {
 #[test]
 fn e2ee_status_without_authorization_does_not_begin_secret_store_session() {
     let dir = temp_dir("mobile-relay-e2ee-status-no-authorization");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(

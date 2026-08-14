@@ -42,6 +42,115 @@ void main() {
     expect(find.byType(ConversationProcessOperationList), findsNothing);
   });
 
+  testWidgets('expanded operations scroll below a fixed status header', (
+    tester,
+  ) async {
+    final events = List<AgentConversationMessage>.generate(
+      18,
+      (index) => _toolEvent(
+        'bounded-$index',
+        _at(10, 1, index),
+        title: 'Operation ${index + 1}',
+        subtitle: 'Native agent activity',
+      ),
+    );
+    await _pumpRow(tester, events: events, height: 700);
+
+    const toggleKey = Key('messaging-process-status-toggle');
+    const scrollKey = ValueKey(
+      'conversation-process-operation-scroll-bounded-0',
+    );
+    await tester.tap(find.byKey(toggleKey));
+    await tester.pumpAndSettle();
+
+    final scroll = find.byKey(scrollKey);
+    expect(scroll, findsOneWidget);
+    expect(
+      tester.getSize(scroll).height,
+      lessThanOrEqualTo(conversationProcessExpandedBodyMaxHeight(700)),
+    );
+    final headerTop = tester.getTopLeft(find.byKey(toggleKey)).dy;
+    final firstOperation = find.byKey(
+      const ValueKey('conversation-process-operation-bounded-0'),
+    );
+    final firstOperationTop = tester.getTopLeft(firstOperation).dy;
+
+    await tester.drag(scroll, const Offset(0, -280));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(find.byKey(toggleKey)).dy, headerTop);
+    expect(tester.getTopLeft(firstOperation).dy, lessThan(firstOperationTop));
+
+    await tester.tap(find.byKey(toggleKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(scrollKey), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('expansion pins the status header below the top overlay', (
+    tester,
+  ) async {
+    const topOverlayInset = 72.0;
+    final events = List<AgentConversationMessage>.generate(
+      18,
+      (index) => _toolEvent(
+        'pinned-$index',
+        _at(10, 1, index),
+        title: 'Operation ${index + 1}',
+        subtitle: 'Native agent activity',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 700,
+            child: Stack(
+              children: [
+                ListView(
+                  reverse: true,
+                  padding: const EdgeInsets.only(top: topOverlayInset),
+                  children: [
+                    const SizedBox(height: 420),
+                    MessagingProcessStatusRow(
+                      events: events,
+                      adapter: AgentRenderAdapter.fallback(),
+                      detailsBuilder: buildAgentConversationEventDetails,
+                      topOverlayInset: topOverlayInset,
+                    ),
+                    const SizedBox(height: 420),
+                  ],
+                ),
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: topOverlayInset,
+                  child: ColoredBox(color: Colors.black),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    const toggleKey = Key('messaging-process-status-toggle');
+    await tester.ensureVisible(find.byKey(toggleKey));
+    await tester.tap(find.byKey(toggleKey));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.byKey(toggleKey)).dy,
+      closeTo(topOverlayInset, 2),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('active row presents the working label and top-edge pulse', (
     tester,
   ) async {
@@ -302,6 +411,7 @@ Future<void> _pumpRow(
   required List<AgentConversationMessage> events,
   bool active = false,
   double detailWidth = 600,
+  double height = 400,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -316,7 +426,7 @@ Future<void> _pumpRow(
       home: Scaffold(
         body: SizedBox(
           width: detailWidth,
-          height: 400,
+          height: height,
           child: MessagingProcessStatusRow(
             events: events,
             adapter: AgentRenderAdapter.fallback(),

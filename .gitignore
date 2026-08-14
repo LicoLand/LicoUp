@@ -13,8 +13,8 @@ Thumbs.db
 
 # Local generated and runtime assets
 *.log
-/build
-/cache
+/build/
+/cache/
 coverage/
 .cache/
 outputs/
@@ -64,16 +64,43 @@ apps/desktop/windows/flutter/ephemeral/
 *.tar.xz
 *.rar
 
+# Sensitive certificate, key, and provisioning material. Defense in depth only;
+# the local Git gates and the push Ruleset remain the effective publication
+# guards, and public-key-only suffixes (.pub, .asc, .gpg) stay trackable.
+*.cer
+*.cert
+*.csr
+*.certsigningrequest
+*.certSigningRequest
+*.crt
+*.der
+*.pem
+*.p7b
+*.p7c
+*.p12
+*.pfx
+*.pkcs12
+*.key
+*.p8
+*.pk8
+*.pkcs8
+*.jks
+*.keystore
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+*.provisioningprofile
+
 # Local browser/test artifacts
 .playwright-cli/
 test-results/
 
 # Local planning, agent, and one-off work
-/brand/
 /docs/plans/
+/apps/desktop/docs/plans/
+/design-qa.md
 /docs/reports/
-/docs/plans
-/docs/reports
 /.agents/
 /.claude/
 /.codex/

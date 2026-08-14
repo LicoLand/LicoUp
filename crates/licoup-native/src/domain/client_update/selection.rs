@@ -14,7 +14,7 @@ use super::{
 
 pub(super) fn verify_update_selection(params: &Value) -> Result<VerifiedManifest> {
     let channel = channel_name(params)?;
-    let current_version = product_version();
+    let current_version = product_version(params)?;
     let target_id = selected_target_id(params)?;
     let manifest = load_manifest(params)?;
     ensure!(

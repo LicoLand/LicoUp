@@ -5,7 +5,6 @@ const int clientStateMaxDocumentBytes = 16777216;
 const String clientStateSchemaVersion = 'v0.0.1:schema:definition-1';
 
 enum ClientStateCollection {
-  adaptiveFlywheel("adaptive-flywheel"),
   settings("settings"),
   targets("targets"),
   targetDiscoveryCache("target-discovery-cache"),

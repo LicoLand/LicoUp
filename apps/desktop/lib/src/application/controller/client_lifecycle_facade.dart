@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_maintenance_facade.dart';
@@ -47,6 +45,7 @@ mixin ClientLifecycleFacade
   CatalogConvergenceController get catalogConvergenceController;
   LlmGatewayLifecycleController get llmGatewayLifecycleController;
   LlmVaultAuthorization get llmVaultAuthorization;
+  @override
   Future<void> loadConversationSessions(String agentId);
 
   String portableDataPath = '';
@@ -95,6 +94,10 @@ mixin ClientLifecycleFacade
                   id: 'opencode_serve',
                   action: ensureOpencodeServeSilently,
                 ),
+                ClientBootstrapStep(
+                  id: 'client_update_check',
+                  action: checkClientUpdateSilently,
+                ),
               ],
         runBackgroundSteps: runBackgroundSteps,
         finalStep: ClientBootstrapStep(
@@ -115,8 +118,8 @@ mixin ClientLifecycleFacade
   Future<void> _initializeClientStorage() async {
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
-    await hydrateConversationProjectionCache();
     await loadConversationToolAllowlists();
+    await loadCurrentViewRestore();
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
     );
@@ -126,13 +129,23 @@ mixin ClientLifecycleFacade
 
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
-    final resolvedAppearancePresetId =
-        presentation?.appearancePresetId ?? AppearancePresetIds.defaultSystem;
+    final requestedAppearancePresetId =
+        presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
+    // System-following and light themes are not ready yet, so a configured
+    // brightness that lands on them falls back to the dark theme at startup.
+    final resolvedAppearancePresetId = switch (appearanceBrightnessSelectionFor(
+      requestedAppearancePresetId,
+      appearancePresetConfigs,
+    )) {
+      AppearanceBrightnessSelection.system ||
+      AppearanceBrightnessSelection.light => AppearancePresetIds.licoSoda,
+      _ => requestedAppearancePresetId,
+    };
     if (!hasAppearancePresetConfig(
       resolvedAppearancePresetId,
       appearancePresetConfigs,
     )) {
-      appearancePresetId = AppearancePresetIds.defaultSystem;
+      appearancePresetId = AppearancePresetIds.licoSoda;
       await layoutManager.setAppearancePreset(appearancePresetId);
     } else {
       appearancePresetId = resolvedAppearancePresetId;
@@ -142,7 +155,6 @@ mixin ClientLifecycleFacade
     );
     await targetController.loadTabOrder();
     await targetController.hydrateCache();
-    await loadAgentOrchestrationPolicy();
   }
 
   Future<void> _initializeClientCore() async {
@@ -165,6 +177,15 @@ mixin ClientLifecycleFacade
     }
   }
 
+  /// Startup auto-check: silently checks the GitHub release source once.
+  /// Failures are non-blocking and never disturb the user; when an update is
+  /// found the Settings card naturally shows the update-available state.
+  Future<void> checkClientUpdateSilently() async {
+    try {
+      await checkClientUpdateFromGithub();
+    } catch (_) {}
+  }
+
   Future<void> _finalizeClientInitialization() async {
     if (lifecycleProjection.disposed) return;
     if (!mobileClientRuntimePlatform) {
@@ -174,12 +195,8 @@ mixin ClientLifecycleFacade
       await sectionPreloadController.awaitSection(currentSection);
       if (lifecycleProjection.disposed) return;
       startAgentUsagePolling();
-      skillAutoUpdateScheduler.start();
-      if (kReleaseMode) {
-        unawaited(clientUpdateController.prepareInBackground());
-      }
       final agentId = selectedConversationAgentId.trim();
-      if (agentId.isNotEmpty && !selectedConversationIsOrchestration) {
+      if (agentId.isNotEmpty) {
         unawaited(loadConversationSessions(agentId));
       }
     }

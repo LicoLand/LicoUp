@@ -5,6 +5,8 @@ import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fixtures/agent_usage_panel/usage_panel_fixtures.dart';
+
 void main() {
   test('scans agent usage through licoup agent-usage scan', () async {
     final captured = <List<String>>[];
@@ -108,6 +110,77 @@ void main() {
     expect(captured.single, contains('--force-refresh'));
     expect(captured.single, isNot(contains('--transient')));
   });
+
+  test(
+    'scan carries the current native workflow collection unchanged',
+    () async {
+      final workflow = syntheticWorkflowUsageReport().workflows.single;
+      final agentService = AgentService(
+        runCliExecutable: (executable, args, env) async => ProcessResult(
+          0,
+          0,
+          jsonEncode({
+            'ok': true,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+            'generatedAt': '2026-08-09T00:00:00Z',
+            'summary': {'agentCount': 1, 'totalTokens': 18},
+            'agents': const [],
+            'workflow': {
+              'schemaVersion': agentUsageWorkflowReportSchema,
+              'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
+              'resultKind': agentUsageWorkflowResultKind,
+              'summary': workflow.totals.toJson(),
+              'workflows': [workflow.toJson()],
+            },
+          }),
+          '',
+        ),
+      );
+
+      final report = await const AgentUsageService().scan(
+        agentService: agentService,
+        historyDays: 90,
+      );
+      expect(report.workflows, hasLength(1));
+      expect(report.workflowTotalTokens, 52);
+      expect(report.workflows.single.roots.single.children, hasLength(3));
+    },
+  );
+
+  test(
+    'scan rejects an unknown native workflow generation at the boundary',
+    () async {
+      final agentService = AgentService(
+        runCliExecutable: (executable, args, env) async => ProcessResult(
+          0,
+          0,
+          jsonEncode({
+            'ok': true,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+            'generatedAt': '2026-08-09T00:00:00Z',
+            'summary': const {'agentCount': 0, 'totalTokens': 0},
+            'agents': const [],
+            'workflow': {
+              'schemaVersion': 'licoup.workflow-token-report.v0',
+              'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
+              'resultKind': agentUsageWorkflowResultKind,
+              'summary': const {},
+              'workflows': const [],
+            },
+          }),
+          '',
+        ),
+      );
+      expect(
+        () => const AgentUsageService().scan(agentService: agentService),
+        throwsA(isA<FormatException>()),
+      );
+    },
+  );
 
   test('bounds a manually selected history window to 90 days', () async {
     final captured = <List<String>>[];
@@ -219,6 +292,37 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  test(
+    'retained-report service rejects an invalid workflow envelope before caching',
+    () async {
+      final agentService = AgentService(
+        runCliExecutable: (executable, args, env) async => ProcessResult(
+          0,
+          0,
+          jsonEncode({
+            'ok': true,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+            'workflow': {
+              'schemaVersion': 'licoup.workflow-token-report.v0',
+              'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
+              'resultKind': agentUsageWorkflowResultKind,
+              'summary': const {},
+              'workflows': const [],
+            },
+            'reports': const [],
+          }),
+          '',
+        ),
+      );
+      expect(
+        () => const AgentUsageService().reports(agentService: agentService),
+        throwsA(isA<FormatException>()),
+      );
+    },
+  );
 
   test('requires schemaVersion to be the exact integer 6', () {
     for (final schemaVersion in <Object>[6.0, 6.9, '6']) {

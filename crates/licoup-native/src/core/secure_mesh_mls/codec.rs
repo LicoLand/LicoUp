@@ -6,7 +6,7 @@ pub(super) fn deserialize_protocol_message(
     message: &[u8],
     context: &'static str,
 ) -> Result<ProtocolMessage> {
-    MlsMessageIn::tls_deserialize_exact(message.to_vec())
+    MlsMessageIn::tls_deserialize_exact(message)
         .context(context)?
         .try_into_protocol_message()
         .map_err(|_| anyhow!("secure mesh MLS message is not a protocol message"))
@@ -83,11 +83,14 @@ impl<'a> MlsPayloadReader<'a> {
 
 pub(super) fn hash_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    format!(
-        "sha256:{}",
-        digest
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    )
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut hex = [0u8; 64];
+    for (index, byte) in digest.iter().enumerate() {
+        hex[index * 2] = HEX[usize::from(byte >> 4)];
+        hex[index * 2 + 1] = HEX[usize::from(byte & 0x0f)];
+    }
+    let mut out = String::with_capacity(71);
+    out.push_str("sha256:");
+    out.push_str(std::str::from_utf8(&hex).expect("hex digits are ASCII"));
+    out
 }

@@ -6,7 +6,7 @@ fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::ne
 fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly_budgeted() {
     let sv_synthetic_disposable_cle = synthetic_value("synthetic-disposable-cleanup-canary");
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -28,43 +28,31 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
                 assert!(secret_store.get_secret(handle)?.is_some());
             }
 
-            let mut config = normalize_config(json!({
-                "pairedDevices": [
-                    {
-                        "id": "cleanup-device-a",
-                        "pairingId": "cleanup-pairing-a",
-                        "mobileToken": "",
-                        "credentialPresent": true
-                    },
-                    {
-                        "id": "cleanup-device-b",
-                        "pairingId": "cleanup-pairing-b",
-                        "mobileToken": "",
-                        "credentialPresent": true
-                    }
-                ]
-            }));
+            let mut config = default_config();
+            config["pairedDevices"] = json!([
+                {
+                    "id": "cleanup-device-a",
+                    "pairingId": "cleanup-pairing-a",
+                    "mobileToken": "",
+                    "credentialPresent": true
+                },
+                {
+                    "id": "cleanup-device-b",
+                    "pairingId": "cleanup-pairing-b",
+                    "mobileToken": "",
+                    "credentialPresent": true
+                }
+            ]);
             save_config_raw(&mut config)?;
             let root_handles = disposable_cleanup_root_secret_handles(
                 &config,
                 MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
             )?;
-            let paired_device_handle_count = config
-                .get("pairedDevices")
-                .and_then(Value::as_array)
-                .map(|devices| {
-                    devices
-                        .iter()
-                        .filter_map(paired_device_token_secret_store_key)
-                        .collect::<std::collections::HashSet<_>>()
-                        .len()
-                })
-                .unwrap_or_default();
             assert_eq!(
                 root_handles.len(),
                 1 + MOBILE_RELAY_NATIVE_TOKEN_SECRET_FIELDS.len()
                     + MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS.len()
-                    + paired_device_handle_count
+                    + 2
             );
             let mut cleanup_probes = Vec::new();
             for handle in &root_handles {
@@ -162,7 +150,7 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
 #[test]
 fn mobile_relay_disposable_secret_cleanup_requires_exact_confirmation_and_accepts_empty_root() {
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup-empty-root");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
 
     for params in [
@@ -246,7 +234,7 @@ fn mobile_relay_disposable_secret_cleanup_propagates_delete_failures() {
     }
 
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup-delete-failure");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(DeleteFailingSecretStore {
         inner: EphemeralSecretStore::new(),
         rejected_key: "mobileToken",

@@ -271,3 +271,112 @@ fn native_history_skips_dependency_directories() {
             .any(|item| item["reason"] == "excluded_non_history_directory")
     );
 }
+#[test]
+fn exact_cursor_read_avoids_unrelated_project_trees() {
+    let home = temp_dir("exact-cursor-directed");
+    let wanted_id = "019f0000-0000-7000-8000-0000000000f1";
+    let transcript = home
+        .join(".cursor/projects/wanted-project/agent-transcripts")
+        .join(wanted_id)
+        .join(format!("{wanted_id}.jsonl"));
+    fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    fs::write(
+        &transcript,
+        concat!(
+            r#"{"role":"user","message":{"content":[{"type":"text","text":"Directed prompt"}]}}"#,
+            "\n",
+            r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Directed reply"}]}}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+    // Wide unrelated trees: two other projects with their own conversation
+    // directories, each carrying delegated-looking subdirectories.
+    for (index, project) in ["other-one", "other-two"].iter().enumerate() {
+        let other_id = format!("019f0000-0000-7000-8000-0000000000f{}", index + 2);
+        let other_root = home
+            .join(".cursor/projects")
+            .join(project)
+            .join("agent-transcripts")
+            .join(&other_id);
+        fs::create_dir_all(other_root.join("subagents")).unwrap();
+        fs::write(
+            other_root.join(format!("{other_id}.jsonl")),
+            r#"{"role":"user","message":{"content":[{"type":"text","text":"unrelated"}]}}"#,
+        )
+        .unwrap();
+        fs::write(
+            other_root.join("subagents/delegated.jsonl"),
+            r#"{"role":"user","message":{"content":[{"type":"text","text":"unrelated task"}]}}"#,
+        )
+        .unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "homeDir": display_path(&home),
+        "sessionIds": [wanted_id]
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], wanted_id);
+    assert!(
+        sessions[0]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"] == "Directed prompt")
+    );
+    // Directory pruning keeps the walk on the requested layout paths: the
+    // unrelated conversation directories are skipped, never descended.
+    assert_eq!(listed["sources"]["filesSeen"], 1);
+    assert!(
+        listed["sources"]["directoryEntriesSeen"].as_u64().unwrap() <= 10,
+        "directed exact lookup avoids unrelated trees"
+    );
+    assert!(
+        listed["sources"]["skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["reason"] == "exact_session_miss")
+    );
+}
+
+#[test]
+fn query_test_temp_dir_cleans_on_normal_return_and_unwind() {
+    let normal_path = {
+        let dir = temp_dir("guard-normal");
+        let path = dir.to_path_buf();
+        assert!(path.is_dir());
+        path
+    };
+    assert!(!normal_path.exists());
+
+    let observed = std::cell::RefCell::new(None);
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let dir = temp_dir("guard-unwind");
+        observed.replace(Some(dir.to_path_buf()));
+        panic!("synthetic guard unwind");
+    }));
+    assert!(unwind.is_err());
+    assert!(!observed.into_inner().unwrap().exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn query_test_temp_dir_refuses_symlink_replacement() {
+    use std::os::unix::fs::symlink;
+
+    let external = temp_dir("guard-symlink-external");
+    let guarded = temp_dir("guard-symlink-root");
+    let guarded_path = guarded.to_path_buf();
+    fs::remove_dir(&guarded_path).unwrap();
+    symlink(external.as_path(), &guarded_path).unwrap();
+    let error = guarded.close().unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(external.is_dir());
+    fs::remove_file(guarded_path).unwrap();
+}

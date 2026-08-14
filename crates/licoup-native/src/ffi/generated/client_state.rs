@@ -8,8 +8,6 @@ pub const CLIENT_STATE_MAX_DOCUMENT_BYTES: usize = 16777216;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ClientStateCollection {
-    #[serde(rename = "adaptive-flywheel")]
-    AdaptiveFlywheel,
     #[serde(rename = "settings")]
     Settings,
     #[serde(rename = "targets")]
@@ -45,7 +43,6 @@ pub enum ClientStateCollection {
 impl ClientStateCollection {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::AdaptiveFlywheel => "adaptive-flywheel",
             Self::Settings => "settings",
             Self::Targets => "targets",
             Self::TargetDiscoveryCache => "target-discovery-cache",

@@ -236,10 +236,11 @@ export async function checkFileSecurityAndClientState(context) {
   );
   assert(
     clientStateSources["activity.rs"].includes("VecDeque") &&
-      clientStateSources["activity.rs"].includes("MAX_ACTIVITY_EVENT_BYTES") &&
-      clientStateSources["activity.rs"].includes("MAX_ACTIVITY_EVENTS") &&
-      clientStateSources["activity.rs"].includes("read_private_text_bounded") &&
-      clientStateSources["activity.rs"].includes("redact_activity_payload") &&
+    clientStateSources["activity.rs"].includes("policy::MAX_ACTIVITY_EVENT_BYTES") &&
+      clientStateSources["activity.rs"].includes("policy::MAX_ACTIVITY_EVENTS") &&
+      clientStateSources["activity.rs"].includes("open_private_text_bounded") &&
+      clientStateSources["activity.rs"].includes("redaction::redact_activity_payload") &&
+      clientStateSources["activity.rs"].includes("Read::by_ref(&mut reader)") &&
       !clientStateSources["activity.rs"].includes("display_path"),
     "ActivityLog must keep bounded latest-window JSONL reads and privacy projection"
   );

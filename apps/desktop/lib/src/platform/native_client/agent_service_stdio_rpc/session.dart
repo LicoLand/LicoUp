@@ -215,14 +215,16 @@ class StdioRpcSession {
     } on Object {
       // Teardown deliberately ignores and redacts process-specific details.
     }
-    try {
-      await process.exitCode.timeout(stdioRpcShutdownTimeout);
-    } on Object {
-      process.kill();
+    if (kill) {
       try {
         await process.exitCode.timeout(stdioRpcShutdownTimeout);
       } on Object {
-        // The process is detached from this client instance after this bound.
+        process.kill();
+        try {
+          await process.exitCode.timeout(stdioRpcShutdownTimeout);
+        } on Object {
+          // The process is detached from this client instance after this bound.
+        }
       }
     }
     await _stdoutSubscription.cancel();

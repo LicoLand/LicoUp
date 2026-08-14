@@ -11,10 +11,8 @@ void main() {
     final statuses = <MobileRelayFeatureStatus>[];
     final controller = SecureMeshController(
       gateway: _FailingSecureMeshGateway(),
-      skillInstaller: _FakeSkillInstaller(),
       operationGate: MobileRelayOperationGate(),
       onStatus: statuses.add,
-      onSkillInstallResult: (_) {},
     );
     addTearDown(controller.dispose);
 
@@ -32,10 +30,8 @@ void main() {
   final sv_private_token = _synth('private-token');
     final controller = SecureMeshController(
       gateway: _FailingSecureMeshGateway(),
-      skillInstaller: _FakeSkillInstaller(),
       operationGate: MobileRelayOperationGate(),
       onStatus: (_) {},
-      onSkillInstallResult: (_) {},
     );
     addTearDown(controller.dispose);
 
@@ -135,14 +131,4 @@ final class _FailingSecureMeshGateway implements SecureMeshGateway {
   @override
   Future<SecureMeshKtResponse> executeKt(SecureMeshKtRequest request) =>
       throw UnimplementedError();
-}
-
-final class _FakeSkillInstaller implements SecureMeshSkillInstallGateway {
-  @override
-  Future<Map<String, dynamic>> applyInstall({
-    required String agent,
-    required String sourcePath,
-    required String name,
-    required bool pin,
-  }) async => const {'ok': true};
 }

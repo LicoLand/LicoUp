@@ -274,7 +274,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     relayOperationSources["envelope.rs"].includes("LicoArcRelayEnvelope::from_json") &&
     pairwiseSessionSources["payload.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
     pairwiseSessionSources["crypto_operation.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
-    relayOperationSources["delivery.rs"].includes("LicoArcRelayEnvelope") &&
+    relayOperationSources["delivery.rs"].includes("SECURE_MESH_ENVELOPE_COMMAND") &&
     relayOperationSources["command_handlers/create.rs"].includes("secure_envelope_param(params)") &&
     relayOperationSources["command_handlers/create.rs"].includes(
       "seal_mobile_relay_payload_deferred") &&
@@ -288,7 +288,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     !relayOperationJoinedSource.includes("fn execute_command(") &&
     !relayOperationJoinedSource.includes("ureq::") &&
     !relayOperationJoinedSource.includes("reqwest::"),
-    "relay operations must isolate ciphertext-only handlers, canonical context, mailbox, envelope, registration, delivery, status, and allow-list boundaries"
+    "relay operations must isolate ciphertext-only handlers, station context, mailbox, envelope, delivery, status, and allow-list boundaries"
   );
   const secureMeshSecretStoreRustSource = await readJoinedText([
     "crates/licoup-native/src/platform/secure_mesh_secret_store.rs",
@@ -308,6 +308,9 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   );
   const macosUserPresenceRustSource = await readText(
     "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
+  );
+  const platformUserPresenceRustSource = await readText(
+    "crates/licoup-native/src/platform/user_presence.rs"
   );
   const secureMeshCapabilityFacadeRustSource =
     await readText("crates/licoup-native/src/core/secure_mesh_capability.rs");
@@ -434,6 +437,20 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     codexAppServerRustSource.includes("StdoutLimitExceeded") &&
     !codexAppServerRustSource.includes("struct AcpProtocol"),
     "runtime adapters must expose canonical per-agent transports and explicit approval ownership"
+  );
+  assert(mobileRelayRustSource.includes("BadTowerStationTransport") &&
+    mobileRelayRustSource.includes("StationContext") &&
+    mobileRelayRustSource.includes("BadTowerStationTransport::new") &&
+    mobileRelayRustSource.includes("lease_mailbox") &&
+    mobileRelayRustSource.includes("send_envelope") &&
+    mobileRelayRustSource.includes("receive_envelopes") &&
+    mobileRelayRustSource.includes("delete_envelope") &&
+    mobileRelayRustSource.includes("SECURE_MESH_ENVELOPE_COMMAND") &&
+    mobileRelayRustSource.includes("reject_plaintext_relay_command") &&
+    mobileRelayRustSource.includes("mobile_relay_plaintext_command_rejected") &&
+    mobileRelayRustSource.includes("secure_mesh_envelope_command_is_transport_only") &&
+    mobileRelayRustSource.includes("mobile_relay_public_config_redacts_secret_material"),
+    "mobile_relay.rs must use only the canonical four-operation BadTower station transport"
   );
   assert(!mobileRelayRustSource.includes("fn execute_command("),
     "mobile_relay.rs must not keep a plaintext command execution path for relayed server commands"
@@ -664,15 +681,13 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "desktop custody must use direct macOS Security.framework access while unmeasured Linux or Windows storage stays fail-closed"
   );
   const localAuthenticationEvaluation =
-    macosUserPresenceRustSource.indexOf("evaluatePolicy_localizedReason_reply");
-  const localAuthenticationInvocation =
-    macosUserPresenceRustSource.indexOf("let decision = evaluate_system_authorization_once");
+    platformUserPresenceRustSource.indexOf("evaluatePolicy_localizedReason_reply");
   const interactiveContextStart =
-    macosUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(false)");
-  const approvedPresenceDecision =
-    macosUserPresenceRustSource.indexOf("if decision == PresenceDecision::Approved");
+    platformUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(false)");
+  const authorizationOutcome =
+    platformUserPresenceRustSource.indexOf("match receiver.recv_timeout");
   const approvedContextSeal =
-    macosUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(true)");
+    platformUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(true)");
   assert(
     secureMeshSecretStoreAuthorizationRustSource.includes(
       "pub struct SecretStorePresenceBatchRequest"
@@ -694,17 +709,23 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     macosUserPresenceRustSource.includes("pub struct SecurityFrameworkKeychain") &&
     macosUserPresenceRustSource.includes("pub trait MacosSecItemPort") &&
     macosUserPresenceRustSource.includes("kSecUseAuthenticationContext") &&
-    macosUserPresenceRustSource.includes("LAPolicy::DeviceOwnerAuthentication") &&
-    macosUserPresenceRustSource.includes("block2::RcBlock::new") &&
+    macosUserPresenceRustSource.includes("crate::platform::user_presence::authorize(") &&
+    platformUserPresenceRustSource.includes("APPLICATION_AUTHORIZATION") &&
+    platformUserPresenceRustSource.includes("LAPolicy::DeviceOwnerAuthenticationWithBiometrics") &&
+    platformUserPresenceRustSource.includes("password_fallback_allowed") &&
+    platformUserPresenceRustSource.includes("setLocalizedFallbackTitle") &&
+    platformUserPresenceRustSource.includes("block2::RcBlock::new") &&
     localAuthenticationEvaluation >= 0 &&
     localAuthenticationEvaluation ===
-      macosUserPresenceRustSource.lastIndexOf("evaluatePolicy_localizedReason_reply") &&
+      platformUserPresenceRustSource.lastIndexOf("evaluatePolicy_localizedReason_reply") &&
     interactiveContextStart >= 0 &&
-    interactiveContextStart < localAuthenticationInvocation &&
-    approvedPresenceDecision > localAuthenticationInvocation &&
-    approvedContextSeal > approvedPresenceDecision &&
+    interactiveContextStart < localAuthenticationEvaluation &&
+    authorizationOutcome > localAuthenticationEvaluation &&
+    approvedContextSeal > authorizationOutcome &&
     secureMeshSecretStoreAuthorizationRustSource.includes("app_password_prompt_used: false") &&
     !macosUserPresenceRustSource.includes("AUTHORIZATION_CONTEXT_CACHE") &&
+    !platformUserPresenceRustSource.includes("AUTHORIZATION_CONTEXT_CACHE") &&
+    !macosUserPresenceRustSource.includes("evaluatePolicy_localizedReason_reply") &&
     !macosUserPresenceRustSource.includes("keyring::") &&
     !await exists(
       "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
@@ -767,9 +788,15 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     secureMeshSecretStoreRustSource.includes("fail_closed::get_secret_with_session"),
     "Ubuntu proof tooling may exercise Secret Service, but production selection must stay fail-closed until measured CRUD and native authorization are available"
   );
-  assert(mobileRelayRustSource.includes("SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL") &&
-    mobileRelayRustSource.includes("secure_envelope_validation_rejects_malicious_relay_shapes_before_decrypt") &&
-    mobileRelayRustSource.includes("mobile_relay_command_error_result_redacts_internal_detail") &&
+  const mobileRelaySupportRustSource = await readText(
+    "crates/licoup-native/src/domain/mobile_relay/support.rs"
+  );
+  const mobileRelayRedactionTests = await readText(
+    "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/identity_replay_safety.rs"
+  );
+  assert(mobileRelaySupportRustSource.includes("SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL") &&
+    mobileRelayRedactionTests.includes("commands_sync_redacts_malicious_station_crypto_errors") &&
+    mobileRelayRedactionTests.includes("mobile_relay_command_error_result_redacts_internal_detail") &&
     !mobileRelayCommandSyncRustSource.includes("error.to_string()"),
     "mobile_relay.rs must redact endpoint crypto/runtime errors instead of returning raw local details"
   );

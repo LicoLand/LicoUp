@@ -1,8 +1,8 @@
-use super::model::{EffectiveSettings, ProtocolFailure, RunResult};
+use super::model::{EffectiveSettings, ProtocolFailure, ProtocolFailurePayload, RunResult};
 
 impl ProtocolFailure {
     pub(super) fn new(code: &'static str, message: &'static str, stage: &'static str) -> Self {
-        Self {
+        Self::from_payload(ProtocolFailurePayload {
             code,
             message,
             stage,
@@ -12,7 +12,7 @@ impl ProtocolFailure {
             thread_id: None,
             turn_id: None,
             turn_status: None,
-        }
+        })
     }
 
     pub(super) fn user_interaction(
@@ -21,7 +21,7 @@ impl ProtocolFailure {
         thread_id: Option<&str>,
         turn_id: Option<&str>,
     ) -> Self {
-        Self {
+        Self::from_payload(ProtocolFailurePayload {
             code: "codex_user_interaction_required",
             message: "Codex requires user interaction before this turn can continue.",
             stage: "server/request",
@@ -31,7 +31,7 @@ impl ProtocolFailure {
             thread_id: thread_id.map(str::to_string),
             turn_id: turn_id.map(str::to_string),
             turn_status: None,
-        }
+        })
     }
 }
 

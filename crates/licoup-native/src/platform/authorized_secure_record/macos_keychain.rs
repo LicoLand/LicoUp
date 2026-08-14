@@ -15,7 +15,9 @@ use security_framework::access_control::{ProtectionMode, SecAccessControl};
 use security_framework_sys::access_control::{
     kSecAccessControlUserPresence, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
 };
-use security_framework_sys::base::{errSecDuplicateItem, errSecItemNotFound, errSecSuccess};
+use security_framework_sys::base::{
+    errSecAuthFailed, errSecDuplicateItem, errSecItemNotFound, errSecSuccess,
+};
 use security_framework_sys::item::{
     kSecAttrAccessControl, kSecAttrAccessGroup, kSecAttrAccount, kSecAttrService,
     kSecAttrSynchronizable, kSecClass, kSecClassGenericPassword, kSecReturnAttributes,
@@ -34,6 +36,7 @@ use crate::platform::user_presence::UserPresenceSession;
 const SERVICE_PREFIX: &str = "land.lico.licoup.authorized-ledger.v1";
 const EXPECTED_BUNDLE_IDENTIFIER: &str = "land.lico.licoup";
 const PROOF_SCHEMA: &str = "licoup.authorized-secure-ledger-proof.v1";
+const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
 
 macro_rules! sec_key {
     ($value:ident) => {{
@@ -219,6 +222,10 @@ impl MacosKeychainLedger {
             !data.is_empty() && data.len() <= 384 * 1024,
             "authorized_secure_record_ledger_item_invalid"
         );
+        let effect_lock = session.effect_lock();
+        let _effect = effect_lock
+            .lock()
+            .map_err(|_| anyhow!("authorized_secure_record_user_presence_unavailable"))?;
         let access_control = expected_access_control()?;
         let pairs = vec![
             (sec_key!(kSecClass), sec_value!(kSecClassGenericPassword)),
@@ -261,6 +268,7 @@ impl MacosKeychainLedger {
         } else if status == errSecDuplicateItem {
             Ok(AddDisposition::Duplicate)
         } else {
+            invalidate_failed_authorization(status);
             Err(anyhow!(
                 "authorized_secure_record_keychain_add_failed:{status}"
             ))
@@ -273,6 +281,10 @@ impl MacosKeychainLedger {
         service: &str,
         account: &str,
     ) -> Result<Option<ProtectedItem>> {
+        let effect_lock = session.effect_lock();
+        let _effect = effect_lock
+            .lock()
+            .map_err(|_| anyhow!("authorized_secure_record_user_presence_unavailable"))?;
         let pairs = vec![
             (sec_key!(kSecClass), sec_value!(kSecClassGenericPassword)),
             (
@@ -316,6 +328,9 @@ impl MacosKeychainLedger {
         let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut copied) };
         if status == errSecItemNotFound {
             return Ok(None);
+        }
+        if status != errSecSuccess {
+            invalidate_failed_authorization(status);
         }
         ensure!(
             status == errSecSuccess && !copied.is_null(),
@@ -374,6 +389,12 @@ impl MacosKeychainLedger {
             "authorized_secure_record_keychain_provenance_invalid"
         );
         Ok(())
+    }
+}
+
+fn invalidate_failed_authorization(status: i32) {
+    if status == errSecAuthFailed || status == ERR_SEC_INTERACTION_NOT_ALLOWED {
+        crate::platform::user_presence::invalidate();
     }
 }
 

@@ -202,6 +202,7 @@ pub(super) fn structured_name(value: &Value) -> Option<&str> {
         "tool_name",
         "functionName",
         "function_name",
+        "tool",
     ]
     .iter()
     .find_map(|key| value.get(*key).and_then(Value::as_str))

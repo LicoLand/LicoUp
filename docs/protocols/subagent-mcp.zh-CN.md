@@ -1,78 +1,112 @@
 # LicoUp 下属智能体 MCP
 
-[English（规范版本）](subagent-mcp.md) · 简体中文（本地化） · [架构](../architecture/README.zh-CN.md)
+[English](subagent-mcp.md) · 简体中文 · [架构](../architecture/README.zh-CN.md)
 
-权威来源：`crates/licoup-native/src/bin/lico-subagent-mcp.rs`、原生目标扫描器和共享
-对话通道。实现或验证变化时应同步更新本文档。
+权威实现包括 `crates/licoup-native/src/bin/lico-subagent-mcp.rs`、
+`domain/client_conversation`、`domain/delivery_plan`、`domain/delivery_scheduler.rs`、
+`domain/delivery_state.rs`、
+`domain/agent_usage/workflow_ledger.rs`、`platform/conversation_runtime`、原生目标扫描器
+及其验证。本文件只是这些实现的公开投影。
 
-LicoUp 向一个主智能体提供下属智能体能力。安装 Codex 插件后，主智能体负责规划、
-并遵循“适应性飞轮”保存的角色分配。代码工程使用一个前后端共享的 Designer，
-以及两条明确工作线：后端 Worker 到后端 Reviewer、前端 Worker 到前端 Reviewer。
-插件缺失或不可用时，LicoUp 本机回退调度器执行同样的 Designer 与两组
-Worker-to-Reviewer 执行拓扑。两条路径都只把本机对话文件位置作为跨智能体的续接标识。
-
-“适应性飞轮”只有一个持久化权威：私有客户端状态中的 `adaptive-flywheel.toml`。
-桌面编辑器和 MCP 读取同一份 TOML，保存的模型选择必须通过当前目标扫描验证。Codex
-读取 App Server 的 `model/list`；Cursor 和 Pi 调用各自的原生模型列举命令；其它适配器
-读取经过验证的本机配置、供应商缓存或专用原生扫描器。历史观察仅在显式启用时补充
-目录，不能覆盖成功的原生响应。
+LicoUp 暴露可运行的本机 Agent，但不定义团队拓扑。直接调用方选择统一 Conversation
+中准确且活动的 Agent Membership；交付调用方只操作持久化 Plan，不提交第二套任务图，
+也不选择原生会话。命名角色、候选顺序和 Adaptive Flywheel 策略数据都不是 MCP 枚举、
+固定 Designer/Worker/Reviewer 通道或全局预设。
 
 ## 已实现契约
 
-钢铁规则：主智能体不负责探测子智能体，子智能体也不直接反馈主智能体。主智能体只向
-LicoUp 发出诉求；LicoUp 确认收到后主线程立即停止；由 LicoUp 转接子智能体、检测完成、
-在群聊中投影 peer 气泡，并回调原先主智能体对话线程。
-
 ```mermaid
-flowchart TD
-  U["用户提示词"] --> M["已选主智能体"]
-  M -->|"lico_subagents_list"| S["LicoUp 目标扫描器"]
-  M -->|"委派 / 续接请求"| P["本地下属 MCP"]
-  P -->|"accepted + dispatchId"| Stop["主线程停止"]
-  Stop --> L["LicoUp 运行下属通道"]
-  L --> C["指定下属智能体"]
-  C --> Detect["LicoUp 检测线程结束"]
-  Detect --> Resume["回调原主对话线程"]
+flowchart LR
+  C["调用方"] -->|"交付生命周期"| P["持久化 Plan 与 Checkpoints"]
+  C -->|"conversationId + membershipId"| M["下属智能体 MCP"]
+  P --> R["Conversation runtime"]
+  M --> R
+  R --> D["私有 Conversation dispatch"]
+  D --> A["已选 Agent adapter"]
+  A --> E["结构化 Conversation Events"]
+  E --> L["数字 Token ledger"]
 ```
 
-- `lico_subagents_list` 返回当前支持 `runtime.message.send` 的扫描目标，供主智能体选择
-  诉求对象；就绪探测仍由 LicoUp 拥有。主智能体框架可通过 `sameFramework: true` 出现；
-  选择它会新建独立下属对话，绝不会续接已挂起的主对话。
-- `lico_subagent_probe` 是 LicoUp 拥有的一次性就绪探测；主智能体不得用它驱动下属。
-- `lico_subagent_delegate` 接受 LicoUp 拥有的 handoff，并立即返回 `accepted: true`、
-  `dispatchId`、`sessionMode` 与 `state: accepted`。主智能体用 `sessionMode` 选择：
-  `new`（默认，新建下属会话，不得带 `conversationPath`）或 `resume`（续接，必须带
-  `conversationPath`）。`lico_subagent_continue` 是 resume 别名。不等待下属完成，
-  也不复制下属输出。LicoUp 在后台运行下属、写入 handoff 状态、在 Lico 群线程投影
-  peer 气泡，再通过 `mainConversationPath` 或可解析的主会话回调原主对话。
-- 委派与续接仍要求生命周期 `role`（`designer` / `worker` / `reviewer`），并可指定
-  `backend` / `frontend` 工作线；Reviewer 提示词仍注入探针与清理验收约束。
-- `lico_subagent_cancel` 通过指定适配器的原生控制面请求取消。
-- MCP 可从客户端名称推断主智能体；需要显式绑定时，打包启动配置可设置
-  `LICOUP_MAIN_AGENT_ID`。Codex 与 Antigravity 可通过 digest 确认安装 Subagent MCP；
-  Antigravity 写入 `~/.gemini/config/mcp_config.json`（与 Hook/ACP Bridge 分条管理）。
+| 工具 | 用途 |
+| --- | --- |
+| `lico_delivery_start` | 启动或重新打开一份持久化 Delivery Plan |
+| `lico_delivery_authorize` | 授权当前 Plan 摘要 |
+| `lico_delivery_status` | 读取持久化 Plan 状态及其下一动作 |
+| `lico_delivery_cancel` | 显式取消交付，并把取消请求转给活动 Conversation dispatch |
+| `lico_subagents_list` | 列出扫描到的可运行本机 Agent 集成，不分配协作角色 |
+| `lico_subagent_probe` | 执行 LicoUp 自有的一次性就绪探测，并在成功前验证清理结果 |
+| `lico_subagent_delegate` | 为准确且活动的 `conversationId + membershipId` 启动一次非交付 dispatch |
+| `lico_subagent_continue` | 续接同一 Conversation Membership 最近可续接的 dispatch |
+| `lico_subagent_cancel` | 通过已选 adapter 的原生控制面请求取消 |
 
-## 有界并发
+所有 schema 都是封闭的。调用方可以启动、授权、查看或显式取消交付；不能提交 Task 或
+eligible frontier、选择 route、绑定原生会话、接受 Reviewer，也不能替换 Plan 与
+Checkpoint 状态。
+
+## Delivery Plan 执行
+
+持久化 Plan 与 Checkpoints 是唯一交付生命周期权威。Plan engine 计算完整 eligible
+frontier；Conversation runtime 以稳定顺序领取，通过有界原生通道运行，并经由准确
+Conversation Membership 派发每个 Agent。不同交付可以并发；同一交付、Task attempt
+与原生会话保持有序。等待终态 Event 不占用消息投递通道。
+
+Adaptive Flywheel 是唯一的 Agent、model 与 reasoning-effort route 选择器。发送 Plan
+brief 前，LicoUp 会把 route 决定冻结在 dispatch receipt 中。插件就绪只代表 adapter
+准备状态，不能改变 Plan 资格、交付归属或 route 选择。
+
+每次已接受的 dispatch 都在原生发送前记录 intent、Conversation 绑定和 Token baseline。
+只有确定的终态 Conversation Event 才结算数字用量并推进 Checkpoint；沉默或耗时仍保持
+pending。终态结算与回调是幂等的。重启恢复会 reconcile 准确的 pending Conversation
+dispatch，不会创建重复派发。
+
+Token ledger 保留数字 prompt、cached-input、completion、total、精确或估算计数、覆盖率
+以及 Plan/Task/dispatch 层级；不保留 prompt 正文、reply、tool payload、摘要、压缩、
+cache 控件或平行 context 模型。公开投影不含路径，并且只保留活动交付和最新二十份终态
+汇总。
+
+## 直接一次性操作
+
+委派与续接只用于非交付回合。它们会立即返回有界 receipt 和 dispatch 标识，原生执行在
+后台继续。它们接收 prompt，以及可选的 model、reasoning effort、工作目录、超时、显式
+流预算和经用户授权的权限设置；不会创建 Plan 角色或 Checkpoint，也不会形成第二个交付
+调度器。
+
+MCP 会确认 Membership 处于活动状态、属于该 Conversation、代表 Agent，并与请求的可
+运行集成匹配。原生 session 标识与续接位置只从 Membership 私有绑定中解析，调用方既不能
+指定也不能读取。
+
+`lico_subagent_probe` 是基础设施就绪检查，不是驱动 Agent 的原语。它默认选择有价格依据
+且可用的 route，也可以校验调用方明确指定的 route。探测产生的任何持久历史都会被移入
+操作系统废纸篓，并且必须由一次新扫描证明已经消失，探测才能成功。
+
+## 有界执行
 
 | 边界 | 已实现上限 |
 | --- | --- |
 | MCP 输入帧 | 64 KiB |
-| 委派提示词 | 48 KiB |
-| 对话文件位置 | 4 KiB |
-| 下属智能体单轮 | 1 秒至 30 分钟 |
-| 原生 stdout 事件预算 | 64 KiB 至 64 MiB |
-| 原生 stderr 事件预算 | 16 KiB 至 4 MiB |
+| Plan brief 或一次性 prompt | 48 KiB |
+| 原生续接位置 | 4 KiB |
+| 工作目录值 | 4 KiB |
+| 非零下属超时 | 1 秒至 30 分钟；`0` 表示不设置期限 |
+| 显式原生 stdout 预算 | 64 KiB 至 64 MiB |
+| 显式原生 stderr 预算 | 16 KiB 至 4 MiB |
 | MCP 执行 | 8 个工作线程 |
 | 待处理工具调用 | 32 |
-| 回退候选 | 8 个 |
 | 额度冷却记录 | 64 条 |
 
-不同工具调用可以并发执行；主智能体在收到 ACK 后停止本轮，由 LicoUp 在完成后回调主线程。
+独立工具调用可以并发。原子 Conversation dispatch 领取可避免两个 worker 执行同一个
+已接受回合。
 
 ## 隐私与失败语义
 
-提示词和下属输出只留在本地会话与原生通道内。MCP 工具回执不携带下属全文；群聊 peer
-气泡由 LicoUp 读取本机 handoff / 下属会话后投影。列表投影不暴露可执行路径、账户数据
-或原始配置。队列满、目标不可用或原生传输失败都会返回有类型且有界的错误。
+prompt、Agent 输出、原生 session 标识、续接位置、Plan 存储位置和工作目录绑定都保留在
+本地。公开 receipt 只包含安全操作标识、生命周期状态、stage、component、retryability、
+recovery action 和数字用量事实，不包含原生路径或消息正文。列表投影不暴露可执行路径、
+账户数据、目标诊断、原始配置或 Conversation 角色分配。
 
-逐智能体机制由原生驱动清单投影到[兼容性文档](../COMPATIBILITY.zh-CN.md#智能体适配目标)。
+队列饱和、目标不可用、Membership 无效、续接无效、取消结果不确定、Conversation 准入
+失败及原生传输失败都会返回有类型且有界的错误。不确定的原生效果保持 pending 并等待
+reconcile，绝不会报告为 completed。一个分支的终态失败不会取消无关 eligible 分支。
+
+逐 Agent 机制由原生驱动清单投影到
+[兼容性文档](../COMPATIBILITY.zh-CN.md#智能体适配目标)。

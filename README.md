@@ -44,9 +44,9 @@ in [`docs/STATUS.md`](docs/STATUS.md) and the generated
   uses ACP; Hermes uses ACP when its optional package is present and otherwise
   uses the built-in TUI Gateway JSON-RPC. Existing SSH authentication and host
   verification are required; LicoUp stores no SSH password or private key.
-- **Manages skills across agents** — list, install, update from an
-  explicitly configured mirror or GitHub repository, delete, and aggregate
-  usage counts by time window.
+- **Shows local skills across agents** — discover skills already present in
+  local agent roots, inspect usage counts, and move a selected skill to the
+  system Trash. LicoUp does not download, install, update, or synchronize skills.
 - **Backs up conversations** — browse native conversation history and back
   up all or keyword-selected conversations to a local directory you choose.
 - **Reports token usage** — by agent or model, defaulting to the latest
@@ -61,12 +61,6 @@ in [`docs/STATUS.md`](docs/STATUS.md) and the generated
 
 LicoUp targets macOS, Windows, Linux, Android, and iOS.
 
-Install the latest Apple-silicon macOS release:
-
-```bash
-curl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash
-```
-
 > [!NOTE]
 > LicoUp is in early alpha: a build target or preview feature is not the
 > same as a fully supported release. Check the
@@ -78,6 +72,13 @@ curl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-m
 **Local first.** Sensitive runtime data stays on the device. Default client
 scenarios do not upload local paths, logs, conversation history, usage
 records, credentials, or plaintext user content to a service.
+
+**Optional collaboration stays opt-in.** The optional LicoMesh collaboration
+package is not loaded by the default client. Installing it requires an
+immutable GitHub commit and an independently imported signing key, and this
+repository does not bundle that server runner. Installation, assembly, and
+startup remain separate explicit actions; none grants permission to transfer
+user content.
 
 **Endpoint-protected peer-transfer preview.** The current source path encrypts
 content with selected peer keys before network I/O, and the receiving endpoint
@@ -108,6 +109,7 @@ flowchart LR
 
 **Explicit external approval.** Optional external MCP requests can send
 only the exact request or selected files shown in a fresh direct approval;
+each transfer requires a protected one-shot user approval.
 the named external service can read that approved content even though
 transport is protected by HTTPS. Without an exact external-service
 approval, protected user content can leave the client only as an approved,
@@ -118,18 +120,6 @@ runtime, not a peer-encrypted LicoUp recipient. The conversation header keeps
 its SSH destination visible, and pressing Send authorizes that exact prompt to
 that VM. SSH protects the transport, while OpenClaw or Hermes inside the VM
 receives the conversation content in order to answer.
-
-## Optional Meshrix collaboration
-
-Meshrix collaboration is not loaded by the default client. It is available
-only after you choose an immutable GitHub commit, separately import its
-trusted signing key, and install and enable the plugin manually. A local
-deployment starts only through a fixed, signed external runner after a
-separate manual action. This repository does not bundle that server runner,
-so building LicoUp alone is not proof that Meshrix was deployed.
-Installation, enablement, and startup never authorize an external data
-transfer: each exact request or selected local file that would leave the
-device requires a fresh, protected one-shot user approval.
 
 ## Build from source
 
@@ -172,6 +162,7 @@ data boundaries.
 | Architecture | [Architecture](docs/architecture/README.md) | [架构](docs/architecture/README.zh-CN.md) |
 | Federation transport | [Lico Arc candidate station adapter](docs/protocols/licoarc-station-adapter.md) | [Lico Arc 候选通讯站 Adapter](docs/protocols/licoarc-station-adapter.zh-CN.md) |
 | Compatibility | [Compatibility](docs/COMPATIBILITY.md) | [兼容性](docs/COMPATIBILITY.zh-CN.md) |
+| Release packages | [Release packages](docs/RELEASE-PACKAGES.md) | [发布包结构](docs/RELEASE-PACKAGES.zh-CN.md) |
 | Security | [Security](SECURITY.md) | [安全](SECURITY.zh-CN.md) |
 | Contributing | [Contributing](CONTRIBUTING.md) | [参与贡献](CONTRIBUTING.zh-CN.md) |
 

@@ -16,7 +16,7 @@ const SESSION_EVENT_QUEUE_CAPACITY: usize = 64;
 pub(super) fn execute_via_serve(
     endpoint: &kilo_code_serve::ServeEndpoint,
     config: &ServeTurnConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<ProtocolOutcome, ProtocolFailure> {
     let session_id = open_session(endpoint, config, deadline)?;
     let message_body = build_message_body(config);
@@ -87,7 +87,7 @@ pub(super) fn execute_via_serve(
 fn open_session(
     endpoint: &kilo_code_serve::ServeEndpoint,
     config: &ServeTurnConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<String, ProtocolFailure> {
     if config.is_resume() {
         let url = format!(
@@ -159,9 +159,9 @@ pub(super) fn build_message_body(config: &ServeTurnConfig) -> Value {
 pub(super) fn wait_post_json(
     url: &str,
     body: &Value,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<Value, ProtocolFailure> {
-    if Instant::now() >= deadline {
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
         return Err(ProtocolFailure::new(
             "acp_protocol_timeout",
             "The ACP agent timed out before the turn completed.",

@@ -29,6 +29,7 @@ AgentConversationPaneState paneTestState({
   String selectedModel = '',
   String defaultModel = '',
   bool sendAuthorizeActive = false,
+  bool recentSessionsCached = false,
 }) => AgentConversationPaneState(
   target: paneTestTarget(),
   session: session,
@@ -37,7 +38,6 @@ AgentConversationPaneState paneTestState({
   loading: loading,
   turnActive: turnActive ?? liveMessages.isNotEmpty,
   preparingNewConversation: preparingNewConversation,
-  orchestrationSelected: false,
   composerEnabled: true,
   sendGateReasonCode: sendGateReasonCode,
   composerDraft: '',
@@ -50,6 +50,7 @@ AgentConversationPaneState paneTestState({
   workingDirectory: workingDirectory,
   workingDirectorySelectable: workingDirectorySelectable,
   sendAuthorizeActive: sendAuthorizeActive,
+  recentSessionsCached: recentSessionsCached,
 );
 
 AgentConversationPaneActions paneTestActions({
@@ -62,7 +63,6 @@ AgentConversationPaneActions paneTestActions({
   onDraftChanged: (_) {},
   onSend: (_) async => true,
   onSelectSession: (_) {},
-  onCopyText: (_) async {},
   onUnblockSend: onUnblockSend,
   onChooseWorkingDirectory: onChooseWorkingDirectory,
 );
@@ -78,7 +78,6 @@ ConversationPaneHeader paneTestHeader({
     historyCollapsed: false,
     collapseHistoryTooltip: 'Collapse history',
     expandHistoryTooltip: 'Expand history',
-    orchestrationSelected: false,
     opencodeServeState: null,
   ),
   actions: AgentConversationHeaderActions(
