@@ -9,6 +9,14 @@ void main() {
       final runner = _RecordingCommandRunner();
       const service = ClientUpdateService();
 
+      await service.download(
+        agentService: runner,
+        manifestPath: 'manifest.json',
+        publicKeysPath: 'keys.json',
+        sourcePath: 'artifact.bin',
+        channel: 'stable',
+        revocationPath: 'revocation.json',
+      );
       await service.verify(
         agentService: runner,
         manifestPath: 'manifest.json',
@@ -18,24 +26,82 @@ void main() {
       );
       await service.apply(
         agentService: runner,
+        execute: false,
         manifestPath: 'manifest.json',
         publicKeysPath: 'keys.json',
         channel: 'stable',
         revocationPath: 'revocation.json',
       );
 
-      expect(runner.calls, hasLength(2));
+      expect(runner.calls, hasLength(3));
       for (final args in runner.calls) {
         expect(args, containsAll(['--manifest-path', 'manifest.json']));
         expect(args, containsAll(['--public-keys-path', 'keys.json']));
         expect(args, containsAll(['--channel', 'stable']));
         expect(args, containsAll(['--revocation-path', 'revocation.json']));
+        expect(args, containsAll(['--source', 'local']));
         expect(args, isNot(contains('--staged-file-name')));
         expect(args, isNot(contains('--sha256')));
         expect(args, isNot(contains('--size')));
       }
-      expect(runner.calls[0], isNot(contains('--source-path')));
-      expect(runner.calls[1], containsAll(['--execute', 'true']));
+      expect(runner.calls[0], containsAll(['--source-path', 'artifact.bin']));
+      expect(runner.calls[1], isNot(contains('--source-path')));
+      expect(runner.calls[2], containsAll(['--execute', 'false']));
+    },
+  );
+
+  test(
+    'github source binds repo and roots without local manifest files',
+    () async {
+      final runner = _RecordingCommandRunner();
+      const service = ClientUpdateService();
+
+      await service.check(
+        agentService: runner,
+        source: 'github',
+        repo: 'LicoLand/LicoUp',
+        stagingRoot: '/data/client-update-staging',
+        stateRoot: '/data/client-update-state',
+      );
+      await service.download(
+        agentService: runner,
+        source: 'github',
+        repo: 'LicoLand/LicoUp',
+        stagingRoot: '/data/client-update-staging',
+        stateRoot: '/data/client-update-state',
+      );
+      await service.apply(
+        agentService: runner,
+        execute: true,
+        source: 'github',
+        repo: 'LicoLand/LicoUp',
+        stagingRoot: '/data/client-update-staging',
+        stateRoot: '/data/client-update-state',
+      );
+      await service.rollback(
+        agentService: runner,
+        source: 'github',
+        repo: 'LicoLand/LicoUp',
+        stagingRoot: '/data/client-update-staging',
+        stateRoot: '/data/client-update-state',
+      );
+
+      expect(runner.calls, hasLength(4));
+      for (final args in runner.calls) {
+        expect(args, containsAll(['--source', 'github']));
+        expect(args, containsAll(['--repo', 'LicoLand/LicoUp']));
+        expect(
+          args,
+          containsAll(['--staging-root', '/data/client-update-staging']),
+        );
+        expect(
+          args,
+          containsAll(['--state-root', '/data/client-update-state']),
+        );
+        expect(args, isNot(contains('--manifest-path')));
+        expect(args, isNot(contains('--public-keys-path')));
+      }
+      expect(runner.calls[2], containsAll(['--execute', 'true']));
     },
   );
 }

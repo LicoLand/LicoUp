@@ -7,13 +7,7 @@ use serde_json::json;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
 
 struct PortableDirGuard(Option<PathBuf>);
 
@@ -55,7 +49,6 @@ fn claude_fixture(root: &Path) {
 
 #[test]
 fn facade_scan_is_idempotent_and_report_exposes_all_time_totals() {
-    let _lock = env_lock().lock().unwrap();
     let dir = temp_dir("round-trip");
     let history = dir.join("claude-history");
     fs::create_dir_all(&history).unwrap();
@@ -139,7 +132,6 @@ fn facade_scan_is_idempotent_and_report_exposes_all_time_totals() {
 
 #[test]
 fn facade_runtime_gate_is_unchanged_by_backfill_relaxation() {
-    let _lock = env_lock().lock().unwrap();
     let dir = temp_dir("gate");
     let history = dir.join("codex-history");
     fs::create_dir_all(&history).unwrap();
@@ -150,8 +142,7 @@ fn facade_runtime_gate_is_unchanged_by_backfill_relaxation() {
     .unwrap();
     let _portable = PortableDirGuard::set(&dir);
 
-    // Backfill records counts for an agent with no pairing and no managed
-    // skill records.
+    // Backfill records counts for an agent with no pairing.
     let scan = skill_hub::skill_usage_scan(&json!({
         "agent": "codex",
         "historyRoot": history.to_string_lossy()
@@ -159,25 +150,22 @@ fn facade_runtime_gate_is_unchanged_by_backfill_relaxation() {
     .unwrap();
     assert_eq!(scan["invocationsAdded"], 1);
 
-    // Runtime live events for the same agent stay on the pairing + installer
-    // gate: the auto-approved pairing exists after the first observation, but
-    // unmanaged skills are still filtered out.
-    let receipt = skill_hub::observe_agent_skill_invocations(
-        "codex",
-        &json!({"ok": true, "events": [{"event": "skill.invoked", "skillId": "repo-audit"}]}),
-    )
-    .unwrap();
-    assert_eq!(receipt["recordedCount"], 0);
-    assert_eq!(receipt["source"], "runtime-skill-invocation-events");
-
-    // The runtime observation above auto-created an approved pairing; an
-    // explicit revocation restores the gate.
-    skill_hub::pair_revoke(&json!({"agent": "codex"})).unwrap();
+    // Backfill does not relax the runtime pairing gate. Establish then revoke
+    // the pairing explicitly so this assertion does not depend on implicit
+    // first-observation approval.
+    let paired = skill_hub::pair_request(&json!({"agent": "codex"})).unwrap();
+    assert_eq!(paired["status"], "approved");
+    let revoked = skill_hub::pair_revoke(&json!({"agent": "codex"})).unwrap();
+    assert_eq!(revoked["status"], "revoked");
     let blocked = skill_hub::observe_agent_skill_invocations(
         "codex",
         &json!({"ok": true, "events": [{"event": "skill.invoked", "skillId": "repo-audit"}]}),
+    )
+    .unwrap_err();
+    assert_eq!(
+        blocked.to_string(),
+        "runtime skill usage requires an approved agent pairing"
     );
-    assert!(blocked.is_err());
 
     let report = skill_hub::skill_usage_report(&json!({
         "agent": "codex",

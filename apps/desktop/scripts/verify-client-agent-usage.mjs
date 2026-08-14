@@ -34,8 +34,12 @@ const nativeUsage = await readJoinedText([
   "crates/licoup-native/src/domain/agent_usage/contract.rs",
   "crates/licoup-native/src/domain/agent_usage/persistence.rs",
   "crates/licoup-native/src/domain/agent_usage/window.rs",
-  "crates/licoup-native/src/domain/agent_usage/tests.rs"
+  "crates/licoup-native/src/domain/agent_usage/tests.rs",
+  "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs"
 ]);
+const workflowLedger = await readText(
+  "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs"
+);
 const codexUsageCache = await readJoinedText([
   "crates/licoup-native/src/domain/agent_usage/agent_usage_codex.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/aggregation.rs",
@@ -88,10 +92,9 @@ const usageController = await readText(
 const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_wave_overview.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_wave_overview.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_chart_controls.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_window_control.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline_data.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_formatters.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_models.dart",
@@ -108,9 +111,19 @@ const chartTests = await readJoinedText([
   "apps/desktop/test/agent_usage_summary_widgets_test.dart",
   "apps/desktop/test/agent_usage_formatters_test.dart"
 ]);
+const workflowTests = await readJoinedText([
+  "apps/desktop/test/agent_usage_workflow_test.dart",
+  "apps/desktop/test/fixtures/agent_usage_panel/usage_panel_fixtures.dart",
+]);
 const functionalityDocs = await readText(
   "docs/functionality/CLIENT-DESKTOP.md"
 );
+const usageGuide = await readJoinedText([
+  "docs/functionality/USER-GUIDE.md",
+  "docs/functionality/USER-GUIDE.zh-CN.md",
+  "docs/architecture/README.md",
+  "docs/architecture/README.zh-CN.md",
+]);
 const incrementalCacheTest = await readJoinedText([
   "crates/licoup-native/tests/agent_usage_incremental_cache.rs",
   "crates/licoup-native/tests/agent_usage_cache_cases/adapter_coverage.rs",
@@ -190,8 +203,8 @@ assertIncludes(
     "parse_cursor_usage_database",
     "parse_hermes_usage_database",
     "append_guard_matches",
-    "seal_source",
-    "compact_source_days_before",
+    "pub(super) fn seal(",
+    "pub(super) fn compact(",
     "apply_cumulative_watermarks",
     "incremental_vacuum",
     "estimated_records",
@@ -228,7 +241,8 @@ assertIncludes(
     "--timezone-transitions-json",
     "AgentUsageReport.currentSchemaVersion",
     "AgentUsageReport.currentMode",
-    "AgentUsageReport.currentTokenSourceMode"
+    "AgentUsageReport.currentTokenSourceMode",
+    "_validateWorkflowProjection"
   ],
   "Dart local usage service"
 );
@@ -244,9 +258,28 @@ assertIncludes(
     "static const currentTokenSourceMode = 'native-metadata-first-incremental'",
     "validateEnvelope",
     "schemaVersion is! int",
-    "totalTokens"
+    "totalTokens",
+    "AgentUsageTokenTotals",
+    "AgentUsageWorkflow",
+    "agentUsageWorkflowReportSchema",
+    "_parseWorkflowEnvelope",
+    "List<AgentUsageWorkflow>"
   ],
   "Flutter usage contract"
+);
+assertIncludes(
+  workflowLedger,
+  [
+    "WORKFLOW_LEDGER_REPORT_SCHEMA",
+    "workflow_report",
+    "workflow_nodes",
+    "promptTokens",
+    "cachedInputTokens",
+    "completionTokens",
+    "totalTokens",
+    "WORKFLOW_LEDGER_MAX_TERMINAL_REPORTS",
+  ],
+  "native workflow usage report"
 );
 assertIncludes(
   usageGateway,
@@ -276,12 +309,19 @@ assertIncludes(
   usagePanel,
   [
     "AgentUsagePanel",
-    "enum AgentUsageChartGrouping { agent, model }",
+    "enum AgentUsageChartGrouping",
     "AgentUsageChartGrouping.agent",
     "AgentUsageChartGrouping.model",
     "strings.tokenUsage",
     "strings.totalTokens",
     "modelTokenUsage",
+    "AgentUsageWorkflowSection",
+    "AgentUsageChartGrouping.workflow",
+    "workflowExactCoverage",
+    "workflowMainShare",
+    "workflowSubordinateShare",
+    "workflowTaskLabel",
+    "workflowDispatchLabel",
     "startAgentUsagePolling",
     "ensureAgentUsageLoadedAndFresh"
   ],
@@ -325,6 +365,20 @@ assertIncludes(
   chartTests,
   ["AgentUsageChartGrouping.agent", "AgentUsageChartGrouping.model", "cachedInputTokens"],
   "usage chart regressions"
+);
+assertIncludes(
+  workflowTests,
+  [
+    "syntheticWorkflowUsageReport",
+    "prompt-canary",
+    "reply-canary",
+    "tool-canary",
+    "path-canary",
+    "52",
+    "Exact 4/4 (100%)",
+    "Simplified Chinese",
+  ],
+  "workflow usage regression"
 );
 assert(
   usagePanel.includes("source.hasUsage") &&
@@ -372,17 +426,23 @@ const report = {
     tokenSourceMode: "native-metadata-first-incremental",
     defaultScanWindowDays: 90,
     defaultDisplayWindowDays: 30,
-    dimensions: ["agent", "model"]
+    dimensions: ["agent", "model", "workflow"]
   },
   evidence: {
     nativeAggregation: failures.every((failure) => !failure.startsWith("native")),
     boundedLocalCache: codexUsageCache.includes("append_guard"),
     commandBoundary: commandTableExposesAgentUsage,
     strictFlutterEnvelope: usageModels.includes("validateEnvelope"),
+    workflowProjection:
+      usageModels.includes("AgentUsageWorkflow") &&
+      usagePanel.includes("AgentUsageWorkflowSection") &&
+      workflowLedger.includes("workflow_report"),
     singleFlightController: usageController.includes("_scanFuture"),
     independentUiComponents: componentTest.includes("one-way normal-library graph"),
     localOnlyDocumentation:
-      functionalityDocs.includes("No raw prompt, response, account, local path")
+      functionalityDocs.includes("No raw prompt, response, account, local path") &&
+      usageGuide.includes("Adaptive Flywheel") &&
+      usageGuide.includes("numeric")
   },
   failures
 };

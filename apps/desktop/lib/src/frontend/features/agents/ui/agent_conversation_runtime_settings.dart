@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class ConversationRuntimeSettingsBar extends StatelessWidget {
@@ -225,7 +226,7 @@ class ConversationWorkingDirectoryControl extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 180, maxWidth: 320),
       child: Tooltip(
         message: tooltip,
-        waitDuration: const Duration(milliseconds: 400),
+        waitDuration: LicoMotion.tooltipWait,
         child: Semantics(
           button: true,
           enabled: canChoose,

@@ -32,7 +32,6 @@
         "build/reports/secure-client-mesh-e2ee/authority-proof-template.json",
         "build/reports/secure-mesh-acp-relay-governed-baseline.json",
         "build/reports/secure-mesh-acp-archive-release-proof.json",
-        "build/reports/client-macos-local-identity-install.json",
         "build/reports/secure-mesh-macos-capabilities.json",
         "build/reports/client-artifact-verification-receipts.json",
         "build/client-cli-vm/ubuntu-arm64/secure-mesh-linux-vm-package-receipt.json",
@@ -54,7 +53,6 @@
       ],
       "optionalRefs": [
         "build/reports/secure-client-mesh-e2ee/authority-proof-template.json",
-        "build/reports/client-macos-local-identity-install.json",
         "build/reports/secure-mesh-macos-capabilities.json",
         "build/reports/client-artifact-verification-receipts.json",
         "build/client-cli-vm/ubuntu-arm64/secure-mesh-linux-vm-package-receipt.json",

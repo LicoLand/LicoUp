@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -185,6 +186,13 @@ void main() {
     await controller.scanTargets(showProgress: false, forceRescanKnown: false);
 
     expect(service.scannedIds.contains('codex'), isTrue);
+    expect(
+      service.conversationActions,
+      isEmpty,
+      reason:
+          'cache hydration and availability scans must never write '
+          'conversation memberships',
+    );
     expect(service.scannedIds, isNotEmpty);
     expect(
       service.maxInFlight,
@@ -398,8 +406,19 @@ class _SlowPerAgentService extends AgentService {
   final Map<String, TargetCandidate> results;
   final Map<String, Duration> delays;
   final List<String> scannedIds = <String>[];
+  final List<String> conversationActions = <String>[];
   var _inFlight = 0;
   var maxInFlight = 0;
+
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async {
+    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    conversationActions.add((request['action'] as String?) ?? '');
+    return {'ok': true, 'result': <String, dynamic>{}};
+  }
 
   @override
   Future<TargetCandidate?> scanOneTarget(String targetId) async {

@@ -9,6 +9,7 @@ fn thread_wire_projection_normalizes_roles_and_preserves_accounting_metadata() {
         "role": "assistant",
         "text": "Visible reply",
         "createdAt": "2026-01-01T00:00:00Z",
+        "images": [{"mediaType": "image/png", "path": "/fixture-root/screenshot.png"}],
         "usage": {"inputTokens": 2},
         "model": "model-1"
     }))
@@ -17,6 +18,8 @@ fn thread_wire_projection_normalizes_roles_and_preserves_accounting_metadata() {
     assert_eq!(wire["eventKind"], "assistant-message");
     assert_eq!(wire["usage"]["inputTokens"], 2);
     assert_eq!(wire["model"], "model-1");
+    assert_eq!(wire["images"][0]["mediaType"], "image/png");
+    assert_eq!(wire["images"][0]["path"], "/fixture-root/screenshot.png");
 }
 
 #[test]

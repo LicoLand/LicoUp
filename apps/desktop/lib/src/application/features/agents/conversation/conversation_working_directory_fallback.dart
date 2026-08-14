@@ -2,8 +2,9 @@ import 'dart:io' as io show Directory, Platform;
 
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
+
+const _clientHomeStateDirectoryName = '.lico-up';
 
 /// Client-owned default workspace under the LicoUp state root. Shared by every
 /// local agent — not partitioned by main-agent id. The native client owns the
@@ -121,7 +122,7 @@ bool isClientOwnedAgentWorkspace(
     _retiredClientAgentWorkspaceDirectoryName,
   ]) {
     final root = p.normalize(
-      p.join(home, PortableDataRoot.homeStateDirectoryName, directoryName),
+      p.join(home, _clientHomeStateDirectoryName, directoryName),
     );
     if (p.equals(normalized, root) || p.isWithin(root, normalized)) {
       return true;
@@ -153,7 +154,7 @@ String localConversationWorkingDirectoryFallback({
   }
   return p.join(
     home,
-    PortableDataRoot.homeStateDirectoryName,
+    _clientHomeStateDirectoryName,
     clientAgentWorkspaceDirectoryName,
   );
 }

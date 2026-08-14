@@ -35,7 +35,6 @@ class TargetController extends ChangeNotifier {
     required void Function() onTargetsSettled,
     required Future<void> Function() loadSelectedConversation,
     required bool Function() shouldLoadSelectedConversation,
-    required bool Function(String targetId) isOrchestrationTarget,
     required TargetStatusSink onStatus,
   }) : _gateway = gateway,
        _snapshotRepository = snapshotRepository,
@@ -47,7 +46,6 @@ class TargetController extends ChangeNotifier {
        _onTargetsSettled = onTargetsSettled,
        _loadSelectedConversation = loadSelectedConversation,
        _shouldLoadSelectedConversation = shouldLoadSelectedConversation,
-       _isOrchestrationTarget = isOrchestrationTarget,
        _onStatus = onStatus;
 
   final TargetManagementGateway _gateway;
@@ -60,7 +58,6 @@ class TargetController extends ChangeNotifier {
   final void Function() _onTargetsSettled;
   final Future<void> Function() _loadSelectedConversation;
   final bool Function() _shouldLoadSelectedConversation;
-  final bool Function(String targetId) _isOrchestrationTarget;
   final TargetStatusSink _onStatus;
 
   List<TargetCandidate> _targets = const [];
@@ -251,6 +248,10 @@ class TargetController extends ChangeNotifier {
     } else if (reportErrors) {
       _lastErrorCode = '';
     }
+    // Conversation history loading stays outside the scan critical section:
+    // a slow or failing history read must neither be reported as a scan
+    // failure nor hold the refresh gate for later scans.
+    var loadSelectedConversation = false;
     try {
       if (_isMobileRuntime()) {
         final targets = await _scanMobileTargets();
@@ -341,7 +342,7 @@ class TargetController extends ChangeNotifier {
         );
       }
       if (showProgress && _shouldLoadSelectedConversation()) {
-        await _loadSelectedConversation();
+        loadSelectedConversation = true;
       }
     } catch (_) {
       if (!_isCurrentScan(generation)) return;
@@ -364,6 +365,14 @@ class TargetController extends ChangeNotifier {
       if (identical(_refreshCompletion, refreshCompletion)) {
         _refreshCompletion = null;
         if (!refreshCompletion.isCompleted) refreshCompletion.complete();
+      }
+    }
+    if (loadSelectedConversation) {
+      try {
+        await _loadSelectedConversation();
+      } catch (_) {
+        // History load failures surface on the conversation surface only;
+        // the scan itself succeeded and must not report them.
       }
     }
   }
@@ -615,14 +624,11 @@ class TargetController extends ChangeNotifier {
   }
 
   List<TargetCandidate> orderedConversationTargets(
-    Iterable<TargetCandidate> targets, {
-    TargetCandidate? orchestrationTarget,
-  }) {
+    Iterable<TargetCandidate> targets,
+  ) {
     return TargetPolicy.orderedConversationTargets(
       targets: targets,
       persistedOrder: _tabOrder,
-      isOrchestrationTarget: _isOrchestrationTarget,
-      orchestrationTarget: orchestrationTarget,
       pinnedIds: pinnedConversationTargetIds,
     );
   }
@@ -637,7 +643,6 @@ class TargetController extends ChangeNotifier {
       persistedOrder: _tabOrder,
       oldIndex: oldIndex,
       newIndex: newIndex,
-      isOrchestrationTarget: _isOrchestrationTarget,
     );
     if (next == null) return;
     _tabOrder = next;

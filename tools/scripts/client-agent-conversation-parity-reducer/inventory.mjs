@@ -115,6 +115,9 @@ export function validateDriverInventory(inventory, agentIds) {
         typeof driver.capabilityMatrix.multimodal !== "boolean" ||
         typeof driver.capabilityMatrix.usageStatus !== "boolean" ||
         typeof driver.capabilityMatrix.officialLane !== "boolean" ||
+        driver.capabilityMatrix.hostSurvivesGuiDisconnect !== true ||
+        driver.capabilityMatrix.activeTurnReattach !== true ||
+        driver.capabilityMatrix.orderedCursorReplay !== true ||
         (driver.capabilityMatrix.processLocalContinuation !== undefined &&
           typeof driver.capabilityMatrix.processLocalContinuation !== "boolean")
       ) {

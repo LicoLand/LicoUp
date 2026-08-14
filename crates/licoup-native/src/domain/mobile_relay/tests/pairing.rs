@@ -11,7 +11,7 @@ fn sv_abcde_fghij_klmno_pqrst() -> &'static str {
 #[test]
 fn mobile_relay_config_requires_one_canonical_station() {
     let dir = temp_dir("mobile-relay");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let config = config_get(&json!({})).unwrap();
     assert_eq!(config["config"]["stationBaseUrl"], "");
@@ -41,7 +41,7 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_stati
     let sv_mobile_synthetic_stale = synthetic_value("mobile-synthetic-stale");
     let sv_v123456 = synthetic_value("123456");
     let dir = temp_dir("mobile-relay-reset-pairing");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     config["stationBaseUrl"] = json!("https://station.example.test");
     config["pcClientId"] = json!("pc-stable");
@@ -117,7 +117,7 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_stati
 fn e2ee_status_redacts_pairing_invite_secret() {
     let sv_pairing_invite_e2ee_sent = synthetic_value("pairing-invite-e2ee-sentinel-redaction-canary");
     let dir = temp_dir("mobile-relay-e2ee-status-redacts-pairing-invite");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     let endpoint = ensure_mobile_relay_endpoint_descriptor(
         &mut config,
@@ -157,7 +157,7 @@ fn e2ee_status_redacts_pairing_invite_secret() {
 fn config_load_clears_persisted_pairing_invite_and_code() {
     let sv_pairing_invite_sentinel_ = synthetic_value("pairing-invite-sentinel-status-canary");
     let dir = temp_dir("mobile-relay-clears-persisted-invite");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
@@ -198,7 +198,7 @@ fn config_load_clears_persisted_pairing_invite_and_code() {
 #[test]
 fn invalid_station_is_rejected_before_config_persistence() {
     let dir = temp_dir("mobile-relay-invalid");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     for denied in [
         "https://",
         "https://?station=station.example.test",
@@ -261,7 +261,7 @@ fn invalid_pairing_invite_station_cannot_mutate_existing_pairing_state() {
 #[test]
 fn pairing_create_returns_one_time_invite_without_persisting_code() {
     let dir = temp_dir("mobile-relay-one-time-create");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     config_set(&json!({
         "stationBaseUrl": "https://station.example.test",
@@ -308,7 +308,7 @@ fn pairing_create_returns_one_time_invite_without_persisting_code() {
 #[test]
 fn pairing_claim_sends_one_time_context_and_clears_code() {
     let dir = temp_dir("mobile-relay-one-time-claim");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
@@ -361,7 +361,7 @@ fn pairing_claim_sends_one_time_context_and_clears_code() {
 #[test]
 fn pairing_claim_invite_e2ee_secret_completes_mobile_endpoint_descriptor() {
     let dir = temp_dir("mobile-relay-one-time-claim-invite-e2ee-sentinel");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
@@ -434,7 +434,7 @@ fn pairing_claim_invite_e2ee_secret_completes_mobile_endpoint_descriptor() {
 #[test]
 fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
     let dir = temp_dir("mobile-relay-new-invite-resets-pairwise-state");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
@@ -544,7 +544,7 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
 #[test]
 fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
     let dir = temp_dir("mobile-relay-new-invite-resets-blank-pairing-stale-peer");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
@@ -615,7 +615,7 @@ fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
 #[test]
 fn pairing_claim_adopts_the_explicit_invite_station() {
     let dir = temp_dir("mobile-relay-invite-station-claim");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
@@ -670,7 +670,7 @@ fn pairing_claim_adopts_the_explicit_invite_station() {
 #[test]
 fn out_of_band_pairing_response_rejects_tampered_intro_with_replayed_claim_proof() {
     let dir = temp_dir("mobile-relay-claim-proof-binds-intro");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let pairing_id = "pair_intro_replay_rejected";
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
     let mut pc_config = default_config();
@@ -756,7 +756,7 @@ fn out_of_band_pairing_response_rejects_tampered_intro_with_replayed_claim_proof
 #[test]
 fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_terminal_error() {
     let dir = temp_dir("mobile-relay-pairing-status-revoked-peer");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mobile_store: Arc<dyn SecureMeshSecretStore> = store.clone();
     let pairwise_store: Arc<dyn SecureMeshSecretStore> = store.clone();
@@ -851,7 +851,7 @@ fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_termi
 #[test]
 fn out_of_band_pairing_response_rejects_substituted_peer_without_claim_proof() {
     let dir = temp_dir("out-of-band-pairing-rejects-peer-substitution");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,

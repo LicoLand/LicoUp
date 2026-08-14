@@ -4,21 +4,33 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { sensitiveRulesetExtensions } from "./lib/repository-sensitive-file-policy.mjs";
 
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
-const promotionBranchesRulesetName = "LicoUp protected release flow";
+const sensitivePublicationRulesetName = "LicoUp sensitive publication — all pushes";
+// Push Rulesets are hostable on private or internal Team/Enterprise
+// repositories. Branch protection remains independently deployable when the
+// host cannot provide this optional push-only control.
+const pushRulesetPlans = Object.freeze(["team", "enterprise"]);
 const identityStatusContext = "Commit identity";
-const requiredStatusContexts = Object.freeze([
+const leadingPromotionStatusContexts = Object.freeze([
   "Branch flow",
   identityStatusContext,
-  "Client required",
-  "Auditor",
 ]);
-const githubNoreplyHostPattern = ["users", "noreply", "github", "com"].join("\\.");
-const canonicalNoreplyPattern = `^[0-9]+\\+[A-Za-z0-9][A-Za-z0-9-]{0,38}@${githubNoreplyHostPattern}$`;
-const canonicalCommitterPattern =
-  `(?:${canonicalNoreplyPattern.slice(1, -1)}|noreply@github\\.com)`;
+const promotionRequiredStatusContexts = Object.freeze({
+  nightly: Object.freeze([...leadingPromotionStatusContexts, "Client required", "Auditor"]),
+  stable: Object.freeze([...leadingPromotionStatusContexts, "Stable client", "Auditor"]),
+  release: Object.freeze([...leadingPromotionStatusContexts, "Release ready", "Auditor"]),
+});
+const promotionRulesetNames = Object.freeze({
+  nightly: "LicoUp nightly regression",
+  stable: "LicoUp stable client",
+  release: "LicoUp release readiness",
+});
+const obsoletePromotionRulesetName = "LicoUp protected release flow";
+const forbiddenAgentEmailPattern =
+  "(?i)(^|[+._-])(claude([+._-]*code)?|cursor([+._-]*agent)?|github[+._-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)([+._@-]|$)|\\[bot\\]";
 const forbiddenCommitMessagePattern =
   "(?i)(^|\\n)[ \\t]*((co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:|(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>)";
 
@@ -44,6 +56,28 @@ function gh(args, options = {}) {
   } catch {
     reject(options.code || "GH_COMMAND_FAILED", options.message || "A GitHub operation failed.");
   }
+}
+
+export function boundedRead(operation, attempts = 3) {
+  if (typeof operation !== "function" || !Number.isSafeInteger(attempts) || attempts < 1) {
+    reject("READ_RETRY_INVALID", "The bounded read retry policy is invalid.");
+  }
+  let failure;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      failure = error;
+      if (attempt < attempts) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 250);
+      }
+    }
+  }
+  throw failure;
+}
+
+function ghRead(args, options = {}) {
+  return boundedRead(() => gh(args, options));
 }
 
 function ghOptional(args) {
@@ -72,12 +106,12 @@ function metadataRule(type, name, pattern, negate) {
   };
 }
 
-function requiredStatusChecksRule(actionsIntegrationId) {
+function requiredStatusChecksRule(actionsIntegrationId, contexts) {
   return {
     type: "required_status_checks",
     parameters: {
       do_not_enforce_on_create: true,
-      required_status_checks: requiredStatusContexts.map((context) => ({
+      required_status_checks: contexts.map((context) => ({
         context,
         integration_id: actionsIntegrationId,
       })),
@@ -90,8 +124,7 @@ export function buildRulesets(actionsIntegrationId) {
   if (!Number.isSafeInteger(actionsIntegrationId) || actionsIntegrationId <= 0) {
     reject("ACTIONS_INTEGRATION_INVALID", "The GitHub Actions integration ID is invalid.");
   }
-  return [
-    {
+  const identityRuleset = {
       name: allBranchesRulesetName,
       target: "branch",
       enforcement: "active",
@@ -102,15 +135,15 @@ export function buildRulesets(actionsIntegrationId) {
       rules: [
         metadataRule(
           "commit_author_email_pattern",
-          "Author must use a canonical GitHub noreply identity",
-          canonicalNoreplyPattern,
-          false,
+          "Agent identities are forbidden as commit Authors",
+          forbiddenAgentEmailPattern,
+          true,
         ),
         metadataRule(
           "committer_email_pattern",
-          "Committer must be the developer or GitHub verified merge service",
-          `^${canonicalCommitterPattern}$`,
-          false,
+          "Agent identities are forbidden as commit Committers",
+          forbiddenAgentEmailPattern,
+          true,
         ),
         metadataRule(
           "commit_message_pattern",
@@ -119,19 +152,15 @@ export function buildRulesets(actionsIntegrationId) {
           true,
         ),
       ],
-    },
-    {
-      name: promotionBranchesRulesetName,
+    };
+  const promotionRulesets = Object.entries(promotionRulesetNames).map(([branch, name]) => ({
+      name,
       target: "branch",
       enforcement: "active",
       bypass_actors: [],
       conditions: {
         ref_name: {
-          include: [
-            "refs/heads/nightly",
-            "refs/heads/stable",
-            "refs/heads/release",
-          ],
+          include: [`refs/heads/${branch}`],
           exclude: [],
         },
       },
@@ -149,10 +178,46 @@ export function buildRulesets(actionsIntegrationId) {
             required_review_thread_resolution: true,
           },
         },
-        requiredStatusChecksRule(actionsIntegrationId),
+        requiredStatusChecksRule(actionsIntegrationId, promotionRequiredStatusContexts[branch]),
       ],
-    },
-  ];
+    }));
+  const sensitivePublicationRuleset = {
+      name: sensitivePublicationRulesetName,
+      target: "push",
+      enforcement: "active",
+      bypass_actors: [],
+      rules: [
+        {
+          type: "file_extension_restriction",
+          parameters: {
+            restricted_file_extensions: sensitiveRulesetExtensions(),
+          },
+        },
+      ],
+    };
+  return [identityRuleset, ...promotionRulesets, sensitivePublicationRuleset];
+}
+
+export function pushRulesetCapability(repositoryDetails) {
+  return Boolean(
+    repositoryDetails &&
+    ["private", "internal"].includes(repositoryDetails.visibility) &&
+    pushRulesetPlans.includes(repositoryDetails.plan?.name?.toLowerCase()),
+  );
+}
+
+// Push protection is optional because GitHub does not expose it for public
+// repositories. Branch authorities are always planned and applied.
+export function planRulesetApply(repositoryDetails, actionsIntegrationId) {
+  const desired = buildRulesets(actionsIntegrationId);
+  const pushSupported = pushRulesetCapability(repositoryDetails);
+  return Object.freeze({
+    status: pushSupported ? "supported" : "branch-only",
+    code: pushSupported ? null : "PUSH_RULESET_UNSUPPORTED",
+    desired: Object.freeze(pushSupported
+      ? desired
+      : desired.filter((payload) => payload.target === "branch")),
+  });
 }
 
 function canonicalJson(value) {
@@ -186,14 +251,14 @@ export function rulesetPayloadMatches(actual, expected) {
 }
 
 function assertRepositoryAccess({ requireAdmin }) {
-  gh(["api", "user", "--jq", ".login"], {
+  ghRead(["api", "user", "--jq", ".login"], {
     code: "GH_AUTH_REQUIRED",
     message: "GitHub CLI authentication is required.",
   });
   let details;
   try {
     details = JSON.parse(
-      gh(["api", `repos/${repository}`], {
+      ghRead(["api", `repos/${repository}`], {
         code: "REPOSITORY_UNAVAILABLE",
         message: "The target repository is unavailable.",
       }),
@@ -215,7 +280,7 @@ function assertRepositoryAccess({ requireAdmin }) {
 }
 
 function actionsIntegrationId() {
-  const raw = gh(["api", "/apps/github-actions", "--jq", ".id"], {
+  const raw = ghRead(["api", "/apps/github-actions", "--jq", ".id"], {
     code: "ACTIONS_INTEGRATION_UNAVAILABLE",
     message: "The GitHub Actions integration identity could not be resolved.",
   });
@@ -229,7 +294,7 @@ function actionsIntegrationId() {
 function repositoryRulesets() {
   try {
     const value = JSON.parse(
-      gh(["api", `repos/${repository}/rulesets?includes_parents=false`], {
+      ghRead(["api", `repos/${repository}/rulesets?includes_parents=false`], {
         code: "RULESETS_UNAVAILABLE",
         message: "Repository Rulesets could not be listed.",
       }),
@@ -247,7 +312,7 @@ function repositoryRuleset(id) {
     reject("RULESET_RESPONSE_INVALID", "A repository Ruleset identifier is invalid.");
   }
   try {
-    const value = JSON.parse(gh(["api", `repos/${repository}/rulesets/${id}`], {
+    const value = JSON.parse(ghRead(["api", `repos/${repository}/rulesets/${id}`], {
       code: "RULESETS_UNAVAILABLE",
       message: "A repository Ruleset could not be read.",
     }));
@@ -284,6 +349,19 @@ function applyRuleset(payload, existing) {
   }
 }
 
+function removeObsoletePromotionRuleset(existing) {
+  const obsolete = existing.filter((ruleset) => ruleset.name === obsoletePromotionRulesetName);
+  if (obsolete.length > 1) {
+    reject("DUPLICATE_RULESET", "More than one obsolete promotion Ruleset exists.");
+  }
+  if (obsolete.length === 1) {
+    gh(["api", "-X", "DELETE", `repos/${repository}/rulesets/${obsolete[0].id}`, "--silent"], {
+      code: "RULESET_APPLY_FAILED",
+      message: "The obsolete shared promotion Ruleset could not be removed.",
+    });
+  }
+}
+
 function removeLegacyBranchProtection(defaultBranch) {
   const endpoint = `repos/${repository}/branches/${encodeURIComponent(defaultBranch)}/protection`;
   if (!ghOptional(["api", endpoint, "--silent"]).ok) return "absent";
@@ -306,19 +384,30 @@ function rulesetDigest(desired) {
   return createHash("sha256").update(canonicalJson(desired)).digest("hex");
 }
 
+export function assertReleaseDefaultBranch(repositoryDetails) {
+  if (repositoryDetails?.default_branch !== "release") {
+    reject("DEFAULT_BRANCH_INVALID", "The repository default branch must remain release.");
+  }
+}
+
 function verify({ repositoryDetails, desired } = {}) {
   const details = repositoryDetails || assertRepositoryAccess({ requireAdmin: false });
-  const expected = desired || buildRulesets(actionsIntegrationId());
+  assertReleaseDefaultBranch(details);
+  const integrationId = actionsIntegrationId();
+  const plan = planRulesetApply(details, integrationId);
+  const expected = desired || buildRulesets(integrationId);
+  const branchPayloads = expected.filter((payload) => payload.target === "branch");
   const summaries = repositoryRulesets();
   const activeBranchNames = summaries
     .filter((ruleset) => ruleset.target === "branch" && ruleset.enforcement === "active")
     .map((ruleset) => ruleset.name).sort();
-  const expectedNames = expected.map((ruleset) => ruleset.name).sort();
-  if (JSON.stringify(activeBranchNames) !== JSON.stringify(expectedNames)) {
+  const expectedBranchNames = branchPayloads.map((payload) => payload.name).sort();
+  if (JSON.stringify(activeBranchNames) !== JSON.stringify(expectedBranchNames)) {
     reject("RULESET_AUTHORITY_CONFLICT",
-      "Active branch Rulesets do not exactly match the two managed authorities.");
+      "Active branch Rulesets do not exactly match the managed authorities.");
   }
-  for (const payload of expected) {
+  const checkedPayloads = plan.status === "supported" ? expected : branchPayloads;
+  for (const payload of checkedPayloads) {
     const matches = summaries.filter((ruleset) => ruleset.name === payload.name);
     if (matches.length !== 1) {
       reject(matches.length > 1 ? "DUPLICATE_RULESET" : "RULESET_MISSING",
@@ -329,13 +418,20 @@ function verify({ repositoryDetails, desired } = {}) {
     }
   }
   assertLegacyBranchProtectionAbsent(details.default_branch);
+  if (plan.status === "branch-only") {
+    process.stdout.write(`rulesets=pending push_ruleset=${plan.code}\n`);
+    return;
+  }
   process.stdout.write(`rulesets=verified count=${expected.length} policy_digest=${rulesetDigest(expected)}\n`);
 }
 
 function apply() {
   const repositoryDetails = assertRepositoryAccess({ requireAdmin: true });
+  assertReleaseDefaultBranch(repositoryDetails);
+  const integrationId = actionsIntegrationId();
+  const plan = planRulesetApply(repositoryDetails, integrationId);
   const existing = repositoryRulesets();
-  const desired = buildRulesets(actionsIntegrationId());
+  const desired = plan.desired;
   for (const payload of desired) {
     const matches = existing.filter((ruleset) => ruleset.name === payload.name);
     if (matches.length > 1) {
@@ -343,6 +439,7 @@ function apply() {
     }
     applyRuleset(payload, matches[0]);
   }
+  removeObsoletePromotionRuleset(existing);
   const legacy = removeLegacyBranchProtection(repositoryDetails.default_branch);
   verify({ repositoryDetails, desired });
   process.stdout.write(`rulesets=applied count=${desired.length} legacy_branch_protection=${legacy}\n`);
@@ -371,7 +468,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   allBranchesRulesetName,
-  promotionBranchesRulesetName,
+  sensitivePublicationRulesetName,
   identityStatusContext,
-  requiredStatusContexts,
+  promotionRulesetNames,
+  promotionRequiredStatusContexts,
 };

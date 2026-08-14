@@ -85,20 +85,15 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       expect(observedReplies, isNot(contains('Hello worldworld')));
       // Evidence-driven budget: one live projection update per observable
       // native advance — accepted, processing, responding, the coalesced
-      // reply publish, the tool step, the final reply, and completed. The
-      // 32ms reply-publish timer keeps chunk bursts below this bound; a
+      // reply publish, the tool step, the final reply, commit, and completed.
+      // The 32ms reply-publish timer keeps chunk bursts below this bound; a
       // per-chunk publish storm would exceed it.
       expect(liveProjectionUpdates, lessThanOrEqualTo(8));
       expect(
         observedProcessKinds,
         contains(AgentConversationMessageKind.toolCall),
       );
-      expect(
-        controller.selectedLiveConversationMessages
-            .where((message) => message.role == 'assistant')
-            .map((message) => message.text),
-        contains('Hello world.'),
-      );
+      expect(controller.selectedLiveConversationMessages, isEmpty);
       final committedSession = controller.selectedConversationSession;
       expect(committedSession?.id, 'native-codex-turn-bound');
       expect(committedSession?.nativeSessionId, 'native-codex-turn-bound');
@@ -212,7 +207,10 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       expect(updateCardCounts, isNotEmpty);
       expect(updateCardCounts.any((count) => count == 1), isTrue);
       expect(updateCardCounts.every((count) => count <= 1), isTrue);
-      final cards = controller.selectedLiveConversationMessages
+      // The turn-bound readback is the durable owner after commit; the live
+      // projection is cleared once the committed catalog entry is selected.
+      expect(controller.selectedLiveConversationMessages, isEmpty);
+      final cards = controller.selectedConversationSession!.messages
           .where((message) => message.cardType == 'runtime-update')
           .toList();
       expect(cards, hasLength(1));
@@ -225,13 +223,13 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       expect(card.cardSubtitle, contains('2026.08.04-aaa8809'));
       // Update events must not advance the turn lifecycle beyond accepted;
       // the later message events advance it to responding/completed as usual.
-      final lifecycle = controller.selectedLiveConversationMessages
+      final lifecycle = controller.selectedConversationSession!.messages
           .where((message) => message.cardType == 'lifecycle')
           .single;
       expect(lifecycle.cardSubtitle, 'submitted,accepted,responding,completed');
       // The turn itself still converges.
       expect(
-        controller.selectedLiveConversationMessages
+        controller.selectedConversationSession!.messages
             .where((message) => message.role == 'assistant')
             .map((message) => message.text),
         contains('Hello world.'),

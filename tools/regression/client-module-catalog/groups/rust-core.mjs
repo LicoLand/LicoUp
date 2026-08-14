@@ -984,11 +984,6 @@ export const RUST_CORE_MODULES = Object.freeze([
       ],
     }),
   secureMeshModule({
-      id: "rust.core.secure-mesh.skill-sync",
-      summary: "Explicitly approved encrypted skill synchronization",
-      source: "secure_mesh_skill_sync",
-    }),
-  secureMeshModule({
       id: "rust.core.secure-mesh.sparse-pq-ratchet",
       summary: "Sparse post-quantum ratchet scheduling and recovery",
       source: "secure_mesh_sparse_pq_ratchet",
@@ -1389,6 +1384,9 @@ export const RUST_CORE_MODULES = Object.freeze([
         "crates/licoup-native/src/core/secure_mesh_pairwise/tests.rs",
         "crates/licoup-native/src/core/secure_mesh_pairwise/tests/test_support.rs",
         "crates/licoup-native/src/core/secure_mesh_pairwise/persistence.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/pending_delivery.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/received_payload.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_received_payload.rs",
       ],
       command: rustLayer("core::secure_mesh_pairwise::tests::persistence_"),
     }),

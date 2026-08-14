@@ -22,7 +22,6 @@ final class ClientTargetComponentAssembly {
     required Future<void> Function(String) loadSelectedConversation,
     required String Function() selectedAgentId,
     required bool Function() shouldLoadSelectedConversation,
-    required bool Function(String) isOrchestrationTarget,
     required ClientComponentStatusSink reportStatus,
   }) : controller = TargetController(
          gateway: agentService,
@@ -36,7 +35,6 @@ final class ClientTargetComponentAssembly {
          loadSelectedConversation: () =>
              loadSelectedConversation(selectedAgentId()),
          shouldLoadSelectedConversation: shouldLoadSelectedConversation,
-         isOrchestrationTarget: isOrchestrationTarget,
          onStatus: (update) => reportStatus(
            chinese: update.chinese,
            english: update.english,

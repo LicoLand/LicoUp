@@ -59,9 +59,6 @@ export async function checkShellIsolationAndNativeStdio(context) {
     .filter(isFlutterGuiImplementationSource)) {
     const source = await readText(relativePath);
     for (const token of guiImplementationForbiddenTokens) {
-      if (relativePath ===
-          "apps/desktop/lib/src/frontend/features/agents/ui/lico_plan_document_panel.dart" &&
-          token === "dart:io") continue;
       assert(!source.includes(token), `${relativePath} must not implement backend/platform behavior outside the platform root via ${token}`);
     }
   }

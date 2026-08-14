@@ -232,6 +232,30 @@ export async function runSelfTest() {
     const liveRoundOrderingAgnostic = rounds.length === strictRoundCount
       && rounds.every((round) => round.ready === true
         && round.conversationReady === true);
+    const verificationWorkflowContract = rounds.length === 1
+      && rounds[0].requestCount === 2
+      && rounds[0].successfulRequestCount === 2
+      && rounds[0].testedSessions === 1
+      && rounds[0].facts?.openNew === true
+      && rounds[0].facts?.exactResume === true
+      && rounds[0].facts?.turnOutputBytes?.length === 2;
+    const driftWrapper = {
+      ...wrapper,
+      environment: {
+        ...wrapper.environment,
+        LICO_FAKE_RESUME_ID_DRIFT: "1",
+      },
+    };
+    const identityDriftRound = await runRound({
+      ...context,
+      wrapper: driftWrapper,
+      environment: driftWrapper.environment,
+      observedSessions: new Set(),
+      cleanedSessions: new Set(),
+    }, 2, evidenceSeed);
+    const exactResumeIdentityFailClosed = identityDriftRound.ready === false
+      && identityDriftRound.requestCount === 2
+      && identityDriftRound.errorCode === "exact_resume_session_mismatch";
     const sessionUpdateOracle = sessionUpdateOracleContract();
     const promptQuiescenceBudget = promptQuiescenceBudgetContract();
     const permissionFailClosed = await exerciseFailClosed(
@@ -406,6 +430,10 @@ export async function runSelfTest() {
     if (codexPreflight.ready) {
       const codexRound = await runRound(codexContext, 1, evidenceSeed);
       codexRoundReady = codexRound.ready === true
+        && codexRound.requestCount === 2
+        && codexRound.testedSessions === 1
+        && codexRound.facts?.openNew === true
+        && codexRound.facts?.exactResume === true
         && codexRound.facts?.nativeToArc === true
         && codexRound.facts?.arcToNative === true
         && codexRound.cleanupVerified === true;
@@ -1541,6 +1569,8 @@ export async function runSelfTest() {
         && publicStreamChunkOraclePassed
         && publicStreamChunkEvidenceFailClosed
         && liveRoundOrderingAgnostic
+        && verificationWorkflowContract
+        && exactResumeIdentityFailClosed
         && sessionUpdateOracle
         && promptQuiescenceBudget
         && permissionFailClosed
@@ -1592,6 +1622,10 @@ export async function runSelfTest() {
       cl06Ready: false,
       conversationGatePassed: false,
       strictRounds: strictReducer.roundsCompleted,
+      verificationTurns: rounds[0]?.requestCount || 0,
+      verificationSessions: rounds[0]?.testedSessions || 0,
+      openNew: strictReducer.openNew,
+      exactResume: strictReducer.exactResume,
       nativeToArc: strictReducer.nativeToArc,
       arcToNative: strictReducer.arcToNative,
       realSessionIds: strictReducer.realSessionIds,
@@ -1608,6 +1642,8 @@ export async function runSelfTest() {
       publicStreamChunkOraclePassed,
       publicStreamChunkEvidenceFailClosed,
       liveRoundOrderingAgnostic,
+      verificationWorkflowContract,
+      exactResumeIdentityFailClosed,
       sessionUpdateOracle,
       promptQuiescenceBudget,
       permissionFailClosed,
@@ -1667,7 +1703,6 @@ export async function runSelfTest() {
       productFixtureReceiptRejected,
       disposableProfileSeedSafe,
       dispatchLaneContract: dispatchLaneProbe.ok,
-      dispatchLaneFailures: dispatchLaneProbe.failedRows,
       laneFamiliesCovered: dispatchLaneProbe.laneFamiliesCovered,
       harnessVersion: dispatchLaneHarnessVersion,
       evidenceWrite,

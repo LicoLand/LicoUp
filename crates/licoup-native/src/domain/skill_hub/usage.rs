@@ -3,7 +3,7 @@
 //! The ledger is fed by two postures:
 //! - Runtime live events: the conversation adapter supplies privacy-minimal
 //!   `skill.invoked` events; counts are accepted only for approved agent
-//!   pairings and skills installed through the managed installer.
+//!   pairings and well-formed local skill identifiers reported by that agent.
 //! - History backfill: an incremental scanner projects the same skill-call
 //!   semantics from locally discovered native transcripts and records
 //!   aggregate counts for any locally discovered agent and any well-formed

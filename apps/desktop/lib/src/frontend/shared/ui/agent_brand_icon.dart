@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:licoup/src/application/features/agents/agent_product_names.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -73,13 +72,7 @@ class AgentBrandIcon extends StatelessWidget {
       width: size,
       height: size,
       child: Center(
-        child: isAgentOrchestrationTargetId(target.target)
-            ? Icon(
-                Icons.auto_awesome,
-                size: iconSize,
-                color: selected ? colors.accent : colors.text,
-              )
-            : asset == null
+        child: asset == null
             ? Icon(
                 target.manual
                     ? Icons.edit_location_alt_outlined

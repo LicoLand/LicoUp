@@ -9,6 +9,7 @@ import 'package:licoup/src/backend/features/agents/services/agent_conversation_s
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -71,6 +72,8 @@ final class ProductionClientShellFixture {
       mobileClientRuntimePlatformOverride:
           surface == LayoutRuntimeSurface.mobile,
       llmGatewayMonitorInterval: Duration.zero,
+      llmGatewayRecoveryRetryDelay: Duration.zero,
+      llmGatewayDiagnosticSink: const NoopLlmGatewayDiagnosticSink(),
     );
 
     controller

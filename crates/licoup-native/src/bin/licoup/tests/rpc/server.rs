@@ -1,4 +1,6 @@
+use super::super::support::temp_cli_dir;
 use super::*;
+use licoup_native::domain::client_conversation::ConversationService;
 
 fn rpc_input(requests: &[Value]) -> Cursor<Vec<u8>> {
     let mut bytes = Vec::new();
@@ -102,23 +104,204 @@ fn stdio_rpc_rejects_streaming_execute_without_invoking_the_command() {
 }
 
 #[test]
-fn stdio_rpc_conversation_send_rejects_missing_agent_before_dispatch() {
+fn ordinary_stdio_rpc_rejects_every_conversation_dispatch_entry_point() {
     let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
-    let input = rpc_input(&[json!({
-        "protocol": STDIO_RPC_PROTOCOL,
-        "id": "request-1",
-        "workflowId": "workflow-1",
-        "method": "agent.conversation.send",
-        "params": {},
-    })]);
-    let output = serve_stdio_rpc(input, Vec::new(), |_, _| {
-        Ok(licoup_native::ffi::commands::CliExecution::Usage)
+    let input = rpc_input(&[
+        json!({
+            "protocol": STDIO_RPC_PROTOCOL,
+            "id": "request-1",
+            "workflowId": "workflow-1",
+            "method": "agent.conversation.send",
+            "params": {"agent": "synthetic", "text": "private"},
+        }),
+        execute_request(
+            "request-2",
+            "workflow-1",
+            &["agent", "conversation", "send"],
+        ),
+        execute_request(
+            "request-3",
+            "workflow-1",
+            &[
+                "agent",
+                "conversation",
+                "send",
+                "--stdin-json",
+                r#"{"invalid""#,
+            ],
+        ),
+        execute_request(
+            "request-4",
+            "workflow-1",
+            &["conversation", "execute", "--stdin-json", "{}"],
+        ),
+        execute_request(
+            "request-5",
+            "workflow-1",
+            &["conversation", "execute", "--stdin-json", r#"{"invalid""#],
+        ),
+        json!({
+            "protocol": STDIO_RPC_PROTOCOL,
+            "id": "request-6",
+            "workflowId": "workflow-1",
+            "method": "client.conversation.execute",
+            "params": {
+                "action": "conversation.message.post",
+                "mentionedMembershipIds": ["membership:agent"]
+            },
+        }),
+    ]);
+    let output = serve_stdio_rpc(input, Vec::new(), |_, _| -> anyhow::Result<_> {
+        panic!("conversation dispatch must not reach ordinary stdio execution")
     })
     .unwrap();
 
     let frames = rpc_output(output);
-    assert_eq!(frames.len(), 1);
-    assert_eq!(frames[0]["kind"], "terminal");
-    assert_eq!(frames[0]["ok"], false);
-    assert_eq!(frames[0]["error"]["code"], "agent_identifier_missing");
+    assert_eq!(frames.len(), 6);
+    for frame in frames {
+        assert_eq!(frame["error"]["code"], "command_failed");
+        assert_eq!(frame["error"]["component"], "native_cli");
+    }
+}
+
+#[test]
+fn persistent_conversation_rpc_projects_admission_without_execute_fallback() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
+    let portable = temp_cli_dir("persistent-conversation-admission-rpc");
+    let service = ConversationService::open(&portable).unwrap();
+    let runtime = PersistentConversationRuntime::new(service.store().clone());
+    let input = rpc_input(&[
+        execute_request(
+            "request-1",
+            "workflow-1",
+            &[
+                "agent",
+                "conversation",
+                "send",
+                "--stdin-json",
+                r#"{"invalid""#,
+            ],
+        ),
+        execute_request(
+            "request-2",
+            "workflow-1",
+            &[
+                "agent",
+                "conversation",
+                "stream",
+                "--stdin-json",
+                r#"{"invalid""#,
+            ],
+        ),
+        execute_request(
+            "request-3",
+            "workflow-1",
+            &[
+                "agent",
+                "conversation",
+                "steer",
+                "--stdin-json",
+                r#"{"invalid""#,
+            ],
+        ),
+        execute_request(
+            "request-4",
+            "workflow-1",
+            &[
+                "agent",
+                "conversation",
+                "cancel",
+                "--stdin-json",
+                r#"{"invalid""#,
+            ],
+        ),
+        execute_request(
+            "request-5",
+            "workflow-1",
+            &["agent", "conversation", "send", "--stdin-json", "{}"],
+        ),
+        execute_request(
+            "request-6",
+            "workflow-1",
+            &["conversation", "execute", "--stdin-json", r#"{"invalid""#],
+        ),
+        execute_request(
+            "request-7",
+            "workflow-1",
+            &["conversation", "execute", "--stdin-json", "{}"],
+        ),
+    ]);
+    let output = serve_stdio_rpc_with_runtime(
+        input,
+        Vec::new(),
+        |_, _| -> anyhow::Result<_> {
+            panic!("legacy execute must never dispatch persistent conversation work")
+        },
+        runtime,
+    )
+    .unwrap();
+
+    let frames = rpc_output(output);
+    assert_eq!(frames.len(), 7);
+    for frame in &frames[..4] {
+        assert_eq!(frame["error"]["code"], "cli_json_invalid");
+        assert_eq!(frame["error"]["stage"], "cli/admission");
+        assert_eq!(frame["error"]["component"], "native_cli");
+    }
+    assert_eq!(frames[4]["error"]["code"], "command_failed");
+    assert_eq!(frames[5]["error"]["code"], "cli_json_invalid");
+    assert_eq!(frames[5]["error"]["stage"], "cli/admission");
+    assert_eq!(frames[5]["error"]["component"], "native_cli");
+    assert_eq!(frames[6]["error"]["code"], "command_failed");
+    drop(service);
+    let _ = fs::remove_dir_all(portable);
+}
+
+#[test]
+fn stdio_rpc_executes_client_conversation_actions_on_the_bound_portable_root() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
+    let portable = temp_cli_dir("client-conversation-rpc");
+    let input = rpc_input(&[
+        json!({
+            "protocol": STDIO_RPC_PROTOCOL,
+            "id": "request-1",
+            "workflowId": "workflow-1",
+            "method": "client.conversation.execute",
+            "params": {"action": "conversation.list", "includeArchived": false},
+            "portableDataDir": portable,
+        }),
+        json!({
+            "protocol": STDIO_RPC_PROTOCOL,
+            "id": "request-2",
+            "workflowId": "workflow-1",
+            "method": "shutdown",
+        }),
+    ]);
+    let output = serve_stdio_rpc(input, Vec::new(), |_, _| {
+        panic!("structured client conversation must not reach execute")
+    })
+    .unwrap();
+
+    let frames = rpc_output(output);
+    assert_eq!(frames[0]["ok"], true);
+    assert_eq!(frames[0]["result"]["ok"], true);
+    let conversations = frames[0]["result"]["result"].as_array().unwrap();
+    assert_eq!(
+        conversations.len(),
+        1,
+        "startup pins exactly one canonical Local group"
+    );
+    assert_eq!(conversations[0]["id"], "lico-group-default");
+    assert_eq!(conversations[0]["title"], "Local");
+    assert_eq!(conversations[0]["isGroup"], true);
+    assert_eq!(conversations[0]["pinned"], true);
+    assert_eq!(conversations[0]["archived"], false);
+    assert_eq!(conversations[0]["eventCount"], 0);
+    assert_eq!(conversations[0]["membershipCount"], 1);
+    assert_eq!(conversations[0]["revision"], 1);
+    assert!(
+        conversations[0].get("updatedAtUnixMs").is_some(),
+        "canonical Local projection keeps its recency fact"
+    );
+    let _ = fs::remove_dir_all(portable);
 }

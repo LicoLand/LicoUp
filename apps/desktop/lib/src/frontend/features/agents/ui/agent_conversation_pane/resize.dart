@@ -102,10 +102,11 @@ class PaneEdgeDragHandle extends StatelessWidget {
           child: MouseRegion(
             cursor: SystemMouseCursors.resizeLeftRight,
             child: GestureDetector(
+              key: dragHandleKey,
               behavior: HitTestBehavior.opaque,
               onHorizontalDragUpdate: (details) =>
                   onDragDelta(details.delta.dx),
-              child: SizedBox(key: dragHandleKey, width: width),
+              child: SizedBox(width: width),
             ),
           ),
         ),

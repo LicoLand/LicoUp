@@ -10,7 +10,9 @@ use crate::core::secure_mesh_trust::DeviceTrustState;
 use super::directory_authorization::require_mls_directory_authority;
 use super::group_state::{group_status_json, reconcile_group_metadata};
 use super::input_codec::{GroupCreateRequest, MAX_GROUP_ID_BYTES, decode_base64url, parse_params};
-use super::participant_runtime::{ParticipantRequirement, with_local_participant};
+use super::participant_runtime::{
+    ParticipantRequirement, group_state_store, with_local_participant,
+};
 
 pub(super) fn group_create(params: &Value) -> Result<Value> {
     let request: GroupCreateRequest = parse_params(params)?;
@@ -36,7 +38,11 @@ pub(super) fn group_create(params: &Value) -> Result<Value> {
             )?,
         };
         runtime.persist_participant()?;
-        let metadata = reconcile_group_metadata(&group, runtime.identity)?;
+        let metadata = reconcile_group_metadata(
+            group_state_store(&mut *runtime.group_store)?,
+            &group,
+            runtime.identity,
+        )?;
         let mut response = group_status_json(&group, &metadata);
         response["directoryAuthority"] = json!({
             "current": true,

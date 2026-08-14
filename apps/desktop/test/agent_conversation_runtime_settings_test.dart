@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_options.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -32,12 +32,8 @@ void main() {
       },
     );
 
-    expect(agentOrchestrationReasoningEffortsFor(target), isEmpty);
     expect(
-      agentOrchestrationReasoningEffortsForModel(
-        target,
-        'Gemini 3.5 Flash (High)',
-      ),
+      conversationReasoningEffortsForModel(target, 'Gemini 3.5 Flash (High)'),
       isEmpty,
     );
   });

@@ -6,7 +6,7 @@ fn cli_dispatches_help_and_error_paths() {
     let dir = temp_cli_dir("dispatch-errors");
 
     {
-        let _guard = cli_env_lock().lock().unwrap();
+        let _guard = cli_env_guard();
         let _portable = set_portable_dir(&dir);
 
         let empty = execute_cli(vec![]);

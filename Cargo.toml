@@ -3,7 +3,7 @@ members = ["crates/lico-catalog-convergence", "crates/licoup-native", "crates/tr
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 repository = "https://github.com/LicoLand/LicoUp.git"
 license = "AGPL-3.0-or-later"
@@ -11,6 +11,6 @@ license = "AGPL-3.0-or-later"
 [profile.release]
 codegen-units = 1
 lto = true
-opt-level = "z"
+opt-level = 3
 panic = "abort"
 strip = true

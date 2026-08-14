@@ -3,7 +3,7 @@ use super::super::test_support::*;
 fn mobile_ffi_dispatcher_callback_store_keeps_public_reads_no_auth_until_authorized() {
     let files_dir = temp_dir("mobile-ffi-dispatcher-secret-store");
     let portable_dir = files_dir.join("portable-data");
-    let previous = set_portable_data_dir_override(Some(portable_dir));
+    let previous = set_portable_data_dir_override(Some(portable_dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
 
     let mut pc_config = default_config();

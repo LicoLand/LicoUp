@@ -15,7 +15,7 @@
     "capabilityProbe": "fixed help probe for --print, --conversation, --model, and --effort",
     "newSessionMethod": "agy --print=<prompt> plus Stop/PreInvocation hook conversationId receipt",
     "exactResumeMethod": "--conversation=<id> with caller-supplied native id in launch arguments",
-    "streamingMethod": "unsupported; print mode exposes final stdout only after process exit",
+    "streamingMethod": "PTY transport projects progressive structured lifecycle and output events",
     "historyMethod": "read-only native history is outside the send lane",
     "cleanupMethod": "delete local antigravity-cli brain leaf for the exact conversation id",
     "officialReferences": [
@@ -65,7 +65,7 @@
     },
     "stream": {
       "status": "supported",
-      "method": "PTY print mode emits progressive text chunks"
+      "method": "PTY transport projects progressive structured lifecycle and output events"
     },
     "cancel": {
       "status": "supported",
@@ -99,6 +99,8 @@
   "events": {
     "framing": "text",
     "realtimeKinds": [
+      "agent.turn.accepted",
+      "agent.turn.responding",
       "agent.message.chunk"
     ],
     "terminalKinds": [
@@ -114,7 +116,10 @@
     "cleanupScope": "official-session",
     "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
-    "maxTrackedSessions": 1024
+    "maxTrackedSessions": 1024,
+    "survivesGuiDisconnect": true,
+    "reattachScope": "activeTurn",
+    "replayMode": "orderedCursor"
   },
   "privacy": {
     "promptInArguments": true,
@@ -189,12 +194,12 @@
       "C-05": "interrupt-and-steer",
       "C-06": "usage-and-status"
     },
-    "minimumConsecutivePasses": 3,
+    "minimumConsecutivePasses": 1,
     "minimumConsecutiveReleaseUiPasses": 0,
     "productUiRequired": false,
     "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
-    "realtimeOutputRequired": true,
+    "realtimeOutputRequired": false,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
     "nativeToArcRequired": false,

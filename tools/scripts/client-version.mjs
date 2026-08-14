@@ -7,8 +7,8 @@ import { sanitizeError } from "./lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
-const versionManifestSchema = "v0.0.1:client-version-manifest-2";
-const releaseTargets = new Set(["macos-arm64", "linux-glibc-arm64", "android-arm64"]);
+const versionManifestSchema = "v0.0.1:client-version-manifest-1";
+const cargoWorkspaceVersionPackages = Object.freeze(["licoup-native", "trybuild"]);
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
@@ -41,9 +41,6 @@ function validateManifest(manifest) {
   }
   if (!Number.isInteger(manifest.buildNumber) || manifest.buildNumber < 1) {
     throw new Error(`Invalid buildNumber in tools/client-version.json: ${manifest.buildNumber}`);
-  }
-  if (manifest.releaseTarget !== null && !releaseTargets.has(manifest.releaseTarget)) {
-    throw new Error(`Invalid releaseTarget in tools/client-version.json: ${manifest.releaseTarget}`);
   }
 }
 
@@ -117,17 +114,20 @@ function syncCargoLock(relativePath, manifest) {
   if (!existsSync(absolutePath)) {
     return;
   }
-  const source = readText(relativePath);
-  const regex = /(\[\[package\]\]\nname = "licoup-native"\nversion = ")[^"]+(")/;
-  if (!regex.test(source)) {
-    return;
+  let source = readText(relativePath);
+  for (const packageName of cargoWorkspaceVersionPackages) {
+    const regex = new RegExp(
+      String.raw`(\[\[package\]\]\nname = "${packageName}"\nversion = ")[^"]+(")`,
+    );
+    if (!regex.test(source)) continue;
+    source = replaceExactly(
+      source,
+      regex,
+      (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
+      `${relativePath} ${packageName} version`,
+    );
   }
-  writeText(relativePath, replaceExactly(
-    source,
-    regex,
-    (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
-    `${relativePath} licoup-native version`
-  ));
+  writeText(relativePath, source);
 }
 
 function syncPubspec(manifest) {
@@ -236,24 +236,16 @@ function checkVersion() {
   for (const cargoLockPath of ["Cargo.lock", "crates/licoup-native/Cargo.lock"]) {
     if (existsSync(path.join(repoRoot, cargoLockPath))) {
       const source = readText(cargoLockPath);
-      const matches = [...source.matchAll(/\[\[package\]\]\nname = "licoup-native"\nversion = "([^"]+)"/g)];
-      if (matches.length > 0) {
-        if (matches.length !== 1) {
-          throw new Error(`${cargoLockPath} licoup-native version must exist at most once; found ${matches.length}.`);
+      for (const packageName of cargoWorkspaceVersionPackages) {
+        const matches = [...source.matchAll(new RegExp(
+          String.raw`\[\[package\]\]\nname = "${packageName}"\nversion = "([^"]+)"`, "g"))];
+        if (matches.length > 1) {
+          throw new Error(`${cargoLockPath} ${packageName} version must exist at most once; found ${matches.length}.`);
         }
-        ok = checkEqual(
-          records,
-          `${cargoLockPath} licoup-native version`,
-          matches[0][1],
-          manifest.productVersion
-        ) && ok;
-      } else {
-        records.push({
-          label: `${cargoLockPath} licoup-native version`,
-          expected: manifest.productVersion,
-          actual: "not present in generated lockfile",
-          ok: true
-        });
+        if (matches.length === 1) {
+          ok = checkEqual(records, `${cargoLockPath} ${packageName} version`,
+            matches[0][1], manifest.productVersion) && ok;
+        }
       }
     }
   }
@@ -327,7 +319,7 @@ function checkVersion() {
     String(manifest.buildNumber)
   ) && ok;
 
-  console.log(JSON.stringify({ ok, productVersion: manifest.productVersion, buildNumber: manifest.buildNumber, releaseTarget: manifest.releaseTarget, records }, null, 2));
+  console.log(JSON.stringify({ ok, productVersion: manifest.productVersion, buildNumber: manifest.buildNumber, records }, null, 2));
   if (!ok) {
     process.exitCode = 1;
   }
@@ -343,9 +335,6 @@ function updateManifest(argv) {
       index += 1;
     } else if (arg === "--build-number" && next) {
       manifest.buildNumber = Number(next);
-      index += 1;
-    } else if (arg === "--target" && next) {
-      manifest.releaseTarget = next;
       index += 1;
     } else {
       throw new Error(`Unknown client version option: ${arg}`);

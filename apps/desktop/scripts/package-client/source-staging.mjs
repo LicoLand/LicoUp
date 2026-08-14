@@ -8,8 +8,14 @@ import {
   packageClientRuntime,
   packageFailure,
 } from "./cli-policy.mjs";
+import {
+  ProjectTemporaryDirectoryLifecycleError,
+  removeCurrentProjectTemporaryDirectory,
+  retireInactiveProjectTemporaryDirectories,
+} from "../../../../tools/scripts/lib/project-temporary-directory-lifecycle.mjs";
 
 let buildRunId = "";
+let buildRunPrepared = false;
 
 export function cleanBuildBaseRoot(environment = process.env) {
   return path.resolve(
@@ -19,7 +25,12 @@ export function cleanBuildBaseRoot(environment = process.env) {
 
 export function cleanBuildRoot() {
   buildRunId ||= `run-${process.pid}-${Date.now()}-${randomUUID()}`;
-  return path.join(cleanBuildBaseRoot(), buildRunId);
+  const baseRoot = cleanBuildBaseRoot();
+  if (!buildRunPrepared) {
+    retireStaleCleanBuildRuns(baseRoot, buildRunId);
+    buildRunPrepared = true;
+  }
+  return path.join(baseRoot, buildRunId);
 }
 
 export function stagedFlutterClientRoot() {
@@ -74,7 +85,41 @@ export function prepareStagedFlutterSource() {
 
 export function cleanupFlutterBuildCache(options, flutterBuildAttempted) {
   if (!flutterBuildAttempted || options.keepFlutterBuildCache) return;
-  rmSync(cleanBuildRoot(), { recursive: true, force: true });
+  const currentRoot = cleanBuildRoot();
+  try {
+    removeCurrentProjectTemporaryDirectory({
+      root: path.dirname(currentRoot),
+      name: path.basename(currentRoot),
+      parseOwnerPid: parseCleanBuildRunOwnerPid,
+    });
+  } catch (error) {
+    temporaryCleanupFailure(error, "flutter-clean-build-finalize");
+  }
+}
+
+export function retireStaleCleanBuildRuns(
+  baseRoot,
+  currentName,
+  operations = {},
+) {
+  try {
+    return retireInactiveProjectTemporaryDirectories({
+      root: baseRoot,
+      parseOwnerPid: parseCleanBuildRunOwnerPid,
+      currentNames: [currentName],
+      ...operations,
+    });
+  } catch (error) {
+    temporaryCleanupFailure(error, "flutter-clean-build-retire");
+  }
+}
+
+export function parseCleanBuildRunOwnerPid(name) {
+  const match = /^run-([1-9]\d*)-([1-9]\d*)-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/u
+    .exec(name);
+  if (!match) return null;
+  const pid = Number(match[1]);
+  return Number.isSafeInteger(pid) ? pid : null;
 }
 
 export function isInsideDirectory(root, candidate) {
@@ -101,6 +146,16 @@ function defaultCleanBuildRoot() {
     return path.join(os.tmpdir(), "licoup-build");
   }
   return path.join(path.sep, "tmp", "licoup-build");
+}
+
+function temporaryCleanupFailure(error, stage) {
+  if (error instanceof ProjectTemporaryDirectoryLifecycleError) {
+    packageFailure("packaging_temporary_cleanup_failed", {
+      stage,
+      reason: error.reason,
+    });
+  }
+  throw error;
 }
 
 function isExcludedFlutterSourcePath(sourcePath) {

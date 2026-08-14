@@ -38,7 +38,13 @@ fn missing_mls_snapshot_purges_only_memory_custody_and_fails_closed_for_persiste
         b"missing-snapshot-group",
     )
     .unwrap();
-    reconcile_group_metadata(&group, &identity).unwrap();
+    let mut group_store = crate::platform::secure_mesh_mls_store::open(
+        crate::domain::mobile_relay::secure_mesh_mls_state_dir()
+            .unwrap()
+            .join("group-state.sqlite3"),
+    )
+    .unwrap();
+    reconcile_group_metadata(&mut group_store, &group, &identity).unwrap();
 
     let member_identity_key = SigningKey::generate(&mut OsRng);
     let member_signing_key = SigningKey::generate(&mut OsRng);
@@ -136,7 +142,7 @@ fn missing_mls_snapshot_purges_only_memory_custody_and_fails_closed_for_persiste
         .unwrap();
     drop(ledger);
 
-    handle_missing_participant_snapshot(&identity, "memory-only-ephemeral").unwrap();
+    handle_missing_participant_snapshot(&mut None, &identity, "memory-only-ephemeral").unwrap();
     let store = crate::platform::secure_mesh_mls_store::open(state_dir.join("group-state.sqlite3"))
         .unwrap();
     assert!(
@@ -207,9 +213,15 @@ fn missing_mls_snapshot_purges_only_memory_custody_and_fails_closed_for_persiste
             .unwrap()
     );
 
-    reconcile_group_metadata(&group, &identity).unwrap();
+    let mut group_store = crate::platform::secure_mesh_mls_store::open(
+        crate::domain::mobile_relay::secure_mesh_mls_state_dir()
+            .unwrap()
+            .join("group-state.sqlite3"),
+    )
+    .unwrap();
+    reconcile_group_metadata(&mut group_store, &group, &identity).unwrap();
     let persistent_error =
-        handle_missing_participant_snapshot(&identity, "android-keystore").unwrap_err();
+        handle_missing_participant_snapshot(&mut None, &identity, "android-keystore").unwrap_err();
     assert!(persistent_error.to_string().contains("snapshot is missing"));
     let store = crate::platform::secure_mesh_mls_store::open(state_dir.join("group-state.sqlite3"))
         .unwrap();

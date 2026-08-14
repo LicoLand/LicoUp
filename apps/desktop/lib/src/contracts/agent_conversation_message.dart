@@ -101,9 +101,12 @@ class AgentConversationMessage {
 
   bool get isDisplayable =>
       (!_messageRoleIsInternal(role) ||
-          (isSubagentCard && cardType.trim().isNotEmpty) ||
+          isSubagentCard ||
           (isStructuredEvent && cardType.trim().isNotEmpty)) &&
-      (text.trim().isNotEmpty || isSubagentCard || isStructuredEvent);
+      (text.trim().isNotEmpty ||
+          images.isNotEmpty ||
+          isSubagentCard ||
+          isStructuredEvent);
 
   bool get isDefaultThreadVisible =>
       resolvedLayer == AgentConversationSemanticLayer.thread &&
@@ -376,8 +379,8 @@ bool _metadataConversationSemantic(String value) {
 }
 
 bool _messageRoleIsInternal(String role) {
-  final normalized = _normalizeConversationSemantic(role);
+  final normalized = role.toLowerCase().trim();
   return normalized == 'system' ||
       normalized == 'developer' ||
-      normalized == 'subagent-prompt';
+      normalized == 'subagent_prompt';
 }

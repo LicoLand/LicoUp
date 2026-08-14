@@ -453,6 +453,297 @@ fn kimi_code_catalog_reads_state_json_and_hydrates_page_from_wire() {
     );
 }
 
+fn browse_params(home: &Path, cache_root: &Path) -> Value {
+    json!({
+        "agent": "codex",
+        "homeDir": display_path(home),
+        "limit": 20,
+        "historyProjectionCacheRoot": display_path(cache_root)
+    })
+}
+
+fn browse_with_counters(
+    home: &Path,
+    cache_root: &Path,
+) -> (Value, super::super::catalog::BrowseWorkCounters) {
+    let params = browse_params(home, cache_root);
+    let scan_config = HistoryScanConfig::from_params(&params);
+    super::super::catalog::conversation_list_from_catalog_inner(
+        HistoryAdapter::Codex,
+        "codex",
+        &params,
+        &scan_config,
+    )
+}
+
+#[test]
+fn browse_cache_serves_warm_pages_identically_and_counts_work() {
+    let home = temp_dir("browse-cache-warm");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let id = "019f0000-0000-7000-8000-0000000000e1";
+    let rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{id}.jsonl"));
+    fs::write(
+        &rollout,
+        codex_rollout_fixture(id, "Cache prompt", "Cache reply"),
+    )
+    .unwrap();
+    let now = now_epoch_seconds();
+    create_codex_state_db(
+        &home.join(".codex/state_5.sqlite"),
+        &[(
+            id,
+            &*rollout.to_string_lossy(),
+            now - 10,
+            now,
+            "Cache thread",
+            0,
+        )],
+    );
+    let cache_root = temp_dir("browse-cache-root");
+
+    let (first, cold) = browse_with_counters(&home, &cache_root);
+    assert_eq!(cold.cache_misses, 1);
+    assert_eq!(cold.cache_hits, 0);
+    assert_eq!(cold.cache_entries, 1);
+    assert!(cold.cache_bytes > 0);
+    assert_eq!(first["sessions"].as_array().unwrap().len(), 1);
+
+    let (second, warm) = browse_with_counters(&home, &cache_root);
+    assert_eq!(warm.cache_hits, 1);
+    assert_eq!(warm.cache_misses, 0);
+    assert_eq!(first["sessions"], second["sessions"]);
+    assert!(
+        cache_root.join("history-projections.json").is_file(),
+        "the cache file is written beneath the requested root"
+    );
+}
+
+#[test]
+fn browse_cache_invalidates_when_the_source_changes() {
+    let home = temp_dir("browse-cache-invalidate");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let id = "019f0000-0000-7000-8000-0000000000e2";
+    let rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{id}.jsonl"));
+    fs::write(
+        &rollout,
+        codex_rollout_fixture(id, "First prompt", "First reply"),
+    )
+    .unwrap();
+    let now = now_epoch_seconds();
+    create_codex_state_db(
+        &home.join(".codex/state_5.sqlite"),
+        &[(
+            id,
+            &*rollout.to_string_lossy(),
+            now - 10,
+            now,
+            "Invalidate thread",
+            0,
+        )],
+    );
+    let cache_root = temp_dir("browse-cache-invalidate-root");
+
+    let (first, _) = browse_with_counters(&home, &cache_root);
+    let first_reply = first["sessions"][0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["text"] == "First reply")
+        .map(|message| message["text"].as_str().unwrap().to_string())
+        .unwrap();
+    assert_eq!(first_reply, "First reply");
+
+    let updated = format!(
+        "{}
+{}
+",
+        codex_rollout_fixture(id, "First prompt", "First reply"),
+        r#"{"timestamp":"2026-08-01T00:00:03Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Second reply"}]}}"#
+    );
+    fs::write(&rollout, updated).unwrap();
+    let modified = SystemTime::now() + std::time::Duration::from_secs(5);
+    let file = fs::File::open(&rollout).unwrap();
+    file.set_modified(modified).unwrap();
+    drop(file);
+
+    let (second, counters) = browse_with_counters(&home, &cache_root);
+    assert_eq!(
+        counters.cache_misses, 1,
+        "a changed source must miss and re-parse"
+    );
+    assert_eq!(counters.cache_hits, 0);
+    let replies = second["sessions"][0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|message| message["text"].as_str())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    assert!(replies.contains(&"Second reply".to_string()));
+}
+
+#[test]
+fn browse_cache_discards_whole_cache_on_schema_mismatch() {
+    let home = temp_dir("browse-cache-schema");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let id = "019f0000-0000-7000-8000-0000000000e3";
+    let rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{id}.jsonl"));
+    fs::write(
+        &rollout,
+        codex_rollout_fixture(id, "Schema prompt", "Schema reply"),
+    )
+    .unwrap();
+    let now = now_epoch_seconds();
+    create_codex_state_db(
+        &home.join(".codex/state_5.sqlite"),
+        &[(
+            id,
+            &*rollout.to_string_lossy(),
+            now - 10,
+            now,
+            "Schema thread",
+            0,
+        )],
+    );
+    let cache_root = temp_dir("browse-cache-schema-root");
+    fs::write(
+        cache_root.join("history-projections.json"),
+        json!({"schema": "licoup.history-projection-cache/v0", "entries": []}).to_string(),
+    )
+    .unwrap();
+
+    let (listed, counters) = browse_with_counters(&home, &cache_root);
+    assert_eq!(counters.cache_discards, 1);
+    assert_eq!(
+        listed["sessions"].as_array().unwrap().len(),
+        1,
+        "a discarded cache still serves the page from sources"
+    );
+}
+
+#[test]
+fn codex_oversized_rollout_hydrates_from_a_bounded_tail_with_exact_message_ids() {
+    let home = temp_dir("codex-tail-browse");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let id = "019f0000-0000-7000-8000-0000000000e4";
+    let rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{id}.jsonl"));
+
+    // A rollout larger than the tail budget: the header and a wall of
+    // bookkeeping records push the conversation itself past the window, so the
+    // browse row must come from the bounded tail alone.
+    let header = format!(
+        r#"{{"timestamp":"2026-08-01T00:00:00Z","type":"session_meta","payload":{{"id":"{id}","cwd":"/workspace/catalog"}}}}"#
+    );
+    let filler_line = r#"{"timestamp":"2026-08-01T00:00:01Z","type":"turn_context","payload":{}}"#;
+    let filler = std::iter::repeat_n(filler_line, 20_000)
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        );
+    let user = r#"{"timestamp":"2026-08-01T00:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Tail prompt"}]}}"#;
+    let assistant = r#"{"timestamp":"2026-08-01T00:00:03Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Tail reply"}]}}"#;
+    fs::write(
+        &rollout,
+        format!(
+            "{header}
+{filler}
+{user}
+{assistant}
+"
+        ),
+    )
+    .unwrap();
+    assert!(fs::metadata(&rollout).unwrap().len() > 1024 * 1024);
+    let now = now_epoch_seconds();
+    create_codex_state_db(
+        &home.join(".codex/state_5.sqlite"),
+        &[(
+            id,
+            &*rollout.to_string_lossy(),
+            now - 10,
+            now,
+            "Tail thread",
+            0,
+        )],
+    );
+    let cache_root = temp_dir("codex-tail-cache-root");
+
+    let (listed, counters) = browse_with_counters(&home, &cache_root);
+    assert!(
+        counters.tail_bytes > 0,
+        "the oversized rollout used the tail reader"
+    );
+    assert!(counters.tail_records > 0);
+    assert!(counters.tail_scanned_bytes > 0);
+    assert_eq!(counters.cache_misses, 1);
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], id);
+    assert_eq!(
+        sessions[0]["messageCount"], 2,
+        "tail counts stay exact within the window"
+    );
+    let messages = sessions[0]["messages"].as_array().unwrap();
+    let texts = messages
+        .iter()
+        .map(|message| message["text"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert!(texts.contains(&"Tail prompt".to_string()));
+    assert!(texts.contains(&"Tail reply".to_string()));
+
+    // The single-session read parses the same file whole; message ids derive
+    // from absolute line indices, so the tail row and the whole-file row must
+    // name every message identically.
+    let whole = conversation_list(&json!({
+        "agent": "codex",
+        "homeDir": display_path(&home),
+        "sessionIds": [id]
+    }))
+    .unwrap();
+    let whole_sessions = whole["sessions"].as_array().unwrap();
+    assert_eq!(whole_sessions.len(), 1);
+    let whole_ids = whole_sessions[0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|message| message["id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    let tail_ids = messages
+        .iter()
+        .map(|message| message["id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tail_ids, whole_ids,
+        "bounded-tail message ids anchor to file-absolute indices"
+    );
+    assert_eq!(whole_sessions[0]["messageCount"], 2);
+}
+
+#[test]
+fn bounded_tail_drops_a_multibyte_prefix_without_losing_complete_records() {
+    let root = temp_dir("tail-multibyte-boundary");
+    let path = root.join("records.jsonl");
+    let content = "épartial\nfirst\nsecond\n";
+    fs::write(&path, content).unwrap();
+    let metadata = fs::metadata(&path).unwrap();
+
+    // Skip the first byte of the multibyte prefix. The incomplete first line
+    // is discarded as bytes; the two complete UTF-8 records retain their
+    // whole-file absolute line indices.
+    let tail =
+        super::super::catalog::read_bounded_tail(&path, &metadata, metadata.len() - 1, 8).unwrap();
+    assert_eq!(
+        tail.lines,
+        vec![(1, "first".to_string()), (2, "second".to_string())]
+    );
+}
+
 #[test]
 fn cursor_catalog_reads_chat_meta_and_skips_empty_chats() {
     let home = temp_dir("cursor-catalog");
