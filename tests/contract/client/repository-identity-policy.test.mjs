@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -10,10 +12,11 @@ import {
 } from "../../../tools/scripts/repository-identity-policy.mjs";
 import {
   allBranchesRulesetName,
+  assertReleaseDefaultBranch,
   buildRulesets,
   identityStatusContext,
-  promotionBranchesRulesetName,
-  requiredStatusContexts,
+  promotionRulesetNames,
+  promotionRequiredStatusContexts,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 
 const identity = Object.freeze({ login: "human-developer", id: "123456" });
@@ -77,20 +80,36 @@ test("identity-shaped Agent lines are rejected without banning product discussio
   );
 });
 
-test("two Rulesets cover identity and the complete release flow without bypass", () => {
+test("release remains the required default branch", () => {
+  assert.doesNotThrow(() => assertReleaseDefaultBranch({ default_branch: "release" }));
+  assert.throws(() => assertReleaseDefaultBranch({ default_branch: "nightly" }),
+    (error) => error?.code === "DEFAULT_BRANCH_INVALID");
+  const source = readFileSync(path.resolve("tools/scripts/repository-rulesets.mjs"), "utf8");
+  assert.doesNotMatch(source, /default_branch=/u);
+  assert.doesNotMatch(source, /--default-branch/u);
+  assert.doesNotMatch(source, /["']PATCH["']/u);
+});
+
+test("branch-scoped Rulesets cover identity and each promotion gate without bypass", () => {
   const integrationId = 15368;
   const rulesets = buildRulesets(integrationId);
-  assert.equal(rulesets.length, 2);
+  const releaseTemplate = JSON.parse(readFileSync(
+    path.resolve("tools/client-release-template.json"),
+    "utf8",
+  ));
+  assert.deepEqual(releaseTemplate.requiredPullRequestChecks,
+    promotionRequiredStatusContexts);
+  assert.equal(rulesets.length, 4);
   assert.deepEqual(
     rulesets.map(({ name }) => name),
-    [allBranchesRulesetName, promotionBranchesRulesetName],
+    [allBranchesRulesetName, ...Object.values(promotionRulesetNames)],
   );
   for (const ruleset of rulesets) {
     assert.equal(ruleset.enforcement, "active");
     assert.deepEqual(ruleset.bypass_actors, []);
   }
 
-  const [identityRuleset, promotionRuleset] = rulesets;
+  const [identityRuleset, ...promotionRulesets] = rulesets;
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
   const committerRule = identityRuleset.rules.find(
@@ -110,20 +129,21 @@ test("two Rulesets cover identity and the complete release flow without bypass",
   assert.match(messageRule.parameters.pattern, /co-authored-by/u);
   assert.match(messageRule.parameters.pattern, /cursor/u);
 
-  for (const requiredType of [
-    "deletion",
-    "non_fast_forward",
-    "pull_request",
-    "required_status_checks",
-  ]) {
-    assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
-  }
-  const statusRule = promotionRuleset.rules.find(
-    ({ type }) => type === "required_status_checks",
-  );
-  assert.deepEqual(statusRule.parameters.required_status_checks,
-    requiredStatusContexts.map((context) => ({ context, integration_id: integrationId })));
   assert.equal(identityStatusContext, "Commit identity");
-  assert.deepEqual(promotionRuleset.conditions.ref_name.include,
-    ["refs/heads/nightly", "refs/heads/stable", "refs/heads/release"]);
+  for (const [index, branch] of ["nightly", "stable", "release"].entries()) {
+    const promotionRuleset = promotionRulesets[index];
+    for (const requiredType of [
+      "deletion", "non_fast_forward", "pull_request", "required_status_checks",
+    ]) {
+      assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
+    }
+    const statusRule = promotionRuleset.rules.find(
+      ({ type }) => type === "required_status_checks",
+    );
+    assert.deepEqual(statusRule.parameters.required_status_checks,
+      promotionRequiredStatusContexts[branch]
+        .map((context) => ({ context, integration_id: integrationId })));
+    assert.deepEqual(promotionRuleset.conditions.ref_name.include,
+      [`refs/heads/${branch}`]);
+  }
 });
