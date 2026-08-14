@@ -61,8 +61,10 @@ void main() {
     expect(catalog, contains("ui/skill_hub_panel_card_support.dart';"));
     expect(catalog, contains("shared/ui/lico_empty_state.dart';"));
     expect(cards, contains("ui/skill_hub_panel_icon_picker.dart';"));
+    expect(panel, isNot(contains('skill_plugin_hub_panel.dart')));
     for (final leaf in [catalog, cards, picker]) {
       expect(leaf, isNot(contains('skill_hub_panel.dart')));
+      expect(leaf, isNot(contains('skill_plugin_hub_panel.dart')));
     }
     for (final source in [panel, catalog, cards, picker]) {
       expect(

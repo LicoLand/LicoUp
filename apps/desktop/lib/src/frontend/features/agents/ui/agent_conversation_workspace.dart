@@ -18,6 +18,7 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_column.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
@@ -971,6 +972,8 @@ class _ConversationWorkspaceBodyState
                   unawaited(controller.toggleConversationTargetPinned(agentId)),
               scanning: widget.scanning,
               loading: controller.isLoadingConversations,
+              activeDestination: controller.currentSection,
+              onSelectDestination: controller.selectSection,
             ),
           };
           final detail = _detailForSelection(
@@ -999,29 +1002,42 @@ class _ConversationWorkspaceBodyState
             sidebarCollapsed: _historyCollapsed,
             child: detail,
           );
+          final hostedSplit =
+              MessagingSidebarGeometryScope.maybeOf(context) != null;
           return presentation.frameWorkspace(
             context,
             key: const Key('agents-workspace-layout'),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!_historyCollapsed)
-                  presentation.frameSidebar(
-                    context,
-                    key: const Key('agents-workspace-sidebar-card'),
-                    child: SizedBox(width: sidebarWidth, child: sidebarPane),
+            child: hostedSplit
+                ? MessagingSidebarColumn(
+                    sidebar: sidebarPane,
+                    detail: framedDetail,
+                    sidebarCollapsed: _historyCollapsed,
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!_historyCollapsed)
+                        presentation.frameSidebar(
+                          context,
+                          key: const Key('agents-workspace-sidebar-card'),
+                          child: SizedBox(
+                            width: sidebarWidth,
+                            child: sidebarPane,
+                          ),
+                        ),
+                      Expanded(
+                        child: PaneEdgeDragHandle(
+                          dragHandleKey: const Key(
+                            'agents-workspace-split-divider',
+                          ),
+                          width: agentsSidebarDividerWidth,
+                          enabled: !_historyCollapsed,
+                          onDragDelta: resizeSidebar,
+                          child: framedDetail,
+                        ),
+                      ),
+                    ],
                   ),
-                Expanded(
-                  child: PaneEdgeDragHandle(
-                    dragHandleKey: const Key('agents-workspace-split-divider'),
-                    width: agentsSidebarDividerWidth,
-                    enabled: !_historyCollapsed,
-                    onDragDelta: resizeSidebar,
-                    child: framedDetail,
-                  ),
-                ),
-              ],
-            ),
           );
         },
       ),

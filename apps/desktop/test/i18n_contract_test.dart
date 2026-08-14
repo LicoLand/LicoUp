@@ -14,8 +14,18 @@ void main() {
   test('usage and report chrome follows the selected locale', () {
     expect(chinese.byAgent, '智能体');
     expect(chinese.byModel, '模型');
+    expect(chinese.features, '功能');
+    expect(chinese.modelGateway, '模型网关');
+    expect(chinese.mobilePairing, '移动配对');
+    expect(chinese.chatChannels, '聊天频道');
+    expect(chinese.exit, '退出');
     expect(english.byAgent, 'By Agent');
     expect(english.byModel, 'By Model');
+    expect(english.features, 'Features');
+    expect(english.modelGateway, 'Model Gateway');
+    expect(english.mobilePairing, 'Mobile Pairing');
+    expect(english.chatChannels, 'Chat Channels');
+    expect(english.exit, 'Exit');
     expect(chinese.lastDays(30), '最近 30 天');
     expect(english.lastDays(30), 'Last 30 days');
   });

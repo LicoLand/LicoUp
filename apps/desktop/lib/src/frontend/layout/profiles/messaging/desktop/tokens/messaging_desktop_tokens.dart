@@ -22,9 +22,23 @@ abstract final class MessagingDesktopMetrics {
   /// Far-left destination column on the unified frosted-glass shell.
   static const double navigationRailExtent = 56;
 
-  /// Reference width of the conversation-list column; the workspace keeps
-  /// the user-draggable width, clamped by its own bounds.
-  static const double conversationListExtent = 280;
+  /// Default width of the shared sidebar column on first open (no persisted
+  /// pane extent). The shell column owns the user-draggable width; destination
+  /// lists do not. 224 is the existing layout width step also used by
+  /// [composerRuntimeSelectorPrimaryWidth].
+  static const double conversationListExtent = 224;
+
+  /// Narrowest usable shared sidebar column.
+  static const double conversationListMinExtent = 196;
+
+  /// Widest shared sidebar column.
+  static const double conversationListMaxExtent = 420;
+
+  /// Drag-handle hit target on the shared sidebar column.
+  static const double conversationListDividerWidth = 8;
+
+  /// Minimum remaining width for the detail pane when the column grows.
+  static const double conversationDetailMinExtent = 360;
 
   /// Inset of the floating conversation-list glass card on the shared chat
   /// canvas (tighter than [mainCardMargin] so the list sits closer to the
@@ -270,9 +284,8 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Window inset of the unified content card on its right and bottom
-  /// edges; the card's top edge meets the chrome band and its left edge sits
-  /// flush against the destination rail.
+  /// Window inset of the unified content card on its left, right, and bottom
+  /// edges; the card's top edge meets the chrome band.
   static const double mainCardMargin = 8;
 
   /// Outer corner radius of the unified content card.
@@ -281,7 +294,7 @@ abstract final class MessagingDesktopMetrics {
   /// Black veil on the main conversation content card (dark). The card itself
   /// is transparent glass over native VE; without this mask, dense chat/list
   /// text loses contrast. Same character as the retired shell chrome black
-  /// tint (historically `chromeTintDarkAlpha` 77). Shell band/rail stay
+  /// tint (historically `chromeTintDarkAlpha` 77). Shell band and gutters stay
   /// untinted — only this reading surface uses the veil.
   static const int mainContentCardOverlayDarkAlpha = 77;
 
@@ -291,7 +304,7 @@ abstract final class MessagingDesktopMetrics {
   static const int mainContentCardOverlayLightAlpha = 40;
 
   /// The unified card has no painted rim. Native glass, fill, and elevation
-  /// establish its boundary without leaving a seam beside edge-grown rails.
+  /// establish its boundary without leaving a painted chrome seam.
   static const int mainContentCardBorderAlphaDark = 0;
 
   /// Light-preset counterpart of [mainContentCardBorderAlphaDark].
@@ -362,7 +375,7 @@ abstract final class MessagingDesktopMetrics {
   /// Kept as a named token so tests and docs reference one shared path.
   static const int lightSurfaceGlassAlpha = 0;
 
-  /// Frosted-glass tint shared by chrome band, destination rail, and the
+  /// Frosted-glass tint shared by chrome band and the
   /// content region beneath the unified main card. Both presets return fully
   /// transparent — native NSVisualEffectView provides the frosted material.
   static Color surfaceGlassTint({required bool isDark}) => Colors.transparent;
@@ -443,21 +456,10 @@ abstract final class MessagingDesktopMetrics {
   /// traffic-light cluster (same reservation as the Dashboard top bar).
   static const double trafficLightInset = 96;
 
-  /// Fixed width of the chrome-band search field; below
-  /// [chromeSearchCollapseWidth] the band degrades it to an icon button.
-  static const double chromeSearchFieldWidth = 200;
-  static const double chromeSearchCollapseWidth = 640;
-
   /// Square extent of the chrome-band right-cluster action buttons.
   static const double chromeActionButtonExtent = 32;
 
   static const double windowCornerRadius = 24;
-
-  /// Square extent of the rounded-rectangle rail buttons.
-  static const double railToggleExtent = 40;
-
-  /// Corner radius of the rounded-rectangle rail buttons.
-  static const double railToggleRadius = 12;
 
   static const double hairline = 0.5;
 }

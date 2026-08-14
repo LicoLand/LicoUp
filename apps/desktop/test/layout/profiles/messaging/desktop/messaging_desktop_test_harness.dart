@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -72,6 +75,7 @@ final class MessagingDesktopTestShell extends StatelessWidget {
     required this.content,
     required this.harness,
     this.brightness = Brightness.dark,
+    this.locale = const Locale('en'),
     this.chrome = const FixtureLayoutChromePort(),
   });
 
@@ -80,6 +84,7 @@ final class MessagingDesktopTestShell extends StatelessWidget {
   final MessagingDesktopFixtureContent content;
   final MessagingDesktopHarness harness;
   final Brightness brightness;
+  final Locale locale;
   final LayoutChromePort chrome;
 
   @override
@@ -105,9 +110,17 @@ final class MessagingDesktopTestShell extends StatelessWidget {
       profile: bundle.profile,
       surface: LayoutRuntimeSurface.desktop,
       stateNamespaces: bundle.stateNamespaces,
+      destination: activeDestination,
     );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      locale: locale,
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       theme: baseTheme.copyWith(platform: TargetPlatform.macOS),
       home: Scaffold(
         body: SizedBox(

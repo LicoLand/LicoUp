@@ -93,7 +93,7 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
       ClientSection.mobileRelay,
       strings.mobileRelay,
       Icons.phonelink_outlined,
-      const ['mobile', 'relay', 'pair', '配对'],
+      const ['mobile', 'relay', 'pair', '配对', '通信'],
     ),
     section(ClientSection.models, strings.keys, Icons.key_outlined, const [
       'model',

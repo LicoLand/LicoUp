@@ -11,12 +11,12 @@ import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
 import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
-import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/shell/client_chrome_features.dart';
 import 'package:licoup/src/frontend/shell/client_layout_chrome_adapter.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
@@ -133,7 +133,10 @@ class _ClientShellState extends State<ClientShell>
         controller: controller,
       ),
       ClientSection.mobileRelay => MobileRelayPanel(controller: controller),
-      ClientSection.models => ModelsPanel(controller: controller),
+      ClientSection.models => ModelsPanel(
+        controller: controller,
+        pane: modelsPanelPaneOf(context),
+      ),
       ClientSection.settings => SettingsPanel(controller: controller),
     };
   }
@@ -157,8 +160,8 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.monitoring => strings.tokenUsage,
         ClientSection.skillHub => strings.skillHub,
         ClientSection.pluginManagement => strings.pluginManagement,
-        ClientSection.mobileRelay => strings.mobileRelay,
-        ClientSection.models => strings.keys,
+        ClientSection.mobileRelay => strings.mobilePairing,
+        ClientSection.models => strings.modelGateway,
         ClientSection.settings => strings.settings,
       };
 }

@@ -295,7 +295,7 @@ List<String> _sectionSearchAliases(ClientSection section) => switch (section) {
   ],
   ClientSection.skillHub => ['skill', 'hub', '技能'],
   ClientSection.pluginManagement => ['plugin', 'adapter', '插件', '适配器'],
-  ClientSection.mobileRelay => ['mobile', 'relay', 'pair', '配对'],
+      ClientSection.mobileRelay => ['mobile', 'relay', 'pair', '配对', '通信'],
   ClientSection.models => ['model', 'api', 'key', 'gateway', '模型', '密钥', '网关'],
   ClientSection.settings => ['setting', 'preference', '设置'],
 };
