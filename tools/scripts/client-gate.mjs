@@ -239,35 +239,35 @@ function validatePromotionTopology() {
     'test "$HEAD_BRANCH" = nightly',
     'test "$(uname -m)" = arm64',
     "LICO_CLIENT_RELEASE_TARGETS: macos-arm64",
-    "npm run client:install:macos",
-    "npm run client:verify:secure-mesh-macos-capabilities",
+    "npm run client:build:macos",
+    "npm run client:install:macos -- --launch-installed --verify-stable",
   ]) {
     assertIncludes(stable, token, `stable promotion workflow is missing: ${token}`);
   }
-  if ((stableJob.match(/npm run client:install:macos/gmu) || []).length !== 1) {
-    fail("stable promotion must build and install exactly once");
+  if ((stableJob.match(/npm run client:build:macos/gmu) || []).length !== 1) {
+    fail("stable promotion must build exactly once");
   }
-  if ((stableJob.match(/npm run client:verify:secure-mesh-macos-capabilities/gmu) || []).length !== 1) {
-    fail("stable promotion must launch and prove survival exactly once");
+  if ((stableJob.match(/npm run client:install:macos/gmu) || []).length !== 1) {
+    fail("stable promotion must install, launch, and prove survival exactly once");
   }
   const stableOrder = [
     "name: Verify promotion source",
     "uses: actions/checkout@",
-    "name: Prepare ephemeral local integrity identity",
-    "run: npm run client:install:macos",
-    "run: npm run client:verify:secure-mesh-macos-capabilities",
+    "run: npm run client:build:macos",
+    "run: npm run client:install:macos -- --launch-installed --verify-stable",
   ].map((token) => stableJob.indexOf(token));
   if (stableOrder.some((index) => index < 0) ||
     stableOrder.some((index, position) => position > 0 && index <= stableOrder[position - 1])) {
-    fail("stable promotion must guard, install once, then launch and prove survival");
+    fail("stable promotion must guard, build once, then install, launch, and prove survival");
   }
   for (const token of [
-    "\n  push:", "workflow_dispatch:", "client:build:", "client:package:",
+    "\n  push:", "workflow_dispatch:", "client:package:",
     "client:archive:", "actions/upload-artifact", "actions/download-artifact",
     "gh release", "client-github-release-publish", "npm publish", "GH_TOKEN:",
     "secrets.", "LICO_MACOS_SIGNING_IDENTITY", "LICO_MACOS_NOTARY_",
+    "LICO_MACOS_LOCAL_SIGNING_IDENTITY", "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN",
   ]) {
-    assertExcludes(stable, token, `stable promotion must not publish or rebuild: ${token}`);
+    assertExcludes(stable, token, `stable promotion must not publish or use release credentials: ${token}`);
   }
 
   const ready = readText(".github/workflows/client-release-ready.yml");

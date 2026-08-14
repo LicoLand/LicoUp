@@ -43,50 +43,7 @@ jobs:
       - name: Populate the locked Flutter package cache
         working-directory: apps/desktop
         run: flutter pub get --enforce-lockfile
-      - name: Prepare ephemeral local integrity identity
-        run: |
-          openssl req -x509 -newkey rsa:3072 -nodes -days 1 \
-            -keyout "$RUNNER_TEMP/lico-local-integrity.key" \
-            -out "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -subj "/CN=LicoUp Stable Client Validation" \
-            -addext "keyUsage=critical,digitalSignature" \
-            -addext "extendedKeyUsage=codeSigning"
-          openssl pkcs12 -export \
-            -inkey "$RUNNER_TEMP/lico-local-integrity.key" \
-            -in "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -out "$RUNNER_TEMP/lico-local-integrity.p12" \
-            -passout pass:stable-client
-          security create-keychain -p stable-client "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security set-keychain-settings -lut 7200 "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security unlock-keychain -p stable-client "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          existing_keychains=()
-          while IFS= read -r keychain; do
-            keychain="${keychain//\"/}"
-            if [[ -n "$keychain" ]]; then
-              existing_keychains+=("$keychain")
-            fi
-          done < <(security list-keychains -d user)
-          security list-keychains -d user -s \
-            "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
-            "${existing_keychains[@]}"
-          security import "$RUNNER_TEMP/lico-local-integrity.p12" \
-            -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
-            -P stable-client -T /usr/bin/codesign
-          sudo -n security add-trusted-cert -d -r trustRoot -p codeSign \
-            -k /Library/Keychains/System.keychain \
-            "$RUNNER_TEMP/lico-local-integrity.pem"
-          security set-key-partition-list -S apple-tool:,apple: -s \
-            -k stable-client "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          identity="$(security find-identity -v -p codesigning \
-            "$RUNNER_TEMP/lico-local-integrity.keychain-db" | \
-            awk '/LicoUp Stable Client Validation/{print $2; exit}')"
-          if [[ ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
-            echo "Ephemeral local integrity identity was not created" >&2
-            exit 1
-          fi
-          echo "LICO_MACOS_LOCAL_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
-          echo "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN=$RUNNER_TEMP/lico-local-integrity.keychain-db" >> "$GITHUB_ENV"
-      - name: Build and install the stable client once
-        run: npm run client:install:macos
-      - name: Launch and prove stable survival
-        run: npm run client:verify:secure-mesh-macos-capabilities
+      - name: Build the stable client once
+        run: npm run client:build:macos
+      - name: Install, launch, and prove stable survival
+        run: npm run client:install:macos -- --launch-installed --verify-stable
