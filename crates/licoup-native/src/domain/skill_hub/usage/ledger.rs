@@ -1,20 +1,20 @@
 //! Daily skill-usage ledger shared by two record sources.
 //!
 //! - Runtime live events ([`RecordSource::Runtime`]) require an approved agent
-//!   pairing and only count skills installed through the managed installer.
+//!   pairing and accept only sanitized identifiers reported by that local
+//!   agent.
 //! - History backfill ([`RecordSource::Backfill`]) accepts any locally
 //!   discovered agent and any well-formed sanitized skill id: the backfill
 //!   scanner projects only aggregate counts from local transcripts, the same
 //!   privacy posture as the agent-usage token scanner.
 
 use crate::domain::skill_hub::{
-    ClientStateStore, Result, SKILL_INSTALLER_PROTOCOL, Value, collection_items_mut,
-    is_agent_approved, json,
+    ClientStateStore, Result, Value, collection_items_mut, is_agent_approved, json,
 };
 use crate::platform::file_security::open_private_lock_file;
 use anyhow::{anyhow, ensure};
 use fs2::FileExt;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(super) const COLLECTION: &str = "skill-usage";
@@ -45,37 +45,32 @@ pub(super) fn record_counts(
     source: RecordSource,
 ) -> Result<Value> {
     if counts.is_empty() {
-        return Ok(receipt(agent_id, 0, 0, source));
+        return Ok(receipt(agent_id, 0, source));
     }
-    let (selected, managed_count) = match source {
+    let selected = match source {
         RecordSource::Runtime => {
             ensure!(
                 is_agent_approved(store, agent_id)?,
                 "runtime skill usage requires an approved agent pairing"
             );
-            let managed = managed_skills(store, agent_id)?;
-            let selected = counts
-                .into_iter()
-                .filter(|(skill_id, _)| managed.contains(skill_id))
-                .collect::<BTreeMap<_, _>>();
-            (selected, managed.len())
-        }
-        RecordSource::Backfill => (
             counts
                 .into_iter()
                 .filter(|(skill_id, _)| is_sanitized_skill_id(skill_id))
-                .collect::<BTreeMap<_, _>>(),
-            0,
-        ),
+                .collect::<BTreeMap<_, _>>()
+        }
+        RecordSource::Backfill => counts
+            .into_iter()
+            .filter(|(skill_id, _)| is_sanitized_skill_id(skill_id))
+            .collect::<BTreeMap<_, _>>(),
     };
     if selected.is_empty() {
-        return Ok(receipt(agent_id, 0, managed_count, source));
+        return Ok(receipt(agent_id, 0, source));
     }
 
     let lock = usage_lock(store)?;
     lock.lock_exclusive()?;
     let recorded = record_counts_locked(store, agent_id, &selected, occurred_at)?;
-    Ok(receipt(agent_id, recorded, managed_count, source))
+    Ok(receipt(agent_id, recorded, source))
 }
 
 /// Shared exclusive lock for the usage collection. The backfill scanner holds
@@ -150,27 +145,6 @@ pub(super) fn upsert_day_buckets(
     Ok(recorded)
 }
 
-fn managed_skills(store: &ClientStateStore, agent_id: &str) -> Result<BTreeSet<String>> {
-    let document = store.read_collection("skills")?;
-    Ok(document
-        .get("items")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-        .iter()
-        .filter(|item| {
-            item.get("kind").and_then(Value::as_str) == Some("skill")
-                && item.get("agentId").and_then(Value::as_str) == Some(agent_id)
-                && item.get("installer").and_then(Value::as_str) == Some(SKILL_INSTALLER_PROTOCOL)
-        })
-        .filter_map(|item| {
-            item.get("skillId")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
-        .collect())
-}
-
 pub(super) fn is_sanitized_skill_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_SKILL_ID_BYTES
@@ -179,13 +153,12 @@ pub(super) fn is_sanitized_skill_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-fn receipt(agent_id: &str, recorded: u64, managed_count: usize, source: RecordSource) -> Value {
+fn receipt(agent_id: &str, recorded: u64, source: RecordSource) -> Value {
     json!({
         "ok": true,
-        "status": if recorded == 0 { "no_managed_invocations" } else { "recorded" },
+        "status": if recorded == 0 { "no_local_invocations" } else { "recorded" },
         "agentId": agent_id,
         "recordedCount": recorded,
-        "managedSkillCount": managed_count,
         "source": source.label(),
         "privacy": "aggregate-only"
     })

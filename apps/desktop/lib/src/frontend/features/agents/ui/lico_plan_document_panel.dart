@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/plan_document_reader.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -11,10 +10,12 @@ class LicoPlanDocumentPanel extends StatefulWidget {
     super.key,
     required this.planPath,
     this.refreshToken = 0,
+    this.reader = const UnavailablePlanDocumentReader(),
   });
 
   final String planPath;
   final int refreshToken;
+  final PlanDocumentReader reader;
 
   @override
   State<LicoPlanDocumentPanel> createState() => _LicoPlanDocumentPanelState();
@@ -49,8 +50,7 @@ class _LicoPlanDocumentPanelState extends State<LicoPlanDocumentPanel> {
       return;
     }
     try {
-      final file = File(path);
-      final text = await file.exists() ? await file.readAsString() : '';
+      final text = await widget.reader.read(path);
       if (!mounted) return;
       setState(() {
         _content = text;

@@ -184,42 +184,6 @@ class SkillCardFooter extends StatelessWidget {
   }
 }
 
-class SkillEmptyPlaceholder extends StatelessWidget {
-  const SkillEmptyPlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.extension_outlined, size: 64, color: colors.textMuted),
-            const SizedBox(height: 16),
-            Text(
-              strings.noSkillsFound,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: colors.text,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              strings.refreshSkillsHint,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: colors.textMuted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class SkillScanningPlaceholder extends StatelessWidget {
   const SkillScanningPlaceholder({super.key});
 

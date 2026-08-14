@@ -12,6 +12,26 @@ abstract interface class LayoutChromePort
   Future<void> openGlobalSearch(BuildContext context);
 }
 
+/// Exposes the active shell chrome actions to destination-owned UI without
+/// coupling a feature widget to a concrete shell implementation.
+final class LayoutChromePortScope extends InheritedWidget {
+  const LayoutChromePortScope({
+    super.key,
+    required this.chrome,
+    required super.child,
+  });
+
+  final LayoutChromePort chrome;
+
+  static LayoutChromePort? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<LayoutChromePortScope>()
+      ?.chrome;
+
+  @override
+  bool updateShouldNotify(LayoutChromePortScope oldWidget) =>
+      !identical(oldWidget.chrome, chrome);
+}
+
 @immutable
 final class LayoutChromeSnapshot {
   const LayoutChromeSnapshot({required this.status});

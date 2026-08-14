@@ -6,8 +6,9 @@ use super::normalization::{
     normalize_pi,
 };
 use super::params::{
-    binary_param, bounded_output_param, codex_binary_param, message_param, optional_output_param,
-    text_param, u64_param,
+    AttachmentShapeFailure, LocalImageInput, MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE,
+    MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, binary_param, bounded_output_param, codex_binary_param,
+    message_param, optional_output_param, parse_attachments, text_param, u64_param,
 };
 use super::{
     DEFAULT_MAX_STDERR_BYTES, DEFAULT_TIMEOUT_MS, MAX_MESSAGE_BYTES, MAX_TIMEOUT_MS,
@@ -23,16 +24,96 @@ use crate::platform::{
 use serde_json::Value;
 use std::{
     borrow::Cow,
+    fs,
+    io::Read,
     path::{Path, PathBuf},
 };
+
+fn attachment_shape_error(failure: AttachmentShapeFailure) -> RuntimeAdapterError {
+    match failure {
+        AttachmentShapeFailure::ListExceeded => RuntimeAdapterError::AttachmentListExceeded,
+        AttachmentShapeFailure::NotArray
+        | AttachmentShapeFailure::NotObject
+        | AttachmentShapeFailure::UnknownField
+        | AttachmentShapeFailure::FieldMissing => RuntimeAdapterError::AttachmentInvalid,
+        AttachmentShapeFailure::MediaUnsupported => RuntimeAdapterError::AttachmentMediaUnsupported,
+        AttachmentShapeFailure::RemoteUrl => RuntimeAdapterError::AttachmentRemoteUnsupported,
+    }
+}
+
+/// Only the exact Codex app-server adapter with direct local transport may
+/// carry image attachments. Every admission failure happens before any
+/// process launch and never exposes a path.
+fn admit_attachments(
+    attachments: &[LocalImageInput],
+    adapter: &RuntimeAdapter,
+    remote_transport: bool,
+) -> Result<(), RuntimeAdapterError> {
+    if *adapter != RuntimeAdapter::Codex || remote_transport {
+        return Err(RuntimeAdapterError::AttachmentUnsupportedForAdapter {
+            agent_label: adapter.id().to_string(),
+        });
+    }
+    let mut total_bytes: u64 = 0;
+    for attachment in attachments {
+        let metadata = fs::symlink_metadata(&attachment.path)
+            .map_err(|_| RuntimeAdapterError::AttachmentFileUnavailable)?;
+        if metadata.file_type().is_symlink() {
+            return Err(RuntimeAdapterError::AttachmentSymlinkRejected);
+        }
+        if !metadata.file_type().is_file() {
+            return Err(RuntimeAdapterError::AttachmentFileUnavailable);
+        }
+        total_bytes = total_bytes.checked_add(metadata.len()).unwrap_or(u64::MAX);
+        if metadata.len() > MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE
+            || total_bytes > MAX_IMAGE_ATTACHMENT_BYTES_TOTAL
+        {
+            return Err(RuntimeAdapterError::AttachmentSizeLimit);
+        }
+        verify_attachment_signature(Path::new(&attachment.path), &attachment.media_type)?;
+    }
+    Ok(())
+}
+
+fn verify_attachment_signature(path: &Path, media_type: &str) -> Result<(), RuntimeAdapterError> {
+    let mut file =
+        fs::File::open(path).map_err(|_| RuntimeAdapterError::AttachmentFileUnavailable)?;
+    let mut prefix = [0u8; 12];
+    let mut read = 0usize;
+    loop {
+        let chunk = file
+            .read(&mut prefix[read..])
+            .map_err(|_| RuntimeAdapterError::AttachmentFileUnavailable)?;
+        if chunk == 0 {
+            break;
+        }
+        read += chunk;
+        if read == prefix.len() {
+            break;
+        }
+    }
+    let matches = match media_type {
+        "image/png" => read >= 8 && prefix[..8] == [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A],
+        "image/jpeg" => read >= 3 && prefix[..3] == [0xFF, 0xD8, 0xFF],
+        "image/gif" => read >= 4 && &prefix[..4] == b"GIF8",
+        "image/webp" => read >= 12 && &prefix[..4] == b"RIFF" && &prefix[8..12] == b"WEBP",
+        _ => false,
+    };
+    if !matches {
+        return Err(RuntimeAdapterError::AttachmentSignatureMismatch);
+    }
+    Ok(())
+}
 
 pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
     let agent_id = text_param(params, &["agent", "agentId", "target"])
         .filter(|value| !value.is_empty())
         .ok_or(RuntimeAdapterError::AgentIdentifierMissing)?;
-    let text = message_param(params, &["text", "message", "prompt"])
-        .filter(|value| !value.trim().is_empty())
-        .ok_or(RuntimeAdapterError::MessageMissing)?;
+    let attachments = parse_attachments(params).map_err(attachment_shape_error)?;
+    let text = message_param(params, &["text", "message", "prompt"]).unwrap_or_default();
+    if text.trim().is_empty() && attachments.is_empty() {
+        return Err(RuntimeAdapterError::MessageMissing);
+    }
     if text.len() > MAX_MESSAGE_BYTES {
         return Err(RuntimeAdapterError::MessageInputLimit);
     }
@@ -42,6 +123,9 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         })?;
     let runtime_connection = SshRuntimeConnection::from_params(params, adapter.id())
         .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
+    if !attachments.is_empty() {
+        admit_attachments(&attachments, &adapter, runtime_connection.is_some())?;
+    }
     let session_id = text_param(params, &["sessionId", "nativeSessionId"]).unwrap_or_default();
     let requested_cwd = text_param(params, &["cwd", "workingDirectory"])
         .filter(|value| !value.is_empty())

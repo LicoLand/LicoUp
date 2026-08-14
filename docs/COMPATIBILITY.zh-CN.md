@@ -2,7 +2,7 @@
 
 [English（规范版本）](COMPATIBILITY.md) · 简体中文（本地化） · [文档索引](README.md) · [项目首页](../README.zh-CN.md)
 
-产品版本：`0.1.0`
+产品版本：`0.1.1`
 
 生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json`、`crates/licoup-native/resources/agent-native-capabilities.json` 和 `crates/licoup-native/resources/agent-conversation-readiness.json`。
 
@@ -12,19 +12,44 @@
 
 可以构建，不代表已经支持。
 
-| 目标 | 构建 | 可选入 GitHub Release | 真机/设备证据 | 商店发布 | 客户端 | 对端加密 | 移动中转 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| windows-x64 | 可用 | 不可选入 | 未声明 | 未声明 | 预览 | 预览 | 预览 |
-| windows-arm64 | 不可用 | 不可选入 | 未声明 | 未声明 | 未验证 | 未验证 | 未验证 |
-| macos-x64 | 可用 | 不可选入 | 未声明 | 未声明 | 支持 | 预览 | 预览 |
-| macos-arm64 | 可用 | 可选入 | 未声明 | 未声明 | 支持 | 预览 | 预览 |
-| linux-glibc-x64 | 可用 | 不可选入 | 未声明 | 未声明 | 预览 | 预览 | 预览 |
-| linux-glibc-arm64 | 可用 | 可选入 | 未声明 | 未声明 | 预览 | 预览 | 预览 |
-| linux-musl-x64 | 可用 | 不可选入 | 未声明 | 未声明 | 预览 | 预览 | 预览 |
-| linux-musl-arm64 | 可用 | 不可选入 | 未声明 | 未声明 | 预览 | 预览 | 预览 |
-| android-arm64 | 可用 | 可选入 | 未声明 | 未声明 | 支持 | 预览 | 预览 |
-| ios-simulator-arm64 | 可用 | 不可选入 | 仅模拟器 | 未声明 | 支持 | 预览 | 预览 |
-| ios-arm64 | 不可用 | 不可选入 | 未声明 | 未声明 | 未验证 | 未验证 | 未验证 |
+LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。
+
+| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |
+| --- | --- | --- | --- | --- | --- |
+| windows-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
+| windows-arm64 | 不可用 | 未声明 | 未验证 | 未验证 | 未验证 |
+| macos-arm64 | 可用 | 未声明 | 支持 | 预览 | 预览 |
+| linux-glibc-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
+| linux-glibc-arm64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
+| linux-musl-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
+| linux-musl-arm64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
+| android-arm64 | 可用 | 未声明 | 支持 | 预览 | 预览 |
+| ios-simulator-arm64 | 可用 | 仅模拟器 | 支持 | 预览 | 预览 |
+| ios-arm64 | 不可用 | 未声明 | 未验证 | 未验证 | 未验证 |
+
+## 发布包目标
+
+运行目标和发布包目标是有意分离的两套权威。下表每一行只代表一个分发渠道的一种原生包；同时选择多行时，会生成多个相互独立的发布包目录。
+
+| 发布包目标 | 运行目标 | 平台 | 渠道 | 格式 | 架构 | 包构建 | 可发布 | 更新权威 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | 可用 | 不可选入 | signed-http-manifest |
+| macos-app-store-arm64 | macos-arm64 | macos | app-store | pkg | arm64 | 可用 | 不可选入 | store-managed |
+| windows-direct-x64 | windows-x64 | windows | direct | msix | x64 | 可用 | 不可选入 | appinstaller |
+| windows-store-x64 | windows-x64 | windows | microsoft-store | msixupload | x64 | 可用 | 不可选入 | store-managed |
+| linux-deb-arm64 | linux-glibc-arm64 | linux | apt-repository | deb | arm64 | 可用 | 不可选入 | package-repository |
+| linux-deb-x64 | linux-glibc-x64 | linux | apt-repository | deb | x64 | 可用 | 不可选入 | package-repository |
+| linux-rpm-arm64 | linux-glibc-arm64 | linux | rpm-repository | rpm | arm64 | 可用 | 不可选入 | package-repository |
+| linux-rpm-x64 | linux-glibc-x64 | linux | rpm-repository | rpm | x64 | 可用 | 不可选入 | package-repository |
+| linux-pacman-x64 | linux-glibc-x64 | linux | pacman-repository | pkg.tar.zst | x64 | 可用 | 不可选入 | package-repository |
+| linux-pacman-arm64 | linux-glibc-arm64 | linux | pacman-repository | pkg.tar.zst | arm64 | 可用 | 不可选入 | package-repository |
+| linux-alpine-apk-arm64 | linux-musl-arm64 | linux | alpine-repository | apk | arm64 | 可用 | 不可选入 | package-repository |
+| linux-alpine-apk-x64 | linux-musl-x64 | linux | alpine-repository | apk | x64 | 可用 | 不可选入 | package-repository |
+| linux-appimage-arm64 | linux-glibc-arm64 | linux | direct | appimage | arm64 | 可用 | 不可选入 | appimage-update-information |
+| linux-appimage-x64 | linux-glibc-x64 | linux | direct | appimage | x64 | 可用 | 不可选入 | appimage-update-information |
+| android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | 可用 | 可选入 | manual-download |
+| android-play-arm64-v8a | android-arm64 | android | google-play | aab | arm64-v8a | 可用 | 不可选入 | store-managed |
+| ios-app-store-arm64 | ios-arm64 | ios | app-store | ipa | arm64 | 可用 | 不可选入 | store-managed |
 
 ## 状态说明
 
@@ -32,7 +57,8 @@
 - “预览”表示功能仍在变化。
 - “未验证”表示当前没有支持声明。
 - “不支持”表示界面不得把该功能显示为可用。
-- “可选入”表示发布人员可以明确选择该目标，不表示任何当前发布已经包含它。
+- “可选入”表示发布人员可以明确选择该精确发布包目标，不表示任何当前发布已经包含它。
+- 通用 Linux 压缩包只可作为内部验证载体，不是可安装发布包；Linux 分发必须使用原生包或软件仓库目标。
 - 功能状态不能证明原生宿主、真机、生物识别、硬件密钥保管或跨设备证据；这些结论保持“未声明”，模拟器行只证明模拟器闭环。
 - 本矩阵不声明商店发布；商店发布必须有独立的渠道结论。
 - 对端内容由发送客户端加密，敏感运行时数据留在本机。
@@ -42,20 +68,20 @@
 本表投影原生驱动清单。运行协议和能力字段仍由该清单负责。
 生命周期证据列表示该通道是否能为对应阶段发出原生回执。“已发送”始终是客户端本地事实。每一轮中，界面只展示实际观测到的回执；不支持或未到达的阶段直接跳过，不得通过后续回复或终态结果倒推。
 
-| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| openclaw | conversation | unverified | 否 | openclaw-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| claude-code | conversation | unverified | 否 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| codex | conversation | unverified | 否 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| opencode | conversation | unverified | 否 | opencode-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| copilot | conversation | unverified | 否 | copilot-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| kilo-code | conversation | unverified | 否 | kilo-code-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| cursor | conversation | unverified | 否 | cursor-agent-cli-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | GUI 退出后续跑 | 活动轮次重附着 | 有序游标重放 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| openclaw | conversation | unverified | 否 | openclaw-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| claude-code | conversation | unverified | 否 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| codex | conversation | unverified | 否 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| opencode | conversation | unverified | 否 | opencode-serve-http-v1 | serve-http | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| copilot | conversation | unverified | 否 | copilot-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| kilo-code | conversation | unverified | 否 | kilo-code-serve-http-v1 | serve-http | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| cursor | conversation | unverified | 否 | cursor-agent-cli-v1 | cli | 是 | 是 | 是 | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
 
 ## 原生能力清单
 

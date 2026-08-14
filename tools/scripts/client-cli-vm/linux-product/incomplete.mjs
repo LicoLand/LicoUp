@@ -10,7 +10,7 @@ export function writeLinuxProductIncomplete(distro, reason) {
     "releaseCliProof",
     "archive",
     "signature",
-    "distributionManifest",
+    "verificationManifest",
     "sourceManifest",
   ]) {
     rmSync(artifacts[key], { force: true });

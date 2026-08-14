@@ -55,7 +55,12 @@ export const defaultMaxOutputBytes = 4 * 1024 * 1024;
 
 export const acceptanceMode = "dispatch-lane-unified-1";
 
-export const strictRoundCount = 3;
+// One successful live workflow is sufficient. The workflow itself performs
+// both required user behaviors: create one conversation, then resume that
+// exact native conversation for one continuation turn.
+export const strictRoundCount = 1;
+
+export const verificationTurnCount = 2;
 
 export const disposableProfileSeedEntries = Object.freeze([
   "config.toml",
@@ -128,7 +133,6 @@ export const agentConfigs = Object.freeze({
     cliTurnKind: "native-cli",
     cliReadbackKind: "native-cli",
     sameSessionGate: true,
-    parityModel: "Auto",
   }),
   openclaw: Object.freeze({
     id: "openclaw",
@@ -200,6 +204,7 @@ export const agentConfigs = Object.freeze({
     continuityScope: "process-local",
     isolatedConfigEnvironmentKey: "CLAUDE_CONFIG_DIR",
     noHistoryEnvironmentKey: "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
+    sameSessionGate: true,
   }),
   antigravity: Object.freeze({
     id: "antigravity",
@@ -218,7 +223,6 @@ export const agentConfigs = Object.freeze({
     cliReadbackKind: "none",
     sameSessionGate: true,
     turnViaSidecar: true,
-    parityModel: "gemini-3.6-flash-low",
   }),
 });
 

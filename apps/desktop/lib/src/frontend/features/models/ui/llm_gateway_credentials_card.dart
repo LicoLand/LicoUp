@@ -34,7 +34,8 @@ class LlmGatewayCredentialsCard extends StatefulWidget {
 
   /// When present, the per-row authorize toggle is enabled only while the
   /// local Gateway reports [LlmGatewayRuntimeState.running]. Authorization
-  /// itself never starts or restarts that process.
+  /// hot-applies credentials in native code and never restarts that process
+  /// from this UI.
   final LlmGatewayLifecycleController? lifecycleController;
 
   @override
@@ -177,6 +178,7 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
         );
         return;
       }
+      await widget.lifecycleController?.pollNow();
     } catch (_) {
       if (mounted) {
         final chinese = Localizations.localeOf(context).languageCode == 'zh';
@@ -232,14 +234,12 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
     }
   }
 
-  bool get _credentialsApplied =>
-      widget.lifecycleController?.lastReport?['credentialsApplied'] == true;
-
   bool get _canToggleAuthorization =>
       !_busy && !widget.authorization.busy && _serviceRunning;
 
-  /// Authorizes one credential into the Gateway session without cold-starting
-  /// a stopped service. Disabled unless Gateway is already running.
+  /// Authorizes one credential into the Gateway session. Native authorize
+  /// hot-applies the lease to a running managed Gateway; this UI only refreshes
+  /// status and never restarts the process.
   Future<void> _authorizeAccess(String credentialId) async {
     if (!_canToggleAuthorization ||
         widget.authorization.isCredentialAuthorized(credentialId)) {
@@ -275,12 +275,7 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
         });
         return;
       }
-      if (lifecycle != null &&
-          lifecycle.state == LlmGatewayRuntimeState.running) {
-        await lifecycle.start();
-      } else {
-        await lifecycle?.pollNow();
-      }
+      await lifecycle?.pollNow();
       if (!mounted) return;
       setState(() {
         _messageIsError = false;
@@ -299,9 +294,8 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
     }
   }
 
-  /// Revokes one credential from the Gateway session. When Gateway is running
-  /// with applied keys, restarts that live process so the sidecar drops the
-  /// key — never cold-starts from stopped.
+  /// Revokes one credential from the Gateway session. Native clear hot-applies
+  /// the updated lease; this UI only refreshes status.
   Future<void> _revokeAccess(String credentialId) async {
     if (!_canToggleAuthorization ||
         !widget.authorization.isCredentialAuthorized(credentialId)) {
@@ -309,7 +303,6 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
     }
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final lifecycle = widget.lifecycleController;
-    final wasApplied = _credentialsApplied;
     setState(() {
       _busy = true;
       _message = null;
@@ -330,13 +323,7 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
         });
         return;
       }
-      if (lifecycle != null &&
-          wasApplied &&
-          lifecycle.state == LlmGatewayRuntimeState.running) {
-        await lifecycle.start();
-      } else {
-        await lifecycle?.pollNow();
-      }
+      await lifecycle?.pollNow();
       if (!mounted) return;
       setState(() {
         _messageIsError = false;

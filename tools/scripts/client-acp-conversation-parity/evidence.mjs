@@ -119,7 +119,7 @@ export function coreChecksFromAggregate(aggregate) {
         && aggregate.processLocalContinuation === true
         && aggregate.hostShutdownEvidenceComplete === true
         && aggregate.hostShutdownPassed === true
-      : aggregate.nativeToArc === true && aggregate.arcToNative === true),
+      : aggregate.openNew === true && aggregate.exactResume === true),
     "P-04": passOrFail(
       aggregate.finalCanaries === true
         && (processLocal

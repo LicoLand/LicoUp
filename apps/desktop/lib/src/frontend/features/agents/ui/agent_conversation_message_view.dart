@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -15,6 +14,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_parti
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 class AgentConversationMessageList extends StatefulWidget {
   const AgentConversationMessageList({
@@ -30,6 +30,7 @@ class AgentConversationMessageList extends StatefulWidget {
     this.participantConversationIds = const {},
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
+    this.scrollController,
   });
 
   final bool loading;
@@ -54,6 +55,10 @@ class AgentConversationMessageList extends StatefulWidget {
 
   /// Extra bottom padding when a floating composer overlays the transcript.
   final double bottomOverlayInset;
+
+  /// Optional owner for coordinating a floating child scroll surface with
+  /// the transcript viewport.
+  final ScrollController? scrollController;
 
   @override
   State<AgentConversationMessageList> createState() =>
@@ -312,6 +317,7 @@ class AgentConversationMessageListState
               : messagingDetailsConversationId(session);
           return SelectionArea(
             child: MessagingParticipantFlow(
+              scrollController: widget.scrollController,
               items: _timelineItems,
               adapter: adapter,
               target: widget.target,
@@ -320,9 +326,7 @@ class AgentConversationMessageListState
               participantTargets: widget.participantTargets,
               participantConversationIds: widget.participantConversationIds,
               primaryConversationId: primaryConversationId,
-              preferPeerAgents: isAgentOrchestrationTargetId(
-                widget.target.target,
-              ),
+              preferPeerAgents: false,
               topOverlayInset: widget.topOverlayInset,
               bottomOverlayInset: widget.bottomOverlayInset,
             ),
@@ -335,6 +339,7 @@ class AgentConversationMessageListState
           child: NotificationListener<ScrollNotification>(
             onNotification: _loadEarlierOnScroll,
             child: ListView.builder(
+              controller: widget.scrollController,
               key: PageStorageKey<String>(
                 'agent-conversation-message-list-$_timelineSessionKey',
               ),
@@ -451,6 +456,7 @@ class AgentConversationMessageListState
             adapter: adapter,
             detailsBuilder: buildAgentConversationEventDetails,
             active: item.storageKey == _activeProcessStorageKey,
+            topOverlayInset: widget.topOverlayInset,
           ),
           AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
             events: events,
@@ -461,6 +467,7 @@ class AgentConversationMessageListState
         },
       ConversationLogTimelineItem(:final events) => ConversationLogEventRow(
         events: events,
+        detailsBuilder: buildAgentConversationEventDetails,
       ),
       ConversationRuntimeUpdateTimelineItem(:final message) =>
         AgentRuntimeUpdateCard(
@@ -719,7 +726,7 @@ class _ConversationArtifactsPanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: colors.line.withAlpha(80)),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -762,14 +769,14 @@ class _ConversationDiagnosticsPanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: colors.line.withAlpha(80)),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
             onTap: onToggle,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(LicoRadius.card),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(

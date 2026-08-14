@@ -6,7 +6,7 @@ use std::time::Instant;
 pub(super) fn open_serve_session(
     endpoint: &ServeEndpoint,
     config: &ProtocolConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<String, ProtocolFailure> {
     if config.is_resume() {
         let url = format!(
@@ -26,27 +26,28 @@ pub(super) fn open_serve_session(
         };
     }
 
-    if Instant::now() >= deadline {
-        return Err(ProtocolFailure::new(
-            "acp_protocol_timeout",
-            "The ACP agent timed out before the turn completed.",
-            "session/prompt",
-        ));
-    }
+    let timeout = super::serve_transport::remaining_turn_timeout(deadline)?;
     let body = if config.cwd.is_empty() {
         json!({})
     } else {
         json!({"directory": config.cwd})
     };
-    let created =
-        super::super::opencode_serve::post_json(&format!("{}/session", endpoint.attach_url), &body)
-            .map_err(|_| {
-                ProtocolFailure::new(
-                    "acp_protocol_write_failed",
-                    "The ACP agent stopped accepting protocol messages.",
-                    "serve/http",
-                )
-            })?;
+    let created = super::super::opencode_serve::post_json_with_optional_timeout(
+        &format!("{}/session", endpoint.attach_url),
+        &body,
+        timeout,
+    )
+    .map_err(|_| {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            super::serve_transport::turn_timeout_failure()
+        } else {
+            ProtocolFailure::new(
+                "acp_protocol_write_failed",
+                "The ACP agent stopped accepting protocol messages.",
+                "serve/http",
+            )
+        }
+    })?;
     created
         .get("id")
         .and_then(Value::as_str)

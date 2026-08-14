@@ -1,0 +1,22 @@
+# LicoUp conversation verification models
+# schema: licoup.agent-conversation-verification-models.v1
+#
+# Single source of truth for Agent → Model used by:
+#   - ACP / conversation parity gates
+#   - same-session / product conversation gates
+#   - client-agent-conversation-verify / product-e2e
+#
+# Maintain only this file when changing a verification test model.
+# Runtime loads it once (module cache). Environment overrides remain:
+#   LICO_<AGENT_ID>_PARITY_MODEL
+
+schema_version = "licoup.agent-conversation-verification-models.v1"
+
+[models]
+# agent-id = "wire-or-alias model id passed to the agent / gate"
+antigravity = "gemini-3.6-flash-low"
+"claude-code" = "haiku"
+codex = "gpt-5.3-codex-spark"
+cursor = "composer-2.5"
+"kimi-code" = "kimi-code/kimi-for-coding"
+"kilo-code" = "Kilo Auto Free"

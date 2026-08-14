@@ -1,7 +1,10 @@
 mod copy;
 mod path;
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use serde_json::Value;
@@ -13,7 +16,18 @@ use super::{
     params::json_text,
 };
 use copy::copy_remaining_bytes;
-use path::{canonical_regular_file, safe_staged_path, validate_staged_regular_file};
+
+pub(super) fn canonical_regular_file(path: &Path, label: &str) -> Result<PathBuf> {
+    path::canonical_regular_file(path, label)
+}
+
+pub(super) fn safe_staged_path(root: &Path, file_name: &str) -> Result<PathBuf> {
+    path::safe_staged_path(root, file_name)
+}
+
+pub(super) fn validate_staged_regular_file(root: &Path, path: &Path) -> Result<()> {
+    path::validate_staged_regular_file(root, path)
+}
 
 pub(super) fn prepare_staging_root(params: &Value) -> Result<std::path::PathBuf> {
     path::prepare_staging_root(params)
@@ -25,6 +39,38 @@ pub(super) fn reject_artifact_overrides(params: &Value) -> Result<()> {
 
 pub(super) struct StagedArtifact {
     pub resumed: bool,
+}
+
+pub(super) fn staged_artifact_paths(
+    root: &Path,
+    artifact: &VerifiedArtifact,
+) -> Result<(PathBuf, PathBuf)> {
+    let final_path = safe_staged_path(root, &artifact.file_name)?;
+    let partial_path = safe_staged_path(root, &format!("{}.partial", artifact.file_name))?;
+    Ok((final_path, partial_path))
+}
+
+/// Verifies the partial file digest against the signed metadata and renames it
+/// into place. Shared by the local copy path and the remote GitHub download
+/// path so every staged artifact passes the same exact-size + sha256 gate.
+pub(super) fn finalize_partial_artifact(
+    root: &Path,
+    partial_path: &Path,
+    final_path: &Path,
+    artifact: &VerifiedArtifact,
+) -> Result<()> {
+    validate_staged_regular_file(root, partial_path)?;
+    let actual = sha256_file_exact(partial_path, artifact.size)?;
+    if actual != artifact.sha256 {
+        let _ = fs::remove_file(partial_path);
+        ensure!(
+            actual == artifact.sha256,
+            "client update staged artifact digest does not match signed metadata"
+        );
+    }
+    fs::rename(partial_path, final_path)
+        .context("failed to finalize staged client update artifact")?;
+    validate_staged_regular_file(root, final_path)
 }
 
 pub(super) fn stage_selected_artifact(
@@ -42,7 +88,7 @@ pub(super) fn stage_selected_artifact(
     verify_signed_file_url(&selection.artifact.url, &source)?;
 
     let root = prepare_staging_root(params)?;
-    let final_path = safe_staged_path(&root, &selection.artifact.file_name)?;
+    let (final_path, partial_path) = staged_artifact_paths(&root, &selection.artifact)?;
     if final_path.exists() {
         validate_staged_regular_file(&root, &final_path)?;
         if sha256_file_exact(&final_path, selection.artifact.size)? == selection.artifact.sha256 {
@@ -52,8 +98,6 @@ pub(super) fn stage_selected_artifact(
             .context("failed to remove invalid staged client update artifact")?;
     }
 
-    let partial_path =
-        safe_staged_path(&root, &format!("{}.partial", selection.artifact.file_name))?;
     let mut partial_size = 0_u64;
     if partial_path.exists() {
         validate_staged_regular_file(&root, &partial_path)?;
@@ -71,18 +115,7 @@ pub(super) fn stage_selected_artifact(
         partial_size,
         selection.artifact.size,
     )?;
-    validate_staged_regular_file(&root, &partial_path)?;
-    let actual = sha256_file_exact(&partial_path, selection.artifact.size)?;
-    if actual != selection.artifact.sha256 {
-        let _ = fs::remove_file(&partial_path);
-        ensure!(
-            actual == selection.artifact.sha256,
-            "client update staged artifact digest does not match signed metadata"
-        );
-    }
-    fs::rename(&partial_path, &final_path)
-        .context("failed to finalize staged client update artifact")?;
-    validate_staged_regular_file(&root, &final_path)?;
+    finalize_partial_artifact(&root, &partial_path, &final_path, &selection.artifact)?;
     Ok(StagedArtifact { resumed })
 }
 
