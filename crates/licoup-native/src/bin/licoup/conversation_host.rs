@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use interprocess::local_socket::{
-    GenericNamespaced, ListenerNonblockingMode, ListenerOptions, Stream, ToNsName as _,
+    GenericNamespaced, ListenerNonblockingMode, ListenerOptions, SendHalf, Stream, ToNsName as _,
     traits::{Listener as _, Stream as _},
 };
 use std::{
@@ -119,7 +119,8 @@ pub(super) fn serve_proxy() -> Result<()> {
     let (mut receiver, mut sender) = stream.split();
     let upload = thread::spawn(move || -> io::Result<()> {
         io::copy(&mut io::stdin().lock(), &mut sender)?;
-        sender.flush()
+        sender.flush()?;
+        shutdown_upload(&sender)
     });
     // Continue draining the host after stdout disappears. This prevents a
     // closed GUI pipe from applying backpressure to the turn owner.
@@ -139,6 +140,24 @@ pub(super) fn serve_proxy() -> Result<()> {
         }
     }
     let _ = upload.join();
+    Ok(())
+}
+
+#[cfg(unix)]
+fn shutdown_upload(sender: &SendHalf) -> io::Result<()> {
+    use std::net::Shutdown;
+
+    match sender {
+        SendHalf::UdSocket(sender) => sender.as_stream().inner().shutdown(Shutdown::Write),
+        #[allow(unreachable_patterns)]
+        _ => Ok(()),
+    }
+}
+
+#[cfg(windows)]
+fn shutdown_upload(_sender: &SendHalf) -> io::Result<()> {
+    // The named-pipe send half is independently owned and signals completion
+    // when the upload thread returns and drops it.
     Ok(())
 }
 
