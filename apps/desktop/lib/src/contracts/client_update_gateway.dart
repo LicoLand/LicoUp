@@ -2,62 +2,78 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 
 abstract interface class ClientUpdateGateway {
-  Future<bool> autoDownloadOverWifiEnabled();
-
-  Future<void> setAutoDownloadOverWifiEnabled(bool enabled);
-
-  Future<bool> isWifiConnected();
-
   Future<ClientUpdateStatus> status({
     required AgentCommandRunner agentService,
     String channel = 'stable',
+    String source = 'local',
+    String repo = 'LicoLand/LicoUp',
+    String stateRoot = '',
   });
 
-  Future<ClientUpdateRemoteCheck> check({
+  /// Checks a signed update manifest from a local file pair (local source) or
+  /// from the latest GitHub release of `repo` (github source). For the github
+  /// source the bundled public keys are used and `manifestPath` is ignored.
+  Future<ClientUpdateStatus> check({
     required AgentCommandRunner agentService,
-    String channel = 'stable',
-  });
-
-  Future<ClientUpdateStatus> download({
-    required AgentCommandRunner agentService,
-    required String manifestPath,
-    required String publicKeysPath,
-    required String artifactUrl,
-    required int expectedBytes,
+    String manifestPath = '',
+    String publicKeysPath = '',
     String channel = 'stable',
     String revocationPath = '',
+    String source = 'local',
+    String repo = 'LicoLand/LicoUp',
     String stagingRoot = '',
+    String stateRoot = '',
+  });
+
+  /// Stages the update artifact. Local source copies `sourcePath`; github
+  /// source streams the signed artifact url from the cached manifest.
+  Future<ClientUpdateStatus> download({
+    required AgentCommandRunner agentService,
+    String manifestPath = '',
+    String publicKeysPath = '',
+    String sourcePath = '',
+    String channel = 'stable',
+    String revocationPath = '',
+    String source = 'local',
+    String repo = 'LicoLand/LicoUp',
+    String stagingRoot = '',
+    String stateRoot = '',
   });
 
   Future<ClientUpdateStatus> verify({
     required AgentCommandRunner agentService,
-    required String manifestPath,
-    required String publicKeysPath,
+    String manifestPath = '',
+    String publicKeysPath = '',
     String channel = 'stable',
     String revocationPath = '',
+    String source = 'local',
+    String repo = 'LicoLand/LicoUp',
     String stagingRoot = '',
+    String stateRoot = '',
   });
 
   Future<ClientUpdateStatus> apply({
     required AgentCommandRunner agentService,
-    required String manifestPath,
-    required String publicKeysPath,
+    required bool execute,
+    String manifestPath = '',
+    String publicKeysPath = '',
     String channel = 'stable',
     String revocationPath = '',
+    String source = 'local',
+    String repo = 'LicoLand/LicoUp',
     String stagingRoot = '',
-  });
-}
-
-final class ClientUpdateRemoteCheck {
-  const ClientUpdateRemoteCheck({
-    required this.status,
-    required this.manifestPath,
-    required this.publicKeysPath,
-    required this.artifactUrl,
+    String stateRoot = '',
   });
 
-  final ClientUpdateStatus status;
-  final String manifestPath;
-  final String publicKeysPath;
-  final String artifactUrl;
+  Future<ClientUpdateStatus> rollback({
+    required AgentCommandRunner agentService,
+    String manifestPath = '',
+    String publicKeysPath = '',
+    String channel = 'stable',
+    String revocationPath = '',
+    String source = 'local',
+    String repo = 'LicoLand/LicoUp',
+    String stagingRoot = '',
+    String stateRoot = '',
+  });
 }

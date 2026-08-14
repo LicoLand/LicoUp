@@ -8,7 +8,7 @@ const root = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const read = (relative) => readFileSync(path.join(root, relative), "utf8");
 
 const source = read("crates/licoup-native/src/bin/lico-conversation-mcp.rs");
-const catalog = read("crates/licoup-native/src/domain/owned_conversations/catalog.rs");
+const store = read("crates/licoup-native/src/domain/client_conversation/store.rs");
 const packaging = JSON.parse(read("apps/desktop/packaging.modules.json"));
 const cargo = read("crates/licoup-native/Cargo.toml");
 
@@ -20,14 +20,16 @@ const tools = [
   "lico_conversation_import",
 ];
 
-test("conversation MCP exposes owned-conversation query and transfer tools", () => {
+test("conversation MCP exposes canonical indexed query and transfer tools", () => {
   for (const name of tools) {
     assert.match(source, new RegExp(`"${name}"`, "u"));
   }
   assert.match(source, /SERVER_NAME: &str = "lico-up-conversations"/u);
-  assert.match(catalog, /agent-conversation-projections\.json/u);
-  assert.match(catalog, /OwnedConversationMatchMode::Regex/u);
-  assert.match(catalog, /lico-owned-conversations-export/u);
+  assert.match(source, /ConversationService::open/u);
+  assert.match(source, /conversation\.events\.search/u);
+  assert.doesNotMatch(source, /matchMode|replaceExisting|nativeSessionId/u);
+  assert.match(store, /CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5/u);
+  assert.match(store, /lico-conversation-bundle/u);
   assert.match(cargo, /name = "lico-conversation-mcp"/u);
   assert.equal(
     packaging.modules["conversations-mcp"].cargoBin,

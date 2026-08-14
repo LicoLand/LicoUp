@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/agents/ui/history_session_list.dart
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_search.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 export 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
@@ -235,7 +236,9 @@ final class _HistorySessionPanelState extends State<HistorySessionPanel> {
       decoration: BoxDecoration(
         color: colors.surface,
         border: widget.framed ? Border.all(color: colors.line) : null,
-        borderRadius: widget.framed ? BorderRadius.circular(8) : null,
+        borderRadius: widget.framed
+            ? BorderRadius.circular(LicoRadius.chip)
+            : null,
       ),
       child: content,
     );

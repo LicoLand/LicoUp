@@ -8,7 +8,7 @@ abstract interface class LayoutDestinationPresentation {}
 /// Profile-owned visual decisions used by the shared Agents business surface.
 ///
 /// The shared feature remains responsible for business state and interaction
-/// orchestration. Every color, inset, frame, and profile-specific visibility
+/// coordination. Every color, inset, frame, and profile-specific visibility
 /// decision is supplied by the active profile implementation.
 abstract interface class LayoutAgentsPresentation
     implements LayoutDestinationPresentation {

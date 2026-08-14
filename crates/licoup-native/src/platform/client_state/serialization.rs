@@ -29,28 +29,6 @@ pub(super) fn atomic_write_json(path: &Path, value: &Value, max_bytes: usize) ->
     atomic_write_private_text_bounded(path, &content, max_bytes)
 }
 
-pub(super) fn read_toml_or_default<F>(
-    path: &Path,
-    max_bytes: usize,
-    default_value: F,
-) -> Result<Value>
-where
-    F: FnOnce() -> Value,
-{
-    let Some(raw) = read_private_text_bounded(path, max_bytes)? else {
-        return Ok(default_value());
-    };
-    if raw.trim().is_empty() {
-        return Ok(default_value());
-    }
-    Ok(toml::from_str(&raw)?)
-}
-
-pub(super) fn atomic_write_toml(path: &Path, value: &Value, max_bytes: usize) -> Result<()> {
-    let content = format!("{}\n", toml::to_string_pretty(value)?);
-    atomic_write_private_text_bounded(path, &content, max_bytes)
-}
-
 pub(super) fn atomic_write_local_text_bounded(
     path: &Path,
     content: &str,

@@ -85,7 +85,6 @@ test("secure-mesh contract artifacts expose generated symbols and boundaries", (
     "SecureMeshKtRequest",
     "SecureMeshApprovalRequest",
     "SecureMeshFileSyncTransfer",
-    "SecureMeshSkillSyncTransfer",
     "dispatch_request",
   ]) {
     assert.match(rust + "\n" + dart + "\n" + dispatchRouter, new RegExp(symbol));

@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -72,7 +73,7 @@ void main() {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  MessagingGlassMenuSectionHeader(label: '当前对话'),
+                  LicoGroupHeader(label: '当前对话'),
                   MessagingGlassMenuItem(label: 'Cursor', selected: true),
                   MessagingGlassMenuItem(label: 'Codex'),
                 ],

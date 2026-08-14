@@ -75,6 +75,27 @@ final class StdioRpcOperationQueue {
     return _closeFuture = completer.future;
   }
 
+  /// Stops accepting work and releases the observer transport immediately.
+  /// The native conversation host remains responsible for active Agent work.
+  Future<void> detach(Future<void> Function() detachTransport) {
+    final existing = _closeFuture;
+    if (existing != null) return existing;
+    _closing = true;
+    final completer = Completer<void>();
+    _closeFuture = completer.future;
+    Future<void> releaseTransport() async {
+      try {
+        await detachTransport();
+      } on Object catch (_) {
+      } finally {
+        completer.complete();
+      }
+    }
+
+    unawaited(releaseTransport());
+    return completer.future;
+  }
+
   void _enqueue(RpcOp<void> run, [RpcPriorityToken? priority]) {
     _pending.add(run, priority: priority);
     if (_running) return;

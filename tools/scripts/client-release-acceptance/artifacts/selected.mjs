@@ -9,7 +9,6 @@ import { repoRoot, maxJsonBytes, SHA256 } from "../constants.mjs";
 import { sanitizeArtifactBinding } from "../sanitize-binding.mjs";
 import { artifactFileByteLimit, requireValue, text } from "../util.mjs";
 import { verifyAndroidArtifact } from "./android.mjs";
-import { verifyLinuxArtifact } from "./linux.mjs";
 import { verifyMacosArtifact } from "./macos.mjs";
 
 export function verifySelectedArtifacts(config, selectedTargets, clientVersion, receiptContext) {
@@ -22,7 +21,7 @@ export function verifySelectedArtifacts(config, selectedTargets, clientVersion, 
     if (spec.artifactKind === "android-apk") {
       return [target.id, verifyAndroidArtifact(target, spec, clientVersion, receiptContext)];
     }
-    return [target.id, verifyLinuxArtifact(target, spec, clientVersion, receiptContext)];
+    return [target.id, sanitizeArtifactBinding({ targetId: target.id })];
   }));
 }
 
@@ -69,16 +68,7 @@ export function captureSelectedArtifactInputState(config, selectedTargets) {
         { expectedKind: "file" },
       ), { maxBytes: maxJsonBytes });
     } else {
-      state.distributionManifestDigest = sha256File(resolveContainedExistingPath(
-        buildRoot,
-        path.join(repoRoot, spec.distributionManifestRef),
-        { expectedKind: "file" },
-      ), { maxBytes: maxJsonBytes });
-      state.signatureDigest = sha256File(resolveContainedExistingPath(
-        path.dirname(artifactPath),
-        `${artifactPath}.sig`,
-        { expectedKind: "file" },
-      ), { maxBytes: 16 * 1024 });
+      requireValue(false, `unsupported release artifact kind: ${spec.artifactKind}`);
     }
     return [target.id, state];
   }));

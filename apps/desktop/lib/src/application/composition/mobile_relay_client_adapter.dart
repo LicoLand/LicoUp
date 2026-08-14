@@ -1,7 +1,6 @@
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
-import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart'
     as platform;
 import 'package:licoup/src/platform/native_client/agent_service.dart';
@@ -193,28 +192,5 @@ final class MobileRelayClientAdapter
 
   @override
   Future<SecureMeshKtResponse> executeKt(SecureMeshKtRequest request) =>
-      _relayService.executeSecureMeshKtRequest(
-        agentService: _agentService,
-        request: request,
-      );
-}
-
-final class SecureMeshSkillInstallGatewayAdapter
-    implements SecureMeshSkillInstallGateway {
-  const SecureMeshSkillInstallGatewayAdapter(this._gateway);
-
-  final SkillHubGateway _gateway;
-
-  @override
-  Future<Map<String, dynamic>> applyInstall({
-    required String agent,
-    required String sourcePath,
-    required String name,
-    required bool pin,
-  }) => _gateway.applySkillInstall(
-    agent: agent,
-    sourcePath: sourcePath,
-    name: name,
-    pin: pin,
-  );
+      _relayService.executeSecureMeshKtRequest(request: request);
 }

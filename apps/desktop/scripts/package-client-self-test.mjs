@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -13,8 +19,13 @@ import {
   validatePackagingConfig,
   validateReleaseBuildPolicy,
 } from "./package-client.mjs";
+import {
+  parsePackageClientArgs,
+  validateMacosPackagingHost,
+} from "./package-client/cli-policy.mjs";
 import { readFileSync } from "node:fs";
 import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
+import { retireStaleCleanBuildRuns } from "./package-client/source-staging.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const packageScript = "apps/desktop/scripts/package-client.mjs";
@@ -150,6 +161,48 @@ try {
 } finally {
   rmSync(sourceFixtureRoot, { recursive: true, force: true });
 }
+const cleanupFixtureRoot = mkdtempSync(
+  path.join(os.tmpdir(), "lico-package-cleanup-"),
+);
+try {
+  const fixtureUuid = "12345678-1234-4123-8123-123456789abc";
+  const dead = `run-9101-1-${fixtureUuid}`;
+  const live = `run-9102-1-${fixtureUuid}`;
+  const current = `run-9103-1-${fixtureUuid}`;
+  for (const name of [dead, live, current, "bundle", "pub-cache"]) {
+    mkdirSync(path.join(cleanupFixtureRoot, name));
+  }
+  const retired = retireStaleCleanBuildRuns(cleanupFixtureRoot, current, {
+    isProcessAlive: (pid) => pid === 9102,
+  });
+  requireValue(retired.removed === 1 &&
+    !existsSync(path.join(cleanupFixtureRoot, dead)) &&
+    existsSync(path.join(cleanupFixtureRoot, live)) &&
+    existsSync(path.join(cleanupFixtureRoot, current)) &&
+    existsSync(path.join(cleanupFixtureRoot, "bundle")) &&
+    existsSync(path.join(cleanupFixtureRoot, "pub-cache")),
+  "clean_build_retirement_boundary_failed");
+
+  const failed = `run-9104-1-${fixtureUuid}`;
+  mkdirSync(path.join(cleanupFixtureRoot, failed));
+  let cleanupError = null;
+  try {
+    retireStaleCleanBuildRuns(cleanupFixtureRoot, current, {
+      isProcessAlive: () => false,
+      removeDirectory: () => {
+        throw new Error("synthetic removal failure");
+      },
+    });
+  } catch (error) {
+    cleanupError = error;
+  }
+  requireValue(cleanupError?.code === "packaging_temporary_cleanup_failed" &&
+    cleanupError?.details?.stage === "flutter-clean-build-retire" &&
+    cleanupError?.details?.reason === "temporary_directory_removal_failed",
+  "clean_build_cleanup_failure_was_not_typed");
+} finally {
+  rmSync(cleanupFixtureRoot, { recursive: true, force: true });
+}
 for (const field of ["skipFlutterBuild", "skipNativeBuild"]) {
   expectRejected(() => validateReleaseBuildPolicy({
     mode: "release",
@@ -180,6 +233,39 @@ const canonicalConfig = JSON.parse(readFileSync(
   "utf8",
 ));
 validatePackagingConfig(canonicalConfig);
+if (process.platform === "darwin" && process.arch === "arm64") {
+  const macosArm64Options = parsePackageClientArgs(
+    ["--platform", "macos", "--mode", "release"],
+    {},
+  );
+  requireValue(
+    macosArm64Options.platform === "macos",
+    "macos_arm64_packaging_policy_rejected",
+  );
+} else {
+  expectRejected(
+    () => parsePackageClientArgs(
+      ["--platform", "macos", "--mode", "release"],
+      {},
+    ),
+    "macos_non_arm64_host_was_accepted",
+  );
+}
+validateMacosPackagingHost({ platform: "macos", dryRun: false }, "darwin", "arm64");
+for (const [platform, arch] of [
+  ["darwin", "x64"],
+  ["linux", "arm64"],
+]) {
+  expectRejected(
+    () => validateMacosPackagingHost(
+      { platform: "macos", dryRun: false },
+      platform,
+      arch,
+    ),
+    "macos_non_arm64_host_was_accepted",
+  );
+}
+validateMacosPackagingHost({ platform: "macos", dryRun: true }, "darwin", "x64");
 for (const mutate of [
   (value) => { value.unknown = true; },
   (value) => { value.modules["../escape"] = value.modules["native-sidecar"]; },
@@ -219,7 +305,7 @@ requireValue(outputIsReferenceOnly(`${rejected.stdout}\n${rejected.stderr}`) &&
 
 console.log(JSON.stringify({
   ok: true,
-  caseCount: 25,
+  caseCount: 31,
   canonicalReleaseConfigRequired: true,
   releaseOverridesRejected: true,
   packagingSchemaClosed: true,

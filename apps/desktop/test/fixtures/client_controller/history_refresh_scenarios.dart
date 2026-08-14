@@ -128,9 +128,9 @@ void registerClientHistoryRefreshScenarios() {
   );
 
   test(
-    'loadConversationSessions reveals native history in pages of fifty',
+    'loadConversationSessions grows pages by 10 on every reach to the end',
     () async {
-      final pagedSessions = List.generate(120, (index) {
+      final pagedSessions = List.generate(220, (index) {
         final updatedAt = DateTime.utc(
           2026,
           6,
@@ -158,16 +158,16 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '51',
+        '11',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(50));
+      expect(controller.selectedConversationSessions, hasLength(10));
       expect(
         controller.selectedConversationSessions.first.id,
         'native-codex-000',
       );
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-049',
+        'native-codex-009',
       );
       expect(controller.selectedConversationSessionsHasMore, isTrue);
 
@@ -180,14 +180,14 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '51',
+        '11',
         '--offset',
-        '50',
+        '10',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(100));
+      expect(controller.selectedConversationSessions, hasLength(20));
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-099',
+        'native-codex-019',
       );
       expect(controller.selectedConversationSessionsHasMore, isTrue);
 
@@ -200,51 +200,189 @@ void registerClientHistoryRefreshScenarios() {
         '--agent',
         'codex',
         '--limit',
-        '51',
+        '21',
         '--offset',
-        '100',
+        '20',
       ]);
-      expect(controller.selectedConversationSessions, hasLength(120));
+      expect(controller.selectedConversationSessions, hasLength(40));
       expect(
         controller.selectedConversationSessions.last.id,
-        'native-codex-119',
+        'native-codex-039',
       );
+      expect(controller.selectedConversationSessionsHasMore, isTrue);
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.conversationStreamCalls, 4);
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '31',
+        '--offset',
+        '40',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(70));
+      expect(
+        controller.selectedConversationSessions.last.id,
+        'native-codex-069',
+      );
+      expect(controller.selectedConversationSessionsHasMore, isTrue);
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.conversationStreamCalls, 5);
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '41',
+        '--offset',
+        '70',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(110));
+      expect(
+        controller.selectedConversationSessions.last.id,
+        'native-codex-109',
+      );
+      expect(controller.selectedConversationSessionsHasMore, isTrue);
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.conversationStreamCalls, 6);
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '51',
+        '--offset',
+        '110',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(160));
+      expect(controller.selectedConversationSessionsHasMore, isTrue);
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.conversationStreamCalls, 7);
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '61',
+        '--offset',
+        '160',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(220));
       expect(controller.selectedConversationSessionsHasMore, isFalse);
     },
   );
 
+  test('streamed catalog publishes cumulative 3 and 10 milestones', () async {
+    final service = FakeAgentService()
+      ..conversationSessions['codex'] = List.generate(
+        50,
+        (index) => conversationSessionJson(
+          id: 'native-codex-$index',
+          agentId: 'codex',
+          text: 'Native Codex history $index',
+          updatedAt: DateTime.utc(
+            2026,
+            7,
+            10,
+          ).add(Duration(seconds: index)).toIso8601String(),
+        ),
+      );
+    final controller = ClientController(agentService: service);
+    addTearDown(controller.dispose);
+    controller.selectedConversationAgentId = 'codex';
+    var structureNotifications = 0;
+    final publishedLengths = <int>[];
+    controller.conversationStructureListenable.addListener(() {
+      structureNotifications += 1;
+      publishedLengths.add(controller.selectedConversationSessions.length);
+    });
+
+    await controller.loadConversationSessions('codex');
+
+    expect(controller.selectedConversationSessions, hasLength(10));
+    expect(publishedLengths, [0, 3, 10, 10]);
+    expect(structureNotifications, 4);
+  });
+
   test(
-    'streamed catalog publishes cumulative 3 10 20 milestones before completion',
+    'head refresh preserves every loaded paging row before the next offset',
     () async {
+      final sessions = List.generate(
+        120,
+        (index) => conversationSessionJson(
+          id: 'native-codex-$index',
+          agentId: 'codex',
+          text: 'Native Codex history $index',
+          updatedAt: DateTime.utc(
+            2026,
+            7,
+            10,
+          ).subtract(Duration(seconds: index)).toIso8601String(),
+        ),
+      );
       final service = FakeAgentService()
-        ..conversationSessions['codex'] = List.generate(
-          50,
-          (index) => conversationSessionJson(
-            id: 'native-codex-$index',
-            agentId: 'codex',
-            text: 'Native Codex history $index',
-            updatedAt: DateTime.utc(
-              2026,
-              7,
-              10,
-            ).add(Duration(seconds: index)).toIso8601String(),
-          ),
-        );
+        ..conversationSessions['codex'] = sessions;
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
       controller.selectedConversationAgentId = 'codex';
-      var structureNotifications = 0;
-      final publishedLengths = <int>[];
-      controller.conversationStructureListenable.addListener(() {
-        structureNotifications += 1;
-        publishedLengths.add(controller.selectedConversationSessions.length);
-      });
 
       await controller.loadConversationSessions('codex');
+      await controller.loadMoreConversationSessions('codex');
+      expect(controller.selectedConversationSessions, hasLength(20));
 
-      expect(controller.selectedConversationSessions, hasLength(50));
-      expect(publishedLengths, [0, 3, 10, 20, 50]);
-      expect(structureNotifications, 5);
+      service.conversationSessions['codex'] = [
+        conversationSessionJson(
+          id: 'native-codex-new',
+          agentId: 'codex',
+          text: 'New native Codex history',
+          updatedAt: '2026-07-11T00:00:00Z',
+        ),
+        ...sessions,
+      ];
+      await controller.refreshConversationSessions('codex');
+
+      expect(controller.selectedConversationSessions, hasLength(21));
+      expect(
+        controller.selectedConversationSessions.map((session) => session.id),
+        containsAll([
+          'native-codex-new',
+          for (var index = 0; index < 20; index += 1) 'native-codex-$index',
+        ]),
+      );
+
+      await controller.loadMoreConversationSessions('codex');
+
+      expect(service.cliCalls.last, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--limit',
+        '21',
+        '--offset',
+        '21',
+      ]);
+      expect(controller.selectedConversationSessions, hasLength(41));
+      expect(
+        controller.selectedConversationSessions.map((session) => session.id),
+        containsAll([
+          'native-codex-new',
+          for (var index = 0; index < 40; index += 1) 'native-codex-$index',
+        ]),
+      );
     },
   );
 
@@ -308,6 +446,80 @@ void registerClientHistoryRefreshScenarios() {
       expect(controller.selectedConversationSession?.id, 'native-codex-old');
       expect(structureNotifications, 1);
       expect(activeNotifications, 0);
+    },
+  );
+
+  test(
+    'Codex runtime facts keep refreshing without a selected direct agent',
+    () async {
+      final service = FakeAgentService()
+        ..conversationSessions['codex'] = [
+          conversationSessionJson(
+            id: 'native-codex-active',
+            agentId: 'codex',
+            text: 'External Codex task',
+          ),
+        ];
+      final controller = ClientController(
+        agentService: service,
+        conversationRefreshPolicy: const ConversationRefreshPolicy(
+          activeInterval: Duration(seconds: 1),
+          warmInterval: Duration(seconds: 1),
+          backgroundInterval: Duration(seconds: 1),
+          activeCatalogInterval: Duration(milliseconds: 8),
+          warmCatalogInterval: Duration(milliseconds: 20),
+          backgroundCatalogInterval: Duration(milliseconds: 40),
+        ),
+      );
+      addTearDown(controller.dispose);
+      controller.scannedTargets = [
+        TargetCandidate(
+          target: 'codex',
+          label: 'Codex',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          adapterStatus: 'implemented',
+        ),
+      ];
+      await controller.lifecycleController.initialize(
+        sequentialSteps: const [],
+      );
+      controller.currentSection = ClientSection.agents;
+
+      await controller.refreshConversationSessions('codex');
+      expect(controller.selectedConversationAgentId, isEmpty);
+      expect(
+        controller.conversationSessionsByAgent['codex']?.single.running,
+        isFalse,
+      );
+
+      service.conversationSessions['codex'] = [
+        conversationSessionJson(
+          id: 'native-codex-active',
+          agentId: 'codex',
+          text: 'External Codex task',
+          running: true,
+        ),
+      ];
+      var structureNotifications = 0;
+      controller.conversationStructureListenable.addListener(
+        () => structureNotifications += 1,
+      );
+      controller.conversationAttentionContextChanged(immediateActive: true);
+      await _waitForHistoryRefresh(
+        () =>
+            controller.conversationSessionsByAgent['codex']?.single.running ==
+            true,
+      );
+
+      expect(controller.selectedConversationAgentId, isEmpty);
+      expect(
+        controller.conversationSessionsByAgent['codex']?.single.running,
+        isTrue,
+      );
+      expect(structureNotifications, 1);
     },
   );
 
@@ -385,7 +597,7 @@ void registerClientHistoryRefreshScenarios() {
       );
       controller.addListener(() => globalNotifications += 1);
 
-      await Future<void>.delayed(const Duration(milliseconds: 35));
+      await _waitForHistoryRefresh(() => service.conversationStreamCalls >= 1);
 
       expect(service.conversationStreamCalls, greaterThanOrEqualTo(1));
       expect(
@@ -410,7 +622,7 @@ void registerClientHistoryRefreshScenarios() {
           updatedAt: '2026-07-10T00:00:03Z',
         ),
       ];
-      await Future<void>.delayed(const Duration(milliseconds: 25));
+      await _waitForHistoryRefresh(() => activeNotifications == 1);
 
       expect(activeNotifications, 1);
       expect(structureNotifications, 0);
@@ -432,7 +644,9 @@ void registerClientHistoryRefreshScenarios() {
         lifecycleState: AppLifecycleState.resumed,
         viewFocused: true,
       );
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _waitForHistoryRefresh(
+        () => service.conversationStreamCalls > callsWhileHidden,
+      );
       expect(service.conversationStreamCalls, greaterThan(callsWhileHidden));
     },
   );
@@ -606,4 +820,14 @@ void registerClientHistoryRefreshScenarios() {
       expect(controller.conversationSessionsByAgent['codex'], hasLength(1));
     },
   );
+}
+
+Future<void> _waitForHistoryRefresh(bool Function() predicate) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 2));
+  while (!predicate()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw TimeoutException('history refresh did not settle');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
 }

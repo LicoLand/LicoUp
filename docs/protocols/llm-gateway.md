@@ -2,10 +2,12 @@
 
 English (normative) · [简体中文](llm-gateway.zh-CN.md)
 
-The authority is `domain/llm_gateway.rs`, `platform/llm_gateway_transport.rs`,
-and the `lico-llm-gateway` sidecar. The gateway binds only to loopback and
-routes by the exact client-protocol/requested-model pair; there is no global
-active provider.
+The LLM Gateway is the **lower layer** of the Gateway Runtime. Authority for
+this layer is `domain/llm_gateway.rs`, `platform/llm_gateway_transport.rs`, and
+the unified `lico-gateway` process (`platform/gateway_runtime`). The layer
+binds only to loopback and routes by the exact client-protocol/requested-model
+pair; there is no global active provider. Messaging channels are documented in
+[`gateway-runtime.md`](gateway-runtime.md).
 
 ## Capabilities
 
@@ -17,17 +19,20 @@ active provider.
 - Kimi, DeepSeek, and Kilo API keys are separate system-keyring items protected
   by macOS owner authentication (Touch ID, Face ID where available, or the system
   password fallback). Inventory responses contain no secret suffix or value.
-- A Gateway start authenticates once in the launching `licoup-cli` (Touch ID
-  or the system password fallback); the sidecar receives the credentials only
-  as an in-memory handoff over an inherited file descriptor and never reads
-  the Keychain itself. A standalone sidecar launch without a handoff fd still
-  authenticates once at startup through the previous path. Either way the
-  gateway keeps only a zeroizing in-memory lease and drops it on exit. The
-  selectable 7/30/60/90/180/365-day period is an upper bound for that running
-  process; it never bypasses the next startup authorization.
+- Owner authorization (Touch ID or the system password fallback) unlocks
+  credentials in the long-lived `licoup-cli` process. A cold Gateway start
+  hands the unlocked session to the sidecar over an inherited file descriptor;
+  the sidecar never reads the Keychain itself. While a managed Gateway is
+  already running, authorize and clear hot-apply the updated lease over a
+  private Unix control socket in the Gateway state directory (mode 0600, same
+  uid) without restarting the process. A standalone sidecar launch without a
+  handoff fd starts disconnected until a hot apply or a later start with
+  handoff. The gateway keeps only a zeroizing in-memory lease and drops it on
+  exit. The selectable 7/30/60/90/180/365-day period is an upper bound for that
+  running process; it never bypasses the next owner authorization.
 - Changing the selected period does not revoke a running Gateway. The current
-  process keeps its existing lease; the new period applies after the next
-  Gateway startup and owner authorization.
+  process keeps its existing lease; the new period applies on the next owner
+  authorization that rebuilds the handoff (hot apply) or on the next cold start.
 - Codex and Claude Code managed configuration points only to the loopback
   Gateway. Upstream provider API keys are never copied into agent files.
 

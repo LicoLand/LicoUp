@@ -16,11 +16,9 @@ fn extension_ui_request_fails_closed() {
         "method": "confirm"
     }));
     assert!(matches!(
-        effects[0],
-        ProtocolEffect::Fail(ProtocolFailure {
-            code: "pi_user_interaction_required",
-            user_interaction_required: true,
-            ..
-        })
+        &effects[0],
+        ProtocolEffect::Fail(failure)
+            if failure.code == "pi_user_interaction_required"
+                && failure.user_interaction_required
     ));
 }

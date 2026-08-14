@@ -9,7 +9,7 @@ import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Deepest delegated task nesting the card renders inline. Beyond it a task is
-/// summarized by its header only, so one runaway orchestration cannot build an
+/// summarized by its header only, so one runaway task cannot build an
 /// unbounded widget tree.
 const int _maxInlineSubagentDepth = 4;
 

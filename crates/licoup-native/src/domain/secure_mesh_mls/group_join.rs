@@ -17,7 +17,9 @@ use super::journal_recovery::{
     abort_empty_prepared_on_error, commit_staged_journaled_operation, current_group_metadata,
     journal_operation_identity, open_security_ledger, resume_journaled_operation,
 };
-use super::participant_runtime::{ParticipantRequirement, with_local_participant};
+use super::participant_runtime::{
+    ParticipantRequirement, group_state_store, with_local_participant,
+};
 
 pub(super) fn group_join(params: &Value) -> Result<Value> {
     reject_caller_asserted_trust(params)?;
@@ -75,6 +77,7 @@ pub(super) fn group_join(params: &Value) -> Result<Value> {
             )?;
             group.require_active_capability_negotiation()?;
             if let Some(response) = resume_journaled_operation(
+                group_state_store(&mut *runtime.group_store)?,
                 &mut security_ledger,
                 operation.clone(),
                 Some(&group),
@@ -86,7 +89,11 @@ pub(super) fn group_join(params: &Value) -> Result<Value> {
                 operation.state == SecureMeshMlsOperationState::Prepared,
                 "secure mesh MLS joined state conflicts with an incomplete operation"
             );
-            let metadata = reconcile_group_metadata(&group, runtime.identity)?;
+            let metadata = reconcile_group_metadata(
+                group_state_store(&mut *runtime.group_store)?,
+                &group,
+                runtime.identity,
+            )?;
             ensure!(
                 security_ledger.abort_empty_prepared_operation(&operation_id)?,
                 "secure mesh MLS joined-state no-op did not release its empty journal entry"
@@ -106,7 +113,12 @@ pub(super) fn group_join(params: &Value) -> Result<Value> {
         let staged_result = (|| {
             let join_group_id_hash = format!("sha256:{}", hex_sha256(&group_id));
             let participant_scope = runtime.identity.fingerprint()?;
-            require_group_base_current(None, &join_group_id_hash, &participant_scope)?;
+            require_group_base_current(
+                group_state_store(&mut *runtime.group_store)?,
+                None,
+                &join_group_id_hash,
+                &participant_scope,
+            )?;
             let now = OffsetDateTime::now_utc();
             let (group, prepared_security) = join_product_group_from_welcome_prepared(
                 runtime.participant,

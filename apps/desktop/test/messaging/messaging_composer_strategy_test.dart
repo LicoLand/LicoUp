@@ -47,7 +47,6 @@ Widget _strategyPane() {
       loading: false,
       turnActive: false,
       preparingNewConversation: false,
-      orchestrationSelected: false,
       composerEnabled: true,
       sendGateReasonCode: '',
       composerDraft: '',

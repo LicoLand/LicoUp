@@ -25,7 +25,7 @@ impl SecureMeshMlsGroup {
         participant: &SecureMeshMlsParticipant,
         welcome_message: &[u8],
     ) -> Result<Self> {
-        let welcome = match MlsMessageIn::tls_deserialize_exact(welcome_message.to_vec())
+        let welcome = match MlsMessageIn::tls_deserialize_exact(welcome_message)
             .context("secure mesh MLS welcome deserialization failed")?
             .extract()
         {
@@ -59,7 +59,7 @@ impl SecureMeshMlsGroup {
         welcome_message: &[u8],
         verifier: impl FnOnce(&SecureMeshMlsCapabilityExtension) -> Result<()>,
     ) -> Result<Self> {
-        let welcome = match MlsMessageIn::tls_deserialize_exact(welcome_message.to_vec())
+        let welcome = match MlsMessageIn::tls_deserialize_exact(welcome_message)
             .context("secure mesh MLS welcome deserialization failed")?
             .extract()
         {

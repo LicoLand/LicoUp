@@ -1,27 +1,16 @@
 import 'dart:async';
-import 'dart:io';
-
-import 'package:path/path.dart' as p;
-
 import 'package:licoup/src/application/features/agents/agent_product_names.dart';
-import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_options.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Owns the selected target/session and per-tab presentation state without
 /// depending on catalog loading, dispatch, or refresh scheduling.
 mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
   @override
   TargetCandidate? get selectedConversationAgent {
-    if (selectedConversationIsOrchestration) {
-      return agentOrchestrationTargetCandidate(
-        label: agentWorkspaceStrings.defaultLabel,
-      );
-    }
     for (final target in scannedTargets) {
       if (target.target == selectedConversationAgentId) {
         return target;
@@ -191,7 +180,7 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
   List<String> get selectedConversationReasoningEffortOptions {
     final agent = selectedConversationAgent;
     if (agent == null) return const [];
-    return agentOrchestrationReasoningEffortsForModel(
+    return conversationReasoningEffortsForModel(
       agent,
       selectedConversationEffectiveModel,
     );
@@ -201,7 +190,7 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
   String get selectedConversationDefaultReasoningEffort {
     final agent = selectedConversationAgent;
     if (agent == null) return '';
-    return agentOrchestrationDefaultReasoningEffortForModel(
+    return conversationDefaultReasoningEffortForModel(
       agent,
       selectedConversationEffectiveModel,
     );
@@ -296,41 +285,41 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
       agent.target: normalized,
     };
     if (normalized == 'plan') {
-      unawaited(_ensureActivePlanDocument());
+      unawaited(agentWorkspaceEnsureActivePlanDocument());
     }
     lastError = '';
     agentWorkspaceNotifyActiveConversationChanged();
     agentWorkspaceNotifyStateChanged();
   }
 
-  Future<void> _ensureActivePlanDocument() async {
-    try {
-      final portable = agentWorkspacePortableData;
-      if (portable is! PortableDataRoot) return;
-      final clientDir = await portable.clientDirectory();
-      final plansDir = Directory(p.join(clientDir.path, 'plans'));
-      await plansDir.create(recursive: true);
-      final file = File(p.join(plansDir.path, 'active-plan.md'));
-      if (!await file.exists()) {
-        await file.writeAsString('');
-      }
-    } catch (_) {
-      // Optional plan file must not block profile selection.
-    }
-  }
-
   @override
   AgentConversationSession? get selectedConversationSession {
-    if (preparingNewConversation) {
-      return null;
-    }
     final selectedId = selectedConversationSessionId.trim();
     if (selectedId.isNotEmpty) {
       for (final session in selectedConversationSessions) {
-        if (session.id == selectedId) {
+        if (session.id != selectedId) {
+          continue;
+        }
+        if (!preparingNewConversation) {
           return session;
         }
+        final activeNativeSessionId = sendingConversationNativeSessionId.trim();
+        final selectedAgentId =
+            selectedConversationAgent?.target.trim() ??
+            selectedConversationAgentId.trim();
+        final selectsActiveNewConversation =
+            isSendingConversationMessage &&
+            selectedAgentId == sendingConversationAgentId.trim() &&
+            ((sendingConversationSessionId.trim().isNotEmpty &&
+                    session.id.trim() == sendingConversationSessionId.trim()) ||
+                (activeNativeSessionId.isNotEmpty &&
+                    (session.nativeSessionId.trim() == activeNativeSessionId ||
+                        session.id.trim() == activeNativeSessionId)));
+        return selectsActiveNewConversation ? session : null;
       }
+      return null;
+    }
+    if (preparingNewConversation) {
       return null;
     }
     return selectedConversationSessions.isNotEmpty

@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/settings/ui/settings_section_catalo
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// Column one of the Dashboard's macOS-Notes composition: a flush folder
 /// sidebar listing every semantic destination. The selected folder renders a
@@ -171,7 +172,7 @@ final class _DashboardFolderSubRowState extends State<_DashboardFolderSubRow> {
       label: widget.label,
       child: Tooltip(
         message: widget.label,
-        waitDuration: const Duration(milliseconds: 400),
+        waitDuration: LicoMotion.tooltipWait,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovered = true),
@@ -264,7 +265,7 @@ final class _DashboardFolderRowState extends State<_DashboardFolderRow> {
       label: widget.label,
       child: Tooltip(
         message: widget.label,
-        waitDuration: const Duration(milliseconds: 400),
+        waitDuration: LicoMotion.tooltipWait,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovered = true),
