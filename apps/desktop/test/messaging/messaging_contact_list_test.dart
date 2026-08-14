@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
@@ -18,7 +19,7 @@ import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
-  testWidgets('search capsule is the first sidebar control', (tester) async {
+  testWidgets('title bar sits above the search capsule', (tester) async {
     var searchCount = 0;
     await _pumpContacts(
       tester,
@@ -30,8 +31,12 @@ void main() {
     final heading = find.byKey(const Key('messaging-contact-list-heading'));
     expect(search, findsOneWidget);
     expect(
-      tester.getTopLeft(search).dy,
-      lessThan(tester.getTopLeft(heading).dy),
+      tester.getTopLeft(heading).dy,
+      lessThan(tester.getTopLeft(search).dy),
+    );
+    expect(
+      find.byKey(const Key('messaging-conversation-list-back')),
+      findsNothing,
     );
 
     final decoration = tester.widget<DecoratedBox>(
@@ -119,11 +124,19 @@ void main() {
         find.byKey(const Key('messaging-conversation-list')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('messaging-contact-list-heading')),
+        findsOneWidget,
+      );
+      expect(find.text('对话'), findsWidgets);
       expect(find.text('返回上一级'), findsOneWidget);
       expect(find.text('Claude'), findsNothing);
       expect(find.text('Refactor list'), findsOneWidget);
       expect(find.byType(AgentBrandIcon), findsNothing);
 
+      final headingRect = tester.getRect(
+        find.byKey(const Key('messaging-contact-list-heading')),
+      );
       final searchRect = tester.getRect(
         find.byKey(const Key('messaging-sidebar-search')),
       );
@@ -131,6 +144,7 @@ void main() {
         find.byKey(const Key('messaging-conversation-list-back')),
       );
       final todayRect = tester.getRect(find.text('今天'));
+      expect(headingRect.bottom, lessThanOrEqualTo(searchRect.top));
       expect(
         backRect.top - searchRect.bottom,
         MessagingDesktopMetrics.sidebarPrimaryControlGap,
@@ -156,6 +170,63 @@ void main() {
       );
       await tester.pump();
       expect(backCount, 1);
+    },
+  );
+
+  testWidgets(
+    'title and search stay pinned while contextual back sits below search',
+    (tester) async {
+      final claude = _target('claude-code', 'Claude Code');
+      await _pumpContacts(
+        tester,
+        targets: [claude],
+        sessionsByAgent: {
+          claude.id: [
+            for (var index = 0; index < 16; index++)
+              _session(
+                'session-$index',
+                claude.target,
+                'Thread $index',
+                updatedAgo: Duration(minutes: index + 1),
+              ),
+          ],
+        },
+        showConversationList: true,
+        conversationListTargets: [claude],
+        selectedSessionId: 'session-0',
+        onSearch: () {},
+        onBack: () {},
+        locale: const Locale('zh'),
+      );
+
+      final heading = find.byKey(const Key('messaging-contact-list-heading'));
+      final search = find.byKey(const Key('messaging-sidebar-search'));
+      final back = find.byKey(const Key('messaging-conversation-list-back'));
+      expect(heading, findsOneWidget);
+      expect(search, findsOneWidget);
+      expect(back, findsOneWidget);
+      expect(
+        tester.getTopLeft(heading).dy,
+        lessThan(tester.getTopLeft(search).dy),
+      );
+      expect(
+        tester.getTopLeft(search).dy,
+        lessThan(tester.getTopLeft(back).dy),
+      );
+
+      final headingY = tester.getTopLeft(heading).dy;
+      final searchY = tester.getTopLeft(search).dy;
+      final backY = tester.getTopLeft(back).dy;
+      final visibleRow = find.text('Thread 3');
+      expect(visibleRow, findsOneWidget);
+      final visibleRowY = tester.getTopLeft(visibleRow).dy;
+      await tester.drag(find.byType(ListView), const Offset(0, -80));
+      await tester.pump();
+
+      expect(tester.getTopLeft(heading).dy, headingY);
+      expect(tester.getTopLeft(search).dy, searchY);
+      expect(tester.getTopLeft(back).dy, backY);
+      expect(tester.getTopLeft(visibleRow).dy, lessThan(visibleRowY));
     },
   );
 
@@ -697,6 +768,217 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('bottom nav lists features, chats, communication, and settings', (
+    tester,
+  ) async {
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      locale: const Locale('zh'),
+    );
+
+    expect(
+      find.byKey(const Key('messaging-sidebar-foundation')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-bottom-nav')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-communication')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-conversations')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-skills')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-settings')),
+      findsOneWidget,
+    );
+    expect(find.text('功能'), findsOneWidget);
+    expect(find.text('通信'), findsOneWidget);
+    expect(find.text('配对'), findsNothing);
+    expect(find.text('技能'), findsNothing);
+    expect(find.text('设置'), findsOneWidget);
+    expect(
+      tester
+          .getTopLeft(find.byKey(const Key('messaging-sidebar-nav-skills')))
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('messaging-sidebar-nav-conversations')),
+            )
+            .dx,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const Key('messaging-sidebar-nav-conversations')),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('messaging-sidebar-nav-communication')),
+            )
+            .dx,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const Key('messaging-sidebar-nav-communication')),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const Key('messaging-sidebar-nav-settings')))
+            .dx,
+      ),
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('messaging-sidebar-nav-skills')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .icon,
+      Icons.functions,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-plugins')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-sidebar-settings-list')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('settings tab shows the settings section list in the sidebar', (
+    tester,
+  ) async {
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      activeDestination: ClientSection.settings,
+      locale: const Locale('zh'),
+    );
+
+    expect(
+      find.byKey(const Key('messaging-sidebar-settings-list')),
+      findsOneWidget,
+    );
+    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('更新'), findsOneWidget);
+    expect(find.text('工具'), findsOneWidget);
+    expect(find.text('存储'), findsOneWidget);
+    expect(find.text('诊断'), findsOneWidget);
+    expect(find.text('启动'), findsOneWidget);
+    expect(find.text('已归档'), findsOneWidget);
+    expect(find.byKey(const Key('messaging-contact-codex')), findsNothing);
+    expect(
+      find.byKey(const Key('messaging-sidebar-bottom-nav')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('conversation tab keeps the conversation list above the nav', (
+    tester,
+  ) async {
+    await _pumpContacts(tester, sessionsByAgent: const {});
+
+    expect(find.byKey(const Key('messaging-contact-list')), findsOneWidget);
+    expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-sidebar-settings-list')),
+      findsNothing,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('messaging-contact-codex'))).dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const Key('messaging-sidebar-bottom-nav')))
+            .dy,
+      ),
+    );
+  });
+
+  testWidgets('active bottom-nav item uses primary fill and text on primary', (
+    tester,
+  ) async {
+    await _pumpContacts(tester, sessionsByAgent: const {});
+
+    final colors = tester.element(find.byType(MessagingContactList)).licoColors;
+    final selected = find.byKey(
+      const Key('messaging-sidebar-nav-conversations'),
+    );
+    final container = tester.widget<AnimatedContainer>(
+      find.descendant(of: selected, matching: find.byType(AnimatedContainer)),
+    );
+    expect((container.decoration! as BoxDecoration).color, colors.primary);
+    final icon = tester.widget<Icon>(
+      find.descendant(of: selected, matching: find.byType(Icon)),
+    );
+    expect(icon.color, colors.textOnPrimary);
+    final label = tester.widget<Text>(
+      find.descendant(of: selected, matching: find.text('Chats')),
+    );
+    expect(label.style?.color, colors.textOnPrimary);
+
+    final skills = find.byKey(const Key('messaging-sidebar-nav-skills'));
+    final skillsContainer = tester.widget<AnimatedContainer>(
+      find.descendant(of: skills, matching: find.byType(AnimatedContainer)),
+    );
+    expect(
+      (skillsContainer.decoration! as BoxDecoration).color,
+      isNot(colors.primary),
+    );
+  });
+
+  testWidgets('bottom nav maps the four tabs onto existing destinations', (
+    tester,
+  ) async {
+    final selected = <ClientSection>[];
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      onSelectDestination: selected.add,
+      activeDestination: ClientSection.pluginManagement,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-nav-communication')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-nav-conversations')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
+    await tester.pump();
+
+    expect(selected, [
+      ClientSection.models,
+      ClientSection.agents,
+      ClientSection.pluginManagement,
+      ClientSection.settings,
+    ]);
+  });
 }
 
 TargetCandidate _target(String target, String label) {
@@ -759,6 +1041,8 @@ Future<void> _pumpContacts(
   void Function(String agentId, String sessionId)? onSelectSession,
   VoidCallback? onBack,
   ValueChanged<String>? onPrefetchSessions,
+  ClientSection activeDestination = ClientSection.agents,
+  ValueChanged<ClientSection>? onSelectDestination,
   Locale locale = const Locale('en'),
 }) async {
   await tester.pumpWidget(
@@ -806,6 +1090,8 @@ Future<void> _pumpContacts(
                 onSelectSession: onSelectSession,
                 onBack: onBack,
                 onPrefetchSessions: onPrefetchSessions,
+                activeDestination: activeDestination,
+                onSelectDestination: onSelectDestination,
               ),
             ),
           ),

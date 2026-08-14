@@ -119,7 +119,7 @@ final class MessagingDesktopSettingsPresentation
   const MessagingDesktopSettingsPresentation();
 
   @override
-  bool get indexHostedByNavigation => false;
+  bool get indexHostedByNavigation => true;
 
   @override
   EdgeInsetsGeometry get contentPadding => EdgeInsets.zero;

@@ -12,11 +12,11 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:e605151ff36b846717baa90d558af6597981af63900c71ac94a6c3a631c2c537"
+      "digest": "sha256:0db94a46a7320b26683e41c1eef08e147511c2d5708553e68df794dd19519c26"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:871dbd038ed71bc77bddc4666b34753a5fe6bc829938030ed14e0c16f2e47c19"
+      "digest": "sha256:412ab16812a6d75a196c2b97bc9a0b3bb7bf76ce1cbb20e63c3bb7d68355bfa9"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
@@ -58,15 +58,15 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/presentation/messaging_mobile_destination_presentations.dart",
-      "digest": "sha256:0da5491592eb25862464546c2821e61f719c0db50cf77fbf088200c6b743dc86"
+      "digest": "sha256:2eafe3f87e01257e72b0ee275cfd086f41a1cda323d099f70a488a5ab2a533ce"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile/agents.png",
-      "digest": "sha256:7a523820fb20f87df90cf703b1f7140cf6d78cf0105d5597dc646f70d9a29a66"
+      "digest": "sha256:11bbd963cc7c3319f9ff7209302261652622b64c4c48e33772203846ca133b9d"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile/settings.png",
-      "digest": "sha256:12ad4cc0c50d5d9eace9671b51533ebad69fca2aad0b391d21c6697cd8451b82"
+      "digest": "sha256:679793978b4a5fe459722dd892c6a52a7671b2711e1bb9fbb9df75b0ff5989ce"
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_bundle_test.dart",
@@ -81,5 +81,5 @@
       "digest": "sha256:ccc1d93ad6bfd51ec8456e4f4d976f32ee8a8f94fc680536e0c1f88b9037035a"
     }
   ],
-  "manifestDigest": "sha256:5bfd06510b0943da07dbdf0de93cdb63198a33f769da7b522a8de910006d52ca"
+  "manifestDigest": "sha256:13b1f52b296d78036d0c515fa89556a5f5484a7d4785fe9422f59428445c8a0e"
 }

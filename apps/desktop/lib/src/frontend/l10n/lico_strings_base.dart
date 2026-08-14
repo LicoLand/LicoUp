@@ -76,9 +76,13 @@ class LicoStrings {
   String get pluginManagement => isChinese ? '插件管理' : 'Plugin Management';
   String get mobileRelay => isChinese ? '移动中转' : 'Mobile Relay';
   String get keys => isChinese ? '密钥' : 'Keys';
+  String get modelGateway => isChinese ? '模型网关' : 'Model Gateway';
+  String get mobilePairing => isChinese ? '移动配对' : 'Mobile Pairing';
+  String get chatChannels => isChinese ? '聊天频道' : 'Chat Channels';
   String get settings => isChinese ? '设置' : 'Settings';
   String get moreActions => isChinese ? '更多' : 'More';
   String get features => isChinese ? '功能' : 'Features';
+  String get exit => isChinese ? '退出' : 'Exit';
   String get globalSearchHint => isChinese ? '搜索' : 'Search';
   String get sidebarSearchHint => isChinese ? '搜索' : 'Search';
   String get collapseSearch => isChinese ? '收起搜索' : 'Collapse search';

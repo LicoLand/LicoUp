@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
 
 class AgentUsagePanel extends StatefulWidget {
@@ -111,6 +112,7 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
         windowBusy: controller.isScanningAgentUsage,
         onWindowChanged: (days) =>
             unawaited(controller.setAgentUsageHistoryDays(days)),
+        onExit: () => controller.selectSection(ClientSection.agents),
       ),
     );
   }
