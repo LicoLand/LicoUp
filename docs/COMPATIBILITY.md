@@ -33,7 +33,7 @@ Runtime targets and release packages are intentionally different authorities. Ea
 
 | Package target | Runtime target | Platform | Channel | Format | Architecture | Package build | Release eligible | Update authority |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | available | not eligible | signed-http-manifest |
+| macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | available | eligible | signed-http-manifest |
 | macos-app-store-arm64 | macos-arm64 | macos | app-store | pkg | arm64 | available | not eligible | store-managed |
 | windows-direct-x64 | windows-x64 | windows | direct | msix | x64 | available | not eligible | appinstaller |
 | windows-store-x64 | windows-x64 | windows | microsoft-store | msixupload | x64 | available | not eligible | store-managed |
