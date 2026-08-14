@@ -22,3 +22,30 @@ installed app and its local proof are not carried into publication.
 Promotion readiness is not publication. The manually authorized workflow in
 `.github/workflows/client-release.yml` remains the sole path that builds formal
 artifacts and creates or updates a GitHub Release from `release`.
+
+## Repeatable promotion
+
+Preview the next valid edge without changing GitHub:
+
+```sh
+npm run client:promotion -- plan
+```
+
+After the current action-prefixed branch is committed and locally verified,
+one command pushes it and advances all three pull requests. The command waits
+for each destination's required checks, uses merge commits, and stops on the
+first failed check or invalid topology:
+
+```sh
+npm run client:promotion -- train
+```
+
+To resume only one edge, run `advance` with its exact source and destination:
+
+```sh
+npm run client:promotion -- advance --head nightly --base stable
+```
+
+The promotion command never dispatches `.github/workflows/client-release.yml`.
+Artifact preparation and publication remain separate, explicitly authorized
+actions after `release` is ready.
