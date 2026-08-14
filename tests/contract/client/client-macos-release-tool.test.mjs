@@ -23,6 +23,10 @@ const distributionSource = readFileSync(
   path.join(repoRoot, "apps/desktop/scripts/build-macos-distribution.mjs"),
   "utf8",
 );
+const publisherSource = readFileSync(
+  path.join(repoRoot, "tools/scripts/client-macos-release-publish.mjs"),
+  "utf8",
+);
 
 function fixture() {
   return {
@@ -145,4 +149,24 @@ test("notarization is Keychain-backed and failures expose only stable codes", ()
     privateDataIncluded: false,
   });
   assert.equal(JSON.stringify(redacted).includes(privateMarker), false);
+});
+
+test("macOS publication reuses the verified beta artifact and publishes once", () => {
+  const stages = [
+    'client-macos-release-tool.mjs", "beta"',
+    'client-release-packages.mjs", "build"',
+    'client-release-packages.mjs", "verify"',
+    'client-github-release-acceptance.mjs"',
+    'client-update-manifest.mjs"',
+    'client-github-release-publish.mjs"',
+  ];
+  let cursor = -1;
+  for (const stage of stages) {
+    const next = publisherSource.indexOf(stage);
+    assert.ok(next > cursor, stage);
+    cursor = next;
+  }
+  assert.ok(publisherSource.includes('"--publish", "true"'));
+  assert.ok(publisherSource.includes("updateSigningKeyEnvironment()"));
+  assert.ok(publisherSource.includes("sourceRevision !== releaseRevision"));
 });
