@@ -279,7 +279,9 @@ npm run client:regression -- --module <module-id>
 
 Run the smallest affected module set first. After all changed modules and
 integration edges pass, run `npm run client:gate:source` exactly once and run
-only the affected Flutter, Rust, Android, dependency, or release-policy lane.
-The lanes are independent and may run in parallel. The source policy never
+only the affected Flutter, Rust, Android, or dependency lane.
+Release policy is not a changed-path regression lane; it runs at the
+`stable` → `release` promotion boundary. The regression lanes are independent
+and may run in parallel. The source policy never
 installs platform toolchains, and the commit gate never builds or publishes
 every platform.

@@ -8,19 +8,27 @@ import { sensitiveRulesetExtensions } from "./lib/repository-sensitive-file-poli
 
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
-const promotionBranchesRulesetName = "LicoUp protected release flow";
 const sensitivePublicationRulesetName = "LicoUp sensitive publication — all pushes";
 // Push Rulesets are hostable on private or internal Team/Enterprise
-// repositories; the current public repository must fail closed before any
-// remote mutation.
+// repositories. Branch protection remains independently deployable when the
+// host cannot provide this optional push-only control.
 const pushRulesetPlans = Object.freeze(["team", "enterprise"]);
 const identityStatusContext = "Commit identity";
-const requiredStatusContexts = Object.freeze([
+const leadingPromotionStatusContexts = Object.freeze([
   "Branch flow",
   identityStatusContext,
-  "Client required",
-  "Auditor",
 ]);
+const promotionRequiredStatusContexts = Object.freeze({
+  nightly: Object.freeze([...leadingPromotionStatusContexts, "Client required", "Auditor"]),
+  stable: Object.freeze([...leadingPromotionStatusContexts, "Stable client", "Auditor"]),
+  release: Object.freeze([...leadingPromotionStatusContexts, "Release ready", "Auditor"]),
+});
+const promotionRulesetNames = Object.freeze({
+  nightly: "LicoUp nightly regression",
+  stable: "LicoUp stable client",
+  release: "LicoUp release readiness",
+});
+const obsoletePromotionRulesetName = "LicoUp protected release flow";
 const forbiddenAgentEmailPattern =
   "(?i)(^|[+._-])(claude([+._-]*code)?|cursor([+._-]*agent)?|github[+._-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)([+._@-]|$)|\\[bot\\]";
 const forbiddenCommitMessagePattern =
@@ -98,12 +106,12 @@ function metadataRule(type, name, pattern, negate) {
   };
 }
 
-function requiredStatusChecksRule(actionsIntegrationId) {
+function requiredStatusChecksRule(actionsIntegrationId, contexts) {
   return {
     type: "required_status_checks",
     parameters: {
       do_not_enforce_on_create: true,
-      required_status_checks: requiredStatusContexts.map((context) => ({
+      required_status_checks: contexts.map((context) => ({
         context,
         integration_id: actionsIntegrationId,
       })),
@@ -116,8 +124,7 @@ export function buildRulesets(actionsIntegrationId) {
   if (!Number.isSafeInteger(actionsIntegrationId) || actionsIntegrationId <= 0) {
     reject("ACTIONS_INTEGRATION_INVALID", "The GitHub Actions integration ID is invalid.");
   }
-  return [
-    {
+  const identityRuleset = {
       name: allBranchesRulesetName,
       target: "branch",
       enforcement: "active",
@@ -145,19 +152,15 @@ export function buildRulesets(actionsIntegrationId) {
           true,
         ),
       ],
-    },
-    {
-      name: promotionBranchesRulesetName,
+    };
+  const promotionRulesets = Object.entries(promotionRulesetNames).map(([branch, name]) => ({
+      name,
       target: "branch",
       enforcement: "active",
       bypass_actors: [],
       conditions: {
         ref_name: {
-          include: [
-            "refs/heads/nightly",
-            "refs/heads/stable",
-            "refs/heads/release",
-          ],
+          include: [`refs/heads/${branch}`],
           exclude: [],
         },
       },
@@ -175,10 +178,10 @@ export function buildRulesets(actionsIntegrationId) {
             required_review_thread_resolution: true,
           },
         },
-        requiredStatusChecksRule(actionsIntegrationId),
+        requiredStatusChecksRule(actionsIntegrationId, promotionRequiredStatusContexts[branch]),
       ],
-    },
-    {
+    }));
+  const sensitivePublicationRuleset = {
       name: sensitivePublicationRulesetName,
       target: "push",
       enforcement: "active",
@@ -191,8 +194,8 @@ export function buildRulesets(actionsIntegrationId) {
           },
         },
       ],
-    },
-  ];
+    };
+  return [identityRuleset, ...promotionRulesets, sensitivePublicationRuleset];
 }
 
 export function pushRulesetCapability(repositoryDetails) {
@@ -203,16 +206,17 @@ export function pushRulesetCapability(repositoryDetails) {
   );
 }
 
-// Read-only capability planning separates target support from mutation: the
-// apply loop is only entered for a supported target, so an unsupported public
-// repository receives a typed failure before any Ruleset write.
+// Push protection is optional because GitHub does not expose it for public
+// repositories. Branch authorities are always planned and applied.
 export function planRulesetApply(repositoryDetails, actionsIntegrationId) {
-  if (!pushRulesetCapability(repositoryDetails)) {
-    return Object.freeze({ status: "unsupported", code: "PUSH_RULESET_UNSUPPORTED" });
-  }
+  const desired = buildRulesets(actionsIntegrationId);
+  const pushSupported = pushRulesetCapability(repositoryDetails);
   return Object.freeze({
-    status: "supported",
-    desired: buildRulesets(actionsIntegrationId),
+    status: pushSupported ? "supported" : "branch-only",
+    code: pushSupported ? null : "PUSH_RULESET_UNSUPPORTED",
+    desired: Object.freeze(pushSupported
+      ? desired
+      : desired.filter((payload) => payload.target === "branch")),
   });
 }
 
@@ -345,6 +349,19 @@ function applyRuleset(payload, existing) {
   }
 }
 
+function removeObsoletePromotionRuleset(existing) {
+  const obsolete = existing.filter((ruleset) => ruleset.name === obsoletePromotionRulesetName);
+  if (obsolete.length > 1) {
+    reject("DUPLICATE_RULESET", "More than one obsolete promotion Ruleset exists.");
+  }
+  if (obsolete.length === 1) {
+    gh(["api", "-X", "DELETE", `repos/${repository}/rulesets/${obsolete[0].id}`, "--silent"], {
+      code: "RULESET_APPLY_FAILED",
+      message: "The obsolete shared promotion Ruleset could not be removed.",
+    });
+  }
+}
+
 function removeLegacyBranchProtection(defaultBranch) {
   const endpoint = `repos/${repository}/branches/${encodeURIComponent(defaultBranch)}/protection`;
   if (!ghOptional(["api", endpoint, "--silent"]).ok) return "absent";
@@ -367,8 +384,15 @@ function rulesetDigest(desired) {
   return createHash("sha256").update(canonicalJson(desired)).digest("hex");
 }
 
+export function assertReleaseDefaultBranch(repositoryDetails) {
+  if (repositoryDetails?.default_branch !== "release") {
+    reject("DEFAULT_BRANCH_INVALID", "The repository default branch must remain release.");
+  }
+}
+
 function verify({ repositoryDetails, desired } = {}) {
   const details = repositoryDetails || assertRepositoryAccess({ requireAdmin: false });
+  assertReleaseDefaultBranch(details);
   const integrationId = actionsIntegrationId();
   const plan = planRulesetApply(details, integrationId);
   const expected = desired || buildRulesets(integrationId);
@@ -394,7 +418,7 @@ function verify({ repositoryDetails, desired } = {}) {
     }
   }
   assertLegacyBranchProtectionAbsent(details.default_branch);
-  if (plan.status === "unsupported") {
+  if (plan.status === "branch-only") {
     process.stdout.write(`rulesets=pending push_ruleset=${plan.code}\n`);
     return;
   }
@@ -403,12 +427,9 @@ function verify({ repositoryDetails, desired } = {}) {
 
 function apply() {
   const repositoryDetails = assertRepositoryAccess({ requireAdmin: true });
+  assertReleaseDefaultBranch(repositoryDetails);
   const integrationId = actionsIntegrationId();
   const plan = planRulesetApply(repositoryDetails, integrationId);
-  if (plan.status === "unsupported") {
-    reject("PUSH_RULESET_UNSUPPORTED",
-      "The current repository cannot host push Rulesets; no repository Ruleset was changed.");
-  }
   const existing = repositoryRulesets();
   const desired = plan.desired;
   for (const payload of desired) {
@@ -418,6 +439,7 @@ function apply() {
     }
     applyRuleset(payload, matches[0]);
   }
+  removeObsoletePromotionRuleset(existing);
   const legacy = removeLegacyBranchProtection(repositoryDetails.default_branch);
   verify({ repositoryDetails, desired });
   process.stdout.write(`rulesets=applied count=${desired.length} legacy_branch_protection=${legacy}\n`);
@@ -446,8 +468,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   allBranchesRulesetName,
-  promotionBranchesRulesetName,
   sensitivePublicationRulesetName,
   identityStatusContext,
-  requiredStatusContexts,
+  promotionRulesetNames,
+  promotionRequiredStatusContexts,
 };
