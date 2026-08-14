@@ -334,9 +334,8 @@ test("macOS product and release catalogs are arm64 only", () => {
   assert.ok(macosTargets.every((target) =>
     target.arch === "arm64" && target.runtimeTargetId === "macos-arm64" &&
     target.baseline === "macos-11.0" && target.buildHost === "darwin-arm64"));
-  assert.equal(direct.releaseSupported, false);
-  assert.ok(direct.releaseBlockers.includes("macos_developer_id_platform_channel_local_only"));
-  assert.ok(direct.releaseBlockers.includes("macos_github_release_publication_not_authorized"));
+  assert.equal(direct.releaseSupported, true);
+  assert.deepEqual(direct.releaseBlockers, []);
   assert.equal(appStore.releaseSupported, false);
   for (const blocker of [
     "macos_app_store_sandbox_required",
