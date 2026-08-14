@@ -19,6 +19,10 @@ import {
   validatePackagingConfig,
   validateReleaseBuildPolicy,
 } from "./package-client.mjs";
+import {
+  parsePackageClientArgs,
+  validateMacosPackagingHost,
+} from "./package-client/cli-policy.mjs";
 import { readFileSync } from "node:fs";
 import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
 import { retireStaleCleanBuildRuns } from "./package-client/source-staging.mjs";
@@ -229,6 +233,39 @@ const canonicalConfig = JSON.parse(readFileSync(
   "utf8",
 ));
 validatePackagingConfig(canonicalConfig);
+if (process.platform === "darwin" && process.arch === "arm64") {
+  const macosArm64Options = parsePackageClientArgs(
+    ["--platform", "macos", "--mode", "release"],
+    {},
+  );
+  requireValue(
+    macosArm64Options.platform === "macos",
+    "macos_arm64_packaging_policy_rejected",
+  );
+} else {
+  expectRejected(
+    () => parsePackageClientArgs(
+      ["--platform", "macos", "--mode", "release"],
+      {},
+    ),
+    "macos_non_arm64_host_was_accepted",
+  );
+}
+validateMacosPackagingHost({ platform: "macos", dryRun: false }, "darwin", "arm64");
+for (const [platform, arch] of [
+  ["darwin", "x64"],
+  ["linux", "arm64"],
+]) {
+  expectRejected(
+    () => validateMacosPackagingHost(
+      { platform: "macos", dryRun: false },
+      platform,
+      arch,
+    ),
+    "macos_non_arm64_host_was_accepted",
+  );
+}
+validateMacosPackagingHost({ platform: "macos", dryRun: true }, "darwin", "x64");
 for (const mutate of [
   (value) => { value.unknown = true; },
   (value) => { value.modules["../escape"] = value.modules["native-sidecar"]; },
@@ -268,7 +305,7 @@ requireValue(outputIsReferenceOnly(`${rejected.stdout}\n${rejected.stderr}`) &&
 
 console.log(JSON.stringify({
   ok: true,
-  caseCount: 27,
+  caseCount: 31,
   canonicalReleaseConfigRequired: true,
   releaseOverridesRejected: true,
   packagingSchemaClosed: true,

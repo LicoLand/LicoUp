@@ -58,6 +58,7 @@ const allowedDependencies = Object.freeze({
     "protocol.dart",
     "request_writer.dart",
     "response_codec.dart",
+    "session.dart",
     "session_manager.dart",
   ],
   "in_flight_control.dart": ["command_exchange.dart", "session_manager.dart"],
@@ -145,7 +146,7 @@ test("stdio RPC protocol and response codecs bind bounded identities", async () 
   }
 });
 
-test("stdio RPC transport is serialized, no-replay, and non-projecting", async () => {
+test("stdio RPC transport is serialized, cursor-replayable, and non-projecting", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
   assert.ok(source["client.dart"].includes("StdioRpcOperationQueue _operations"));
@@ -158,6 +159,9 @@ test("stdio RPC transport is serialized, no-replay, and non-projecting", async (
   assert.ok(source["method_policy.dart"].includes("stdioRpcMethodIsInFlightControl"));
   assert.ok(source["in_flight_control.dart"].includes("executeStdioRpcStructuredCommand"));
   assert.ok(source["in_flight_control.dart"].includes("invalidateAndDiscard"));
+  assert.ok(source["client.dart"].includes("arguments: const ['rpc', 'conversation']"));
+  assert.ok(source["conversation_exchange.dart"].includes("agent.conversation.attach"));
+  assert.ok(source["conversation_exchange.dart"].includes("afterCursor"));
   assert.equal(source["in_flight_control.dart"].includes("StdioRpcOperationQueue"), false);
   assert.ok(source["session.dart"].includes("stderrBytes"));
   assert.ok(source["session.dart"].includes("stderrTruncated"));
@@ -177,9 +181,28 @@ test("stdio RPC owns fast protocol, framer, and public-client regressions", asyn
     "apps/desktop/test/native_stdio_rpc_client_test.dart",
     "apps/desktop/test/native_stdio_rpc_line_framer_test.dart",
     "apps/desktop/test/native_stdio_rpc_protocol_test.dart",
+    "apps/desktop/test/native_persistent_runtime_test.dart",
+    "apps/desktop/test/agent_conversation_reattachment_test.dart",
   ]) {
     const source = await read(testPath);
     assert.ok(source.includes("void main()"));
     assert.equal(source.includes("part "), false);
   }
+});
+
+test("native conversation RPC uses a client-local persistent owner", async () => {
+  const host = await read("crates/licoup-native/src/bin/licoup/conversation_host.rs");
+  const server = await read("crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation.rs");
+  for (const token of [
+    "rpc\", \"conversation-host",
+    "serve_stdio_rpc_with_runtime",
+    "client_disconnected",
+    "runtime.idle()",
+  ]) assert.ok(host.includes(token), `missing persistent host contract: ${token}`);
+  for (const token of [
+    "PersistentConversationRuntime",
+    "turnHandle",
+    "afterCursor",
+    "record_event",
+  ]) assert.ok(server.includes(token), `missing persistent replay contract: ${token}`);
 });

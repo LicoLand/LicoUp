@@ -58,6 +58,167 @@ class AgentConversationService implements AgentConversationLane {
 
   final AgentConversationArchiveService _archiveService;
 
+  Future<List<Map<String, dynamic>>> activeTurns({
+    required AgentCommandRunner runner,
+    required String agentId,
+    String sessionId = '',
+  }) async {
+    final output = await runner.runCliWithStdin(
+      const ['agent', 'conversation', 'active', '--stdin-json', 'true'],
+      jsonEncode({
+        'agent': agentId.trim(),
+        if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
+      }),
+    );
+    final turns = output['turns'];
+    if (turns is! List) return const [];
+    return [
+      for (final turn in turns)
+        if (turn is Map) Map<String, dynamic>.from(turn),
+    ];
+  }
+
+  Stream<AgentDispatchEvent> attachActiveTurn({
+    required AgentCommandRunner runner,
+    required String turnHandle,
+    required String conversationId,
+    int afterCursor = 0,
+  }) async* {
+    await for (final line in runner.streamCliJsonLinesWithStdin(
+      const [
+        'agent',
+        'conversation',
+        'attach',
+        '--stdin-json',
+        'true',
+        '--stream-events',
+        'true',
+      ],
+      jsonEncode({
+        'turnHandle': turnHandle.trim(),
+        'conversationId': conversationId.trim(),
+        'afterCursor': afterCursor,
+      }),
+    )) {
+      final eventName = (line['event'] ?? '').toString();
+      if (eventName == 'done' ||
+          (line.containsKey('ok') &&
+              (eventName.isEmpty || eventName == 'done'))) {
+        yield AgentDispatchEvent(
+          kind: line['ok'] == true
+              ? 'dispatch.turn.completed'
+              : 'dispatch.turn.failed',
+          sessionId: (line['nativeSessionId'] ?? line['sessionId'] ?? '')
+              .toString(),
+          turnId: (line['turnId'] ?? '').toString(),
+          payload: Map<String, dynamic>.from(line),
+        );
+        continue;
+      }
+      yield AgentDispatchEvent(
+        kind: eventName.isEmpty ? 'dispatch.lane.event' : eventName,
+        sessionId: (line['sessionId'] ?? '').toString(),
+        turnId: (line['turnId'] ?? '').toString(),
+        payload: line['payload'] is Map<String, dynamic>
+            ? <String, dynamic>{
+                ...Map<String, dynamic>.from(line['payload'] as Map),
+                'cursor': line['cursor'],
+                'turnHandle': line['turnHandle'],
+                'conversationId': line['conversationId'],
+              }
+            : Map<String, dynamic>.from(line),
+      );
+    }
+  }
+
+  Future<AgentDispatchTurnResult> steerActiveTurn({
+    required AgentCommandRunner runner,
+    required String turnHandle,
+    required String conversationId,
+    required String text,
+  }) async {
+    final handle = turnHandle.trim();
+    final scope = conversationId.trim();
+    final guidance = text.trim();
+    if (handle.isEmpty || scope.isEmpty || guidance.isEmpty) {
+      return const AgentDispatchTurnResult(
+        ok: false,
+        failureCode: 'dispatch_steer_input_required',
+      );
+    }
+    try {
+      final result = await runner.runCliWithStdin(
+        const ['agent', 'conversation', 'steer', '--stdin-json', 'true'],
+        jsonEncode({
+          'turnHandle': handle,
+          'conversationId': scope,
+          'text': guidance,
+        }),
+      );
+      final ok = result['ok'] == true;
+      final nested = result['error'];
+      final code = nested is Map
+          ? (nested['code'] ?? '').toString()
+          : (result['code'] ?? '').toString();
+      return AgentDispatchTurnResult(
+        ok: ok,
+        sessionId: (result['nativeSessionId'] ?? result['sessionId'] ?? '')
+            .toString(),
+        turnId: (result['turnId'] ?? '').toString(),
+        status: (result['status'] ?? '').toString(),
+        failureCode: ok ? '' : (code.isEmpty ? 'dispatch_steer_failed' : code),
+        raw: Map<String, dynamic>.from(result),
+      );
+    } on Object {
+      return const AgentDispatchTurnResult(
+        ok: false,
+        status: 'outcome_unknown',
+        failureCode: 'dispatch_steer_outcome_unknown',
+      );
+    }
+  }
+
+  Future<AgentDispatchCancelResult> cancelActiveTurn({
+    required AgentCommandRunner runner,
+    required String turnHandle,
+    required String conversationId,
+  }) async {
+    final handle = turnHandle.trim();
+    final scope = conversationId.trim();
+    if (handle.isEmpty || scope.isEmpty) {
+      return const AgentDispatchCancelResult(
+        ok: false,
+        status: 'unavailable',
+        failureCode: 'dispatch_cancel_scope_missing',
+      );
+    }
+    try {
+      final result = await runner.runCliWithStdin(const [
+        'agent',
+        'conversation',
+        'cancel',
+        '--stdin-json',
+        'true',
+      ], jsonEncode({'turnHandle': handle, 'conversationId': scope}));
+      final ok = result['ok'] == true;
+      final nested = result['error'];
+      final code = nested is Map
+          ? (nested['code'] ?? '').toString()
+          : (result['code'] ?? '').toString();
+      return AgentDispatchCancelResult(
+        ok: ok,
+        status: (result['status'] ?? '').toString(),
+        failureCode: ok ? '' : (code.isEmpty ? 'dispatch_cancel_failed' : code),
+      );
+    } on Object {
+      return const AgentDispatchCancelResult(
+        ok: false,
+        status: 'unavailable',
+        failureCode: 'dispatch_cancel_failed',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> previewArchiveJob({
     required AgentCommandRunner agentService,
     required String selectionMode,
@@ -456,7 +617,14 @@ class AgentConversationService implements AgentConversationLane {
         sessionId: (line['sessionId'] ?? sessionId).toString(),
         turnId: (line['turnId'] ?? '').toString(),
         payload: line['payload'] is Map<String, dynamic>
-            ? Map<String, dynamic>.from(line['payload'] as Map)
+            ? <String, dynamic>{
+                ...Map<String, dynamic>.from(line['payload'] as Map),
+                if (line['turnHandle'] != null)
+                  'turnHandle': line['turnHandle'],
+                if (line['conversationId'] != null)
+                  'conversationId': line['conversationId'],
+                if (line['cursor'] != null) 'cursor': line['cursor'],
+              }
             : Map<String, dynamic>.from(line),
       );
     }

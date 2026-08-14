@@ -12,6 +12,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -208,7 +209,7 @@ void main() {
     ]);
   });
 
-  test('group roster reads the first five entries from the queue order', () {
+  test('group roster keeps every entry in the queue order', () {
     final conversation = ClientConversation.fromJson({
       'id': 'conversation:group',
       'title': 'Local',
@@ -253,6 +254,7 @@ void main() {
       'agent-2',
       'agent-6',
       'agent-1',
+      'agent-3',
     ]);
   });
 
@@ -424,6 +426,92 @@ void main() {
     expect(find.text('Mention Codex'), findsOneWidget);
     expect(find.text('Open Codex conversations'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('roster exposes every member inside a five-row viewport', (
+    tester,
+  ) async {
+    final boundaryOverscroll = <double>[];
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'All members',
+      'archived': false,
+      'isGroup': true,
+      'revision': 1,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 1,
+      'eventCount': 0,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        for (var index = 1; index <= 7; index += 1)
+          _membership(
+            id: 'membership:agent-$index',
+            principalId: 'agent:agent-$index',
+            kind: 'agent',
+            label: 'Agent $index',
+            agentId: 'agent-$index',
+          ),
+      ],
+    });
+    final targets = [
+      for (var index = 1; index <= 7; index += 1)
+        _target('agent-$index', 'Agent $index'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topRight,
+            child: SizedBox(
+              height: MessagingDesktopMetrics.groupRosterMaxVisibleExtent,
+              child: CanonicalGroupRosterSurface(
+                child: CanonicalGroupRoster(
+                  conversation: conversation,
+                  targets: targets,
+                  onMentionAgent: (_) {},
+                  onBoundaryOverscroll: boundaryOverscroll.add,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      tester
+          .getSize(find.byKey(const Key('canonical-group-roster-surface')))
+          .height,
+      MessagingDesktopMetrics.groupRosterMaxVisibleExtent,
+    );
+    await tester.drag(
+      find.byKey(const Key('canonical-group-roster')),
+      const Offset(0, 80),
+    );
+    await tester.pump();
+    expect(boundaryOverscroll, isNotEmpty);
+    expect(boundaryOverscroll.any((value) => value < 0), isTrue);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('canonical-group-roster-agent-agent-7')),
+      120,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('canonical-group-roster')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(
+      find.byKey(const Key('canonical-group-roster-agent-agent-7')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('one person and one Agent create a group successfully', (

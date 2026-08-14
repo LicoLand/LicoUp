@@ -5,14 +5,18 @@ use licoup_native::{
             ConversationService, DispatchSessionMode, DispatchState, EventKind, EventPartKind,
             MembershipStatus, NewEventPart, PrincipalKind,
         },
-        conversations, provider_model_pricing, targets,
+        conversations,
+        delivery_scheduler::{self, DeliveryError, DeliveryExecutor, SchedulerConfig},
+        delivery_state::{self, DeliveryControlRecord, DeliveryFailureRecord, DeliveryRunnerState},
+        provider_model_pricing, targets,
     },
-    platform::{dispatch_lane_operation, paths},
+    platform::{client_state, conversation_runtime, dispatch_lane_operation, paths},
 };
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
     io::{self, BufRead, Write},
+    path::{Path, PathBuf},
     process::ExitCode,
     sync::{
         Arc, LazyLock, Mutex,
@@ -31,6 +35,7 @@ const MAX_PENDING_TOOL_CALLS: usize = 32;
 const MAX_TOOL_WORKERS: usize = 8;
 const MAX_PROMPT_BYTES: usize = 48 * 1024;
 const MAX_ID_BYTES: usize = 256;
+const MAX_LOCATION_BYTES: usize = 4096;
 const MAX_WORKING_DIRECTORY_BYTES: usize = 4096;
 const MIN_SUBAGENT_TIMEOUT_MS: u64 = 1_000;
 const MAX_SUBAGENT_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
@@ -47,6 +52,19 @@ const DIAGNOSTIC_PROBE_SESSION_LIMIT: u64 = 500;
 
 static QUOTA_COOLDOWNS: LazyLock<Mutex<HashMap<String, Instant>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static RUNNING_DELIVERIES: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+struct RunningDeliveryGuard(String);
+
+impl Drop for RunningDeliveryGuard {
+    fn drop(&mut self) {
+        RUNNING_DELIVERIES
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&self.0);
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DispatchCandidate {
@@ -442,6 +460,10 @@ fn execute_tool_inner(
     conversation_service: &Mutex<Option<ConversationService>>,
 ) -> Result<Value, ToolFailure> {
     match name {
+        "lico_delivery_start" => delivery_start(manager_agent_id, arguments),
+        "lico_delivery_authorize" => delivery_authorize(manager_agent_id, arguments),
+        "lico_delivery_status" => delivery_status(arguments),
+        "lico_delivery_cancel" => delivery_cancel(arguments),
         "lico_subagents_list" => list_subagents(manager_agent_id),
         "lico_subagent_probe" => probe_subagent(manager_agent_id, arguments),
         "lico_subagent_delegate" => {
@@ -994,15 +1016,420 @@ fn probe_cleanup_target(
     ))
 }
 
+fn delivery_start(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
+    let (bound, portable) = bind_delivery_state(arguments)?;
+    let value = delivery_scheduler::start(&bound).map_err(ToolFailure::from_delivery)?;
+    update_delivery_identity_from_response(&portable, &bound, &value)?;
+    spawn_delivery_run(manager_agent_id, &bound, portable)?;
+    Ok(value)
+}
+
+fn delivery_authorize(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
+    let (bound, portable) = bind_delivery_state(arguments)?;
+    let value = delivery_scheduler::authorize(&bound).map_err(ToolFailure::from_delivery)?;
+    update_delivery_identity_from_response(&portable, &bound, &value)?;
+    spawn_delivery_run(manager_agent_id, &bound, portable)?;
+    Ok(value)
+}
+
+fn delivery_status(arguments: &Value) -> Result<Value, ToolFailure> {
+    let mut value = delivery_scheduler::status(arguments).map_err(ToolFailure::from_delivery)?;
+    let portable = paths::portable_data_dir()
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
+    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
+    let run_key = delivery_run_key(&workflow_id, arguments)?;
+    let runner_active = RUNNING_DELIVERIES
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .contains(&run_key);
+    let mut control = delivery_state::load_delivery_control(&portable, &workflow_id)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
+    if control
+        .as_ref()
+        .is_some_and(|record| record.runner_state == DeliveryRunnerState::Running)
+        && !runner_active
+    {
+        persist_runner_failure(
+            &portable,
+            &workflow_id,
+            &DeliveryError::new(
+                "delivery_runner_interrupted",
+                "scheduler",
+                "delivery-runner",
+                true,
+                "resume_native_runner",
+            ),
+        )?;
+        control = delivery_state::load_delivery_control(&portable, &workflow_id)
+            .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
+    }
+    value["runner"] = control
+        .as_ref()
+        .map(DeliveryControlRecord::public_projection)
+        .unwrap_or_else(|| json!({"state": "pending", "failure": null}));
+    Ok(value)
+}
+
+fn delivery_cancel(arguments: &Value) -> Result<Value, ToolFailure> {
+    let (bound, portable) = bind_delivery_state(arguments)?;
+    let workflow_id = required_text(&bound, "workflowId", MAX_ID_BYTES)?;
+    set_delivery_runner(&portable, &workflow_id, DeliveryRunnerState::Running, None)?;
+    let value = match delivery_scheduler::cancel(&bound) {
+        Ok(value) => value,
+        Err(error) => {
+            persist_runner_failure(&portable, &workflow_id, &error)?;
+            return Err(ToolFailure::from_delivery(error));
+        }
+    };
+    let runtime = conversation_runtime::NativeDeliveryRuntime;
+    let records = delivery_state::list_delivery_dispatches(&portable)
+        .map_err(|_| ToolFailure::new("delivery_dispatch_store_unavailable", true))?;
+    for record in records {
+        if record.plan_code.is_empty()
+            || !record.dispatch_id.starts_with(&format!("{workflow_id}:"))
+            || !matches!(
+                record.state,
+                delivery_state::DeliveryDispatchState::Accepted
+                    | delivery_state::DeliveryDispatchState::Running
+            )
+        {
+            continue;
+        }
+        if let Some(path) = record.conversation_path.as_deref() {
+            let conversation = runtime
+                .prepare_conversation(&record.agent_id, "", Some(path))
+                .map_err(ToolFailure::from_delivery)?;
+            runtime
+                .cancel(&conversation)
+                .map_err(ToolFailure::from_delivery)?;
+        }
+    }
+    set_delivery_runner(
+        &portable,
+        &workflow_id,
+        DeliveryRunnerState::Cancelled,
+        None,
+    )?;
+    Ok(value)
+}
+
+fn bind_delivery_state(arguments: &Value) -> Result<(Value, PathBuf), ToolFailure> {
+    let portable = paths::portable_data_dir()
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
+    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
+    let existing = delivery_state::load_delivery_control(&portable, &workflow_id)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
+    let state_root = arguments
+        .get("stateRoot")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .or_else(|| {
+            existing
+                .as_ref()
+                .map(|record| PathBuf::from(&record.ledger_state_root))
+        })
+        .unwrap_or_else(|| portable.clone());
+    if !state_root.is_absolute() {
+        return Err(ToolFailure::new("delivery_state_root_invalid", false));
+    }
+    let store = client_state::ClientStateStore::new(state_root)
+        .map_err(|_| ToolFailure::new("delivery_state_root_unavailable", true))?;
+    let state_root = std::fs::canonicalize(store.root())
+        .map_err(|_| ToolFailure::new("delivery_state_root_unavailable", true))?;
+    let state_root_text = state_root.to_string_lossy().into_owned();
+    if existing
+        .as_ref()
+        .is_some_and(|record| record.ledger_state_root != state_root_text)
+    {
+        return Err(ToolFailure::new("delivery_state_root_mismatch", false));
+    }
+    let record =
+        existing.unwrap_or_else(|| DeliveryControlRecord::new(&workflow_id, &state_root_text));
+    delivery_state::persist_delivery_control(&portable, &record)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
+    let mut bound = arguments.clone();
+    bound["stateRoot"] = json!(state_root_text);
+    Ok((bound, portable))
+}
+
+fn delivery_run_key(workflow_id: &str, arguments: &Value) -> Result<String, ToolFailure> {
+    let root = arguments
+        .get("planRoot")
+        .and_then(Value::as_str)
+        .ok_or(ToolFailure::new("plan_root_missing", false))?;
+    let root =
+        std::fs::canonicalize(root).map_err(|_| ToolFailure::new("plan_root_invalid", false))?;
+    Ok(format!("{workflow_id}:{}", root.to_string_lossy()))
+}
+
+fn update_delivery_identity_from_response(
+    portable: &Path,
+    arguments: &Value,
+    response: &Value,
+) -> Result<(), ToolFailure> {
+    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
+    let plan_code = response
+        .get("planCode")
+        .and_then(Value::as_str)
+        .ok_or(ToolFailure::new("delivery_identity_missing", false))?;
+    let revision = response
+        .get("planRevision")
+        .and_then(Value::as_u64)
+        .ok_or(ToolFailure::new("delivery_identity_missing", false))?;
+    update_delivery_identity(portable, &workflow_id, plan_code, revision)
+}
+
+fn update_delivery_identity(
+    portable: &Path,
+    workflow_id: &str,
+    plan_code: &str,
+    revision: u64,
+) -> Result<(), ToolFailure> {
+    let mut record = delivery_state::load_delivery_control(portable, workflow_id)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?
+        .ok_or(ToolFailure::new("delivery_control_not_found", false))?;
+    record.plan_code = Some(plan_code.to_owned());
+    record.plan_revision = revision;
+    record.updated_at_unix_ms = delivery_state::unix_ms_now();
+    delivery_state::persist_delivery_control(portable, &record)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))
+}
+
+fn set_delivery_runner(
+    portable: &Path,
+    workflow_id: &str,
+    state: DeliveryRunnerState,
+    failure: Option<DeliveryFailureRecord>,
+) -> Result<(), ToolFailure> {
+    let mut record = delivery_state::load_delivery_control(portable, workflow_id)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?
+        .ok_or(ToolFailure::new("delivery_control_not_found", false))?;
+    record.runner_state = state;
+    record.failure = failure;
+    record.updated_at_unix_ms = delivery_state::unix_ms_now();
+    delivery_state::persist_delivery_control(portable, &record)
+        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))
+}
+
+fn persist_runner_failure(
+    portable: &Path,
+    workflow_id: &str,
+    error: &DeliveryError,
+) -> Result<(), ToolFailure> {
+    set_delivery_runner(
+        portable,
+        workflow_id,
+        if error.retryable {
+            DeliveryRunnerState::InDoubt
+        } else {
+            DeliveryRunnerState::Blocked
+        },
+        Some(DeliveryFailureRecord {
+            code: error.code.clone(),
+            stage: error.stage.clone(),
+            component: error.component.clone(),
+            retryable: error.retryable,
+            recovery: error.recovery.clone(),
+        }),
+    )
+}
+
+fn persist_runner_failure_until_durable(portable: &Path, workflow_id: &str, error: &DeliveryError) {
+    while persist_runner_failure(portable, workflow_id, error).is_err() {
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn set_runner_state_until_durable(portable: &Path, workflow_id: &str, state: DeliveryRunnerState) {
+    while set_delivery_runner(portable, workflow_id, state, None).is_err() {
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn update_delivery_identity_until_durable(
+    portable: &Path,
+    workflow_id: &str,
+    plan_code: &str,
+    revision: u64,
+) {
+    while update_delivery_identity(portable, workflow_id, plan_code, revision).is_err() {
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn spawn_delivery_run(
+    manager_agent_id: &str,
+    arguments: &Value,
+    portable: PathBuf,
+) -> Result<(), ToolFailure> {
+    let root = arguments
+        .get("planRoot")
+        .and_then(Value::as_str)
+        .ok_or(ToolFailure::new("plan_root_missing", false))?
+        .to_owned();
+    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
+    let run_key = delivery_run_key(&workflow_id, arguments)?;
+    {
+        let mut running = RUNNING_DELIVERIES
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if !running.insert(run_key.clone()) {
+            return Ok(());
+        }
+    }
+    let mut config = SchedulerConfig {
+        state_root: PathBuf::from(
+            arguments
+                .get("stateRoot")
+                .and_then(Value::as_str)
+                .ok_or(ToolFailure::new("delivery_state_root_unbound", false))?,
+        ),
+        manager_agent_id: manager_agent_id.to_owned(),
+        manager_location: arguments
+            .get("mainConversationLocation")
+            .or_else(|| arguments.get("conversationLocation"))
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    };
+    let pass_in_doubt = DeliveryError::new(
+        "delivery_runner_pass_uncommitted",
+        "scheduler",
+        "delivery-runner",
+        true,
+        "resume_native_runner",
+    );
+    persist_runner_failure(&portable, &workflow_id, &pass_in_doubt)?;
+    thread::spawn(move || {
+        let _guard = RunningDeliveryGuard(run_key);
+        for _ in 0..28_800_u32 {
+            persist_runner_failure_until_durable(&portable, &workflow_id, &pass_in_doubt);
+            let engine = match licoup_native::domain::delivery_plan::DeliveryPlanEngine::load(&root)
+            {
+                Ok(engine) => engine,
+                Err(error) => {
+                    persist_runner_failure_until_durable(
+                        &portable,
+                        &workflow_id,
+                        &DeliveryError::from(error),
+                    );
+                    return;
+                }
+            };
+            if config.manager_location.is_none() {
+                config.manager_location = engine
+                    .checkpoints()
+                    .designer
+                    .as_ref()
+                    .and_then(|session| session.conversation_location.clone());
+            }
+            let report = match conversation_runtime::run_once(&workflow_id, engine, config.clone())
+            {
+                Ok(report) => report,
+                Err(error) => {
+                    persist_runner_failure_until_durable(&portable, &workflow_id, &error);
+                    return;
+                }
+            };
+            let engine = match licoup_native::domain::delivery_plan::DeliveryPlanEngine::load(&root)
+            {
+                Ok(engine) => engine,
+                Err(error) => {
+                    persist_runner_failure_until_durable(
+                        &portable,
+                        &workflow_id,
+                        &DeliveryError::from(error),
+                    );
+                    return;
+                }
+            };
+            update_delivery_identity_until_durable(
+                &portable,
+                &workflow_id,
+                &engine.plan().code,
+                engine.checkpoints().revision,
+            );
+            if engine.checkpoints().cancellation_requested
+                || matches!(
+                    engine.checkpoints().phase,
+                    licoup_native::domain::delivery_plan::PlanPhase::Ready
+                        | licoup_native::domain::delivery_plan::PlanPhase::Completed
+                        | licoup_native::domain::delivery_plan::PlanPhase::Blocked
+                )
+            {
+                let state = if engine.checkpoints().cancellation_requested {
+                    DeliveryRunnerState::Cancelled
+                } else {
+                    match engine.checkpoints().phase {
+                        licoup_native::domain::delivery_plan::PlanPhase::Completed => {
+                            DeliveryRunnerState::Completed
+                        }
+                        licoup_native::domain::delivery_plan::PlanPhase::Blocked => {
+                            DeliveryRunnerState::Blocked
+                        }
+                        _ => DeliveryRunnerState::Ready,
+                    }
+                };
+                set_runner_state_until_durable(&portable, &workflow_id, state);
+                return;
+            }
+            if report.pending > 0 {
+                thread::sleep(Duration::from_millis(250));
+            } else if report.dispatched == 0 && report.completed == 0 && report.failed == 0 {
+                set_runner_state_until_durable(&portable, &workflow_id, DeliveryRunnerState::Ready);
+                return;
+            } else {
+                set_runner_state_until_durable(
+                    &portable,
+                    &workflow_id,
+                    DeliveryRunnerState::Running,
+                );
+            }
+        }
+        persist_runner_failure_until_durable(
+            &portable,
+            &workflow_id,
+            &DeliveryError::new(
+                "delivery_runner_iteration_limit",
+                "scheduler",
+                "delivery-runner",
+                true,
+                "retry_after_runner_restarts",
+            ),
+        );
+    });
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 struct ToolFailure {
-    code: &'static str,
+    code: String,
+    stage: String,
     retryable: bool,
+    recovery: String,
 }
 
 impl ToolFailure {
-    const fn new(code: &'static str, retryable: bool) -> Self {
-        Self { code, retryable }
+    fn new(code: impl Into<String>, retryable: bool) -> Self {
+        Self {
+            code: code.into(),
+            stage: "subagent-mcp".to_owned(),
+            retryable,
+            recovery: if retryable {
+                "retry_after_recovery"
+            } else {
+                "correct_request_and_retry"
+            }
+            .to_owned(),
+        }
+    }
+
+    fn from_delivery(error: DeliveryError) -> Self {
+        Self {
+            code: error.code,
+            stage: error.stage,
+            retryable: error.retryable,
+            recovery: error.recovery,
+        }
     }
 }
 
@@ -1900,6 +2327,46 @@ fn optional_permission_mode(value: &Value) -> Result<Option<String>, ToolFailure
 fn tool_catalog() -> Vec<Value> {
     vec![
         json!({
+            "name": "lico_delivery_start",
+            "description": "Start or resume a persisted native delivery through canonical Agent conversations.",
+            "inputSchema": closed_object(&["workflowId", "planRoot"], json!({
+                "workflowId": bounded_string(MAX_ID_BYTES),
+                "planRoot": bounded_string(MAX_LOCATION_BYTES),
+                "stateRoot": bounded_string(MAX_LOCATION_BYTES),
+                "plan": {"type": "object"},
+                "decisions": {"type": "object"},
+                "mainConversationLocation": bounded_string(MAX_LOCATION_BYTES)
+            }))
+        }),
+        json!({
+            "name": "lico_delivery_authorize",
+            "description": "Authorize the current semantic Plan digest and run the native scheduler.",
+            "inputSchema": closed_object(&["workflowId", "planRoot", "semanticDigest"], json!({
+                "workflowId": bounded_string(MAX_ID_BYTES),
+                "planRoot": bounded_string(MAX_LOCATION_BYTES),
+                "semanticDigest": bounded_string(128),
+                "stateRoot": bounded_string(MAX_LOCATION_BYTES),
+                "mainConversationLocation": bounded_string(MAX_LOCATION_BYTES)
+            }))
+        }),
+        json!({
+            "name": "lico_delivery_status",
+            "description": "Read persisted delivery, runner, Plan, and numeric Token ledger status.",
+            "inputSchema": closed_object(&["workflowId", "planRoot"], json!({
+                "workflowId": bounded_string(MAX_ID_BYTES),
+                "planRoot": bounded_string(MAX_LOCATION_BYTES)
+            }))
+        }),
+        json!({
+            "name": "lico_delivery_cancel",
+            "description": "Persist cancellation of a delivery before any later scheduler pass.",
+            "inputSchema": closed_object(&["workflowId", "planRoot"], json!({
+                "workflowId": bounded_string(MAX_ID_BYTES),
+                "planRoot": bounded_string(MAX_LOCATION_BYTES),
+                "stateRoot": bounded_string(MAX_LOCATION_BYTES)
+            }))
+        }),
+        json!({
             "name": "lico_subagents_list",
             "description": "List scanned runnable local Agent integrations. Conversation access and collaboration roles are managed separately by the canonical Conversation service.",
             "inputSchema": closed_object(&[], json!({}))
@@ -2006,6 +2473,10 @@ fn permission_mode_schema() -> Value {
 
 fn tool_names() -> &'static [&'static str] {
     &[
+        "lico_delivery_start",
+        "lico_delivery_authorize",
+        "lico_delivery_status",
+        "lico_delivery_cancel",
         "lico_subagents_list",
         "lico_subagent_probe",
         "lico_subagent_delegate",
@@ -2019,6 +2490,23 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         return false;
     };
     let allowed: &[&str] = match name {
+        "lico_delivery_start" => &[
+            "workflowId",
+            "planRoot",
+            "stateRoot",
+            "plan",
+            "decisions",
+            "mainConversationLocation",
+        ],
+        "lico_delivery_authorize" => &[
+            "workflowId",
+            "planRoot",
+            "semanticDigest",
+            "stateRoot",
+            "mainConversationLocation",
+        ],
+        "lico_delivery_status" => &["workflowId", "planRoot"],
+        "lico_delivery_cancel" => &["workflowId", "planRoot", "stateRoot"],
         "lico_subagents_list" => &[],
         "lico_subagent_probe" => &[
             "agentId",
@@ -2060,6 +2548,38 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         return false;
     }
     match name {
+        "lico_delivery_start" => {
+            valid_required(object, "workflowId", MAX_ID_BYTES)
+                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_optional(
+                    object,
+                    "mainConversationLocation",
+                    MAX_WORKING_DIRECTORY_BYTES,
+                )
+                && object.get("plan").is_none_or(Value::is_object)
+                && object.get("decisions").is_none_or(Value::is_object)
+        }
+        "lico_delivery_authorize" => {
+            valid_required(object, "workflowId", MAX_ID_BYTES)
+                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_required(object, "semanticDigest", 128)
+                && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_optional(
+                    object,
+                    "mainConversationLocation",
+                    MAX_WORKING_DIRECTORY_BYTES,
+                )
+        }
+        "lico_delivery_status" => {
+            valid_required(object, "workflowId", MAX_ID_BYTES)
+                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
+        }
+        "lico_delivery_cancel" => {
+            valid_required(object, "workflowId", MAX_ID_BYTES)
+                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
+        }
         "lico_subagents_list" => object.is_empty(),
         "lico_subagent_probe" => {
             valid_required(object, "agentId", MAX_ID_BYTES)
@@ -2206,7 +2726,9 @@ fn tool_error(error: &ToolFailure) -> Value {
     let value = json!({
         "schemaVersion": "licoup.subagent.error.v1",
         "reasonCode": error.code,
-        "retryable": error.retryable
+        "stage": error.stage,
+        "retryable": error.retryable,
+        "recovery": error.recovery
     });
     let text = serde_json::to_string(&value).unwrap_or_else(|_| "{}".into());
     json!({
@@ -2281,10 +2803,14 @@ mod tests {
     }
 
     #[test]
-    fn tool_surface_is_closed_and_contains_only_subagent_operations() {
+    fn tool_surface_is_closed_and_contains_delivery_and_subagent_operations() {
         assert_eq!(
             tool_names(),
             &[
+                "lico_delivery_start",
+                "lico_delivery_authorize",
+                "lico_delivery_status",
+                "lico_delivery_cancel",
                 "lico_subagents_list",
                 "lico_subagent_probe",
                 "lico_subagent_delegate",
@@ -2292,6 +2818,10 @@ mod tests {
                 "lico_subagent_cancel",
             ]
         );
+        assert!(validate_tool_arguments(
+            "lico_delivery_status",
+            &json!({"workflowId": "workflow:fixture", "planRoot": "/fixture-root/plan"})
+        ));
         assert!(validate_tool_arguments(
             "lico_subagent_probe",
             &json!({"agentId": "worker", "workingDirectory": "/fixture-root/project"})

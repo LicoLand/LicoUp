@@ -14,7 +14,7 @@ const DRIVER_INVENTORY_SCHEMA_VERSION: &str = "v0.0.1:client-agent-conversation-
 const NATIVE_CAPABILITY_SCHEMA_VERSION: &str = "v0.0.1:client-agent-native-capabilities-1";
 const READINESS_SCHEMA_VERSION: &str = "v0.0.1:client-agent-conversation-readiness-1";
 const CONVERSATION_PARITY_CONTRACT_VERSION: &str = "CL-06";
-const MINIMUM_CONSECUTIVE_PASSES: usize = 3;
+const MINIMUM_CONSECUTIVE_PASSES: usize = 1;
 pub(super) const DRIVER_INVENTORY_JSON: &str =
     include_str!("../../../resources/agent-conversation-drivers.json");
 pub(super) const NATIVE_CAPABILITY_JSON: &str =

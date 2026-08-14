@@ -36,6 +36,7 @@ test("selection normalizes separators, deduplicates paths, and never falls back"
   ])), ["bridge.windows"]);
   assert.deepEqual(ids(selectModulesForChangedPaths(["README.md"])), [
     "regression.public-client-docs",
+    "regression.documentation-governance",
   ]);
   assert.throws(() => normalizeRepoPath("../outside"), /inside/u);
 });

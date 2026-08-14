@@ -290,7 +290,6 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "apps/desktop/scripts/package-client/resource-assembly.mjs",
         "apps/desktop/scripts/package-client/source-staging.mjs",
         "apps/desktop/scripts/package-client/windows-manifest.mjs",
-        "tools/client-runtime/**",
         "tools/client-release-targets.json",
         "tools/client-support-matrix.json",
         "tools/client-version.json",
@@ -359,6 +358,20 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       command: node(
         "apps/desktop/scripts/build-macos-distribution.mjs",
         ["--self-test"],
+        120_000,
+      ),
+    }),
+  defineModule({
+      id: "packaging.macos-install-contract",
+      kind: "packaging",
+      summary: "Existing-runnable macOS installer validation, copy, exact launch, and stable-survival contract",
+      inputs: [
+        "tools/scripts/client-macos-install.mjs",
+        "tests/contract/client/client-macos-install.test.mjs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/client-macos-install.test.mjs"],
         120_000,
       ),
     }),

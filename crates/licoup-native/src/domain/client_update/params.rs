@@ -60,7 +60,6 @@ pub(super) fn selected_target_id(params: &Value) -> Result<String> {
 fn default_target_id() -> Result<String> {
     let target = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => "macos-arm64",
-        ("macos", "x86_64") => "macos-x64",
         ("windows", "aarch64") => "windows-arm64",
         ("windows", "x86_64") => "windows-x64",
         ("linux", "aarch64") => "linux-glibc-arm64",

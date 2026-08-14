@@ -384,10 +384,30 @@ mixin AgentConversationSessionController
   }
 
   void selectConversationSession(String sessionId) {
-    conversationClearNativeSessionPending(selectedConversationAgentId);
-    abandonNewConversationDraft(selectedConversationAgentId);
+    final normalizedSessionId = sessionId.trim();
+    final activeNativeSessionId = sendingConversationNativeSessionId.trim();
+    final selectedAgentId =
+        selectedConversationAgent?.target.trim() ??
+        selectedConversationAgentId.trim();
+    final selectsActiveNewConversation =
+        preparingNewConversation &&
+        isSendingConversationMessage &&
+        selectedAgentId == sendingConversationAgentId.trim() &&
+        selectedConversationSessions.any((session) {
+          if (session.id.trim() != normalizedSessionId) return false;
+          final nativeSessionId = session.nativeSessionId.trim();
+          return (sendingConversationSessionId.trim().isNotEmpty &&
+                  session.id.trim() == sendingConversationSessionId.trim()) ||
+              (activeNativeSessionId.isNotEmpty &&
+                  (nativeSessionId == activeNativeSessionId ||
+                      session.id.trim() == activeNativeSessionId));
+        });
+    if (!selectsActiveNewConversation) {
+      conversationClearNativeSessionPending(selectedConversationAgentId);
+      abandonNewConversationDraft(selectedConversationAgentId);
+    }
     clearConversationWorkingDirectoryOverride();
-    selectedConversationSessionId = sessionId;
+    selectedConversationSessionId = normalizedSessionId;
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();

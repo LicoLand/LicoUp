@@ -61,8 +61,8 @@ program execution ABI; it is not a publishable package.
 
 | Target family | Baseline | Native format | Channel | Build host | Update authority |
 | --- | --- | --- | --- | --- | --- |
-| macOS direct (arm64, x64) | macOS 10.15 | DMG | local-only Developer ID channel | matching macOS host | signed HTTP manifest |
-| macOS App Store (arm64) | macOS 10.15 | PKG | App Store | macOS arm64 | App Store |
+| macOS direct (arm64) | macOS 11.0 | DMG | local-only Developer ID channel | macOS arm64 | signed HTTP manifest |
+| macOS App Store (arm64) | macOS 11.0 | PKG | App Store | macOS arm64 | App Store |
 | Windows direct (x64) | Windows 10.0.19041 | MSIX | direct | Windows x64 | AppInstaller |
 | Windows Store (x64) | Windows 10.0.19041 | MSIX upload | Microsoft Store | Windows x64 | Microsoft Store |
 | Debian (arm64, x64) | Debian 12 | DEB | APT repository | matching Linux host | APT repository |
@@ -81,8 +81,8 @@ Arch Linux, Arch Linux ARM, Alpine, and AppImage are intentionally separate
 families. There is no generic Linux package target.
 
 `packageBuildSupported` and `releaseSupported` are independent facts. A recipe
-can be buildable while release closure is still blocked. Both macOS direct
-targets are intentionally blocked from the generic/remote release builder and
+can be buildable while release closure is still blocked. The macOS direct
+target is intentionally blocked from the generic/remote release builder and
 must use the explicitly authorized local Developer ID coordinator. A blocked recipe carries `packageBlockers`; a package whose
 external publication or receipt is incomplete carries `releaseBlockers`.
 These are stable typed codes such as `apt_repository_publication_not_implemented`
@@ -140,7 +140,7 @@ canonical package leaf is replaced.
 ## Publication
 
 The GitHub workflow accepts the same comma-separated exact target selection,
-but rejects both macOS direct targets. macOS signing, notarization, packaging,
+but rejects the macOS direct target. macOS signing, notarization, packaging,
 and publication remain local-only and require separate explicit authorization.
 Its prepare phase may matrix every target whose `packageBuildSupported` value is
 true and selects the target's declared runner labels. The workflow bootstraps

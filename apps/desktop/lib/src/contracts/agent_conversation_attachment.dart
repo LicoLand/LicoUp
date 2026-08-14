@@ -28,6 +28,13 @@ final class ConversationAttachment {
   };
 }
 
+/// Releases platform-owned attachment resources after the application has
+/// finished with a conversation scope. User-selected files are never owned by
+/// the client and therefore remain untouched by the platform implementation.
+abstract interface class ConversationAttachmentRelease {
+  Future<void> releaseAttachments(Iterable<ConversationAttachment> attachments);
+}
+
 /// Media type for a picked extension, or empty when unsupported.
 String conversationAttachmentMediaTypeForExtension(String extension) =>
     conversationImageMediaTypeForExtension(extension);

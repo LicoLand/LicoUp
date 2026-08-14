@@ -69,6 +69,9 @@ export function buildFlutterApp(options) {
     options.platform === "macos"
       ? {
           ...flutterEnv,
+          ARCHS: "arm64",
+          EXCLUDED_ARCHS: "x86_64",
+          ONLY_ACTIVE_ARCH: "YES",
           LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE: "1",
         }
       : flutterEnv;
