@@ -1032,10 +1032,10 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        let bundle = std::env::temp_dir().join(format!(
-            "lico-direct-turn-export-{}.json",
-            uuid::Uuid::new_v4()
-        ));
+        let export_root =
+            std::env::temp_dir().join(format!("lico-direct-turn-export-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&export_root).unwrap();
+        let bundle = export_root.join("bundle.json");
         service
             .store()
             .export_bundle(&bundle, std::slice::from_ref(&conversation_id))
@@ -1044,7 +1044,7 @@ mod tests {
         assert!(!exported.contains("session-fixture"));
         assert!(!exported.contains("/fixture/session.jsonl"));
         assert!(!exported.contains("/fixture/project"));
-        let _ = std::fs::remove_file(bundle);
+        std::fs::remove_dir_all(export_root).unwrap();
     }
 
     #[test]
