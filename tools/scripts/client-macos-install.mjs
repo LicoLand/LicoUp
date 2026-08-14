@@ -43,6 +43,8 @@ const DEFAULT_RUNNABLE_ROOT = path.join(
 const DEFAULT_INSTALL_DIR = "/Applications";
 const DEFAULT_STABLE_WINDOW_MS = 30_000;
 const STABLE_POLL_INTERVAL_MS = 500;
+const LAUNCH_ATTEMPTS = 3;
+const LAUNCH_RETRY_DELAY_MS = 500;
 const BUNDLE_ID = "land.lico.licoup";
 const SOURCE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const STAGE_PATTERN = /^macos-install-[a-z-]+$/u;
@@ -191,7 +193,15 @@ export function runMacosInstaller(
 
   if (launchInstalled) {
     stages.push("macos-install-launch-installed");
-    if (!ports.launchInstalled(installedAppPath)) {
+    let launched = false;
+    for (let attempt = 1; attempt <= LAUNCH_ATTEMPTS; attempt += 1) {
+      if (ports.launchInstalled(installedAppPath)) {
+        launched = true;
+        break;
+      }
+      if (attempt < LAUNCH_ATTEMPTS) ports.waitForLaunchRetry();
+    }
+    if (!launched) {
       fail("macos_install_launch_failed", "macos-install-launch-installed");
     }
     result.launchVerified = true;
@@ -291,6 +301,7 @@ function realPorts() {
       }),
     register: (appPath) => registerInstalledApp(appPath),
     launchInstalled: (appPath) => launchInstalledApp(appPath),
+    waitForLaunchRetry: () => sleep(LAUNCH_RETRY_DELAY_MS),
     observeStable: (appPath, windowMs) =>
       observeStableInstalledClient(appPath, windowMs),
   };
