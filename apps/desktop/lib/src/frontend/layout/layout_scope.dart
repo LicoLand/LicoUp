@@ -45,6 +45,32 @@ final class LayoutScopedState {
     return true;
   }
 
+  /// Reads a channel declared on a sibling destination in this profile.
+  ///
+  /// Shell chrome that outlives one destination (the shared sidebar column)
+  /// uses this to keep one persisted pane extent.
+  LayoutPresentationStateValue? readIfDeclaredFor(
+    ClientSection destination,
+    LayoutStateChannel channel,
+  ) {
+    final namespace = _namespaceFor(destination, channel);
+    return _store.declares(namespace) ? _store.read(namespace) : null;
+  }
+
+  /// Writes a channel declared on a sibling destination in this profile.
+  bool writeIfDeclaredFor(
+    ClientSection destination,
+    LayoutStateChannel channel,
+    LayoutPresentationStateValue value,
+  ) {
+    final namespace = _namespaceFor(destination, channel);
+    if (!_store.declares(namespace)) {
+      return false;
+    }
+    _store.write(namespace, value);
+    return true;
+  }
+
   LayoutPresentationStateValue? read(LayoutStateChannel channel) =>
       _store.read(_namespace(channel));
 
@@ -54,12 +80,17 @@ final class LayoutScopedState {
   void remove(LayoutStateChannel channel) => _store.remove(_namespace(channel));
 
   LayoutStateNamespace _namespace(LayoutStateChannel channel) =>
-      LayoutStateNamespace(
-        profileId: profileId,
-        surface: surface,
-        destination: destination,
-        channel: channel,
-      );
+      _namespaceFor(destination, channel);
+
+  LayoutStateNamespace _namespaceFor(
+    ClientSection destination,
+    LayoutStateChannel channel,
+  ) => LayoutStateNamespace(
+    profileId: profileId,
+    surface: surface,
+    destination: destination,
+    channel: channel,
+  );
 }
 
 final class LayoutScope extends InheritedWidget {

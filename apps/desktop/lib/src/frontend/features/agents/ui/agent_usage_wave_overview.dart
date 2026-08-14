@@ -7,8 +7,10 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_control
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_chart_painter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_window_control.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentUsageWaveOverview extends StatefulWidget {
@@ -23,6 +25,7 @@ final class AgentUsageWaveOverview extends StatefulWidget {
     this.showGroupingControl = true,
     this.title,
     this.tooltipSemanticLabel,
+    this.onExit,
   });
 
   final AgentUsageChartGrouping grouping;
@@ -34,6 +37,7 @@ final class AgentUsageWaveOverview extends StatefulWidget {
   final bool showGroupingControl;
   final String? title;
   final String Function(DateTime date)? tooltipSemanticLabel;
+  final VoidCallback? onExit;
 
   @override
   State<AgentUsageWaveOverview> createState() => _AgentUsageWaveOverviewState();
@@ -151,26 +155,16 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                widget.title ?? strings.tokenUsage,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.text,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ),
+        AgentUsagePanelHeader(
+          title: widget.title ?? strings.tokenUsage,
+          onExit: widget.onExit,
+          trailing: [
             if (widget.showGroupingControl) ...[
               AgentUsageGroupingSwitch(
                 grouping: widget.grouping,
                 onChanged: widget.onGroupingChanged,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: LicoContentSpacing.compact),
             ],
             AgentUsageWindowControl(
               days: widget.windowDays,
