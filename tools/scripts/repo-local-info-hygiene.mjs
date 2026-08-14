@@ -239,7 +239,7 @@ function isAuditorDelegationEnabled(environment = process.env) {
     environment.LICO_AUDITOR_GATE_DELEGATED === "1" &&
     environment.GITHUB_ACTIONS === "true" &&
     environment.GITHUB_WORKFLOW === "Client CI" &&
-    environment.GITHUB_JOB === "client-gate"
+    environment.GITHUB_JOB === "source"
   );
 }
 
@@ -510,7 +510,7 @@ async function runSelfTest() {
         LICO_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       }),
       "SELF_TEST_GITHUB_AUDITOR_DELEGATION_REJECTED"
     );
@@ -518,18 +518,18 @@ async function runSelfTest() {
       {
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       },
       {
         LICO_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_WORKFLOW: "Client CI",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       },
       {
         LICO_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Another workflow",
-        GITHUB_JOB: "client-gate"
+        GITHUB_JOB: "source"
       },
       {
         LICO_AUDITOR_GATE_DELEGATED: "1",

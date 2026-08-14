@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/LicoLand/.github/main/schemas/release-plan.schema.json",
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "repository": "LicoLand/LicoUp",
   "profile": "semver",
-  "currentVersion": "0.1.0-alpha",
+  "currentVersion": "0.1.0",
   "versionSources": [
     {
       "format": "json",
