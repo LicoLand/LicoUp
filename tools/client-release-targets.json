@@ -14,12 +14,9 @@
       "buildHost": "darwin-arm64",
       "runtimeTargetId": "macos-arm64",
       "packageBuildSupported": true,
-      "releaseSupported": false,
+      "releaseSupported": true,
       "packageBlockers": [],
-      "releaseBlockers": [
-        "macos_developer_id_platform_channel_local_only",
-        "macos_github_release_publication_not_authorized"
-      ],
+      "releaseBlockers": [],
       "artifacts": [
         {
           "role": "installer",
