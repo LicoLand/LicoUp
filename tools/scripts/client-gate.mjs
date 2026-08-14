@@ -331,7 +331,8 @@ function validateReleaseTopology() {
   const preflight = readText("tools/scripts/client-pr-preflight.mjs");
   const catalog = readJson("tools/client-release-targets.json");
   const supportedTargets = catalog.targets
-    .filter((target) => target.releaseSupported === true)
+    .filter((target) => target.releaseSupported === true &&
+      CLIENT_RELEASE_TARGETS[target.id]?.localOnly !== true)
     .map((target) => target.id)
     .sort();
   const policyTargets = Object.keys(CLIENT_RELEASE_TARGETS).sort();
