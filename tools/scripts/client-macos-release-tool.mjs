@@ -190,21 +190,62 @@ function atomicWritePrivateFile(target, bytes) {
   }
 }
 
+function resolveRegularFile(selected, maximumBytes, invalidCode) {
+  if (!path.isAbsolute(selected) || !existsSync(selected)) {
+    fail(invalidCode);
+  }
+  const resolved = realpathSync(selected);
+  const info = statSync(resolved);
+  if (!info.isFile() || info.size <= 0 || info.size > maximumBytes) {
+    fail(invalidCode);
+  }
+  return resolved;
+}
+
 function chooseProvisioningProfile() {
   const selected = runCapture(
     "/usr/bin/osascript",
     ["-e", 'POSIX path of (choose file with prompt "Select the LicoUp Developer ID provisioning profile")'],
     "macos_release_setup_profile_selection_failed",
   ).trim();
-  if (!path.isAbsolute(selected) || !existsSync(selected)) {
-    fail("macos_release_setup_profile_selection_failed");
-  }
-  const resolved = realpathSync(selected);
-  const info = statSync(resolved);
-  if (!info.isFile() || info.size <= 0 || info.size > maximumProfileBytes) {
+  return resolveRegularFile(
+    selected,
+    maximumProfileBytes,
+    "macos_release_setup_profile_selection_failed",
+  );
+}
+
+export function extractProvisioningProfilePayload(xml) {
+  const source = String(xml || "");
+  const certificatePattern = /<key>\s*DeveloperCertificates\s*<\/key>\s*<array>([\s\S]*?)<\/array>/gu;
+  const certificateMatches = [...source.matchAll(certificatePattern)];
+  if (certificateMatches.length !== 1) fail("macos_release_setup_profile_invalid");
+
+  const dataPattern = /<data>\s*([A-Za-z0-9+/=\s]+?)\s*<\/data>/gu;
+  const certificateBlock = certificateMatches[0][1];
+  const certificates = [...certificateBlock.matchAll(dataPattern)].map((match) =>
+    match[1].replace(/\s+/gu, ""));
+  if (certificates.length === 0 || certificates.length > 64 ||
+    certificateBlock.replace(dataPattern, "").trim() !== "" ||
+    certificates.some((encoded) => encoded.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) || Buffer.from(encoded, "base64").length === 0)) {
     fail("macos_release_setup_profile_invalid");
   }
-  return resolved;
+
+  const derPattern = /<key>\s*DER-Encoded-Profile\s*<\/key>\s*<data>[\s\S]*?<\/data>/gu;
+  const derMatches = [...source.matchAll(derPattern)];
+  if (derMatches.length > 1) fail("macos_release_setup_profile_invalid");
+  const sanitizedXml = source
+    .replace(certificatePattern, "")
+    .replace(derPattern, "")
+    .replace(/<date>\s*([^<]+?)\s*<\/date>/gu, "<string>$1</string>");
+  if (/<(?:data|date)(?:\s|>)/u.test(sanitizedXml)) {
+    fail("macos_release_setup_profile_invalid");
+  }
+  return Object.freeze({
+    sanitizedXml,
+    developerCertificates: Object.freeze(certificates),
+  });
 }
 
 function decodeProvisioningProfile(profilePath) {
@@ -213,14 +254,18 @@ function decodeProvisioningProfile(profilePath) {
     ["cms", "-D", "-i", profilePath],
     "macos_release_setup_profile_invalid",
   );
+  const payload = extractProvisioningProfilePayload(xml);
   const json = runCapture(
     "/usr/bin/plutil",
     ["-convert", "json", "-o", "-", "--", "-"],
     "macos_release_setup_profile_invalid",
-    { input: xml },
+    { input: payload.sanitizedXml },
   );
   try {
-    return JSON.parse(json);
+    return {
+      ...JSON.parse(json),
+      DeveloperCertificates: payload.developerCertificates,
+    };
   } catch {
     fail("macos_release_setup_profile_invalid");
   }
@@ -378,7 +423,22 @@ function authorizeCodesignOnce(identity) {
   }
 }
 
-function runSetup() {
+function parseSetupOptions(args) {
+  const options = {};
+  for (let index = 0; index < args.length; index += 2) {
+    const name = args[index];
+    const value = args[index + 1];
+    if (name !== "--profile" || !value || Object.hasOwn(options, name)) {
+      fail("macos_release_option_invalid");
+    }
+    options[name] = value;
+  }
+  return Object.freeze({
+    profilePath: options["--profile"],
+  });
+}
+
+function runSetup(options = {}) {
   if (process.platform !== "darwin") fail("macos_release_host_unsupported");
   safeStage("distribution-preflight", "running");
   runCapture(
@@ -388,7 +448,13 @@ function runSetup() {
   );
   safeStage("distribution-preflight", "passed");
 
-  const selectedProfile = chooseProvisioningProfile();
+  const selectedProfile = options.profilePath
+    ? resolveRegularFile(
+      options.profilePath,
+      maximumProfileBytes,
+      "macos_release_setup_profile_invalid",
+    )
+    : chooseProvisioningProfile();
   const profileBytes = stableReadFile(selectedProfile, { maxBytes: maximumProfileBytes });
   const profile = decodeProvisioningProfile(selectedProfile);
   const config = deriveManagedReleaseConfig({
@@ -615,9 +681,8 @@ export function redactMacosReleaseToolFailure(error) {
 }
 
 export function main(args = process.argv.slice(2)) {
-  if (args.length !== 1) fail("macos_release_option_invalid");
-  if (args[0] === "setup") return runSetup();
-  if (args[0] === "beta") return runBeta();
+  if (args[0] === "setup") return runSetup(parseSetupOptions(args.slice(1)));
+  if (args.length === 1 && args[0] === "beta") return runBeta();
   fail("macos_release_option_invalid");
 }
 
