@@ -26,12 +26,14 @@ class MessagingProcessStatusRow extends StatefulWidget {
     required this.adapter,
     required this.detailsBuilder,
     this.active = false,
+    this.topOverlayInset = 0,
   });
 
   final List<AgentConversationMessage> events;
   final AgentRenderAdapter adapter;
   final ConversationEventDetailsBuilder detailsBuilder;
   final bool active;
+  final double topOverlayInset;
 
   @override
   State<MessagingProcessStatusRow> createState() =>
@@ -41,6 +43,10 @@ class MessagingProcessStatusRow extends StatefulWidget {
 class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
   static const _cornerRadius = 10.0;
 
+  final GlobalKey _headerAnchorKey = GlobalKey(
+    debugLabel: 'messaging-process-status-header',
+  );
+  final ScrollController _operationScrollController = ScrollController();
   bool _expanded = false;
   bool _userCollapsed = false;
 
@@ -66,12 +72,34 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
     }
   }
 
+  @override
+  void dispose() {
+    _operationScrollController.dispose();
+    super.dispose();
+  }
+
   void _toggleExpanded() {
+    final expanding = !_expanded;
     setState(() {
-      _expanded = !_expanded;
+      _expanded = expanding;
       if (_working && !_expanded) {
         _userCollapsed = true;
       }
+    });
+    if (expanding) {
+      _pinHeaderBelowOverlay();
+    }
+  }
+
+  void _pinHeaderBelowOverlay() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_expanded) return;
+      final headerContext = _headerAnchorKey.currentContext;
+      if (headerContext == null || !headerContext.mounted) return;
+      pinConversationProcessHeaderBelowOverlay(
+        headerContext,
+        widget.topOverlayInset,
+      );
     });
   }
 
@@ -125,6 +153,11 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
       truncated: projection.renderTruncated,
       activeStepIndex: widget.active ? operations.length - 1 : -1,
     );
+    final expandedBody = ConversationProcessOperationViewport(
+      processId: widget.events.first.id,
+      controller: _operationScrollController,
+      child: operationList,
+    );
     final borderRadius = BorderRadius.circular(_cornerRadius);
     // Neutral chrome only — brand/primary border reads as olive 泛黄 and was
     // the visible “无效” leftover after transcript bubbles were neutralized.
@@ -145,88 +178,91 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
       ),
     );
 
-    final header = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: const Key('messaging-process-status-toggle'),
-        onTap: _toggleExpanded,
-        borderRadius: borderRadius,
-        hoverColor: colors.text.withAlpha(8),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: _working ? 10 : 8,
-            vertical: _working ? 8 : 6,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: _StatusIcon(
-                  working: _working,
-                  lifecycle: lifecycle,
-                  colors: colors,
+    final header = KeyedSubtree(
+      key: _headerAnchorKey,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const Key('messaging-process-status-toggle'),
+          onTap: _toggleExpanded,
+          borderRadius: borderRadius,
+          hoverColor: colors.text.withAlpha(8),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: _working ? 10 : 8,
+              vertical: _working ? 8 : 6,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: _StatusIcon(
+                    working: _working,
+                    lifecycle: lifecycle,
+                    colors: colors,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LicoShimmerText(
-                      text: title,
-                      enabled: _working,
-                      style: TextStyle(
-                        color: _working ? colors.text : colors.textMuted,
-                        fontSize: _working ? 13 : 12.5,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.06,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    LicoShimmerText(
-                      text: summary,
-                      enabled: _working,
-                      style: TextStyle(
-                        color: colors.textMuted,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: -0.04,
-                      ),
-                    ),
-                    if (_working &&
-                        latestStepLine != null &&
-                        (!_expanded || _userCollapsed)) ...[
-                      const SizedBox(height: 4),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       LicoShimmerText(
-                        key: const Key('messaging-process-latest-step'),
-                        text: latestStepLine,
-                        enabled: true,
+                        text: title,
+                        enabled: _working,
                         style: TextStyle(
-                          color: colors.text,
+                          color: _working ? colors.text : colors.textMuted,
+                          fontSize: _working ? 13 : 12.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.06,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      LicoShimmerText(
+                        text: summary,
+                        enabled: _working,
+                        style: TextStyle(
+                          color: colors.textMuted,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                           letterSpacing: -0.04,
                         ),
                       ),
+                      if (_working &&
+                          latestStepLine != null &&
+                          (!_expanded || _userCollapsed)) ...[
+                        const SizedBox(height: 4),
+                        LicoShimmerText(
+                          key: const Key('messaging-process-latest-step'),
+                          text: latestStepLine,
+                          enabled: true,
+                          style: TextStyle(
+                            color: colors.text,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: -0.04,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: AnimatedRotation(
-                  turns: _expanded ? 0.25 : 0,
-                  duration: containerDuration,
-                  curve: Curves.easeOutCubic,
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    size: 15,
-                    color: colors.textMuted,
                   ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: AnimatedRotation(
+                    turns: _expanded ? 0.25 : 0,
+                    duration: containerDuration,
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 15,
+                      color: colors.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -243,13 +279,14 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
             child: ConversationLifecycleSteps(projection: lifecycle),
           ),
         if (motionDisabled)
-          _expanded ? operationList : const SizedBox.shrink()
+          _expanded ? expandedBody : const SizedBox.shrink()
         else
           AnimatedSize(
             duration: sizeDuration,
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
-            child: _expanded ? operationList : const SizedBox.shrink(),
+            onEnd: _pinHeaderBelowOverlay,
+            child: _expanded ? expandedBody : const SizedBox.shrink(),
           ),
       ],
     );

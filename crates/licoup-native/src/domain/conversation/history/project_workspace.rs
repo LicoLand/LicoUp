@@ -53,8 +53,8 @@ mod tests {
     #[test]
     fn a_concrete_project_directory_survives_trimming() {
         assert_eq!(
-            bounded_project_workspace("  /fixture/location/projects/alpha  "),
-            Some("/fixture/location/projects/alpha".to_string())
+            bounded_project_workspace("  /fixture-root/projects/alpha  "),
+            Some("/fixture-root/projects/alpha".to_string())
         );
     }
 }

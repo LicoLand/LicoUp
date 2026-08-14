@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agents_empty_state.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -82,7 +82,23 @@ void main() {
     'Chinese locale removes English chrome from the empty agent view',
     (tester) async {
       await tester.pumpWidget(
-        _LocalizedTestApp(child: AgentsEmptyState(onAddTarget: () {})),
+        _LocalizedTestApp(
+          child: Builder(
+            builder: (context) {
+              final strings = LicoStrings.of(context);
+              return LicoEmptyState(
+                icon: Icons.smart_toy_outlined,
+                iconSize: 32,
+                title: strings.noSupportedTargetsDetected,
+                action: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add, size: 18),
+                  label: Text(strings.addTarget),
+                ),
+              );
+            },
+          ),
+        ),
       );
 
       expect(find.text('未检测到支持的目标。'), findsOneWidget);

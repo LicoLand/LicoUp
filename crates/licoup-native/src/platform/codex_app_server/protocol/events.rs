@@ -198,7 +198,7 @@ impl CodexProtocol {
                 crate::platform::skill_invocation_projection::project_skill_invocations(item),
             );
         }
-        vec![ProtocolEffect::Complete(ProtocolOutcome {
+        vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
             output,
             events,
             session_id: self.session_id.clone().unwrap_or_default(),
@@ -206,6 +206,6 @@ impl CodexProtocol {
             turn_id: self.turn_id.clone().unwrap_or_default(),
             turn_status: status,
             effective: self.effective.clone(),
-        })]
+        }))]
     }
 }

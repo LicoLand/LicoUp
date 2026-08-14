@@ -22,24 +22,31 @@ const canonicalFamilies = [
   },
   {
     id: "state",
-    status: "planned",
+    status: "active",
     schema: "schemas/client_bridge/state.json",
     rustOutput: "crates/licoup-native/src/ffi/generated/client_state.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/client_state.g.dart",
   },
   {
     id: "secure_mesh",
-    status: "planned",
+    status: "active",
     schema: "schemas/client_bridge/secure_mesh.json",
     rustOutput: "crates/licoup-native/src/ffi/generated/secure_mesh.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/secure_mesh.g.dart",
   },
   {
     id: "conversation",
-    status: "planned",
+    status: "active",
     schema: "schemas/client_bridge/conversation.json",
     rustOutput: "crates/licoup-native/src/ffi/generated/conversation.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/conversation.g.dart",
+  },
+  {
+    id: "strategy",
+    status: "active",
+    schema: "schemas/client_bridge/strategy.json",
+    rustOutput: "crates/licoup-native/src/ffi/generated/strategy.rs",
+    dartOutput: "apps/desktop/lib/src/contracts/generated/strategy.g.dart",
   },
   {
     id: "adapter_plugin",
@@ -110,6 +117,7 @@ function copyRepoSubset(root, destination) {
     manifestPath,
     generatorPath,
     packagePath,
+    "tools/templates/client_bridge",
     ...manifest.families.flatMap((family) => [
       family.schema,
       family.rustOutput,
@@ -160,7 +168,7 @@ test("1) exact ordered manifest entries and unique safe contract schema/output p
   assert.deepEqual(
     manifest.families.map((family) => family.id),
     expectedOrder,
-    "manifest order must be client_error -> state -> secure_mesh -> conversation -> adapter_plugin -> agent_usage",
+    "manifest order must be client_error -> state -> secure_mesh -> conversation -> strategy -> adapter_plugin -> agent_usage",
   );
 
   const expectedMap = new Map(canonicalFamilies.map((family) => [family.id, family]));
@@ -203,6 +211,33 @@ test("2) package scripts canonicalize generation and generator is manifest-drive
     false,
     "cannot hardcode only client_error dart output",
   );
+});
+
+test("conversation schema, generator expectation, and generated action set stay explicit", async () => {
+  const schema = JSON.parse(
+    await readTextFrom(repoRoot, "schemas/client_bridge/conversation.json"),
+  );
+  const generator = await readTextFrom(repoRoot, generatorPath);
+  const dartBinding = await readTextFrom(
+    repoRoot,
+    "apps/desktop/lib/src/contracts/generated/conversation.g.dart",
+  );
+  const rustBinding = await readTextFrom(
+    repoRoot,
+    "crates/licoup-native/src/ffi/generated/conversation.rs",
+  );
+  const retired = ["conversation.default-local-group", "sync"].join(".");
+  const retiredPattern = new RegExp(retired.replaceAll(".", "\\."), "u");
+  assert.equal(schema.actions.includes(retired), false, retired);
+  assert.doesNotMatch(generator, retiredPattern, `${retired} in generator`);
+  assert.doesNotMatch(dartBinding, retiredPattern, `${retired} in Dart binding`);
+  assert.doesNotMatch(rustBinding, retiredPattern, `${retired} in Rust binding`);
+  for (const action of schema.actions) {
+    const pattern = new RegExp(action.replaceAll(".", "\\."), "u");
+    assert.match(generator, pattern, `generator missing ${action}`);
+    assert.match(dartBinding, pattern, `Dart binding missing ${action}`);
+    assert.match(rustBinding, pattern, `Rust binding missing ${action}`);
+  }
 });
 
 test("3) --check must keep tracked mtimes and content unchanged while planned outputs stay absent", async () => {

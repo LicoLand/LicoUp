@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_content_region.dart';
@@ -16,9 +17,9 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/mess
 /// (traffic-light inset plus the global search capsule), then a content row
 /// of the destination rail, [MessagingContentRegion], and one rounded main
 /// card on the shared glass shell.
-/// The rail's capsule holds the page destinations; its avatar toggles a
-/// profile-local page inside the card without touching the semantic
-/// destination model.
+/// The rail holds the page destinations; an optional aux chrome panel can
+/// still replace the card with the local profile page without touching the
+/// semantic destination model.
 Widget buildMessagingDesktopMediumShell(
   BuildContext context,
   LayoutShellBuildContext data,
@@ -41,15 +42,6 @@ final class _MessagingDesktopShell extends StatefulWidget {
 final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
   bool _profileOpen = false;
   ValueNotifier<bool>? _auxPanelOpen;
-
-  void _toggleProfile() {
-    final notifier = _auxPanelOpen;
-    if (notifier != null) {
-      notifier.value = !notifier.value;
-      return;
-    }
-    setState(() => _profileOpen = !_profileOpen);
-  }
 
   void _closeProfile() {
     final notifier = _auxPanelOpen;
@@ -121,7 +113,10 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        MessagingChromeBand(chrome: data.chrome),
+        MessagingChromeBand(
+          chrome: data.chrome,
+          showSearch: data.activeDestination != ClientSection.agents,
+        ),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -129,7 +124,6 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
               MessagingDestinationRail(
                 section: data.activeDestination,
                 onSelectSection: _selectDestination,
-                onToggleProfile: _toggleProfile,
                 profileOpen: profileOpen,
               ),
               Expanded(
@@ -162,7 +156,7 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
                   _selectDestination(ClientSection.mobileRelay),
               onOpenSettings: () => _selectDestination(ClientSection.settings),
             )
-          : data.destination,
+          : LayoutChromePortScope(chrome: data.chrome, child: data.destination),
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/endpoint_configuration.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayPairingWorkspaceCard extends StatelessWidget {
@@ -43,7 +44,7 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         border: Border.all(color: colors.line.withAlpha(90)),
       ),
       child: LayoutBuilder(
@@ -155,7 +156,7 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
             decoration: BoxDecoration(
               color: colors.surfaceLow,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
               border: Border.all(color: colors.line.withAlpha(80)),
             ),
             child: Row(

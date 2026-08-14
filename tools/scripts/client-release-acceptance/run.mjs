@@ -181,7 +181,9 @@ export function runClientReleaseAcceptanceCli(argv = process.argv.slice(2)) {
       clientVersion,
       artifactReceiptContext,
     );
-    const supportMatrix = runSupportMatrixCheck(requestedTargetIds);
+    const supportMatrix = runSupportMatrixCheck(
+      selectedTargets.map((target) => target.runtimeTargetId),
+    );
     const closureEvidenceDigestsStable = verifyClosureEvidenceDigests(
       config,
       produced,

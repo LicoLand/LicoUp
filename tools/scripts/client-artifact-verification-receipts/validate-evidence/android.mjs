@@ -10,7 +10,8 @@ export function validateAndroidEvidence(payload, context) {
   const summary = payload.summary || {};
   requireValue(payload.ok === true && payload.platform === "android" &&
     payload.physicalDevice === true, "android_evidence_not_ready");
-  requireValue(payload.targetId === context.targetId, "evidence_target_mismatch");
+  requireValue(payload.targetId === context.spec.evidenceTargetId,
+    "evidence_target_mismatch");
   requireValue(payload.productVersion === context.productVersion, "evidence_version_mismatch");
   requireValue(payload.buildNumber === context.buildNumber,
     "evidence_build_number_mismatch");

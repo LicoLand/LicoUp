@@ -1,7 +1,6 @@
 import 'fixtures/client_controller/support/client_controller_scenario_dependencies.dart';
 import 'fixtures/client_controller/support/fake_agent_conversation_fixture.dart';
 import 'fixtures/client_controller/support/fake_agent_service.dart';
-import 'package:licoup/src/contracts/generated/client_state.g.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -33,350 +32,33 @@ void main() {
     expect(controller.conversationSendErrorFor('codex'), isEmpty);
   });
 
-  test(
-    'main agent dispatch works when its runtime publishes no model catalog',
-    () async {
-      final service = FakeAgentService();
-      final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
-
-      await controller.scanTargets();
-      controller.orchestrationPolicyDraft = const AgentOrchestrationPolicy(
-        commanderAgentId: 'codex',
-      ).toTomlConfig();
-      await controller.selectConversationAgent(agentOrchestrationTargetId);
-      controller.startNewConversationSession();
-
-      expect(controller.agentOrchestrationPolicyConfigured, isTrue);
-      expect(controller.agentOrchestrationManagerTarget?.target, 'codex');
-
-      await controller.sendConversationMessage('Route through the main agent');
-      await _settleAsyncProjection();
-
-      expect(service.runtimeMessageCalls, 1);
-      expect(service.lastRuntimeMessageRequest['agent'], 'codex');
-      expect(service.lastRuntimeMessageRequest['model'], isNull);
-      final session = controller.selectedConversationSession;
-      expect(session?.agentId, agentOrchestrationTargetId);
-      expect(session?.native, isFalse);
-      expect(session?.readOnly, isFalse);
-      expect(session?.id, isNot(session?.nativeSessionId));
-      expect(
-        session?.messages
-            .where(
-              (message) =>
-                  message.role == 'user' &&
-                  message.text == 'Route through the main agent',
-            )
-            .length,
-        1,
-      );
-      expect(
-        session?.messages
-            .where((message) => message.cardType == 'lifecycle')
-            .single
-            .cardTitle,
-        'lifecycle.completed',
-      );
-      expect(
-        session?.messages
-            .where((message) => message.cardType == 'lifecycle')
-            .single
-            .cardSubtitle,
-        'submitted,completed',
-      );
-      final projectedKinds = session!.messages
-          .where(
-            (message) =>
-                message.kind == AgentConversationMessageKind.user ||
-                message.cardType == 'lifecycle' ||
-                message.kind == AgentConversationMessageKind.assistant,
-          )
-          .map(
-            (message) => message.cardType == 'lifecycle'
-                ? 'lifecycle'
-                : message.kind.name,
-          );
-      expect(projectedKinds, ['user', 'lifecycle', 'assistant']);
-      expect(
-        controller
-                .liveConversationMessagesByAgent[agentOrchestrationTargetId] ??
-            const [],
-        isEmpty,
-      );
-      expect(
-        session.messages
-            .where((message) => message.role == 'assistant')
-            .single
-            .participantAgentId,
-        'codex',
-      );
-      expect(
-        controller.conversationSessionsByAgent['codex'] ?? const [],
-        hasLength(1),
-      );
-      expect(
-        (controller.conversationSessionsByAgent['codex'] ?? const [])
-            .single
-            .native,
-        isTrue,
-      );
-      expect(controller.lastError, isEmpty);
-    },
-  );
-
   test('lifecycle updates stay between the request and reply', () {
     final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
 
     controller.conversationStartLiveProjection(
-      agentId: agentOrchestrationTargetId,
+      scopeKey: 'draft:codex:turn-1',
       turnId: 'turn-1',
       userText: 'Request',
     );
     controller.conversationUpsertLiveReply(
-      agentId: agentOrchestrationTargetId,
+      scopeKey: 'draft:codex:turn-1',
       turnId: 'turn-1',
       text: 'Reply',
     );
     controller.conversationUpsertLiveLifecycle(
-      agentId: agentOrchestrationTargetId,
+      scopeKey: 'draft:codex:turn-1',
       turnId: 'turn-1',
       stage: 'completed',
     );
 
     expect(
-      controller.liveConversationMessagesByAgent[agentOrchestrationTargetId]!
-          .map((message) => message.id),
+      controller.liveConversationMessagesByScope['draft:codex:turn-1']!.map(
+        (message) => message.id,
+      ),
       ['turn-1-user', 'turn-1-lifecycle', 'turn-1-assistant'],
     );
   });
-
-  test(
-    'orchestration stream keeps subagent replies as named participants',
-    () async {
-      final service = FakeAgentService()
-        ..runtimeMessageStreamEventQueue = [
-          [
-            {
-              'event': 'agent.message.completed',
-              'sessionId': 'native-codex-1',
-              'payload': {
-                'text': 'Architecture ready',
-                'participantAgentId': 'designer',
-                'participantLabel': 'Designer',
-                'participantRole': 'designer',
-              },
-            },
-            {
-              'event': 'agent.message.completed',
-              'sessionId': 'native-codex-1',
-              'payload': {
-                'text': 'Implementation ready',
-                'participantAgentId': 'backend-worker',
-                'participantLabel': 'Backend Worker',
-                'participantRole': 'backend-worker',
-              },
-            },
-          ],
-        ];
-      final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
-
-      await controller.scanTargets();
-      controller.orchestrationPolicyDraft = const AgentOrchestrationPolicy(
-        commanderAgentId: 'codex',
-      ).toTomlConfig();
-      await controller.selectConversationAgent(agentOrchestrationTargetId);
-      controller.startNewConversationSession();
-
-      await controller.sendConversationMessage('Build it');
-      await _settleAsyncProjection();
-
-      final assistantMessages = controller.selectedConversationSession!.messages
-          .where((message) => message.role == 'assistant')
-          .toList();
-      expect(
-        assistantMessages.map((message) => message.participantAgentId),
-        containsAll(<String>['designer', 'backend-worker', 'codex']),
-      );
-      expect(
-        assistantMessages.map((message) => message.participantRole),
-        containsAll(<String>['designer', 'backend-worker', 'main-agent']),
-      );
-    },
-  );
-
-  test(
-    'persisted main agent survives paint cache until runtime scan settles',
-    () async {
-      final service = _PersistedMainAgentService();
-      final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
-
-      controller.scannedTargets = [_codexTarget(runtimeBound: false)];
-      await controller.loadAgentOrchestrationPolicy();
-
-      expect(
-        (controller.orchestrationPolicyDraft['main_agent'] as Map)['agent'],
-        'codex',
-      );
-      expect(controller.agentOrchestrationManagerTarget, isNull);
-      expect(
-        controller.agentOrchestrationConfiguredManagerTarget?.target,
-        'codex',
-      );
-
-      controller.scannedTargets = [_codexTarget(runtimeBound: true)];
-      await controller.selectConversationAgent(agentOrchestrationTargetId);
-
-      expect(controller.agentOrchestrationPolicyConfigured, isTrue);
-      expect(controller.agentOrchestrationManagerTarget?.target, 'codex');
-
-      await controller.sendConversationMessage('Send after runtime scan');
-
-      expect(service.runtimeMessageCalls, 1);
-      expect(service.lastRuntimeMessageRequest['agent'], 'codex');
-      expect(controller.lastError, isEmpty);
-    },
-  );
-
-  test(
-    'saving does not erase a selection when the live scan refreshes',
-    () async {
-      final service = _RecordingFlywheelService();
-      final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
-
-      controller.scannedTargets = [_codexTarget(runtimeBound: true)];
-      final selected = const AgentOrchestrationPolicy(
-        commanderAgentId: 'codex',
-        commanderModelName: 'gpt-5.6-sol',
-        commanderReasoningEffort: 'medium',
-      );
-
-      // Discovery is asynchronous and can transiently clear the catalog
-      // after the dialog returns but before the state write begins.
-      controller.scannedTargets = const [];
-      await controller.saveAgentOrchestrationPolicy(selected);
-
-      expect(
-        (service.lastAdaptiveFlywheel?['main_agent'] as Map?)?['agent'],
-        'codex',
-      );
-      expect(controller.agentOrchestrationPolicyConfigured, isTrue);
-      expect(
-        controller.effectiveAgentOrchestrationPolicy.commanderModelName,
-        'gpt-5.6-sol',
-      );
-      expect(controller.agentOrchestrationManagerTarget, isNull);
-      expect(controller.lastError, isEmpty);
-    },
-  );
-
-  test(
-    'daily conversation quota failure falls back and persists Current Conversation',
-    () async {
-      final service = _RecordingFlywheelService()
-        ..runtimeMessageResultQueue = [
-          {
-            'ok': false,
-            'error': {
-              'code': 'quota_exhausted',
-              'message': 'Primary model quota is exhausted.',
-            },
-          },
-        ];
-      final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
-
-      await controller.scanTargets();
-      await controller.saveAgentOrchestrationPolicy(
-        const AgentOrchestrationPolicy(
-          dailyConversationAgents: [
-            DailyConversationAgentAssignment(
-              id: 'dc-1',
-              agentId: 'codex',
-              modelName: 'primary-model',
-            ),
-            DailyConversationAgentAssignment(
-              id: 'dc-2',
-              agentId: 'codex',
-              modelName: 'fallback-model',
-            ),
-          ],
-          commanderAgentId: 'codex',
-          commanderModelName: 'primary-model',
-        ),
-      );
-      await controller.selectConversationAgent(agentOrchestrationTargetId);
-      controller.startNewConversationSession();
-
-      await controller.sendConversationMessage('Need a reply');
-      await _settleAsyncProjection();
-
-      expect(service.runtimeMessageCalls, 2);
-      expect(service.runtimeMessageRequests.first['model'], 'primary-model');
-      expect(service.runtimeMessageRequests.last['model'], 'fallback-model');
-      expect(
-        controller.effectiveAgentOrchestrationPolicy.commanderModelName,
-        'fallback-model',
-      );
-      expect(
-        (service.lastAdaptiveFlywheel?['main_agent'] as Map?)?['model'],
-        'fallback-model',
-      );
-      expect(controller.lastError, isEmpty);
-    },
-  );
-
-  test(
-    'daily conversation non-quota failure does not walk the priority list',
-    () async {
-      final service = FakeAgentService()
-        ..runtimeMessageResultQueue = [
-          {
-            'ok': false,
-            'error': {
-              'code': 'authorization_denied',
-              'message': 'Sign in required.',
-            },
-          },
-        ];
-      final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
-
-      await controller.scanTargets();
-      controller.orchestrationPolicyDraft = const AgentOrchestrationPolicy(
-        dailyConversationAgents: [
-          DailyConversationAgentAssignment(
-            id: 'dc-1',
-            agentId: 'codex',
-            modelName: 'primary-model',
-          ),
-          DailyConversationAgentAssignment(
-            id: 'dc-2',
-            agentId: 'codex',
-            modelName: 'fallback-model',
-          ),
-        ],
-        commanderAgentId: 'codex',
-        commanderModelName: 'primary-model',
-      ).toTomlConfig();
-      await controller.selectConversationAgent(agentOrchestrationTargetId);
-      controller.startNewConversationSession();
-
-      await controller.sendConversationMessage('Should not fall back');
-
-      expect(service.runtimeMessageCalls, 1);
-      expect(service.lastRuntimeMessageRequest['model'], 'primary-model');
-      expect(
-        controller.effectiveAgentOrchestrationPolicy.commanderModelName,
-        'primary-model',
-      );
-      expect(controller.lastError, isNotEmpty);
-    },
-  );
 
   test(
     'delayed native readback does not fail or disable a completed turn',
@@ -465,7 +147,7 @@ void main() {
             ..['nativeSessionId'] = 'ide-composer-1'
             ..['sourceKind'] = 'cursor-global-storage'
             ..['sourcePath'] =
-                '/fixture/location/Cursor/User/globalStorage/state.vscdb'
+                '/fixture-root/Cursor/User/globalStorage/state.vscdb'
             ..['messages'] = [
               {
                 'id': 'msg-user-ide',
@@ -529,7 +211,7 @@ void main() {
           )
           ..['nativeSessionId'] = 'ide-composer-2'
           ..['sourceKind'] = 'cursor-workspace-storage'
-          ..['sourcePath'] = '/fixture/location/workspace/state.vscdb'
+          ..['sourcePath'] = '/fixture-root/workspace/state.vscdb'
           ..['messages'] = [
             {
               'id': 'a1',
@@ -643,24 +325,6 @@ Future<void> _settleAsyncProjection() async {
   }
 }
 
-TargetCandidate _codexTarget({required bool runtimeBound}) {
-  return TargetCandidate(
-    target: 'codex',
-    label: 'Codex',
-    kind: 'cli',
-    status: 'detected',
-    configured: true,
-    confidence: 1,
-    binaryPath: runtimeBound ? '/synthetic/bin/codex' : null,
-    adapterStatus: 'implemented',
-    adapterCapabilities: const <String, dynamic>{
-      'conversationDriver': 'implemented',
-      'conversationProtocol': 'synthetic-native-protocol',
-      'conversationReadiness': 'ready',
-    },
-  );
-}
-
 TargetCandidate _cursorTarget({required bool runtimeBound}) {
   return TargetCandidate(
     target: 'cursor',
@@ -678,51 +342,4 @@ TargetCandidate _cursorTarget({required bool runtimeBound}) {
     },
     supportedActions: const ['runtime.message.send'],
   );
-}
-
-final class _PersistedMainAgentService extends FakeAgentService {
-  @override
-  Future<ClientStateGetResult> getClientState(ClientStateGetRequest request) {
-    return Future.value(
-      ClientStateGetResult(
-        collection: request.collection,
-        document: ClientStateDocument(
-          schemaVersion: clientStateSchemaVersion,
-          collection: request.collection,
-          content: const <String, Object?>{
-            'version': 1,
-            'main_agent': <String, Object?>{
-              'agent': 'codex',
-              'model': '',
-              'reasoning_effort': '',
-            },
-          },
-        ),
-      ),
-    );
-  }
-}
-
-final class _RecordingFlywheelService extends FakeAgentService {
-  Map<String, Object?>? lastAdaptiveFlywheel;
-
-  @override
-  Future<ClientStateSetResult> setClientState(ClientStateSetRequest request) {
-    if (request.collection == ClientStateCollection.adaptiveFlywheel) {
-      lastAdaptiveFlywheel = request.document.content;
-    }
-    return Future.value(
-      ClientStateSetResult(
-        collection: request.collection,
-        document: request.document,
-        activity: const ClientStateActivity(
-          schemaVersion: clientStateSchemaVersion,
-          eventId: 'test-event',
-          type: 'state.set',
-          target: 'adaptive-flywheel',
-          createdAt: '2026-08-03T00:00:00Z',
-        ),
-      ),
-    );
-  }
 }

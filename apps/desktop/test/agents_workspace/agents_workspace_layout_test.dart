@@ -1,3 +1,5 @@
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+
 import 'support/agents_workspace_test_harness.dart';
 
 void registerAgentsWorkspaceLayoutScenarios() {
@@ -175,9 +177,88 @@ void registerAgentsWorkspaceLayoutScenarios() {
     await tester.pumpAndSettle();
 
     expect(find.text('Back up conversations'), findsNothing);
-    expect(find.text('New Chat'), findsNothing);
+    expect(find.text('New Chat'), findsOneWidget);
+    expect(
+      find.byKey(const Key('agent-conversation-home-new-conversation')),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);
   });
+
+  testWidgets(
+    'agent workspace survives a window narrower than the sidebar minimum',
+    (tester) async {
+      final controller = ClientController();
+      addTearDown(controller.dispose);
+      controller.scannedTargets = [
+        TargetCandidate(
+          target: 'codex',
+          label: 'Codex',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 0.72,
+          adapterStatus: 'implemented',
+        ),
+      ];
+      controller.selectedConversationAgentId = 'codex';
+      controller.selectedConversationSessionId = 'session-1';
+      controller.conversationSessionsByAgent = {
+        'codex': const [
+          AgentConversationSession(
+            id: 'session-1',
+            agentId: 'codex',
+            title: 'Narrow window conversation',
+            createdAt: '2026-06-15T00:00:00Z',
+            updatedAt: '2026-06-15T00:00:00Z',
+            nativeSessionId: 'codex-session',
+            sourceKind: 'native-agent-history',
+            messages: [
+              AgentConversationMessage(
+                id: 'message-1',
+                role: 'assistant',
+                text: 'Body',
+                createdAt: '2026-06-15T00:00:00Z',
+              ),
+            ],
+          ),
+        ],
+      };
+
+      // 500 px leaves less room than the 196 px sidebar minimum after the chat
+      // minimum and chrome extents; the sidebar must floor at its minimum
+      // instead of feeding an inverted clamp range.
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: SizedBox(
+              width: 500,
+              height: 560,
+              child: AgentConversationWorkspace(
+                controller: controller,
+                targets: controller.scannedTargets,
+                scanning: false,
+                adding: false,
+                onAddTarget: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
+      final sidebar = find.byKey(const Key('agents-workspace-sidebar'));
+      expect(sidebar, findsOneWidget);
+      expect(tester.getSize(sidebar).width, agentsSidebarMinWidth);
+    },
+  );
 
   testWidgets('wide agent workspace uses sidebar and floating card', (
     tester,

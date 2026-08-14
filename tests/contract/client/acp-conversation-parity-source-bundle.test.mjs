@@ -18,6 +18,7 @@ const leaves = Object.freeze([
   "clients/app-server-client.mjs",
   "clients/copilot-sdk-client.mjs",
   "clients/pi-rpc-client.mjs",
+  "clients/stdio-rpc-client.mjs",
   "constants.mjs",
   "errors.mjs",
   "evidence.mjs",
@@ -25,13 +26,16 @@ const leaves = Object.freeze([
   "live.mjs",
   "native/acp-turn.mjs",
   "native/app-server.mjs",
+  "native/cursor-cli.mjs",
   "native/pi.mjs",
   "packaging.mjs",
+  "process-local-round.mjs",
   "process.mjs",
   "results.mjs",
   "round-facts.mjs",
   "run-round.mjs",
   "run.mjs",
+  "self-test/acp-oracles.mjs",
   "self-test/fake-runtime.mjs",
   "self-test/runner.mjs",
   "session-cleanup.mjs",
@@ -132,7 +136,7 @@ test("acp conversation parity facade is a thin serial CLI entry", async () => {
   assert.equal(typeof module.runAcpConversationParityCli, "function");
 });
 
-test("acp conversation parity owns exactly twenty-five bounded ordinary modules", async () => {
+test("acp conversation parity owns exactly twenty-nine bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {
@@ -184,7 +188,13 @@ test("self-test dry-run preserves passed status without live agent binaries", ()
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "passed");
   assert.equal(payload.cleanupVerified, true);
-  assert.equal(payload.strictRounds, 3);
+  assert.equal(payload.strictRounds, 1);
+  assert.equal(payload.verificationTurns, 2);
+  assert.equal(payload.verificationSessions, 1);
+  assert.equal(payload.openNew, true);
+  assert.equal(payload.exactResume, true);
+  assert.equal(payload.verificationWorkflowContract, true);
+  assert.equal(payload.exactResumeIdentityFailClosed, true);
   assert.equal(typeof payload.evidenceDigest, "string");
   assert.equal(payload.evidenceDigest.length, 64);
 });

@@ -1,44 +1,167 @@
 {
-  "schemaVersion": "lico-macos-app-icon-source-v1",
+  "schemaVersion": "lico-app-icon-source-v2",
   "source": {
-    "path": "apps/desktop/assets/brand/lico-app-icon.png",
-    "digest": "sha256:6f60b4e6daca5d5a59e391d36a17218b46a1df98b5ccf8c51df3f9e4b2736c56"
+    "path": "apps/desktop/assets/brand/lico-app-icon.svg",
+    "digest": "sha256:bbfdb808b9bba4ba24b43cc230bbbada7fd5825ef716d14a7f48a5adac7ea77b"
   },
   "icons": [
     {
       "size": 16,
       "path": "app_icon_16.png",
-      "digest": "sha256:9a0837498adfab20357e70fc7c1981d8496a238f54aa081f36e504443387bf0b"
+      "digest": "sha256:c3f62ccd274bf5a613c30340d735d752d54c5819c11bb5eadd287262a571501d"
     },
     {
       "size": 32,
       "path": "app_icon_32.png",
-      "digest": "sha256:866dc0786ab4c1c8f41745e898894bf154ad588386018bfb449b3dd4e5f5031f"
+      "digest": "sha256:284e2dc1318c51f9e0e442fa0c95a012086c5b47a051c7cb3fd93d5d07d26094"
     },
     {
       "size": 64,
       "path": "app_icon_64.png",
-      "digest": "sha256:3411b784636d7294625d6370b1c6c213f1c8236179438729152248e5403a3a34"
+      "digest": "sha256:0ce04b0cf38aa59d87cae977b72a643fccf761cc7645b6afc8664b7fb5e955ed"
     },
     {
       "size": 128,
       "path": "app_icon_128.png",
-      "digest": "sha256:bf0e4a7927ba4990206e5ea94f3902a2e023f3dcb9f4b92eec3ced67de075be0"
+      "digest": "sha256:8cd467f201bdd8191328606a5687f4c0eaf48c3e6c79c0e887fb44cadcf7c305"
     },
     {
       "size": 256,
       "path": "app_icon_256.png",
-      "digest": "sha256:894afe222546877f584fecb48b183073c9a3f7020a3233e9dcc7671cf5f677c7"
+      "digest": "sha256:712d68f1f8717eaba9ba8a0edff0101219fa98ccbf96798c6959f4db61d1c05b"
     },
     {
       "size": 512,
       "path": "app_icon_512.png",
-      "digest": "sha256:27ae39b4fb2fbfc3b4e8829d80a105d29de77721bfa04bdbb1da8b88e9d7b87c"
+      "digest": "sha256:b474e884c9af711f3c1994a70247e69484b793ff887cc82d90d875a9554c40cc"
     },
     {
       "size": 1024,
       "path": "app_icon_1024.png",
-      "digest": "sha256:6f60b4e6daca5d5a59e391d36a17218b46a1df98b5ccf8c51df3f9e4b2736c56"
+      "digest": "sha256:c00f8c4a65248fc0aa0e9548d33e2fe7bea16ea79e70ecedb76f142a3d2a240c"
     }
-  ]
+  ],
+  "deployed": {
+    "raster": {
+      "path": "apps/desktop/assets/brand/lico-app-icon.png",
+      "digest": "sha256:c00f8c4a65248fc0aa0e9548d33e2fe7bea16ea79e70ecedb76f142a3d2a240c"
+    },
+    "android": [
+      {
+        "size": 48,
+        "path": "apps/desktop/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+        "digest": "sha256:f977b76e2230da04c918857a071eb6481a9f0ece224a219c4eaca9d9525abe7a"
+      },
+      {
+        "size": 72,
+        "path": "apps/desktop/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+        "digest": "sha256:eb889f7a2763b0ba17748d86e820752529b0cbeabf4bdcab0db5cedbad8dac8d"
+      },
+      {
+        "size": 96,
+        "path": "apps/desktop/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+        "digest": "sha256:fb39fa0037cc965a7ae759ebbdbda59f3f3c1e902afb0e1e463beadaaa7c3fa6"
+      },
+      {
+        "size": 144,
+        "path": "apps/desktop/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+        "digest": "sha256:eca5c8bbecd007ee7889a4872aed65974c477c608c3c0f34f132c00d665dc6ab"
+      },
+      {
+        "size": 192,
+        "path": "apps/desktop/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        "digest": "sha256:c72e5e8db04c8ae8ad486dcbde8a1756d625d6c28f49f55449130bf66174ccb9"
+      }
+    ],
+    "ios": [
+      {
+        "size": 20,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20-1x.png",
+        "digest": "sha256:f17d6f10874d108c7bdbbed9114f8c5741a03321f60a3f7032ce1fd1827fa7c1"
+      },
+      {
+        "size": 40,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20-2x.png",
+        "digest": "sha256:60d73a7c570fc3b2de688b3c3e65981758839ebbbea20d81db89080d37f0bfd2"
+      },
+      {
+        "size": 60,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20-3x.png",
+        "digest": "sha256:fdcaf70c5f2da3f84b476df82e5efd1d789691da4392df6f13d44f400ccb8efd"
+      },
+      {
+        "size": 29,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29-1x.png",
+        "digest": "sha256:c3ab3538a70bfa24f23450fc40de19843a48d7ed03b68ada2f1654ed1e76f21f"
+      },
+      {
+        "size": 58,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29-2x.png",
+        "digest": "sha256:c0b68f11f49c32be7829d941ed3dabb0914ad0b589b08105544da066f83328ca"
+      },
+      {
+        "size": 87,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29-3x.png",
+        "digest": "sha256:594cb20075d7df347cd5e77d459561d77aec3cd8f16ae59d682d233c0ee7a05c"
+      },
+      {
+        "size": 40,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40-1x.png",
+        "digest": "sha256:60d73a7c570fc3b2de688b3c3e65981758839ebbbea20d81db89080d37f0bfd2"
+      },
+      {
+        "size": 80,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40-2x.png",
+        "digest": "sha256:f91e68d99540721408683310b24809c9d65503756223c33557114f64b8809951"
+      },
+      {
+        "size": 120,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40-3x.png",
+        "digest": "sha256:731b892232a7dd8e3ed78d0a19b75a6d42f9d99e5c203722eefddfb38cd29fda"
+      },
+      {
+        "size": 120,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60-2x.png",
+        "digest": "sha256:731b892232a7dd8e3ed78d0a19b75a6d42f9d99e5c203722eefddfb38cd29fda"
+      },
+      {
+        "size": 180,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60-3x.png",
+        "digest": "sha256:2fdf6847bbcefb6811adddc8e3918386a693c9be1bb0cdcc0c23bd968bd7859a"
+      },
+      {
+        "size": 76,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76-1x.png",
+        "digest": "sha256:858335ad04b1a5e489a771d250c753bfe35ebb91c8b9a680abc8f95d4782f47b"
+      },
+      {
+        "size": 152,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76-2x.png",
+        "digest": "sha256:e902a751a2868caaac0d61716aae0f373eee263e66d6a5c967bf065821a014fd"
+      },
+      {
+        "size": 167,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-83.5x83.5-2x.png",
+        "digest": "sha256:390fdf783235f623d0b753d438a21e6fb05a2bb2d86f99f2aea626f9ffcee85a"
+      },
+      {
+        "size": 1024,
+        "path": "apps/desktop/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024-1x.png",
+        "digest": "sha256:c00f8c4a65248fc0aa0e9548d33e2fe7bea16ea79e70ecedb76f142a3d2a240c"
+      }
+    ],
+    "windows": {
+      "sizes": [
+        16,
+        24,
+        32,
+        48,
+        64,
+        128,
+        256
+      ],
+      "path": "apps/desktop/windows/runner/resources/app_icon.ico",
+      "digest": "sha256:ce3f0853105430767d35abecd66854639021a1fdd1faa7305c0536027f16e18b"
+    }
+  }
 }

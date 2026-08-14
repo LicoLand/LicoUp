@@ -8,11 +8,8 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
-import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Desktop history paging plus user-driven session and agent selection.
@@ -20,16 +17,13 @@ mixin AgentConversationSessionController
     on
         AgentWorkspaceCoordinator,
         AgentConversationSessionStateController,
-        AgentConversationMobileSessionController,
-        AgentOrchestrationPolicyController,
-        GroupConversationController {
+        AgentConversationMobileSessionController {
   @override
   Future<void> refreshConversationCatalogInternal(
     String agentId, {
     required bool foreground,
   }) async {
     if (agentId.isEmpty ||
-        isAgentOrchestrationTargetId(agentId) ||
         agentWorkspaceMobileRuntime ||
         conversationSessionLoadingTargets.contains(agentId)) {
       return;
@@ -234,7 +228,6 @@ mixin AgentConversationSessionController
       return;
     }
     if (normalized.isEmpty ||
-        isAgentOrchestrationTargetId(normalized) ||
         isLoadingConversations ||
         conversationSessionLoadMoreTargets.contains(normalized) ||
         !(conversationSessionsHasMoreByAgent[normalized] ?? false)) {
@@ -249,12 +242,17 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
     agentWorkspaceNotifyStateChanged();
     final sequence = beginConversationRequest();
+    final completedLoadMoreCount =
+        conversationSessionLoadMoreCountsByAgent[normalized] ?? 0;
+    final pageSize = conversationSessionLoadMorePageSize(
+      completedLoadMoreCount,
+    );
     try {
       final offset = conversationSessionsByAgent[normalized]?.length ?? 0;
       final page = await readConversationSessionPage(
         normalized,
         offset: offset,
-        pageSize: conversationSessionPageSize,
+        pageSize: pageSize,
       );
       if (!canApplyConversationRequest(normalized, sequence)) {
         return;
@@ -273,6 +271,10 @@ mixin AgentConversationSessionController
       conversationSessionsHasMoreByAgent = {
         ...conversationSessionsHasMoreByAgent,
         normalized: page.hasMore,
+      };
+      conversationSessionLoadMoreCountsByAgent = {
+        ...conversationSessionLoadMoreCountsByAgent,
+        normalized: completedLoadMoreCount + 1,
       };
       if (selectedConversationAgentId == normalized) {
         conversationReconcileSelectedSession(
@@ -372,7 +374,6 @@ mixin AgentConversationSessionController
           replaceAll: true,
           updateStatus: false,
         );
-        await conversationFlushProjectionPersistence();
         return true;
       } catch (_) {
         // Durable history may still be committing. Retry without changing the
@@ -382,167 +383,40 @@ mixin AgentConversationSessionController
     return false;
   }
 
-  /// Reads one provider-native session back into both catalogs: the provider
-  /// keeps its ordinary native history entry, and the LicoUp orchestration
-  /// owner receives a cleaned participant-aware mirror of the same session.
-  Future<bool> reloadDualConversationSessionsAfterSend({
-    required String ownerAgentId,
-    required String localSessionId,
-    required String nativeAgentId,
-    required String nativeSessionId,
-    required String nativeAgentLabel,
-  }) async {
-    final owner = ownerAgentId.trim();
-    final localId = localSessionId.trim();
-    final nativeAgent = nativeAgentId.trim();
-    final nativeId = nativeSessionId.trim();
-    if (owner.isEmpty ||
-        localId.isEmpty ||
-        nativeAgent.isEmpty ||
-        nativeId.isEmpty) {
-      return false;
-    }
-    const retryDelays = <Duration>[
-      Duration.zero,
-      Duration(milliseconds: 200),
-      Duration(milliseconds: 400),
-      Duration(milliseconds: 800),
-      Duration(milliseconds: 1600),
-      Duration(milliseconds: 3200),
-    ];
-    for (final delay in retryDelays) {
-      if (delay > Duration.zero) {
-        await Future<void>.delayed(delay);
-      }
-      if (agentWorkspaceDisposed) return false;
-      try {
-        final page = await readConversationSessionPage(
-          nativeAgent,
-          sessionId: nativeId,
-          offset: 0,
-          pageSize: 1,
-        );
-        AgentConversationSession? nativeSession;
-        for (final session in page.sessions) {
-          final sessionNativeId = session.nativeSessionId.trim().isNotEmpty
-              ? session.nativeSessionId.trim()
-              : session.id.trim();
-          if (sessionNativeId == nativeId) {
-            nativeSession = session;
-            break;
-          }
-        }
-        if (nativeSession == null) continue;
-
-        conversationCommitCatalog(
-          nativeAgent,
-          ConversationSessionPage(
-            sessions: mergeConversationSessionsByUpdatedAt(
-              conversationSessionsByAgent[nativeAgent] ?? const [],
-              [nativeSession],
-            ),
-            hasMore: conversationSessionsHasMoreByAgent[nativeAgent] ?? false,
-          ),
-          replaceAll: true,
-          updateStatus: false,
-        );
-        final mirrored = await conversationCommitOrchestrationMirror(
-          ownerAgentId: owner,
-          localSessionId: localId,
-          nativeSession: nativeSession,
-          mainAgentId: nativeAgent,
-          mainAgentLabel: nativeAgentLabel,
-        );
-        await conversationFlushProjectionPersistence();
-        return mirrored;
-      } catch (_) {
-        // Provider history may be committed shortly after the turn result.
-        // The already visible local turn remains usable during bounded retry.
-      }
-    }
-    return false;
-  }
-
   void selectConversationSession(String sessionId) {
-    conversationClearNativeSessionPending(selectedConversationAgentId);
-    abandonNewConversationDraft(selectedConversationAgentId);
-    clearConversationWorkingDirectoryOverride();
-    selectedConversationSessionId = sessionId;
-    if (selectedConversationIsOrchestration) {
-      final session = selectedConversationSession;
-      final mainId =
-          groupConversationRoster.mainAgentId?.trim().isNotEmpty == true
-          ? groupConversationRoster.mainAgentId!.trim()
-          : effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
-      if (session != null && mainId.isNotEmpty) {
-        unawaited(
-          rememberGroupAgentSession(
-            agentId: mainId,
-            nativeSessionId: session.nativeSessionId,
-            sourcePath: session.sourcePath,
-            workingDirectory: session.workingDirectory,
-            localOrchestrationSessionId: session.id,
-          ),
-        );
-      } else if (sessionId.trim().isNotEmpty) {
-        unawaited(
-          rememberGroupAgentSession(
-            agentId: '',
-            localOrchestrationSessionId: sessionId,
-          ),
-        );
-      }
+    final normalizedSessionId = sessionId.trim();
+    final activeNativeSessionId = sendingConversationNativeSessionId.trim();
+    final selectedAgentId =
+        selectedConversationAgent?.target.trim() ??
+        selectedConversationAgentId.trim();
+    final selectsActiveNewConversation =
+        preparingNewConversation &&
+        isSendingConversationMessage &&
+        selectedAgentId == sendingConversationAgentId.trim() &&
+        selectedConversationSessions.any((session) {
+          if (session.id.trim() != normalizedSessionId) return false;
+          final nativeSessionId = session.nativeSessionId.trim();
+          return (sendingConversationSessionId.trim().isNotEmpty &&
+                  session.id.trim() == sendingConversationSessionId.trim()) ||
+              (activeNativeSessionId.isNotEmpty &&
+                  (nativeSessionId == activeNativeSessionId ||
+                      session.id.trim() == activeNativeSessionId));
+        });
+    if (!selectsActiveNewConversation) {
+      conversationClearNativeSessionPending(selectedConversationAgentId);
+      abandonNewConversationDraft(selectedConversationAgentId);
     }
+    clearConversationWorkingDirectoryOverride();
+    selectedConversationSessionId = normalizedSessionId;
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
-  }
-
-  /// Re-open the last main/subagent-bound group thread when returning to Lico.
-  Future<void> _restoreGroupConversationContinuity() async {
-    if (!selectedConversationIsOrchestration) return;
-    final owner = agentOrchestrationTargetId;
-    final sessions = conversationSessionsByAgent[owner] ?? const [];
-    final localId = groupConversationLastLocalSessionId.trim();
-    if (localId.isNotEmpty) {
-      for (final session in sessions) {
-        if (session.id.trim() != localId) continue;
-        abandonNewConversationDraft(owner);
-        clearConversationWorkingDirectoryOverride();
-        selectedConversationSessionId = localId;
-        agentWorkspaceNotifyConversationStructureChanged();
-        return;
-      }
-    }
-    final mainId =
-        groupConversationRoster.mainAgentId?.trim().isNotEmpty == true
-        ? groupConversationRoster.mainAgentId!.trim()
-        : effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
-    final nativeId =
-        groupConversationBindingFor(mainId)?.nativeSessionId.trim() ?? '';
-    if (nativeId.isEmpty) return;
-    for (final session in sessions) {
-      if (session.nativeSessionId.trim() != nativeId) continue;
-      abandonNewConversationDraft(owner);
-      clearConversationWorkingDirectoryOverride();
-      selectedConversationSessionId = session.id;
-      agentWorkspaceNotifyConversationStructureChanged();
-      return;
-    }
+    agentWorkspaceRecordCurrentAgentView();
   }
 
   String get selectedConversationWorkingDirectory {
-    final agent = selectedConversationIsOrchestration
-        ? (agentOrchestrationManagerTarget ??
-              agentOrchestrationConfiguredManagerTarget)
-        : selectedConversationAgent;
-    if (agent == null) {
-      return selectedConversationIsOrchestration
-          ? localConversationWorkingDirectoryFallback(
-              agentId: agentOrchestrationTargetId,
-            )
-          : '';
-    }
+    final agent = selectedConversationAgent;
+    if (agent == null) return '';
     if (agent.hasValidVirtualMachineConnection) {
       return agent.remoteWorkingDirectory.trim();
     }
@@ -594,20 +468,14 @@ mixin AgentConversationSessionController
   /// must stay clickable — never locked — so the user can pick a project.
   /// Sending a turn does not lock the capsule; the bind applies to later turns.
   bool get canSelectNewConversationWorkingDirectory {
-    final agent = selectedConversationIsOrchestration
-        ? (agentOrchestrationManagerTarget ??
-              agentOrchestrationConfiguredManagerTarget)
-        : selectedConversationAgent;
+    final agent = selectedConversationAgent;
     return agent != null &&
         !agentWorkspaceMobileRuntime &&
         !agent.hasValidVirtualMachineConnection;
   }
 
   void selectNewConversationWorkingDirectory(String path) {
-    final agent = selectedConversationIsOrchestration
-        ? (agentOrchestrationManagerTarget ??
-              agentOrchestrationConfiguredManagerTarget)
-        : selectedConversationAgent;
+    final agent = selectedConversationAgent;
     if (agent == null || !canSelectNewConversationWorkingDirectory) {
       return;
     }
@@ -649,13 +517,9 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyStateChanged();
   }
 
-  /// Drops a pending next-turn working-directory bind for the selected agent
-  /// (manager agent when orchestration is selected).
+  /// Drops a pending next-turn working-directory bind for the selected agent.
   void clearConversationWorkingDirectoryOverride() {
-    final agent = selectedConversationIsOrchestration
-        ? (agentOrchestrationManagerTarget ??
-              agentOrchestrationConfiguredManagerTarget)
-        : selectedConversationAgent;
+    final agent = selectedConversationAgent;
     final key = agent?.target.trim() ?? '';
     if (key.isEmpty || !newConversationWorkingDirectories.containsKey(key)) {
       return;
@@ -731,14 +595,19 @@ mixin AgentConversationSessionController
     }
     conversationClearNativeSessionPending(agent.target);
     conversationPrimeNewConversationDraft();
-    conversationTurnProcessStateByAgent = {
-      for (final entry in conversationTurnProcessStateByAgent.entries)
-        if (entry.key != agent.target) entry.key: entry.value,
-    };
-    liveConversationMessagesByAgent = {
-      for (final entry in liveConversationMessagesByAgent.entries)
-        if (entry.key != agent.target) entry.key: entry.value,
-    };
+    final clearedScopes = conversationLiveScopeKeysForAgent(
+      agent.target,
+    ).toSet();
+    if (clearedScopes.isNotEmpty) {
+      conversationTurnProcessStateByScope = {
+        for (final entry in conversationTurnProcessStateByScope.entries)
+          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
+      };
+      liveConversationMessagesByScope = {
+        for (final entry in liveConversationMessagesByScope.entries)
+          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
+      };
+    }
     selectedConversationSessionId = '';
     beginNewConversationDraft(agent.target);
     lastError = '';
@@ -750,6 +619,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged(immediateActive: false);
+    agentWorkspaceRecordCurrentAgentView();
   }
 
   Future<void> deleteConversationSession(String sessionId) async {
@@ -768,31 +638,6 @@ mixin AgentConversationSessionController
 
   Future<void> selectConversationAgent(String agentId) async {
     final normalizedAgentId = agentId.trim();
-    if (isAgentOrchestrationTargetId(normalizedAgentId)) {
-      if (!orchestrationAvailable) {
-        return;
-      }
-      acknowledgeConversationTabWorkFinished(agentOrchestrationTargetId);
-      selectedConversationAgentId = agentOrchestrationTargetId;
-      stopConversationRefreshScheduling();
-      unawaited(
-        ensureGroupConversationReady().then((_) async {
-          if (agentWorkspaceDisposed) return;
-          await _restoreGroupConversationContinuity();
-          if (!agentWorkspaceDisposed) {
-            agentWorkspaceNotifyStateChanged();
-          }
-        }),
-      );
-      agentWorkspaceSetLocalizedStatusMessage(
-        '已切换到默认智能体编排。',
-        'Switched to the default agent orchestration.',
-      );
-      statusCaption = 'Agent orchestration';
-      agentWorkspaceNotifyConversationStructureChanged();
-      agentWorkspaceNotifyStateChanged();
-      return;
-    }
     if (normalizedAgentId.isEmpty) {
       return;
     }
@@ -825,6 +670,7 @@ mixin AgentConversationSessionController
       acknowledgeConversationTabWorkFinished(normalizedAgentId);
       conversationAttentionContextChanged();
       agentWorkspaceNotifyStateChanged();
+      agentWorkspaceRecordCurrentAgentView();
       return;
     }
 
@@ -841,6 +687,7 @@ mixin AgentConversationSessionController
       agentWorkspaceNotifyStateChanged();
       stopConversationRefreshScheduling();
       await loadConversationSessions(normalizedAgentId);
+      agentWorkspaceRecordCurrentAgentView();
       return;
     }
     // Desktop lands on the new-conversation home instead of auto-opening the
@@ -848,6 +695,7 @@ mixin AgentConversationSessionController
     conversationPrimeNewConversationDraft();
     selectedConversationSessionId = '';
     beginNewConversationDraft(normalizedAgentId);
+    agentWorkspaceRecordCurrentAgentView();
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
@@ -858,28 +706,17 @@ mixin AgentConversationSessionController
     if ((conversationSessionsByAgent[normalizedAgentId] ?? const [])
         .isNotEmpty) {
       conversationAttentionContextChanged();
+      agentWorkspaceRecordCurrentAgentView();
       return;
     }
     await loadConversationSessions(normalizedAgentId);
+    agentWorkspaceRecordCurrentAgentView();
   }
 
   Future<void> loadConversationSessions(String agentId) async {
     final normalizedAgentId = agentId.trim();
     if (normalizedAgentId.isEmpty ||
         conversationSessionLoadingTargets.contains(normalizedAgentId)) {
-      return;
-    }
-    if (isAgentOrchestrationTargetId(normalizedAgentId)) {
-      if (!orchestrationAvailable) {
-        return;
-      }
-      stopConversationRefreshScheduling();
-      conversationSessionsHasMoreByAgent = {
-        ...conversationSessionsHasMoreByAgent,
-        agentOrchestrationTargetId: false,
-      };
-      agentWorkspaceNotifyConversationStructureChanged();
-      agentWorkspaceNotifyStateChanged();
       return;
     }
     if (agentWorkspaceMobileRuntime) {
@@ -922,6 +759,10 @@ mixin AgentConversationSessionController
         updateStatus: selectedConversationAgentId == normalizedAgentId,
         notifyChanges: false,
       );
+      conversationSessionLoadMoreCountsByAgent = {
+        ...conversationSessionLoadMoreCountsByAgent,
+        normalizedAgentId: 0,
+      };
     } catch (_) {
       if (selectedConversationAgentId == normalizedAgentId) {
         lastError = 'native_history_load_failed';
@@ -941,6 +782,7 @@ mixin AgentConversationSessionController
     } finally {
       conversationSessionLoadingTargets.remove(normalizedAgentId);
       if (selectedConversationAgentId == normalizedAgentId) {
+        _confirmCurrentViewRestore(normalizedAgentId);
         agentWorkspaceNotifyConversationStructureChanged();
         agentWorkspaceNotifyStateChanged();
         conversationAttentionContextChanged(immediateActive: false);
@@ -948,8 +790,63 @@ mixin AgentConversationSessionController
     }
   }
 
-  Future<void> refreshConversationSessions(String agentId) {
-    return refreshConversationCatalogInternal(agentId.trim(), foreground: true);
+  /// Confirms the globally restored session against the loaded history once
+  /// the session list arrives: reopen the restored session when it still
+  /// exists, otherwise keep the newest session the reconciliation already
+  /// selected.
+  void _confirmCurrentViewRestore(String agentId) {
+    final restoreSessionId = currentViewRestoreSessionId.trim();
+    if (restoreSessionId.isEmpty) {
+      return;
+    }
+    currentViewRestoreSessionId = '';
+    final sessions = conversationSessionsByAgent[agentId] ?? const [];
+    AgentConversationSession? restored;
+    for (final session in sessions) {
+      if (session.id == restoreSessionId ||
+          session.nativeSessionId.trim() == restoreSessionId) {
+        restored = session;
+        break;
+      }
+    }
+    if (restored != null) {
+      setSelectedConversationSessionId(agentId, restored.id);
+    }
+  }
+
+  /// Applies an Agent selection from the global current-view snapshot.
+  bool restoreCurrentAgentView(String agentId, String sessionId) {
+    final normalizedAgentId = agentId.trim();
+    if (normalizedAgentId.isEmpty) return false;
+    final visibleTargets = scannedTargets
+        .where((target) => target.isConversationAgent)
+        .toList(growable: false);
+    if (!visibleTargets.any((target) => target.target == normalizedAgentId)) {
+      return false;
+    }
+    selectedConversationAgentId = normalizedAgentId;
+    final normalizedSessionId = sessionId.trim();
+    if (normalizedSessionId.isNotEmpty) {
+      final loaded = conversationSessionsByAgent[normalizedAgentId] ?? const [];
+      if (loaded.any((session) => session.id == normalizedSessionId)) {
+        setSelectedConversationSessionId(
+          normalizedAgentId,
+          normalizedSessionId,
+        );
+      } else {
+        currentViewRestoreSessionId = normalizedSessionId;
+        unawaited(loadConversationSessions(normalizedAgentId));
+      }
+    }
+    lastError = '';
+    agentWorkspaceNotifyConversationStructureChanged();
+    agentWorkspaceNotifyStateChanged();
+    return true;
+  }
+
+  Future<void> refreshConversationSessions(String agentId) async {
+    await refreshConversationCatalogInternal(agentId.trim(), foreground: true);
+    conversationAttentionContextChanged(immediateActive: false);
   }
 
   /// Maps a display session id to the stable native session id the native

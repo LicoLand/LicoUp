@@ -1,7 +1,6 @@
 use super::binaries::{cursor_binary_supports_acp, find_target_binary_with_source};
 use super::catalog::{
     TargetCandidate, TargetDef, adapter_capabilities_for, candidate_runtime_is_available,
-    target_supports_skill_install,
 };
 use super::manual::ManualTarget;
 use super::model_catalog::{empty_model_catalog, model_catalog_for_target};
@@ -161,9 +160,6 @@ pub(super) fn scan_target_with_manual(
     };
 
     let mut supported_actions = Vec::new();
-    if target_supports_skill_install(def.id) {
-        supported_actions.push("skill.install".to_string());
-    }
     if runtime_available {
         supported_actions.push("runtime.message.send".to_string());
     }

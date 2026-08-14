@@ -53,6 +53,7 @@ export class StdioRpcClient {
     this.nextRequest = 1;
     this.child = null;
     this.pending = null;
+    this.controlPending = null;
     this.stdoutBuffer = Buffer.alloc(0);
     this.stderrBytes = 0;
     this.closed = false;
@@ -120,6 +121,82 @@ export class StdioRpcClient {
       terminalOrdered: terminal.terminalOrdered,
       eventTranscriptMatches: terminal.eventTranscriptMatches,
     };
+  }
+
+  /**
+   * Issue an in-flight control request (e.g. steer) while a streaming send is
+   * pending. The host runs conversation sends on worker threads, so steer can
+   * land against the live process-local session before the turn completes.
+   */
+  async controlWhileStreaming(method, params = {}) {
+    requireFact(this.pending?.streaming === true, "stdio_rpc_stream_inactive");
+    requireFact(this.controlPending === null, "stdio_rpc_concurrent_control_unsupported");
+    requireFact(validIdentifier(method), "stdio_rpc_method_invalid");
+    requireFact(params && typeof params === "object" && !Array.isArray(params), "stdio_rpc_params_invalid");
+    const requestId = `request-${this.nextRequest++}`;
+    const frame = boundedFrame({
+      protocol,
+      id: requestId,
+      workflowId: this.workflowId,
+      method,
+      params,
+    }, this.maxOutputBytes);
+    let resolvePending;
+    let rejectPending;
+    const promise = new Promise((resolve, reject) => {
+      resolvePending = resolve;
+      rejectPending = reject;
+    });
+    const timer = setTimeout(
+      () => this.#fail(new AcceptanceError("stdio_rpc_control_timeout")),
+      this.timeoutMs,
+    );
+    this.controlPending = {
+      requestId,
+      timer,
+      resolve: resolvePending,
+      reject: rejectPending,
+    };
+    this.child.stdin.write(frame, (error) => {
+      if (error) this.#fail(new AcceptanceError("stdio_rpc_write_failed"));
+    });
+    return promise;
+  }
+
+  waitForStreamEvent(predicate, timeoutMs = this.timeoutMs) {
+    requireFact(this.pending?.streaming === true, "stdio_rpc_stream_inactive");
+    requireFact(typeof predicate === "function", "stdio_rpc_wait_predicate_invalid");
+    const deadline = Date.now() + Math.max(1_000, Number(timeoutMs) || this.timeoutMs);
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        if (this.closed) {
+          reject(new AcceptanceError("stdio_rpc_host_unavailable"));
+          return;
+        }
+        const pending = this.pending;
+        if (!pending?.streaming) {
+          reject(new AcceptanceError("stdio_rpc_stream_inactive"));
+          return;
+        }
+        const match = pending.events.find((event) => {
+          try {
+            return predicate(event) === true;
+          } catch {
+            return false;
+          }
+        });
+        if (match) {
+          resolve(match);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          reject(new AcceptanceError("stdio_rpc_stream_event_timeout"));
+          return;
+        }
+        setTimeout(check, 25);
+      };
+      check();
+    });
   }
 
   async shutdown() {
@@ -225,19 +302,24 @@ export class StdioRpcClient {
   }
 
   #acceptFrame(frame, bytes) {
+    requireFact(frame?.protocol === protocol && frame?.workflowId === this.workflowId, "stdio_rpc_identity_mismatch");
+    if (this.controlPending && frame?.id === this.controlPending.requestId) {
+      this.#acceptControlFrame(frame);
+      return;
+    }
     const pending = this.pending;
     requireFact(Boolean(pending), "stdio_rpc_unsolicited_frame");
     requireFact(pending.terminalReceived !== true, "stdio_rpc_frame_after_terminal");
-    requireFact(
-      frame?.protocol === protocol
-        && frame?.id === pending.requestId
-        && frame?.workflowId === this.workflowId,
-      "stdio_rpc_identity_mismatch",
-    );
+    requireFact(frame?.id === pending.requestId, "stdio_rpc_identity_mismatch");
     pending.observedBytes += bytes;
     requireFact(pending.observedBytes <= this.maxOutputBytes, "stdio_rpc_output_limit");
     if (!pending.streaming) {
-      requireFact(!Object.hasOwn(frame, "kind"), "stdio_rpc_invalid_response");
+      // Conversation ops other than streamed send complete as a single
+      // kind=terminal frame; catalog/shutdown keep the legacy kind-less shape.
+      if (Object.hasOwn(frame, "kind")) {
+        requireFact(frame.kind === "terminal", "stdio_rpc_invalid_response");
+        requireFact(Number.isSafeInteger(frame.sequence), "stdio_rpc_sequence_invalid");
+      }
       this.#completePending(() => {
         if (frame.ok === true && frame.result && typeof frame.result === "object") {
           pending.resolve(frame.result);
@@ -265,6 +347,21 @@ export class StdioRpcClient {
     setImmediate(() => this.#finalizeStreaming(pending.requestId));
   }
 
+  #acceptControlFrame(frame) {
+    const pending = this.controlPending;
+    requireFact(Boolean(pending), "stdio_rpc_unsolicited_frame");
+    if (Object.hasOwn(frame, "kind")) {
+      requireFact(frame.kind === "terminal", "stdio_rpc_invalid_response");
+    }
+    this.controlPending = null;
+    clearTimeout(pending.timer);
+    if (frame.ok === true && frame.result && typeof frame.result === "object") {
+      pending.resolve(frame.result);
+      return;
+    }
+    pending.reject(new AcceptanceError(responseErrorCode(frame)));
+  }
+
   #acceptConversationEvent(pending, event) {
     requireFact(validOpaqueIdentifier(event.sessionId), "stdio_rpc_event_session_id_invalid");
     requireFact(validOpaqueIdentifier(event.turnId), "stdio_rpc_event_turn_id_invalid");
@@ -277,12 +374,26 @@ export class StdioRpcClient {
     }
     requireFact(pending.dispatchCompletedSeen !== true, "stdio_rpc_event_after_completed");
     requireFact(typeof event.event === "string" && event.event.length > 0, "stdio_rpc_event_invalid");
+    const ignoredLifecycle = new Set([
+      "dispatch.turn.bound",
+      "agent.turn.processing",
+      "agent.turn.responding",
+    ]);
+    if (ignoredLifecycle.has(event.event)) {
+      return;
+    }
     if (!pending.startedSeen) {
-      requireFact(event.event === "dispatch.turn.started", "stdio_rpc_event_order_invalid");
+      requireFact(
+        event.event === "dispatch.turn.started" || event.event === "agent.turn.accepted",
+        "stdio_rpc_event_order_invalid",
+      );
       pending.startedSeen = true;
       return;
     }
-    requireFact(event.event !== "dispatch.turn.started", "stdio_rpc_event_duplicate");
+    requireFact(
+      event.event !== "dispatch.turn.started" && event.event !== "agent.turn.accepted",
+      "stdio_rpc_event_duplicate",
+    );
     if (event.event === "agent.message.chunk") {
       requireFact(!pending.completedSeen, "stdio_rpc_event_order_invalid");
       const text = event?.payload?.text;
@@ -322,7 +433,10 @@ export class StdioRpcClient {
       requireFact(sessionId.length > 0, "stdio_rpc_terminal_session_id_invalid");
       requireFact(validOpaqueIdentifier(result.turnId), "stdio_rpc_terminal_turn_id_invalid");
       requireFact(result.threadId === sessionId, "stdio_rpc_terminal_identity_mismatch");
-      requireFact(result.turnStatus === "completed", "stdio_rpc_terminal_status_invalid");
+      requireFact(
+        result.turnStatus === "completed" || result.turnStatus === "interrupted",
+        "stdio_rpc_terminal_status_invalid",
+      );
       requireFact(result.turnId === pending.eventTurnId, "stdio_rpc_terminal_identity_mismatch");
       requireFact(sessionId === pending.eventSessionId, "stdio_rpc_terminal_identity_mismatch");
       requireFact(!this.completedTurnIds.has(result.turnId), "stdio_rpc_turn_id_reused");
@@ -331,8 +445,13 @@ export class StdioRpcClient {
       requireFact(pending.dispatchCompletedSeen, "stdio_rpc_dispatch_completed_missing");
       requireFact(typeof result.output === "string", "stdio_rpc_terminal_output_invalid");
       const chunks = pending.chunks.join("");
-      requireFact(chunks === pending.completedOutput, "stdio_rpc_chunk_output_mismatch");
-      requireFact(chunks === result.output, "stdio_rpc_terminal_output_mismatch");
+      const completedOutput = pending.completedOutput;
+      const chunkMatchesCompleted = chunks === completedOutput;
+      const chunkMatchesTerminal = chunks === result.output;
+      requireFact(
+        chunkMatchesCompleted && chunkMatchesTerminal,
+        "stdio_rpc_chunk_output_mismatch",
+      );
       this.completedTurnIds.add(result.turnId);
       const events = Object.freeze([...pending.events]);
       this.#completePending(() => pending.resolve({
@@ -342,7 +461,7 @@ export class StdioRpcClient {
         streamingSeen: true,
         structuredSeen: pending.completedSeen,
         terminalOrdered: true,
-        eventTranscriptMatches: true,
+        eventTranscriptMatches: chunkMatchesCompleted && chunkMatchesTerminal,
       }));
     } catch (error) {
       this.#fail(error instanceof AcceptanceError
@@ -366,10 +485,17 @@ export class StdioRpcClient {
 
   #failPending(error) {
     const pending = this.pending;
-    if (!pending) return;
-    this.pending = null;
-    clearTimeout(pending.timer);
-    pending.reject(error);
+    if (pending) {
+      this.pending = null;
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    const control = this.controlPending;
+    if (control) {
+      this.controlPending = null;
+      clearTimeout(control.timer);
+      control.reject(error);
+    }
   }
 
   #waitForClose() {

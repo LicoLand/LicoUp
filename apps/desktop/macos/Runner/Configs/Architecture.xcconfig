@@ -1,0 +1,4 @@
+// LicoUp for macOS supports Apple Silicon only.
+ARCHS = arm64
+EXCLUDED_ARCHS = x86_64
+ONLY_ACTIVE_ARCH = YES

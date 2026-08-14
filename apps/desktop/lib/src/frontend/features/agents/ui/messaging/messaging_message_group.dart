@@ -201,7 +201,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                       constraints: const BoxConstraints(maxWidth: 220),
                       child: Tooltip(
                         message: conversationId,
-                        waitDuration: const Duration(milliseconds: 400),
+                        waitDuration: LicoMotion.tooltipWait,
                         child: Text(
                           conversationId,
                           key: const Key(

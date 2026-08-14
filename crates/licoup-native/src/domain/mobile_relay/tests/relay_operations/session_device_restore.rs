@@ -21,7 +21,7 @@ fn read_only_session_binding_uses_packaged_agents_without_send_readiness() {
 #[test]
 fn completed_authority_generation_cannot_be_overwritten_by_pre_reset_snapshot() {
     let dir = temp_dir("mobile-relay-authority-generation-cas");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut durable = load_config().unwrap();
     let mut pre_reset = durable.clone();
     begin_kt_authority_reset().unwrap();
@@ -49,7 +49,7 @@ fn completed_authority_generation_cannot_be_overwritten_by_pre_reset_snapshot() 
 #[test]
 fn selected_public_paired_device_restores_internal_token_without_exposure() {
     let dir = temp_dir("mobile-relay-select-redacted-device");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     let store = Arc::new(EphemeralSecretStore::new());
     config["pairingId"] = json!("pair-active");

@@ -1,4 +1,3 @@
-import { validateLinuxVmPackageReceipt } from "../../lib/secure-mesh-linux-evidence.mjs";
 import { digestPattern, producer } from "../constants.mjs";
 import { ReceiptValidationError } from "../errors.mjs";
 import { assertReceiptPrivacy } from "../privacy.mjs";
@@ -6,7 +5,6 @@ import { requireValue, text, validatePolicyBindings } from "../util.mjs";
 import { validateConfig } from "../validate-config.mjs";
 import { validateAndroidEvidence } from "../validate-evidence/android.mjs";
 import { validateCommonEvidence } from "../validate-evidence/common.mjs";
-import { validateLinuxEvidence } from "../validate-evidence/linux.mjs";
 import { validateMacosEvidence } from "../validate-evidence/macos.mjs";
 import { emptyReceipt } from "./empty.mjs";
 
@@ -21,7 +19,6 @@ export function buildCanonicalReceiptReport({
   targetInputs,
   policyBindings,
   nowMs = Date.now(),
-  linuxValidator = validateLinuxVmPackageReceipt,
 }) {
   validateConfig(config);
   requireValue(Array.isArray(selectedTargetIds) && selectedTargetIds.length > 0,
@@ -74,9 +71,7 @@ export function buildCanonicalReceiptReport({
       };
       const facts = spec.platform === "macos"
         ? validateMacosEvidence(input.payload, context)
-        : spec.platform === "android"
-          ? validateAndroidEvidence(input.payload, context)
-          : validateLinuxEvidence(input.payload, context, linuxValidator);
+        : validateAndroidEvidence(input.payload, context);
       Object.assign(receipt, common, facts);
       receipt.installReceiptReady =
         receipt.installReady === true && receipt.launchReady === true &&
