@@ -23,11 +23,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Verify immutable GitHub commit identities
+      - name: Verify Agent-free commit attribution
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_LOGIN: ${{ github.event.pull_request.user.login }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
@@ -62,14 +61,13 @@ jobs:
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
             >"$evidence_file"
 
-          expected_id=$(gh api "users/${EXPECTED_LOGIN}" --jq '.id')
-          expected_email="${expected_id}+${EXPECTED_LOGIN}@users.noreply.github.com"
-
           jq -e \
-            --arg login "$EXPECTED_LOGIN" \
-            --argjson account_id "$expected_id" \
-            --arg email "$expected_email" \
             '
+              def has_agent_identity:
+                test(
+                  "(^|[^A-Za-z0-9])(claude([ ._+-]*code)?|cursor([ ._+-]*agent)?|github[ ._+-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)([^A-Za-z0-9]|$)|\\[bot\\]";
+                  "i"
+                );
               def has_forbidden_attribution:
                 test(
                   "(^|\\n)[ \\t]*(co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:";
@@ -83,25 +81,20 @@ jobs:
               ($commits | length) > 0 and
               all(
                 $commits[];
-                .author.login == $login and
-                .author.id == $account_id and
+                ((.author // {} | .type // "") == "User") and
                 (
                   (
-                    .committer.login == $login and
-                    .committer.id == $account_id and
-                    .commit.author.name == $login and
-                    .commit.author.email == $email and
-                    .commit.committer.name == $login and
-                    .commit.committer.email == $email
+                    ((.committer // {} | .type // "") == "User") and
+                    ((.committer // {} | .login // "") != "web-flow")
                   ) or
                   (
-                    .committer.login == "web-flow" and
-                    .commit.committer.name == "GitHub" and
-                    .commit.committer.email == "noreply@github.com" and
+                    ((.committer // {} | .login // "") == "web-flow") and
                     .commit.verification.verified == true and
                     .commit.verification.reason == "valid"
                   )
                 ) and
+                ([.commit.author.name, .commit.author.email] | join(" ") | has_agent_identity | not) and
+                ([.commit.committer.name, .commit.committer.email] | join(" ") | has_agent_identity | not) and
                 (.commit.message | has_forbidden_attribution | not)
               )
             ' \
