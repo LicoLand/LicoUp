@@ -876,7 +876,7 @@ extension LicoStringsLabels on LicoStrings {
   String get planDocumentUnavailable =>
       isChinese ? '无法读取计划文件。' : 'The plan file could not be read.';
   String get active => isChinese ? '当前' : 'Active';
-  String get pairing => isChinese ? '配对' : 'Pairing';
+  String get pairing => isChinese ? '通信' : 'Communication';
   String get tapToGeneratePairingQr =>
       isChinese ? '点击生成配对码' : 'Tap to generate pairing code';
   String get pairingQrPlaceholder => isChinese ? '配对二维码' : 'Pairing QR code';

@@ -85,7 +85,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
                       section: entry,
                       label: _folderLabel(strings, entry),
                       icon: _folderIcon(entry),
-                      selected: section == entry,
+                      selected: entry == section,
                       onPressed: () => onSelectSection(entry),
                     ),
                     // The Settings destination expands in place, Arc-style:
