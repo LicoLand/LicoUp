@@ -3,7 +3,7 @@
 
 - Repository: `LicoLand/LicoUp`
 - Profile: `semver`
-- Current version: `0.1.0-alpha`
+- Current version: `0.1.1`
 
 ## Next release
 
