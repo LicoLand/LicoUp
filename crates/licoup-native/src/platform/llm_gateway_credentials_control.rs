@@ -149,7 +149,28 @@ fn handle_control_message(
     Ok(credentials.connected())
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn peer_uid_allowed(stream: &std::os::unix::net::UnixStream) -> bool {
+    use std::os::fd::AsRawFd;
+    let mut credentials = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut length = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let rc = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut credentials as *mut libc::ucred).cast(),
+            &mut length,
+        )
+    };
+    rc == 0 && credentials.uid == unsafe { libc::getuid() }
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
 fn peer_uid_allowed(stream: &std::os::unix::net::UnixStream) -> bool {
     use std::os::fd::AsRawFd;
     let mut uid = 0u32;
