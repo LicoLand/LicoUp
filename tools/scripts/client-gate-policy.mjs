@@ -44,6 +44,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:deps:audit",
   ]),
   "release-policy": freezeLane([
+    "client:promotion:self-test",
     "client:pricing:release-check",
     "client:pr:preflight:self-test",
     "client:verify:release-artifact-io:self-test",
