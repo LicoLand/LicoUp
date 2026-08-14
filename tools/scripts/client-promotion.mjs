@@ -56,6 +56,10 @@ export function inferPromotionBase(head) {
   reject("promotion_source_has_no_next_edge");
 }
 
+export function hasPromotableCommits(compareStatus) {
+  return compareStatus === "ahead" || compareStatus === "diverged";
+}
+
 function run(command, args, { capture = false, allowFailure = false } = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -165,7 +169,7 @@ function advance(head, base) {
     printReceipt({ ok: true, status: "already-promoted", head, base });
     return;
   }
-  if (status !== "ahead") reject("promotion_topology_not_ahead");
+  if (!hasPromotableCommits(status)) reject("promotion_topology_not_ahead");
   const pullRequest = openPullRequest(plan);
   const number = waitAndMerge(pullRequest);
   printReceipt({ ok: true, status: "merged", head, base, pullRequestNumber: number });
