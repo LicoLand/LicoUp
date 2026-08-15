@@ -338,16 +338,24 @@ function buildUpdateManifest({ tag, assetsRoot, repository }) {
   return Object.freeze({ generated: true });
 }
 
+export function releaseAssetQueryArgs(tag, repository) {
+  return [
+    "release",
+    "view",
+    tag,
+    "--repo",
+    repository,
+    "--json",
+    "assets",
+    "--jq",
+    ".assets | map({name, size, digest})",
+  ];
+}
+
 function verifyRemoteAssets({ tag, repository, assetsRoot }) {
-  const encodedTag = encodeURIComponent(tag);
   const remote = run(
     "gh",
-    [
-      "api",
-      `repos/${repository}/releases/tags/${encodedTag}`,
-      "--jq",
-      ".assets | map({name, size, digest})",
-    ],
+    releaseAssetQueryArgs(tag, repository),
     { capture: true },
   );
   const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), "lico-release-assets-"));
