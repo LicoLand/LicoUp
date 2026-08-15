@@ -231,6 +231,7 @@ run the fixed candidate checks:
 npm run repo:identity:install
 npm run repo:identity:verify
 npm run repo:docs
+npm run client:verify:plan
 git diff --check origin/nightly HEAD --
 node tools/scripts/docs-fast-promotion.mjs prevalidate --base origin/nightly
 ```
@@ -238,7 +239,10 @@ node tools/scripts/docs-fast-promotion.mjs prevalidate --base origin/nightly
 The prevalidation reads the full committed versions of every manifest file,
 requires regular files, and reuses the repository sensitive-extension and
 streaming sensitive-content policy. It reports only booleans and counts; it
-does not retain document content or machine paths.
+does not retain document content or machine paths. Before timing begins it also
+checks the existing Auditor requirement that the README pair explicitly labels
+English as normative and Simplified Chinese as localized, preventing a remote
+round trip for a known documentation-governance failure.
 
 From that detached candidate, start the fixed train with no additional
 arguments:
