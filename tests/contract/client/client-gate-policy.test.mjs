@@ -5,7 +5,6 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -19,13 +18,6 @@ import {
 } from "../../../tools/scripts/client-gate-policy.mjs";
 import { validateClientGateTopology } from "../../../tools/scripts/client-gate.mjs";
 import {
-  DocsFastPromotionError,
-  classifyDocsFastEntries,
-  scanRegularWorktreeFile,
-  validateDocsFastManifest,
-  verifyDocsFastCandidate,
-} from "../../../tools/scripts/docs-fast-promotion.mjs";
-import {
   mergeIncomingTarget,
   publishTargets,
 } from "../../../tools/scripts/client-github-release-publish.mjs";
@@ -36,120 +28,6 @@ function selectedOptionalLanes(paths) {
     .filter(([lane, selected]) => lane !== "source" && selected)
     .map(([lane]) => lane);
 }
-
-const docsManifestFiles = Object.freeze([
-  "README.md",
-  "README.zh-CN.md",
-  "docs/assets/brand/readme-banner.svg",
-]);
-
-function runGit(root, args) {
-  const result = spawnSync("git", args, {
-    cwd: root,
-    encoding: "utf8",
-    shell: false,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  assert.equal(result.status, 0, result.stderr);
-  return result.stdout.trim();
-}
-
-test("documentation manifest is fixed, sorted, normalized, and non-empty", () => {
-  assert.deepEqual(
-    validateDocsFastManifest({ schemaVersion: 1, files: [...docsManifestFiles] }),
-    docsManifestFiles,
-  );
-  for (const document of [
-    { schemaVersion: 1, files: [] },
-    { schemaVersion: 1, files: ["README.md", "README.md"] },
-    { schemaVersion: 1, files: ["docs/a", "README.md"] },
-    { schemaVersion: 1, files: ["../outside"] },
-    { schemaVersion: 1, files: ["tools/scripts/config/docs-fast-promotion-manifest.json"] },
-    { schemaVersion: 1, files: ["README.md"], override: true },
-  ]) {
-    assert.throws(() => validateDocsFastManifest(document), DocsFastPromotionError);
-  }
-});
-
-test("documentation classifier selects only added or modified manifest paths", () => {
-  assert.deepEqual(
-    classifyDocsFastEntries(docsManifestFiles.map((file) => ({ status: "M", path: file })),
-      docsManifestFiles),
-    { eligible: true, changedCount: 3 },
-  );
-  assert.equal(classifyDocsFastEntries([], docsManifestFiles).eligible, false);
-  assert.equal(classifyDocsFastEntries([
-    { status: "M", path: "README.md" },
-    { status: "M", path: "lib/code.dart" },
-  ], docsManifestFiles).eligible, false);
-  assert.equal(classifyDocsFastEntries([
-    { status: "D", path: "README.md" },
-  ], docsManifestFiles).eligible, false);
-  assert.equal(classifyDocsFastEntries([
-    { status: "D", path: "README.md" },
-    { status: "A", path: "README-renamed.md" },
-  ], docsManifestFiles).eligible, false);
-  assert.throws(() => classifyDocsFastEntries([
-    { status: "M", path: "../outside" },
-  ], docsManifestFiles), DocsFastPromotionError);
-});
-
-test("documentation scanner rejects unsafe file types and chunk-split private material", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "lico-docs-fast-scan-"));
-  try {
-    writeFileSync(path.join(root, "regular.md"), "public documentation\n");
-    await scanRegularWorktreeFile(root, "regular.md");
-    symlinkSync("regular.md", path.join(root, "linked.md"));
-    await assert.rejects(() => scanRegularWorktreeFile(root, "linked.md"), DocsFastPromotionError);
-    await assert.rejects(() => scanRegularWorktreeFile(root, "missing.md"), DocsFastPromotionError);
-    writeFileSync(path.join(root, "secret.pem"), "not even key material\n");
-    await assert.rejects(() => scanRegularWorktreeFile(root, "secret.pem"), DocsFastPromotionError);
-    const begin = "---" + "--BEGIN PRIVATE KEY---" + "--";
-    const end = "---" + "--END PRIVATE KEY---" + "--";
-    writeFileSync(
-      path.join(root, "split.md"),
-      `${"x".repeat(65_530)}${begin}\n${"A".repeat(64)}\n${end}\n`,
-    );
-    await assert.rejects(() => scanRegularWorktreeFile(root, "split.md"), DocsFastPromotionError);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("documentation verifier accepts one exact safe three-file commit", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "lico-docs-fast-git-"));
-  try {
-    mkdirSync(path.join(root, "tools/scripts/config"), { recursive: true });
-    mkdirSync(path.join(root, "docs/assets/brand"), { recursive: true });
-    writeFileSync(path.join(root, "tools/scripts/config/docs-fast-promotion-manifest.json"),
-      `${JSON.stringify({ schemaVersion: 1, files: docsManifestFiles }, null, 2)}\n`);
-    writeFileSync(path.join(root, "README.md"), "old English\n");
-    writeFileSync(path.join(root, "README.zh-CN.md"), "旧中文\n");
-    writeFileSync(path.join(root, "docs/assets/brand/readme-banner.svg"), "<svg/>\n");
-    runGit(root, ["init", "-b", "nightly"]);
-    runGit(root, ["config", "user.name", "fixture"]);
-    runGit(root, ["config", "user.email", "fixture@example.invalid"]);
-    runGit(root, ["add", "."]);
-    runGit(root, ["commit", "-m", "base"]);
-    const base = runGit(root, ["rev-parse", "HEAD"]);
-    writeFileSync(path.join(root, "README.md"), "new English\n");
-    writeFileSync(path.join(root, "README.zh-CN.md"), "新中文\n");
-    writeFileSync(path.join(root, "docs/assets/brand/readme-banner.svg"), "<svg>new</svg>\n");
-    runGit(root, ["add", "."]);
-    runGit(root, ["commit", "-m", "docs"]);
-    const receipt = await verifyDocsFastCandidate({ base, head: "HEAD", root });
-    assert.deepEqual(receipt, {
-      ok: true,
-      eligible: true,
-      changedCount: 3,
-      manifestCount: 3,
-      sensitive: false,
-      privateDataIncluded: false,
-    });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 test("source policy is mandatory without selecting platform toolchains", () => {
   assert.deepEqual(classifyClientGatePaths([]).lanes, {

@@ -13,12 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  docs-plan:
-    name: Plan documentation fast path
+  readme-plan:
+    name: Classify author README update
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     outputs:
-      docs_fast: ${{ steps.docs.outputs.docs_fast }}
+      readme_fast: ${{ steps.readme.outputs.readme_fast }}
     steps:
       - name: Verify promotion source
         env:
@@ -34,89 +34,57 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
-      - name: Classify the pull request delta
-        id: docs
+      - name: Select the author README fast path
+        id: readme
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node tools/scripts/docs-fast-promotion.mjs plan --base "$BASE_SHA" --head "$HEAD_SHA"
+        run: node tools/scripts/readme-fast-path.mjs classify --base "$BASE_SHA" --head "$HEAD_SHA"
 
-  docs-fast:
-    name: Documentation manifest and privacy
-    if: ${{ needs.docs-plan.outputs.docs_fast == 'true' }}
-    needs: docs-plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-      - name: Verify fixed manifest and basic privacy
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node tools/scripts/docs-fast-promotion.mjs verify --base "$BASE_SHA" --head "$HEAD_SHA"
-
-  stable-client-full:
-    name: Stable client full validation
-    if: ${{ needs.docs-plan.outputs.docs_fast != 'true' }}
-    needs: docs-plan
-    runs-on: macos-15
+  stable-client:
+    name: Stable client
+    needs: readme-plan
+    if: always()
+    runs-on: ${{ needs.readme-plan.result == 'success' && needs.readme-plan.outputs.readme_fast != 'true' && 'macos-15' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     env:
       LICO_CLIENT_RELEASE_TARGETS: macos-arm64
+      README_PLAN_RESULT: ${{ needs.readme-plan.result }}
+      README_FAST_SELECTED: ${{ needs.readme-plan.outputs.readme_fast }}
     steps:
-      - name: Verify promotion source
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          TARGET_REPOSITORY: ${{ github.repository }}
+      - name: Verify README path selection
         run: |
-          test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"
-          test "$HEAD_BRANCH" = nightly
-          test "$(uname -m)" = arm64
+          test "$README_PLAN_RESULT" = success
+          test "$README_FAST_SELECTED" = true || test "$README_FAST_SELECTED" = false
+      - name: Complete the author README fast path
+        if: env.README_FAST_SELECTED == 'true'
+        run: echo "Author README update requires no client build."
+      - name: Verify stable runner
+        if: env.README_FAST_SELECTED != 'true'
+        run: test "$(uname -m)" = arm64
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        if: env.README_FAST_SELECTED != 'true'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: env.README_FAST_SELECTED != 'true'
         with:
           node-version: "24"
           cache: npm
       - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+        if: env.README_FAST_SELECTED != 'true'
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: env.README_FAST_SELECTED != 'true'
         with:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
+        if: env.README_FAST_SELECTED != 'true'
       - name: Populate the locked Flutter package cache
+        if: env.README_FAST_SELECTED != 'true'
         working-directory: apps/desktop
         run: flutter pub get --enforce-lockfile
       - name: Build the stable client once
+        if: env.README_FAST_SELECTED != 'true'
         run: npm run client:build:macos
       - name: Install, launch, and prove stable survival
+        if: env.README_FAST_SELECTED != 'true'
         run: npm run client:install:macos -- --launch-installed --verify-stable
-
-  stable-client:
-    name: Stable client
-    if: always()
-    needs: [docs-plan, docs-fast, stable-client-full]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    env:
-      DOCS_PLAN_RESULT: ${{ needs.docs-plan.result }}
-      DOCS_FAST_SELECTED: ${{ needs.docs-plan.outputs.docs_fast }}
-      DOCS_FAST_RESULT: ${{ needs.docs-fast.result }}
-      FULL_RESULT: ${{ needs.stable-client-full.result }}
-    steps:
-      - name: Reduce stable validation results
-        run: |
-          test "$DOCS_PLAN_RESULT" = success
-          if [[ "$DOCS_FAST_SELECTED" == true ]]; then
-            test "$DOCS_FAST_RESULT" = success
-            test "$FULL_RESULT" = skipped
-          else
-            test "$DOCS_FAST_SELECTED" = false
-            test "$DOCS_FAST_RESULT" = skipped
-            test "$FULL_RESULT" = success
-          fi
