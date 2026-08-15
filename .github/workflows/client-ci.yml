@@ -13,8 +13,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs-plan:
+    name: Plan documentation fast path
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      docs_fast: ${{ steps.docs.outputs.docs_fast }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Classify the pull request delta
+        id: docs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/scripts/docs-fast-promotion.mjs plan --base "$BASE_SHA" --head "$HEAD_SHA"
+
+  docs-fast:
+    name: Documentation manifest and privacy
+    if: ${{ needs.docs-plan.outputs.docs_fast == 'true' }}
+    needs: docs-plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Verify fixed manifest and basic privacy
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/scripts/docs-fast-promotion.mjs verify --base "$BASE_SHA" --head "$HEAD_SHA"
+
   plan:
     name: Plan client gates
+    if: ${{ needs.docs-plan.outputs.docs_fast != 'true' }}
+    needs: docs-plan
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -183,10 +224,14 @@ jobs:
   client-required:
     name: Client required
     if: always()
-    needs: [source, flutter, rust, android, dependencies]
+    needs: [docs-plan, docs-fast, plan, source, flutter, rust, android, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
+      DOCS_PLAN_RESULT: ${{ needs.docs-plan.result }}
+      DOCS_FAST_SELECTED: ${{ needs.docs-plan.outputs.docs_fast }}
+      DOCS_FAST_RESULT: ${{ needs.docs-fast.result }}
+      PLAN_RESULT: ${{ needs.plan.result }}
       SOURCE_RESULT: ${{ needs.source.result }}
       FLUTTER_RESULT: ${{ needs.flutter.result }}
       RUST_RESULT: ${{ needs.rust.result }}
@@ -195,6 +240,38 @@ jobs:
     steps:
       - name: Reduce independent gate results
         run: |
+          if [[ "$DOCS_PLAN_RESULT" != "success" ]]; then
+            echo "Documentation path classification did not succeed" >&2
+            exit 1
+          fi
+          if [[ "$DOCS_FAST_SELECTED" == "true" ]]; then
+            if [[ "$DOCS_FAST_RESULT" != "success" ]]; then
+              echo "Documentation manifest/privacy verification did not succeed" >&2
+              exit 1
+            fi
+            for result in \
+              "$PLAN_RESULT" \
+              "$SOURCE_RESULT" \
+              "$FLUTTER_RESULT" \
+              "$RUST_RESULT" \
+              "$ANDROID_RESULT" \
+              "$DEPENDENCIES_RESULT"
+            do
+              if [[ "$result" != "skipped" ]]; then
+                echo "An ordinary client gate ran for a documentation-only change" >&2
+                exit 1
+              fi
+            done
+            exit 0
+          fi
+          if [[ "$DOCS_FAST_SELECTED" != "false" || "$DOCS_FAST_RESULT" != "skipped" ]]; then
+            echo "Documentation path selection was ambiguous" >&2
+            exit 1
+          fi
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            echo "Ordinary client gate planning did not succeed" >&2
+            exit 1
+          fi
           if [[ "$SOURCE_RESULT" != "success" ]]; then
             echo "Required source policy did not succeed" >&2
             exit 1

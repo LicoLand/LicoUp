@@ -4,10 +4,13 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { verifyDocsFastCandidate } from "./docs-fast-promotion.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
 const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore|release-candidate)\/[A-Za-z0-9._/-]+$/u;
+const docsBranch = "docs/readme-refresh";
+const docsEfficiencyThresholdMs = 300_000;
 
 export const releaseTrainEdges = Object.freeze([
   Object.freeze({ head: "current", base: "nightly", aggregate: "Client required" }),
@@ -84,11 +87,15 @@ function currentBranch() {
   return branch;
 }
 
-function assertCleanCurrentBranch(head) {
-  if (head !== currentBranch()) reject("promotion_head_not_checked_out");
+function assertCleanWorktree() {
   if (run("git", ["status", "--porcelain"], { capture: true }) !== "") {
     reject("promotion_worktree_dirty");
   }
+}
+
+function assertCleanCurrentBranch(head) {
+  if (head !== currentBranch()) reject("promotion_head_not_checked_out");
+  assertCleanWorktree();
 }
 
 function assertRepositoryAccess() {
@@ -154,7 +161,7 @@ function waitAndMerge(pullRequest) {
     "pr", "view", number, "--repo", repository, "--json", "mergedAt", "--jq", ".mergedAt",
   ], { capture: true });
   if (mergedAt === "" || mergedAt === "null") reject("promotion_merge_not_confirmed");
-  return number;
+  return Object.freeze({ number, mergedAt });
 }
 
 function printReceipt(receipt) {
@@ -162,17 +169,114 @@ function printReceipt(receipt) {
 }
 
 function advance(head, base) {
+  const started = performance.now();
   const plan = promotionPlan(head, base);
   pushTemporaryBranch(plan);
   const status = compareStatus(plan.head, plan.base);
   if (status === "identical") {
-    printReceipt({ ok: true, status: "already-promoted", head, base });
-    return;
+    const receipt = Object.freeze({
+      ok: true,
+      status: "already-promoted",
+      head,
+      base,
+      durationMs: Math.round(performance.now() - started),
+    });
+    printReceipt(receipt);
+    return receipt;
   }
   if (!hasPromotableCommits(status)) reject("promotion_topology_not_ahead");
   const pullRequest = openPullRequest(plan);
-  const number = waitAndMerge(pullRequest);
-  printReceipt({ ok: true, status: "merged", head, base, pullRequestNumber: number });
+  const merged = waitAndMerge(pullRequest);
+  const receipt = Object.freeze({
+    ok: true,
+    status: "merged",
+    head,
+    base,
+    pullRequestNumber: merged.number,
+    mergedAt: merged.mergedAt,
+    durationMs: Math.round(performance.now() - started),
+  });
+  printReceipt(receipt);
+  return receipt;
+}
+
+function commandSucceeds(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: repoRoot,
+    env: process.env,
+    encoding: "utf8",
+    shell: false,
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+  return !result.error && result.status === 0;
+}
+
+function assertDetachedDocsCandidate() {
+  if (commandSucceeds("git", ["symbolic-ref", "--quiet", "HEAD"])) {
+    reject("docs_candidate_not_detached");
+  }
+  assertCleanWorktree();
+  run("git", ["fetch", "origin", "--prune"]);
+  const record = run("git", ["rev-list", "--parents", "-n", "1", "HEAD"], {
+    capture: true,
+  }).split(" ");
+  const nightly = run("git", ["rev-parse", "origin/nightly"], { capture: true });
+  if (record.length !== 2 || record[1] !== nightly) reject("docs_candidate_parent_invalid");
+  if (commandSucceeds("git", ["show-ref", "--verify", "--quiet", `refs/heads/${docsBranch}`])) {
+    reject("docs_branch_exists_local");
+  }
+  if (commandSucceeds("git", ["ls-remote", "--exit-code", "--heads", "origin", docsBranch])) {
+    reject("docs_branch_exists_remote");
+  }
+  run("npm", ["run", "repo:identity:verify"]);
+}
+
+export function summarizeDocsTrain({ startedAtMs, endedAt, stages }) {
+  if (!Number.isFinite(startedAtMs) || !Array.isArray(stages) || stages.length !== 3) {
+    reject("docs_timing_invalid");
+  }
+  const endedAtMs = Date.parse(endedAt);
+  if (!Number.isFinite(endedAtMs)) reject("docs_timing_invalid");
+  const totalDurationMs = Math.max(0, Math.round(endedAtMs - startedAtMs));
+  const stageDurationsMs = stages.map((stage) => {
+    if (!Number.isFinite(stage.durationMs) || stage.durationMs < 0) {
+      reject("docs_timing_invalid");
+    }
+    return Object.freeze({
+      edge: `${stage.head}->${stage.base}`,
+      durationMs: Math.round(stage.durationMs),
+    });
+  });
+  return Object.freeze({
+    ok: true,
+    command: "docs-train",
+    status: "release-branch-promoted",
+    branch: docsBranch,
+    totalDurationMs,
+    efficiencyThresholdMs: docsEfficiencyThresholdMs,
+    efficiencyWarning: totalDurationMs > docsEfficiencyThresholdMs,
+    stageDurationsMs: Object.freeze(stageDurationsMs),
+  });
+}
+
+async function docsTrain() {
+  assertDetachedDocsCandidate();
+  await verifyDocsFastCandidate({ base: "origin/nightly", head: "HEAD", root: repoRoot });
+  const startedAtMs = Date.now();
+  run("git", ["switch", "-c", docsBranch]);
+  const stages = [
+    advance(docsBranch, "nightly"),
+    advance("nightly", "stable"),
+    advance("stable", "release"),
+  ];
+  const finalStage = stages.at(-1);
+  if (finalStage.status !== "merged") reject("docs_release_merge_missing");
+  const receipt = summarizeDocsTrain({
+    startedAtMs,
+    endedAt: finalStage.mergedAt,
+    stages,
+  });
+  printReceipt(receipt);
 }
 
 function parseArgs(argv) {
@@ -189,7 +293,7 @@ function parseArgs(argv) {
   return { command, values };
 }
 
-function main() {
+async function main() {
   const { command, values } = parseArgs(process.argv.slice(2));
   const head = values.head || currentBranch();
   if (command === "plan") {
@@ -209,15 +313,18 @@ function main() {
     printReceipt({ ok: true, command, status: "release-branch-promoted" });
     return;
   }
+  if (command === "docs-train") {
+    if (Object.keys(values).length !== 0) reject("promotion_arguments_invalid");
+    await docsTrain();
+    return;
+  }
   reject("promotion_command_invalid");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     const code = error instanceof PromotionError ? error.code : "promotion_failed";
     process.stderr.write(`${JSON.stringify({ ok: false, code, privateDataIncluded: false })}\n`);
     process.exitCode = 1;
-  }
+  });
 }
