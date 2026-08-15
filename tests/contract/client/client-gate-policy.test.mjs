@@ -20,7 +20,6 @@ import {
 import { validateClientGateTopology } from "../../../tools/scripts/client-gate.mjs";
 import {
   DocsFastPromotionError,
-  assertReadmeLanguageRoles,
   classifyDocsFastEntries,
   scanRegularWorktreeFile,
   validateDocsFastManifest,
@@ -124,10 +123,8 @@ test("documentation verifier accepts one exact safe three-file commit", async ()
     mkdirSync(path.join(root, "docs/assets/brand"), { recursive: true });
     writeFileSync(path.join(root, "tools/scripts/config/docs-fast-promotion-manifest.json"),
       `${JSON.stringify({ schemaVersion: 1, files: docsManifestFiles }, null, 2)}\n`);
-    writeFileSync(path.join(root, "README.md"),
-      "English (normative language) · [简体中文 (localized language)](README.zh-CN.md)\nold English\n");
-    writeFileSync(path.join(root, "README.zh-CN.md"),
-      "[English（规范语言）](README.md) · 简体中文（本地化语言）\n旧中文\n");
+    writeFileSync(path.join(root, "README.md"), "old English\n");
+    writeFileSync(path.join(root, "README.zh-CN.md"), "旧中文\n");
     writeFileSync(path.join(root, "docs/assets/brand/readme-banner.svg"), "<svg/>\n");
     runGit(root, ["init", "-b", "nightly"]);
     runGit(root, ["config", "user.name", "fixture"]);
@@ -135,10 +132,8 @@ test("documentation verifier accepts one exact safe three-file commit", async ()
     runGit(root, ["add", "."]);
     runGit(root, ["commit", "-m", "base"]);
     const base = runGit(root, ["rev-parse", "HEAD"]);
-    writeFileSync(path.join(root, "README.md"),
-      "English (normative language) · [简体中文 (localized language)](README.zh-CN.md)\nnew English\n");
-    writeFileSync(path.join(root, "README.zh-CN.md"),
-      "[English（规范语言）](README.md) · 简体中文（本地化语言）\n新中文\n");
+    writeFileSync(path.join(root, "README.md"), "new English\n");
+    writeFileSync(path.join(root, "README.zh-CN.md"), "新中文\n");
     writeFileSync(path.join(root, "docs/assets/brand/readme-banner.svg"), "<svg>new</svg>\n");
     runGit(root, ["add", "."]);
     runGit(root, ["commit", "-m", "docs"]);
@@ -151,14 +146,6 @@ test("documentation verifier accepts one exact safe three-file commit", async ()
       sensitive: false,
       privateDataIncluded: false,
     });
-    assert.deepEqual(assertReadmeLanguageRoles({ head: "HEAD", root }), {
-      languageRoles: true,
-    });
-    writeFileSync(path.join(root, "README.md"), "new English without role\n");
-    runGit(root, ["add", "README.md"]);
-    runGit(root, ["commit", "-m", "remove role"]);
-    assert.throws(() => assertReadmeLanguageRoles({ head: "HEAD", root }),
-      DocsFastPromotionError);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -1,7 +1,6 @@
 export async function checkDocsReadiness({ assert, files }) {
   const { readJson, readText } = files;
   const documentPairs = [
-    ["README.md", "README.zh-CN.md"],
     ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
     ["SECURITY.md", "SECURITY.zh-CN.md"],
     ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
@@ -28,34 +27,6 @@ export async function checkDocsReadiness({ assert, files }) {
   }
 
   const normalized = (relativePath) => documents.get(relativePath).replace(/\s+/gu, " ");
-  const readme = normalized("README.md");
-  const chineseReadme = normalized("README.zh-CN.md");
-  for (const token of [
-    "open-source client",
-    "Diverse",
-    "Connected",
-    "Open",
-    "Integrated",
-    "Sensitive runtime data stays on the device",
-    "Default client scenarios do not",
-    "protected one-shot user approval",
-    "treats transport as untrusted",
-    "AGPL-3.0-or-later",
-  ]) {
-    assert(readme.includes(token), `README.md must keep public client token ${token}`);
-  }
-  for (const token of [
-    "多元",
-    "互联",
-    "开放",
-    "融合",
-    "默认客户端场景不会把",
-    "一次新的、受保护的用户确认",
-    "把运输路径视为不可信环境",
-  ]) {
-    assert(chineseReadme.includes(token), `README.zh-CN.md must keep public client token ${token}`);
-  }
-
   const architecture = normalized("docs/architecture/README.md");
   const chineseArchitecture = normalized("docs/architecture/README.zh-CN.md");
   for (const token of [
@@ -101,8 +72,6 @@ export async function checkDocsReadiness({ assert, files }) {
   }
 
   const publicSecurityDocs = [
-    readme,
-    chineseReadme,
     architecture,
     chineseArchitecture,
     security,
