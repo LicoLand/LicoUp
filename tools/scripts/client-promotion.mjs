@@ -358,9 +358,14 @@ function parseArgs(argv) {
   return { command, values };
 }
 
+export function resolvePromotionHead(command, values, readCurrentBranch) {
+  if (command === "docs-train") return null;
+  return values.head || readCurrentBranch();
+}
+
 async function main() {
   const { command, values } = parseArgs(process.argv.slice(2));
-  const head = values.head || currentBranch();
+  const head = resolvePromotionHead(command, values, currentBranch);
   if (command === "plan") {
     printReceipt({ ok: true, command, ...promotionPlan(head, values.base || inferPromotionBase(head)) });
     return;
