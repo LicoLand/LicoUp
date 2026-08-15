@@ -97,4 +97,29 @@ void main() {
     expect(find.byKey(const Key('pane-refresh-spin')), findsOneWidget);
     expect(find.byIcon(Icons.refresh), findsNothing);
   });
+
+  testWidgets('leading control shares the title centerline', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: const Scaffold(
+          body: LicoPaneTitleBar(
+            title: 'Pane Title',
+            refreshTooltip: 'Refresh',
+            onRefresh: null,
+            refreshButtonKey: Key('pane-refresh'),
+            leading: SizedBox(key: Key('pane-back'), width: 32, height: 32),
+          ),
+        ),
+      ),
+    );
+
+    final title = tester.getRect(find.text('Pane Title'));
+    final back = tester.getRect(find.byKey(const Key('pane-back')));
+    final refresh = tester.getRect(find.byKey(const Key('pane-refresh')));
+    expect((title.center.dy - back.center.dy).abs(), lessThan(1));
+    expect((title.center.dy - refresh.center.dy).abs(), lessThan(1));
+    expect(title.left, greaterThan(back.right));
+    expect(refresh.left, greaterThan(title.right));
+  });
 }
