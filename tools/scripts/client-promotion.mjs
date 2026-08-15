@@ -158,9 +158,37 @@ function pushTemporaryBranch(plan) {
   run("git", ["push", "--set-upstream", "origin", plan.head]);
 }
 
-function waitAndMerge(pullRequest) {
+function waitForAggregate(pullRequest, plan) {
+  const number = String(pullRequest.number || "");
+  const headSha = run("gh", [
+    "api", `repos/${repository}/pulls/${number}`, "--jq", ".head.sha",
+  ], { capture: true, attempts: 3 });
+  if (!/^[a-f0-9]{40,64}$/u.test(headSha)) reject("promotion_head_revision_invalid");
+  for (;;) {
+    const output = run("gh", [
+      "api", "--method", "GET", `repos/${repository}/commits/${headSha}/check-runs`,
+      "-f", "per_page=100",
+    ], { capture: true, attempts: 3 });
+    let runs;
+    try {
+      runs = JSON.parse(output).check_runs;
+    } catch {
+      reject("promotion_check_response_invalid");
+    }
+    if (!Array.isArray(runs)) reject("promotion_check_response_invalid");
+    const aggregate = runs.find((check) => check?.name === plan.aggregate);
+    if (aggregate?.status === "completed") {
+      if (aggregate.conclusion !== "success") reject("promotion_required_check_failed");
+      return;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
+  }
+}
+
+function waitAndMerge(pullRequest, plan) {
   const number = String(pullRequest.number || "");
   if (!/^[1-9][0-9]*$/u.test(number)) reject("promotion_pull_request_invalid");
+  waitForAggregate(pullRequest, plan);
   run("gh", [
     "pr", "checks", number, "--repo", repository, "--required", "--watch",
     "--fail-fast", "--interval", "10",
@@ -202,7 +230,7 @@ function advance(head, base) {
   }
   if (!hasPromotableCommits(status)) reject("promotion_topology_not_ahead");
   const pullRequest = openPullRequest(plan);
-  const merged = waitAndMerge(pullRequest);
+  const merged = waitAndMerge(pullRequest, plan);
   const receipt = Object.freeze({
     ok: true,
     status: "merged",
