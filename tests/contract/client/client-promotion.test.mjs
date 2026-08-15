@@ -8,6 +8,7 @@ import {
   inferPromotionBase,
   promotionPlan,
   releaseTrainEdges,
+  resolvePromotionHead,
   summarizeDocsTrain,
 } from "../../../tools/scripts/client-promotion.mjs";
 
@@ -92,6 +93,19 @@ test("documentation train timing fails closed for invalid telemetry", () => {
     endedAt: "invalid",
     stages: [],
   }), PromotionError);
+});
+
+test("detached documentation entry never resolves a current branch", () => {
+  let branchRead = false;
+  const readCurrentBranch = () => {
+    branchRead = true;
+    throw new Error("detached");
+  };
+  assert.equal(resolvePromotionHead("docs-train", {}, readCurrentBranch), null);
+  assert.equal(branchRead, false);
+  assert.equal(resolvePromotionHead("train", { head: "fix/example" }, readCurrentBranch),
+    "fix/example");
+  assert.equal(branchRead, false);
 });
 
 test("promotion mutations use idempotent REST confirmation instead of GraphQL writes", () => {
