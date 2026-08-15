@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/brand/readme-banner.svg" alt="LicoUp — orbit ice-cream cup brand banner" width="880">
+<img src="docs/assets/brand/readme-banner.svg" alt="LicoUp — orbit ice-cream cup brand banner" width="720">
 
 **Create value with your agents.**
 
