@@ -94,9 +94,11 @@ Common focused checks are:
 
 Run `npm run client:gate:source` once after all focused checks pass. Then run
 only the affected `client:gate:flutter`, `client:gate:rust`,
-`client:gate:android`, `client:gate:dependencies`, or
-`client:gate:release-policy` lane. These lanes are independent and may run in
-parallel. Source policy is Node-only; it does not install platform toolchains
+`client:gate:android`, or `client:gate:dependencies` lane. These regression
+lanes are independent and may run in parallel. Release policy belongs only to
+the `stable` → `release` promotion gate described in
+[`releases/PROMOTION-GATES.md`](releases/PROMOTION-GATES.md). Source policy is
+Node-only; it does not install platform toolchains
 and is not authorization for live services, runtime-data capture, device
 installation, signing, publication, or store operations.
 
@@ -205,3 +207,36 @@ npm run repo:local-info-hygiene
 Formal documents state only implemented and verified behavior. Requirements,
 future design, progress, checkpoints, raw audit output, and unverified
 conclusions remain local plan or report material.
+
+### Promote an author README update
+
+The README fast path is a positive, author-owned maintenance capability for
+quickly correcting inaccurate, outdated, or unsuitable public documentation.
+It is not a vulnerability or a CI bypass. Its maintained membership is
+`tools/scripts/config/readme-fast-files.json`; the manifest itself is an
+implicit member.
+
+For a manifest update, the allowed files are the union of the old manifest,
+the new manifest, and the manifest itself. The author may therefore add or
+remove a listed resource in the same commit. A file outside that union, an
+unreadable manifest, or an uncertain classification automatically uses the
+ordinary workflow.
+
+Only Auditor scans added and modified blobs for sensitive information. The
+other required checks keep their existing names and return quickly; they do
+not inspect README wording, language, links, formatting, claims, or product
+correctness. Agent behavior is governed by the `lico-client-development`
+skill, not by repository gates, tests, or Rulesets.
+
+Start `docs/readme-refresh` from the latest `nightly`, change only the manifest
+and old/new members, commit the corresponding additions or removals together,
+then run the normal promotion command:
+
+```bash
+npm run client:promotion -- train
+```
+
+This creates the three merge-commit PRs `docs/readme-refresh` → `nightly` →
+`stable` → `release`. Record total and per-PR elapsed time. More than five
+minutes is an efficiency warning only: report it without stopping, rolling
+back, adding retries, adding gates, or changing Rulesets.

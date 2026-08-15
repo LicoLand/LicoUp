@@ -4,13 +4,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { requiredStatusContexts } from "./repository-rulesets.mjs";
+import { promotionRequiredStatusContexts } from "./repository-rulesets.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const expectedChecks = Object.freeze([
   [".github/workflows/branch-flow.yml", "Branch flow", "Branch flow"],
   [".github/workflows/commit-identity.yml", "Commit identity", "Commit identity"],
   [".github/workflows/client-ci.yml", null, "Client required"],
+  [".github/workflows/client-stable.yml", "Stable client", "Stable client"],
+  [".github/workflows/client-release-ready.yml", "Release ready", "Release ready"],
   [".github/workflows/lico-auditor-gate.yml", "Auditor", "Auditor"],
 ]);
 
@@ -37,8 +39,11 @@ export function validateGovernanceDeclarations(files) {
       expectedJob === "Auditor"
         ? "audit_required_check_auditor_missing" : "audit_required_checks_mismatch");
   }
-  requireValue(JSON.stringify(requiredStatusContexts) === JSON.stringify(
-    ["Branch flow", "Commit identity", "Client required", "Auditor"]),
+  requireValue(JSON.stringify(promotionRequiredStatusContexts) === JSON.stringify({
+    nightly: ["Branch flow", "Commit identity", "Client required", "Auditor"],
+    stable: ["Branch flow", "Commit identity", "Stable client", "Auditor"],
+    release: ["Branch flow", "Commit identity", "Release ready", "Auditor"],
+  }),
   "audit_required_checks_mismatch");
   const release = files[".github/workflows/client-release.yml"];
   requireValue(typeof release === "string" &&

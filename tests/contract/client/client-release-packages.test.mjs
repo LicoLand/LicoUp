@@ -26,12 +26,16 @@ import {
 } from "../../../tools/scripts/client-release-workflow-binding.mjs";
 import {
   retireStaleReleasePackageDirectories,
+  validBuildManifestExecutionContract,
 } from "../../../tools/scripts/client-release-packages.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const script = "tools/scripts/client-release-packages.mjs";
 const builderScript = "apps/desktop/scripts/build-platform-release-package.mjs";
 const catalogPath = path.join(repoRoot, "tools/client-release-targets.json");
+const productVersion = JSON.parse(readFileSync(
+  path.join(repoRoot, "tools/client-version.json"), "utf8",
+)).productVersion;
 
 function currentHostId() {
   const platform = process.platform === "darwin" ? "darwin"
@@ -44,7 +48,7 @@ function currentHostId() {
 function wrongHostTarget() {
   const host = currentHostId();
   const target = readCatalogDocument().targets.find((candidate) =>
-    !candidate.builder.hosts.includes(host));
+    candidate.releaseSupported === false && !candidate.builder.hosts.includes(host));
   assert.ok(target, `fixture needs a target outside ${host}`);
   return target;
 }
@@ -206,10 +210,11 @@ test("selection preserves request order and separates build from release support
   });
   assert.equal(linux[0].packageBuildSupported, true);
   assert.equal(linux[0].releaseSupported, false);
-  assert.throws(() => selectClientReleaseTargets(catalog, ["macos-direct-arm64"], {
+  const macos = selectClientReleaseTargets(catalog, ["macos-direct-arm64"], {
     requireBuildSupported: true,
     requireReleaseSupported: true,
-  }), /outside closure authority/u);
+  });
+  assert.equal(macos[0].releaseSupported, true);
   assert.throws(() => selectClientReleaseTargets(catalog, ["linux-deb-arm64"], {
     requireBuildSupported: true,
     requireReleaseSupported: true,
@@ -229,7 +234,7 @@ test("plan emits one or multiple independently staged package directories", () =
   const singlePlan = JSON.parse(single.stdout);
   assert.equal(singlePlan.targetCount, 1);
   assert.equal(singlePlan.targets[0].outputRef,
-    "build/releases/0.1.0/macos-direct-arm64");
+    `build/releases/${productVersion}/macos-direct-arm64`);
 
   const multiple = invoke([
     "plan", "--targets", "macos-direct-arm64,android-direct-arm64-v8a",
@@ -338,6 +343,32 @@ test("builder describes owning-host recipes while keeping macOS direct local-onl
     .requiredTools.includes("xcodebuild"));
 });
 
+test("build manifests accept an empty execution recipe only for staged macOS direct artifacts", () => {
+  const emptyExecution = {
+    commandSequence: [],
+    requiredTools: [],
+    credentialEnv: [],
+  };
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "macos-direct-arm64" }, emptyExecution,
+  ), true);
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "windows-direct-x64" }, emptyExecution,
+  ), false);
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "macos-direct-arm64" }, {
+      ...emptyExecution,
+      requiredTools: ["synthetic-tool"],
+    },
+  ), false);
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "windows-direct-x64" }, {
+      ...emptyExecution,
+      commandSequence: [{ program: "synthetic-tool", args: [] }],
+    },
+  ), true);
+});
+
 test("builder rejects a blocked target before host or tool mutation", () => {
   const target = wrongHostTarget();
   const preflight = spawnSync(process.execPath, [
@@ -390,7 +421,7 @@ test("prepare matrix accepts every package-build target while publish stays rele
     assert.equal(entry.buildHost, target.buildHost);
   }
   const request = {
-    tag: "v0.1.0",
+    tag: `v${productVersion}`,
     correlation: "1".repeat(64),
     ref: "refs/heads/release",
     sha: "2".repeat(40),

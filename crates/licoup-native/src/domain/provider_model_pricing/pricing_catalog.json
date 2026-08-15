@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-08-13",
+  "last_updated": "2026-08-14",
   "providers": [
     {
       "id": "deepseek",
@@ -11,7 +11,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://api-docs.deepseek.com/quick_start/pricing/"
           ],
@@ -35,7 +35,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://api-docs.deepseek.com/quick_start/pricing/"
           ],
@@ -65,7 +65,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://www.kimi.com/resources/kimi-k3-pricing",
             "https://www.kimi.com/en/resources/kimi-k2-7-code",
@@ -91,7 +91,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://www.kimi.com/resources/kimi-k3-pricing",
             "https://www.kimi.com/en/resources/kimi-k2-7-code",
@@ -117,7 +117,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://www.kimi.com/resources/kimi-k3-pricing",
             "https://www.kimi.com/en/resources/kimi-k2-7-code",
@@ -149,7 +149,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://ai.google.dev/gemini-api/docs/pricing"
           ],
@@ -158,10 +158,10 @@
           "tiers": [
             {
               "default": true,
-              "input": 1.5,
-              "cache_read": 0.15,
+              "input": 0.75,
+              "cache_read": 0.075,
               "cache_write": null,
-              "output": 7.5,
+              "output": 3.75,
               "context_min": null,
               "context_max": null
             }
@@ -173,7 +173,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://ai.google.dev/gemini-api/docs/pricing"
           ],
@@ -206,7 +206,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://ai.google.dev/gemini-api/docs/pricing"
           ],
@@ -236,7 +236,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://developers.openai.com/api/docs/models"
           ],
@@ -269,7 +269,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://developers.openai.com/api/docs/models"
           ],
@@ -278,19 +278,19 @@
           "tiers": [
             {
               "default": true,
-              "input": 2.5,
-              "cache_read": 0.25,
-              "cache_write": 3.125,
-              "output": 15,
+              "input": 2,
+              "cache_read": 0.2,
+              "cache_write": 2.5,
+              "output": 12,
               "context_min": null,
               "context_max": 272000
             },
             {
               "default": false,
-              "input": 5,
-              "cache_read": 0.5,
-              "cache_write": 6.25,
-              "output": 22.5,
+              "input": 4,
+              "cache_read": 0.4,
+              "cache_write": 5,
+              "output": 18,
               "context_min": 272001,
               "context_max": null
             }
@@ -302,7 +302,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://developers.openai.com/api/docs/models"
           ],
@@ -311,19 +311,19 @@
           "tiers": [
             {
               "default": true,
-              "input": 1,
-              "cache_read": 0.1,
-              "cache_write": 1.25,
-              "output": 6,
+              "input": 0.2,
+              "cache_read": 0.02,
+              "cache_write": 0.25,
+              "output": 1.2,
               "context_min": null,
               "context_max": 272000
             },
             {
               "default": false,
-              "input": 2,
-              "cache_read": 0.2,
-              "cache_write": 2.5,
-              "output": 9,
+              "input": 0.4,
+              "cache_read": 0.04,
+              "cache_write": 0.5,
+              "output": 1.8,
               "context_min": 272001,
               "context_max": null
             }
@@ -341,9 +341,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -374,9 +374,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -407,9 +407,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -440,9 +440,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -473,9 +473,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -506,9 +506,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -539,9 +539,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -572,9 +572,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -605,9 +605,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -638,9 +638,9 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
-            "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf"
+            "https://platform.claude.com/docs/en/about-claude/pricing"
           ],
           "billing_mode": "token",
           "included_by_harness": false,
@@ -677,7 +677,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://docs.x.ai/developers/pricing"
           ],
@@ -710,7 +710,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://docs.x.ai/developers/pricing"
           ],
@@ -743,7 +743,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://docs.x.ai/developers/pricing"
           ],
@@ -784,7 +784,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://cursor.com/pricing",
             "https://cursor.com/changelog/composer-2",
@@ -810,7 +810,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://cursor.com/pricing",
             "https://cursor.com/changelog/composer-2",
@@ -836,7 +836,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://cursor.com/pricing",
             "https://cursor.com/changelog/composer-2",
@@ -862,7 +862,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://cursor.com/pricing",
             "https://cursor.com/changelog/composer-2",
@@ -894,7 +894,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -918,7 +918,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -942,7 +942,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -966,7 +966,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -990,7 +990,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -1014,7 +1014,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -1038,7 +1038,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -1062,7 +1062,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -1086,7 +1086,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://help.openai.com/en/articles/20001106-codex-rate-card"
           ],
@@ -1116,7 +1116,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://kilo.ai/docs/getting-started/rate-limits-and-costs"
           ],
@@ -1146,7 +1146,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1179,7 +1179,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1212,7 +1212,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1245,7 +1245,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1278,7 +1278,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1302,7 +1302,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1335,7 +1335,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1359,7 +1359,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1383,7 +1383,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1407,7 +1407,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1431,7 +1431,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1455,7 +1455,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1479,7 +1479,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1503,7 +1503,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1527,7 +1527,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1551,7 +1551,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1575,7 +1575,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1599,7 +1599,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1623,7 +1623,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1647,7 +1647,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1671,7 +1671,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1695,7 +1695,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1719,7 +1719,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1743,7 +1743,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1776,7 +1776,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1800,7 +1800,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1824,7 +1824,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1848,7 +1848,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1872,7 +1872,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1905,7 +1905,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1929,7 +1929,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1962,7 +1962,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -1986,7 +1986,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2010,7 +2010,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2034,7 +2034,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2058,7 +2058,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2082,7 +2082,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2106,7 +2106,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2130,7 +2130,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2154,7 +2154,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2178,7 +2178,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2202,7 +2202,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2226,7 +2226,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2250,7 +2250,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2274,7 +2274,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2298,7 +2298,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2322,7 +2322,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2346,7 +2346,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2370,7 +2370,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2394,7 +2394,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2418,7 +2418,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2442,7 +2442,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
@@ -2466,7 +2466,7 @@
             "status": "active",
             "service_end": null
           },
-          "verified_on": "2026-08-13",
+          "verified_on": "2026-08-14",
           "source_urls": [
             "https://dev.opencode.ai/docs/zen"
           ],
