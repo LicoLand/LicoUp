@@ -1,7 +1,7 @@
 //! Per-agent installed-version probes. Missing agents stay blank; never "unknown".
 
 use super::argv::{self, ArgvKind};
-use super::contract::{AgentRecipe, InstallChannel, FIRST_BATCH_IDS};
+use super::contract::{AgentRecipe, FIRST_BATCH_IDS, InstallChannel};
 use super::version;
 use serde_json::Value;
 use std::process::{Command, Stdio};
