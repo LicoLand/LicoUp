@@ -6,8 +6,8 @@ use crate::domain::conversation::usage::{UsageFields, collect_token_usage};
 
 use super::super::HistoryAdapter;
 use super::super::message_projection::{
-    extract_role, extract_text, extract_timestamp, native_history_message_id,
-    native_message_timestamp,
+    clean_native_message_text, extract_role, extract_text, extract_timestamp,
+    native_history_message_id, native_message_timestamp,
 };
 use super::super::query_filter::{display_path, epoch_value_to_rfc3339};
 
@@ -20,7 +20,12 @@ pub(super) fn cursor_message_from_bubble(
     let role = cursor_bubble_role(bubble)?;
     let created_at = epoch_value_to_rfc3339(bubble.get("createdAt").unwrap_or(&Value::Null))
         .or_else(|| extract_timestamp(bubble));
-    let text = extract_text(bubble).unwrap_or_default();
+    let text = clean_native_message_text(
+        HistoryAdapter::Cursor,
+        role,
+        &extract_text(bubble).unwrap_or_default(),
+    )
+    .unwrap_or_default();
     let model = cursor_bubble_model(bubble).unwrap_or_else(|| fallback_model.to_string());
     let usage = cursor_bubble_usage(bubble, &model);
     let has_usage = usage

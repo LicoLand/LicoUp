@@ -8,10 +8,10 @@ import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 const Duration defaultAgentUsagePollingInterval = Duration(minutes: 5);
 
-/// Long-lived daily cache depth. One backfill scan covers all UI presets.
+/// Long-lived native projection depth. One backfill scan covers all UI presets.
 const int defaultAgentUsageScanHistoryDays = agentUsageDailyCacheMaxDays;
 
-/// Default UI viewport over the cached daily series.
+/// Default UI viewport over the native window projection.
 const int defaultAgentUsageDisplayHistoryDays = 30;
 
 /// Backward-compatible alias for the default display window.
@@ -29,6 +29,7 @@ typedef AgentUsageStatusSink =
 
 /// Owns usage-report state, bounded history, polling, and all single-flight
 /// guards. The application composition root only projects this state.
+/// Flutter holds one immutable native projection and never merges Maps.
 final class AgentUsageController extends ChangeNotifier {
   AgentUsageController({
     required this.gateway,
@@ -52,8 +53,7 @@ final class AgentUsageController extends ChangeNotifier {
   /// UI viewport in days (7 / 30 / 90 presets). Never drives scan size.
   int historyDays = defaultAgentUsageDisplayHistoryDays;
 
-  final AgentUsageDailyCache _dailyCache = AgentUsageDailyCache();
-
+  AgentUsageReport? _nativeProjection;
   Timer? _pollingTimer;
   final Set<Object> _pollingOwners = <Object>{};
   final Object _defaultPollingOwner = Object();
@@ -66,17 +66,16 @@ final class AgentUsageController extends ChangeNotifier {
   int get pollingOwnerCount => _pollingOwners.length;
 
   @visibleForTesting
-  AgentUsageDailyCache get dailyCache => _dailyCache;
+  bool get dailyCacheIsEmpty => _nativeProjection == null;
 
   /// Backward-compatible alias for tests and facades.
   @visibleForTesting
-  AgentUsageReport? get scanCache => _dailyCache.isEmpty
-      ? null
-      : _dailyCache.projectViewport(agentUsageDailyCacheMaxDays);
+  AgentUsageReport? get scanCache =>
+      projectViewport(_nativeProjection, agentUsageDailyCacheMaxDays);
 
-  /// True when the daily cache covers 90 days and was refreshed recently.
+  /// True when the native projection covers 90 days and was refreshed recently.
   bool get hasFreshScanCoverage =>
-      _dailyCache.hasFullCoverage() && _dailyCache.hasFreshIngest();
+      _hasFullCoverage() && (_nativeProjection?.isFresh() ?? false);
 
   AgentUsageAgentSummary? get selectedUsage {
     final agentId = selectedAgentId().trim();
@@ -84,25 +83,13 @@ final class AgentUsageController extends ChangeNotifier {
   }
 
   void replaceReport(AgentUsageReport? value) {
-    if (value == null) {
-      report = null;
-      _dailyCache.clear();
-      return;
-    }
-    _ingestIntoDailyCache(
-      value,
-      replace: value.windowDays >= agentUsageDailyCacheMaxDays,
-    );
+    _nativeProjection = value;
+    _applyViewport();
   }
 
   void replaceReports(List<AgentUsageReport> value) {
     reports = List.unmodifiable(value);
-    if (value.isEmpty) {
-      report = null;
-      _dailyCache.clear();
-      return;
-    }
-    _dailyCache.ingestReports(value, replace: true);
+    _nativeProjection = _newestProjection(value);
     _applyViewport();
   }
 
@@ -149,8 +136,8 @@ final class AgentUsageController extends ChangeNotifier {
     _pollingTimer = Timer(interval, () {
       _pollingTimer = null;
       unawaited(() async {
-        if (_dailyCache.hasFullCoverage()) {
-          await _refreshToday(showProgress: false);
+        if (_hasFullCoverage()) {
+          await _refreshNativeProjection(showProgress: false);
         } else {
           await scan(
             forceRefresh: false,
@@ -193,7 +180,7 @@ final class AgentUsageController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (_dailyCache.isEmpty || report == null) {
+    if (_nativeProjection == null || report == null) {
       await loadReports(limit: limit, showProgress: false);
     }
     if (_disposed) {
@@ -204,14 +191,14 @@ final class AgentUsageController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (!_dailyCache.hasFullCoverage()) {
+    if (!_hasFullCoverage()) {
       await scan(
         forceRefresh: false,
         showProgress: false,
         historyDays: defaultAgentUsageScanHistoryDays,
       );
-    } else if (_dailyCache.hasDailyBreakdown && !_dailyCache.hasFreshToday()) {
-      await _refreshToday(showProgress: false);
+    } else if (!_isFreshToday()) {
+      await _refreshNativeProjection(showProgress: false);
     }
     if (_disposed) {
       return;
@@ -231,13 +218,8 @@ final class AgentUsageController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _ingestIntoDailyCache(AgentUsageReport source, {required bool replace}) {
-    _dailyCache.ingestReport(source, replace: replace);
-    _applyViewport();
-  }
-
   void _applyViewport() {
-    report = _dailyCache.projectViewport(historyDays);
+    report = projectViewport(_nativeProjection, historyDays);
   }
 
   AgentUsageReport _normalizeScanReport(
@@ -278,11 +260,7 @@ final class AgentUsageController extends ChangeNotifier {
     required bool showProgress,
     int? historyDays,
   }) async {
-    final scanDays =
-        historyDays ??
-        (forceRefresh
-            ? defaultAgentUsageScanHistoryDays
-            : defaultAgentUsageDisplayHistoryDays);
+    final scanDays = historyDays ?? defaultAgentUsageScanHistoryDays;
     if (showProgress) {
       scanning = true;
       onStatus(
@@ -299,11 +277,9 @@ final class AgentUsageController extends ChangeNotifier {
       );
       if (_disposed) return;
       final normalized = _normalizeScanReport(next, scanDays);
-      final replaceCache =
-          scanDays >= agentUsageDailyCacheMaxDays &&
-          (_dailyCache.isEmpty || (forceRefresh && showProgress));
-      _ingestIntoDailyCache(normalized, replace: replaceCache);
-      if (replaceCache) {
+      _nativeProjection = normalized;
+      _applyViewport();
+      if (scanDays >= agentUsageDailyCacheMaxDays) {
         reports = List.unmodifiable(
           [
             normalized,
@@ -340,11 +316,11 @@ final class AgentUsageController extends ChangeNotifier {
     }
   }
 
-  Future<void> _refreshToday({required bool showProgress}) async {
+  Future<void> _refreshNativeProjection({required bool showProgress}) async {
     await _scan(
       forceRefresh: false,
       showProgress: showProgress,
-      historyDays: 1,
+      historyDays: defaultAgentUsageScanHistoryDays,
     );
   }
 
@@ -358,13 +334,13 @@ final class AgentUsageController extends ChangeNotifier {
     try {
       reports = List.unmodifiable(await gateway.reports(limit: limit));
       if (reports.isEmpty) {
-        if (_dailyCache.isEmpty) {
+        if (_nativeProjection == null) {
           report = null;
         } else {
           _applyViewport();
         }
       } else {
-        _dailyCache.ingestReports(reports, replace: true);
+        _nativeProjection = _newestProjection(reports);
         _applyViewport();
       }
       if (showProgress) {
@@ -389,6 +365,37 @@ final class AgentUsageController extends ChangeNotifier {
       }
       if (!_disposed) notifyListeners();
     }
+  }
+
+  bool _hasFullCoverage() {
+    final source = _nativeProjection;
+    if (source == null) {
+      return false;
+    }
+    return source.windowDays >= agentUsageDailyCacheMaxDays;
+  }
+
+  bool _isFreshToday() {
+    return _nativeProjection?.isFresh() ?? false;
+  }
+
+  AgentUsageReport? _newestProjection(List<AgentUsageReport> value) {
+    if (value.isEmpty) {
+      return null;
+    }
+    AgentUsageReport newest = value.first;
+    for (final candidate in value.skip(1)) {
+      final newestTime = DateTime.tryParse(newest.generatedAt)?.toUtc();
+      final candidateTime = DateTime.tryParse(candidate.generatedAt)?.toUtc();
+      if (newestTime == null) {
+        newest = candidate;
+        continue;
+      }
+      if (candidateTime != null && candidateTime.isAfter(newestTime)) {
+        newest = candidate;
+      }
+    }
+    return newest;
   }
 
   @override

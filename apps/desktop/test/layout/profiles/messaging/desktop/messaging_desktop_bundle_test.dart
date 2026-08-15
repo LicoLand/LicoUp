@@ -45,10 +45,11 @@ void main() {
   test('state namespaces are profile-qualified and business-scoped', () {
     final namespaces = messagingDesktopBundle.stateNamespaces;
 
-    expect(namespaces, hasLength(5));
+    expect(namespaces, hasLength(6));
     expect(namespaces.map((value) => value.destination).toSet(), {
       ClientSection.agents,
       ClientSection.settings,
+      ClientSection.models,
     });
     for (final namespace in namespaces) {
       expect(namespace.profileId, LayoutProfileId.parse('messaging'));
@@ -74,6 +75,13 @@ void main() {
         LayoutStateChannels.settingsSection.id,
         LayoutStateChannels.settingsIndex.id,
       },
+    );
+    expect(
+      namespaces
+          .where((value) => value.destination == ClientSection.models)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {LayoutStateChannels.communicationSection.id},
     );
   });
 
@@ -113,7 +121,6 @@ void main() {
       'messaging-channel-chat',
     );
     expect(messagingDesktopPreviewMetadata.structuralLandmarks, <String>[
-      'nav-rail',
       'top-strip',
       'list-column',
       'chat-canvas',

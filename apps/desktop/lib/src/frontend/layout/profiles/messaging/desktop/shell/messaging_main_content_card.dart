@@ -7,7 +7,7 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/mes
 /// over native VE with a black readability veil, hairline border, soft
 /// shadow, and shared corner radius. Sits inset from the content region's
 /// trailing and bottom edges; top meets the chrome band and the leading edge
-/// sits flush against the destination rail.
+/// sits at the window's leading content edge.
 ///
 /// Geometry and veil **must** come from [MessagingDesktopMetrics.mainContentCard*]
 /// helpers — do not hardcode radius, alphas, or shadow values here.
@@ -16,6 +16,7 @@ final class MessagingMainContentCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.only(
+      left: MessagingDesktopMetrics.mainCardMargin,
       right: MessagingDesktopMetrics.mainCardMargin,
       bottom: MessagingDesktopMetrics.mainCardMargin,
     ),
