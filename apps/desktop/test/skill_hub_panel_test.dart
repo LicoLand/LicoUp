@@ -47,6 +47,10 @@ void main() {
         find.text('Browse, pair, and install skills loadable by local agents.'),
         findsNothing,
       );
+      expect(find.text('Skill Hub'), findsOneWidget);
+      expect(find.text('Search skills'), findsNothing);
+      expect(find.byKey(const Key('skill-hub-search')), findsNothing);
+      expect(find.byKey(const Key('skill-hub-refresh')), findsOneWidget);
       expect(find.text('All Skills'), findsOneWidget);
       expect(find.text('Public Skills'), findsOneWidget);
       expect(find.text('Private Skills'), findsOneWidget);
@@ -106,7 +110,8 @@ void main() {
         locale: const Locale('zh'),
       );
 
-      expect(find.text('技能中心'), findsNothing);
+      expect(find.text('技能中心'), findsOneWidget);
+      expect(find.text('搜索技能'), findsNothing);
       expect(find.text('查看、配对并安装本机智能体可加载的技能。'), findsNothing);
       expect(find.text('全部技能'), findsOneWidget);
       expect(find.text('公共技能'), findsOneWidget);
@@ -222,6 +227,28 @@ void main() {
       // The existing local catalog stays visible.
       expect(find.text('Public Reviewer'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Skill Hub main pane keeps category chips and has no search field',
+    (tester) async {
+      final controller = _skillHubController();
+      addTearDown(controller.dispose);
+
+      await _pumpSkillHub(
+        tester,
+        controller: controller,
+        locale: const Locale('en'),
+      );
+
+      expect(find.byKey(const Key('skill-hub-search')), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('All Skills'), findsOneWidget);
+      expect(find.text('Public Skills'), findsOneWidget);
+      expect(find.text('Private Skills'), findsOneWidget);
+      expect(find.text('Public Reviewer'), findsOneWidget);
+      expect(find.text('Private Helper'), findsOneWidget);
     },
   );
 
@@ -409,6 +436,12 @@ Future<void> _pumpSkillHub(
         GlobalWidgetsLocalizations.delegate,
       ],
       theme: buildLicoTheme(platformBrightness: Brightness.dark),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        );
+      },
       home: Scaffold(
         body: SizedBox(
           width: 900,

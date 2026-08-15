@@ -192,6 +192,91 @@ void main() {
     expect(controller.selectedConversationSessionId, isNot('c1'));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('settings destination shows no filler when nothing matches', (
+    tester,
+  ) async {
+    final controller = ClientController()
+      ..currentSection = ClientSection.settings
+      ..scannedTargets = [_target('codex', 'ChatGPT Codex - CLI')]
+      ..selectedConversationAgentId = ''
+      ..selectedConversationSessionId = ''
+      ..conversationSessionsByAgent = {
+        'codex': [
+          _session('c1', 'codex', 'Appearance notes', 'theme tokens live here'),
+        ],
+      };
+    addTearDown(controller.dispose);
+
+    final strings = LicoStrings.forLocale(const Locale('zh'));
+    await _pumpPalette(
+      tester,
+      controller,
+      features: buildGlobalSearchFeatures(
+        strings: strings,
+        onSelectSection: (_) {},
+        onNewConversation: () {},
+      ),
+      settingsFeatures: buildSettingsSearchFeatures(
+        strings: strings,
+        onOpenSettings: () {},
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('conversation-search-palette-input')),
+      'notarization-missing',
+    );
+    await tester.pump();
+
+    expect(find.text('Appearance notes'), findsNothing);
+    expect(find.text('没有匹配的对话'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('skill hub destination ranks skill hits above features', (
+    tester,
+  ) async {
+    final controller = ClientController()
+      ..currentSection = ClientSection.skillHub
+      ..scannedTargets = [_target('codex', 'ChatGPT Codex - CLI')]
+      ..selectedConversationAgentId = ''
+      ..selectedConversationSessionId = ''
+      ..skillHubSkills = const [
+        {
+          'skillId': 'stitch-design-taste',
+          'title': 'stitch-design-taste',
+          'description': 'Semantic Design System Skill for Google Stitch.',
+          'isPublic': true,
+        },
+      ]
+      ..conversationSessionsByAgent = {
+        'codex': [_session('c1', 'codex', 'Skill cleanup', 'skill notes')],
+      };
+    addTearDown(controller.dispose);
+
+    await _pumpPalette(
+      tester,
+      controller,
+      features: buildGlobalSearchFeatures(
+        strings: LicoStrings.forLocale(const Locale('zh')),
+        onSelectSection: (_) {},
+        onNewConversation: () {},
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('conversation-search-palette-input')),
+      'skill',
+    );
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('stitch-design-taste')).dy,
+      lessThan(tester.getTopLeft(find.text('功能')).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 TargetCandidate _target(String target, String label) {
@@ -238,6 +323,7 @@ Future<void> _pumpPalette(
   ClientController controller, {
   VoidCallback? onClose,
   List<GlobalSearchFeatureEntry> features = const [],
+  List<GlobalSearchFeatureEntry> settingsFeatures = const [],
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -256,6 +342,7 @@ Future<void> _pumpPalette(
           child: AgentConversationSearchPalette(
             controller: controller,
             features: features,
+            settingsFeatures: settingsFeatures,
             onClose: onClose ?? () {},
           ),
         ),

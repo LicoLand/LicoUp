@@ -383,7 +383,31 @@ void main() {
       ),
     );
     expect(find.byKey(const Key('skill-plugin-hub-toggle')), findsNothing);
-    expect(find.byKey(const Key('messaging-sidebar-search')), findsNothing);
+    expect(
+      find.byKey(const Key('messaging-desktop-nav-sidebar-heading')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('messaging-sidebar-search')), findsOneWidget);
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const Key('messaging-desktop-nav-sidebar-heading')),
+          )
+          .dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('messaging-sidebar-search'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('messaging-sidebar-search'))).dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('messaging-sidebar-list-agentHub')),
+            )
+            .dy,
+      ),
+    );
     expect(
       find.byKey(const Key('messaging-sidebar-nav-skills')),
       findsOneWidget,
