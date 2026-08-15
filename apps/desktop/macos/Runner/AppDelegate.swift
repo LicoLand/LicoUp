@@ -4,10 +4,23 @@ import FlutterMacOS
 @main
 class AppDelegate: FlutterAppDelegate {
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    return true
+    return MacStatusBarPresencePolicy.terminatesAfterLastWindowClosed
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+    return true
+  }
+
+  override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    MacStatusBarPresence.shared.prepareToTerminate()
+    return super.applicationShouldTerminate(sender)
+  }
+
+  override func applicationShouldHandleReopen(
+    _ sender: NSApplication,
+    hasVisibleWindows flag: Bool
+  ) -> Bool {
+    MacStatusBarPresence.shared.restoreMainWindow()
     return true
   }
 
@@ -17,6 +30,19 @@ class AppDelegate: FlutterAppDelegate {
     // that Flutter chrome; the shell offers zoom deliberately on its top bar.
     UserDefaults.standard.register(defaults: ["AppleActionOnDoubleClick": "None"])
     super.applicationDidFinishLaunching(notification)
-    mainFlutterWindow?.makeKeyAndOrderFront(nil)
+    let window = mainFlutterWindow ?? NSApp.windows.first { $0 is MainFlutterWindow }
+    guard let window else { return }
+    if MacStatusBarPresencePolicy.createsStatusItemAtLaunch {
+      MacStatusBarPresence.shared.attach(mainWindow: window)
+    }
+    if MacStatusBarPresencePolicy.shouldSilentStart(arguments: CommandLine.arguments) {
+      MacStatusBarPresence.shared.hideToStatusBar(window)
+      // Flutter may order the window front on the first frame after launch.
+      DispatchQueue.main.async {
+        MacStatusBarPresence.shared.hideToStatusBar(window)
+      }
+    } else {
+      window.makeKeyAndOrderFront(nil)
+    }
   }
 }

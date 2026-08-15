@@ -186,33 +186,6 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                   progress: true,
                   color: colors.accent,
                 ),
-              Padding(
-                padding: presentation.selectorActionPadding,
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: TextButton(
-                    key: const ValueKey<String>('layout-selector-reset'),
-                    onPressed: committing
-                        ? null
-                        : () {
-                            unawaited(widget.manager.resetLayout());
-                          },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.restart_alt_outlined, size: 17),
-                        const SizedBox(width: LicoContentSpacing.compact),
-                        Flexible(
-                          child: Text(
-                            strings.resetLayout,
-                            textAlign: TextAlign.end,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
           ],
         ),

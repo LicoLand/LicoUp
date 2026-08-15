@@ -10,7 +10,7 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dash
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
-  testWidgets('folder sidebar lists six destinations with the house rule', (
+  testWidgets('folder sidebar lists every destination with the house rule', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -52,6 +52,15 @@ void main() {
           .first,
     );
     expect(selectedIcon.color, colors.textOnPrimary);
+    final hubIcon = tester.widget<Icon>(
+      find
+          .descendant(
+            of: find.byKey(const Key('dashboard-folder-nav-agentHub')),
+            matching: find.byType(Icon),
+          )
+          .first,
+    );
+    expect(hubIcon.icon, Icons.auto_awesome_outlined);
     expect(tester.takeException(), isNull);
   });
 
@@ -67,11 +76,12 @@ void main() {
     );
     await tester.pump();
 
-    for (final section in ClientSection.values) {
+    final navSections = [for (final section in ClientSection.values) section];
+    for (final section in navSections) {
       await tester.tap(find.byKey(Key('dashboard-folder-nav-${section.name}')));
       await tester.pump();
     }
-    expect(selected, ClientSection.values);
+    expect(selected, navSections);
     expect(tester.takeException(), isNull);
   });
 

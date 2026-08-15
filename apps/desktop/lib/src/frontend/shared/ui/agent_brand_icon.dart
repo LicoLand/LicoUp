@@ -19,6 +19,7 @@ const _agentIconAssets = <String, String>{
   'copilot': 'assets/agent-icons/copilot.svg',
   'kilo-code': 'assets/agent-icons/kilo-code.svg',
   'cursor': 'assets/agent-icons/cursor.svg',
+  'deepseek-harness': 'assets/agent-icons/deepseek-harness.svg',
   'hermes': 'assets/agent-icons/hermes.svg',
   // Theme-aware lettermarks (no app-icon background).
   'kimi': 'assets/agent-icons/kimi-light.svg',

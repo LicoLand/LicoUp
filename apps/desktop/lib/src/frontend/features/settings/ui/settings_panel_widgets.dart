@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+export 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 
 const _appearanceSegmentLabelWidth = 72.0;
 const _appearanceToggleWidth = 320.0;
@@ -26,14 +29,23 @@ class SettingsDropdownRow<T> extends StatelessWidget {
     required this.title,
     required this.value,
     required this.items,
-    required this.onChanged,
+    required this.onSelected,
+    this.dropdownKey,
+    this.locked = false,
+    this.enabled = true,
   });
 
   final IconData icon;
   final String title;
   final T? value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
+  final List<SettingsDropdownItem<T>> items;
+  final ValueChanged<T> onSelected;
+  final Key? dropdownKey;
+
+  /// Appearance locks this instance. Language and other siblings stay
+  /// interactive unless they pass [locked] themselves.
+  final bool locked;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -55,12 +67,13 @@ class SettingsDropdownRow<T> extends StatelessWidget {
               Expanded(child: Text(title, style: titleStyle)),
             ],
           );
-          final dropdown = DropdownButtonFormField<T>(
-            initialValue: value,
-            isExpanded: true,
-            decoration: _dropdownDecorationWithoutLabel(),
+          final dropdown = SettingsDropdownList<T>(
+            key: dropdownKey,
             items: items,
-            onChanged: onChanged,
+            value: value,
+            onSelected: onSelected,
+            locked: locked,
+            enabled: enabled,
           );
           if (compact) {
             return Column(
@@ -86,12 +99,6 @@ class SettingsDropdownRow<T> extends StatelessWidget {
       ),
     );
   }
-}
-
-InputDecoration _dropdownDecorationWithoutLabel() {
-  return const InputDecoration(
-    floatingLabelBehavior: FloatingLabelBehavior.never,
-  );
 }
 
 class SettingsDayNightToggleRow extends StatelessWidget {

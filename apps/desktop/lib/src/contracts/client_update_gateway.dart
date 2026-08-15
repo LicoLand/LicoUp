@@ -6,8 +6,9 @@ abstract interface class ClientUpdateGateway {
     required AgentCommandRunner agentService,
     String channel = 'stable',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stateRoot = '',
+    String currentVersion = '',
   });
 
   /// Checks a signed update manifest from a local file pair (local source) or
@@ -20,9 +21,10 @@ abstract interface class ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   });
 
   /// Stages the update artifact. Local source copies `sourcePath`; github
@@ -35,9 +37,10 @@ abstract interface class ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   });
 
   Future<ClientUpdateStatus> verify({
@@ -47,9 +50,10 @@ abstract interface class ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   });
 
   Future<ClientUpdateStatus> apply({
@@ -60,9 +64,10 @@ abstract interface class ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   });
 
   Future<ClientUpdateStatus> rollback({
@@ -72,8 +77,9 @@ abstract interface class ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   });
 }

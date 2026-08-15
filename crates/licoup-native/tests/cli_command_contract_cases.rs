@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 158;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 161;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1786,6 +1786,27 @@ fn route_authorities() -> Vec<RouteAuthority> {
     );
     add_authority_routes(
         &mut routes,
+        "agent_hub.rs",
+        "handle_catalog",
+        &["agent-hub catalog"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "agent_hub.rs",
+        "handle_plan",
+        &["agent-hub plan"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "agent_hub.rs",
+        "handle_apply",
+        &["agent-hub apply"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
         "agent_usage.rs",
         "handle_agent_usage_scan",
         &["agent-usage scan"],
@@ -2494,6 +2515,22 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("session-id", Text, false),
             value_option("text", Text, false),
             value_option("stdin-json", Json, false),
+        ],
+        "agent-hub catalog" => &[
+            value_option("agent-id", Text, false),
+            value_option("stdin-json", Json, false),
+        ],
+        "agent-hub plan" => &[
+            value_option("agent-id", Text, true),
+            value_option("operation", Text, false),
+            value_option("stdin-json", Json, false),
+        ],
+        "agent-hub apply" => &[
+            value_option("agent-id", Text, true),
+            value_option("confirmation", Text, true),
+            value_option("operation", Text, false),
+            value_option("stdin-json", Json, false),
+            boolean_option("cancel"),
         ],
         "agent-usage scan" => &[
             value_option("agent", Text, false),

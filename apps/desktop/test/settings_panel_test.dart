@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:licoup/app.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -26,31 +24,66 @@ void main() {
       agentService: FakeAgentService(),
       presentationPreferencesRepository: preferences,
     );
+    addTearDown(controller.dispose);
     await controller.layoutManager.initialize();
-    controller
-      ..localePreference = LocalePreference.chinese
-      ..currentSection = ClientSection.settings;
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    controller.localePreference = LocalePreference.chinese;
 
     await tester.pumpWidget(
-      LicoApp(controllerFactory: () => controller, initializeController: false),
+      ValueListenableBuilder<int>(
+        valueListenable: controller.appPresentationListenable,
+        builder: (context, _, _) {
+          return MaterialApp(
+            builder: (context, child) =>
+                FixtureLayoutPresentationScope(child: child!),
+            locale: LicoStrings.localeForPreference(
+              controller.localePreference,
+            ),
+            supportedLocales: LicoStrings.supportedLocales,
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            theme: buildLicoTheme(
+              platformBrightness: Brightness.dark,
+            ).copyWith(platform: TargetPlatform.macOS),
+            home: Scaffold(
+              body: SizedBox(
+                width: 1280,
+                height: 900,
+                child: SettingsPanel(controller: controller),
+              ),
+            ),
+          );
+        },
+      ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('语言'), findsOneWidget);
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('英文').last);
+    expect(find.text('通用'), findsWidgets);
+    expect(find.byKey(const Key('settings-locale-dropdown')), findsOneWidget);
+    expect(find.byKey(const Key('settings-locale-list')), findsNothing);
+    expect(find.byKey(const Key('settings-locale-toggle')), findsNothing);
+    expect(find.byType(SettingsDropdownList<String>), findsWidgets);
+    final localeDropdown = tester.widget<SettingsDropdownList<String>>(
+      find.byKey(const Key('settings-locale-dropdown')),
+    );
+    expect(localeDropdown.locked, isFalse);
+    expect(localeDropdown.enabled, isTrue);
+    await tester.tap(find.byKey(const Key('settings-locale-dropdown')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('系统'), findsOneWidget);
+    expect(find.text('中文'), findsWidgets);
+    expect(find.text('English'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('settings-locale-en')).last);
     await tester.pumpAndSettle();
 
     expect(controller.localePreference, LocalePreference.english);
     expect(preferences.value.localePreference, LocalePreference.english);
     expect(find.text('Language'), findsOneWidget);
     expect(find.text('语言'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
   });
 
   testWidgets(
@@ -92,9 +125,27 @@ void main() {
       expect(find.text('下一个'), findsNothing);
       expect(find.bySemanticsLabel('界面布局'), findsOneWidget);
       expect(find.text('正在加载布局…'), findsOneWidget);
+      expect(find.text('通用'), findsWidgets);
       expect(find.text('语言'), findsOneWidget);
       expect(find.byIcon(Icons.language_outlined), findsWidgets);
-      expect(find.text('跟随系统'), findsNWidgets(2));
+      expect(find.byKey(const Key('settings-locale-dropdown')), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings-appearance-dropdown')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('settings-locale-list')), findsNothing);
+      expect(find.byKey(const Key('settings-locale-toggle')), findsNothing);
+      final dropdowns = tester
+          .widgetList<SettingsDropdownList<String>>(
+            find.byType(SettingsDropdownList<String>),
+          )
+          .toList();
+      expect(dropdowns, hasLength(2));
+      expect(
+        dropdowns.map((dropdown) => dropdown.locked).toSet(),
+        equals({true, false}),
+      );
+      expect(find.text('跟随系统'), findsOneWidget);
       expect(find.text('明亮'), findsOneWidget);
       expect(find.text('暗黑'), findsOneWidget);
       expect(find.text('明暗模式'), findsOneWidget);
@@ -209,7 +260,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.descendant(
         of: cards,
-        matching: find.text('Conversation Archive Directory'),
+        matching: find.text('LicoUp Backup Directory'),
       ),
       360,
       scrollable: find
@@ -224,7 +275,10 @@ void main() {
     expect(find.text('Archive'), findsNothing);
     expect(find.text('Archive directory'), findsNothing);
     expect(find.text('Conversation Archive Root'), findsNothing);
-    expect(find.text('Conversation Archive Directory'), findsOneWidget);
+    expect(find.text('Conversation Archive Directory'), findsNothing);
+    expect(find.text('Portable Data'), findsNothing);
+    expect(find.text('LicoUp Data Directory'), findsOneWidget);
+    expect(find.text('LicoUp Backup Directory'), findsOneWidget);
     expect(find.text('default'), findsNothing);
     expect(
       find.text('test-data/lico-up/native-conversation-snapshots'),
@@ -278,22 +332,31 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
+      expect(
+        find.byKey(const Key('settings-appearance-dropdown')),
+        findsOneWidget,
+      );
+      expect(find.text('LicoUp Dark'), findsOneWidget);
+      expect(find.text('LicoUp Light'), findsNothing);
+      final appearanceDropdown = tester.widget<SettingsDropdownList<String>>(
+        find.byKey(const Key('settings-appearance-dropdown')),
+      );
+      expect(appearanceDropdown.locked, isTrue);
+      expect(appearanceDropdown.enabled, isTrue);
+      expect(
+        appearanceDropdown.items.map((item) => item.value).toSet().intersection(
+          const {'default-system', 'lico-soda', 'lico-soda-light'},
+        ),
+        const {'lico-soda'},
+      );
+
+      await tester.tap(find.byKey(const Key('settings-appearance-dropdown')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      final offeredValues = tester
-          .widgetList<DropdownMenuItem<String>>(
-            find.byType(DropdownMenuItem<String>),
-          )
-          .map((item) => item.value)
-          .toSet();
-      expect(
-        offeredValues.intersection(const {'default-system', 'lico-soda'}),
-        const {'lico-soda'},
-      );
-      expect(offeredValues, isNot(contains('lico-soda-light')));
-      expect(find.text('LicoUp Dark'), findsWidgets);
+      expect(controller.appearancePresetId, 'lico-soda');
+      expect(find.text('LicoUp Light'), findsNothing);
+      expect(find.text('LicoUp Dark'), findsOneWidget);
     },
   );
 
@@ -320,7 +383,7 @@ void main() {
         home: Scaffold(
           body: SizedBox(
             width: 980,
-            height: 460,
+            height: 720,
             child: SettingsPanel(controller: controller),
           ),
         ),
@@ -339,11 +402,12 @@ void main() {
 
     // Initially the first section is selected with the solid accent and a
     // dark foreground.
-    expect(indexForeground('Appearance'), colors.textOnPrimary);
+    expect(indexForeground('General'), colors.textOnPrimary);
+    expect(indexForeground('Appearance'), isNot(colors.textOnPrimary));
     final selectedContainer = tester
         .widgetList<Container>(
           find.ancestor(
-            of: find.text('Appearance'),
+            of: find.text('General'),
             matching: find.byType(Container),
           ),
         )
@@ -354,23 +418,86 @@ void main() {
 
     // Scroll to the bottom: the spy selection follows into the archived
     // conversations section, away from Appearance.
-    final scrollable = find.byKey(const Key('settings-content-scroll'));
-    await tester.drag(scrollable, const Offset(0, -3200));
+    final contentScrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Archived conversations'),
+      360,
+      scrollable: contentScrollable,
+    );
+    await tester.drag(contentScrollable, const Offset(0, -240));
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(indexForeground('Archived'), colors.textOnPrimary);
-    expect(indexForeground('Storage'), isNot(colors.textOnPrimary));
-    expect(indexForeground('Appearance'), isNot(colors.textOnPrimary));
+    expect(indexForeground('General'), isNot(colors.textOnPrimary));
+    expect(
+      [
+        indexForeground('Archived'),
+        indexForeground('Diagnostics'),
+        indexForeground('Storage'),
+      ].contains(colors.textOnPrimary),
+      isTrue,
+    );
 
     // Clicking the first sidebar entry animates the content back to its
     // section, and the selection follows.
-    await tester.tap(find.text('Appearance').first);
+    await tester.tap(find.text('General').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump();
-    expect(indexForeground('Appearance'), colors.textOnPrimary);
+    expect(indexForeground('General'), colors.textOnPrimary);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings sidebar lists sections in the canonical order', (
+    tester,
+  ) async {
+    final controller = ClientController(agentService: FakeAgentService());
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Scaffold(
+          body: SizedBox(
+            width: 980,
+            height: 1400,
+            child: SettingsPanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    const expected = ['通用', '外观', '更新', '启动', '工具', '存储', '诊断', '归档'];
+    final labels = tester
+        .widgetList<Text>(find.byType(Text))
+        .where((candidate) => candidate.style?.fontSize == 12.5)
+        .map((candidate) => candidate.data)
+        .whereType<String>()
+        .toList();
+    expect(labels, expected);
+    expect(find.text('语言'), findsOneWidget);
+    expect(find.byKey(const Key('settings-locale-dropdown')), findsOneWidget);
+    expect(find.byKey(const Key('settings-locale-list')), findsNothing);
+    expect(find.byKey(const Key('settings-locale-toggle')), findsNothing);
+    expect(find.byKey(const Key('layout-selector-reset')), findsNothing);
+    expect(find.text('恢复系统默认布局'), findsNothing);
   });
 }
 

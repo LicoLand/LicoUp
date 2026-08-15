@@ -47,6 +47,44 @@ fn cursor_role_and_usage_projection_fail_closed_for_unknown_or_empty_values() {
 }
 
 #[test]
+fn cursor_user_bubble_projects_inner_userquery_text_only() {
+    let message = cursor_message_from_bubble(
+        &json!({
+            "type": 1,
+            "text": "<userquery>Keep the real question</userquery>",
+            "createdAt": 1_773_798_050_000i64
+        }),
+        "cursor-auto",
+        Path::new("fixture/state.vscdb"),
+        0,
+    )
+    .expect("Cursor user bubble");
+    assert_eq!(message["role"], "user");
+    assert_eq!(message["text"], "Keep the real question");
+    let text = message["text"].as_str().expect("text");
+    assert!(!text.contains("<userquery>"));
+    assert!(!text.contains("</userquery>"));
+}
+
+#[test]
+fn cursor_user_bubble_missing_userquery_close_fails_closed_without_tags() {
+    let message = cursor_message_from_bubble(
+        &json!({
+            "type": 1,
+            "text": "<userquery>Keep the visible question"
+        }),
+        "cursor-auto",
+        Path::new("fixture/state.vscdb"),
+        0,
+    )
+    .expect("Cursor user bubble");
+    assert_eq!(message["text"], "Keep the visible question");
+    let text = message["text"].as_str().expect("text");
+    assert!(!text.contains("<userquery>"));
+    assert!(!text.contains("</userquery>"));
+}
+
+#[test]
 fn cursor_composer_context_occupancy_is_not_token_consumption() {
     let config = json!({
         "modelConfig": {

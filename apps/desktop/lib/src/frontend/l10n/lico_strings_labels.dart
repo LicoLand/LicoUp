@@ -35,34 +35,14 @@ extension LicoStringsLabels on LicoStrings {
       ? '从 GitHub 发布源检测并安装已签名的公开更新。不需要商店账号。'
       : 'Detect and install signed public updates from the GitHub release source. No store account required.';
   String get checkUpdate => isChinese ? '检查更新' : 'Check Update';
-  String get downloadUpdate => isChinese ? '下载更新' : 'Download Update';
-  String get verifyUpdate => isChinese ? '校验更新' : 'Verify Update';
-  String get planUpdateInstall => isChinese ? '生成安装计划' : 'Plan Install';
-  String get applyUpdateRestart => isChinese ? '应用更新并重启' : 'Apply & Restart';
-  String get rollbackUpdate => isChinese ? '回滚更新' : 'Roll Back';
+  String get downloadToLocal => isChinese ? '下载到本地' : 'Download to local';
+  String get updateAndRestart => isChinese ? '更新并重启' : 'Update and Restart';
   String get updateSource => isChinese ? '更新源' : 'Source';
   String get updateSourceGithub => isChinese ? 'GitHub 发布源' : 'GitHub releases';
-  String get updateSourceLocal => isChinese ? '本地清单' : 'Local manifest';
+  String get sourceAddress => isChinese ? '源地址' : 'Source address';
   String get channel => isChinese ? '通道' : 'Channel';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
   String get digest => isChinese ? '摘要' : 'Digest';
-  String get productionReady => isChinese ? '生产就绪' : 'Production Ready';
-  String get yes => isChinese ? '是' : 'Yes';
-  String get no => isChinese ? '否' : 'No';
-  String get clientUpdatePhaseIdle => isChinese ? '空闲' : 'Idle';
-  String get clientUpdatePhaseChecking => isChinese ? '检查中' : 'Checking';
-  String get clientUpdatePhaseUpToDate => isChinese ? '已是最新' : 'Up to date';
-  String get clientUpdatePhaseUpdateAvailable =>
-      isChinese ? '有可用更新' : 'Update available';
-  String get clientUpdatePhaseDownloading => isChinese ? '下载中' : 'Downloading';
-  String get clientUpdatePhaseDownloaded => isChinese ? '已下载' : 'Downloaded';
-  String get clientUpdatePhaseVerifying => isChinese ? '校验中' : 'Verifying';
-  String get clientUpdatePhaseVerified => isChinese ? '已校验' : 'Verified';
-  String get clientUpdatePhaseApplyPlanned =>
-      isChinese ? '已规划安装' : 'Install planned';
-  String get clientUpdatePhaseApplied => isChinese ? '已应用' : 'Applied';
-  String get clientUpdatePhaseRolledBack => isChinese ? '已回滚' : 'Rolled back';
-  String get clientUpdatePhaseFailed => isChinese ? '失败' : 'Failed';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
 
@@ -221,6 +201,7 @@ extension LicoStringsLabels on LicoStrings {
   String get allSkills => isChinese ? '全部技能' : 'All Skills';
   String get publicSkills => isChinese ? '公共技能' : 'Public Skills';
   String get privateSkills => isChinese ? '私有技能' : 'Private Skills';
+  String get skillHubSearchHint => isChinese ? '搜索技能' : 'Search skills';
   String get publicLabel => isChinese ? '公共' : 'Public';
   String get privateLabel => isChinese ? '私有' : 'Private';
   String get noSkillsFound => isChinese ? '未发现技能' : 'No Skills Found';
@@ -335,6 +316,22 @@ extension LicoStringsLabels on LicoStrings {
   String get conversationListNav => isChinese ? '对话' : 'Chats';
   String get skillsNav => isChinese ? '技能' : 'Skills';
   String get pluginsNav => isChinese ? '插件' : 'Plugins';
+  String get adaptationDeep => isChinese ? '深度适配' : 'Deep';
+  String get adaptationPartial => isChinese ? '部分适配' : 'Partial';
+  String get adaptationPending => isChinese ? '待评估' : 'Pending';
+  String get agentHubInstalled => isChinese ? '已安装' : 'Installed';
+  String get agentHubNotInstalled => isChinese ? '未安装' : 'Not installed';
+  String get agentHubExternal => isChinese ? '外部安装' : 'External';
+  String get agentHubFailed => isChinese ? '失败' : 'Failed';
+  String get agentHubCatalogFailed =>
+      isChinese ? '无法加载智能体目录' : 'Unable to load agent catalog';
+  String get agentHubVisit => isChinese ? '访问' : 'Visit →';
+  String get agentHubVisitFailed =>
+      isChinese ? '无法打开主页' : 'Unable to open homepage';
+  String get agentHubUpdate => isChinese ? '更新' : 'Update';
+  String get agentHubOpen => isChinese ? '对话' : 'Chat';
+  String get agentHubBack => isChinese ? '返回' : 'Back';
+  String get agentHubUninstall => isChinese ? '卸载' : 'Uninstall';
   String get mobileNav => isChinese ? '移动' : 'Mobile';
   String get statsNav => isChinese ? '统计' : 'Stats';
   String get statsPanel => isChinese ? '统计面板' : 'Statistics';
@@ -342,7 +339,7 @@ extension LicoStringsLabels on LicoStrings {
   String get createConversation => isChinese ? '新建' : 'New';
   String get newGroupConversation => isChinese ? '新群组' : 'New Group';
   String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
-  String get archivedConversations => isChinese ? '已归档' : 'Archived';
+  String get archivedConversations => isChinese ? '归档' : 'Archived';
   String get archivedConversationsTitle =>
       isChinese ? '已归档对话' : 'Archived conversations';
   String get searchArchivedConversations =>
@@ -402,6 +399,7 @@ extension LicoStringsLabels on LicoStrings {
   String messagesCount(int count) =>
       isChinese ? '$count 条消息' : '$count messages';
   String get noMessagesInHistory => isChinese ? '还没有消息' : 'No messages yet';
+  String get scrollToLatestMessages => isChinese ? '跳到最新消息' : 'Jump to latest';
 
   String get keywords => isChinese ? '关键词' : 'Keywords';
   String get archiveDirectory => isChinese ? '归档目录' : 'Archive directory';
@@ -760,8 +758,6 @@ extension LicoStringsLabels on LicoStrings {
   String get layoutProfileDescription => isChinese
       ? '选择整套组件风格、页面排布与交互外观。'
       : 'Choose a complete component, arrangement, and interaction system.';
-  String get resetLayout =>
-      isChinese ? '恢复系统默认布局' : 'Restore system default layout';
   String get layoutLoading => isChinese ? '正在加载布局…' : 'Loading layouts…';
   String get layoutCommitting => isChinese ? '正在保存布局…' : 'Saving layout…';
   String get currentLayout => isChinese ? '当前布局' : 'Current layout';
@@ -787,13 +783,14 @@ extension LicoStringsLabels on LicoStrings {
   String get reloadPresets => isChinese ? '重新加载预设' : 'Reload Presets';
   String invalidPresetConfigs(int count) =>
       isChinese ? '$count 个外观预设配置无效' : '$count invalid preset configs';
-  String get portableData => isChinese ? '便携数据' : 'Portable Data';
+  String get portableData =>
+      isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
   String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
   String get exportLogsDescription => '';
   String get exportingLogs => isChinese ? '正在导出日志...' : 'Exporting logs...';
   String get conversationArchiveRoot =>
-      isChinese ? '对话归档目录' : 'Conversation Archive Directory';
+      isChinese ? 'LicoUp 备份目录' : 'LicoUp Backup Directory';
   String get refreshArchiveRoot =>
       isChinese ? '刷新归档目录' : 'Refresh Archive Directory';
   String get snapshotRootPath => isChinese ? '快照根路径' : 'Snapshot Root Path';
@@ -876,7 +873,7 @@ extension LicoStringsLabels on LicoStrings {
   String get planDocumentUnavailable =>
       isChinese ? '无法读取计划文件。' : 'The plan file could not be read.';
   String get active => isChinese ? '当前' : 'Active';
-  String get pairing => isChinese ? '配对' : 'Pairing';
+  String get pairing => isChinese ? '通信' : 'Communication';
   String get tapToGeneratePairingQr =>
       isChinese ? '点击生成配对码' : 'Tap to generate pairing code';
   String get pairingQrPlaceholder => isChinese ? '配对二维码' : 'Pairing QR code';
@@ -1050,4 +1047,20 @@ extension LicoStringsLabels on LicoStrings {
   String get startupSilentStartHint => isChinese
       ? '启动后自动最小化，不展示界面'
       : 'Start minimized without showing the window';
+  String get agentHubVisitOfficial => isChinese ? '访问官网' : 'Visit site';
+  String get agentHubRefresh => isChinese ? '刷新' : 'Refresh';
+  String get pluginManagementRefresh =>
+      isChinese ? '刷新插件目录' : 'Refresh plugin catalog';
+  String get agentHubLatest => 'latest';
+  String get agentHubPackageManager => isChinese ? '包管理器' : 'Package manager';
+  String get agentHubVersion => isChinese ? '版本' : 'Version';
+  String agentHubUninstallTypeConfirm(String name) =>
+      isChinese ? '请输入 $name 以确认' : 'Type $name to confirm';
+  String get agentHubInstallContinue => isChinese ? '继续' : 'Continue';
+  String agentHubInstallConfirmTitle(String name) =>
+      isChinese ? '确认安装 $name？' : 'Install $name?';
+  String get agentHubInstallConfirmAction => isChinese ? '确认安装' : 'Install';
+  String get agentHubInstallTitle => isChinese ? '安装智能体' : 'Install agent';
+  String get agentHubDownloadSource => isChinese ? '下载源' : 'Download source';
+  String get agentHubPendingCommand => isChinese ? '即将执行的命令' : 'Command to run';
 }

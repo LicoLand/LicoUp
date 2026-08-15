@@ -16,21 +16,16 @@ final class MessagingDesktopPreviewMetadata {
 const MessagingDesktopPreviewMetadata messagingDesktopPreviewMetadata =
     MessagingDesktopPreviewMetadata(
       styleIdentity: 'messaging-channel-chat',
-      structuralLandmarks: <String>[
-        'nav-rail',
-        'top-strip',
-        'list-column',
-        'chat-canvas',
-      ],
+      structuralLandmarks: <String>['top-strip', 'list-column', 'chat-canvas'],
     );
 
 Widget buildMessagingDesktopPreview(BuildContext context) =>
     const MessagingDesktopPreview();
 
 /// A deterministic, non-interactive layout-picker thumbnail of the Messaging
-/// three-column system. The live shell uses native frosted glass for band,
-/// rail, and gutters; this preview approximates structure with flat palette
-/// fills for the rail, list column, and chat canvas.
+/// shell. The live shell uses native frosted glass for band and gutters; this
+/// preview approximates structure with flat palette fills for the list column
+/// and chat canvas.
 final class MessagingDesktopPreview extends StatelessWidget {
   const MessagingDesktopPreview({super.key});
 
@@ -148,52 +143,40 @@ final class MessagingDesktopPreview extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          width: constraints.maxWidth * 0.11,
-                          child: _PreviewRail(colors: colors),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: constraints.maxWidth * 0.015,
+                        right: constraints.maxWidth * 0.015,
+                        bottom: constraints.maxHeight * 0.03,
+                      ),
+                      child: Container(
+                        key: const ValueKey<String>(
+                          'messaging-preview-main-card',
                         ),
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              right: constraints.maxWidth * 0.015,
-                              bottom: constraints.maxHeight * 0.03,
-                            ),
-                            child: Container(
-                              key: const ValueKey<String>(
-                                'messaging-preview-main-card',
-                              ),
-                              decoration: BoxDecoration(
-                                color: colors.isDark
-                                    ? colors.surface
-                                    : colors.surfaceLow,
-                                borderRadius: BorderRadius.circular(
-                                  constraints.maxHeight * 0.06,
-                                ),
-                                border: Border.all(
-                                  color: colors.line.withAlpha(100),
-                                  width: 0.5,
-                                ),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SizedBox(
-                                    width: constraints.maxWidth * 0.28,
-                                    child: _PreviewListColumn(colors: colors),
-                                  ),
-                                  Expanded(
-                                    child: _PreviewChatCanvas(colors: colors),
-                                  ),
-                                ],
-                              ),
-                            ),
+                        decoration: BoxDecoration(
+                          color: colors.isDark
+                              ? colors.surface
+                              : colors.surfaceLow,
+                          borderRadius: BorderRadius.circular(
+                            constraints.maxHeight * 0.06,
+                          ),
+                          border: Border.all(
+                            color: colors.line.withAlpha(100),
+                            width: 0.5,
                           ),
                         ),
-                      ],
+                        clipBehavior: Clip.antiAlias,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: constraints.maxWidth * 0.32,
+                              child: _PreviewListColumn(colors: colors),
+                            ),
+                            Expanded(child: _PreviewChatCanvas(colors: colors)),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -204,53 +187,6 @@ final class MessagingDesktopPreview extends StatelessWidget {
       ),
     );
   }
-}
-
-final class _PreviewRail extends StatelessWidget {
-  const _PreviewRail({required this.colors});
-
-  final LayoutPalette colors;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    key: const ValueKey<String>('messaging-preview-nav-rail'),
-    color: colors.background,
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final unit = constraints.maxHeight / 24;
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var index = 0; index < 5; index++) ...[
-                if (index > 0) SizedBox(height: unit * 0.3),
-                Container(
-                  width: unit * 2.2,
-                  height: unit * 2.2,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(unit * 0.55),
-                    color: index == 0 ? colors.primary : Colors.transparent,
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: unit * 0.9,
-                      height: unit * 0.9,
-                      decoration: BoxDecoration(
-                        color: index == 0
-                            ? Colors.black.withAlpha(230)
-                            : colors.textMuted,
-                        borderRadius: BorderRadius.circular(unit * 0.25),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    ),
-  );
 }
 
 final class _PreviewListColumn extends StatelessWidget {
