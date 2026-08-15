@@ -28,6 +28,7 @@ void main() {
     expect(chinese.agentHubUninstall, '卸载');
     expect(chinese.agentHubDownloadSource, '下载源');
     expect(chinese.agentHubPendingCommand, '即将执行的命令');
+    expect(chinese.pluginManagementRefresh, '刷新插件目录');
     expect(chinese.modelGateway, '模型网关');
     expect(chinese.mobilePairing, '移动配对');
     expect(chinese.chatChannels, '聊天频道');
@@ -48,6 +49,7 @@ void main() {
     expect(english.agentHubUninstall, 'Uninstall');
     expect(english.agentHubDownloadSource, 'Download source');
     expect(english.agentHubPendingCommand, 'Command to run');
+    expect(english.pluginManagementRefresh, 'Refresh plugin catalog');
     expect(english.modelGateway, 'Model Gateway');
     expect(english.mobilePairing, 'Mobile Pairing');
     expect(english.chatChannels, 'Chat Channels');
@@ -74,6 +76,10 @@ void main() {
   });
 
   test('skill hub chrome is localized without changing skill content', () {
+    expect(chinese.skillHub, '技能中心');
+    expect(english.skillHub, 'Skill Hub');
+    expect(chinese.skillHubSearchHint, '搜索技能');
+    expect(english.skillHubSearchHint, 'Search skills');
     expect(chinese.publicSkills, '公共技能');
     expect(english.publicSkills, 'Public Skills');
     expect(chinese.installFromGitHub, '从 GitHub 安装');

@@ -6,6 +6,9 @@ import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -69,6 +72,45 @@ void main() {
     expect(find.byKey(const Key('adapter-plugin-antigravity')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'plugin pane title bar uses the shared refresh control and stays aligned',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await _pumpPanel(tester, locale: const Locale('zh'));
+
+      expect(find.byType(LicoPaneTitleBar), findsOneWidget);
+      expect(find.byKey(const Key('adapter-plugin-title-bar')), findsOneWidget);
+      expect(find.byKey(const Key('adapter-plugin-refresh')), findsOneWidget);
+      expect(find.byKey(const Key('adapter-plugin-search')), findsNothing);
+      expect(find.text('插件管理'), findsOneWidget);
+      expect(find.byType(IconButton), findsNothing);
+
+      final title = tester.getRect(find.text('插件管理'));
+      final titleBar = tester.getRect(
+        find.byKey(const Key('adapter-plugin-title-bar')),
+      );
+      final refresh = tester.getRect(
+        find.byKey(const Key('adapter-plugin-refresh')),
+      );
+      expect((title.center.dy - refresh.center.dy).abs(), lessThan(1));
+      expect(
+        refresh.right,
+        closeTo(titleBar.right - LicoContentSpacing.paneInset, 1),
+      );
+      expect(refresh.left, greaterThan(title.right));
+
+      final button = tester.widget<LicoIconButton>(find.byType(LicoIconButton));
+      expect(button.shape, LicoIconButtonShape.circle);
+      expect(button.tone, LicoIconButtonTone.ghost);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('adapter cards group native capabilities and adapter plugins', (
     tester,
   ) async {

@@ -1,4 +1,4 @@
-use super::{AdmittedCommand, CliExecution, admitted_params};
+use super::{admitted_params, AdmittedCommand, CliExecution};
 use anyhow::Result;
 use serde_json::{Map, Value};
 
@@ -54,8 +54,8 @@ pub(super) fn handle_apply(command: AdmittedCommand) -> Result<CliExecution> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{CliExecution, execute_cli};
-    use serde_json::{Value, json};
+    use super::super::{execute_cli, CliExecution};
+    use serde_json::{json, Value};
     use std::env;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -114,6 +114,31 @@ mod tests {
     }
 
     #[test]
+    fn catalog_with_agent_id_projects_one_card() {
+        let mut params = snapshot_params("one-card");
+        params["discoveryCandidates"] = json!([
+            {
+                "target": "codex",
+                "present": true,
+                "status": "detected"
+            }
+        ]);
+        let value = json_of(vec![
+            "agent-hub".into(),
+            "catalog".into(),
+            "--agent-id".into(),
+            "codex".into(),
+            "--stdin-json".into(),
+            params.to_string(),
+        ]);
+        assert_eq!(value["ok"], true);
+        let cards = value["cards"].as_array().expect("cards");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0]["id"], "codex");
+        assert_eq!(cards[0]["present"], true);
+    }
+
+    #[test]
     fn plan_selects_channel_from_injected_capabilities() {
         let value = json_of(vec![
             "agent-hub".into(),
@@ -128,10 +153,8 @@ mod tests {
         assert_eq!(value["ok"], true);
         assert_eq!(value["status"], "planned");
         assert_eq!(value["selectedChannel"]["kind"], "homebrew");
-        assert!(
-            value["confirmation"]
-                .as_str()
-                .is_some_and(|token| token.starts_with("agent-hub:"))
-        );
+        assert!(value["confirmation"]
+            .as_str()
+            .is_some_and(|token| token.starts_with("agent-hub:")));
     }
 }
