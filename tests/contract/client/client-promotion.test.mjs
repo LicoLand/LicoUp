@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -91,4 +92,19 @@ test("documentation train timing fails closed for invalid telemetry", () => {
     endedAt: "invalid",
     stages: [],
   }), PromotionError);
+});
+
+test("promotion mutations use idempotent REST confirmation instead of GraphQL writes", () => {
+  const source = readFileSync("tools/scripts/client-promotion.mjs", "utf8");
+  assert.equal(source.includes('"pr", "create"'), false);
+  assert.equal(source.includes('"pr", "merge"'), false);
+  assert.match(source, /repos\/\$\{repository\}\/pulls/u);
+  assert.match(source, /merge_method=merge/u);
+  assert.match(source, /attempts: 3/u);
+  assert.match(source, /check-runs/u);
+  assert.match(source, /"Branch flow", "Commit identity", plan\.aggregate, "Auditor"/u);
+  assert.match(source, /for \(;;\)/u);
+  assert.match(source, /retryTransient: true/u);
+  assert.equal(source.includes('"pr", "checks"'), false);
+  assert.equal(source.includes("docsEfficiencyThresholdMs"), true);
 });
