@@ -374,9 +374,13 @@ function validateReadmeFastPathTopology() {
   const auditor = readText(".github/workflows/lico-auditor-gate.yml");
   assertIncludes(auditor, "readme-fast-path.mjs classify",
     "Auditor must classify the author README path");
-  if ((auditor.match(/readme-fast-path\.mjs verify/gmu) || []).length !== 1) {
-    fail("Auditor must run the README privacy verifier exactly once");
+  assertExcludes(auditor, "readme-fast-path.mjs verify",
+    "Auditor must not use a repository-owned README privacy scanner");
+  if ((auditor.match(/lico-auditor\/bin\/lico-auditor gate/gmu) || []).length !== 1) {
+    fail("Auditor must run the canonical Lico-Auditor gate exactly once");
   }
+  assertIncludes(auditor, "--no-contribution",
+    "Auditor must reduce README fast-path scanning to content privacy");
 }
 
 function releaseInputIds(workflow) {

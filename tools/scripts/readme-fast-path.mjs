@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  SensitiveContentScanner,
-  classifyPath,
-} from "./lib/repository-sensitive-file-policy.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 export const readmeFastManifestPath = "tools/scripts/config/readme-fast-files.json";
@@ -92,34 +88,6 @@ export function classifyReadmeFastPath({ base, head = "HEAD", root = repoRoot })
   });
 }
 
-async function scanBlob(root, head, relativePath) {
-  if (classifyPath(relativePath).verdict === "reject") throw new Error("sensitive_content");
-  const child = spawn("git", ["cat-file", "blob", `${head}:${relativePath}`], {
-    cwd: root,
-    shell: false,
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  const scanner = new SensitiveContentScanner();
-  for await (const chunk of child.stdout) {
-    if (scanner.feed(chunk).verdict === "reject") throw new Error("sensitive_content");
-  }
-  if (scanner.finish().verdict === "reject") throw new Error("sensitive_content");
-  const status = await new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", resolve);
-  });
-  if (status !== 0) throw new Error("blob_unreadable");
-}
-
-export async function verifyReadmeFastPath({ base, head = "HEAD", root = repoRoot }) {
-  const result = classifyReadmeFastPath({ base, head, root });
-  if (!result.eligible) throw new Error("candidate_not_eligible");
-  for (const entry of result.entries) {
-    if (entry.status !== "D") await scanBlob(root, head, entry.path);
-  }
-  return Object.freeze({ ok: true, readmeFast: true, changedCount: result.changedCount });
-}
-
 function writeOutput(result) {
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT,
@@ -146,7 +114,7 @@ function argumentsFor(args) {
   return values.base && values.head && Object.keys(values).length === 2 ? values : null;
 }
 
-export async function main(args = process.argv.slice(2)) {
+export function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   const values = argumentsFor(rest);
   if (!values) throw new Error("arguments_invalid");
@@ -154,21 +122,18 @@ export async function main(args = process.argv.slice(2)) {
     writeOutput(classifyReadmeFastPath(values));
     return;
   }
-  if (command === "verify") {
-    const result = await verifyReadmeFastPath(values);
-    writeOutput({ ...result, eligible: true });
-    return;
-  }
   throw new Error("command_invalid");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  main().catch(() => {
+  try {
+    main();
+  } catch {
     if (process.argv[2] === "classify") {
       writeOutput({ eligible: false, changedCount: 0, entries: Object.freeze([]) });
-      return;
+    } else {
+      process.stderr.write(`${JSON.stringify({ ok: false, privateDataIncluded: false })}\n`);
+      process.exitCode = 1;
     }
-    process.stderr.write(`${JSON.stringify({ ok: false, privateDataIncluded: false })}\n`);
-    process.exitCode = 1;
-  });
+  }
 }

@@ -12,7 +12,6 @@ import test from "node:test";
 import {
   classifyReadmeFastPath,
   readmeFastManifestPath,
-  verifyReadmeFastPath,
 } from "../../../tools/scripts/readme-fast-path.mjs";
 
 const initialFiles = [
@@ -68,7 +67,7 @@ test("README files use the fast path while unrelated files use the ordinary path
   }
 });
 
-test("manifest additions and removals take effect in the same author update", async () => {
+test("manifest additions and removals take effect in the same author update", () => {
   const { root, base } = fixture();
   try {
     const extra = "docs/assets/brand/readme-extra.svg";
@@ -77,7 +76,6 @@ test("manifest additions and removals take effect in the same author update", as
     writeFileSync(path.join(root, extra), "<svg>extra</svg>\n");
     commit(root, "add resource");
     assert.equal(classifyReadmeFastPath({ base, root }).eligible, true);
-    await verifyReadmeFastPath({ base, root });
 
     const added = git(root, ["rev-parse", "HEAD"]);
     writeFileSync(path.join(root, readmeFastManifestPath),
@@ -85,13 +83,12 @@ test("manifest additions and removals take effect in the same author update", as
     rmSync(path.join(root, extra));
     commit(root, "remove resource");
     assert.equal(classifyReadmeFastPath({ base: added, root }).eligible, true);
-    await verifyReadmeFastPath({ base: added, root });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("invalid manifests fall back and sensitive author content is rejected only by verification", async () => {
+test("invalid manifests fall back while README content remains classification-neutral", () => {
   const first = fixture();
   try {
     writeFileSync(path.join(first.root, readmeFastManifestPath), "not json\n");
@@ -109,7 +106,6 @@ test("invalid manifests fall back and sensitive author content is rejected only 
       `${begin}\nYWJjZGVmZ2hpamtsbW5vcA==\n${end}\n`);
     commit(second.root, "sensitive readme");
     assert.equal(classifyReadmeFastPath({ base: second.base, root: second.root }).eligible, true);
-    await assert.rejects(() => verifyReadmeFastPath({ base: second.base, root: second.root }));
   } finally {
     rmSync(second.root, { recursive: true, force: true });
   }
