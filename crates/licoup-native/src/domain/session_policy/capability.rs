@@ -31,6 +31,7 @@ pub struct ProviderKeyHandle {
 }
 
 impl ProviderKeyHandle {
+    #[cfg(test)]
     pub(super) const fn minted(id: u64, generation: u32) -> Self {
         Self { id, generation }
     }
@@ -73,6 +74,7 @@ enum CapabilityState {
 
 pub(super) struct CapabilityTable {
     next_id: u64,
+    #[cfg(test)]
     next_key: u64,
     live: BTreeMap<u64, (EffectCapability, CapabilityState)>,
 }
@@ -81,6 +83,7 @@ impl CapabilityTable {
     pub(super) fn new() -> Self {
         Self {
             next_id: 1,
+            #[cfg(test)]
             next_key: 1,
             live: BTreeMap::new(),
         }
@@ -131,6 +134,7 @@ impl CapabilityTable {
         self.live.clear();
     }
 
+    #[cfg(test)]
     pub(super) fn mint_provider_key(&mut self) -> ProviderKeyHandle {
         let handle = ProviderKeyHandle::minted(self.next_key, 1);
         self.next_key = self.next_key.saturating_add(1);

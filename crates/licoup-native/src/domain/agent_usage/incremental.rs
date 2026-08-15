@@ -2,6 +2,7 @@
 //! the native cache; this module is the typed increment and window projection
 //! surface. Tokens come only from explicit usage metadata.
 
+#[cfg(test)]
 use super::window::UsageWindow;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -95,6 +96,7 @@ pub struct UsageWindowProjection {
 }
 
 impl UsageWindowProjection {
+    #[cfg(test)]
     pub(super) fn from_rows(window: &UsageWindow, rows: Vec<DayModelRow>) -> Self {
         let mut filtered = Vec::new();
         let mut cumulative = TokenDelta::default();
@@ -174,6 +176,7 @@ impl UsageIncrementalAuthority {
         decision
     }
 
+    #[cfg(test)]
     pub(super) fn project_window(&self, window: &UsageWindow) -> UsageWindowProjection {
         let rows = self
             .rows

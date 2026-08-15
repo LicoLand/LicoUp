@@ -179,7 +179,7 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.monitoring => strings.tokenUsage,
         ClientSection.skillHub => strings.skillHub,
         ClientSection.pluginManagement => strings.pluginManagement,
-        ClientSection.mobileRelay => strings.mobilePairing,
+        ClientSection.mobileRelay => strings.mobileRelay,
         ClientSection.models => strings.modelGateway,
         ClientSection.settings => strings.settings,
         ClientSection.agentHub => strings.agentHub,
