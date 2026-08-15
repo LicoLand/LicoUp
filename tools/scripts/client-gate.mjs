@@ -172,8 +172,32 @@ function validatePackageTopology() {
 function validateCiTopology() {
   const workflow = readText(".github/workflows/client-ci.yml");
   for (const job of CLIENT_CI_JOBS) jobBlock(workflow, job);
+  const docsPlan = jobBlock(workflow, "docs-plan");
+  const docsFast = jobBlock(workflow, "docs-fast");
   const plan = jobBlock(workflow, "plan");
   const source = jobBlock(workflow, "source");
+  for (const token of [
+    "github.event.pull_request.base.sha",
+    "github.event.pull_request.head.sha",
+    "docs-fast-promotion.mjs plan",
+  ]) {
+    assertIncludes(docsPlan, token, `CI documentation classifier is missing: ${token}`);
+  }
+  assertIncludes(
+    docsFast,
+    "docs-fast-promotion.mjs verify",
+    "CI documentation fast lane must run the manifest/privacy verifier",
+  );
+  assertIncludes(
+    docsFast,
+    "needs.docs-plan.outputs.docs_fast == 'true'",
+    "CI documentation fast lane must require literal true selection",
+  );
+  assertIncludes(
+    plan,
+    "needs.docs-plan.outputs.docs_fast != 'true'",
+    "ordinary client planning must be inverse to documentation fast selection",
+  );
   for (const token of forbiddenSourceTokens) {
     assertExcludes(plan, token, `CI plan job must not contain ${token}`);
     assertExcludes(source, token, `CI source job must not contain ${token}`);
@@ -205,10 +229,20 @@ function validateCiTopology() {
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
     required,
-    "needs: [source, flutter, rust, android, dependencies]",
+    "needs: [docs-plan, docs-fast, plan, source, flutter, rust, android, dependencies]",
     "required CI reducer must observe every independent lane",
   );
   assertIncludes(required, "if: always()", "required CI reducer must always report lane failures");
+  for (const token of [
+    "DOCS_PLAN_RESULT",
+    "DOCS_FAST_SELECTED",
+    "DOCS_FAST_RESULT",
+    "PLAN_RESULT",
+    "An ordinary client gate ran for a documentation-only change",
+    "Documentation path selection was ambiguous",
+  ]) {
+    assertIncludes(required, token, `required CI reducer is missing: ${token}`);
+  }
   for (const forbidden of [
     "client:build:",
     "client:archive:",
@@ -225,13 +259,18 @@ function validateCiTopology() {
 
 function validatePromotionTopology() {
   const stable = readText(".github/workflows/client-stable.yml");
-  const stableJob = jobBlock(stable, "stable-client");
-  if (JSON.stringify(workflowJobIds(stable)) !== JSON.stringify(["stable-client"])) {
-    fail("stable promotion workflow must expose only Stable client");
+  const stablePlan = jobBlock(stable, "docs-plan");
+  const stableFast = jobBlock(stable, "docs-fast");
+  const stableFull = jobBlock(stable, "stable-client-full");
+  const stableRequired = jobBlock(stable, "stable-client");
+  if (JSON.stringify(workflowJobIds(stable)) !==
+    JSON.stringify(["docs-plan", "docs-fast", "stable-client-full", "stable-client"])) {
+    fail("stable promotion workflow jobs must match the conditional topology");
   }
+  assertIncludes(stable, "branches:\n      - stable",
+    "stable promotion workflow must target stable");
   for (const token of [
-    "branches:\n      - stable",
-    "name: Stable client",
+    "name: Stable client full validation",
     "runs-on: macos-15",
     "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
     "TARGET_REPOSITORY: ${{ github.repository }}",
@@ -242,12 +281,26 @@ function validatePromotionTopology() {
     "npm run client:build:macos",
     "npm run client:install:macos -- --launch-installed --verify-stable",
   ]) {
-    assertIncludes(stable, token, `stable promotion workflow is missing: ${token}`);
+    assertIncludes(stableFull, token, `stable full promotion lane is missing: ${token}`);
   }
-  if ((stableJob.match(/npm run client:build:macos/gmu) || []).length !== 1) {
+  for (const token of [
+    "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
+    'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
+    'test "$HEAD_BRANCH" = nightly',
+    "docs-fast-promotion.mjs plan",
+  ]) {
+    assertIncludes(stablePlan, token, `stable documentation classifier is missing: ${token}`);
+  }
+  assertIncludes(stableFast, "docs-fast-promotion.mjs verify",
+    "stable documentation fast lane must verify manifest privacy");
+  assertIncludes(stableRequired, "name: Stable client",
+    "stable aggregate must preserve its required context name");
+  assertIncludes(stableRequired, "if: always()",
+    "stable aggregate must always reduce lane results");
+  if ((stableFull.match(/npm run client:build:macos/gmu) || []).length !== 1) {
     fail("stable promotion must build exactly once");
   }
-  if ((stableJob.match(/npm run client:install:macos/gmu) || []).length !== 1) {
+  if ((stableFull.match(/npm run client:install:macos/gmu) || []).length !== 1) {
     fail("stable promotion must install, launch, and prove survival exactly once");
   }
   const stableOrder = [
@@ -255,7 +308,7 @@ function validatePromotionTopology() {
     "uses: actions/checkout@",
     "run: npm run client:build:macos",
     "run: npm run client:install:macos -- --launch-installed --verify-stable",
-  ].map((token) => stableJob.indexOf(token));
+  ].map((token) => stableFull.indexOf(token));
   if (stableOrder.some((index) => index < 0) ||
     stableOrder.some((index, position) => position > 0 && index <= stableOrder[position - 1])) {
     fail("stable promotion must guard, build once, then install, launch, and prove survival");
@@ -271,13 +324,18 @@ function validatePromotionTopology() {
   }
 
   const ready = readText(".github/workflows/client-release-ready.yml");
-  const readyJob = jobBlock(ready, "release-ready");
-  if (JSON.stringify(workflowJobIds(ready)) !== JSON.stringify(["release-ready"])) {
-    fail("release promotion workflow must expose only Release ready");
+  const readyPlan = jobBlock(ready, "docs-plan");
+  const readyFast = jobBlock(ready, "docs-fast");
+  const readyFull = jobBlock(ready, "release-ready-full");
+  const readyRequired = jobBlock(ready, "release-ready");
+  if (JSON.stringify(workflowJobIds(ready)) !==
+    JSON.stringify(["docs-plan", "docs-fast", "release-ready-full", "release-ready"])) {
+    fail("release promotion workflow jobs must match the conditional topology");
   }
+  assertIncludes(ready, "branches:\n      - release",
+    "release promotion workflow must target release");
   for (const token of [
-    "branches:\n      - release",
-    "name: Release ready",
+    "name: Release ready full policy",
     "runs-on: ubuntu-24.04",
     "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
     "TARGET_REPOSITORY: ${{ github.repository }}",
@@ -286,14 +344,28 @@ function validatePromotionTopology() {
     "npm run client:gate:topology",
     "npm run client:gate:release-policy",
   ]) {
-    assertIncludes(ready, token, `release promotion workflow is missing: ${token}`);
+    assertIncludes(readyFull, token, `release full promotion lane is missing: ${token}`);
   }
+  for (const token of [
+    "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
+    'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
+    'test "$HEAD_BRANCH" = stable',
+    "docs-fast-promotion.mjs plan",
+  ]) {
+    assertIncludes(readyPlan, token, `release documentation classifier is missing: ${token}`);
+  }
+  assertIncludes(readyFast, "docs-fast-promotion.mjs verify",
+    "release documentation fast lane must verify manifest privacy");
+  assertIncludes(readyRequired, "name: Release ready",
+    "release aggregate must preserve its required context name");
+  assertIncludes(readyRequired, "if: always()",
+    "release aggregate must always reduce lane results");
   const readyOrder = [
     "name: Verify promotion source",
     "uses: actions/checkout@",
     "run: npm run client:gate:topology",
     "run: npm run client:gate:release-policy",
-  ].map((token) => readyJob.indexOf(token));
+  ].map((token) => readyFull.indexOf(token));
   if (readyOrder.some((index) => index < 0) ||
     readyOrder.some((index, position) => position > 0 && index <= readyOrder[position - 1])) {
     fail("release promotion must guard before its ordered Node-only policy checks");
