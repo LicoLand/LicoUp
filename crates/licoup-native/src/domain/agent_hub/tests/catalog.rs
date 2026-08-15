@@ -1,7 +1,7 @@
 use super::super::*;
 use super::support::portable_params;
 use crate::domain::agent_hub::contract::{
-    InstallOwnership, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
+    ADAPTATION_PARTIAL, FIRST_BATCH_IDS, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
 };
 use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
@@ -46,14 +46,19 @@ fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
     assert_eq!(codex["primaryAction"], "open");
     let cursor = cards.iter().find(|card| card["id"] == "cursor").unwrap();
     assert_eq!(cursor["adaptation"], "deep");
-    assert_eq!(cursor["installable"], true);
+    assert_eq!(cursor["installable"], false);
+    assert_eq!(cursor["primaryAction"], "install");
+    assert_eq!(cursor["channelKind"], "");
+    assert!(cursor["installChannels"].as_array().unwrap().is_empty());
     let openclaw = cards.iter().find(|card| card["id"] == "openclaw").unwrap();
     assert_eq!(openclaw["location"], "virtual-machine");
-    assert!(openclaw["connectionModes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|mode| mode == "virtual-machine"));
+    assert!(
+        openclaw["connectionModes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mode| mode == "virtual-machine")
+    );
     for card in cards {
         assert!(card.get("binaryPath").is_none());
         assert!(card.get("configPath").is_none());
@@ -61,20 +66,36 @@ fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
         assert!(!summary.is_empty());
         assert!(!summary.to_lowercase().contains("rank"));
         assert!(card["homepage"].as_str().unwrap().starts_with("https://"));
-        assert!(!card["channelKind"].as_str().unwrap().is_empty());
+        assert_eq!(card["channelKind"], "");
+        assert!(card["installChannels"].as_array().unwrap().is_empty());
     }
-    assert_eq!(codex["channelKind"], "homebrew");
     assert_eq!(codex["homepage"], "https://developers.openai.com/codex");
     assert_eq!(codex["version"], "");
     assert_eq!(codex["installedVersion"], "");
     assert_eq!(codex["latestVersion"], "");
     assert_eq!(codex["updateAvailable"], false);
+}
+
+#[test]
+fn catalog_with_agent_id_loads_that_agent_toml() {
+    let mut params = portable_params("agent-toml").1;
+    params["agentId"] = serde_json::json!("cursor");
+    params["discoveryCandidates"] = serde_json::json!([]);
+    let catalog = catalog(&params).unwrap();
+    let cards = catalog["cards"].as_array().unwrap();
+    assert_eq!(cards.len(), 1);
+    let cursor = &cards[0];
+    assert_eq!(cursor["id"], "cursor");
+    assert_eq!(cursor["installable"], true);
+    assert_eq!(cursor["channelKind"], "homebrew");
     let channels = cursor["installChannels"].as_array().unwrap();
     assert!(channels.iter().any(|channel| channel["id"] == "homebrew"));
     assert!(channels.iter().all(|channel| channel["kind"] != "npm"));
-    assert!(channels
-        .iter()
-        .all(|channel| channel.get("installArgv").is_none()));
+    assert!(
+        channels
+            .iter()
+            .all(|channel| channel.get("installArgv").is_none())
+    );
     let homebrew = channels
         .iter()
         .find(|channel| channel["id"] == "homebrew")
@@ -93,6 +114,7 @@ fn catalog_does_not_emit_install_actions_for_missing_channels() {
         "scanGeneration": 2
     });
     params["discoveryCandidates"] = serde_json::json!([]);
+    params["agentId"] = serde_json::json!("hermes");
     let catalog = catalog(&params).unwrap();
     let hermes = catalog["cards"]
         .as_array()

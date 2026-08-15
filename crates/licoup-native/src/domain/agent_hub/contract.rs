@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub const SCHEMA_VERSION: &str = "v0.0.1:client-agent-install-recipes-1";
+pub const SCHEMA_VERSION: &str = "v0.0.2:client-agent-hub-manifest-1";
 pub const HOST_SCOPE: &str = "desktop";
 pub const PLUGIN_MANAGEMENT_BOUNDARY: &str = "adapter-plugins-only";
 pub const FIRST_BATCH_IDS: [&str; 8] = [
@@ -51,6 +51,45 @@ pub const CHANNEL_WINGET: &str = "winget";
 pub const CHANNEL_OFFICIAL_ARTIFACT: &str = "official-artifact";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AgentHubManifest {
+    pub schema_version: String,
+    pub host_scope: String,
+    pub plugin_management_boundary: String,
+    pub adaptation_tags: Vec<String>,
+    pub channel_kinds: Vec<String>,
+    pub agents: Vec<ManifestAgent>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ManifestAgent {
+    pub id: String,
+    pub label: String,
+    pub adaptation: String,
+    pub protocol: String,
+    pub license: String,
+    pub summary: String,
+    pub homepage: String,
+    #[serde(default)]
+    pub requires_login: bool,
+    #[serde(default)]
+    pub connection_modes: Vec<String>,
+    pub file: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AgentTomlDocument {
+    pub id: String,
+    pub binary_names: Vec<String>,
+    pub official_docs: String,
+    pub channels: Vec<InstallChannel>,
+    #[serde(default)]
+    pub unsupported: Vec<UnsupportedCombination>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeRegistryDocument {
     pub schema_version: String,
@@ -83,7 +122,7 @@ pub struct AgentRecipe {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct InstallChannel {
     pub id: String,
     pub kind: String,
@@ -136,7 +175,7 @@ fn default_selectable() -> bool {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct ArtifactSpec {
     pub origin_host: String,
     pub url_template: String,
@@ -149,7 +188,7 @@ pub struct ArtifactSpec {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct UnsupportedCombination {
     pub oses: Vec<String>,
     pub reason: String,
@@ -165,7 +204,7 @@ pub struct PlatformInstallCapabilities {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct InstallOwnership {
     pub agent_id: String,
     pub channel_id: String,

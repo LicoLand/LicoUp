@@ -15,22 +15,35 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/mes
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const double _hubCardInset = LicoContentSpacing.compact;
 const double _hubCardHorizontalInset = LicoContentSpacing.item;
-const double _hubCardHeaderExtent = 28;
+const double _hubListIconSize = 40;
+const double _hubListSummaryFontSize = 12;
+const double _hubListSummaryLineHeight = 1.4;
+const int _hubListSummaryMaxLines = 2;
+const double _hubListSummaryHeight =
+    _hubListSummaryFontSize *
+    _hubListSummaryLineHeight *
+    _hubListSummaryMaxLines;
+const double _hubListNameHeight = 20;
+const double _hubListIntroHeight =
+    _hubListIconSize <
+        (_hubListNameHeight + LicoContentSpacing.inline + _hubListSummaryHeight)
+    ? _hubListNameHeight + LicoContentSpacing.inline + _hubListSummaryHeight
+    : _hubListIconSize;
 const double _hubCardFooterExtent = 24;
 const double _hubCardExtent =
     _hubCardInset * 2 +
-    _hubCardHeaderExtent +
+    _hubListIntroHeight +
     LicoContentSpacing.compact +
-    AgentHubSummaryVisit.reservedHeight +
+    1 +
     LicoContentSpacing.compact +
-    _hubCardFooterExtent +
-    8;
+    _hubCardFooterExtent;
 const double _hubFooterActionGap = LicoContentSpacing.compact;
 const double _hubFooterActionFontSize = 12;
 const double _hubChipIconSize = 13;
@@ -52,6 +65,7 @@ List<AgentHubRecipe> shuffleAgentHubRecipes(List<AgentHubRecipe> recipes) {
 }
 
 typedef AgentHubHomepageOpener = Future<bool> Function(Uri uri);
+typedef AgentHubOpenAgent = void Function(String recipeId);
 
 /// Agent Hub body: native catalog cards with plan/confirm/install/verify/rescan.
 final class AgentHubPanel extends StatefulWidget {
@@ -60,12 +74,14 @@ final class AgentHubPanel extends StatefulWidget {
     this.engine = const UnwiredAgentHubEngine(),
     this.capabilities = const StaticAgentHubCapabilityPort(),
     this.openHomepage,
+    this.onOpenAgent,
     this.orderRecipes = shuffleAgentHubRecipes,
   });
 
   final AgentHubEnginePort engine;
   final AgentHubCapabilityPort capabilities;
   final AgentHubHomepageOpener? openHomepage;
+  final AgentHubOpenAgent? onOpenAgent;
   final AgentHubCatalogOrder orderRecipes;
 
   Future<AgentHubOperationResult> runLifecycle(
@@ -116,12 +132,21 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   bool _loading = true;
   bool _catalogFailed = false;
   String _busyRecipeId = '';
+  String? _detailRecipeId;
   int _loadGeneration = 0;
   final Set<String> _resolving = {};
   final Map<String, List<String>> _events = {};
   final Set<String> _visitFailed = {};
 
   bool get _discovering => _resolving.isNotEmpty;
+
+  AgentHubRecipe? get _detailRecipe {
+    final id = _detailRecipeId;
+    if (id == null) {
+      return null;
+    }
+    return _recipes.where((recipe) => recipe.id == id).firstOrNull;
+  }
 
   @override
   void initState() {
@@ -182,6 +207,10 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
           _resolving
             ..clear()
             ..addAll(ordered.map((recipe) => recipe.id));
+          if (_detailRecipeId != null &&
+              ordered.every((recipe) => recipe.id != _detailRecipeId)) {
+            _detailRecipeId = null;
+          }
         });
         await _discoverCards(ordered, generation);
         return;
@@ -269,6 +298,9 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
           }
         }
         _catalogFailed = false;
+        if (action == AgentHubLifecycleAction.uninstall && result.ok) {
+          _detailRecipeId = null;
+        }
       });
       if ((action == AgentHubLifecycleAction.install ||
               action == AgentHubLifecycleAction.update ||
@@ -289,7 +321,9 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   }
 
   Future<void> _install(AgentHubRecipe recipe) async {
-    if (_resolving.contains(recipe.id) || !recipe.installable) {
+    if (_resolving.contains(recipe.id) ||
+        !recipe.installable ||
+        recipe.present) {
       return;
     }
     final selection = await showAgentHubInstallFlow(context, recipe: recipe);
@@ -383,6 +417,24 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     });
   }
 
+  void _openAgent(AgentHubRecipe recipe) {
+    if (_resolving.contains(recipe.id) || !recipe.present) {
+      return;
+    }
+    widget.onOpenAgent?.call(recipe.id);
+  }
+
+  _HubCardActions _actionsFor(AgentHubRecipe recipe, bool resolving) {
+    final busy = _busyRecipeId == recipe.id;
+    final locked = resolving || busy;
+    return _HubCardActions(
+      installEnabled: !locked && recipe.installable && !recipe.present,
+      updateEnabled: !locked && recipe.present && recipe.updateAvailable,
+      openEnabled: !locked && recipe.present,
+      uninstallEnabled: !locked && recipe.showsManageActions,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
@@ -395,6 +447,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     if (!ordinaryDeclared) {
       throw const FormatException('agent_hub_ordinary_capability_incomplete');
     }
+    final detail = _detailRecipe;
     Widget body;
     if (_loading && _recipes.isEmpty) {
       body = const Center(
@@ -415,6 +468,31 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
           ],
         ),
       );
+    } else if (detail != null) {
+      final resolving = _resolving.contains(detail.id);
+      body = _AgentHubDetailCard(
+        recipe: detail,
+        adaptationLabel: detail.adaptation == AgentHubAdaptationDepth.deep
+            ? strings.adaptationDeep
+            : strings.adaptationPartial,
+        busy: _busyRecipeId == detail.id,
+        loading: resolving,
+        visitFailed: _visitFailed.contains(detail.id),
+        events: _events[detail.id] ?? const [],
+        visitLabel: strings.agentHubVisitOfficial,
+        visitFailedLabel: strings.agentHubVisitFailed,
+        installLabel: strings.install,
+        updateLabel: strings.agentHubUpdate,
+        openLabel: strings.agentHubOpen,
+        uninstallLabel: strings.agentHubUninstall,
+        actions: _actionsFor(detail, resolving),
+        onInstall: () => _install(detail),
+        onUpdate: () =>
+            _run(AgentHubLifecycleAction.update, recipeId: detail.id),
+        onOpen: () => _openAgent(detail),
+        onUninstall: () => _uninstall(detail),
+        onVisit: () => _visit(detail),
+      );
     } else {
       body = CustomScrollView(
         slivers: [
@@ -427,29 +505,21 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
             ),
             delegate: SliverChildBuilderDelegate((context, index) {
               final recipe = _recipes[index];
-              final cardBusy = _busyRecipeId == recipe.id;
               final resolving = _resolving.contains(recipe.id);
-              final events = _events[recipe.id] ?? const [];
               return _AgentHubRecipeCard(
                 recipe: recipe,
-                adaptationLabel:
-                    recipe.adaptation == AgentHubAdaptationDepth.deep
-                    ? strings.adaptationDeep
-                    : strings.adaptationPartial,
-                busy: cardBusy,
+                busy: _busyRecipeId == recipe.id,
                 loading: resolving,
-                visitFailed: _visitFailed.contains(recipe.id),
-                events: events,
-                visitLabel: strings.agentHubVisitOfficial,
-                visitFailedLabel: strings.agentHubVisitFailed,
+                events: _events[recipe.id] ?? const [],
                 installLabel: strings.install,
                 updateLabel: strings.agentHubUpdate,
-                uninstallLabel: strings.agentHubUninstall,
+                openLabel: strings.agentHubOpen,
+                actions: _actionsFor(recipe, resolving),
+                onOpenDetail: () => setState(() => _detailRecipeId = recipe.id),
                 onInstall: () => _install(recipe),
                 onUpdate: () =>
                     _run(AgentHubLifecycleAction.update, recipeId: recipe.id),
-                onUninstall: () => _uninstall(recipe),
-                onVisit: () => _visit(recipe),
+                onOpen: () => _openAgent(recipe),
               );
             }, childCount: _recipes.length),
           ),
@@ -459,64 +529,84 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     return LicoPaneScaffold(
       key: const Key('agent-hub-panel'),
       titleBarKey: const Key('agent-hub-top-bar'),
-      title: strings.agentHub,
+      title: detail?.displayName ?? strings.agentHub,
       refreshTooltip: strings.agentHubRefresh,
       onRefresh: _loadCatalog,
       refreshing: _discovering,
       refreshButtonKey: const Key('agent-hub-refresh'),
       refreshingIconKey: const Key('agent-hub-catalog-refresh'),
+      leading: detail == null
+          ? null
+          : LicoIconButton(
+              key: const Key('agent-hub-back'),
+              tooltip: strings.agentHubBack,
+              onPressed: () => setState(() => _detailRecipeId = null),
+              icon: const Icon(Icons.arrow_back),
+            ),
       body: body,
     );
   }
 }
 
+final class _HubCardActions {
+  const _HubCardActions({
+    required this.installEnabled,
+    required this.updateEnabled,
+    required this.openEnabled,
+    required this.uninstallEnabled,
+  });
+
+  final bool installEnabled;
+  final bool updateEnabled;
+  final bool openEnabled;
+  final bool uninstallEnabled;
+}
+
+TargetCandidate _brandTarget(AgentHubRecipe recipe) {
+  return TargetCandidate(
+    target: recipe.id,
+    label: recipe.displayName,
+    kind: 'cli',
+    status: recipe.present ? 'detected' : 'not-detected',
+    configured: recipe.present,
+    confidence: 1,
+    adapterStatus: 'implemented',
+  );
+}
+
 final class _AgentHubRecipeCard extends StatelessWidget {
   const _AgentHubRecipeCard({
     required this.recipe,
-    required this.adaptationLabel,
     required this.busy,
     required this.loading,
-    required this.visitFailed,
     required this.events,
-    required this.visitLabel,
-    required this.visitFailedLabel,
     required this.installLabel,
     required this.updateLabel,
-    required this.uninstallLabel,
+    required this.openLabel,
+    required this.actions,
+    required this.onOpenDetail,
     required this.onInstall,
     required this.onUpdate,
-    required this.onUninstall,
-    required this.onVisit,
+    required this.onOpen,
   });
 
   final AgentHubRecipe recipe;
-  final String adaptationLabel;
   final bool busy;
   final bool loading;
-  final bool visitFailed;
   final List<String> events;
-  final String visitLabel;
-  final String visitFailedLabel;
   final String installLabel;
   final String updateLabel;
-  final String uninstallLabel;
+  final String openLabel;
+  final _HubCardActions actions;
+  final VoidCallback onOpenDetail;
   final VoidCallback onInstall;
   final VoidCallback onUpdate;
-  final VoidCallback onUninstall;
-  final VoidCallback onVisit;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final textTheme = Theme.of(context).textTheme;
-    final deep = recipe.adaptation == AgentHubAdaptationDepth.deep;
-    final tagColor = deep ? colors.success : colors.warning;
-    final homepage = recipe.officialHomepage;
-    final visitEnabled = !busy && !loading && homepage != null && !visitFailed;
-    final manage = recipe.showsManageActions;
-    final installEnabled = !loading && !busy && recipe.installable && !manage;
-    final uninstallEnabled = !loading && !busy && manage;
-    final updateEnabled = !loading && !busy && manage && recipe.updateAvailable;
     return Card(
       key: Key('agent-hub-card-${recipe.id}'),
       clipBehavior: Clip.antiAlias,
@@ -531,78 +621,78 @@ final class _AgentHubRecipeCard extends StatelessWidget {
           width: MessagingDesktopMetrics.hairline,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          _hubCardHorizontalInset,
-          _hubCardInset,
-          _hubCardHorizontalInset,
-          _hubCardInset,
-        ),
-        child: LicoShimmerMask(
-          key: loading ? Key('agent-hub-card-loading-${recipe.id}') : null,
-          enabled: loading,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  AgentBrandIcon(
-                    target: TargetCandidate(
-                      target: recipe.id,
-                      label: recipe.displayName,
-                      kind: 'cli',
-                      status: recipe.present ? 'detected' : 'not-detected',
-                      configured: recipe.present,
-                      confidence: 1,
-                      adapterStatus: 'implemented',
+      child: LicoShimmerMask(
+        key: loading ? Key('agent-hub-card-loading-${recipe.id}') : null,
+        enabled: loading,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  key: Key('agent-hub-intro-${recipe.id}'),
+                  onTap: onOpenDetail,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      _hubCardHorizontalInset,
+                      _hubCardInset,
+                      _hubCardHorizontalInset,
+                      LicoContentSpacing.compact,
                     ),
-                    size: 28,
-                    iconSize: 16,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AgentBrandIcon(
+                          target: _brandTarget(recipe),
+                          size: _hubListIconSize,
+                          iconSize: 20,
+                        ),
+                        const SizedBox(width: LicoContentSpacing.compact),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                recipe.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.titleSmall?.copyWith(
+                                  color: colors.text,
+                                ),
+                              ),
+                              const SizedBox(height: LicoContentSpacing.inline),
+                              Expanded(
+                                child: Text(
+                                  recipe.summary,
+                                  key: Key('agent-hub-summary-${recipe.id}'),
+                                  maxLines: _hubListSummaryMaxLines,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: colors.textMuted,
+                                    fontSize: _hubListSummaryFontSize,
+                                    height: _hubListSummaryLineHeight,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: LicoContentSpacing.compact),
-                  Expanded(
-                    child: Text(
-                      recipe.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleSmall?.copyWith(color: colors.text),
-                    ),
-                  ),
-                  Container(
-                    key: Key('agent-hub-adaptation-${recipe.id}'),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tagColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(LicoRadius.chip),
-                    ),
-                    child: Text(
-                      adaptationLabel,
-                      style: textTheme.labelSmall?.copyWith(
-                        color: tagColor,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: LicoContentSpacing.compact),
-              Expanded(
-                child: AgentHubSummaryVisit(
-                  summaryKey: Key('agent-hub-summary-${recipe.id}'),
-                  visitKey: Key('agent-hub-visit-${recipe.id}'),
-                  summary: recipe.summary,
-                  visitLabel: visitLabel,
-                  visitFailedLabel: visitFailedLabel,
-                  visitFailed: visitFailed,
-                  visitEnabled: visitEnabled,
-                  onVisit: onVisit,
                 ),
               ),
-              if (events.isNotEmpty)
-                Text(
+            ),
+            if (events.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  _hubCardHorizontalInset,
+                  0,
+                  _hubCardHorizontalInset,
+                  LicoContentSpacing.inline,
+                ),
+                child: Text(
                   events.join(' · '),
                   key: Key('agent-hub-events-${recipe.id}'),
                   maxLines: 1,
@@ -611,43 +701,232 @@ final class _AgentHubRecipeCard extends StatelessWidget {
                     color: colors.textMuted,
                   ),
                 ),
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.only(top: LicoContentSpacing.inline),
-                  child: LinearProgressIndicator(
-                    key: Key('agent-hub-card-busy'),
-                    minHeight: 2,
-                  ),
+              ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: _hubCardHorizontalInset,
                 ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                child: LinearProgressIndicator(
+                  key: Key('agent-hub-card-busy'),
+                  minHeight: 2,
+                ),
+              ),
+            Divider(
+              height: 1,
+              thickness: MessagingDesktopMetrics.hairline,
+              color: colors.line,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                _hubCardHorizontalInset,
+                LicoContentSpacing.compact,
+                _hubCardHorizontalInset,
+                _hubCardInset,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _HubLifecycleAction(
+                      actionKey: Key('agent-hub-install-${recipe.id}'),
+                      icon: Icons.download_outlined,
+                      label: installLabel,
+                      enabled: actions.installEnabled,
+                      kind: _HubLifecycleKind.filled,
+                      onPressed: onInstall,
+                    ),
+                    const SizedBox(width: _hubFooterActionGap),
+                    _HubLifecycleAction(
+                      actionKey: Key('agent-hub-update-${recipe.id}'),
+                      icon: Icons.system_update_alt_outlined,
+                      label: updateLabel,
+                      enabled: actions.updateEnabled,
+                      kind: _HubLifecycleKind.filled,
+                      onPressed: onUpdate,
+                    ),
+                    const SizedBox(width: _hubFooterActionGap),
+                    _HubLifecycleAction(
+                      actionKey: Key('agent-hub-open-${recipe.id}'),
+                      icon: Icons.chat_bubble_outline,
+                      label: openLabel,
+                      enabled: actions.openEnabled,
+                      kind: _HubLifecycleKind.filled,
+                      onPressed: onOpen,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+final class _AgentHubDetailCard extends StatelessWidget {
+  const _AgentHubDetailCard({
+    required this.recipe,
+    required this.adaptationLabel,
+    required this.busy,
+    required this.loading,
+    required this.visitFailed,
+    required this.events,
+    required this.visitLabel,
+    required this.visitFailedLabel,
+    required this.installLabel,
+    required this.updateLabel,
+    required this.openLabel,
+    required this.uninstallLabel,
+    required this.actions,
+    required this.onInstall,
+    required this.onUpdate,
+    required this.onOpen,
+    required this.onUninstall,
+    required this.onVisit,
+  });
+
+  final AgentHubRecipe recipe;
+  final String adaptationLabel;
+  final bool busy;
+  final bool loading;
+  final bool visitFailed;
+  final List<String> events;
+  final String visitLabel;
+  final String visitFailedLabel;
+  final String installLabel;
+  final String updateLabel;
+  final String openLabel;
+  final String uninstallLabel;
+  final _HubCardActions actions;
+  final VoidCallback onInstall;
+  final VoidCallback onUpdate;
+  final VoidCallback onOpen;
+  final VoidCallback onUninstall;
+  final VoidCallback onVisit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final textTheme = Theme.of(context).textTheme;
+    final deep = recipe.adaptation == AgentHubAdaptationDepth.deep;
+    final tagColor = deep ? colors.success : colors.warning;
+    final homepage = recipe.officialHomepage;
+    final visitEnabled = !busy && !loading && homepage != null && !visitFailed;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          key: Key('agent-hub-detail-${recipe.id}'),
+          clipBehavior: Clip.antiAlias,
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(
+              MessagingDesktopMetrics.conversationListCardCornerRadius,
+            ),
+            side: BorderSide(
+              color: colors.line,
+              width: MessagingDesktopMetrics.hairline,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              _hubCardHorizontalInset,
+              _hubCardInset,
+              _hubCardHorizontalInset,
+              _hubCardInset,
+            ),
+            child: LicoShimmerMask(
+              key: loading ? Key('agent-hub-card-loading-${recipe.id}') : null,
+              enabled: loading,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  Row(
+                    children: [
+                      AgentBrandIcon(
+                        target: _brandTarget(recipe),
+                        size: 48,
+                        iconSize: 24,
+                      ),
+                      const SizedBox(width: LicoContentSpacing.item),
+                      Expanded(
+                        child: Text(
+                          recipe.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleMedium?.copyWith(
+                            color: colors.text,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        key: Key('agent-hub-adaptation-${recipe.id}'),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: tagColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(LicoRadius.chip),
+                        ),
+                        child: Text(
+                          adaptationLabel,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: tagColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: LicoContentSpacing.item),
+                  AgentHubSummaryVisit(
+                    summaryKey: Key('agent-hub-summary-${recipe.id}'),
+                    visitKey: Key('agent-hub-visit-${recipe.id}'),
+                    summary: recipe.summary,
+                    visitLabel: visitLabel,
+                    visitFailedLabel: visitFailedLabel,
+                    visitFailed: visitFailed,
+                    visitEnabled: visitEnabled,
+                    onVisit: onVisit,
+                  ),
+                  const SizedBox(height: LicoContentSpacing.compact),
                   Row(
                     key: Key('agent-hub-channel-version-${recipe.id}'),
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        key: Key('agent-hub-channel-${recipe.id}'),
-                        padding: _hubChipPadding,
-                        decoration: BoxDecoration(
-                          color: colors.surfaceLow,
-                          borderRadius: _hubChipBorderRadius,
-                          border: Border.all(
-                            color: colors.line,
-                            width: MessagingDesktopMetrics.hairline,
+                      if (recipe.channelChipLabel.isNotEmpty)
+                        Container(
+                          key: Key('agent-hub-channel-${recipe.id}'),
+                          padding: _hubChipPadding,
+                          decoration: BoxDecoration(
+                            color: colors.surfaceLow,
+                            borderRadius: _hubChipBorderRadius,
+                            border: Border.all(
+                              color: colors.line,
+                              width: MessagingDesktopMetrics.hairline,
+                            ),
+                          ),
+                          child: Text(
+                            recipe.channelChipLabel,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: colors.textSecondary,
+                              height: 1,
+                            ),
                           ),
                         ),
-                        child: Text(
-                          recipe.channelChipLabel,
-                          style: textTheme.labelSmall?.copyWith(
-                            color: colors.textSecondary,
-                            height: 1,
-                          ),
-                        ),
-                      ),
                       if (recipe.versionLabel.isNotEmpty) ...[
-                        const SizedBox(width: LicoContentSpacing.compact),
+                        if (recipe.channelChipLabel.isNotEmpty)
+                          const SizedBox(width: LicoContentSpacing.compact),
                         Text(
                           recipe.versionLabel,
                           key: Key('agent-hub-version-${recipe.id}'),
@@ -661,55 +940,74 @@ final class _AgentHubRecipeCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                  const SizedBox(width: LicoContentSpacing.compact),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (manage) ...[
-                              _HubLifecycleAction(
-                                actionKey: Key('agent-hub-update-${recipe.id}'),
-                                icon: Icons.system_update_alt_outlined,
-                                label: updateLabel,
-                                enabled: updateEnabled,
-                                kind: _HubLifecycleKind.filled,
-                                onPressed: onUpdate,
-                              ),
-                              const SizedBox(width: _hubFooterActionGap),
-                              _HubLifecycleAction(
-                                actionKey: Key(
-                                  'agent-hub-uninstall-${recipe.id}',
-                                ),
-                                icon: Icons.delete_outline,
-                                label: uninstallLabel,
-                                enabled: uninstallEnabled,
-                                kind: _HubLifecycleKind.danger,
-                                onPressed: onUninstall,
-                              ),
-                            ] else
-                              _HubLifecycleAction(
-                                actionKey: Key(
-                                  'agent-hub-install-${recipe.id}',
-                                ),
-                                icon: Icons.download_outlined,
-                                label: installLabel,
-                                enabled: installEnabled,
-                                kind: _HubLifecycleKind.filled,
-                                onPressed: onInstall,
-                              ),
-                          ],
-                        ),
+                  if (events.isNotEmpty) ...[
+                    const SizedBox(height: LicoContentSpacing.compact),
+                    Text(
+                      events.join(' · '),
+                      key: Key('agent-hub-events-${recipe.id}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: colors.textMuted,
                       ),
                     ),
+                  ],
+                  if (busy)
+                    const Padding(
+                      padding: EdgeInsets.only(top: LicoContentSpacing.inline),
+                      child: LinearProgressIndicator(
+                        key: Key('agent-hub-card-busy'),
+                        minHeight: 2,
+                      ),
+                    ),
+                  const SizedBox(height: LicoContentSpacing.item),
+                  Divider(
+                    height: 1,
+                    thickness: MessagingDesktopMetrics.hairline,
+                    color: colors.line,
+                  ),
+                  const SizedBox(height: LicoContentSpacing.compact),
+                  Wrap(
+                    spacing: _hubFooterActionGap,
+                    runSpacing: _hubFooterActionGap,
+                    children: [
+                      _HubLifecycleAction(
+                        actionKey: Key('agent-hub-install-${recipe.id}'),
+                        icon: Icons.download_outlined,
+                        label: installLabel,
+                        enabled: actions.installEnabled,
+                        kind: _HubLifecycleKind.filled,
+                        onPressed: onInstall,
+                      ),
+                      _HubLifecycleAction(
+                        actionKey: Key('agent-hub-update-${recipe.id}'),
+                        icon: Icons.system_update_alt_outlined,
+                        label: updateLabel,
+                        enabled: actions.updateEnabled,
+                        kind: _HubLifecycleKind.filled,
+                        onPressed: onUpdate,
+                      ),
+                      _HubLifecycleAction(
+                        actionKey: Key('agent-hub-open-${recipe.id}'),
+                        icon: Icons.chat_bubble_outline,
+                        label: openLabel,
+                        enabled: actions.openEnabled,
+                        kind: _HubLifecycleKind.filled,
+                        onPressed: onOpen,
+                      ),
+                      _HubLifecycleAction(
+                        actionKey: Key('agent-hub-uninstall-${recipe.id}'),
+                        icon: Icons.delete_outline,
+                        label: uninstallLabel,
+                        enabled: actions.uninstallEnabled,
+                        kind: _HubLifecycleKind.danger,
+                        onPressed: onUninstall,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),

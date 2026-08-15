@@ -3,7 +3,7 @@ use crate::domain::agent_hub::argv::{self, ArgvKind};
 use crate::domain::agent_hub::contract::{
     ADAPTATION_DEEP, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, PARTIAL_ADAPTATION_ID,
 };
-use crate::domain::agent_hub::recipes::parse_registry;
+use crate::domain::agent_hub::recipes::{manifest, parse_agent_toml, parse_manifest};
 use crate::domain::agent_hub::selector;
 use serde_json::json;
 
@@ -74,13 +74,70 @@ fn first_batch_recipes_load_with_fixed_ids_and_adaptation_tags() {
 }
 
 #[test]
+fn warehouse_is_one_manifest_and_one_toml_per_agent() {
+    let loaded = manifest().unwrap();
+    assert_eq!(
+        loaded.schema_version,
+        crate::domain::agent_hub::SCHEMA_VERSION
+    );
+    assert_eq!(
+        loaded
+            .agents
+            .iter()
+            .map(|agent| agent.file.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "codex.toml",
+            "cursor.toml",
+            "opencode.toml",
+            "claude-code.toml",
+            "pi.toml",
+            "openclaw.toml",
+            "hermes.toml",
+            "antigravity.toml"
+        ]
+    );
+    parse_manifest(include_str!(
+        "../../../../resources/agent-hub/manifest.toml"
+    ))
+    .unwrap();
+    for agent in &loaded.agents {
+        let raw = match agent.id.as_str() {
+            "codex" => include_str!("../../../../resources/agent-hub/codex.toml"),
+            "cursor" => include_str!("../../../../resources/agent-hub/cursor.toml"),
+            "opencode" => include_str!("../../../../resources/agent-hub/opencode.toml"),
+            "claude-code" => include_str!("../../../../resources/agent-hub/claude-code.toml"),
+            "pi" => include_str!("../../../../resources/agent-hub/pi.toml"),
+            "openclaw" => include_str!("../../../../resources/agent-hub/openclaw.toml"),
+            "hermes" => include_str!("../../../../resources/agent-hub/hermes.toml"),
+            "antigravity" => include_str!("../../../../resources/agent-hub/antigravity.toml"),
+            other => panic!("unexpected agent {other}"),
+        };
+        let document = parse_agent_toml(raw).unwrap();
+        assert_eq!(document.id, agent.id);
+        assert!(!document.channels.is_empty());
+    }
+}
+
+#[test]
 fn recipes_are_argv_only_official_https_and_never_pipe_to_shell() {
-    let raw = include_str!("../../../../resources/agent-install-recipes.json");
-    assert!(!raw.contains("curl|"));
-    assert!(!raw.contains("| sh"));
-    assert!(!raw.contains("| bash"));
-    assert!(!raw.contains("| iex"));
-    let registry = parse_registry(raw).unwrap();
+    let sources = [
+        include_str!("../../../../resources/agent-hub/codex.toml"),
+        include_str!("../../../../resources/agent-hub/cursor.toml"),
+        include_str!("../../../../resources/agent-hub/opencode.toml"),
+        include_str!("../../../../resources/agent-hub/claude-code.toml"),
+        include_str!("../../../../resources/agent-hub/pi.toml"),
+        include_str!("../../../../resources/agent-hub/openclaw.toml"),
+        include_str!("../../../../resources/agent-hub/hermes.toml"),
+        include_str!("../../../../resources/agent-hub/antigravity.toml"),
+    ];
+    for raw in sources {
+        assert!(!raw.contains("curl|"));
+        assert!(!raw.contains("| sh"));
+        assert!(!raw.contains("| bash"));
+        assert!(!raw.contains("| iex"));
+    }
+    let registry = registry().unwrap();
     for agent in &registry.agents {
         for channel in &agent.channels {
             assert!(channel.official_source.starts_with("https://"));

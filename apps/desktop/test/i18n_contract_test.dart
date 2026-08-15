@@ -25,6 +25,8 @@ void main() {
     expect(chinese.agentHubVisit, '访问');
     expect(chinese.agentHubVisitFailed, '无法打开主页');
     expect(chinese.agentHubUpdate, '更新');
+    expect(chinese.agentHubOpen, '打开');
+    expect(chinese.agentHubBack, '返回');
     expect(chinese.agentHubUninstall, '卸载');
     expect(chinese.agentHubDownloadSource, '下载源');
     expect(chinese.agentHubPendingCommand, '即将执行的命令');
@@ -46,6 +48,8 @@ void main() {
     expect(english.agentHubVisit, 'Visit →');
     expect(english.agentHubVisitFailed, 'Unable to open homepage');
     expect(english.agentHubUpdate, 'Update');
+    expect(english.agentHubOpen, 'Open');
+    expect(english.agentHubBack, 'Back');
     expect(english.agentHubUninstall, 'Uninstall');
     expect(english.agentHubDownloadSource, 'Download source');
     expect(english.agentHubPendingCommand, 'Command to run');
