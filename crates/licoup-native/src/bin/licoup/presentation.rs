@@ -47,6 +47,7 @@ pub(super) fn print_usage() {
   licoup agent conversation open|send|steer|cancel|cleanup|capabilities|stream [--stdin-json true]
   licoup conversation execute --stdin-json JSON
   licoup agents pair request|approve|revoke|list --agent AGENT [--target TARGET]
+  licoup agent-hub catalog|plan|apply [--agent-id ID] [--operation install|update|uninstall] [--confirmation TOKEN] [--cancel] [--stdin-json JSON]
   licoup skill list --agent AGENT [--skill-root PATH]
   licoup skill get <skill-id> --agent AGENT [--skill-root PATH]
   licoup skill delete plan|apply --skill SKILL --path PATH [--confirmation PLAN_VALUE]

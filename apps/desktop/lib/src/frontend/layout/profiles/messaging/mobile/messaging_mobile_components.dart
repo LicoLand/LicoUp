@@ -259,6 +259,7 @@ IconData messagingMobileDestinationIcon(ClientSection destination) {
     ClientSection.monitoring => Icons.monitor_heart_outlined,
     ClientSection.skillHub => Icons.extension_outlined,
     ClientSection.pluginManagement => Icons.extension_outlined,
+    ClientSection.agentHub => Icons.auto_awesome_outlined,
     ClientSection.models => Icons.key_outlined,
   };
 }

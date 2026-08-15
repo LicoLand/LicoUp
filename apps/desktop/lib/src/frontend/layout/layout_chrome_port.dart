@@ -27,6 +27,15 @@ final class LayoutChromePortScope extends InheritedWidget {
       .dependOnInheritedWidgetOfExactType<LayoutChromePortScope>()
       ?.chrome;
 
+  /// Opens destination-aware global search when chrome is in the tree.
+  static Future<void> openSearch(BuildContext context) async {
+    final chrome = maybeOf(context);
+    if (chrome == null) {
+      return;
+    }
+    await chrome.openGlobalSearch(context);
+  }
+
   @override
   bool updateShouldNotify(LayoutChromePortScope oldWidget) =>
       !identical(oldWidget.chrome, chrome);

@@ -24,6 +24,31 @@ fn generated_context_blocks_are_removed_without_dropping_trailing_user_text() {
 }
 
 #[test]
+fn cursor_userquery_wrappers_project_inner_text_only() {
+    assert_eq!(
+        extract_user_authored_text("<userquery>Keep the real question</userquery>"),
+        "Keep the real question"
+    );
+    assert_eq!(
+        extract_user_authored_text(
+            "<user_info>synthetic host facts</user_info>\n<userquery>\nKeep the real question\n</userquery>"
+        ),
+        "Keep the real question"
+    );
+    let inner = extract_user_authored_text("<USERQUERY>Keep the real question</USERQUERY>");
+    assert_eq!(inner, "Keep the real question");
+    assert!(!inner.contains("userquery"));
+}
+
+#[test]
+fn cursor_userquery_missing_close_fails_closed_without_raw_tags() {
+    let visible = extract_user_authored_text("<userquery>Keep the visible question");
+    assert_eq!(visible.trim(), "Keep the visible question");
+    assert!(!visible.contains("<userquery>"));
+    assert!(!visible.contains("</userquery>"));
+}
+
+#[test]
 fn generated_image_wrapper_projects_a_typed_local_attachment() {
     let text = "# Files mentioned by the user:\n\n## screenshot.png: /fixture-root/screenshot.png\n\n## My request:\nRender this image\n<image name=[Image #1] path=\"/fixture-root/screenshot.png\">\nprivate image metadata\n</image>";
     let images = extract_user_image_attachments(text);

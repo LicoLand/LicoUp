@@ -22,6 +22,7 @@ void main() {
       controller.resolve(ClientSection.pluginManagement),
       ClientSection.agents,
     );
+    expect(controller.resolve(ClientSection.agentHub), ClientSection.agents);
     expect(
       controller.resolve(ClientSection.mobileRelay),
       ClientSection.mobileRelay,

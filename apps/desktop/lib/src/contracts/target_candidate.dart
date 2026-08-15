@@ -51,10 +51,29 @@ class TargetCandidate {
   }
 
   bool get visibleInClient => status != 'not-detected';
-  bool get isConversationAgent =>
-      visibleInClient &&
-      target != 'code' &&
-      (location == 'local' || hasValidVirtualMachineConnection);
+
+  /// Host-local presence used by Agent Hub: a detected/configured/available
+  /// scan status, or a bound executable. Automatic virtual-machine discovery
+  /// is not a host install.
+  bool get isPresentOnHost =>
+      status == 'detected' ||
+      status == 'configured' ||
+      status == 'available' ||
+      (binaryPath ?? '').trim().isNotEmpty;
+
+  /// Conversation contacts are host-local installs, matching Agent Hub.
+  /// A user-added virtual-machine connection stays eligible; automatic
+  /// OrbStack discovery does not.
+  bool get isConversationAgent {
+    if (target == 'code') {
+      return false;
+    }
+    if (location == 'local') {
+      return isPresentOnHost;
+    }
+    return manual && hasValidVirtualMachineConnection;
+  }
+
   bool get isVirtualMachine => location == 'virtual-machine';
   bool get hasValidVirtualMachineConnection {
     if (!isVirtualMachine || !const {'openclaw', 'hermes'}.contains(target)) {

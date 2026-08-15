@@ -236,8 +236,9 @@ acceptance has exercised this path through an actual BadTower candidate with
 two freshly initialized endpoints. See [Status](../STATUS.md) for the exact
 verification and release boundaries.
 
-The client treats all relay output as attacker-controlled. A relay cannot
-select or update the endpoint algorithm, key, trust root, or security policy.
+The client treats all relay output as attacker-controlled. LicoUp never
+accepts an encryption algorithm, key, trust root, or security policy from a
+relay.
 Delivery acknowledgements, leases, timestamps, and queue state reported by a
 relay are transport hints only. They do not prove peer identity, packet
 freshness, non-replay, integrity, or final receipt. LicoUp makes those decisions
@@ -255,7 +256,8 @@ The client follows these rules:
   its protected one-shot approval. HTTPS protects transport, but the named
   external service can read the approved content.
 - Without such an exact external-service approval, protected content leaves
-  only as ciphertext addressed to a named peer client.
+  the client only as ciphertext addressed to a named peer client, unless you
+  choose Telegram or another external messenger as a trusted channel.
 - The sender encrypts before network I/O. The receiver authenticates and
   verifies before use.
 - The station is outside the trusted client boundary. Client security does not
@@ -263,8 +265,9 @@ The client follows these rules:
 - Only ciphertext and the minimum routing fields cross the station boundary.
   Private keys, local trust and approval policy, protocol-defined freshness and
   replay state, and authenticated final-receipt state remain endpoint-held.
-- Keys are held through platform security tools. Protected key use asks for
-  user presence when the platform supports it.
+- Keys are held in an available OS secret store or an explicit memory-only
+  store. Protected key use asks for user presence when the platform supports
+  it.
 - Logs and test reports contain safe summaries, not raw user content.
 
 ## Repository map

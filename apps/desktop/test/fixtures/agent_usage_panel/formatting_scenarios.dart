@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,13 +48,21 @@ void registerAgentUsageFormattingScenarios() {
     expect(find.text('7.9M'), findsAtLeastNWidgets(1));
     expect(find.text('670.7K'), findsAtLeastNWidgets(1));
     expect(find.text('Token Usage'), findsOneWidget);
+    expect(find.byKey(const Key('agent-usage-exit-button')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('agent-usage-exit-button'))).dx,
+      lessThan(tester.getTopLeft(find.text('Token Usage')).dx),
+    );
+    controller.selectSection(ClientSection.monitoring);
+    await tester.tap(find.byKey(const Key('agent-usage-exit-button')));
+    await tester.pump();
+    expect(controller.currentSection, ClientSection.agents);
     expect(find.text('Total'), findsOneWidget);
     expect(find.text('240.4M'), findsOneWidget);
     expect(find.text('Report Totals'), findsNothing);
     expect(find.text('Metered Traffic'), findsNothing);
     expect(find.text('Estimated History'), findsNothing);
     expect(find.text('Usage Over Time'), findsNothing);
-    expect(tester.getTopLeft(find.text('Token Usage')).dx, lessThan(40));
     expect(find.text('By Agent'), findsOneWidget);
     expect(find.text('By Model'), findsOneWidget);
 
