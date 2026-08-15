@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="500" viewBox="0 0 1280 500" role="img" aria-labelledby="title desc">
+  <title id="title">LicoUp README banner (dark)</title>
+  <desc id="desc">The approved LicoUp orbit ice-cream cup mark beside the brand wordmark on a warm cocoa night ground, with brand-colored stars echoing the planetary orbit.</desc>
+
+  <defs>
+    <radialGradient id="bannerGround" cx="34%" cy="42%" r="92%">
+      <stop offset="0" stop-color="#1a120f"/>
+      <stop offset="1" stop-color="#120e0c"/>
+    </radialGradient>
+
+    <radialGradient id="scoopLight" cx="48%" cy="40%" r="50%">
+      <stop offset="0" stop-color="#fde5bf" stop-opacity="0.34"/>
+      <stop offset="0.52" stop-color="#fde5bf" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#fde5bf" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Approved mark paint, copied verbatim from
+         apps/desktop/assets/brand/lico-app-icon.svg. -->
+    <radialGradient id="scoop" cx="47%" cy="36%" r="72%">
+      <stop offset="0" stop-color="#ffeac7"/>
+      <stop offset="0.70" stop-color="#fde5bf"/>
+      <stop offset="1" stop-color="#f5dab4"/>
+    </radialGradient>
+
+    <radialGradient id="cherry" cx="42%" cy="34%" r="72%">
+      <stop offset="0" stop-color="#e46b5b"/>
+      <stop offset="0.76" stop-color="#da5e51"/>
+      <stop offset="1" stop-color="#cc5048"/>
+    </radialGradient>
+
+    <linearGradient id="orbitPaint" gradientUnits="userSpaceOnUse" x1="438" y1="626" x2="936" y2="670">
+      <stop offset="0" stop-color="#6e2b05"/>
+      <stop offset="0.22" stop-color="#3b1400"/>
+      <stop offset="0.48" stop-color="#6d2a04"/>
+      <stop offset="0.72" stop-color="#401500"/>
+      <stop offset="1" stop-color="#6a2904"/>
+    </linearGradient>
+
+    <linearGradient id="glassBack" gradientUnits="userSpaceOnUse" x1="0" y1="620" x2="0" y2="1145">
+      <stop offset="0" stop-color="#d3f1f4" stop-opacity="0.34"/>
+      <stop offset="0.38" stop-color="#b5e5ee" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#a8d9e7" stop-opacity="0.25"/>
+    </linearGradient>
+
+    <linearGradient id="glassFront" gradientUnits="userSpaceOnUse" x1="0" y1="646" x2="0" y2="1145">
+      <stop offset="0" stop-color="#c9edf2" stop-opacity="0.48"/>
+      <stop offset="0.28" stop-color="#acdfea" stop-opacity="0.56"/>
+      <stop offset="0.72" stop-color="#91cfe4" stop-opacity="0.57"/>
+      <stop offset="1" stop-color="#abdce9" stop-opacity="0.51"/>
+    </linearGradient>
+
+    <linearGradient id="glassBase" gradientUnits="userSpaceOnUse" x1="520" y1="1000" x2="740" y2="1140">
+      <stop offset="0" stop-color="#b8e2eb" stop-opacity="0.54"/>
+      <stop offset="1" stop-color="#9cd2e3" stop-opacity="0.48"/>
+    </linearGradient>
+
+    <radialGradient id="submergedScoop" cx="48%" cy="28%" r="70%">
+      <stop offset="0" stop-color="#fee6bf" stop-opacity="0.68"/>
+      <stop offset="0.62" stop-color="#f9e0bb" stop-opacity="0.48"/>
+      <stop offset="0.88" stop-color="#efd6b4" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#efd6b4" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="submergedCherry" cx="45%" cy="32%" r="70%">
+      <stop offset="0" stop-color="#dc6257" stop-opacity="0.66"/>
+      <stop offset="0.66" stop-color="#d85b54" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#d85b54" stop-opacity="0"/>
+    </radialGradient>
+
+    <path id="rimBackArc" d="M324 646 A304 39 0 0 1 932 646"/>
+    <path id="rimFrontArc" d="M932 646 A304 39 0 0 1 324 646"/>
+
+    <path id="gobletSilhouette" d="M324 646
+      A304 39 0 0 1 932 646
+      C932 700 932 740 920 780
+      C908 832 889 870 862 900
+      C834 930 795 960 756 977
+      C740 984 722 990 706 994
+      C685 998 674 1011 674 1032
+      C674 1054 695 1068 737 1083
+      C776 1097 793 1115 775 1128
+      C739 1150 516 1150 479 1128
+      C461 1115 478 1097 518 1083
+      C558 1068 578 1054 578 1032
+      C578 1011 568 999 547 994
+      C531 990 518 984 502 977
+      C463 960 424 930 396 900
+      C369 870 350 832 338 780
+      C326 740 324 700 324 646 Z"/>
+
+    <path id="gobletFront" d="M324 646
+      A304 39 0 0 0 932 646
+      C932 700 932 740 920 780
+      C908 832 889 870 862 900
+      C834 930 795 960 756 977
+      C740 984 722 990 706 994
+      C685 998 674 1011 674 1032
+      C674 1054 695 1068 737 1083
+      C776 1097 793 1115 775 1128
+      C739 1150 516 1150 479 1128
+      C461 1115 478 1097 518 1083
+      C558 1068 578 1054 578 1032
+      C578 1011 568 999 547 994
+      C531 990 518 984 502 977
+      C463 960 424 930 396 900
+      C369 870 350 832 338 780
+      C326 740 324 700 324 646 Z"/>
+
+    <clipPath id="bowlInterior">
+      <path d="M324 646 A304 39 0 0 0 932 646
+        C932 700 932 740 920 780
+        C908 832 889 870 862 900
+        C834 930 795 960 756 977
+        C740 984 722 990 700 982
+        C678 986 575 986 552 982
+        C531 990 518 984 502 977
+        C463 960 424 930 396 900
+        C369 870 350 832 338 780
+        C326 740 324 700 324 646 Z"/>
+    </clipPath>
+
+    <clipPath id="orbitFrontWindow">
+      <path d="M365 555 L480 555 L480 665 L365 665 Z"/>
+    </clipPath>
+
+    <path id="orbitContinuous" d="M438 626
+      C426 608 402 590 373 572
+      C304 529 263 480 297 438
+      C327 404 402 393 492 414
+      C598 438 739 461 846 496
+      C912 521 962 553 976 585
+      C991 620 971 646 930 663"/>
+  </defs>
+
+  <rect x="8" y="8" width="1264" height="484" rx="40" fill="url(#bannerGround)"/>
+
+  <!-- Brand-colored stars: cream, cherry, soda — the same palette as the cup. -->
+  <g fill="#fde5bf">
+    <circle cx="72" cy="58" r="1.4" opacity="0.55"/>
+    <circle cx="214" cy="168" r="1.1" opacity="0.40"/>
+    <circle cx="388" cy="44" r="1.3" opacity="0.48"/>
+    <circle cx="612" cy="466" r="1.2" opacity="0.36"/>
+    <circle cx="1088" cy="38" r="1.5" opacity="0.50"/>
+    <circle cx="1130" cy="86" r="1.2" opacity="0.42"/>
+    <circle cx="1220" cy="318" r="1.4" opacity="0.46"/>
+  </g>
+  <g fill="#e46b5b">
+    <circle cx="128" cy="412" r="1.5" opacity="0.62"/>
+    <circle cx="296" cy="92" r="1.2" opacity="0.48"/>
+    <circle cx="964" cy="52" r="1.3" opacity="0.55"/>
+    <circle cx="1264" cy="428" r="1.6" opacity="0.58"/>
+    <circle cx="1188" cy="196" r="1.2" opacity="0.44"/>
+    <circle cx="54" cy="248" r="1.1" opacity="0.40"/>
+  </g>
+  <g fill="#83c9e9">
+    <circle cx="176" cy="286" r="1.3" opacity="0.52"/>
+    <circle cx="448" cy="36" r="1.1" opacity="0.38"/>
+    <circle cx="1188" cy="70" r="1.4" opacity="0.50"/>
+    <circle cx="1088" cy="454" r="1.2" opacity="0.42"/>
+    <circle cx="1232" cy="408" r="1.5" opacity="0.56"/>
+    <circle cx="82" cy="132" r="1.1" opacity="0.36"/>
+    <circle cx="780" cy="470" r="1.2" opacity="0.34"/>
+  </g>
+
+  <!-- Approved mark, verbatim geometry, back-to-front semantic layers. -->
+  <g transform="translate(171,19) scale(0.300)">
+    <ellipse cx="630" cy="615" rx="268" ry="255" fill="url(#scoopLight)"/>
+
+    <use href="#gobletSilhouette" fill="url(#glassBack)"/>
+    <ellipse cx="628" cy="646" rx="304" ry="39" fill="#d8f1f2" fill-opacity="0.14"/>
+    <use href="#rimBackArc" fill="none" stroke="#c9ebef" stroke-opacity="0.64" stroke-width="8" stroke-linecap="round"/>
+
+    <path d="M1005 350 L869 307 Q852 301 847 316 L791 454 L791 760"
+          fill="none" stroke="#83c9e9" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+
+    <use href="#orbitContinuous" fill="none" stroke="url(#orbitPaint)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <circle cx="630" cy="615" r="255" fill="url(#scoop)"/>
+
+    <use href="#orbitContinuous" clip-path="url(#orbitFrontWindow)"
+         fill="none" stroke="url(#orbitPaint)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <circle cx="460" cy="670" r="68" fill="url(#cherry)"/>
+
+    <g clip-path="url(#bowlInterior)">
+      <circle cx="630" cy="615" r="255" fill="url(#submergedScoop)"/>
+      <circle cx="460" cy="670" r="74" fill="url(#submergedCherry)"/>
+    </g>
+
+    <use href="#gobletFront" fill="url(#glassFront)"/>
+    <path d="M547 994
+        C568 999 578 1011 578 1032
+        C578 1054 558 1068 518 1083
+        C478 1097 461 1115 479 1128
+        C516 1150 739 1150 775 1128
+        C793 1115 776 1097 737 1083
+        C695 1068 674 1054 674 1032
+        C674 1011 685 998 706 994 Z"
+          fill="url(#glassBase)"/>
+
+    <use href="#rimFrontArc" fill="none" stroke="#dcf1f2" stroke-opacity="0.92" stroke-width="9" stroke-linecap="round"/>
+    <use href="#rimFrontArc" fill="none" stroke="#afe0ea" stroke-opacity="0.56" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <text x="554" y="228"
+        font-family="ui-rounded, 'SF Pro Rounded', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="118" font-weight="700" letter-spacing="-2.4">
+    <tspan fill="#fde5bf">Lico</tspan><tspan fill="#e46b5b">Up</tspan>
+  </text>
+
+  <text x="558" y="298"
+        font-family="ui-rounded, 'SF Pro Rounded', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="28" font-weight="600" letter-spacing="0.2" fill="#83c9e9">Create value with your agents.</text>
+
+  <text x="558" y="348"
+        font-family="ui-rounded, 'SF Pro Rounded', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="22" font-weight="500" fill="#b5a49a">An open-source agent collaboration client.</text>
+
+  <!-- Palette signature: cream, cherry, caramel, soda, rose. -->
+  <g>
+    <circle cx="1092" cy="452" r="8" fill="#fde5bf"/>
+    <circle cx="1128" cy="452" r="8" fill="#da5e51"/>
+    <circle cx="1164" cy="452" r="8" fill="#6e2b05"/>
+    <circle cx="1200" cy="452" r="8" fill="#83c9e9"/>
+    <circle cx="1236" cy="452" r="8" fill="#ead8d1"/>
+  </g>
+</svg>

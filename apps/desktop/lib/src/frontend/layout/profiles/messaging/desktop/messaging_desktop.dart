@@ -72,5 +72,11 @@ final LayoutSurfaceBundle messagingDesktopBundle = LayoutSurfaceBundle(
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsIndex,
     ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('messaging'),
+      surface: LayoutRuntimeSurface.desktop,
+      destination: ClientSection.models,
+      channel: LayoutStateChannels.communicationSection,
+    ),
   },
 );

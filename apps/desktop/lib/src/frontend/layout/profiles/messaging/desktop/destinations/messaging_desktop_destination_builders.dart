@@ -15,4 +15,5 @@ messagingDesktopDestinationBuilders =
       ClientSection.mobileRelay: buildMessagingMobileRelayDestination,
       ClientSection.models: buildMessagingModelsDestination,
       ClientSection.settings: buildMessagingSettingsDestination,
+      ClientSection.agentHub: buildMessagingAgentHubDestination,
     });

@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/plugin_management/models/adapter
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -37,63 +38,46 @@ final class _AdapterPluginPanelState extends State<AdapterPluginPanel> {
     final controller = widget.controller.adapterPluginController;
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => ListView(
-        key: const Key('adapter-plugin-panel'),
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-        children: [
-          Row(
+      builder: (context, _) {
+        final Widget body;
+        if (controller.catalog == null && controller.busy) {
+          body = const Center(child: CircularProgressIndicator());
+        } else if (controller.adapters.isEmpty) {
+          body = _EmptyCatalog(isChinese: strings.isChinese);
+        } else {
+          body = ListView(
+            padding: EdgeInsets.zero,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      strings.isChinese ? '插件管理' : 'Agent Adapter Plugins',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ],
+              _AdapterCardGrid(
+                adapters: controller.adapters,
+                busy: controller.busy,
+                isChinese: strings.isChinese,
+                onAction: _confirmAction,
+              ),
+              if (controller.lastErrorCode.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                SelectableText(
+                  controller.lastErrorCode,
+                  key: const Key('adapter-plugin-error'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-              ),
-              const SizedBox(width: 16),
-              IconButton.filledTonal(
-                tooltip: strings.isChinese
-                    ? '刷新插件目录'
-                    : 'Refresh plugin catalog',
-                onPressed: controller.busy
-                    ? null
-                    : () => unawaited(controller.refresh()),
-                icon: controller.busy
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh_outlined),
-              ),
+              ],
             ],
-          ),
-          const SizedBox(height: 18),
-          if (controller.catalog == null && controller.busy)
-            const Center(child: CircularProgressIndicator())
-          else if (controller.adapters.isEmpty)
-            _EmptyCatalog(isChinese: strings.isChinese)
-          else
-            _AdapterCardGrid(
-              adapters: controller.adapters,
-              busy: controller.busy,
-              isChinese: strings.isChinese,
-              onAction: _confirmAction,
-            ),
-          if (controller.lastErrorCode.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            SelectableText(
-              controller.lastErrorCode,
-              key: const Key('adapter-plugin-error'),
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ],
-        ],
-      ),
+          );
+        }
+        return LicoPaneScaffold(
+          key: const Key('adapter-plugin-panel'),
+          titleBarKey: const Key('adapter-plugin-title-bar'),
+          title: strings.isChinese ? '插件管理' : 'Agent Adapter Plugins',
+          refreshTooltip: strings.pluginManagementRefresh,
+          onRefresh: controller.busy
+              ? null
+              : () => unawaited(controller.refresh()),
+          refreshing: controller.busy,
+          refreshButtonKey: const Key('adapter-plugin-refresh'),
+          body: body,
+        );
+      },
     );
   }
 
