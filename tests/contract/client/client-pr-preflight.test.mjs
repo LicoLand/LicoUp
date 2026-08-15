@@ -22,6 +22,7 @@ import {
 } from "../../../tools/scripts/repository-rulesets.mjs";
 import {
   generatedAssetDecision,
+  releaseAssetQueryArgs,
   releaseStateDecision,
 } from "../../../tools/scripts/client-github-release-publish.mjs";
 
@@ -191,6 +192,10 @@ test("nightly Ruleset requires merge commits and the candidate checks", () => {
 });
 
 test("publication is idempotent and never overwrites conflicting assets", () => {
+  assert.deepEqual(releaseAssetQueryArgs("v1.2.3", "owner/repository"), [
+    "release", "view", "v1.2.3", "--repo", "owner/repository",
+    "--json", "assets", "--jq", ".assets | map({name, size, digest})",
+  ]);
   assert.deepEqual(releaseStateDecision(null, sourceRevision, false),
     { createDraft: true, publish: false });
   assert.deepEqual(releaseStateDecision({
