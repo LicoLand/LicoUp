@@ -1,7 +1,8 @@
 use super::super::*;
 use crate::domain::agent_hub::argv::{self, ArgvKind};
 use crate::domain::agent_hub::contract::{
-    ADAPTATION_DEEP, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, PARTIAL_ADAPTATION_ID,
+    ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, FIRST_BATCH_IDS,
+    PARTIAL_ADAPTATION_ID, PENDING_ADAPTATION_ID,
 };
 use crate::domain::agent_hub::recipes::{manifest, parse_agent_toml, parse_manifest};
 use crate::domain::agent_hub::selector;
@@ -19,6 +20,8 @@ fn first_batch_recipes_load_with_fixed_ids_and_adaptation_tags() {
     for agent in &registry.agents {
         if agent.id == PARTIAL_ADAPTATION_ID {
             assert_eq!(agent.adaptation, ADAPTATION_PARTIAL);
+        } else if agent.id == PENDING_ADAPTATION_ID {
+            assert_eq!(agent.adaptation, ADAPTATION_PENDING);
         } else {
             assert_eq!(agent.adaptation, ADAPTATION_DEEP);
         }
@@ -56,21 +59,17 @@ fn first_batch_recipes_load_with_fixed_ids_and_adaptation_tags() {
         .find(|agent| agent.id == "openclaw")
         .unwrap();
     assert!(openclaw.connection_modes.contains(&"local".to_string()));
-    assert!(
-        openclaw
-            .connection_modes
-            .contains(&"virtual-machine".to_string())
-    );
+    assert!(openclaw
+        .connection_modes
+        .contains(&"virtual-machine".to_string()));
     let hermes = registry
         .agents
         .iter()
         .find(|agent| agent.id == "hermes")
         .unwrap();
-    assert!(
-        hermes
-            .connection_modes
-            .contains(&"virtual-machine".to_string())
-    );
+    assert!(hermes
+        .connection_modes
+        .contains(&"virtual-machine".to_string()));
 }
 
 #[test]
@@ -94,7 +93,8 @@ fn warehouse_is_one_manifest_and_one_toml_per_agent() {
             "pi.toml",
             "openclaw.toml",
             "hermes.toml",
-            "antigravity.toml"
+            "antigravity.toml",
+            "deepseek-harness.toml",
         ]
     );
     parse_manifest(include_str!(
@@ -111,6 +111,9 @@ fn warehouse_is_one_manifest_and_one_toml_per_agent() {
             "openclaw" => include_str!("../../../../resources/agent-hub/openclaw.toml"),
             "hermes" => include_str!("../../../../resources/agent-hub/hermes.toml"),
             "antigravity" => include_str!("../../../../resources/agent-hub/antigravity.toml"),
+            "deepseek-harness" => {
+                include_str!("../../../../resources/agent-hub/deepseek-harness.toml")
+            }
             other => panic!("unexpected agent {other}"),
         };
         let document = parse_agent_toml(raw).unwrap();
@@ -130,6 +133,7 @@ fn recipes_are_argv_only_official_https_and_never_pipe_to_shell() {
         include_str!("../../../../resources/agent-hub/openclaw.toml"),
         include_str!("../../../../resources/agent-hub/hermes.toml"),
         include_str!("../../../../resources/agent-hub/antigravity.toml"),
+        include_str!("../../../../resources/agent-hub/deepseek-harness.toml"),
     ];
     for raw in sources {
         assert!(!raw.contains("curl|"));
@@ -219,6 +223,14 @@ fn each_desktop_os_selects_one_stable_channel_from_capability_snapshot() {
             "antigravity",
             "official-artifact",
         ),
+        (
+            "macos",
+            "aarch64",
+            &["homebrew", "npm"][..],
+            "deepseek-harness",
+            "npm",
+        ),
+        ("linux", "x86_64", &["npm"][..], "deepseek-harness", "npm"),
     ];
     for (os, arch, managers, agent_id, expected) in cases {
         let agent = registry

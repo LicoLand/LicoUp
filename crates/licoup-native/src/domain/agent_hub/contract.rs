@@ -1,12 +1,12 @@
 //! Agent Hub contract: recipe registry, capabilities, ownership, and lifecycle.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub const SCHEMA_VERSION: &str = "v0.0.2:client-agent-hub-manifest-1";
 pub const HOST_SCOPE: &str = "desktop";
 pub const PLUGIN_MANAGEMENT_BOUNDARY: &str = "adapter-plugins-only";
-pub const FIRST_BATCH_IDS: [&str; 8] = [
+pub const FIRST_BATCH_IDS: [&str; 9] = [
     "codex",
     "cursor",
     "opencode",
@@ -15,6 +15,7 @@ pub const FIRST_BATCH_IDS: [&str; 8] = [
     "openclaw",
     "hermes",
     "antigravity",
+    "deepseek-harness",
 ];
 pub const DEEP_ADAPTATION_IDS: [&str; 7] = [
     "codex",
@@ -26,6 +27,7 @@ pub const DEEP_ADAPTATION_IDS: [&str; 7] = [
     "hermes",
 ];
 pub const PARTIAL_ADAPTATION_ID: &str = "antigravity";
+pub const PENDING_ADAPTATION_ID: &str = "deepseek-harness";
 
 pub const ADAPTATION_DEEP: &str = "deep";
 pub const ADAPTATION_PARTIAL: &str = "partial";

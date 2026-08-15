@@ -1,13 +1,13 @@
 use super::super::*;
 use super::support::portable_params;
 use crate::domain::agent_hub::contract::{
-    ADAPTATION_PARTIAL, FIRST_BATCH_IDS, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
+    InstallOwnership, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
 };
 use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
 
 #[test]
-fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
+fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
     let mut params = portable_params("catalog").1;
     params["discoveryCandidates"] = serde_json::json!([
         {
@@ -40,6 +40,11 @@ fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
         .find(|card| card["id"] == "antigravity")
         .unwrap();
     assert_eq!(antigravity["adaptation"], ADAPTATION_PARTIAL);
+    let deepseek = cards
+        .iter()
+        .find(|card| card["id"] == "deepseek-harness")
+        .unwrap();
+    assert_eq!(deepseek["adaptation"], "pending-evaluation");
     let codex = cards.iter().find(|card| card["id"] == "codex").unwrap();
     assert_eq!(codex["ownership"], "external");
     assert_eq!(codex["installable"], false);
@@ -52,13 +57,11 @@ fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
     assert!(cursor["installChannels"].as_array().unwrap().is_empty());
     let openclaw = cards.iter().find(|card| card["id"] == "openclaw").unwrap();
     assert_eq!(openclaw["location"], "virtual-machine");
-    assert!(
-        openclaw["connectionModes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|mode| mode == "virtual-machine")
-    );
+    assert!(openclaw["connectionModes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|mode| mode == "virtual-machine"));
     for card in cards {
         assert!(card.get("binaryPath").is_none());
         assert!(card.get("configPath").is_none());
@@ -91,11 +94,9 @@ fn catalog_with_agent_id_loads_that_agent_toml() {
     let channels = cursor["installChannels"].as_array().unwrap();
     assert!(channels.iter().any(|channel| channel["id"] == "homebrew"));
     assert!(channels.iter().all(|channel| channel["kind"] != "npm"));
-    assert!(
-        channels
-            .iter()
-            .all(|channel| channel.get("installArgv").is_none())
-    );
+    assert!(channels
+        .iter()
+        .all(|channel| channel.get("installArgv").is_none()));
     let homebrew = channels
         .iter()
         .find(|channel| channel["id"] == "homebrew")
@@ -272,7 +273,7 @@ fn catalog_uses_dedicated_version_probes_and_keeps_absent_cards_blank() {
 }
 
 #[test]
-fn catalog_without_live_lookup_is_a_static_eight_card_template() {
+fn catalog_without_live_lookup_is_a_static_card_template() {
     let mut params = portable_params("static-template").1;
     params
         .as_object_mut()

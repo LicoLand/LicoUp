@@ -16,6 +16,7 @@ fn each_agent_has_a_dedicated_parser() {
     assert_eq!(parse_output("openclaw", "openclaw 0.3.0\n", ""), "0.3.0");
     assert_eq!(parse_output("hermes", "hermes 0.1.2\n", ""), "0.1.2");
     assert_eq!(parse_output("antigravity", "agy 0.9.0\n", ""), "0.9.0");
+    assert_eq!(parse_output("deepseek-harness", "dsh 0.1.0\n", ""), "0.1.0");
 }
 
 #[test]

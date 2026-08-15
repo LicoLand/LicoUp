@@ -12,7 +12,7 @@ enum AgentHubLifecycleAction {
 /// Client runtimes that expose the ordinary Hub capability matrix.
 enum AgentHubRuntimePlatform { macos, windows, linux, android, ios }
 
-enum AgentHubAdaptationDepth { deep, partial }
+enum AgentHubAdaptationDepth { deep, partial, pendingEvaluation }
 
 enum AgentHubOperationStatus {
   completed,
@@ -130,9 +130,11 @@ final class AgentHubRecipe {
 
   factory AgentHubRecipe.fromNativeCard(Map<String, dynamic> card) {
     final id = (card['id'] as String? ?? '').trim();
-    final adaptation = card['adaptation'] == 'partial'
-        ? AgentHubAdaptationDepth.partial
-        : AgentHubAdaptationDepth.deep;
+    final adaptation = switch (card['adaptation']) {
+      'partial' => AgentHubAdaptationDepth.partial,
+      'pending-evaluation' => AgentHubAdaptationDepth.pendingEvaluation,
+      _ => AgentHubAdaptationDepth.deep,
+    };
     return AgentHubRecipe(
       id: id,
       displayName: (card['label'] as String? ?? id).trim(),

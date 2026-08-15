@@ -23,6 +23,7 @@ const _ids = [
   'openclaw',
   'hermes',
   'antigravity',
+  'deepseek-harness',
 ];
 
 const _summaries = {
@@ -39,6 +40,8 @@ const _summaries = {
   'openclaw': 'The AI that really does things.',
   'hermes': 'The self-improving AI agent built by Nous Research.',
   'antigravity': 'Experience liftoff with the next-gen agent platform.',
+  'deepseek-harness':
+      'DeepSeek Harness is an open-source agent harness. Everything is a plugin.',
 };
 
 const _homepages = {
@@ -50,11 +53,12 @@ const _homepages = {
   'openclaw': 'https://openclaw.ai',
   'hermes': 'https://hermes-agent.nousresearch.com',
   'antigravity': 'https://antigravity.google',
+  'deepseek-harness': 'https://deepseek.com/harness/en/',
 };
 
 String _channelKind(String id) {
   return switch (id) {
-    'pi' || 'openclaw' => 'npm',
+    'pi' || 'openclaw' || 'deepseek-harness' => 'npm',
     'hermes' => 'official-artifact',
     _ => 'homebrew',
   };
@@ -65,6 +69,7 @@ String _title(String id) {
     'codex' => 'Codex',
     'cursor' => 'Cursor',
     'antigravity' => 'Antigravity',
+    'deepseek-harness' => 'DeepSeek Harness',
     _ => id,
   };
 }
@@ -109,6 +114,8 @@ List<AgentHubRecipe> _recipes({
         displayName: _title(id),
         adaptation: id == 'antigravity'
             ? AgentHubAdaptationDepth.partial
+            : id == 'deepseek-harness'
+            ? AgentHubAdaptationDepth.pendingEvaluation
             : AgentHubAdaptationDepth.deep,
         present:
             presentIds.contains(id) ||
@@ -391,97 +398,101 @@ void main() {
     expect(shuffled.map((recipe) => recipe.id), unorderedEquals(_ids));
   });
 
-  testWidgets(
-    'Agent Hub renders eight native recipe cards with install, update, and open',
-    (tester) async {
-      await _pumpHub(tester, _harness(_FakeHubEngine()));
+  testWidgets('Agent Hub renders native portrait recipe cards', (tester) async {
+    await _pumpHub(tester, _harness(_FakeHubEngine()));
 
-      expect(find.byKey(const Key('agent-hub-panel')), findsOneWidget);
-      expect(find.byKey(const Key('agent-hub-top-bar')), findsOneWidget);
-      expect(find.byKey(const Key('agent-hub-refresh')), findsOneWidget);
-      expect(find.byKey(const Key('agent-hub-search')), findsNothing);
-      expect(find.byKey(const Key('agent-hub-back')), findsNothing);
-      expect(find.text('Agent Hub'), findsOneWidget);
-      expect(find.byType(LicoPaneTitleBar), findsOneWidget);
-      for (final id in _ids) {
-        expect(find.byKey(Key('agent-hub-card-$id')), findsOneWidget);
-        expect(find.byKey(Key('agent-hub-intro-$id')), findsOneWidget);
-        expect(find.byKey(Key('agent-hub-adaptation-$id')), findsNothing);
-        expect(find.byKey(Key('agent-hub-summary-$id')), findsOneWidget);
-        expect(find.byKey(Key('agent-hub-channel-$id')), findsNothing);
-        expect(find.byKey(Key('agent-hub-version-$id')), findsNothing);
-        expect(find.byKey(Key('agent-hub-visit-$id')), findsNothing);
-        expect(find.byKey(Key('agent-hub-install-$id')), findsOneWidget);
-        expect(find.byKey(Key('agent-hub-update-$id')), findsOneWidget);
-        expect(find.byKey(Key('agent-hub-open-$id')), findsOneWidget);
-        expect(find.byKey(Key('agent-hub-uninstall-$id')), findsNothing);
-        expect(find.byKey(Key('agent-hub-status-$id')), findsNothing);
-        expect(find.byKey(Key('agent-hub-more-$id')), findsNothing);
-        final summary = tester.widget<Text>(
-          find.byKey(Key('agent-hub-summary-$id')),
-        );
-        expect(summary.maxLines, 2);
-        expect(summary.overflow, TextOverflow.ellipsis);
-        expect(summary.data, _summaries[id]);
-        expect(summary.textSpan, isNull);
-        final paragraph = tester.renderObject<RenderParagraph>(
-          find.byKey(Key('agent-hub-summary-$id')),
-        );
-        expect(paragraph.maxLines, 2);
-        final boxes = paragraph.getBoxesForSelection(
-          TextSelection(
-            baseOffset: 0,
-            extentOffset: paragraph.text.toPlainText().length,
-          ),
-        );
-        expect(_summaryLineCount(boxes), lessThanOrEqualTo(2));
-        expect(
-          tester
-              .widget<InkWell>(find.byKey(Key('agent-hub-install-$id')))
-              .onTap,
-          isNotNull,
-        );
-        expect(
-          tester.widget<InkWell>(find.byKey(Key('agent-hub-update-$id'))).onTap,
-          isNull,
-        );
-        expect(
-          tester.widget<InkWell>(find.byKey(Key('agent-hub-open-$id'))).onTap,
-          isNull,
-        );
-      }
-      expect(find.text('Deep'), findsNothing);
-      expect(find.text('Partial'), findsNothing);
-      expect(find.text('Codex'), findsOneWidget);
-      expect(find.text('Cursor'), findsOneWidget);
-      expect(find.text('Antigravity'), findsOneWidget);
-      expect(find.text('brew'), findsNothing);
-      expect(find.text('npm'), findsNothing);
-      expect(find.text('official'), findsNothing);
-      expect(find.text('unknown'), findsNothing);
-      expect(find.text('未知'), findsNothing);
-      expect(find.text('latest'), findsNothing);
-      expect(find.byIcon(Icons.open_in_new), findsNothing);
-      expect(find.byTooltip('Visit site'), findsNothing);
-      expect(find.text('Visit site'), findsNothing);
-      expect(find.text('Install'), findsNWidgets(8));
-      expect(find.text('Update'), findsNWidgets(8));
-      expect(find.text('Open'), findsNWidgets(8));
-      expect(find.text('Uninstall'), findsNothing);
-      expect(find.text('Visit →'), findsNothing);
-      expect(find.text('Installed'), findsNothing);
-      expect(find.text('Not installed'), findsNothing);
-      expect(find.text('External'), findsNothing);
-      expect(find.text('Failed'), findsNothing);
-      expect(find.textContaining('rank'), findsNothing);
-      expect(find.textContaining('Code mode'), findsNothing);
-      expect(
-        tester.getRect(find.byKey(const Key('agent-hub-card-codex'))).height,
-        lessThan(160),
+    expect(find.byKey(const Key('agent-hub-panel')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-top-bar')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-refresh')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-search')), findsNothing);
+    expect(find.byKey(const Key('agent-hub-back')), findsNothing);
+    expect(find.text('Agent Hub'), findsOneWidget);
+    expect(find.byType(LicoPaneTitleBar), findsOneWidget);
+    for (final id in _ids) {
+      expect(find.byKey(Key('agent-hub-card-$id')), findsOneWidget);
+      expect(find.byKey(Key('agent-hub-intro-$id')), findsOneWidget);
+      expect(find.byKey(Key('agent-hub-header-$id')), findsOneWidget);
+      expect(find.byKey(Key('agent-hub-name-$id')), findsOneWidget);
+      expect(find.byKey(Key('agent-hub-adaptation-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-summary-$id')), findsOneWidget);
+      expect(find.byKey(Key('agent-hub-channel-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-version-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-visit-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-install-$id')), findsOneWidget);
+      expect(find.byKey(Key('agent-hub-update-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-open-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-uninstall-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-status-$id')), findsNothing);
+      expect(find.byKey(Key('agent-hub-more-$id')), findsNothing);
+      final name = tester.widget<Text>(find.byKey(Key('agent-hub-name-$id')));
+      expect(name.maxLines, 2);
+      expect(name.overflow, TextOverflow.ellipsis);
+      final summary = tester.widget<Text>(
+        find.byKey(Key('agent-hub-summary-$id')),
       );
-      expect(tester.takeException(), isNull);
-    },
-  );
+      expect(summary.maxLines, 3);
+      expect(summary.overflow, TextOverflow.ellipsis);
+      expect(summary.data, _summaries[id]);
+      expect(summary.textSpan, isNull);
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.byKey(Key('agent-hub-summary-$id')),
+      );
+      expect(paragraph.maxLines, 3);
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(
+          baseOffset: 0,
+          extentOffset: paragraph.text.toPlainText().length,
+        ),
+      );
+      expect(_summaryLineCount(boxes), lessThanOrEqualTo(3));
+      final headerRect = tester.getRect(
+        find.byKey(Key('agent-hub-header-$id')),
+      );
+      final summaryRect = tester.getRect(
+        find.byKey(Key('agent-hub-summary-$id')),
+      );
+      final introRect = tester.getRect(find.byKey(Key('agent-hub-intro-$id')));
+      expect(summaryRect.top - headerRect.bottom, closeTo(0, 0.5));
+      expect(introRect.bottom - summaryRect.bottom, closeTo(8, 0.5));
+      expect(
+        tester.widget<InkWell>(find.byKey(Key('agent-hub-install-$id'))).onTap,
+        isNotNull,
+      );
+    }
+    expect(find.text('Deep'), findsNothing);
+    expect(find.text('Partial'), findsNothing);
+    expect(find.text('Pending'), findsNothing);
+    expect(find.text('Codex'), findsOneWidget);
+    expect(find.text('Cursor'), findsOneWidget);
+    expect(find.text('Antigravity'), findsOneWidget);
+    expect(find.text('DeepSeek Harness'), findsOneWidget);
+    expect(find.text('brew'), findsNothing);
+    expect(find.text('npm'), findsNothing);
+    expect(find.text('official'), findsNothing);
+    expect(find.text('unknown'), findsNothing);
+    expect(find.text('未知'), findsNothing);
+    expect(find.text('latest'), findsNothing);
+    expect(find.byIcon(Icons.open_in_new), findsNothing);
+    expect(find.byTooltip('Visit site'), findsNothing);
+    expect(find.text('Visit site'), findsNothing);
+    expect(find.text('Install'), findsNWidgets(_ids.length));
+    expect(find.text('Update'), findsNothing);
+    expect(find.text('Chat'), findsNothing);
+    expect(find.text('Open'), findsNothing);
+    expect(find.text('Uninstall'), findsNothing);
+    expect(find.text('Visit →'), findsNothing);
+    expect(find.text('Installed'), findsNothing);
+    expect(find.text('Not installed'), findsNothing);
+    expect(find.text('External'), findsNothing);
+    expect(find.text('Failed'), findsNothing);
+    expect(find.textContaining('rank'), findsNothing);
+    expect(find.textContaining('Code mode'), findsNothing);
+    expect(
+      tester.getRect(find.byKey(const Key('agent-hub-card-codex'))).height,
+      closeTo(147.4, 0.5),
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('intro opens the agent detail and back returns to the catalog', (
     tester,
@@ -501,7 +512,8 @@ void main() {
     expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsOneWidget);
     expect(find.text('Install'), findsOneWidget);
     expect(find.text('Update'), findsOneWidget);
-    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Chat'), findsOneWidget);
+    expect(find.text('Open'), findsNothing);
     expect(find.text('Uninstall'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('agent-hub-back')));
@@ -514,7 +526,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Open on an installed card selects that conversation agent', (
+  testWidgets('Chat on an installed card selects that conversation agent', (
     tester,
   ) async {
     final opened = <String>[];
@@ -545,9 +557,6 @@ void main() {
     expect(find.byKey(const Key('agent-hub-install-dialog')), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('agent-hub-update-codex')));
-    await tester.pump();
     expect(find.byKey(const Key('agent-hub-detail-codex')), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -625,9 +634,10 @@ void main() {
     expect(find.byIcon(Icons.open_in_new), findsNothing);
     expect(find.byTooltip('访问官网'), findsNothing);
     expect(find.text('访问官网'), findsNothing);
-    expect(find.text('安装'), findsNWidgets(8));
-    expect(find.text('更新'), findsNWidgets(8));
-    expect(find.text('打开'), findsNWidgets(8));
+    expect(find.text('安装'), findsNWidgets(_ids.length));
+    expect(find.text('更新'), findsNothing);
+    expect(find.text('对话'), findsNothing);
+    expect(find.text('打开'), findsNothing);
     expect(find.text('访问'), findsNothing);
     expect(find.text('Visit →'), findsNothing);
     expect(find.text('卸载'), findsNothing);
@@ -763,7 +773,7 @@ void main() {
     },
   );
 
-  testWidgets('list card intro and footer share the card insets', (
+  testWidgets('list card footer fills the area below the divider', (
     tester,
   ) async {
     await _pumpHub(tester, _harness(_FakeHubEngine(ownedIds: const {'codex'})));
@@ -772,14 +782,14 @@ void main() {
     final listCard = tester.getRect(
       find.byKey(const Key('agent-hub-card-codex')),
     );
-    final install = tester.getRect(
-      find.byKey(const Key('agent-hub-install-codex')),
-    );
-    expect(install.left - listCard.left, closeTo(LicoContentSpacing.item, 0.5));
-    expect(
-      listCard.bottom - install.bottom,
-      closeTo(LicoContentSpacing.compact, 1),
-    );
+    final open = tester.getRect(find.byKey(const Key('agent-hub-open-codex')));
+    expect(open.left, closeTo(listCard.left, 0.5));
+    expect(open.right, closeTo(listCard.right, 0.5));
+    expect(open.bottom, closeTo(listCard.bottom, 0.5));
+    expect(open.height, closeTo(36, 1));
+    expect(find.byType(Divider), findsNWidgets(_ids.length));
+    expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
+    expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
     expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsNothing);
 
     await _openDetail(tester, 'codex');
@@ -847,29 +857,24 @@ void main() {
       expect(find.text('npm'), findsNothing);
       expect(find.text('official'), findsNothing);
       expect(find.byKey(const Key('agent-hub-more-codex')), findsNothing);
-      expect(find.byKey(const Key('agent-hub-update-codex')), findsOneWidget);
       expect(find.byKey(const Key('agent-hub-open-codex')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
+      expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
       expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsNothing);
-      expect(find.byKey(const Key('agent-hub-install-codex')), findsOneWidget);
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
-            .onTap,
-        isNull,
-      );
       expect(
         tester
             .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
             .onTap,
         isNotNull,
       );
-      expect(find.byKey(const Key('agent-hub-update-cursor')), findsOneWidget);
       expect(find.byKey(const Key('agent-hub-open-cursor')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-update-cursor')), findsNothing);
+      expect(find.byKey(const Key('agent-hub-install-cursor')), findsNothing);
       expect(find.byKey(const Key('agent-hub-uninstall-cursor')), findsNothing);
-      expect(find.byKey(const Key('agent-hub-install-cursor')), findsOneWidget);
-      expect(find.text('安装'), findsNWidgets(8));
-      expect(find.text('更新'), findsNWidgets(8));
-      expect(find.text('打开'), findsNWidgets(8));
+      expect(find.text('安装'), findsNWidgets(_ids.length - 2));
+      expect(find.text('更新'), findsNothing);
+      expect(find.text('对话'), findsNWidgets(2));
+      expect(find.text('打开'), findsNothing);
       expect(find.text('卸载'), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -887,57 +892,29 @@ void main() {
       );
       await _pumpHub(tester, _harness(engine));
 
-      expect(find.byKey(const Key('agent-hub-install-codex')), findsOneWidget);
-      expect(find.byKey(const Key('agent-hub-install-cursor')), findsOneWidget);
-      expect(
-        find.byKey(const Key('agent-hub-install-opencode')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('agent-hub-open-codex')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-open-cursor')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-open-opencode')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
+      expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
       expect(find.text('1.2.3'), findsNothing);
       expect(find.text('latest'), findsNothing);
-      expect(find.text('Install'), findsNWidgets(8));
-      expect(find.text('Update'), findsNWidgets(8));
-      expect(find.text('Open'), findsNWidgets(8));
+      expect(find.text('Install'), findsNWidgets(_ids.length - 3));
+      expect(find.text('Update'), findsNothing);
+      expect(find.text('Chat'), findsNWidgets(3));
+      expect(find.text('Open'), findsNothing);
       expect(find.text('Uninstall'), findsNothing);
       for (final id in ['codex', 'cursor', 'opencode']) {
-        expect(find.byKey(Key('agent-hub-update-$id')), findsOneWidget);
         expect(find.byKey(Key('agent-hub-open-$id')), findsOneWidget);
+        expect(find.byKey(Key('agent-hub-install-$id')), findsNothing);
+        expect(find.byKey(Key('agent-hub-update-$id')), findsNothing);
         expect(find.byKey(Key('agent-hub-uninstall-$id')), findsNothing);
-        expect(
-          tester
-              .widget<InkWell>(find.byKey(Key('agent-hub-install-$id')))
-              .onTap,
-          isNull,
-        );
-        expect(
-          tester.widget<InkWell>(find.byKey(Key('agent-hub-update-$id'))).onTap,
-          isNull,
-        );
         expect(
           tester.widget<InkWell>(find.byKey(Key('agent-hub-open-$id'))).onTap,
           isNotNull,
         );
       }
       expect(find.text('External'), findsNothing);
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
-            .borderRadius,
-        const BorderRadius.all(Radius.circular(999)),
-      );
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
-            .borderRadius,
-        const BorderRadius.all(Radius.circular(999)),
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('agent-hub-update-codex')),
-          matching: find.byIcon(Icons.system_update_alt_outlined),
-        ),
-        findsOneWidget,
-      );
       expect(
         find.descendant(
           of: find.byKey(const Key('agent-hub-open-codex')),
@@ -1040,12 +1017,7 @@ void main() {
         find.byKey(const Key('agent-hub-card-loading-codex')),
         findsOneWidget,
       );
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
-            .onTap,
-        isNull,
-      );
+      expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
       expect(
         tester
             .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
@@ -1078,12 +1050,7 @@ void main() {
         find.byKey(const Key('agent-hub-card-loading-codex')),
         findsNothing,
       );
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
-            .onTap,
-        isNull,
-      );
+      expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
       expect(
         tester
             .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
@@ -1142,12 +1109,7 @@ void main() {
 
       expect(find.text('0.42.1'), findsNothing);
       expect(find.text('latest'), findsNothing);
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
-            .onTap,
-        isNull,
-      );
+      expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
       expect(
         tester
             .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
@@ -1181,6 +1143,8 @@ void main() {
 
     expect(find.text('0.42.1'), findsNothing);
     expect(find.text('latest'), findsNothing);
+    expect(find.byKey(const Key('agent-hub-open-codex')), findsNothing);
+    expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
     expect(
       tester
           .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))

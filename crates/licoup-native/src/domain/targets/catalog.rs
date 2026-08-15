@@ -1,7 +1,7 @@
 use crate::platform::runtime_adapters;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::Path;
 
 #[derive(Clone, Debug)]
@@ -243,6 +243,14 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
             process_names: &["pi.exe", "pi"],
         },
         TargetDef {
+            id: "deepseek-harness",
+            label: "DeepSeek Harness - CLI",
+            kind: "cli",
+            config_hint: "DeepSeek Harness CLI configuration",
+            binary_names: &["dsh"],
+            process_names: &["dsh.exe", "dsh"],
+        },
+        TargetDef {
             id: "lico-agent",
             label: "Lico Agent - CLI",
             kind: "cli",
@@ -301,6 +309,7 @@ pub(super) fn normalize_target(value: &str) -> String {
         "github-copilot" => "copilot".to_string(),
         "kimi_code" | "kimicode" => "kimi-code".to_string(),
         "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => "pi".to_string(),
+        "dsh" | "deepseek_harness" => "deepseek-harness".to_string(),
         "lico" | "lico_agent" => "lico-agent".to_string(),
         "open-code" | "open_code" => "opencode".to_string(),
         "openclaw-kate" | "openclaw_kate" => "openclaw".to_string(),
@@ -326,6 +335,7 @@ mod tests {
         assert_eq!(normalize_target("kimi_code"), "kimi-code");
         assert_eq!(normalize_target("workbuddy-cli"), "codebuddy");
         assert_eq!(normalize_target("trae-cli"), "trae-agent");
+        assert_eq!(normalize_target("dsh"), "deepseek-harness");
         assert_eq!(target_def("claude").unwrap().id, "claude-code");
         assert_eq!(target_def("workbuddy").unwrap().id, "workbuddy");
         assert_eq!(target_def("trae-work").unwrap().id, "trae-work");
