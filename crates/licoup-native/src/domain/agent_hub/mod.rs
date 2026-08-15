@@ -1,4 +1,4 @@
-//! Desktop Agent Hub: warehouse-static recipes, argv-only install, one confirmation.
+//! Desktop Agent Hub: warehouse Manifest plus one TOML recipe per agent.
 
 pub(crate) mod argv;
 pub(crate) mod capabilities;
@@ -21,7 +21,7 @@ pub use contract::{
     SCHEMA_VERSION, contract_surface,
 };
 pub use engine::{HubContext, apply, apply_with, plan, plan_with};
-pub use recipes::registry;
+pub use recipes::{manifest, registry};
 
 pub fn catalog(params: &Value) -> Result<Value> {
     catalog::catalog(params)

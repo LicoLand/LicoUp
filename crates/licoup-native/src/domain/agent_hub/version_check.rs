@@ -115,16 +115,13 @@ fn strip_prefix<'a>(raw: &'a str, prefixes: &[&str]) -> &'a str {
 
 fn reject_unknown(value: String) -> String {
     let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.eq_ignore_ascii_case("unknown")
-        || trimmed == "未知"
-    {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("unknown") || trimmed == "未知" {
         return String::new();
     }
     trimmed.to_string()
 }
 
-fn injected_probe(params: &Value, agent_id: &str) -> Option<String> {
+pub(crate) fn injected_probe(params: &Value, agent_id: &str) -> Option<String> {
     if !FIRST_BATCH_IDS.contains(&agent_id) {
         return None;
     }

@@ -328,6 +328,8 @@ extension LicoStringsLabels on LicoStrings {
   String get agentHubVisitFailed =>
       isChinese ? '无法打开主页' : 'Unable to open homepage';
   String get agentHubUpdate => isChinese ? '更新' : 'Update';
+  String get agentHubOpen => isChinese ? '打开' : 'Open';
+  String get agentHubBack => isChinese ? '返回' : 'Back';
   String get agentHubUninstall => isChinese ? '卸载' : 'Uninstall';
   String get mobileNav => isChinese ? '移动' : 'Mobile';
   String get statsNav => isChinese ? '统计' : 'Stats';
