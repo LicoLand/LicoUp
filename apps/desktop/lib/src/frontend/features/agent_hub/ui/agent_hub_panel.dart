@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agent_hub/agent_hub_capability_port.dart';
@@ -10,11 +13,14 @@ import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_uninstall_di
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const double _hubCardInset = LicoContentSpacing.compact;
+const double _hubCardHorizontalInset = LicoContentSpacing.item;
 const double _hubCardHeaderExtent = 28;
 const double _hubCardFooterExtent = 24;
 const double _hubCardExtent =
@@ -36,7 +42,15 @@ const EdgeInsets _hubChipPadding = EdgeInsets.symmetric(
   vertical: 4,
 );
 
-/// Opens a warehouse-static official HTTPS homepage. Fail closed.
+typedef AgentHubCatalogOrder =
+    List<AgentHubRecipe> Function(List<AgentHubRecipe> recipes);
+
+List<AgentHubRecipe> shuffleAgentHubRecipes(List<AgentHubRecipe> recipes) {
+  final next = List<AgentHubRecipe>.from(recipes);
+  next.shuffle(math.Random());
+  return next;
+}
+
 typedef AgentHubHomepageOpener = Future<bool> Function(Uri uri);
 
 /// Agent Hub body: native catalog cards with plan/confirm/install/verify/rescan.
@@ -46,11 +60,13 @@ final class AgentHubPanel extends StatefulWidget {
     this.engine = const UnwiredAgentHubEngine(),
     this.capabilities = const StaticAgentHubCapabilityPort(),
     this.openHomepage,
+    this.orderRecipes = shuffleAgentHubRecipes,
   });
 
   final AgentHubEnginePort engine;
   final AgentHubCapabilityPort capabilities;
   final AgentHubHomepageOpener? openHomepage;
+  final AgentHubCatalogOrder orderRecipes;
 
   Future<AgentHubOperationResult> runLifecycle(
     AgentHubLifecycleAction action, {
@@ -98,19 +114,20 @@ final class AgentHubPanel extends StatefulWidget {
 final class _AgentHubPanelState extends State<AgentHubPanel> {
   List<AgentHubRecipe> _recipes = const [];
   bool _loading = true;
-  bool _refreshing = false;
   bool _catalogFailed = false;
   String _busyRecipeId = '';
+  int _loadGeneration = 0;
+  final Set<String> _resolving = {};
   final Map<String, List<String>> _events = {};
   final Set<String> _visitFailed = {};
 
-  bool get _actionsLocked => _refreshing || _busyRecipeId.isNotEmpty;
+  bool get _discovering => _resolving.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _applyCache(widget.engine.cachedCatalog);
-    _loadCatalog();
+    unawaited(_loadCatalog());
   }
 
   @override
@@ -118,7 +135,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.engine, widget.engine)) {
       _applyCache(widget.engine.cachedCatalog);
-      _loadCatalog();
+      unawaited(_loadCatalog());
     }
   }
 
@@ -126,56 +143,101 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     if (snapshot == null || snapshot.recipes.isEmpty) {
       return;
     }
-    _recipes = snapshot.recipes;
+    _recipes = List<AgentHubRecipe>.from(widget.orderRecipes(snapshot.recipes));
+    _resolving
+      ..clear()
+      ..addAll(_recipes.map((recipe) => recipe.id));
     _loading = false;
     _catalogFailed = false;
   }
 
-  Future<void> _loadCatalog({bool fromRescan = false}) async {
+  Future<void> _loadCatalog() async {
+    final generation = ++_loadGeneration;
     if (mounted) {
       setState(() {
-        _refreshing = true;
         if (_recipes.isEmpty) {
           _loading = true;
+        } else {
+          _resolving
+            ..clear()
+            ..addAll(_recipes.map((recipe) => recipe.id));
         }
       });
     }
     try {
-      final snapshot = fromRescan
-          ? await _snapshotFromRescan()
-          : await widget.engine.catalog();
-      if (!mounted) {
+      final snapshot = await widget.engine.catalog();
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
-      setState(() {
-        if (snapshot.ok || snapshot.recipes.isNotEmpty) {
-          _recipes = snapshot.recipes;
-        }
-        _catalogFailed = !snapshot.ok && snapshot.recipes.isEmpty;
-        _loading = false;
-        _refreshing = false;
-        _busyRecipeId = '';
-        _visitFailed.clear();
-      });
-    } on Object {
-      if (!mounted) {
+      if (snapshot.ok || snapshot.recipes.isNotEmpty) {
+        final ordered = List<AgentHubRecipe>.from(
+          widget.orderRecipes(snapshot.recipes),
+        );
+        setState(() {
+          _recipes = ordered;
+          _catalogFailed = false;
+          _loading = false;
+          _busyRecipeId = '';
+          _visitFailed.clear();
+          _resolving
+            ..clear()
+            ..addAll(ordered.map((recipe) => recipe.id));
+        });
+        await _discoverCards(ordered, generation);
         return;
       }
       setState(() {
         _catalogFailed = _recipes.isEmpty;
         _loading = false;
-        _refreshing = false;
         _busyRecipeId = '';
+        _resolving.clear();
+      });
+    } on Object {
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
+      setState(() {
+        _catalogFailed = _recipes.isEmpty;
+        _loading = false;
+        _busyRecipeId = '';
+        _resolving.clear();
       });
     }
   }
 
-  Future<AgentHubCatalogSnapshot> _snapshotFromRescan() async {
-    final result = await widget.engine.rescan(const AgentHubRescanRequest());
-    if (result.recipes.isNotEmpty) {
-      return AgentHubCatalogSnapshot(recipes: result.recipes, ok: result.ok);
+  Future<void> _discoverCards(
+    List<AgentHubRecipe> recipes,
+    int generation,
+  ) async {
+    await Future.wait([
+      for (final recipe in recipes) _discoverCard(recipe.id, generation),
+    ]);
+  }
+
+  Future<void> _discoverCard(String recipeId, int generation) async {
+    try {
+      final snapshot = await widget.engine.catalog(recipeId: recipeId);
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
+      final live = snapshot.recipes
+          .where((recipe) => recipe.id == recipeId)
+          .firstOrNull;
+      setState(() {
+        if (live != null) {
+          final index = _recipes.indexWhere((recipe) => recipe.id == recipeId);
+          if (index >= 0) {
+            _recipes[index] = live;
+          }
+        }
+        _resolving.remove(recipeId);
+      });
+    } on Object {
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
+      setState(() => _resolving.remove(recipeId));
     }
-    return widget.engine.catalog();
   }
 
   Future<void> _run(
@@ -200,17 +262,20 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         _events[recipeId] = result.events
             .where((phase) => phase != 'verifying' && phase != 'rescanning')
             .toList();
-        if (result.recipes.isNotEmpty) {
-          _recipes = result.recipes;
-          _catalogFailed = false;
+        for (final live in result.recipes) {
+          final index = _recipes.indexWhere((recipe) => recipe.id == live.id);
+          if (index >= 0) {
+            _recipes[index] = live;
+          }
         }
+        _catalogFailed = false;
       });
-      if (result.recipes.isEmpty &&
-          (action == AgentHubLifecycleAction.install ||
+      if ((action == AgentHubLifecycleAction.install ||
               action == AgentHubLifecycleAction.update ||
               action == AgentHubLifecycleAction.uninstall) &&
           result.ok) {
-        await _loadCatalog();
+        setState(() => _resolving.add(recipeId));
+        await _discoverCard(recipeId, _loadGeneration);
       }
     } on Object {
       if (!mounted) {
@@ -224,7 +289,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   }
 
   Future<void> _install(AgentHubRecipe recipe) async {
-    if (_actionsLocked || !recipe.installable) {
+    if (_resolving.contains(recipe.id) || !recipe.installable) {
       return;
     }
     final selection = await showAgentHubInstallFlow(context, recipe: recipe);
@@ -285,7 +350,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   }
 
   Future<void> _uninstall(AgentHubRecipe recipe) async {
-    if (_actionsLocked || !recipe.showsManageActions) {
+    if (_resolving.contains(recipe.id) || !recipe.showsManageActions) {
       return;
     }
     final confirmed = await showAgentHubUninstallConfirm(
@@ -330,14 +395,14 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     if (!ordinaryDeclared) {
       throw const FormatException('agent_hub_ordinary_capability_incomplete');
     }
+    Widget body;
     if (_loading && _recipes.isEmpty) {
-      return const Center(
+      body = const Center(
         key: Key('agent-hub-loading'),
         child: CircularProgressIndicator(),
       );
-    }
-    if (_catalogFailed && _recipes.isEmpty) {
-      return Center(
+    } else if (_catalogFailed && _recipes.isEmpty) {
+      body = Center(
         key: const Key('agent-hub-catalog-failed'),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -350,37 +415,10 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
           ],
         ),
       );
-    }
-    return CustomScrollView(
-      key: const Key('agent-hub-panel'),
-      slivers: [
-        SliverToBoxAdapter(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              key: const Key('agent-hub-refresh'),
-              tooltip: strings.agentHubRefresh,
-              onPressed: _refreshing
-                  ? null
-                  : () => _loadCatalog(fromRescan: true),
-              icon: Icon(Icons.refresh, color: context.licoColors.textMuted),
-            ),
-          ),
-        ),
-        if (_refreshing)
-          const SliverToBoxAdapter(
-            child: LinearProgressIndicator(
-              key: Key('agent-hub-catalog-refresh'),
-            ),
-          ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(
-            LicoContentSpacing.item,
-            0,
-            LicoContentSpacing.item,
-            LicoContentSpacing.section,
-          ),
-          sliver: SliverGrid(
+    } else {
+      body = CustomScrollView(
+        slivers: [
+          SliverGrid(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 340,
               mainAxisExtent: _hubCardExtent,
@@ -390,6 +428,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
             delegate: SliverChildBuilderDelegate((context, index) {
               final recipe = _recipes[index];
               final cardBusy = _busyRecipeId == recipe.id;
+              final resolving = _resolving.contains(recipe.id);
               final events = _events[recipe.id] ?? const [];
               return _AgentHubRecipeCard(
                 recipe: recipe,
@@ -398,7 +437,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
                     ? strings.adaptationDeep
                     : strings.adaptationPartial,
                 busy: cardBusy,
-                actionsLocked: _actionsLocked,
+                loading: resolving,
                 visitFailed: _visitFailed.contains(recipe.id),
                 events: events,
                 visitLabel: strings.agentHubVisitOfficial,
@@ -414,8 +453,19 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
               );
             }, childCount: _recipes.length),
           ),
-        ),
-      ],
+        ],
+      );
+    }
+    return LicoPaneScaffold(
+      key: const Key('agent-hub-panel'),
+      titleBarKey: const Key('agent-hub-top-bar'),
+      title: strings.agentHub,
+      refreshTooltip: strings.agentHubRefresh,
+      onRefresh: _loadCatalog,
+      refreshing: _discovering,
+      refreshButtonKey: const Key('agent-hub-refresh'),
+      refreshingIconKey: const Key('agent-hub-catalog-refresh'),
+      body: body,
     );
   }
 }
@@ -425,7 +475,7 @@ final class _AgentHubRecipeCard extends StatelessWidget {
     required this.recipe,
     required this.adaptationLabel,
     required this.busy,
-    required this.actionsLocked,
+    required this.loading,
     required this.visitFailed,
     required this.events,
     required this.visitLabel,
@@ -442,7 +492,7 @@ final class _AgentHubRecipeCard extends StatelessWidget {
   final AgentHubRecipe recipe;
   final String adaptationLabel;
   final bool busy;
-  final bool actionsLocked;
+  final bool loading;
   final bool visitFailed;
   final List<String> events;
   final String visitLabel;
@@ -462,11 +512,11 @@ final class _AgentHubRecipeCard extends StatelessWidget {
     final deep = recipe.adaptation == AgentHubAdaptationDepth.deep;
     final tagColor = deep ? colors.success : colors.warning;
     final homepage = recipe.officialHomepage;
-    final visitEnabled = !busy && homepage != null && !visitFailed;
+    final visitEnabled = !busy && !loading && homepage != null && !visitFailed;
     final manage = recipe.showsManageActions;
-    final installEnabled = !actionsLocked && recipe.installable && !manage;
-    final uninstallEnabled = !actionsLocked && manage;
-    final updateEnabled = !actionsLocked && manage && recipe.updateAvailable;
+    final installEnabled = !loading && !busy && recipe.installable && !manage;
+    final uninstallEnabled = !loading && !busy && manage;
+    final updateEnabled = !loading && !busy && manage && recipe.updateAvailable;
     return Card(
       key: Key('agent-hub-card-${recipe.id}'),
       clipBehavior: Clip.antiAlias,
@@ -482,172 +532,185 @@ final class _AgentHubRecipeCard extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(_hubCardInset),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                AgentBrandIcon(
-                  target: TargetCandidate(
-                    target: recipe.id,
-                    label: recipe.displayName,
-                    kind: 'cli',
-                    status: recipe.present ? 'detected' : 'not-detected',
-                    configured: recipe.present,
-                    confidence: 1,
-                    adapterStatus: 'implemented',
+        padding: const EdgeInsets.fromLTRB(
+          _hubCardHorizontalInset,
+          _hubCardInset,
+          _hubCardHorizontalInset,
+          _hubCardInset,
+        ),
+        child: LicoShimmerMask(
+          key: loading ? Key('agent-hub-card-loading-${recipe.id}') : null,
+          enabled: loading,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  AgentBrandIcon(
+                    target: TargetCandidate(
+                      target: recipe.id,
+                      label: recipe.displayName,
+                      kind: 'cli',
+                      status: recipe.present ? 'detected' : 'not-detected',
+                      configured: recipe.present,
+                      confidence: 1,
+                      adapterStatus: 'implemented',
+                    ),
+                    size: 28,
+                    iconSize: 16,
                   ),
-                  size: 28,
-                  iconSize: 16,
-                ),
-                const SizedBox(width: LicoContentSpacing.compact),
-                Expanded(
-                  child: Text(
-                    recipe.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleSmall?.copyWith(color: colors.text),
-                  ),
-                ),
-                Container(
-                  key: Key('agent-hub-adaptation-${recipe.id}'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tagColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(LicoRadius.chip),
-                  ),
-                  child: Text(
-                    adaptationLabel,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: tagColor,
-                      fontWeight: FontWeight.w700,
+                  const SizedBox(width: LicoContentSpacing.compact),
+                  Expanded(
+                    child: Text(
+                      recipe.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleSmall?.copyWith(color: colors.text),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: LicoContentSpacing.compact),
-            Expanded(
-              child: AgentHubSummaryVisit(
-                summaryKey: Key('agent-hub-summary-${recipe.id}'),
-                visitKey: Key('agent-hub-visit-${recipe.id}'),
-                summary: recipe.summary,
-                visitLabel: visitLabel,
-                visitFailedLabel: visitFailedLabel,
-                visitFailed: visitFailed,
-                visitEnabled: visitEnabled,
-                onVisit: onVisit,
-              ),
-            ),
-            if (events.isNotEmpty)
-              Text(
-                events.join(' · '),
-                key: Key('agent-hub-events-${recipe.id}'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.labelSmall?.copyWith(color: colors.textMuted),
-              ),
-            if (busy)
-              const Padding(
-                padding: EdgeInsets.only(top: LicoContentSpacing.inline),
-                child: LinearProgressIndicator(
-                  key: Key('agent-hub-card-busy'),
-                  minHeight: 2,
-                ),
-              ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  key: Key('agent-hub-channel-version-${recipe.id}'),
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      key: Key('agent-hub-channel-${recipe.id}'),
-                      padding: _hubChipPadding,
-                      decoration: BoxDecoration(
-                        color: colors.surfaceLow,
-                        borderRadius: _hubChipBorderRadius,
-                        border: Border.all(
-                          color: colors.line,
-                          width: MessagingDesktopMetrics.hairline,
-                        ),
-                      ),
-                      child: Text(
-                        recipe.channelChipLabel,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: colors.textSecondary,
-                          height: 1,
-                        ),
+                  Container(
+                    key: Key('agent-hub-adaptation-${recipe.id}'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tagColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(LicoRadius.chip),
+                    ),
+                    child: Text(
+                      adaptationLabel,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: tagColor,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if (recipe.versionLabel.isNotEmpty) ...[
-                      const SizedBox(width: LicoContentSpacing.compact),
-                      Text(
-                        recipe.versionLabel,
-                        key: Key('agent-hub-version-${recipe.id}'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: colors.textSecondary,
-                          height: 1,
+                  ),
+                ],
+              ),
+              const SizedBox(height: LicoContentSpacing.compact),
+              Expanded(
+                child: AgentHubSummaryVisit(
+                  summaryKey: Key('agent-hub-summary-${recipe.id}'),
+                  visitKey: Key('agent-hub-visit-${recipe.id}'),
+                  summary: recipe.summary,
+                  visitLabel: visitLabel,
+                  visitFailedLabel: visitFailedLabel,
+                  visitFailed: visitFailed,
+                  visitEnabled: visitEnabled,
+                  onVisit: onVisit,
+                ),
+              ),
+              if (events.isNotEmpty)
+                Text(
+                  events.join(' · '),
+                  key: Key('agent-hub-events-${recipe.id}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: colors.textMuted,
+                  ),
+                ),
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.only(top: LicoContentSpacing.inline),
+                  child: LinearProgressIndicator(
+                    key: Key('agent-hub-card-busy'),
+                    minHeight: 2,
+                  ),
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    key: Key('agent-hub-channel-version-${recipe.id}'),
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        key: Key('agent-hub-channel-${recipe.id}'),
+                        padding: _hubChipPadding,
+                        decoration: BoxDecoration(
+                          color: colors.surfaceLow,
+                          borderRadius: _hubChipBorderRadius,
+                          border: Border.all(
+                            color: colors.line,
+                            width: MessagingDesktopMetrics.hairline,
+                          ),
+                        ),
+                        child: Text(
+                          recipe.channelChipLabel,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colors.textSecondary,
+                            height: 1,
+                          ),
                         ),
                       ),
+                      if (recipe.versionLabel.isNotEmpty) ...[
+                        const SizedBox(width: LicoContentSpacing.compact),
+                        Text(
+                          recipe.versionLabel,
+                          key: Key('agent-hub-version-${recipe.id}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colors.textSecondary,
+                            height: 1,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(width: LicoContentSpacing.compact),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
+                  ),
+                  const SizedBox(width: LicoContentSpacing.compact),
+                  Expanded(
+                    child: Align(
                       alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (manage) ...[
-                            _HubLifecycleAction(
-                              actionKey: Key('agent-hub-update-${recipe.id}'),
-                              icon: Icons.system_update_alt_outlined,
-                              label: updateLabel,
-                              enabled: updateEnabled,
-                              kind: _HubLifecycleKind.filled,
-                              onPressed: onUpdate,
-                            ),
-                            const SizedBox(width: _hubFooterActionGap),
-                            _HubLifecycleAction(
-                              actionKey: Key(
-                                'agent-hub-uninstall-${recipe.id}',
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (manage) ...[
+                              _HubLifecycleAction(
+                                actionKey: Key('agent-hub-update-${recipe.id}'),
+                                icon: Icons.system_update_alt_outlined,
+                                label: updateLabel,
+                                enabled: updateEnabled,
+                                kind: _HubLifecycleKind.filled,
+                                onPressed: onUpdate,
                               ),
-                              icon: Icons.delete_outline,
-                              label: uninstallLabel,
-                              enabled: uninstallEnabled,
-                              kind: _HubLifecycleKind.danger,
-                              onPressed: onUninstall,
-                            ),
-                          ] else
-                            _HubLifecycleAction(
-                              actionKey: Key('agent-hub-install-${recipe.id}'),
-                              icon: Icons.download_outlined,
-                              label: installLabel,
-                              enabled: installEnabled,
-                              kind: _HubLifecycleKind.filled,
-                              onPressed: onInstall,
-                            ),
-                        ],
+                              const SizedBox(width: _hubFooterActionGap),
+                              _HubLifecycleAction(
+                                actionKey: Key(
+                                  'agent-hub-uninstall-${recipe.id}',
+                                ),
+                                icon: Icons.delete_outline,
+                                label: uninstallLabel,
+                                enabled: uninstallEnabled,
+                                kind: _HubLifecycleKind.danger,
+                                onPressed: onUninstall,
+                              ),
+                            ] else
+                              _HubLifecycleAction(
+                                actionKey: Key(
+                                  'agent-hub-install-${recipe.id}',
+                                ),
+                                icon: Icons.download_outlined,
+                                label: installLabel,
+                                enabled: installEnabled,
+                                kind: _HubLifecycleKind.filled,
+                                onPressed: onInstall,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

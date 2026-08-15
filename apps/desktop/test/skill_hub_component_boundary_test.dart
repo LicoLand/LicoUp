@@ -56,17 +56,19 @@ void main() {
     final picker = File(
       '$root/skill_hub_panel_icon_picker.dart',
     ).readAsStringSync();
+    final search = File('$root/skill_hub_search.dart').readAsStringSync();
 
     expect(panel, contains("ui/skill_hub_panel_catalog.dart';"));
     expect(catalog, contains("ui/skill_hub_panel_card_support.dart';"));
+    expect(catalog, contains("ui/skill_hub_search.dart';"));
     expect(catalog, contains("shared/ui/lico_empty_state.dart';"));
     expect(cards, contains("ui/skill_hub_panel_icon_picker.dart';"));
     expect(panel, isNot(contains('skill_plugin_hub_panel.dart')));
-    for (final leaf in [catalog, cards, picker]) {
+    for (final leaf in [catalog, cards, picker, search]) {
       expect(leaf, isNot(contains('skill_hub_panel.dart')));
       expect(leaf, isNot(contains('skill_plugin_hub_panel.dart')));
     }
-    for (final source in [panel, catalog, cards, picker]) {
+    for (final source in [panel, catalog, cards, picker, search]) {
       expect(
         source,
         isNot(contains(RegExp(r'^part(?: of)? ', multiLine: true))),

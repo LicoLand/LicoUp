@@ -43,7 +43,11 @@ bool messagingSidebarKeepsColumn(ClientSection section) =>
     section != ClientSection.agents && section != ClientSection.monitoring;
 
 bool messagingSidebarShowsSearch(ClientSection section) =>
-    section == ClientSection.agents || section == ClientSection.settings;
+    section == ClientSection.agents ||
+    section == ClientSection.settings ||
+    section == ClientSection.skillHub ||
+    section == ClientSection.pluginManagement ||
+    section == ClientSection.agentHub;
 
 ClientSection messagingSidebarNavTarget({
   required MessagingSidebarNavItem item,

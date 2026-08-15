@@ -330,7 +330,8 @@ abstract interface class AgentHubEnginePort {
   /// destination rebuilds so Hub can paint immediately on reopen.
   AgentHubCatalogSnapshot? get cachedCatalog;
 
-  Future<AgentHubCatalogSnapshot> catalog();
+  /// Warehouse cards when [recipeId] is empty. One live local lookup when set.
+  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''});
 
   Future<AgentHubOperationResult> plan(AgentHubPlanRequest request);
 

@@ -1,7 +1,7 @@
 use super::super::*;
 use super::support::portable_params;
 use crate::domain::agent_hub::contract::{
-    ADAPTATION_PARTIAL, FIRST_BATCH_IDS, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
+    InstallOwnership, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
 };
 use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
@@ -49,13 +49,11 @@ fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
     assert_eq!(cursor["installable"], true);
     let openclaw = cards.iter().find(|card| card["id"] == "openclaw").unwrap();
     assert_eq!(openclaw["location"], "virtual-machine");
-    assert!(
-        openclaw["connectionModes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|mode| mode == "virtual-machine")
-    );
+    assert!(openclaw["connectionModes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|mode| mode == "virtual-machine"));
     for card in cards {
         assert!(card.get("binaryPath").is_none());
         assert!(card.get("configPath").is_none());
@@ -74,20 +72,15 @@ fn catalog_joins_one_discovery_snapshot_onto_eight_cards() {
     let channels = cursor["installChannels"].as_array().unwrap();
     assert!(channels.iter().any(|channel| channel["id"] == "homebrew"));
     assert!(channels.iter().all(|channel| channel["kind"] != "npm"));
-    assert!(
-        channels
-            .iter()
-            .all(|channel| channel.get("installArgv").is_none())
-    );
+    assert!(channels
+        .iter()
+        .all(|channel| channel.get("installArgv").is_none()));
     let homebrew = channels
         .iter()
         .find(|channel| channel["id"] == "homebrew")
         .unwrap();
     assert_eq!(homebrew["officialSource"], "https://downloads.cursor.com");
-    assert_eq!(
-        homebrew["commandPreview"],
-        "brew install --cask cursor-cli"
-    );
+    assert_eq!(homebrew["commandPreview"], "brew install --cask cursor-cli");
 }
 
 #[test]
@@ -254,4 +247,48 @@ fn catalog_uses_dedicated_version_probes_and_keeps_absent_cards_blank() {
         assert_ne!(version, "unknown");
         assert_ne!(version, "未知");
     }
+}
+
+#[test]
+fn catalog_without_live_lookup_is_a_static_eight_card_template() {
+    let mut params = portable_params("static-template").1;
+    params
+        .as_object_mut()
+        .unwrap()
+        .remove("discoveryCandidates");
+    let catalog = catalog(&params).unwrap();
+    let cards = catalog["cards"].as_array().unwrap();
+    assert_eq!(cards.len(), FIRST_BATCH_IDS.len());
+    for item in cards {
+        assert_eq!(item["installedVersion"], "");
+        assert_eq!(item["latestVersion"], "");
+        assert_eq!(item["updateAvailable"], false);
+        assert_eq!(item["present"], false);
+        assert!(!item["label"].as_str().unwrap().is_empty());
+        assert!(!item["summary"].as_str().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn catalog_with_agent_id_projects_one_injected_card() {
+    let mut params = portable_params("one-card").1;
+    present_codex(&mut params);
+    params["agentId"] = serde_json::json!("codex");
+    params["versionProbes"] = serde_json::json!({
+        "codex": "codex-cli 0.147.0"
+    });
+    let catalog = catalog(&params).unwrap();
+    let cards = catalog["cards"].as_array().unwrap();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["id"], "codex");
+    assert_eq!(cards[0]["present"], true);
+    assert_eq!(cards[0]["installedVersion"], "0.147.0");
+}
+
+#[test]
+fn catalog_rejects_unknown_agent_id() {
+    let mut params = portable_params("unknown-id").1;
+    params["agentId"] = serde_json::json!("not-an-agent");
+    let error = catalog(&params).unwrap_err();
+    assert!(error.to_string().contains("recipe_not_found"));
 }

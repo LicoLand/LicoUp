@@ -13,7 +13,7 @@ final class UnwiredAgentHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => null;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog() async {
+  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
     return const AgentHubCatalogSnapshot(recipes: [], ok: false);
   }
 
@@ -91,12 +91,16 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => _cachedCatalog;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog() async {
+  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
     try {
-      final raw = await _invoke(const ['agent-hub', 'catalog']);
-      final snapshot = _ingestCatalog(raw);
+      final id = recipeId.trim();
+      final raw = await _invoke([
+        'agent-hub',
+        'catalog',
+        if (id.isNotEmpty) ...['--agent-id', id],
+      ]);
+      final snapshot = _ingestCatalog(raw, merge: id.isNotEmpty);
       if (snapshot.ok) {
-        _cachedCatalog = snapshot;
         return snapshot;
       }
       if (_cachedCatalog != null) {
@@ -322,7 +326,7 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
     AgentHubLifecycleAction action,
     String recipeId,
   ) async {
-    final snapshot = await catalog();
+    final snapshot = await catalog(recipeId: recipeId);
     if (!snapshot.ok && snapshot.recipes.isEmpty) {
       return _failed(action, recipeId);
     }
@@ -377,12 +381,15 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
     };
   }
 
-  AgentHubCatalogSnapshot _ingestCatalog(Map<String, dynamic> raw) {
+  AgentHubCatalogSnapshot _ingestCatalog(
+    Map<String, dynamic> raw, {
+    bool merge = false,
+  }) {
     final cards = raw['cards'];
     if (raw['ok'] != true || cards is! List) {
       return const AgentHubCatalogSnapshot(recipes: [], ok: false);
     }
-    final recipes = cards
+    final incoming = cards
         .whereType<Map>()
         .map(
           (card) =>
@@ -390,6 +397,9 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
         )
         .where((recipe) => recipe.id.isNotEmpty)
         .toList();
+    final recipes = merge && _cachedCatalog != null
+        ? _mergeRecipes(_cachedCatalog!.recipes, incoming)
+        : incoming;
     _discovery
       ..clear()
       ..addAll(
@@ -402,13 +412,31 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
         ),
       );
     final generation = raw['scanGeneration'];
-    return AgentHubCatalogSnapshot(
+    final snapshot = AgentHubCatalogSnapshot(
       recipes: recipes,
       scanGeneration: generation is int
           ? generation
-          : int.tryParse('$generation') ?? 0,
+          : int.tryParse('$generation') ??
+                (_cachedCatalog?.scanGeneration ?? 0),
       ok: true,
     );
+    _cachedCatalog = snapshot;
+    return snapshot;
+  }
+
+  List<AgentHubRecipe> _mergeRecipes(
+    List<AgentHubRecipe> current,
+    List<AgentHubRecipe> incoming,
+  ) {
+    if (incoming.isEmpty) {
+      return current;
+    }
+    final byId = {for (final recipe in incoming) recipe.id: recipe};
+    final merged = [
+      for (final recipe in current) byId.remove(recipe.id) ?? recipe,
+    ];
+    merged.addAll(byId.values);
+    return merged;
   }
 
   AgentHubOperationResult _planResult(

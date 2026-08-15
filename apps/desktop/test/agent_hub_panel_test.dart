@@ -10,6 +10,8 @@ import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_summary_visit.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _ids = [
@@ -182,7 +184,8 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.latestVersions = const {},
     this.seedCache,
     this.catalogFuture,
-  });
+    Map<String, Completer<AgentHubCatalogSnapshot>>? inspectDelays,
+  }) : inspectDelays = inspectDelays ?? {};
 
   final Set<String> presentIds;
   final Set<String> externalIds;
@@ -194,7 +197,9 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final Map<String, String> latestVersions;
   final AgentHubCatalogSnapshot? seedCache;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
+  final Map<String, Completer<AgentHubCatalogSnapshot>> inspectDelays;
   final List<AgentHubLifecycleAction> actions = [];
+  final List<String> catalogRecipeIds = [];
   String? lastRecipeId;
   String? lastChannelId;
   String? lastVersion;
@@ -215,13 +220,24 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => seedCache ?? _cache;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog() async {
-    if (catalogFuture != null) {
-      return catalogFuture!;
+  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
+    catalogRecipeIds.add(recipeId);
+    if (recipeId.isEmpty) {
+      if (catalogFuture != null) {
+        return catalogFuture!;
+      }
+      final snapshot = _liveSnapshot;
+      _cache = snapshot;
+      return snapshot;
     }
-    final snapshot = _liveSnapshot;
-    _cache = snapshot;
-    return snapshot;
+    final delay = inspectDelays[recipeId];
+    if (delay != null) {
+      await delay.future;
+    }
+    final live = _liveSnapshot.recipes
+        .where((recipe) => recipe.id == recipeId)
+        .toList();
+    return AgentHubCatalogSnapshot(recipes: live, ok: live.isNotEmpty);
   }
 
   @override
@@ -332,12 +348,19 @@ Widget _harness(
       GlobalWidgetsLocalizations.delegate,
     ],
     theme: buildLicoTheme(platformBrightness: Brightness.dark),
+    builder: (context, child) {
+      return MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: child!,
+      );
+    },
     home: Scaffold(
       body: SizedBox(
         width: 1000,
         height: 720,
         child: AgentHubPanel(
           engine: engine,
+          orderRecipes: (recipes) => recipes,
           openHomepage: openHomepage ?? (uri) async => true,
         ),
       ),
@@ -354,16 +377,27 @@ Future<void> _pumpHub(WidgetTester tester, Widget app) async {
   });
   await tester.pumpWidget(app);
   await tester.pump();
+  await tester.pump();
 }
 
 void main() {
+  test('shuffleAgentHubRecipes keeps every supported agent exactly once', () {
+    final recipes = _recipes();
+    final shuffled = shuffleAgentHubRecipes(recipes);
+    expect(shuffled.map((recipe) => recipe.id), unorderedEquals(_ids));
+  });
+
   testWidgets(
     'Agent Hub renders eight native recipe cards with adaptation tags',
     (tester) async {
       await _pumpHub(tester, _harness(_FakeHubEngine()));
 
       expect(find.byKey(const Key('agent-hub-panel')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-top-bar')), findsOneWidget);
       expect(find.byKey(const Key('agent-hub-refresh')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-search')), findsNothing);
+      expect(find.text('Agent Hub'), findsOneWidget);
+      expect(find.byType(LicoPaneTitleBar), findsOneWidget);
       for (final id in _ids) {
         expect(find.byKey(Key('agent-hub-card-$id')), findsOneWidget);
         expect(find.byKey(Key('agent-hub-adaptation-$id')), findsOneWidget);
@@ -551,7 +585,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pane refresh replaces overflow and rescans once', (
+  testWidgets('pane refresh lives in the top bar and rediscovers every card', (
     tester,
   ) async {
     final engine = _FakeHubEngine();
@@ -559,10 +593,31 @@ void main() {
     expect(find.byKey(const Key('agent-hub-more-codex')), findsNothing);
     expect(find.text('安装计划'), findsNothing);
     expect(find.text('重新扫描'), findsNothing);
+    expect(find.byKey(const Key('agent-hub-top-bar')), findsOneWidget);
     expect(find.byKey(const Key('agent-hub-refresh')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-search')), findsNothing);
+    expect(find.text('智能体中心'), findsOneWidget);
+    final topBar = tester.getRect(find.byKey(const Key('agent-hub-top-bar')));
+    final refresh = tester.getRect(find.byKey(const Key('agent-hub-refresh')));
+    final title = tester.getRect(find.text('智能体中心'));
+    expect(refresh.top, greaterThanOrEqualTo(topBar.top));
+    expect(refresh.bottom, lessThanOrEqualTo(topBar.bottom));
+    expect((title.center.dy - refresh.center.dy).abs(), lessThan(1));
+    expect(
+      refresh.right,
+      closeTo(topBar.right - LicoContentSpacing.paneInset, 1),
+    );
+    expect(refresh.left, greaterThan(title.right));
+    engine.catalogRecipeIds.clear();
     await tester.tap(find.byKey(const Key('agent-hub-refresh')));
     await tester.pump();
-    expect(engine.actions, [AgentHubLifecycleAction.rescan]);
+    await tester.pump();
+    expect(engine.actions, isEmpty);
+    expect(engine.catalogRecipeIds.where((id) => id.isEmpty), hasLength(1));
+    expect(
+      engine.catalogRecipeIds.where((id) => id.isNotEmpty).toSet(),
+      _ids.toSet(),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -620,7 +675,7 @@ void main() {
     },
   );
 
-  testWidgets('owned Uninstall uses the same right and bottom card inset', (
+  testWidgets('owned Uninstall uses matching left and right card insets', (
     tester,
   ) async {
     await _pumpHub(tester, _harness(_FakeHubEngine(ownedIds: const {'codex'})));
@@ -637,9 +692,10 @@ void main() {
       find.byKey(const Key('agent-hub-uninstall-codex')),
     );
     final leftInset = chip.left - card.left;
+    final bottomInset = card.bottom - uninstall.bottom;
     expect(card.right - uninstall.right, closeTo(leftInset, 0.5));
-    expect(card.bottom - uninstall.bottom, closeTo(leftInset, 0.5));
-    expect(card.bottom - chip.bottom, closeTo(leftInset, 0.5));
+    expect(card.bottom - chip.bottom, closeTo(bottomInset, 0.5));
+    expect(leftInset, greaterThan(bottomInset));
     expect(uninstall.left - update.right, greaterThan(4));
     expect(tester.takeException(), isNull);
   });
@@ -741,9 +797,7 @@ void main() {
       );
       expect(
         tester
-            .widget<InkWell>(
-              find.byKey(const Key('agent-hub-uninstall-codex')),
-            )
+            .widget<InkWell>(find.byKey(const Key('agent-hub-uninstall-codex')))
             .borderRadius,
         const BorderRadius.all(Radius.circular(999)),
       );
@@ -797,63 +851,119 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('cache paints immediately then locks actions until refresh', (
-    tester,
-  ) async {
-    final pending = Completer<AgentHubCatalogSnapshot>();
-    final cached = _snapshot(ownedIds: const {'codex'});
-    final engine = _FakeHubEngine(
-      ownedIds: const {'codex'},
-      seedCache: cached,
-      catalogFuture: pending.future,
-    );
-    await _pumpHub(tester, _harness(engine));
+  testWidgets(
+    'cache paints immediately then locks actions until each card resolves',
+    (tester) async {
+      final pending = Completer<AgentHubCatalogSnapshot>();
+      final cached = _snapshot(ownedIds: const {'codex'});
+      final inspectDelays = {
+        for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
+      };
+      final engine = _FakeHubEngine(
+        ownedIds: const {'codex'},
+        seedCache: cached,
+        catalogFuture: pending.future,
+        inspectDelays: inspectDelays,
+      );
+      await tester.binding.setSurfaceSize(const Size(1000, 720));
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() async {
+        tester.view.resetDevicePixelRatio();
+        await tester.binding.setSurfaceSize(null);
+      });
+      await tester.pumpWidget(_harness(engine));
+      await tester.pump();
 
-    expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);
-    expect(find.byKey(const Key('agent-hub-loading')), findsNothing);
-    expect(find.byKey(const Key('agent-hub-catalog-refresh')), findsOneWidget);
-    expect(
-      tester
-          .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
-          .onTap,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<InkWell>(find.byKey(const Key('agent-hub-uninstall-codex')))
-          .onTap,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<InkWell>(find.byKey(const Key('agent-hub-install-cursor')))
-          .onTap,
-      isNull,
-    );
+      expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);
+      expect(find.byKey(const Key('agent-hub-loading')), findsNothing);
+      expect(find.byKey(const Key('agent-hub-top-bar')), findsOneWidget);
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
+            .onTap,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-uninstall-codex')))
+            .onTap,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-cursor')))
+            .onTap,
+        isNull,
+      );
 
-    pending.complete(cached);
-    await tester.pump();
+      pending.complete(cached);
+      await tester.pump();
+      await tester.pump();
+      inspectDelays['codex']!.complete(
+        AgentHubCatalogSnapshot(
+          recipes: cached.recipes
+              .where((recipe) => recipe.id == 'codex')
+              .toList(),
+          ok: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    expect(
-      tester
-          .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
-          .onTap,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<InkWell>(find.byKey(const Key('agent-hub-uninstall-codex')))
-          .onTap,
-      isNotNull,
-    );
-    expect(
-      tester
-          .widget<InkWell>(find.byKey(const Key('agent-hub-install-cursor')))
-          .onTap,
-      isNotNull,
-    );
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
+            .onTap,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-uninstall-codex')))
+            .onTap,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-cursor')))
+            .onTap,
+        isNull,
+      );
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-cursor')),
+        findsOneWidget,
+      );
+
+      inspectDelays['cursor']!.complete(
+        AgentHubCatalogSnapshot(
+          recipes: _snapshot().recipes
+              .where((recipe) => recipe.id == 'cursor')
+              .toList(),
+          ok: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-cursor')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-cursor')))
+            .onTap,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'update stays disabled when native says updateAvailable is false',
@@ -1118,7 +1228,7 @@ final class _FailedCatalogEngine
   const _FailedCatalogEngine();
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog() async {
+  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
     return const AgentHubCatalogSnapshot(recipes: [], ok: false);
   }
 }
@@ -1129,7 +1239,7 @@ final class _ThrowingCatalogEngine
   const _ThrowingCatalogEngine();
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog() async {
+  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
     throw StateError('native catalog failed');
   }
 }

@@ -8,20 +8,25 @@ use super::recipes;
 use super::selector;
 use super::version;
 use super::version_check;
-use anyhow::Result;
-use serde_json::{Value, json};
+use anyhow::{anyhow, Result};
+use serde_json::{json, Value};
 
 pub fn catalog(params: &Value) -> Result<Value> {
     let store = store_from_params(params)?;
     let capabilities = capabilities_from_params(params)?;
     let registry = recipes::registry()?;
-    let facts = discovery_facts(params)?;
+    let requested = requested_agent_id(params)?;
+    let facts = discovery_facts(params, requested.as_deref())?;
     let ownerships = ownership::load(&store)?;
-    let live_lookup = params.get("discoveryCandidates").is_none();
+    let live_lookup = requested.is_some() && params.get("discoveryCandidates").is_none();
     let package_roots = live_lookup
         .then(|| package_versions::package_roots(params))
         .unwrap_or_default();
-    let cards = FIRST_BATCH_IDS
+    let card_ids: Vec<&str> = match requested.as_deref() {
+        Some(id) => vec![id],
+        None => FIRST_BATCH_IDS.to_vec(),
+    };
+    let cards = card_ids
         .iter()
         .filter_map(|id| registry.agents.iter().find(|agent| agent.id == *id))
         .map(|agent| {
@@ -133,17 +138,41 @@ pub fn catalog(params: &Value) -> Result<Value> {
     }))
 }
 
-pub fn discovery_facts(params: &Value) -> Result<Vec<DiscoveryFact>> {
-    if let Some(items) = params.get("discoveryCandidates").and_then(Value::as_array) {
-        return Ok(items.iter().filter_map(fact_from_value).collect());
+fn requested_agent_id(params: &Value) -> Result<Option<String>> {
+    let Some(id) = params
+        .get("agentId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+    else {
+        return Ok(None);
+    };
+    if !FIRST_BATCH_IDS.contains(&id.as_str()) {
+        return Err(anyhow!("recipe_not_found"));
     }
-    let scan = crate::domain::targets::scan_targets_with_params(params)?;
-    let candidates = scan
-        .get("candidates")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    Ok(candidates.iter().filter_map(fact_from_value).collect())
+    Ok(Some(id))
+}
+
+pub fn discovery_facts(params: &Value, agent_id: Option<&str>) -> Result<Vec<DiscoveryFact>> {
+    if let Some(items) = params.get("discoveryCandidates").and_then(Value::as_array) {
+        return Ok(items
+            .iter()
+            .filter_map(fact_from_value)
+            .filter(|fact| agent_id.is_none_or(|id| fact.agent_id == id))
+            .collect());
+    }
+    let Some(agent_id) = agent_id else {
+        return Ok(Vec::new());
+    };
+    live_fact(params, agent_id).map(|fact| fact.into_iter().collect())
+}
+
+fn live_fact(params: &Value, agent_id: &str) -> Result<Option<DiscoveryFact>> {
+    let mut inspect_params = params.clone();
+    inspect_params["target"] = json!(agent_id);
+    let inspected = crate::domain::targets::inspect_target_with_params(&inspect_params)?;
+    Ok(inspected.get("target").and_then(fact_from_value))
 }
 
 fn command_preview(os: &str, channel: &super::contract::InstallChannel) -> String {

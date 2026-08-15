@@ -2516,7 +2516,10 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("text", Text, false),
             value_option("stdin-json", Json, false),
         ],
-        "agent-hub catalog" => &[value_option("stdin-json", Json, false)],
+        "agent-hub catalog" => &[
+            value_option("agent-id", Text, false),
+            value_option("stdin-json", Json, false),
+        ],
         "agent-hub plan" => &[
             value_option("agent-id", Text, true),
             value_option("operation", Text, false),
