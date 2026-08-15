@@ -60,10 +60,7 @@ final class _MessagingSidebarGeometryState
 
   void _resize(double delta, double maxWidth) {
     final next = (_width + delta)
-        .clamp(
-          MessagingDesktopMetrics.conversationListMinExtent,
-          maxWidth,
-        )
+        .clamp(MessagingDesktopMetrics.conversationListMinExtent, maxWidth)
         .toDouble();
     if (next == _width) {
       return;
@@ -99,8 +96,8 @@ final class MessagingSidebarGeometryScope extends InheritedWidget {
   final double width;
   final void Function(double delta, double maxWidth) onResize;
 
-  static MessagingSidebarGeometryScope? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<MessagingSidebarGeometryScope>();
+  static MessagingSidebarGeometryScope? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<MessagingSidebarGeometryScope>();
 
   @override
   bool updateShouldNotify(MessagingSidebarGeometryScope oldWidget) =>

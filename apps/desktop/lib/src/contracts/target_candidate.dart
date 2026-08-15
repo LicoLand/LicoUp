@@ -73,6 +73,7 @@ class TargetCandidate {
     }
     return manual && hasValidVirtualMachineConnection;
   }
+
   bool get isVirtualMachine => location == 'virtual-machine';
   bool get hasValidVirtualMachineConnection {
     if (!isVirtualMachine || !const {'openclaw', 'hermes'}.contains(target)) {

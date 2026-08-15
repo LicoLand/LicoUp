@@ -53,7 +53,8 @@ AgentUsageAgentSummary _projectAgent(
   }
   final filteredDaily = [
     for (final entry in entries)
-      if (bucketKeys.contains(entry.date)) {'date': entry.date, ..._bucketJson(entry.raw)},
+      if (bucketKeys.contains(entry.date))
+        {'date': entry.date, ..._bucketJson(entry.raw)},
   ];
   return AgentUsageAgentSummary(
     agentId: agent.agentId,
@@ -120,7 +121,8 @@ Map<String, Object?> _bucketJson(Object? raw) {
     'explicitRecords': _int(raw['explicitRecords']),
     'estimatedRecords': _int(raw['estimatedRecords']),
     if (raw['modelUsage'] != null) 'modelUsage': raw['modelUsage'],
-    if (raw['modelTokenUsage'] != null) 'modelTokenUsage': raw['modelTokenUsage'],
+    if (raw['modelTokenUsage'] != null)
+      'modelTokenUsage': raw['modelTokenUsage'],
   };
 }
 

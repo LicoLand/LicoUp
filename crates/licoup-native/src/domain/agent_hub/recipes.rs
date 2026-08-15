@@ -2,11 +2,11 @@
 
 use super::argv::{self, ArgvKind};
 use super::contract::{
-    AgentHubManifest, AgentRecipe, AgentTomlDocument, ManifestAgent, RecipeRegistryDocument,
-    ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, FIRST_BATCH_IDS, HOST_SCOPE,
-    PARTIAL_ADAPTATION_ID, PENDING_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY, SCHEMA_VERSION,
+    ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, AgentHubManifest, AgentRecipe,
+    AgentTomlDocument, FIRST_BATCH_IDS, HOST_SCOPE, ManifestAgent, PARTIAL_ADAPTATION_ID,
+    PENDING_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY, RecipeRegistryDocument, SCHEMA_VERSION,
 };
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{Result, anyhow, ensure};
 use std::sync::OnceLock;
 use url::Url;
 
