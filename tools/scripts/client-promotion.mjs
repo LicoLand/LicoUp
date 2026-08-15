@@ -328,8 +328,6 @@ export function summarizeDocsTrain({ startedAtMs, endedAt, stages }) {
 
 async function docsTrain() {
   assertDetachedDocsCandidate();
-  run("npm", ["run", "repo:docs"]);
-  run("npm", ["run", "client:verify:plan"]);
   await verifyDocsFastCandidate({ base: "origin/nightly", head: "HEAD", root: repoRoot });
   const startedAtMs = Date.now();
   run("git", ["switch", "-c", docsBranch]);
