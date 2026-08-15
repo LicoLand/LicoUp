@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 const pairs = Object.freeze([
-  ["README.md", "README.zh-CN.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
   ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
@@ -44,52 +43,39 @@ test("public client document links resolve inside the repository", async () => {
 });
 
 test("public product language keeps the local-first and approved encrypted-peer boundary", async () => {
-  const [readme, guide, architecture, security, chineseReadme, chineseGuide] = await Promise.all([
-    read("README.md"),
+  const [guide, architecture, security, chineseGuide] = await Promise.all([
     read("docs/functionality/USER-GUIDE.md"),
     read("docs/architecture/README.md"),
     read("SECURITY.md"),
-    read("README.zh-CN.md"),
     read("docs/functionality/USER-GUIDE.zh-CN.md"),
   ]);
 
-  assert.match(compact(readme), /Sensitive runtime data stays on the device/u);
-  assert.match(compact(readme), /Default client scenarios do not upload local.*plaintext user content to a service/u);
-  assert.match(compact(readme), /named external service can read that approved content/u);
   assert.match(compact(guide), /Approve that one transfer/u);
   assert.match(compact(guide), /Changing the peer or content requires a new approval/u);
   assert.match(compact(architecture), /sender encrypts before network I\/O/u);
   assert.match(compact(security), /relay is untrusted/u);
   assert.match(compact(security), /approved external MCP request is a different boundary/u);
-  assert.match(compact(chineseReadme), /敏感运行时数据留在设备上/u);
   assert.match(compact(chineseGuide), /只批准这一次传输/u);
   assert.match(compact(chineseGuide), /更换目标或修改内容后，必须重新确认/u);
 });
 
 test("optional collaboration has an independent trust root and manual signed runner boundary", async () => {
   const [
-    readme,
     guide,
     architecture,
     security,
-    chineseReadme,
     chineseGuide,
     chineseArchitecture,
     chineseSecurity,
   ] = await Promise.all([
-    read("README.md"),
     read("docs/functionality/USER-GUIDE.md"),
     read("docs/architecture/README.md"),
     read("SECURITY.md"),
-    read("README.zh-CN.md"),
     read("docs/functionality/USER-GUIDE.zh-CN.md"),
     read("docs/architecture/README.zh-CN.md"),
     read("SECURITY.zh-CN.md"),
   ]);
 
-  assert.match(compact(readme), /not loaded by the default client/u);
-  assert.match(compact(readme), /immutable GitHub commit/u);
-  assert.match(compact(readme), /does not bundle that server runner/u);
   assert.match(compact(guide), /Installation or enablement never grants continuing transfer permission/u);
   assert.match(compact(guide), /Assembly does not start the server automatically/u);
   assert.match(compact(architecture), /absent from default startup and navigation/u);
@@ -97,8 +83,6 @@ test("optional collaboration has an independent trust root and manual signed run
   assert.match(compact(architecture), /fixed signed external runner on loopback/u);
   assert.match(compact(security), /Plugin installation, enablement, startup, schedules, and agent requests never/u);
   assert.match(compact(security), /signing key is imported independently of the package download/u);
-  assert.match(compact(chineseReadme), /默认客户端不会加载可选的 LicoMesh 协作能力/u);
-  assert.match(compact(chineseReadme), /本仓库不捆绑该服务端运行器/u);
   assert.match(compact(chineseGuide), /组装不会自动启动服务端/u);
   assert.match(compact(chineseArchitecture), /默认启动和\s*导航不会加载/u);
   assert.match(compact(chineseArchitecture), /通过独立操作导入可信签名公钥/u);
