@@ -18,6 +18,7 @@ void main() {
     expect(chinese.agentHub, '智能体中心');
     expect(chinese.adaptationDeep, '深度适配');
     expect(chinese.adaptationPartial, '部分适配');
+    expect(chinese.adaptationPending, '待评估');
     expect(chinese.agentHubInstalled, '已安装');
     expect(chinese.agentHubNotInstalled, '未安装');
     expect(chinese.agentHubExternal, '外部安装');
@@ -25,7 +26,7 @@ void main() {
     expect(chinese.agentHubVisit, '访问');
     expect(chinese.agentHubVisitFailed, '无法打开主页');
     expect(chinese.agentHubUpdate, '更新');
-    expect(chinese.agentHubOpen, '打开');
+    expect(chinese.agentHubOpen, '对话');
     expect(chinese.agentHubBack, '返回');
     expect(chinese.agentHubUninstall, '卸载');
     expect(chinese.agentHubDownloadSource, '下载源');
@@ -41,6 +42,7 @@ void main() {
     expect(english.agentHub, 'Agent Hub');
     expect(english.adaptationDeep, 'Deep');
     expect(english.adaptationPartial, 'Partial');
+    expect(english.adaptationPending, 'Pending');
     expect(english.agentHubInstalled, 'Installed');
     expect(english.agentHubNotInstalled, 'Not installed');
     expect(english.agentHubExternal, 'External');
@@ -48,7 +50,7 @@ void main() {
     expect(english.agentHubVisit, 'Visit →');
     expect(english.agentHubVisitFailed, 'Unable to open homepage');
     expect(english.agentHubUpdate, 'Update');
-    expect(english.agentHubOpen, 'Open');
+    expect(english.agentHubOpen, 'Chat');
     expect(english.agentHubBack, 'Back');
     expect(english.agentHubUninstall, 'Uninstall');
     expect(english.agentHubDownloadSource, 'Download source');
