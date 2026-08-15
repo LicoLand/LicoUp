@@ -195,13 +195,15 @@ function waitForRequiredChecks(pullRequest, plan) {
     const requiredNames = ["Branch flow", "Commit identity", plan.aggregate, "Auditor"];
     const requiredRuns = requiredNames.map((name) => ({
       name,
-      checks: runs.filter((check) => check?.name === name),
+      check: runs
+        .filter((check) => check?.name === name)
+        .sort((left, right) =>
+          Date.parse(right.started_at || 0) - Date.parse(left.started_at || 0) ||
+          Number(right.id || 0) - Number(left.id || 0))[0] || null,
     }));
-    const completed = requiredRuns.every(({ checks }) =>
-      checks.length > 0 && checks.every((check) => check.status === "completed"));
+    const completed = requiredRuns.every(({ check }) => check?.status === "completed");
     if (completed) {
-      if (requiredRuns.some(({ checks }) =>
-        checks.some((check) => check.conclusion !== "success"))) {
+      if (requiredRuns.some(({ check }) => check.conclusion !== "success")) {
         reject("promotion_required_check_failed");
       }
       return;
@@ -326,6 +328,8 @@ export function summarizeDocsTrain({ startedAtMs, endedAt, stages }) {
 
 async function docsTrain() {
   assertDetachedDocsCandidate();
+  run("npm", ["run", "repo:docs"]);
+  run("npm", ["run", "client:verify:plan"]);
   await verifyDocsFastCandidate({ base: "origin/nightly", head: "HEAD", root: repoRoot });
   const startedAtMs = Date.now();
   run("git", ["switch", "-c", docsBranch]);
