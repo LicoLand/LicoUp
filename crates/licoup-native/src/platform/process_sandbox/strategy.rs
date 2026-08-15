@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow, ensure};
 use std::path::Path;
 use std::process::Command;
 
+#[cfg(target_os = "macos")]
 use super::seatbelt_literal;
 
 /// Build one no-network, no-shell strategy script command.

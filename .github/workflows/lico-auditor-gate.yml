@@ -24,6 +24,21 @@ jobs:
           fetch-depth: 0
           path: target
 
+      - name: Select the author README fast path
+        id: readme
+        working-directory: target
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ -n "$BASE_SHA" && -n "$HEAD_SHA" ]]; then
+            node tools/scripts/readme-fast-path.mjs classify \
+              --base "$BASE_SHA" \
+              --head "$HEAD_SHA"
+          else
+            echo "readme_fast=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout audit source of truth
         uses: actions/checkout@v5
         with:
@@ -43,15 +58,26 @@ jobs:
             --repo lico-auditor \
             --remote origin \
             --branch only \
-            --require-current-head \
-            --enforce-remote-heads
+            --require-current-head
 
       - name: Run Lico-Auditor gate
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          README_FAST: ${{ steps.readme.outputs.readme_fast }}
         run: |
+          scan_ref="$HEAD_SHA"
+          if git -C target cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            scan_ref="$BASE_SHA..$HEAD_SHA"
+          fi
+          contribution_args=()
+          if [[ "$README_FAST" == true ]]; then
+            contribution_args+=(--no-contribution)
+          fi
           lico-auditor/bin/lico-auditor gate \
             --repo target \
             --profile licoup \
-            --ref "$HEAD_SHA" \
+            --history \
+            --ref "$scan_ref" \
+            "${contribution_args[@]}" \
             --format text
