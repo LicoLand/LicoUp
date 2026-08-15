@@ -14,6 +14,16 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const manifestPath = "tools/scripts/config/docs-fast-promotion-manifest.json";
 const manifestSchemaVersion = 1;
 const regularBlobModes = new Set(["100644", "100755"]);
+const readmeLanguageRoles = Object.freeze([
+  Object.freeze({
+    path: "README.md",
+    marker: "English (normative language) · [简体中文 (localized language)](README.zh-CN.md)",
+  }),
+  Object.freeze({
+    path: "README.zh-CN.md",
+    marker: "[English（规范语言）](README.md) · 简体中文（本地化语言）",
+  }),
+]);
 
 export class DocsFastPromotionError extends Error {
   constructor(code) {
@@ -200,6 +210,17 @@ export async function verifyDocsFastCandidate({ base, head = "HEAD", root = repo
   });
 }
 
+export function assertReadmeLanguageRoles({ head = "HEAD", root = repoRoot }) {
+  const safeHead = validateRevision(head);
+  for (const requirement of readmeLanguageRoles) {
+    const result = git(root, [
+      "grep", "-F", "-e", requirement.marker, safeHead, "--", requirement.path,
+    ], { allowFailure: true });
+    if (result === null) reject("readme_language_roles_missing");
+  }
+  return Object.freeze({ languageRoles: true });
+}
+
 function writeOutput(receipt) {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (outputPath) {
@@ -241,7 +262,8 @@ export async function main(args = process.argv.slice(2)) {
   }
   if (command === "prevalidate") {
     if (!values.base || Object.keys(values).length !== 1) reject("arguments_invalid");
-    writeOutput(await verifyDocsFastCandidate({ base: values.base, head: "HEAD" }));
+    const receipt = await verifyDocsFastCandidate({ base: values.base, head: "HEAD" });
+    writeOutput({ ...receipt, ...assertReadmeLanguageRoles({ head: "HEAD" }) });
     return;
   }
   reject("command_invalid");
