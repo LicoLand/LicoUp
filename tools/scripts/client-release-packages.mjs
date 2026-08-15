@@ -247,6 +247,18 @@ function artifactRecord(manifest, role) {
   return manifest.artifacts.find((artifact) => artifact.role === role);
 }
 
+export function validBuildManifestExecutionContract(target, buildManifest) {
+  if (!Array.isArray(buildManifest?.commandSequence) ||
+    !Array.isArray(buildManifest?.requiredTools) ||
+    !Array.isArray(buildManifest?.credentialEnv)) {
+    return false;
+  }
+  if (buildManifest.commandSequence.length > 0) return true;
+  return target?.id === "macos-direct-arm64" &&
+    buildManifest.requiredTools.length === 0 &&
+    buildManifest.credentialEnv.length === 0;
+}
+
 function verifyBuildManifestBinding(target, version, packageManifest, outputRoot) {
   const record = artifactRecord(packageManifest, "build-manifest");
   if (!record) fail("client_release_package_build_manifest_missing");
@@ -304,10 +316,7 @@ function verifyBuildManifestBinding(target, version, packageManifest, outputRoot
           artifact.role !== expected.role || artifact.file !== expected.file ||
           artifact.byteSize !== expected.byteSize || artifact.sha256 !== expected.sha256;
       }) ||
-      !Array.isArray(buildManifest.commandSequence) ||
-      buildManifest.commandSequence.length === 0 ||
-      !Array.isArray(buildManifest.requiredTools) ||
-      !Array.isArray(buildManifest.credentialEnv) ||
+      !validBuildManifestExecutionContract(target, buildManifest) ||
       !Array.isArray(buildManifest.outputSources)) {
       fail("client_release_package_build_manifest_invalid");
     }
