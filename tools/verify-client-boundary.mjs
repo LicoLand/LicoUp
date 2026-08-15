@@ -83,7 +83,10 @@ const windowsHomePathPattern = new RegExp(
 const forbiddenContent = [
   { pattern: retiredClientNamePattern, reasonCode: "RETIRED_CLIENT_NAME" },
   { pattern: /\/Users\/[A-Za-z0-9._-]+/g, reasonCode: "FORBIDDEN_MACOS_HOME_PATH" },
-  { pattern: /\/home\/[A-Za-z0-9._-]+/g, reasonCode: "FORBIDDEN_LINUX_HOME_PATH" },
+  {
+    pattern: /\/home\/(?!linuxbrew\/\.linuxbrew(?:[/\s`'"),;:\]}>!?]|$))[A-Za-z0-9._-]+/g,
+    reasonCode: "FORBIDDEN_LINUX_HOME_PATH"
+  },
   { pattern: windowsHomePathPattern, reasonCode: "FORBIDDEN_WINDOWS_HOME_PATH" },
   { pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g, reasonCode: "FORBIDDEN_PRIVATE_KEY" },
   {

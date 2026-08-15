@@ -331,7 +331,9 @@ class _MessagingContactListState extends State<MessagingContactList> {
           : const Key('messaging-contact-list'),
       heading: messagingSidebarHeading(strings, widget.activeDestination),
       headingKey: const Key('messaging-contact-list-heading'),
-      headingActions: _showsConversations ? _conversationHeadingActions() : null,
+      headingActions: _showsConversations
+          ? _conversationHeadingActions()
+          : null,
       onSearch: widget.onSearch,
       searchBottomPadding: widget.showConversationList
           ? 0

@@ -73,7 +73,10 @@ void main() {
     expect(viewport.agent('cursor')?.totalTokens, 3000);
     expect(viewport.agent('codex')?.totalTokens, 3000);
     expect(viewport.agent('claude-code')?.totalTokens, 3000);
-    expect((viewport.agent('cursor')?.history['dailyUsage'] as List).length, 30);
+    expect(
+      (viewport.agent('cursor')?.history['dailyUsage'] as List).length,
+      30,
+    );
   });
 
   test('newest native projection is the only Flutter owner', () {
