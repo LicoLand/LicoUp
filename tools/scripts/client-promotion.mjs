@@ -63,8 +63,15 @@ export function hasPromotableCommits(compareStatus) {
   return compareStatus === "ahead" || compareStatus === "diverged";
 }
 
-function run(command, args, { capture = false, allowFailure = false, attempts = 1 } = {}) {
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+function run(command, args, {
+  capture = false,
+  allowFailure = false,
+  attempts = 1,
+  retryTransient = false,
+} = {}) {
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
     const result = spawnSync(command, args, {
       cwd: repoRoot,
       env: process.env,
@@ -76,7 +83,16 @@ function run(command, args, { capture = false, allowFailure = false, attempts = 
     if (!result.error && result.status === 0) {
       return capture ? String(result.stdout || "").trim() : "";
     }
-    if (attempt === attempts) {
+    const diagnostic = `${result.error?.message || ""}\n${result.stderr || ""}`;
+    if (
+      retryTransient &&
+      /(?:\bEOF\b|timed? out|connection reset|temporarily unavailable|HTTP 50[0234]|TLS handshake)/iu
+        .test(diagnostic)
+    ) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
+      continue;
+    }
+    if (attempt >= attempts) {
       if (allowFailure) return null;
       reject("promotion_command_failed");
     }
@@ -106,7 +122,7 @@ function assertCleanCurrentBranch(head) {
 function assertRepositoryAccess() {
   const actual = run("gh", [
     "api", `repos/${repository}`, "--jq", ".full_name",
-  ], { capture: true, attempts: 3 });
+  ], { capture: true, attempts: 3, retryTransient: true });
   if (actual !== repository) reject("promotion_repository_mismatch");
 }
 
@@ -114,7 +130,7 @@ function compareStatus(head, base) {
   return run("gh", [
     "api", `repos/${repository}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
     "--jq", ".status",
-  ], { capture: true, attempts: 3 });
+  ], { capture: true, attempts: 3, retryTransient: true });
 }
 
 function findOpenPullRequest(head, base) {
@@ -122,7 +138,7 @@ function findOpenPullRequest(head, base) {
     "api", "--method", "GET", `repos/${repository}/pulls`,
     "-f", "state=open", "-f", `head=LicoLand:${head}`, "-f", `base=${base}`,
     "--jq", "map({number, url: .html_url})",
-  ], { capture: true, attempts: 3 });
+  ], { capture: true, attempts: 3, retryTransient: true });
   let pullRequests;
   try {
     pullRequests = JSON.parse(output || "[]");
@@ -158,17 +174,17 @@ function pushTemporaryBranch(plan) {
   run("git", ["push", "--set-upstream", "origin", plan.head]);
 }
 
-function waitForAggregate(pullRequest, plan) {
+function waitForRequiredChecks(pullRequest, plan) {
   const number = String(pullRequest.number || "");
   const headSha = run("gh", [
     "api", `repos/${repository}/pulls/${number}`, "--jq", ".head.sha",
-  ], { capture: true, attempts: 3 });
+  ], { capture: true, attempts: 3, retryTransient: true });
   if (!/^[a-f0-9]{40,64}$/u.test(headSha)) reject("promotion_head_revision_invalid");
   for (;;) {
     const output = run("gh", [
       "api", "--method", "GET", `repos/${repository}/commits/${headSha}/check-runs`,
       "-f", "per_page=100",
-    ], { capture: true, attempts: 3 });
+    ], { capture: true, attempts: 3, retryTransient: true });
     let runs;
     try {
       runs = JSON.parse(output).check_runs;
@@ -176,9 +192,18 @@ function waitForAggregate(pullRequest, plan) {
       reject("promotion_check_response_invalid");
     }
     if (!Array.isArray(runs)) reject("promotion_check_response_invalid");
-    const aggregate = runs.find((check) => check?.name === plan.aggregate);
-    if (aggregate?.status === "completed") {
-      if (aggregate.conclusion !== "success") reject("promotion_required_check_failed");
+    const requiredNames = ["Branch flow", "Commit identity", plan.aggregate, "Auditor"];
+    const requiredRuns = requiredNames.map((name) => ({
+      name,
+      checks: runs.filter((check) => check?.name === name),
+    }));
+    const completed = requiredRuns.every(({ checks }) =>
+      checks.length > 0 && checks.every((check) => check.status === "completed"));
+    if (completed) {
+      if (requiredRuns.some(({ checks }) =>
+        checks.some((check) => check.conclusion !== "success"))) {
+        reject("promotion_required_check_failed");
+      }
       return;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
@@ -188,11 +213,7 @@ function waitForAggregate(pullRequest, plan) {
 function waitAndMerge(pullRequest, plan) {
   const number = String(pullRequest.number || "");
   if (!/^[1-9][0-9]*$/u.test(number)) reject("promotion_pull_request_invalid");
-  waitForAggregate(pullRequest, plan);
-  run("gh", [
-    "pr", "checks", number, "--repo", repository, "--required", "--watch",
-    "--fail-fast", "--interval", "10",
-  ], { attempts: 3 });
+  waitForRequiredChecks(pullRequest, plan);
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     run("gh", [
       "api", "--method", "PUT", `repos/${repository}/pulls/${number}/merge`,
@@ -200,7 +221,7 @@ function waitAndMerge(pullRequest, plan) {
     ], { capture: true, allowFailure: true });
     const mergedAt = run("gh", [
       "api", `repos/${repository}/pulls/${number}`, "--jq", ".merged_at",
-    ], { capture: true, attempts: 3 });
+    ], { capture: true, attempts: 3, retryTransient: true });
     if (mergedAt !== "" && mergedAt !== "null") {
       return Object.freeze({ number, mergedAt });
     }
