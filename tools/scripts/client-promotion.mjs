@@ -63,20 +63,41 @@ export function hasPromotableCommits(compareStatus) {
   return compareStatus === "ahead" || compareStatus === "diverged";
 }
 
-function run(command, args, { capture = false, allowFailure = false } = {}) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    env: process.env,
-    encoding: "utf8",
-    shell: false,
-    stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  if (result.error || result.status !== 0) {
-    if (allowFailure) return null;
-    reject("promotion_command_failed");
+function run(command, args, {
+  capture = false,
+  allowFailure = false,
+  attempts = 1,
+  retryTransient = false,
+} = {}) {
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    const result = spawnSync(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+      encoding: "utf8",
+      shell: false,
+      stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    if (!result.error && result.status === 0) {
+      return capture ? String(result.stdout || "").trim() : "";
+    }
+    const diagnostic = `${result.error?.message || ""}\n${result.stderr || ""}`;
+    if (
+      retryTransient &&
+      /(?:\bEOF\b|timed? out|connection reset|temporarily unavailable|HTTP 50[0234]|TLS handshake)/iu
+        .test(diagnostic)
+    ) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
+      continue;
+    }
+    if (attempt >= attempts) {
+      if (allowFailure) return null;
+      reject("promotion_command_failed");
+    }
   }
-  return capture ? String(result.stdout || "").trim() : "";
+  reject("promotion_command_failed");
 }
 
 function currentBranch() {
@@ -100,8 +121,8 @@ function assertCleanCurrentBranch(head) {
 
 function assertRepositoryAccess() {
   const actual = run("gh", [
-    "repo", "view", repository, "--json", "nameWithOwner", "--jq", ".nameWithOwner",
-  ], { capture: true });
+    "api", `repos/${repository}`, "--jq", ".full_name",
+  ], { capture: true, attempts: 3, retryTransient: true });
   if (actual !== repository) reject("promotion_repository_mismatch");
 }
 
@@ -109,14 +130,15 @@ function compareStatus(head, base) {
   return run("gh", [
     "api", `repos/${repository}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
     "--jq", ".status",
-  ], { capture: true });
+  ], { capture: true, attempts: 3, retryTransient: true });
 }
 
 function findOpenPullRequest(head, base) {
   const output = run("gh", [
-    "pr", "list", "--repo", repository, "--state", "open", "--head", head,
-    "--base", base, "--limit", "5", "--json", "number,url",
-  ], { capture: true });
+    "api", "--method", "GET", `repos/${repository}/pulls`,
+    "-f", "state=open", "-f", `head=LicoLand:${head}`, "-f", `base=${base}`,
+    "--jq", "map({number, url: .html_url})",
+  ], { capture: true, attempts: 3, retryTransient: true });
   let pullRequests;
   try {
     pullRequests = JSON.parse(output || "[]");
@@ -130,16 +152,19 @@ function findOpenPullRequest(head, base) {
 }
 
 function openPullRequest(plan) {
-  let pullRequest = findOpenPullRequest(plan.head, plan.base);
-  if (pullRequest) return pullRequest;
-  run("gh", [
-    "pr", "create", "--repo", repository, "--head", plan.head, "--base", plan.base,
-    "--title", `Promote ${plan.head} to ${plan.base}`,
-    "--body", `Required aggregate: ${plan.aggregate}. Merge method: merge commit.`,
-  ]);
-  pullRequest = findOpenPullRequest(plan.head, plan.base);
-  if (!pullRequest) reject("promotion_pull_request_missing");
-  return pullRequest;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let pullRequest = findOpenPullRequest(plan.head, plan.base);
+    if (pullRequest) return pullRequest;
+    run("gh", [
+      "api", "--method", "POST", `repos/${repository}/pulls`,
+      "-f", `head=${plan.head}`, "-f", `base=${plan.base}`,
+      "-f", `title=Promote ${plan.head} to ${plan.base}`,
+      "-f", `body=Required aggregate: ${plan.aggregate}. Merge method: merge commit.`,
+    ], { capture: true, allowFailure: true });
+    pullRequest = findOpenPullRequest(plan.head, plan.base);
+    if (pullRequest) return pullRequest;
+  }
+  reject("promotion_pull_request_missing");
 }
 
 function pushTemporaryBranch(plan) {
@@ -149,19 +174,59 @@ function pushTemporaryBranch(plan) {
   run("git", ["push", "--set-upstream", "origin", plan.head]);
 }
 
-function waitAndMerge(pullRequest) {
+function waitForRequiredChecks(pullRequest, plan) {
+  const number = String(pullRequest.number || "");
+  const headSha = run("gh", [
+    "api", `repos/${repository}/pulls/${number}`, "--jq", ".head.sha",
+  ], { capture: true, attempts: 3, retryTransient: true });
+  if (!/^[a-f0-9]{40,64}$/u.test(headSha)) reject("promotion_head_revision_invalid");
+  for (;;) {
+    const output = run("gh", [
+      "api", "--method", "GET", `repos/${repository}/commits/${headSha}/check-runs`,
+      "-f", "per_page=100",
+    ], { capture: true, attempts: 3, retryTransient: true });
+    let runs;
+    try {
+      runs = JSON.parse(output).check_runs;
+    } catch {
+      reject("promotion_check_response_invalid");
+    }
+    if (!Array.isArray(runs)) reject("promotion_check_response_invalid");
+    const requiredNames = ["Branch flow", "Commit identity", plan.aggregate, "Auditor"];
+    const requiredRuns = requiredNames.map((name) => ({
+      name,
+      checks: runs.filter((check) => check?.name === name),
+    }));
+    const completed = requiredRuns.every(({ checks }) =>
+      checks.length > 0 && checks.every((check) => check.status === "completed"));
+    if (completed) {
+      if (requiredRuns.some(({ checks }) =>
+        checks.some((check) => check.conclusion !== "success"))) {
+        reject("promotion_required_check_failed");
+      }
+      return;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
+  }
+}
+
+function waitAndMerge(pullRequest, plan) {
   const number = String(pullRequest.number || "");
   if (!/^[1-9][0-9]*$/u.test(number)) reject("promotion_pull_request_invalid");
-  run("gh", [
-    "pr", "checks", number, "--repo", repository, "--required", "--watch",
-    "--fail-fast", "--interval", "10",
-  ]);
-  run("gh", ["pr", "merge", number, "--repo", repository, "--merge"]);
-  const mergedAt = run("gh", [
-    "pr", "view", number, "--repo", repository, "--json", "mergedAt", "--jq", ".mergedAt",
-  ], { capture: true });
-  if (mergedAt === "" || mergedAt === "null") reject("promotion_merge_not_confirmed");
-  return Object.freeze({ number, mergedAt });
+  waitForRequiredChecks(pullRequest, plan);
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    run("gh", [
+      "api", "--method", "PUT", `repos/${repository}/pulls/${number}/merge`,
+      "-f", "merge_method=merge",
+    ], { capture: true, allowFailure: true });
+    const mergedAt = run("gh", [
+      "api", `repos/${repository}/pulls/${number}`, "--jq", ".merged_at",
+    ], { capture: true, attempts: 3, retryTransient: true });
+    if (mergedAt !== "" && mergedAt !== "null") {
+      return Object.freeze({ number, mergedAt });
+    }
+  }
+  reject("promotion_merge_not_confirmed");
 }
 
 function printReceipt(receipt) {
@@ -186,7 +251,7 @@ function advance(head, base) {
   }
   if (!hasPromotableCommits(status)) reject("promotion_topology_not_ahead");
   const pullRequest = openPullRequest(plan);
-  const merged = waitAndMerge(pullRequest);
+  const merged = waitAndMerge(pullRequest, plan);
   const receipt = Object.freeze({
     ok: true,
     status: "merged",
