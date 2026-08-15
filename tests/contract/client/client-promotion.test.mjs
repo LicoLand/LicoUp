@@ -121,4 +121,8 @@ test("promotion mutations use idempotent REST confirmation instead of GraphQL wr
   assert.match(source, /retryTransient: true/u);
   assert.equal(source.includes('"pr", "checks"'), false);
   assert.equal(source.includes("docsEfficiencyThresholdMs"), true);
+  assert.ok(source.indexOf('run("npm", ["run", "repo:docs"])') <
+    source.indexOf("const startedAtMs = Date.now()"));
+  assert.ok(source.indexOf('run("npm", ["run", "client:verify:plan"])') <
+    source.indexOf("const startedAtMs = Date.now()"));
 });
