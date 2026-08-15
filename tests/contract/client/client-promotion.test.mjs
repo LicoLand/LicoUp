@@ -102,7 +102,9 @@ test("promotion mutations use idempotent REST confirmation instead of GraphQL wr
   assert.match(source, /merge_method=merge/u);
   assert.match(source, /attempts: 3/u);
   assert.match(source, /check-runs/u);
-  assert.match(source, /check\?\.name === plan\.aggregate/u);
+  assert.match(source, /"Branch flow", "Commit identity", plan\.aggregate, "Auditor"/u);
   assert.match(source, /for \(;;\)/u);
+  assert.match(source, /retryTransient: true/u);
+  assert.equal(source.includes('"pr", "checks"'), false);
   assert.equal(source.includes("docsEfficiencyThresholdMs"), true);
 });
