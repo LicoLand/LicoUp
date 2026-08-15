@@ -73,7 +73,7 @@ final class AgentHubRecipe {
       'homebrew' => 'brew',
       'winget' => 'winget',
       'official-artifact' => 'official',
-      '' => 'official',
+      '' => '',
       _ => kind,
     };
   }

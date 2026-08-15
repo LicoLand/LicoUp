@@ -56,6 +56,7 @@ final class LicoPaneTitleBar extends StatelessWidget {
     this.refreshing = false,
     this.refreshButtonKey,
     this.refreshingIconKey,
+    this.leading,
     this.trailing,
     this.padding = EdgeInsets.zero,
   });
@@ -66,6 +67,9 @@ final class LicoPaneTitleBar extends StatelessWidget {
   final bool refreshing;
   final Key? refreshButtonKey;
   final Key? refreshingIconKey;
+
+  /// Optional control immediately left of the title, such as a back button.
+  final Widget? leading;
 
   /// Optional actions immediately left of refresh. Feature panes leave this
   /// null; search lives in the left sidebar.
@@ -81,6 +85,10 @@ final class LicoPaneTitleBar extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            if (leading != null) ...[
+              leading!,
+              const SizedBox(width: LicoContentSpacing.compact),
+            ],
             Expanded(
               child: Text(
                 title,

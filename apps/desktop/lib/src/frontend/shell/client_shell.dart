@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -150,6 +152,10 @@ class _ClientShellState extends State<ClientShell>
       ClientSection.agentHub => AgentHubPanel(
         engine: _agentHubEngine,
         openHomepage: controller.runtimePlatformBridge.openHttps,
+        onOpenAgent: (agentId) {
+          unawaited(controller.selectConversationAgent(agentId));
+          controller.selectSection(ClientSection.agents);
+        },
       ),
     };
   }

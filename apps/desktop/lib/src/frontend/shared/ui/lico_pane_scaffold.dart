@@ -24,6 +24,7 @@ final class LicoPaneScaffold extends StatelessWidget {
     this.refreshingIconKey,
     this.titleBarKey,
     this.contentKey,
+    this.leading,
     this.trailing,
   });
 
@@ -36,6 +37,7 @@ final class LicoPaneScaffold extends StatelessWidget {
   final Key? refreshingIconKey;
   final Key? titleBarKey;
   final Key? contentKey;
+  final Widget? leading;
   final Widget? trailing;
 
   @override
@@ -53,6 +55,7 @@ final class LicoPaneScaffold extends StatelessWidget {
             refreshing: refreshing,
             refreshButtonKey: refreshButtonKey,
             refreshingIconKey: refreshingIconKey,
+            leading: leading,
             trailing: trailing,
             padding: LicoContentSpacing.paneTitlePadding,
           ),
