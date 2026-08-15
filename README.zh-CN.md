@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/brand/readme-banner.svg" alt="LicoUp——轨道冰淇淋杯品牌横幅" width="880">
+<img src="docs/assets/brand/readme-banner.svg" alt="LicoUp——轨道冰淇淋杯品牌横幅" width="720">
 
 **与智能体共同创造价值。**
 
