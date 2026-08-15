@@ -318,6 +318,7 @@ extension LicoStringsLabels on LicoStrings {
   String get pluginsNav => isChinese ? '插件' : 'Plugins';
   String get adaptationDeep => isChinese ? '深度适配' : 'Deep';
   String get adaptationPartial => isChinese ? '部分适配' : 'Partial';
+  String get adaptationPending => isChinese ? '待评估' : 'Pending';
   String get agentHubInstalled => isChinese ? '已安装' : 'Installed';
   String get agentHubNotInstalled => isChinese ? '未安装' : 'Not installed';
   String get agentHubExternal => isChinese ? '外部安装' : 'External';
@@ -328,7 +329,7 @@ extension LicoStringsLabels on LicoStrings {
   String get agentHubVisitFailed =>
       isChinese ? '无法打开主页' : 'Unable to open homepage';
   String get agentHubUpdate => isChinese ? '更新' : 'Update';
-  String get agentHubOpen => isChinese ? '打开' : 'Open';
+  String get agentHubOpen => isChinese ? '对话' : 'Chat';
   String get agentHubBack => isChinese ? '返回' : 'Back';
   String get agentHubUninstall => isChinese ? '卸载' : 'Uninstall';
   String get mobileNav => isChinese ? '移动' : 'Mobile';

@@ -2,11 +2,11 @@
 
 use super::argv::{self, ArgvKind};
 use super::contract::{
-    ADAPTATION_DEEP, ADAPTATION_PARTIAL, AgentHubManifest, AgentRecipe, AgentTomlDocument,
-    FIRST_BATCH_IDS, HOST_SCOPE, ManifestAgent, PARTIAL_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY,
-    RecipeRegistryDocument, SCHEMA_VERSION,
+    AgentHubManifest, AgentRecipe, AgentTomlDocument, ManifestAgent, RecipeRegistryDocument,
+    ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, FIRST_BATCH_IDS, HOST_SCOPE,
+    PARTIAL_ADAPTATION_ID, PENDING_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY, SCHEMA_VERSION,
 };
-use anyhow::{Result, anyhow, ensure};
+use anyhow::{anyhow, ensure, Result};
 use std::sync::OnceLock;
 use url::Url;
 
@@ -122,6 +122,9 @@ fn agent_toml_source(entry: &ManifestAgent) -> Result<&'static str> {
         "antigravity" => Ok(include_str!(
             "../../../resources/agent-hub/antigravity.toml"
         )),
+        "deepseek-harness" => Ok(include_str!(
+            "../../../resources/agent-hub/deepseek-harness.toml"
+        )),
         _ => Err(anyhow!("recipe_not_found")),
     }
 }
@@ -141,7 +144,7 @@ fn validate_manifest(document: &AgentHubManifest) -> Result<()> {
     );
     ensure!(
         document.agents.len() == FIRST_BATCH_IDS.len(),
-        "first-batch recipe count must be eight"
+        "catalog recipe count must match the supported target list"
     );
     for (index, expected_id) in FIRST_BATCH_IDS.iter().enumerate() {
         ensure!(
@@ -152,6 +155,8 @@ fn validate_manifest(document: &AgentHubManifest) -> Result<()> {
     for agent in &document.agents {
         let expected_adaptation = if agent.id == PARTIAL_ADAPTATION_ID {
             ADAPTATION_PARTIAL
+        } else if agent.id == PENDING_ADAPTATION_ID {
+            ADAPTATION_PENDING
         } else {
             ADAPTATION_DEEP
         };
