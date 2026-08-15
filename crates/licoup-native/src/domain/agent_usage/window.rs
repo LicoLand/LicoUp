@@ -55,14 +55,17 @@ impl UsageWindow {
         date >= self.start.as_str() && date <= self.end.as_str()
     }
 
+    #[cfg(test)]
     pub(crate) fn start(&self) -> &str {
         &self.start
     }
 
+    #[cfg(test)]
     pub(crate) fn end(&self) -> &str {
         &self.end
     }
 
+    #[cfg(test)]
     pub(crate) fn days(&self) -> u64 {
         self.days
     }
