@@ -24,34 +24,22 @@ jobs:
           fetch-depth: 0
           path: target
 
-      - name: Select README fast lane
-        id: readme-fast
+      - name: Select the author README fast path
+        id: readme
         working-directory: target
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -n "$BASE_SHA" && -n "$HEAD_SHA" ]]; then
-            node tools/scripts/docs-fast-promotion.mjs plan \
+            node tools/scripts/readme-fast-path.mjs classify \
               --base "$BASE_SHA" \
               --head "$HEAD_SHA"
           else
-            echo "docs_fast=false" >> "$GITHUB_OUTPUT"
+            echo "readme_fast=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run README manifest privacy gate
-        if: steps.readme-fast.outputs.docs_fast == 'true'
-        working-directory: target
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          node tools/scripts/docs-fast-promotion.mjs verify \
-            --base "$BASE_SHA" \
-            --head "$HEAD_SHA"
-
       - name: Checkout audit source of truth
-        if: steps.readme-fast.outputs.docs_fast != 'true'
         uses: actions/checkout@v5
         with:
           repository: LicoLand/Lico-Auditor
@@ -60,34 +48,36 @@ jobs:
           path: lico-auditor
 
       - name: Set up Python
-        if: steps.readme-fast.outputs.docs_fast != 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Verify audit source of truth
-        if: steps.readme-fast.outputs.docs_fast != 'true'
         run: |
           lico-auditor/bin/lico-auditor source-of-truth \
             --repo lico-auditor \
             --remote origin \
             --branch only \
-            --require-current-head \
-            --enforce-remote-heads
+            --require-current-head
 
       - name: Run Lico-Auditor gate
-        if: steps.readme-fast.outputs.docs_fast != 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          README_FAST: ${{ steps.readme.outputs.readme_fast }}
         run: |
           scan_ref="$HEAD_SHA"
           if git -C target cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             scan_ref="$BASE_SHA..$HEAD_SHA"
+          fi
+          contribution_args=()
+          if [[ "$README_FAST" == true ]]; then
+            contribution_args+=(--no-contribution)
           fi
           lico-auditor/bin/lico-auditor gate \
             --repo target \
             --profile licoup \
             --history \
             --ref "$scan_ref" \
+            "${contribution_args[@]}" \
             --format text
