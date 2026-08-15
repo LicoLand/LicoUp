@@ -17,7 +17,10 @@ npm ci
 During development, run the smallest relevant checks. Before handoff, run the
 targeted tests for the changed module. After every intended change is confirmed
 effective, run the mandatory Node-only source policy once and only the affected
-technology lanes. The lanes are independent and may run in parallel. The commit
+technology lanes: Flutter, Rust, Android, or dependency regression. These lanes
+are independent and may run in parallel. Release policy is not a changed-path
+lane; it runs only at the `stable` → `release` promotion edge described in the
+[client promotion gate authority](docs/releases/PROMOTION-GATES.md). The commit
 gate never builds or publishes every platform.
 
 Starting a complete regression expands the current verification closure to
@@ -36,7 +39,6 @@ npm run client:gate:flutter         # Flutter changes only
 npm run client:gate:rust            # Rust changes only
 npm run client:gate:android         # Android changes only
 npm run client:gate:dependencies    # dependency authority changes only
-npm run client:gate:release-policy  # release policy changes only
 ```
 
 Build-producing tests share one managed compiler target. The test runner holds

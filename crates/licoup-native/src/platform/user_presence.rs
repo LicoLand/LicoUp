@@ -277,7 +277,7 @@ pub(crate) fn authorize(reason: &str, scope: &str) -> Result<UserPresenceSession
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn invalidate() {
-    #[cfg(target_os = "macos")]
     macos::invalidate();
 }
