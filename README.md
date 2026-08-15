@@ -14,9 +14,9 @@ English · [简体中文](README.zh-CN.md)
 
 ## Introduction
 
-LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. User data stays solely on local devices and is never uploaded to servers.
+LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. Sensitive runtime data stays on the device. Default scenarios do not upload plaintext user content.
 
-LicoUp secures client-to-client communication with post-quantum end-to-end encryption, ensuring user data cannot be intercepted by relay stations. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
+Peer transfers currently use a preview end-to-end encryption path. The sender encrypts peer content before it leaves the device and does not send plaintext user content to a station. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
 
 ## Installation
 
@@ -59,7 +59,7 @@ Building a distributed collaboration network for the agentic era — where human
 | **Extending Agents** | Discover, customize, and add extensions to enhance agent capabilities, reduce operational cost, and maximize the value of every token. |
 | **Seamless Chat with Agents** | Bring agents into any conversation on demand. They join as visible participants, pick up context, and assist in place. |
 | **Customized Workflow** | Adaptive Flywheel is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
-| **Privacy and Security** | Your data stays on the device and is never uploaded. Peer transfers are end-to-end encrypted before they leave the sender, and no protected content leaves the client without explicit approval — details in [Privacy concerns](#privacy-concerns). |
+| **Privacy and Security** | Sensitive runtime data stays on the device; default scenarios do not upload plaintext. Peer transfers are end-to-end encrypted before they leave the sender, and no protected content leaves the client without explicit approval, unless you choose Telegram or another external messenger as a trusted channel — details in [Privacy concerns](#privacy-concerns). |
 
 ## Privacy concerns
 
@@ -85,11 +85,10 @@ flowchart LR
     E --> F["Client B<br/>local data"]
 ```
 
-**Explicit external approval.** An optional external MCP request sends only
-the exact request or selected files shown in a fresh direct approval, and the
-named service can read that approved content. Without it, protected content
-leaves the client only as an approved end-to-end-encrypted transfer to
-another client. 
+**Only with your authorization.** LicoUp acts only under your authorization.
+Protected content leaves the client only as an end-to-end-encrypted transfer
+you authorized to another client, unless you choose Telegram or another
+external messenger as a trusted channel. 
 
 ## Documentation
 
