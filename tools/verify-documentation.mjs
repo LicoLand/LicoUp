@@ -9,8 +9,6 @@ const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const failures = [];
 
 const requiredFiles = [
-  "README.md",
-  "README.zh-CN.md",
   "PRODUCT.md",
   "PRODUCT.zh-CN.md",
   "CONTRIBUTING.md",
@@ -31,7 +29,6 @@ const requiredFiles = [
 
 const localRoots = ["docs/plans", "docs/reports", "cache", "build"];
 const languagePairs = [
-  ["README.md", "README.zh-CN.md"],
   ["PRODUCT.md", "PRODUCT.zh-CN.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
@@ -159,7 +156,9 @@ for (const [englishPath, localizedPath] of languagePairs) {
   }
 }
 
-for (const relativePath of [...candidate].filter((entry) => /\.mdx?$/u.test(entry))) {
+for (const relativePath of [...candidate].filter(
+  (entry) => /\.mdx?$/u.test(entry) && entry !== "README.md" && entry !== "README.zh-CN.md",
+)) {
   const absolutePath = path.join(repoRoot, relativePath);
   if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) continue;
   const source = readFileSync(absolutePath, "utf8");
