@@ -16,11 +16,7 @@ final class MessagingDesktopPreviewMetadata {
 const MessagingDesktopPreviewMetadata messagingDesktopPreviewMetadata =
     MessagingDesktopPreviewMetadata(
       styleIdentity: 'messaging-channel-chat',
-      structuralLandmarks: <String>[
-        'top-strip',
-        'list-column',
-        'chat-canvas',
-      ],
+      structuralLandmarks: <String>['top-strip', 'list-column', 'chat-canvas'],
     );
 
 Widget buildMessagingDesktopPreview(BuildContext context) =>
@@ -177,9 +173,7 @@ final class MessagingDesktopPreview extends StatelessWidget {
                               width: constraints.maxWidth * 0.32,
                               child: _PreviewListColumn(colors: colors),
                             ),
-                            Expanded(
-                              child: _PreviewChatCanvas(colors: colors),
-                            ),
+                            Expanded(child: _PreviewChatCanvas(colors: colors)),
                           ],
                         ),
                       ),

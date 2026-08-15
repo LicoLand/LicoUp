@@ -1,7 +1,7 @@
 //! Agent Hub contract: recipe registry, capabilities, ownership, and lifecycle.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const SCHEMA_VERSION: &str = "v0.0.2:client-agent-hub-manifest-1";
 pub const HOST_SCOPE: &str = "desktop";

@@ -1,5 +1,5 @@
 //! Closed, typed private IPC for an independent Agent runtime.
-//! This is not a GUI argv/stdio product path and not a Protocol Line.
+//! This is not a GUI command transport and not a Protocol Line.
 
 use std::collections::VecDeque;
 
@@ -20,7 +20,7 @@ impl AgentIpcError {
     }
 }
 
-/// Closed message set. No dynamic Map, argv string, or MethodChannel payload.
+/// Closed message set. No dynamic map, command string, or UI bridge payload.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AgentIpcMessage {
     BindSession {

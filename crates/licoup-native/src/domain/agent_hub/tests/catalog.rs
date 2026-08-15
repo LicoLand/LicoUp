@@ -1,7 +1,7 @@
 use super::super::*;
 use super::support::portable_params;
 use crate::domain::agent_hub::contract::{
-    InstallOwnership, ADAPTATION_PARTIAL, FIRST_BATCH_IDS, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
+    ADAPTATION_PARTIAL, FIRST_BATCH_IDS, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
 };
 use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
@@ -57,11 +57,13 @@ fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
     assert!(cursor["installChannels"].as_array().unwrap().is_empty());
     let openclaw = cards.iter().find(|card| card["id"] == "openclaw").unwrap();
     assert_eq!(openclaw["location"], "virtual-machine");
-    assert!(openclaw["connectionModes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|mode| mode == "virtual-machine"));
+    assert!(
+        openclaw["connectionModes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mode| mode == "virtual-machine")
+    );
     for card in cards {
         assert!(card.get("binaryPath").is_none());
         assert!(card.get("configPath").is_none());
@@ -94,9 +96,11 @@ fn catalog_with_agent_id_loads_that_agent_toml() {
     let channels = cursor["installChannels"].as_array().unwrap();
     assert!(channels.iter().any(|channel| channel["id"] == "homebrew"));
     assert!(channels.iter().all(|channel| channel["kind"] != "npm"));
-    assert!(channels
-        .iter()
-        .all(|channel| channel.get("installArgv").is_none()));
+    assert!(
+        channels
+            .iter()
+            .all(|channel| channel.get("installArgv").is_none())
+    );
     let homebrew = channels
         .iter()
         .find(|channel| channel["id"] == "homebrew")

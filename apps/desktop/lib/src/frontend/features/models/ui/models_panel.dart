@@ -13,9 +13,9 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/mes
 enum ModelsPanelPane { gateway, chatChannels }
 
 ModelsPanelPane modelsPanelPaneOf(BuildContext context) {
-  final tab = LayoutScope.maybeOf(context)?.state.readIfDeclared(
-    LayoutStateChannels.communicationSection,
-  );
+  final tab = LayoutScope.maybeOf(
+    context,
+  )?.state.readIfDeclared(LayoutStateChannels.communicationSection);
   if (tab is LayoutTabState && tab.index == 1) {
     return ModelsPanelPane.chatChannels;
   }

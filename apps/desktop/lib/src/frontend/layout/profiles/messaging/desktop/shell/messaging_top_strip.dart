@@ -43,9 +43,7 @@ final class MessagingChromeBand extends StatelessWidget {
           children: [
             // Traffic-light clearance: the native window controls
             // overlay this zone, so the band keeps it empty.
-            const SizedBox(
-              width: MessagingDesktopMetrics.trafficLightInset,
-            ),
+            const SizedBox(width: MessagingDesktopMetrics.trafficLightInset),
             Expanded(
               child: Align(
                 alignment: Alignment.centerLeft,
@@ -124,11 +122,7 @@ final class _ChromeUsageButton extends StatelessWidget {
               shape: BoxShape.circle,
               color: selected ? colors.primary : Colors.transparent,
             ),
-            child: Icon(
-              Icons.query_stats_outlined,
-              size: 18,
-              color: iconColor,
-            ),
+            child: Icon(Icons.query_stats_outlined, size: 18, color: iconColor),
           ),
         ),
       ),
