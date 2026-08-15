@@ -23,7 +23,11 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
   @override
   void initState() {
     super.initState();
-    unawaited(widget.controller.hydrateClientUpdateIdentity());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(widget.controller.hydrateClientUpdateIdentity());
+      }
+    });
   }
 
   void _checkFromGithub() {

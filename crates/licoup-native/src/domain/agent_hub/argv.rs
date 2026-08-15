@@ -71,12 +71,14 @@ impl ArgvRunner for ProcessArgvRunner {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Default)]
 pub struct RecordingArgvRunner {
     pub commands: std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<String>)>>>,
     pub status: i32,
 }
 
+#[cfg(test)]
 impl RecordingArgvRunner {
     pub fn new() -> Self {
         Self {
@@ -93,6 +95,7 @@ impl RecordingArgvRunner {
     }
 }
 
+#[cfg(test)]
 impl ArgvRunner for RecordingArgvRunner {
     fn run(&self, program: &str, args: &[String]) -> Result<ArgvOutcome> {
         validate_program_args(program, args, ArgvKind::Lifecycle)?;
