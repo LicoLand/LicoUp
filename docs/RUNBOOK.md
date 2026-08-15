@@ -207,3 +207,62 @@ npm run repo:local-info-hygiene
 Formal documents state only implemented and verified behavior. Requirements,
 future design, progress, checkpoints, raw audit output, and unverified
 conclusions remain local plan or report material.
+
+### Promote the fixed README set
+
+`tools/scripts/config/docs-fast-promotion-manifest.json` is the sole maintained membership
+list for the README fast path. Its initial membership is exactly:
+
+- `README.md`
+- `README.zh-CN.md`
+- `docs/assets/brand/readme-banner.svg`
+
+The list has no glob, directory-prefix, environment, or command-line override.
+Changing the list or the fast-path implementation is itself an ordinary code
+change and must first pass the existing complete `nightly` → `stable` →
+`release` gates. A policy change cannot exempt itself.
+
+Prepare the content as one clean detached commit whose only parent is the
+refreshed `origin/nightly`. Before creating a named branch, install and verify
+the repository identity policy, check the bilingual documents and links, then
+run the fixed candidate checks:
+
+```bash
+npm run repo:identity:install
+npm run repo:identity:verify
+npm run repo:docs
+git diff --check origin/nightly HEAD --
+node tools/scripts/docs-fast-promotion.mjs prevalidate --base origin/nightly
+```
+
+The prevalidation reads the full committed versions of every manifest file,
+requires regular files, and reuses the repository sensitive-extension and
+streaming sensitive-content policy. It reports only booleans and counts; it
+does not retain document content or machine paths.
+
+From that detached candidate, start the fixed train with no additional
+arguments:
+
+```bash
+npm run client:promotion -- docs-train
+```
+
+The command revalidates the candidate, creates exactly
+`docs/readme-refresh`, and advances it by merge commit through `nightly`,
+`stable`, and `release`. Each edge keeps `Branch flow`, `Commit identity`, and
+Auditor, and preserves the existing required aggregate name (`Client
+required`, `Stable client`, or `Release ready`). An eligible delta runs only
+the lightweight manifest/privacy job behind that aggregate; Node source,
+Flutter, Rust, Android, dependency, macOS build/install, and release-policy
+jobs are skipped.
+
+Timing begins around successful creation of `docs/readme-refresh` and ends at
+the confirmed `release` merge. More than 300 seconds sets
+`efficiencyWarning: true` with bounded per-stage durations. That warning never
+changes waiting, merging, retry behavior, cleanup, or the successful exit code;
+the valid update continues to `release`. A real manifest, privacy, identity,
+branch-topology, or required-check failure remains fail-closed and must be
+repaired before promotion continues.
+
+This train does not create tags, GitHub Releases, packages, signatures,
+notarizations, publication assets, or Ruleset changes.
