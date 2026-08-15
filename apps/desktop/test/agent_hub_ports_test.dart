@@ -342,6 +342,42 @@ void main() {
     expect(catalogCalls, 2);
   });
 
+  test(
+    'catalog recipeId inspects one card and merges into the cache',
+    () async {
+      final calls = <List<String>>[];
+      final engine = NativeAgentHubEngine(
+        invoke: (arguments) async {
+          calls.add(List<String>.from(arguments));
+          if (arguments.contains('--agent-id')) {
+            final cards = _nativeCards();
+            cards[0]['present'] = true;
+            cards[0]['installedVersion'] = '0.147.0';
+            return <String, dynamic>{
+              'ok': true,
+              'cards': [cards[0]],
+            };
+          }
+          return <String, dynamic>{'ok': true, 'cards': _nativeCards()};
+        },
+      );
+      await engine.catalog();
+      final live = await engine.catalog(recipeId: 'codex');
+      expect(calls, [
+        ['agent-hub', 'catalog'],
+        ['agent-hub', 'catalog', '--agent-id', 'codex'],
+      ]);
+      expect(live.recipes, hasLength(8));
+      final codex = live.recipes.singleWhere((recipe) => recipe.id == 'codex');
+      expect(codex.present, isTrue);
+      expect(codex.installedVersion, '0.147.0');
+      expect(
+        live.recipes.singleWhere((recipe) => recipe.id == 'cursor').present,
+        isFalse,
+      );
+    },
+  );
+
   test('plan forwards selected channel and version in stdin json', () async {
     Map<String, dynamic>? payload;
     final engine = NativeAgentHubEngine(
@@ -421,7 +457,7 @@ void main() {
       var catalogCalls = 0;
       final engine = NativeAgentHubEngine(
         invoke: (arguments) async {
-          expect(arguments, ['agent-hub', 'catalog']);
+          expect(arguments, ['agent-hub', 'catalog', '--agent-id', 'codex']);
           catalogCalls += 1;
           final cards = _nativeCards();
           cards[0]['present'] = true;

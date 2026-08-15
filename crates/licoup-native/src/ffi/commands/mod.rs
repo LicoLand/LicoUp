@@ -1418,17 +1418,26 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_catalog",
         path: &["agent-hub", "catalog"],
         required_positionals: &[],
-        options: &[OptionSpec {
-            name: "stdin-json",
-            arity: OptionArity::Value,
-            repeatable: false,
-            value_kind: RequiredArgumentKind::Json,
-            required: false,
-        }],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+        ],
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: agent_hub::handle_catalog,
-        help: "Project Agent Hub cards from warehouse recipes and one discovery snapshot",
+        help: "Project Agent Hub cards from warehouse recipes; optional agent-id runs one live local lookup",
     });
     table.register_command(CommandSpec {
         source_module: "agent_hub.rs",

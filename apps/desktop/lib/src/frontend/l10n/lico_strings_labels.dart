@@ -201,6 +201,7 @@ extension LicoStringsLabels on LicoStrings {
   String get allSkills => isChinese ? '全部技能' : 'All Skills';
   String get publicSkills => isChinese ? '公共技能' : 'Public Skills';
   String get privateSkills => isChinese ? '私有技能' : 'Private Skills';
+  String get skillHubSearchHint => isChinese ? '搜索技能' : 'Search skills';
   String get publicLabel => isChinese ? '公共' : 'Public';
   String get privateLabel => isChinese ? '私有' : 'Private';
   String get noSkillsFound => isChinese ? '未发现技能' : 'No Skills Found';
@@ -1045,6 +1046,8 @@ extension LicoStringsLabels on LicoStrings {
       : 'Start minimized without showing the window';
   String get agentHubVisitOfficial => isChinese ? '访问官网' : 'Visit site';
   String get agentHubRefresh => isChinese ? '刷新' : 'Refresh';
+  String get pluginManagementRefresh =>
+      isChinese ? '刷新插件目录' : 'Refresh plugin catalog';
   String get agentHubLatest => 'latest';
   String get agentHubPackageManager => isChinese ? '包管理器' : 'Package manager';
   String get agentHubVersion => isChinese ? '版本' : 'Version';
@@ -1056,6 +1059,5 @@ extension LicoStringsLabels on LicoStrings {
   String get agentHubInstallConfirmAction => isChinese ? '确认安装' : 'Install';
   String get agentHubInstallTitle => isChinese ? '安装智能体' : 'Install agent';
   String get agentHubDownloadSource => isChinese ? '下载源' : 'Download source';
-  String get agentHubPendingCommand =>
-      isChinese ? '即将执行的命令' : 'Command to run';
+  String get agentHubPendingCommand => isChinese ? '即将执行的命令' : 'Command to run';
 }
