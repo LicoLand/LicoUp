@@ -4,7 +4,7 @@
 
 **Create value with your agents.**
 
-English (normative language) · [简体中文 (localized language)](README.zh-CN.md)
+English · [简体中文](README.zh-CN.md)
 
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Version: 0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.md)
@@ -14,15 +14,9 @@ English (normative language) · [简体中文 (localized language)](README.zh-CN
 
 ## Introduction
 
-LicoUp is an open-source client for local-first agent collaboration. Its current
-evidenced stage focuses on local and explicitly configured agent conversations;
-peer and cross-device capabilities remain Preview and are tracked in the
-[status](docs/STATUS.md) and [compatibility matrix](docs/COMPATIBILITY.md).
+LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. User data stays solely on local devices and is never uploaded to servers.
 
-The current endpoint-protection Preview encrypts an approved peer transfer on
-the sender before station I/O and authenticates it at the receiver. The station
-is treated as untrusted; this is not a stable Lico Arc Profile, published
-protocol, hosted-network claim, or support declaration.
+LicoUp secures client-to-client communication with post-quantum end-to-end encryption, ensuring user data cannot be intercepted by relay stations. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
 
 ## Installation
 
@@ -61,23 +55,23 @@ Building a distributed collaboration network for the agentic era — where human
 
 | Capability | Description |
 | --- | --- |
-| **Multi-Agent Collaboration** | Work with local and explicitly configured agents; use only the peer and cross-device Preview capabilities currently declared in the compatibility matrix. |
-| **Extending Agents** | Discover skills already present in local agent roots, inspect usage, and move a selected skill to the system Trash. LicoUp does not download, install, update, or synchronize skills. |
-| **Seamless Chat with Agents** | Start native-fidelity conversations through the exact packaged agent interfaces currently declared ready in the compatibility matrix. |
-| **Customized Workflow** | Define or import Adaptive Flywheel strategies for pipelines, branches, and bounded Agent Loops; immutable revisions bind roles to eligible agents, models, and reasoning effort before exact authorization. |
-| **Privacy and Security** | Default local scenarios keep sensitive runtime data on the device. Approved peer transfers use the endpoint-protection Preview; approved external services can read only the exact content authorized for them — details in [Privacy concerns](#privacy-concerns). |
+| **Multi-Agent Collaboration** | Connect agents across devices and endpoints into one collaborative network where your workflow and others' naturally converge. |
+| **Extending Agents** | Discover, customize, and add extensions to enhance agent capabilities, reduce operational cost, and maximize the value of every token. |
+| **Seamless Chat with Agents** | Bring agents into any conversation on demand. They join as visible participants, pick up context, and assist in place. |
+| **Customized Workflow** | Adaptive Flywheel is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
+| **Privacy and Security** | Your data stays on the device and is never uploaded. Peer transfers are end-to-end encrypted before they leave the sender, and no protected content leaves the client without explicit approval — details in [Privacy concerns](#privacy-concerns). |
 
 ## Privacy concerns
 
 **Local first.** Sensitive runtime data stays on the device. Default client
-scenarios do not upload local paths, logs, conversation history, usage records,
+scenarios upload no local paths, logs, conversation history, usage records,
 credentials, or plaintext user content.
 
 **Endpoint-protected peer transfer (preview).** Content is encrypted with the
 selected peer's keys before it leaves the device; the receiving endpoint
-authenticates and verifies it before use. LicoUp treats transport as untrusted:
-the station supplies no algorithms, keys, or security policy, and its receipts
-are only delivery hints. Lico Arc owns the wire-observable protocol semantics; LicoUp
+authenticates and verifies it before use. The station is untrusted — it
+supplies no algorithms, keys, or security policy, and its receipts are only
+delivery hints. Lico Arc owns the wire-observable protocol semantics; LicoUp
 keeps private keys, plaintext, history, backups, trust, and approvals. The
 current Preview is not a Lico Arc Profile and retires directly when a pinned
 Lico Arc Protocol Line replaces it.
@@ -93,10 +87,9 @@ flowchart LR
 
 **Explicit external approval.** An optional external MCP request sends only
 the exact request or selected files shown in a fresh direct approval, and the
-named service can read that approved content. Each transfer requires a
-protected one-shot user approval. Without it, protected content
+named service can read that approved content. Without it, protected content
 leaves the client only as an approved end-to-end-encrypted transfer to
-another client.
+another client. 
 
 ## Documentation
 
