@@ -26,6 +26,7 @@ import {
 } from "../../../tools/scripts/client-release-workflow-binding.mjs";
 import {
   retireStaleReleasePackageDirectories,
+  validBuildManifestExecutionContract,
 } from "../../../tools/scripts/client-release-packages.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -340,6 +341,32 @@ test("builder describes owning-host recipes while keeping macOS direct local-onl
     .commands.some((command) => command.args.includes("appbundle")));
   assert.ok(result.targets.find((target) => target.targetId === "ios-app-store-arm64")
     .requiredTools.includes("xcodebuild"));
+});
+
+test("build manifests accept an empty execution recipe only for staged macOS direct artifacts", () => {
+  const emptyExecution = {
+    commandSequence: [],
+    requiredTools: [],
+    credentialEnv: [],
+  };
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "macos-direct-arm64" }, emptyExecution,
+  ), true);
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "windows-direct-x64" }, emptyExecution,
+  ), false);
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "macos-direct-arm64" }, {
+      ...emptyExecution,
+      requiredTools: ["synthetic-tool"],
+    },
+  ), false);
+  assert.equal(validBuildManifestExecutionContract(
+    { id: "windows-direct-x64" }, {
+      ...emptyExecution,
+      commandSequence: [{ program: "synthetic-tool", args: [] }],
+    },
+  ), true);
 });
 
 test("builder rejects a blocked target before host or tool mutation", () => {
