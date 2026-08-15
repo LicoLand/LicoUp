@@ -119,6 +119,8 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
 });
 
 export const CLIENT_CI_JOBS = Object.freeze([
+  "docs-plan",
+  "docs-fast",
   "plan",
   "source",
   "flutter",

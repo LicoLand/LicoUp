@@ -7,6 +7,7 @@ import {
   inferPromotionBase,
   promotionPlan,
   releaseTrainEdges,
+  summarizeDocsTrain,
 } from "../../../tools/scripts/client-promotion.mjs";
 
 test("promotion planner accepts only the three repository promotion edges", () => {
@@ -54,4 +55,40 @@ test("promotion base inference follows the release train without a default-branc
     "nightly->stable:Stable client",
     "stable->release:Release ready",
   ]);
+});
+
+test("documentation train timing warns without changing successful promotion status", () => {
+  const stages = [
+    { head: "docs/readme-refresh", base: "nightly", durationMs: 30_000 },
+    { head: "nightly", base: "stable", durationMs: 35_000 },
+    { head: "stable", base: "release", durationMs: 40_000 },
+  ];
+  const quick = summarizeDocsTrain({
+    startedAtMs: Date.parse("2026-08-15T00:00:00Z"),
+    endedAt: "2026-08-15T00:04:59Z",
+    stages,
+  });
+  assert.equal(quick.status, "release-branch-promoted");
+  assert.equal(quick.efficiencyWarning, false);
+  const slow = summarizeDocsTrain({
+    startedAtMs: Date.parse("2026-08-15T00:00:00Z"),
+    endedAt: "2026-08-15T00:05:01Z",
+    stages,
+  });
+  assert.equal(slow.status, "release-branch-promoted");
+  assert.equal(slow.efficiencyWarning, true);
+  assert.equal(slow.totalDurationMs, 301_000);
+  assert.deepEqual(slow.stageDurationsMs.map(({ edge }) => edge), [
+    "docs/readme-refresh->nightly",
+    "nightly->stable",
+    "stable->release",
+  ]);
+});
+
+test("documentation train timing fails closed for invalid telemetry", () => {
+  assert.throws(() => summarizeDocsTrain({
+    startedAtMs: 0,
+    endedAt: "invalid",
+    stages: [],
+  }), PromotionError);
 });
