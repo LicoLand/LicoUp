@@ -231,6 +231,7 @@ run the fixed candidate checks:
 npm run repo:identity:install
 npm run repo:identity:verify
 npm run repo:docs
+npm run client:verify:plan
 git diff --check origin/nightly HEAD --
 node tools/scripts/docs-fast-promotion.mjs prevalidate --base origin/nightly
 ```
