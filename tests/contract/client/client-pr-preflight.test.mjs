@@ -17,11 +17,12 @@ import {
 import { updateCommandArgs } from "../../../tools/scripts/client-macos-update-preflight.mjs";
 import {
   buildRulesets,
-  requiredStatusContexts,
+  promotionRequiredStatusContexts,
   rulesetPayloadMatches,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 import {
   generatedAssetDecision,
+  releaseAssetQueryArgs,
   releaseStateDecision,
 } from "../../../tools/scripts/client-github-release-publish.mjs";
 
@@ -181,16 +182,20 @@ test("updater applies and rolls back through the real CLI surface", () => {
   assert.equal(updateCommandArgs("rollback", options).includes("--wait-for-script"), true);
 });
 
-test("Rulesets require merge commits and the exact four checks", () => {
-  assert.deepEqual(requiredStatusContexts,
+test("nightly Ruleset requires merge commits and the candidate checks", () => {
+  assert.deepEqual(promotionRequiredStatusContexts.nightly,
     ["Branch flow", "Commit identity", "Client required", "Auditor"]);
   const rulesets = buildRulesets(1);
   assert.equal(rulesets.filter((ruleset) => ruleset.rules.some((rule) =>
-    rule.type === "required_status_checks")).length, 1);
+    rule.type === "required_status_checks")).length, 3);
   assert.equal(rulesetPayloadMatches({ name: "x", extra: true }, { name: "x" }), true);
 });
 
 test("publication is idempotent and never overwrites conflicting assets", () => {
+  assert.deepEqual(releaseAssetQueryArgs("v1.2.3", "owner/repository"), [
+    "release", "view", "v1.2.3", "--repo", "owner/repository",
+    "--json", "assets", "--jq", ".assets | map({name, size, digest})",
+  ]);
   assert.deepEqual(releaseStateDecision(null, sourceRevision, false),
     { createDraft: true, publish: false });
   assert.deepEqual(releaseStateDecision({

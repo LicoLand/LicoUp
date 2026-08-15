@@ -36,7 +36,6 @@ test("source policy is mandatory without selecting platform toolchains", () => {
     rust: false,
     android: false,
     dependencies: false,
-    "release-policy": false,
   });
   assert.deepEqual(selectedOptionalLanes(["docs/RUNBOOK.md"]), []);
   for (const forbidden of [
@@ -69,11 +68,11 @@ test("changed paths select only their independent technology lanes", () => {
   );
   assert.deepEqual(
     selectedOptionalLanes([".github/workflows/client-release.yml"]),
-    ["release-policy"],
+    [],
   );
   assert.deepEqual(
     selectedOptionalLanes(["tools/scripts/client-device-demo.mjs"]),
-    ["release-policy"],
+    [],
   );
   assert.deepEqual(
     selectedOptionalLanes(["package.json"]),
@@ -217,7 +216,6 @@ test("change planner emits only bounded booleans, counts, and a digest", () => {
       "rust",
       "android",
       "dependencies",
-      "release_policy",
       "changed_count",
       "change_digest",
     ]);

@@ -174,6 +174,18 @@ function validateCiTopology() {
   for (const job of CLIENT_CI_JOBS) jobBlock(workflow, job);
   const plan = jobBlock(workflow, "plan");
   const source = jobBlock(workflow, "source");
+  for (const token of [
+    "github.event.pull_request.base.sha",
+    "github.event.pull_request.head.sha",
+    "readme-fast-path.mjs classify",
+    "readme_fast: ${{ steps.readme.outputs.readme_fast }}",
+  ]) {
+    assertIncludes(plan, token, `CI README classifier is missing: ${token}`);
+  }
+  assertIncludes(plan, "steps.readme.outputs.readme_fast != 'true'",
+    "ordinary client planning must be inverse to README fast selection");
+  assertExcludes(plan, "readme-fast-path.mjs verify",
+    "Client required must not repeat the Auditor privacy scan");
   for (const token of forbiddenSourceTokens) {
     assertExcludes(plan, token, `CI plan job must not contain ${token}`);
     assertExcludes(source, token, `CI source job must not contain ${token}`);
@@ -183,7 +195,7 @@ function validateCiTopology() {
     "npm run client:gate:source",
     "CI source job must invoke the canonical source gate",
   );
-  for (const lane of ["flutter", "rust", "android", "dependencies", "release-policy"]) {
+  for (const lane of ["flutter", "rust", "android", "dependencies"]) {
     const block = jobBlock(workflow, lane);
     const outputName = lane.replaceAll("-", "_");
     assertIncludes(
@@ -205,10 +217,18 @@ function validateCiTopology() {
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
     required,
-    "needs: [source, flutter, rust, android, dependencies, release-policy]",
+    "needs: [plan, source, flutter, rust, android, dependencies]",
     "required CI reducer must observe every independent lane",
   );
   assertIncludes(required, "if: always()", "required CI reducer must always report lane failures");
+  for (const token of [
+    "PLAN_RESULT",
+    "README_FAST_SELECTED",
+    "An ordinary client gate ran for an author README update",
+    "README path selection was ambiguous",
+  ]) {
+    assertIncludes(required, token, `required CI reducer is missing: ${token}`);
+  }
   for (const forbidden of [
     "client:build:",
     "client:archive:",
@@ -221,6 +241,146 @@ function validateCiTopology() {
   ]) {
     assertExcludes(workflow, forbidden, `client CI must not perform release target work: ${forbidden}`);
   }
+}
+
+function validatePromotionTopology() {
+  const stable = readText(".github/workflows/client-stable.yml");
+  const stablePlan = jobBlock(stable, "readme-plan");
+  const stableRequired = jobBlock(stable, "stable-client");
+  if (JSON.stringify(workflowJobIds(stable)) !==
+    JSON.stringify(["readme-plan", "stable-client"])) {
+    fail("stable promotion workflow must keep one classifier and one required check");
+  }
+  assertIncludes(stable, "branches:\n      - stable",
+    "stable promotion workflow must target stable");
+  for (const token of [
+    "name: Stable client",
+    "needs: readme-plan",
+    "macos-15",
+    "ubuntu-24.04",
+    "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
+    "TARGET_REPOSITORY: ${{ github.repository }}",
+    'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
+    'test "$HEAD_BRANCH" = nightly',
+    'test "$(uname -m)" = arm64',
+    "LICO_CLIENT_RELEASE_TARGETS: macos-arm64",
+    "npm run client:build:macos",
+    "npm run client:install:macos -- --launch-installed --verify-stable",
+  ]) {
+    assertIncludes(stable, token, `stable promotion is missing: ${token}`);
+  }
+  for (const token of [
+    "readme-fast-path.mjs classify",
+    "readme_fast: ${{ steps.readme.outputs.readme_fast }}",
+  ]) {
+    assertIncludes(stablePlan, token, `stable README classifier is missing: ${token}`);
+  }
+  assertIncludes(stableRequired, "name: Stable client",
+    "stable workflow must preserve its required context name");
+  assertIncludes(stableRequired, "if: always()",
+    "stable required check must always return a result");
+  assertIncludes(stableRequired, "README_FAST_SELECTED",
+    "stable required check must route on the README classifier");
+  assertExcludes(stable, "readme-fast-path.mjs verify",
+    "Stable client must not repeat the Auditor privacy scan");
+  if ((stableRequired.match(/npm run client:build:macos/gmu) || []).length !== 1) {
+    fail("stable promotion must build exactly once");
+  }
+  if ((stableRequired.match(/npm run client:install:macos/gmu) || []).length !== 1) {
+    fail("stable promotion must install, launch, and prove survival exactly once");
+  }
+  const stableOrder = [
+    "uses: actions/checkout@",
+    "run: npm run client:build:macos",
+    "run: npm run client:install:macos -- --launch-installed --verify-stable",
+  ].map((token) => stableRequired.indexOf(token));
+  if (stableOrder.some((index) => index < 0) ||
+    stableOrder.some((index, position) => position > 0 && index <= stableOrder[position - 1])) {
+    fail("stable promotion must build once, then install, launch, and prove survival");
+  }
+  for (const token of [
+    "\n  push:", "workflow_dispatch:", "client:package:",
+    "client:archive:", "actions/upload-artifact", "actions/download-artifact",
+    "gh release", "client-github-release-publish", "npm publish", "GH_TOKEN:",
+    "secrets.", "LICO_MACOS_SIGNING_IDENTITY", "LICO_MACOS_NOTARY_",
+    "LICO_MACOS_LOCAL_SIGNING_IDENTITY", "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN",
+  ]) {
+    assertExcludes(stable, token, `stable promotion must not publish or use release credentials: ${token}`);
+  }
+
+  const ready = readText(".github/workflows/client-release-ready.yml");
+  const readyRequired = jobBlock(ready, "release-ready");
+  if (JSON.stringify(workflowJobIds(ready)) !==
+    JSON.stringify(["release-ready"])) {
+    fail("release promotion workflow must keep one required check");
+  }
+  assertIncludes(ready, "branches:\n      - release",
+    "release promotion workflow must target release");
+  for (const token of [
+    "name: Release ready",
+    "runs-on: ubuntu-24.04",
+    "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
+    "TARGET_REPOSITORY: ${{ github.repository }}",
+    'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
+    'test "$HEAD_BRANCH" = stable',
+    "npm run client:gate:topology",
+    "npm run client:gate:release-policy",
+  ]) {
+    assertIncludes(readyRequired, token, `release readiness is missing: ${token}`);
+  }
+  for (const token of [
+    "readme-fast-path.mjs classify",
+    "steps.readme.outputs.readme_fast != 'true'",
+  ]) {
+    assertIncludes(readyRequired, token, `release README routing is missing: ${token}`);
+  }
+  assertExcludes(readyRequired, "readme-fast-path.mjs verify",
+    "Release ready must not repeat the Auditor privacy scan");
+  const readyOrder = [
+    "name: Verify promotion source",
+    "uses: actions/checkout@",
+    "run: npm run client:gate:topology",
+    "run: npm run client:gate:release-policy",
+  ].map((token) => readyRequired.indexOf(token));
+  if (readyOrder.some((index) => index < 0) ||
+    readyOrder.some((index, position) => position > 0 && index <= readyOrder[position - 1])) {
+    fail("release promotion must guard before its ordered Node-only policy checks");
+  }
+  for (const token of [
+    "\n  push:", "workflow_dispatch:", "client:build:", "client:package:",
+    "client:archive:", "client:install:", "client:run:", "client:verify:",
+    "client:release:", "flutter-action", "rust-toolchain", "actions/setup-java",
+    "actions/upload-artifact", "actions/download-artifact", "npm publish", "gh release",
+    "client-github-release-publish", "contents: write", "id-token: write", "GH_TOKEN:",
+    "secrets.",
+  ]) {
+    assertExcludes(ready, token, `release readiness must be build-free: ${token}`);
+  }
+}
+
+function validateReadmeFastPathTopology() {
+  const clientWorkflows = [
+    ".github/workflows/client-ci.yml",
+    ".github/workflows/client-stable.yml",
+    ".github/workflows/client-release-ready.yml",
+  ];
+  for (const relativePath of clientWorkflows) {
+    const workflow = readText(relativePath);
+    assertIncludes(workflow, "readme-fast-path.mjs classify",
+      `${relativePath} must classify the author README path`);
+    assertExcludes(workflow, "readme-fast-path.mjs verify",
+      `${relativePath} must leave the privacy scan to Auditor`);
+  }
+  const auditor = readText(".github/workflows/lico-auditor-gate.yml");
+  assertIncludes(auditor, "readme-fast-path.mjs classify",
+    "Auditor must classify the author README path");
+  assertExcludes(auditor, "readme-fast-path.mjs verify",
+    "Auditor must not use a repository-owned README privacy scanner");
+  if ((auditor.match(/lico-auditor\/bin\/lico-auditor gate/gmu) || []).length !== 1) {
+    fail("Auditor must run the canonical Lico-Auditor gate exactly once");
+  }
+  assertIncludes(auditor, "--no-contribution",
+    "Auditor must reduce README fast-path scanning to content privacy");
 }
 
 function releaseInputIds(workflow) {
@@ -244,7 +404,8 @@ function validateReleaseTopology() {
   const preflight = readText("tools/scripts/client-pr-preflight.mjs");
   const catalog = readJson("tools/client-release-targets.json");
   const supportedTargets = catalog.targets
-    .filter((target) => target.releaseSupported === true)
+    .filter((target) => target.releaseSupported === true &&
+      CLIENT_RELEASE_TARGETS[target.id]?.localOnly !== true)
     .map((target) => target.id)
     .sort();
   const policyTargets = Object.keys(CLIENT_RELEASE_TARGETS).sort();
@@ -335,6 +496,8 @@ function validateReleaseTopology() {
 export function validateClientGateTopology() {
   validatePackageTopology();
   validateCiTopology();
+  validatePromotionTopology();
+  validateReadmeFastPathTopology();
   validateReleaseTopology();
   return Object.freeze({
     ok: true,

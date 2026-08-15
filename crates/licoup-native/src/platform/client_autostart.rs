@@ -263,6 +263,7 @@ fn unix_ms() -> i64 {
         .unwrap_or(0)
 }
 
+#[cfg(target_os = "macos")]
 fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
