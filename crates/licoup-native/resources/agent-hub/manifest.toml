@@ -99,3 +99,15 @@ homepage = "https://antigravity.google"
 requires_login = true
 connection_modes = ["local"]
 file = "antigravity.toml"
+
+[[agents]]
+id = "deepseek-harness"
+label = "DeepSeek Harness"
+adaptation = "pending-evaluation"
+protocol = "deepseek-harness-dsh-web"
+license = "MIT"
+summary = "DeepSeek Harness is an open-source agent harness. Everything is a plugin."
+homepage = "https://deepseek.com/harness/en/"
+requires_login = true
+connection_modes = ["local"]
+file = "deepseek-harness.toml"

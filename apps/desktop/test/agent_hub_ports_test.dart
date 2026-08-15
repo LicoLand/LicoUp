@@ -15,6 +15,7 @@ const _ids = [
   'openclaw',
   'hermes',
   'antigravity',
+  'deepseek-harness',
 ];
 
 List<Map<String, dynamic>> _nativeCards() {
@@ -22,8 +23,12 @@ List<Map<String, dynamic>> _nativeCards() {
     for (var index = 0; index < _ids.length; index++)
       <String, dynamic>{
         'id': _ids[index],
-        'label': index == 7 ? 'Antigravity' : _title(_ids[index]),
-        'adaptation': index == 7 ? 'partial' : 'deep',
+        'label': _title(_ids[index]),
+        'adaptation': switch (_ids[index]) {
+          'antigravity' => 'partial',
+          'deepseek-harness' => 'pending-evaluation',
+          _ => 'deep',
+        },
         'present': false,
         'ownership': 'none',
         'lifecycle': 'absent',
@@ -50,7 +55,7 @@ List<Map<String, dynamic>> _nativeCards() {
 
 String _channelKind(String id) {
   return switch (id) {
-    'pi' || 'openclaw' => 'npm',
+    'pi' || 'openclaw' || 'deepseek-harness' => 'npm',
     'hermes' => 'official-artifact',
     _ => 'homebrew',
   };
@@ -70,6 +75,7 @@ String _homepage(String id) {
     'openclaw' => 'https://openclaw.ai',
     'hermes' => 'https://hermes-agent.nousresearch.com',
     'antigravity' => 'https://antigravity.google',
+    'deepseek-harness' => 'https://deepseek.com/harness/en/',
     _ => 'https://example.invalid',
   };
 }
@@ -83,13 +89,14 @@ String _title(String id) {
     'pi' => 'Pi Agent',
     'codex' => 'Codex',
     'cursor' => 'Cursor',
+    'deepseek-harness' => 'DeepSeek Harness',
     _ => id,
   };
 }
 
 void main() {
   test(
-    'native engine projects eight warehouse cards without a Dart catalog',
+    'native engine projects warehouse cards without a Dart catalog',
     () async {
       final calls = <List<String>>[];
       final engine = NativeAgentHubEngine(
@@ -105,7 +112,7 @@ void main() {
       );
       final snapshot = await engine.catalog();
       expect(snapshot.ok, isTrue);
-      expect(snapshot.recipes, hasLength(8));
+      expect(snapshot.recipes, hasLength(_ids.length));
       expect(snapshot.recipes.map((recipe) => recipe.id).toList(), _ids);
       expect(snapshot.recipes.first.summary, contains('official product copy'));
       expect(
@@ -119,7 +126,7 @@ void main() {
       expect(snapshot.recipes.first.latestVersion, isEmpty);
       expect(snapshot.recipes.first.installChannels, isNotEmpty);
       expect(engine.cachedCatalog, isNotNull);
-      expect(engine.cachedCatalog!.recipes, hasLength(8));
+      expect(engine.cachedCatalog!.recipes, hasLength(_ids.length));
       expect(
         snapshot.recipes
             .singleWhere((recipe) => recipe.id == 'pi')
@@ -145,6 +152,12 @@ void main() {
             .singleWhere((recipe) => recipe.id == 'antigravity')
             .adaptation,
         AgentHubAdaptationDepth.partial,
+      );
+      expect(
+        snapshot.recipes
+            .singleWhere((recipe) => recipe.id == 'deepseek-harness')
+            .adaptation,
+        AgentHubAdaptationDepth.pendingEvaluation,
       );
       expect(calls, [
         ['agent-hub', 'catalog'],
@@ -217,7 +230,7 @@ void main() {
       expect(stdinPayloads, hasLength(1));
       expect(stdinPayloads.single['version'], 'latest');
       final candidates = stdinPayloads.single['discoveryCandidates'] as List;
-      expect(candidates, hasLength(8));
+      expect(candidates, hasLength(_ids.length));
       expect(candidates.map((item) => (item as Map)['target']).toList(), _ids);
       expect(
         candidates.every(
@@ -367,7 +380,7 @@ void main() {
         ['agent-hub', 'catalog'],
         ['agent-hub', 'catalog', '--agent-id', 'codex'],
       ]);
-      expect(live.recipes, hasLength(8));
+      expect(live.recipes, hasLength(_ids.length));
       final codex = live.recipes.singleWhere((recipe) => recipe.id == 'codex');
       expect(codex.present, isTrue);
       expect(codex.installedVersion, '0.147.0');
@@ -471,7 +484,7 @@ void main() {
       expect(verified.status, AgentHubOperationStatus.completed);
       expect(verified.nativeStatus, 'discovered');
       expect(verified.events, isEmpty);
-      expect(verified.recipes, hasLength(8));
+      expect(verified.recipes, hasLength(_ids.length));
       final rescanned = await engine.rescan(
         const AgentHubRescanRequest(recipeId: 'codex'),
       );

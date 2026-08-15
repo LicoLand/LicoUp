@@ -1,7 +1,7 @@
 //! Per-agent installed-version probes. Missing agents stay blank; never "unknown".
 
 use super::argv::{self, ArgvKind};
-use super::contract::{AgentRecipe, FIRST_BATCH_IDS, InstallChannel};
+use super::contract::{AgentRecipe, InstallChannel, FIRST_BATCH_IDS};
 use super::version;
 use serde_json::Value;
 use std::process::{Command, Stdio};
@@ -59,6 +59,7 @@ pub fn parse_output(agent_id: &str, stdout: &str, stderr: &str) -> String {
         "openclaw" => parse_openclaw(combined),
         "hermes" => parse_hermes(combined),
         "antigravity" => parse_antigravity(combined),
+        "deepseek-harness" => parse_deepseek_harness(combined),
         _ => String::new(),
     };
     reject_unknown(parsed)
@@ -94,6 +95,10 @@ fn parse_hermes(raw: &str) -> String {
 
 fn parse_antigravity(raw: &str) -> String {
     version::concrete_display(strip_prefix(raw, &["agy", "antigravity"]))
+}
+
+fn parse_deepseek_harness(raw: &str) -> String {
+    version::concrete_display(strip_prefix(raw, &["deepseek-harness", "dsh"]))
 }
 
 fn strip_prefix<'a>(raw: &'a str, prefixes: &[&str]) -> &'a str {

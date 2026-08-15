@@ -1,4 +1,4 @@
-use super::{AdmittedCommand, CliExecution, admitted_params};
+use super::{admitted_params, AdmittedCommand, CliExecution};
 use anyhow::Result;
 use serde_json::{Map, Value};
 
@@ -54,8 +54,8 @@ pub(super) fn handle_apply(command: AdmittedCommand) -> Result<CliExecution> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{CliExecution, execute_cli};
-    use serde_json::{Value, json};
+    use super::super::{execute_cli, CliExecution};
+    use serde_json::{json, Value};
     use std::env;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_projects_eight_cards_from_injected_snapshot() {
+    fn catalog_projects_supported_cards_from_injected_snapshot() {
         let value = json_of(vec![
             "agent-hub".into(),
             "catalog".into(),
@@ -104,13 +104,15 @@ mod tests {
         ]);
         assert_eq!(value["ok"], true);
         let cards = value["cards"].as_array().expect("cards");
-        assert_eq!(cards.len(), 8);
+        assert_eq!(cards.len(), 9);
         assert_eq!(cards[0]["id"], "codex");
         assert_eq!(cards[7]["id"], "antigravity");
         assert_eq!(cards[7]["adaptation"], "partial");
+        assert_eq!(cards[8]["id"], "deepseek-harness");
+        assert_eq!(cards[8]["adaptation"], "pending-evaluation");
         assert_eq!(value["hostScope"], "desktop");
         assert_eq!(cards[0]["homepage"], "https://developers.openai.com/codex");
-        assert_eq!(cards[0]["channelKind"], "homebrew");
+        assert_eq!(cards[0]["channelKind"], "");
     }
 
     #[test]
@@ -153,10 +155,8 @@ mod tests {
         assert_eq!(value["ok"], true);
         assert_eq!(value["status"], "planned");
         assert_eq!(value["selectedChannel"]["kind"], "homebrew");
-        assert!(
-            value["confirmation"]
-                .as_str()
-                .is_some_and(|token| token.starts_with("agent-hub:"))
-        );
+        assert!(value["confirmation"]
+            .as_str()
+            .is_some_and(|token| token.starts_with("agent-hub:")));
     }
 }
