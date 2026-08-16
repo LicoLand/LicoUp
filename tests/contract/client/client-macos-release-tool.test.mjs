@@ -141,6 +141,11 @@ test("daily beta is a strict local build-install-launch receipt pipeline", () =>
 test("notarization is Keychain-backed and failures expose only stable codes", () => {
   assert.ok(toolSource.includes('"notarytool", "store-credentials"'));
   assert.ok(distributionSource.includes('"--keychain-profile", notaryKeychainProfile'));
+  assert.ok(toolSource.includes('timeout: stage === "package" ? null : 45 * 60 * 1000'));
+  assert.ok(publisherSource.includes('client-macos-release-tool.mjs", "beta"'));
+  assert.ok(publisherSource.includes("timeout: null"));
+  assert.equal(distributionSource.includes("30 * 60 * 1000"), false);
+  assert.equal(distributionSource.includes('"--timeout"'), false);
   const privateMarker = "credential-marker-with-private-data";
   const redacted = redactMacosReleaseToolFailure(new Error(privateMarker));
   assert.deepEqual(redacted, {
