@@ -414,7 +414,7 @@ test("downstream macOS verifiers consume the corrected entitlement authority", (
   assert.equal(distributionBuilder.includes('"--timeout"'), false);
   assert.equal(
     distributionBuilder.split(
-      'macos_distribution_notarization_failed", { timeout: null }',
+      'macos_distribution_notarization_failed", { timeout: null, stdio: "ignore" }',
     ).length - 1,
     2,
   );
