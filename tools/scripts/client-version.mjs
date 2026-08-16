@@ -2,13 +2,21 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { sanitizeError } from "./lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
 const versionManifestSchema = "v0.0.1:client-version-manifest-1";
-const cargoWorkspaceVersionPackages = Object.freeze(["licoup-native", "trybuild"]);
+export const cargoWorkspaceVersionPackages = Object.freeze([
+  "licoup-agent-adapters",
+  "licoup-client-state",
+  "licoup-endpoint-core",
+  "licoup-native",
+  "licoup-platform-bridges",
+  "licoup-protocol-bindings",
+  "trybuild",
+]);
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
@@ -345,20 +353,26 @@ function updateManifest(argv) {
   syncVersion();
 }
 
-const [action = "check", ...args] = process.argv.slice(2);
-try {
-  if (action === "check") {
-    checkVersion();
-  } else if (action === "sync") {
-    syncVersion();
-    checkVersion();
-  } else if (action === "set") {
-    updateManifest(args);
-    checkVersion();
-  } else {
-    throw new Error(`Unknown client version action: ${action}`);
+function main() {
+  const [action = "check", ...args] = process.argv.slice(2);
+  try {
+    if (action === "check") {
+      checkVersion();
+    } else if (action === "sync") {
+      syncVersion();
+      checkVersion();
+    } else if (action === "set") {
+      updateManifest(args);
+      checkVersion();
+    } else {
+      throw new Error(`Unknown client version action: ${action}`);
+    }
+  } catch (error) {
+    console.error(sanitizeError(error));
+    process.exitCode = 1;
   }
-} catch (error) {
-  console.error(sanitizeError(error));
-  process.exitCode = 1;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main();
 }

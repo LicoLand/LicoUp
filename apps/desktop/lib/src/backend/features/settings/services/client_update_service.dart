@@ -12,8 +12,9 @@ class ClientUpdateService implements ClientUpdateGateway {
     required AgentCommandRunner agentService,
     String channel = 'stable',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
     final args = [
       'update',
@@ -23,8 +24,9 @@ class ClientUpdateService implements ClientUpdateGateway {
       '--source',
       source.trim().isEmpty ? 'local' : source.trim(),
       '--repo',
-      repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim(),
+      repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim(),
     ];
+    _appendCurrentVersion(args, currentVersion);
     _appendRoots(args, stateRoot: stateRoot);
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
@@ -38,9 +40,10 @@ class ClientUpdateService implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
     final github = source.trim() == 'github';
     final args = [
@@ -51,7 +54,7 @@ class ClientUpdateService implements ClientUpdateGateway {
       '--source',
       github ? 'github' : 'local',
       '--repo',
-      repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim(),
+      repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim(),
     ];
     if (!github) {
       args
@@ -61,6 +64,7 @@ class ClientUpdateService implements ClientUpdateGateway {
         args.addAll(['--revocation-path', revocationPath.trim()]);
       }
     }
+    _appendCurrentVersion(args, currentVersion);
     _appendRoots(args, stagingRoot: stagingRoot, stateRoot: stateRoot);
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
@@ -75,9 +79,10 @@ class ClientUpdateService implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
     final github = source.trim() == 'github';
     final args = [
@@ -88,7 +93,7 @@ class ClientUpdateService implements ClientUpdateGateway {
       '--source',
       github ? 'github' : 'local',
       '--repo',
-      repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim(),
+      repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim(),
     ];
     if (!github) {
       args
@@ -99,6 +104,7 @@ class ClientUpdateService implements ClientUpdateGateway {
         args.addAll(['--revocation-path', revocationPath.trim()]);
       }
     }
+    _appendCurrentVersion(args, currentVersion);
     _appendRoots(args, stagingRoot: stagingRoot, stateRoot: stateRoot);
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
@@ -112,9 +118,10 @@ class ClientUpdateService implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
     final github = source.trim() == 'github';
     final args = [
@@ -125,7 +132,7 @@ class ClientUpdateService implements ClientUpdateGateway {
       '--source',
       github ? 'github' : 'local',
       '--repo',
-      repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim(),
+      repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim(),
     ];
     if (!github) {
       args
@@ -135,6 +142,7 @@ class ClientUpdateService implements ClientUpdateGateway {
         args.addAll(['--revocation-path', revocationPath.trim()]);
       }
     }
+    _appendCurrentVersion(args, currentVersion);
     _appendRoots(args, stagingRoot: stagingRoot, stateRoot: stateRoot);
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
@@ -149,9 +157,10 @@ class ClientUpdateService implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
     final github = source.trim() == 'github';
     final args = [
@@ -162,7 +171,7 @@ class ClientUpdateService implements ClientUpdateGateway {
       '--source',
       github ? 'github' : 'local',
       '--repo',
-      repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim(),
+      repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim(),
       '--execute',
       execute ? 'true' : 'false',
     ];
@@ -174,6 +183,7 @@ class ClientUpdateService implements ClientUpdateGateway {
         args.addAll(['--revocation-path', revocationPath.trim()]);
       }
     }
+    _appendCurrentVersion(args, currentVersion);
     _appendRoots(args, stagingRoot: stagingRoot, stateRoot: stateRoot);
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
@@ -187,9 +197,10 @@ class ClientUpdateService implements ClientUpdateGateway {
     String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
-    String repo = 'LicoLand/LicoUp',
+    String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
+    String currentVersion = '',
   }) async {
     final github = source.trim() == 'github';
     final args = [
@@ -200,7 +211,7 @@ class ClientUpdateService implements ClientUpdateGateway {
       '--source',
       github ? 'github' : 'local',
       '--repo',
-      repo.trim().isEmpty ? 'LicoLand/LicoUp' : repo.trim(),
+      repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim(),
     ];
     if (!github) {
       args
@@ -210,9 +221,16 @@ class ClientUpdateService implements ClientUpdateGateway {
         args.addAll(['--revocation-path', revocationPath.trim()]);
       }
     }
+    _appendCurrentVersion(args, currentVersion);
     _appendRoots(args, stagingRoot: stagingRoot, stateRoot: stateRoot);
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
+  }
+
+  void _appendCurrentVersion(List<String> args, String currentVersion) {
+    if (currentVersion.trim().isNotEmpty) {
+      args.addAll(['--current-version', currentVersion.trim()]);
+    }
   }
 
   void _appendRoots(

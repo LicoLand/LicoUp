@@ -13,7 +13,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Pairing'), findsOneWidget);
+    expect(find.text('Communication'), findsOneWidget);
     expect(find.byKey(const Key('pairing-qr-workspace-card')), findsOneWidget);
     expect(find.byKey(const Key('pairing-qr-frame')), findsOneWidget);
     expect(find.byType(MobileRelayScanPairingPrompt), findsNothing);

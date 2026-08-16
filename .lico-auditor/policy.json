@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "allowedJsonPaths": [],
+  "publicReferenceDomains": [
+    "claude.ai",
+    "claude.com",
+    "deepseek.com",
+    "formulae.brew.sh",
+    "openclaw.ai",
+    "pi.dev"
+  ]
+}

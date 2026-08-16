@@ -15,6 +15,11 @@ crate-type = ["rlib", "cdylib", "staticlib"]
 
 [dependencies]
 lico-catalog-convergence = { path = "../lico-catalog-convergence" }
+licoup-protocol-bindings = { path = "../licoup-protocol-bindings" }
+licoup-client-state = { path = "../licoup-client-state" }
+licoup-endpoint-core = { path = "../licoup-endpoint-core" }
+licoup-platform-bridges = { path = "../licoup-platform-bridges" }
+licoup-agent-adapters = { path = "../licoup-agent-adapters" }
 anyhow = "1.0"
 base64 = "0.22"
 chacha20poly1305 = { version = "0.10", features = ["std"] }

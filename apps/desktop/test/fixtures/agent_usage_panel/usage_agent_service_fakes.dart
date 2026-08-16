@@ -103,47 +103,61 @@ class UsageAgentService extends AgentService {
     if (args.length >= 2 && args[0] == 'agent-usage' && args[1] == 'scan') {
       scanCalls += 1;
       final agentId = _argValue(args, '--agent');
-      final tokens = switch (agentId) {
-        'claude-code' => 231917287,
-        'codex' => 7860433,
-        'opencode' => 670726,
-        _ => 0,
-      };
-      final label = switch (agentId) {
-        'claude-code' => 'Claude Code',
-        'codex' => 'Codex',
-        'opencode' => 'OpenCode',
-        _ => agentId,
-      };
+      final agents = agentId.isEmpty
+          ? const {
+              'claude-code': ('Claude Code', 231917287),
+              'codex': ('Codex', 7860433),
+              'opencode': ('OpenCode', 670726),
+            }
+          : {
+              agentId: (
+                switch (agentId) {
+                  'claude-code' => 'Claude Code',
+                  'codex' => 'Codex',
+                  'opencode' => 'OpenCode',
+                  _ => agentId,
+                },
+                switch (agentId) {
+                  'claude-code' => 231917287,
+                  'codex' => 7860433,
+                  'opencode' => 670726,
+                  _ => 0,
+                },
+              ),
+            };
       return jsonDecode(
             jsonEncode({
               'ok': true,
               'schemaVersion': AgentUsageReport.currentSchemaVersion,
               'mode': AgentUsageReport.currentMode,
               'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
-              'generatedAt': '2026-07-02T00:00:00Z',
+              'generatedAt': DateTime.now().toUtc().toIso8601String(),
               'summary': {
-                'agentCount': 1,
-                'totalTokens': tokens,
+                'agentCount': agents.length,
+                'totalTokens': agents.values.fold<int>(
+                  0,
+                  (sum, agent) => sum + agent.$2,
+                ),
                 'confidence': '',
               },
               'agents': [
-                {
-                  'agentId': agentId,
-                  'label': label,
-                  'status': 'detected',
-                  'history': {
-                    'totalTokens': tokens,
-                    'dailyUsage': [
-                      {
-                        'date': _dayKey(),
-                        'totalTokens': tokens,
-                        'modelUsage': _modelUsage(agentId, tokens),
-                      },
-                    ],
-                    'modelUsage': _modelUsage(agentId, tokens),
+                for (final entry in agents.entries)
+                  {
+                    'agentId': entry.key,
+                    'label': entry.value.$1,
+                    'status': 'detected',
+                    'history': {
+                      'totalTokens': entry.value.$2,
+                      'dailyUsage': [
+                        {
+                          'date': _dayKey(),
+                          'totalTokens': entry.value.$2,
+                          'modelUsage': _modelUsage(entry.key, entry.value.$2),
+                        },
+                      ],
+                      'modelUsage': _modelUsage(entry.key, entry.value.$2),
+                    },
                   },
-                },
               ],
             }),
           )
@@ -275,21 +289,27 @@ class DeltaUsageAgentService extends AgentService {
     if (args.length >= 2 && args[0] == 'agent-usage' && args[1] == 'scan') {
       scanCalls += 1;
       final agentId = _argValue(args, '--agent');
-      final tokens = switch (agentId) {
-        'claude-code' => 100,
-        'codex' => 40,
-        _ => 0,
-      };
-      final label = switch (agentId) {
-        'claude-code' => 'Claude Code',
-        'codex' => 'Codex',
-        _ => agentId,
-      };
+      final agents = agentId.isEmpty
+          ? const {'claude-code': ('Claude Code', 100), 'codex': ('Codex', 40)}
+          : {
+              agentId: (
+                switch (agentId) {
+                  'claude-code' => 'Claude Code',
+                  'codex' => 'Codex',
+                  _ => agentId,
+                },
+                switch (agentId) {
+                  'claude-code' => 100,
+                  'codex' => 40,
+                  _ => 0,
+                },
+              ),
+            };
       return jsonDecode(
             jsonEncode(
               _report(
-                generatedAt: '2026-07-02T00:00:00Z',
-                agents: {agentId: (label, tokens)},
+                generatedAt: DateTime.now().toUtc().toIso8601String(),
+                agents: agents,
               ),
             ),
           )

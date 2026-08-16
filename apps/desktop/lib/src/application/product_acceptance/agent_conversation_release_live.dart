@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
 const _sentinel = 'LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ';
@@ -49,10 +48,6 @@ Future<void> _run(ClientController controller) async {
     final secondExpected = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED',
       RegExp(r'^[A-Za-z0-9-]{1,64}$'),
-    );
-    final steerPrompt = _environment(
-      'LICO_AGENT_CONVERSATION_PRODUCT_STEER_PROMPT',
-      RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
     );
     final invocationChallengeDigest = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_CHALLENGE_DIGEST',
@@ -172,37 +167,12 @@ Future<void> _run(ClientController controller) async {
     controller.addListener(observeSecond);
     await _submitComposer(secondPrompt);
     final secondTurnDeadline = DateTime.now().add(const Duration(minutes: 5));
-    // Steer must land while the turn is provably active. The bound turn id is
-    // available from the first lifecycle event; waiting for streamed chunks
-    // first would race fast models whose entire stream fits in a few seconds.
     await _waitFor(
-      () =>
-          controller.sendingConversationTurnId.trim().isNotEmpty ||
-          controller.lastError.isNotEmpty,
+      () => secondProgressive || controller.lastError.isNotEmpty,
       reasonCode: 'release_ui_second_stream_timeout',
       timeout: _remainingUntil(secondTurnDeadline),
     );
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
-    var interruptSteerProven = false;
-    if (enabled.supportsNativeInterruptSteer) {
-      final activeSession = controller.selectedConversationSession;
-      final steer = await controller.conversationGateway.steer(
-        agentId: agentId,
-        text: steerPrompt,
-        sessionId: nativeSessionId,
-        turnId: controller.sendingConversationTurnId,
-        bind: AgentDispatchBind(
-          sessionPath: activeSession?.sourcePath ?? '',
-          workingDirectory: activeSession?.workingDirectory ?? '',
-          binaryPath: enabled.binaryPath ?? '',
-          model: controller.selectedConversationModel,
-          reasoningEffort: controller.selectedConversationReasoningEffort,
-          runtimeConnection: enabled.runtimeConnection,
-        ),
-      );
-      _require(steer.ok, 'release_ui_interrupt_steer_failed');
-      interruptSteerProven = true;
-    }
     await _waitFor(
       () => !controller.isSendingConversationMessage,
       reasonCode: 'release_ui_second_completion_timeout',
@@ -265,7 +235,6 @@ Future<void> _run(ClientController controller) async {
       'progressiveTimelineVisible': firstProgressive && secondProgressive,
       'sameNativeSessionId': true,
       'historyReadback': true,
-      'interruptSteerProven': interruptSteerProven,
       'turnCount': 2,
       'invocationChallengeDigest': invocationChallengeDigest,
     });

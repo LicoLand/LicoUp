@@ -140,6 +140,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('plugins folder is independent of the skills folder', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1100, 760);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      DashboardDesktopShellHarness(
+        environment: dashboardDesktopEnvironment(width: 1100),
+        activeDestination: ClientSection.pluginManagement,
+        destination: const SizedBox(),
+      ),
+    );
+    await tester.pump();
+
+    Color? rowColor(ClientSection section) {
+      final container = tester.widget<AnimatedContainer>(
+        find
+            .descendant(
+              of: find.byKey(Key('dashboard-folder-nav-${section.name}')),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      );
+      return (container.decoration as BoxDecoration?)?.color;
+    }
+
+    final shellContext = tester.element(
+      find.byKey(const ValueKey<String>('dashboard-desktop-notes-shell')),
+    );
+    final colors = shellContext.licoColors;
+    expect(rowColor(ClientSection.pluginManagement), colors.primary);
+    expect(rowColor(ClientSection.skillHub), isNot(colors.primary));
+    expect(
+      find.byKey(const Key('dashboard-folder-nav-pluginManagement')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('folder rows navigate to every destination', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1100, 760);
@@ -159,7 +201,6 @@ void main() {
 
     for (final section in const [
       ClientSection.skillHub,
-      ClientSection.pluginManagement,
       ClientSection.mobileRelay,
       ClientSection.monitoring,
       ClientSection.settings,
@@ -170,7 +211,6 @@ void main() {
     }
     expect(selected, [
       ClientSection.skillHub,
-      ClientSection.pluginManagement,
       ClientSection.mobileRelay,
       ClientSection.monitoring,
       ClientSection.settings,

@@ -144,7 +144,7 @@ void main() {
   );
 
   test(
-    'stale full cache refreshes today only on ensureLoaded; chip switch never scans',
+    'stale full cache refreshes the native window on ensureLoaded; chip switch never scans',
     () async {
       final gateway = _FakeUsageGateway(
         report: _reportWithDailyUsage(windowDays: 90),
@@ -167,7 +167,7 @@ void main() {
 
       await controller.ensureLoadedAndFresh();
       expect(gateway.scanCalls, 1);
-      expect(gateway.lastHistoryDays, 1);
+      expect(gateway.lastHistoryDays, defaultAgentUsageScanHistoryDays);
       expect(controller.hasFreshScanCoverage, isTrue);
       expect(controller.report?.windowDays, 7);
 
@@ -178,7 +178,7 @@ void main() {
   );
 
   test(
-    'loadReports merges all retained reports instead of picking stale 90-day only',
+    'loadReports keeps the newest native projection instead of merging maps',
     () async {
       final gateway = _FakeUsageGateway();
       final staleAnchor = DateTime.now().toLocal().subtract(
@@ -207,7 +207,7 @@ void main() {
       expect(controller.report?.totalTokens, 6000);
       expect(controller.report?.agent('cursor')?.totalTokens, 3000);
       expect(controller.report?.agent('codex')?.totalTokens, 3000);
-      expect(controller.report?.agent('antigravity')?.totalTokens, 0);
+      expect(controller.report?.agent('antigravity'), isNull);
     },
   );
 
@@ -222,7 +222,7 @@ void main() {
       addTearDown(controller.dispose);
 
       expect(controller.report, isNull);
-      expect(controller.dailyCache.isEmpty, isTrue);
+      expect(controller.dailyCacheIsEmpty, isTrue);
 
       await controller.ensureLoadedAndFresh();
 
@@ -256,7 +256,7 @@ void main() {
     expect(gateway.reportCalls, 1);
     expect(controller.report, isNotNull);
     expect(controller.report?.totalTokens, 3000);
-    expect(controller.dailyCache.isEmpty, isFalse);
+    expect(controller.dailyCacheIsEmpty, isFalse);
   });
 
   test(
