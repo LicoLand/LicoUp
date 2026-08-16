@@ -643,23 +643,26 @@ mixin AgentConversationSessionController
     }
     if (normalizedAgentId == selectedConversationAgentId &&
         selectedConversationSessions.isNotEmpty) {
+      var runtimeBound = true;
       if (!agentWorkspaceMobileRuntime) {
-        await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
+        runtimeBound = await agentWorkspaceEnsureConversationRuntimeBinding(
+          normalizedAgentId,
+        );
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {
           return;
         }
       }
-      // Cached/durable sessions often lack a real project cwd (or still carry
-      // the retired agent-workspace fallback). Refresh native history so the
-      // composer can bind the trusted workspace path from Cursor projects.
+      // Cached sessions often lack a project cwd. Refresh native history only
+      // after the Agent executable is bound; a failed rebind must keep the
+      // cached list instead of walking the host store.
       final hasBoundableWorkingDirectory =
           (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
             (session) => isBoundableConversationWorkingDirectory(
               session.workingDirectory,
             ),
           );
-      if (!hasBoundableWorkingDirectory) {
+      if (runtimeBound && !hasBoundableWorkingDirectory) {
         await loadConversationSessions(normalizedAgentId);
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {

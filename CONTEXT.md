@@ -107,7 +107,10 @@ _Avoid_: plugin permission, background authorization
 **Agent Scan Path Manifest**:
 The TOML allowlist of Agent binaries, config, and history locations automatic
 discovery may probe. The scanner never walks PATH, personal library roots,
-photo or music libraries, or network volumes. macOS firmlink-equivalent home
+photo or music libraries, or network volumes, and never executes a third-party
+Agent binary during unused-agent discovery or cold start. Presence is lexical
+plus an allowlisted file probe. Capability and model-catalog CLI lookups run
+only when the user selects that Agent. macOS firmlink-equivalent home
 paths classify as the same locations. Unused-agent probes classify
 other-app containers lexically and do not stat them.
 _Avoid_: full-disk scan, launch-time personal-folder probe, unused-agent store probe

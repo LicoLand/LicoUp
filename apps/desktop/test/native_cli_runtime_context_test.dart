@@ -73,6 +73,8 @@ void main() {
         'opencode',
         '--include-accessible-environments',
         'true',
+        '--enable-agent-cli-model-lookup',
+        'true',
       ]);
       expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });

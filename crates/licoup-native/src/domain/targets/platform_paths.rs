@@ -1,5 +1,5 @@
 use super::parameters::param_string;
-use super::scan_paths::{self, HostRoots, probe_exists};
+use super::scan_paths::{self, HostRoots, probe_exists_with};
 use crate::platform::paths::user_home_from_env;
 use serde_json::Value;
 use std::env;
@@ -27,12 +27,12 @@ pub(super) fn default_detection_path_with_params(target: &str, params: &Value) -
     if target == "kimi-code"
         && let Some(root) = kimi_code_home_override(params, &home)
     {
-        return probe_exists(&root).then_some(root);
+        return probe_exists_with(&root, &HostRoots::from_home(&home)).then_some(root);
     }
     let roots = HostRoots::from_home(&home);
     default_detection_paths_for_platform(target, std::env::consts::OS, &home, &PathBuf::new())
         .into_iter()
-        .find(|path| probe_exists(path))
+        .find(|path| probe_exists_with(path, &roots))
         .or_else(|| {
             if target == "kilo-code" {
                 scan_paths::extension_roots("kilo-code", &roots)
@@ -73,6 +73,7 @@ pub(super) fn default_app_data_dir(home: &Path) -> PathBuf {
     home.join("AppData").join("Roaming")
 }
 
+#[cfg(test)]
 pub(super) fn default_config_path_for_platform(
     target: &str,
     platform: &str,
@@ -86,15 +87,20 @@ pub(super) fn default_config_path_for_platform(
     scan_paths::config_path(target, platform, &roots)
 }
 
+#[cfg(test)]
 pub(super) fn default_detection_path_for_platform(
     target: &str,
     platform: &str,
     home: &Path,
     app_data: &Path,
 ) -> Option<PathBuf> {
+    let mut roots = HostRoots::from_home(home);
+    if platform == "windows" {
+        roots.appdata = Some(app_data.to_path_buf());
+    }
     default_detection_paths_for_platform(target, platform, home, app_data)
         .into_iter()
-        .find(|path| probe_exists(path))
+        .find(|path| probe_exists_with(path, &roots))
         .or_else(|| {
             if target == "kilo-code" {
                 kilo_code_extension_roots(home)
@@ -119,6 +125,7 @@ pub(super) fn default_detection_paths_for_platform(
     scan_paths::detection_paths(target, platform, &roots)
 }
 
+#[cfg(test)]
 pub(super) fn kilo_code_extension_roots(home: &Path) -> Vec<PathBuf> {
     scan_paths::extension_roots("kilo-code", &HostRoots::from_home(home))
 }

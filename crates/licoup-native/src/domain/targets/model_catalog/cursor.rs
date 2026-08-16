@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_command_output;
+use crate::platform::run_bounded_untrusted_agent_output;
 use std::time::Duration;
 
 // The account-scoped native catalog performs a network-backed entitlement
@@ -21,14 +21,10 @@ pub(super) fn collect_cursor_cli_model_catalog(
     diagnostics: &mut Vec<Value>,
 ) -> CursorCliCatalogResult {
     let source = "cursor-cli:models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
+    if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableCursorCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({"source": source, "status": "disabled"}));
-        return CursorCliCatalogResult::default();
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
-        diagnostics.push(json!({"source": source, "status": "disabled-in-tests"}));
         return CursorCliCatalogResult::default();
     }
 
@@ -47,9 +43,13 @@ pub(super) fn collect_cursor_cli_model_catalog(
             MIN_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS,
             MAX_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS,
         );
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({"source": source, "status": "execution-denied"}));
+        return CursorCliCatalogResult::default();
+    }
     let mut command = Command::new(program);
     command.arg("models");
-    let Ok(output) = run_bounded_command_output(
+    let Ok(output) = run_bounded_untrusted_agent_output(
         &mut command,
         Duration::from_millis(timeout_ms),
         MAX_CURSOR_CLI_MODEL_LOOKUP_OUTPUT_BYTES,

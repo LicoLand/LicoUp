@@ -171,6 +171,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.agent-usage-cache.native-rollup",
   "rust.domain.agent-usage-cache.reconciliation",
   "rust.domain.agent-usage-cache.retained-reports",
+  "rust.domain.agent-usage-cache.two-phase",
   "rust.domain.agent-usage-cache.windows",
   "rust.domain.agent-usage.codex-models",
   "rust.domain.agent-usage.codex-utils",

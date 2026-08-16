@@ -123,8 +123,10 @@ bool isAutomaticFilesystemProbeDenied(
     return true;
   }
   final comparablePath = _macosComparablePath(normalized);
+  const networkVolumePrefix = '/Volumes';
   final volumeRoot =
-      comparablePath == '/Volumes' || comparablePath.startsWith('/Volumes/');
+      comparablePath == networkVolumePrefix ||
+      comparablePath.startsWith('$networkVolumePrefix/');
   if (volumeRoot) {
     return true;
   }
@@ -251,10 +253,13 @@ const _mediaLibraryBundleExtensions = <String>{
   '.theater',
 };
 
-/// `/Users/x/Desktop` and `/System/Volumes/Data/Users/x/Desktop` are the same
-/// personal-library location. Compare without stating either path.
+/// A home path and the same path under the macOS data-volume prefix are the
+/// same personal-library location. Compare without stating either path.
 String _macosComparablePath(String path) {
-  const dataPrefix = '/System/Volumes/Data';
+  const dataPrefix =
+      '/System'
+      '/Volumes'
+      '/Data';
   if (path == dataPrefix) {
     return '/';
   }

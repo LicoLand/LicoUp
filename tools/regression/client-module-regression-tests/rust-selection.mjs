@@ -506,6 +506,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
       "agent_usage_cache_cases::reconciliation::"],
     ["rust.domain.agent-usage-cache.retained-reports",
       "agent_usage_cache_cases::retained_reports::"],
+    ["rust.domain.agent-usage-cache.two-phase",
+      "agent_usage_cache_cases::two_phase::"],
     ["rust.domain.agent-usage-cache.windows",
       "agent_usage_cache_cases::windows::"],
   ]);

@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_command_output;
+use crate::platform::run_bounded_untrusted_agent_output;
 use std::time::Duration;
 
 // Product policy: every model-catalog scan waits up to one minute.
@@ -227,14 +227,10 @@ fn collect_opencode_cli_model_catalog(
     diagnostics: &mut Vec<Value>,
 ) {
     let source = "opencode-cli:models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
+    if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableOpencodeCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({"source": source, "status": "disabled"}));
-        return;
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
-        diagnostics.push(json!({"source": source, "status": "disabled-in-tests"}));
         return;
     }
 
@@ -246,6 +242,10 @@ fn collect_opencode_cli_model_catalog(
         diagnostics.push(json!({"source": source, "status": "binary-unavailable"}));
         return;
     };
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({"source": source, "status": "execution-denied"}));
+        return;
+    }
     let timeout_ms = param_u64(params, "opencodeCliModelLookupTimeoutMs")
         .or_else(|| param_u64(params, "agentCliModelLookupTimeoutMs"))
         .unwrap_or(DEFAULT_OPENCODE_CLI_MODEL_LOOKUP_TIMEOUT_MS)
@@ -255,7 +255,7 @@ fn collect_opencode_cli_model_catalog(
         );
     let mut command = Command::new(program);
     command.arg("models");
-    let Ok(output) = run_bounded_command_output(
+    let Ok(output) = run_bounded_untrusted_agent_output(
         &mut command,
         Duration::from_millis(timeout_ms),
         MAX_OPENCODE_CLI_MODEL_LOOKUP_OUTPUT_BYTES,

@@ -255,6 +255,8 @@ class NativeCommandActions {
       target,
       '--include-accessible-environments',
       'true',
+      '--enable-agent-cli-model-lookup',
+      'true',
     ]);
   }
 

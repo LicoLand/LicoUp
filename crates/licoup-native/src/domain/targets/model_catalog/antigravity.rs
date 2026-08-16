@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_command_output;
+use crate::platform::run_bounded_untrusted_agent_output;
 use std::time::Duration;
 
 // The native account catalog is network-backed. Cold start, auth refresh, or a
@@ -26,19 +26,12 @@ pub(super) fn collect_antigravity_cli_model_catalog(
     replace: bool,
 ) -> bool {
     let source = "antigravity-cli:models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
+    if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableAntigravityCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({
             "source": source,
             "status": "disabled",
-        }));
-        return false;
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
-        diagnostics.push(json!({
-            "source": source,
-            "status": "disabled-in-tests",
         }));
         return false;
     }
@@ -62,9 +55,16 @@ pub(super) fn collect_antigravity_cli_model_catalog(
             MIN_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS,
             MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS,
         );
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({
+            "source": source,
+            "status": "execution-denied",
+        }));
+        return false;
+    }
     let mut command = Command::new(program);
     command.arg("models");
-    let output = run_bounded_command_output(
+    let output = run_bounded_untrusted_agent_output(
         &mut command,
         Duration::from_millis(timeout_ms),
         MAX_AGENT_CLI_MODEL_LOOKUP_OUTPUT_BYTES,

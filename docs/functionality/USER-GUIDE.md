@@ -59,7 +59,8 @@ sidebar.
 
 Discovery probes only the Agent Scan Path Manifest: named Agent binaries,
 configuration, and history directories. It does not walk `PATH`, Desktop,
-Documents, Downloads, Pictures, Music, or network volumes, and unused-agent
+Documents, Downloads, Pictures, Music, or network volumes, does not execute
+third-party Agent binaries at launch, and unused-agent
 scans do not open other apps' containers. Token usage is read when you open
 Monitoring, not at launch. The probes run concurrently with a
 fixed bound. Normalized paths and configuration references stay in the client

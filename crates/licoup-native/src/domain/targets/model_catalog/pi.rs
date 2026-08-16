@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_command_output;
+use crate::platform::run_bounded_untrusted_agent_output;
 use std::time::Duration;
 
 const MAX_OUTPUT_BYTES: usize = 512 * 1024;
@@ -12,21 +12,25 @@ pub(super) fn collect_pi_cli_model_catalog(
     diagnostics: &mut Vec<Value>,
 ) {
     const SOURCE: &str = "pi-cli:list-models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false) {
-        return;
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
+    if !agent_cli_model_lookup_enabled(params) {
+        diagnostics.push(json!({"source": SOURCE, "status": "disabled"}));
         return;
     }
     let program = param_string(params, "piCliPath")
         .map(PathBuf::from)
         .or_else(|| find_binary(&["pi"]));
     let Some(program) = program else { return };
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({"source": SOURCE, "status": "execution-denied"}));
+        return;
+    }
     let mut command = Command::new(program);
     command.arg("--list-models");
-    let Ok(output) =
-        run_bounded_command_output(&mut command, PI_CLI_MODEL_LOOKUP_TIMEOUT, MAX_OUTPUT_BYTES)
-    else {
+    let Ok(output) = run_bounded_untrusted_agent_output(
+        &mut command,
+        PI_CLI_MODEL_LOOKUP_TIMEOUT,
+        MAX_OUTPUT_BYTES,
+    ) else {
         diagnostics.push(json!({"source": SOURCE, "status": "command-failed"}));
         return;
     };

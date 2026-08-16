@@ -1503,6 +1503,38 @@ printf 'claude-opus-4-6\nclaude-sonnet-4-6\nopus\n'
         assert!(names.contains(&"claude-sonnet-4-6"));
         assert!(!names.contains(&"opus"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn default_catalog_does_not_execute_the_agent_cli() {
+        let home = temp_test_dir("claude-cli-no-exec");
+        let marker = home.join("executed");
+        let executable = home.join("claude");
+        fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\nprintf x > \"{}\"\nprintf 'claude-opus-4-6\\n'\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            None,
+            &json!({
+                "homeDir": display_path(home.clone()),
+                "includeHistoryModelCatalog": false,
+                "claudeCliPath": display_path(executable),
+            }),
+        );
+        assert!(!marker.exists());
+        let diagnostics = catalog["diagnostics"].as_array().unwrap();
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic["source"] == "claude-cli:models" && diagnostic["status"] == "disabled"
+        }));
+    }
 }
 
 mod opencode {
@@ -1556,7 +1588,7 @@ mod opencode {
         assert!(names.contains(&"anthropic/claude-opus-4-6"));
         assert!(names.contains(&"openai/gpt-5.4"));
         assert!(names.iter().all(|name| name.contains('/')));
-        assert!(!names.iter().any(|name| *name == "Claude Sonnet 4.5"));
+        assert!(!names.contains(&"Claude Sonnet 4.5"));
     }
 
     #[test]

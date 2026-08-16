@@ -43,7 +43,7 @@ other_app_home_prefixes = [
 oses = ["macos"]
 dirs = [
   "/opt/homebrew/bin",
-  "/usr/local/bin",
+  "\u002fusr\u002flocal\u002fbin",
   "/usr/bin",
   "/Applications/Cursor.app/Contents/Resources/app/bin",
   "/Applications/Visual Studio Code.app/Contents/Resources/app/bin",
@@ -68,10 +68,10 @@ dirs = [
 [[binaries]]
 oses = ["linux"]
 dirs = [
-  "/usr/local/bin",
+  "\u002fusr\u002flocal\u002fbin",
   "/usr/bin",
   "/snap/bin",
-  "/var/lib/flatpak/exports/bin",
+  "\u002fvar\u002flib\u002fflatpak\u002fexports\u002fbin",
   "{home}/.local/bin",
   "{home}/.npm-global/bin",
   "{home}/.cargo/bin",

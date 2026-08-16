@@ -1,5 +1,5 @@
 use super::catalog::TargetDef;
-use super::parameters::param_string;
+use super::parameters::{discovered_agent_execution_requested, param_string};
 use super::scan_paths::{self, HostRoots, probe_is_file};
 use crate::platform::agent_workspace::default_local_agent_workspace;
 use crate::platform::runtime_adapters;
@@ -25,24 +25,11 @@ pub(super) fn find_target_binary(def: &TargetDef, params: &Value) -> Option<Path
     find_cursor_binary_in_dirs(&binary_search_dirs(), params)
 }
 
-fn find_cursor_binary_in_dirs(dirs: &[PathBuf], params: &Value) -> Option<PathBuf> {
-    let mut first_cursor_agent = None::<PathBuf>;
-    for name in ["cursor-agent", "cursor"] {
-        let Some(candidate) = find_binary_in_dirs(&[name], dirs) else {
-            continue;
-        };
-        // Prefer a probed Agent CLI. Keep the first `cursor-agent` as fallback
-        // so a flaky short probe (or missing default workspace) cannot hide a
-        // conversation binary from the Agent Scan Path Manifest. Never fall
-        // back to the IDE `cursor` shim — it is not the Agent CLI lane.
-        if name == "cursor-agent" {
-            first_cursor_agent.get_or_insert_with(|| candidate.clone());
-        }
-        if cursor_binary_supports_acp(&candidate, params) {
-            return Some(candidate);
-        }
-    }
-    first_cursor_agent
+fn find_cursor_binary_in_dirs(dirs: &[PathBuf], _params: &Value) -> Option<PathBuf> {
+    // Presence is lexical plus an allowlisted file probe. Never execute a
+    // third-party binary to decide whether Cursor is installed, and never bind
+    // the IDE `cursor` shim as the Agent CLI lane.
+    find_binary_in_dirs(&["cursor-agent"], dirs)
 }
 
 pub(super) fn find_target_binary_with_source(
@@ -80,6 +67,7 @@ pub(super) fn find_extension_bundled_binary(def: &TargetDef) -> Option<PathBuf> 
     }
 }
 
+#[cfg(test)]
 pub(super) fn find_macos_app_executable(
     app_bundle: &str,
     executable: &str,
@@ -97,6 +85,7 @@ pub(super) fn find_macos_app_executable(
         .find(|candidate| !scan_paths::denied(candidate, home.as_deref()) && candidate.is_file())
 }
 
+#[cfg(test)]
 pub(super) fn find_kimi_desktop_app_executable(roots: &[PathBuf]) -> Option<PathBuf> {
     find_macos_app_executable("Kimi.app", "Kimi", roots)
 }
@@ -169,6 +158,11 @@ fn kilo_extension_version_rank(extension_dir_name: &str) -> Vec<u64> {
 }
 
 pub(super) fn cursor_binary_supports_acp(binary: &Path, params: &Value) -> bool {
+    if !discovered_agent_execution_requested(params)
+        || !scan_paths::discovered_agent_may_execute(binary, true)
+    {
+        return false;
+    }
     // The Cursor capability probe only runs `--version` / `--help` and does not
     // need a project workspace. Keep a cwd for the shared probe API, but never
     // treat a missing default workspace as "binary unsupported" — that hid a
@@ -249,6 +243,7 @@ fn windows_binary_extensions() -> Vec<String> {
     extensions
 }
 
+#[cfg(test)]
 fn posix_path(components: &[&str]) -> PathBuf {
     components.iter().fold(
         PathBuf::from(char::from(47).to_string()),
@@ -617,6 +612,26 @@ mod tests {
         let found = find_cursor_binary_in_dirs(std::slice::from_ref(&dir), &serde_json::json!({}));
         assert_eq!(found.as_deref(), Some(agent.as_path()));
         assert!(!cursor_binary_supports_acp(&agent, &serde_json::json!({})));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cursor_agent_discovery_does_not_execute_the_binary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_temp_dir("cursor-agent-no-exec");
+        let marker = dir.join("executed");
+        let agent = dir.join("cursor-agent");
+        fs::write(
+            &agent,
+            format!("#!/bin/sh\nprintf x > \"{}\"\nexit 0\n", marker.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let found = find_cursor_binary_in_dirs(std::slice::from_ref(&dir), &serde_json::json!({}));
+        assert_eq!(found.as_deref(), Some(agent.as_path()));
+        assert!(!marker.exists());
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {

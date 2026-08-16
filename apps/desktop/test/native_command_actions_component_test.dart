@@ -48,6 +48,22 @@ void main() {
         'true',
       ]);
       expect(target?.target, 'codex');
+      expect(
+        concurrent.calls.single,
+        isNot(contains('--enable-agent-cli-model-lookup')),
+      );
+
+      serialized.calls.clear();
+      await actions.inspectTarget('codex');
+      expect(serialized.calls.single, [
+        'targets',
+        'inspect',
+        'codex',
+        '--include-accessible-environments',
+        'true',
+        '--enable-agent-cli-model-lookup',
+        'true',
+      ]);
     },
   );
 

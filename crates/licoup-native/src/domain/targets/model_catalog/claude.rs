@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_command_output;
+use crate::platform::run_bounded_untrusted_agent_output;
 use std::time::Duration;
 
 // Product policy: every model-catalog scan waits up to one minute.
@@ -48,14 +48,10 @@ pub(super) fn collect_claude_code_cli_model_catalog(
     diagnostics: &mut Vec<Value>,
 ) -> bool {
     let source = "claude-cli:models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
+    if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableClaudeCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({"source": source, "status": "disabled"}));
-        return false;
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
-        diagnostics.push(json!({"source": source, "status": "disabled-in-tests"}));
         return false;
     }
 
@@ -74,9 +70,13 @@ pub(super) fn collect_claude_code_cli_model_catalog(
             MIN_CLAUDE_CLI_MODEL_LOOKUP_TIMEOUT_MS,
             MAX_CLAUDE_CLI_MODEL_LOOKUP_TIMEOUT_MS,
         );
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({"source": source, "status": "execution-denied"}));
+        return false;
+    }
     let mut command = Command::new(program);
     command.arg("models");
-    let Ok(output) = run_bounded_command_output(
+    let Ok(output) = run_bounded_untrusted_agent_output(
         &mut command,
         Duration::from_millis(timeout_ms),
         MAX_CLAUDE_CLI_MODEL_LOOKUP_OUTPUT_BYTES,

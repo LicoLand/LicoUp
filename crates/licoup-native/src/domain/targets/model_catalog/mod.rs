@@ -1,5 +1,7 @@
 use super::binaries::find_binary;
-use super::parameters::{param_bool, param_paths, param_string, param_u64};
+use super::parameters::{
+    agent_cli_model_lookup_enabled, param_bool, param_paths, param_string, param_u64,
+};
 use super::platform_paths::default_app_data_dir;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Map, Value, json};
@@ -110,7 +112,7 @@ pub(super) fn model_catalog_for_target(
     // providers (for example DeepSeek) and cache-only rows stay selectable.
     if target == "codex"
         && model_catalog_fixture_for_target(target, params).is_none()
-        && (!cfg!(test) || param_bool(params, "enableAgentCliModelLookup").unwrap_or(false))
+        && agent_cli_model_lookup_enabled(params)
         && let Some(binary) = find_binary(&["codex"])
         && let Ok(catalog) = crate::platform::codex_app_server_model_catalog(&binary)
     {

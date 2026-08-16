@@ -273,6 +273,18 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.domain.agent-usage-cache.two-phase",
+      kind: "rust-domain",
+      summary: "Bounded native usage connection reuse and unstable-source abort",
+      inputs: [
+        "crates/licoup-native/tests/agent_usage_cache_cases/two_phase.rs",
+      ],
+      command: rustIntegrationTest(
+        "agent_usage_incremental_cache",
+        "agent_usage_cache_cases::two_phase::",
+      ),
+    }),
+  defineModule({
       id: "rust.domain.agent-usage-cache.windows",
       kind: "rust-domain",
       summary: "Local calendar and historical timezone-transition scenarios",

@@ -438,8 +438,8 @@ fn verify_runtime(kind: RuntimeKind, executable: &Path) -> Result<VerifiedRuntim
         .filter(|value| !value.contains('\\') && !value.contains('"'))
         .ok_or_else(|| anyhow!("strategy_runtime_unavailable"))?;
     let mut command = Command::new(executable);
-    command.arg("--version").env_clear();
-    let output = crate::platform::run_bounded_command_output(
+    command.arg("--version");
+    let output = crate::platform::run_bounded_untrusted_agent_output(
         &mut command,
         Duration::from_secs(3),
         4 * 1024,

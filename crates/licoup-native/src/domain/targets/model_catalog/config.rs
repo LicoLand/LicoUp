@@ -27,7 +27,7 @@ pub(super) fn extra_model_config_paths(target: &str, params: &Value) -> Vec<Path
     };
     paths
         .into_iter()
-        .filter(|path| crate::domain::targets::scan_paths::probe_exists(path))
+        .filter(|path| crate::domain::targets::scan_paths::probe_exists_under_home(path, &home))
         .collect()
 }
 

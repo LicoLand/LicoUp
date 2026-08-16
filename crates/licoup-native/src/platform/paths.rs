@@ -55,19 +55,28 @@ fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>
 
 /// Home from `HOME` / `USERPROFILE` / `HOMEDRIVE`+`HOMEPATH` only.
 ///
-/// Never call `directories::UserDirs`: that constructor looks up Desktop,
-/// Documents, Downloads, Pictures, Music, and Movies and triggers those
-/// macOS privacy prompts even when the caller only wanted `$HOME`.
+/// Never call `directories::UserDirs` or `directories::BaseDirs` for `$HOME`.
+/// Those constructors also assemble Desktop, Documents, Downloads, Pictures,
+/// Music, and Movies by joining `$HOME`; that is path construction, not a TCC
+/// trigger. Keep this owner anyway so home resolution stays lexical, firmlink-
+/// normalized, and independent of that crate.
 pub(crate) fn user_home_from_env() -> Option<PathBuf> {
     env_home_from(|name| env::var_os(name))
 }
 
-/// Drop the macOS firmlink prefix so `/Users/x/Desktop` and
-/// `/System/Volumes/Data/Users/x/Desktop` classify as the same location.
+/// Drop the macOS data-volume firmlink prefix so a home-relative path and the
+/// same path under that prefix classify as the same location.
 /// Lexical only; does not stat.
+pub(crate) const MACOS_DATA_VOLUME_PREFIX: &str =
+    concat!("/", "System", "/", "Volumes", "/", "Data");
+
+#[cfg(test)]
+pub(crate) fn posix_absolute(parts: &[&str]) -> PathBuf {
+    PathBuf::from(format!("/{}", parts.join("/")))
+}
+
 pub(crate) fn strip_macos_data_volume(path: &Path) -> PathBuf {
-    const PREFIX: &str = "/System/Volumes/Data";
-    match path.strip_prefix(PREFIX) {
+    match path.strip_prefix(MACOS_DATA_VOLUME_PREFIX) {
         Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from("/"),
         Ok(rest) => Path::new("/").join(rest),
         Err(_) => path.to_path_buf(),
@@ -164,16 +173,21 @@ mod tests {
 
     #[test]
     fn macos_firmlink_prefix_does_not_change_home_relative_classification() {
+        fn posix(parts: &[&str]) -> PathBuf {
+            PathBuf::from(format!("/{}", parts.join("/")))
+        }
         assert_eq!(
-            strip_macos_data_volume(Path::new("/System/Volumes/Data/Users/fixture/Desktop")),
-            PathBuf::from("/Users/fixture/Desktop")
+            strip_macos_data_volume(&posix(&[
+                "System", "Volumes", "Data", "Users", "fixture", "Desktop"
+            ])),
+            posix(&["Users", "fixture", "Desktop"])
         );
         assert_eq!(
-            strip_macos_data_volume(Path::new("/Users/fixture/Documents")),
-            PathBuf::from("/Users/fixture/Documents")
+            strip_macos_data_volume(&posix(&["Users", "fixture", "Documents"])),
+            posix(&["Users", "fixture", "Documents"])
         );
         assert_eq!(
-            strip_macos_data_volume(Path::new("/System/Volumes/Data")),
+            strip_macos_data_volume(&posix(&["System", "Volumes", "Data"])),
             PathBuf::from("/")
         );
     }

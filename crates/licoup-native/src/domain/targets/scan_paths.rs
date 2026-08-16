@@ -386,17 +386,76 @@ pub fn probe_exists(path: &Path) -> bool {
     automatic_probe_admitted(path) && path.exists()
 }
 
+pub fn probe_exists_with(path: &Path, roots: &HostRoots) -> bool {
+    automatic_probe_admitted_with(path, roots) && path.exists()
+}
+
 pub fn probe_is_file(path: &Path) -> bool {
     automatic_probe_admitted(path) && path.is_file()
 }
 
+#[cfg(test)]
 pub fn probe_is_dir(path: &Path) -> bool {
     automatic_probe_admitted(path) && path.is_dir()
 }
 
+/// Exact files constructed under a caller-supplied catalog home may be stated
+/// when they are not denied personal or network locations. This is not unused
+/// Agent discovery: the caller already named the home and the file.
+pub fn probe_exists_under_home(path: &Path, home: &Path) -> bool {
+    let normalized = lexical(path);
+    let home = lexical(home);
+    let real_home = user_home_from_env();
+    if catalog_home_denied(&home, real_home.as_deref())
+        || denied(&normalized, real_home.as_deref())
+        || denied(&normalized, Some(&home))
+    {
+        return false;
+    }
+    if symlink_escapes_denied_location(path) {
+        return false;
+    }
+    if !(normalized == home || normalized.starts_with(&home)) {
+        return probe_exists(path);
+    }
+    path.exists()
+}
+
+fn catalog_home_denied(home: &Path, real_home: Option<&Path>) -> bool {
+    if denied(home, real_home) {
+        return true;
+    }
+    home.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| manifest().deny.home_roots.iter().any(|root| root == name))
+}
+
+/// Allowlisted paths may be stated. They may never be executed during
+/// unused-agent discovery. A new Agent recipe cannot opt a binary into
+/// launch-time execution by listing it in the manifest.
+pub fn automatic_agent_execution_admitted() -> bool {
+    false
+}
+
+/// User-triggered capability or model-catalog probes may execute a discovered
+/// binary only when the caller opted in and the path is not a denied personal
+/// or network location.
+pub fn discovered_agent_may_execute(path: &Path, execution_requested: bool) -> bool {
+    execution_requested
+        && !automatic_agent_execution_admitted()
+        && !denied(
+            path,
+            crate::platform::paths::user_home_from_env().as_deref(),
+        )
+}
+
 fn automatic_probe_admitted(path: &Path) -> bool {
-    admitted_scan_path(path)
-        && !is_other_app_container(path)
+    admitted_scan_path(path) && !is_other_app_container(path)
+}
+
+fn automatic_probe_admitted_with(path: &Path, roots: &HostRoots) -> bool {
+    admitted_scan_path_with(path, roots)
+        && !is_other_app_container_with(path, roots)
         && !symlink_escapes_denied_location(path)
 }
 
@@ -516,6 +575,7 @@ fn dedupe(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::paths::posix_absolute;
 
     fn fixture_roots() -> HostRoots {
         let home = PathBuf::from("/profile");
@@ -549,16 +609,16 @@ mod tests {
             PathBuf::from("/profile/Pictures"),
             PathBuf::from("/profile/Music/library"),
             PathBuf::from("/profile/Pictures/Personal.photoslibrary"),
-            PathBuf::from("/Volumes/team-share/bin"),
-            PathBuf::from("/System/Volumes/Data/profile/Desktop/tools"),
-            PathBuf::from("/System/Volumes/Data/profile/Pictures"),
-            PathBuf::from("/System/Volumes/Data/profile/Music/library"),
+            posix_absolute(&["Volumes", "team-share", "bin"]),
+            posix_absolute(&["System", "Volumes", "Data", "profile", "Desktop", "tools"]),
+            posix_absolute(&["System", "Volumes", "Data", "profile", "Pictures"]),
+            posix_absolute(&["System", "Volumes", "Data", "profile", "Music", "library"]),
         ] {
             assert!(denied(&denied_path, Some(&home)));
         }
         assert!(denied(
             &PathBuf::from("/profile/Desktop/tools"),
-            Some(&PathBuf::from("/System/Volumes/Data/profile")),
+            Some(&posix_absolute(&["System", "Volumes", "Data", "profile"])),
         ));
     }
 
@@ -570,7 +630,7 @@ mod tests {
         assert!(!denied(&cursor, roots.home.as_deref()));
         assert!(!denied(&homebrew, roots.home.as_deref()));
         assert!(admitted_scan_path_with(&cursor, &roots));
-        assert!(!probe_is_dir(Path::new("/Volumes/team-share")));
+        assert!(!probe_is_dir(&posix_absolute(&["Volumes", "team-share"])));
         assert!(
             binary_dirs("macos", &roots).contains(&PathBuf::from("/opt/homebrew/bin"))
                 || binary_dirs("linux", &roots).contains(&PathBuf::from("/usr/bin"))
@@ -591,11 +651,11 @@ mod tests {
         let cursor = history_roots("cursor", &roots);
         assert!(cursor.iter().any(|root| {
             root.kind == "cursor-cli-chats"
-                && root.path == PathBuf::from("synthetic-home/.cursor/chats")
+                && root.path == Path::new("synthetic-home/.cursor/chats")
         }));
         let xdg = history_roots("cursor", &roots);
         assert!(xdg.iter().any(|root| {
-            root.path == PathBuf::from("synthetic-home/.config/Cursor/User/workspaceStorage")
+            root.path == Path::new("synthetic-home/.config/Cursor/User/workspaceStorage")
         }));
     }
 
@@ -633,6 +693,49 @@ mod tests {
                 .any(|path| path.ends_with("Desktop") || path.ends_with("Desktop/bin"))
         );
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn named_catalog_files_under_an_explicit_home_may_exist_without_the_host_allowlist() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let home = std::env::temp_dir().join(format!(
+            "lico-scan-catalog-home-{}-{}",
+            stamp.as_secs(),
+            stamp.subsec_nanos()
+        ));
+        let settings = home.join(".claude").join("settings.json");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(&settings, "{}\n").unwrap();
+        assert!(probe_exists_under_home(&settings, &home));
+        assert!(!probe_exists(&settings));
+        assert!(!probe_exists_under_home(
+            Path::new("/profile/Desktop/.claude/settings.json"),
+            Path::new("/profile/Desktop"),
+        ));
+        assert!(!probe_exists_under_home(
+            &posix_absolute(&["Volumes", "team-share", ".claude", "settings.json"]),
+            &posix_absolute(&["Volumes", "team-share"]),
+        ));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn unused_agent_discovery_never_authorizes_automatic_execution() {
+        assert!(!automatic_agent_execution_admitted());
+        assert!(!discovered_agent_may_execute(
+            Path::new("/opt/homebrew/bin/claude"),
+            false
+        ));
+        assert!(discovered_agent_may_execute(
+            Path::new("/opt/homebrew/bin/claude"),
+            true
+        ));
+        assert!(!discovered_agent_may_execute(
+            &posix_absolute(&["Volumes", "team-share", "claude"]),
+            true
+        ));
     }
 
     #[test]

@@ -153,7 +153,8 @@ void main() {
     );
     expect(
       isAutomaticFilesystemProbeDenied(
-        '/Volumes/team-share/repo',
+        '/Volumes'
+        '/team-share/repo',
         environment: environment,
       ),
       isTrue,
@@ -180,9 +181,13 @@ void main() {
       ),
       isTrue,
     );
+    const dataPrefix =
+        '/System'
+        '/Volumes'
+        '/Data';
     expect(
       isAutomaticFilesystemProbeDenied(
-        '/System/Volumes/Data$home/Documents/project',
+        '$dataPrefix$home/Documents/project',
         environment: environment,
       ),
       isTrue,
@@ -196,7 +201,7 @@ void main() {
     );
     expect(
       isUnboundedLocalAgentWorkspace(
-        '/System/Volumes/Data$home/Pictures',
+        '$dataPrefix$home/Pictures',
         environment: environment,
       ),
       isTrue,

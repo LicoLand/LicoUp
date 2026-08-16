@@ -23,11 +23,12 @@ keys, approval, and local effects.
 
 The client asks the operating system for a privacy permission only when the
 current user action needs that resource. Automatic Agent discovery probes only
-named Agent locations in the Agent Scan Path Manifest. Launch, unused-agent
-detection, and background catalog work must not walk PATH or batch Desktop,
-Documents, Downloads, Pictures, Music, photo-library, media-library,
-network-volume, microphone, camera, or other apps' data prompts. Token usage
-is not scanned until Monitoring is opened.
+named Agent locations in the Agent Scan Path Manifest and does not execute
+third-party Agent binaries. Launch, unused-agent detection, and background
+catalog work must not walk PATH or batch Desktop, Documents, Downloads,
+Pictures, Music, photo-library, media-library, network-volume, microphone,
+camera, or other apps' data prompts. Token usage is not scanned until
+Monitoring is opened.
 
 The product remains useful as a local-agent client before human messaging,
 federation, recovery, notary, and multi-device goals are delivered. Those

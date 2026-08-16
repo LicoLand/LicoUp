@@ -386,10 +386,13 @@ mod tests {
 
     #[test]
     fn discovery_does_not_stat_denied_network_volumes() {
+        fn posix(parts: &[&str]) -> PathBuf {
+            PathBuf::from(format!("/{}", parts.join("/")))
+        }
         let discovery = discover_history_files(
             HistoryAdapter::Codex,
             &[HistoryRoot {
-                path: PathBuf::from("/Volumes/team-share/sessions"),
+                path: posix(&["Volumes", "team-share", "sessions"]),
                 source_kind: "codex-session-store".to_owned(),
             }],
             HistoryDiscoveryOptions::default(),

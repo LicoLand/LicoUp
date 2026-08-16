@@ -131,6 +131,7 @@ fn lexical_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::paths::posix_absolute;
 
     fn synthetic_home() -> PathBuf {
         std::env::temp_dir().join("licoup-agent-workspace-home-fixture")
@@ -156,7 +157,7 @@ mod tests {
             home.join("Applications"),
             home.join("Pictures/Personal.photoslibrary"),
             PathBuf::from("relative/project"),
-            PathBuf::from("/System/Volumes/Data")
+            posix_absolute(&["System", "Volumes", "Data"])
                 .join(home.strip_prefix("/").unwrap_or(&home).join("Desktop")),
         ] {
             assert!(
@@ -167,7 +168,7 @@ mod tests {
         assert!(is_unbounded_agent_workspace(
             &home.join("Desktop"),
             Some(
-                &PathBuf::from("/System/Volumes/Data")
+                &posix_absolute(&["System", "Volumes", "Data"])
                     .join(home.strip_prefix("/").unwrap_or(&home))
             )
         ));

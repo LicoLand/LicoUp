@@ -54,10 +54,32 @@ test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
   assert.match(binaries, /scan_paths::denied/u);
   assert.match(manifest, /Library\/Mobile Documents/u);
   assert.match(manifest, /Library\/CloudStorage/u);
+  assert.match(scanPaths, /fn automatic_agent_execution_admitted/u);
+  assert.match(scanPaths, /fn discovered_agent_may_execute/u);
+  assert.match(scanPaths, /fn probe_exists_under_home/u);
+  assert.match(scanPaths, /fn probe_exists_with/u);
+  assert.match(
+    read("crates/licoup-native/src/domain/targets/model_catalog/config.rs"),
+    /probe_exists_under_home/u,
+  );
+  assert.match(
+    binaries,
+    /find_binary_in_dirs\(&\["cursor-agent"\], dirs\)/u,
+  );
+  assert.doesNotMatch(
+    (binaries.split("fn find_cursor_binary_in_dirs")[1] ?? "").split(
+      "pub(super) fn",
+    )[0] ?? "",
+    /cursor_binary_supports_acp/u,
+  );
   assert.match(
     agentServiceActions,
     /'--include-history-model-catalog',\s*'false'/u,
   );
+  const inspectOne = (agentServiceActions.split("scanOneTarget")[1] ?? "")
+    .split("inspectTarget")[0] ?? "";
+  assert.doesNotMatch(inspectOne, /enable-agent-cli-model-lookup/u);
+  assert.match(agentServiceActions, /enable-agent-cli-model-lookup/u);
   assert.match(historyDiscovery, /denied_personal_location/u);
   assert.match(historyDiscovery, /denied_symlink_escape/u);
   assert.match(scanPaths, /fn symlink_escapes_denied_location/u);
