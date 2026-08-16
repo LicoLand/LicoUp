@@ -44,26 +44,45 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      for (final section in const [
-        ClientSection.skillHub,
-        ClientSection.pluginManagement,
-        ClientSection.monitoring,
-        ClientSection.agents,
-      ]) {
-        await tester.tap(find.byKey(Key('messaging-rail-nav-${section.name}')));
-        await tester.pump(const Duration(milliseconds: 250));
-        expect(
-          find.byKey(Key('messaging-desktop-destination-${section.name}')),
-          findsOneWidget,
-        );
-        expect(
-          tester.takeException(),
-          isNull,
-          reason: '${section.name} must fit at 200% text scale',
-        );
-      }
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        find.byKey(const Key('messaging-desktop-destination-agentHub')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
 
-      await tester.tap(find.byKey(const Key('messaging-rail-settings-button')));
+      await tester.tap(
+        find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        find.byKey(const Key('messaging-desktop-destination-pluginManagement')),
+        findsOneWidget,
+      );
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'plugins list must fit at 200% text scale',
+      );
+
+      await tester.tap(find.byKey(const Key('messaging-chrome-usage-button')));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        find.byKey(const Key('messaging-desktop-destination-monitoring')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('messaging-chrome-usage-button')));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        find.byKey(const Key('messaging-desktop-destination-agents')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
       await tester.pump(const Duration(milliseconds: 250));
       expect(
         find.byKey(const Key('messaging-desktop-destination-settings')),

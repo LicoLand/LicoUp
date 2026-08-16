@@ -27,7 +27,7 @@ function run(program, args, {
     env,
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "ignore"] : "inherit",
-    timeout,
+    ...(timeout == null ? {} : { timeout }),
     maxBuffer: 16 * 1024 * 1024,
   });
   if (result.error || result.status !== 0) fail();
@@ -47,7 +47,9 @@ function main() {
   });
   if (sourceRevision !== releaseRevision || !/^[a-f0-9]{40,64}$/u.test(sourceRevision)) fail();
 
-  run(process.execPath, ["tools/scripts/client-macos-release-tool.mjs", "beta"]);
+  run(process.execPath, ["tools/scripts/client-macos-release-tool.mjs", "beta"], {
+    timeout: null,
+  });
   run(process.execPath, ["tools/scripts/client-release-packages.mjs", "build", "--target", target]);
   run(process.execPath, ["tools/scripts/client-release-packages.mjs", "verify", "--target", target]);
   run(process.execPath, ["tools/scripts/client-github-release-acceptance.mjs"], {

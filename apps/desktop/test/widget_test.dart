@@ -16,6 +16,7 @@ void main() {
       ClientSection.mobileRelay,
       ClientSection.models,
       ClientSection.settings,
+      ClientSection.agentHub,
     ]);
   });
 

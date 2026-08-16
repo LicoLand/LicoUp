@@ -134,7 +134,7 @@ final class FixtureLayoutSettingsPresentation
     LicoContentSpacing.item,
     LicoContentSpacing.item,
     LicoContentSpacing.item,
-    LicoContentSpacing.inline,
+    LicoContentSpacing.compact,
   );
 
   @override
@@ -142,7 +142,7 @@ final class FixtureLayoutSettingsPresentation
     LicoContentSpacing.item,
     LicoContentSpacing.item,
     LicoContentSpacing.item,
-    0,
+    LicoContentSpacing.item,
   );
 
   @override
@@ -151,14 +151,6 @@ final class FixtureLayoutSettingsPresentation
     LicoContentSpacing.item,
     LicoContentSpacing.item,
     0,
-  );
-
-  @override
-  EdgeInsetsGeometry get selectorActionPadding => const EdgeInsets.fromLTRB(
-    LicoContentSpacing.item,
-    0,
-    LicoContentSpacing.item,
-    LicoContentSpacing.item,
   );
 
   @override

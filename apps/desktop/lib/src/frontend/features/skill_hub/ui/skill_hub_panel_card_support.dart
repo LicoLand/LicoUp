@@ -10,6 +10,62 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+class SkillCardTitle extends StatelessWidget {
+  const SkillCardTitle({super.key, required this.title, required this.color});
+
+  static const int maxLines = 2;
+  static const double fontSize = 15;
+
+  final String title;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      softWrap: true,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.bold,
+        color: color,
+      ),
+    );
+  }
+}
+
+class SkillCardDescription extends StatelessWidget {
+  const SkillCardDescription({
+    super.key,
+    required this.text,
+    required this.color,
+  });
+
+  static const int maxLines = 3;
+  static const double fontSize = 12;
+  static const double lineHeight = 1.35;
+  static const double reservedHeight = fontSize * lineHeight * maxLines;
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: reservedHeight,
+      width: double.infinity,
+      child: Text(
+        text,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        softWrap: true,
+        style: TextStyle(fontSize: fontSize, color: color, height: lineHeight),
+      ),
+    );
+  }
+}
+
 class SkillCardHeader extends StatelessWidget {
   const SkillCardHeader({
     super.key,

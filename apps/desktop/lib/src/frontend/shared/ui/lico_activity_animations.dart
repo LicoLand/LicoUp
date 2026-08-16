@@ -274,28 +274,22 @@ Rect licoSpinnerArcRect(Size size, double strokeWidth) {
   );
 }
 
-/// Left-to-right shimmer used for the currently executing step or process title.
-class LicoShimmerText extends StatefulWidget {
-  const LicoShimmerText({
+/// Left-to-right pulse across loading copy. Wraps any text subtree.
+class LicoShimmerMask extends StatefulWidget {
+  const LicoShimmerMask({
     super.key,
-    required this.text,
-    required this.style,
-    this.enabled = true,
-    this.maxLines = 1,
-    this.overflow = TextOverflow.ellipsis,
+    required this.enabled,
+    required this.child,
   });
 
-  final String text;
-  final TextStyle style;
   final bool enabled;
-  final int maxLines;
-  final TextOverflow overflow;
+  final Widget child;
 
   @override
-  State<LicoShimmerText> createState() => _LicoShimmerTextState();
+  State<LicoShimmerMask> createState() => _LicoShimmerMaskState();
 }
 
-class _LicoShimmerTextState extends State<LicoShimmerText>
+class _LicoShimmerMaskState extends State<LicoShimmerMask>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -315,7 +309,7 @@ class _LicoShimmerTextState extends State<LicoShimmerText>
   }
 
   @override
-  void didUpdateWidget(covariant LicoShimmerText oldWidget) {
+  void didUpdateWidget(covariant LicoShimmerMask oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.enabled != widget.enabled) {
       _syncAnimation();
@@ -340,25 +334,9 @@ class _LicoShimmerTextState extends State<LicoShimmerText>
 
   @override
   Widget build(BuildContext context) {
-    final base = widget.style.color ?? DefaultTextStyle.of(context).style.color;
-    if (base == null) {
-      return Text(
-        widget.text,
-        style: widget.style,
-        maxLines: widget.maxLines,
-        overflow: widget.overflow,
-      );
-    }
     if (!widget.enabled || MediaQuery.disableAnimationsOf(context)) {
-      return Text(
-        widget.text,
-        style: widget.style,
-        maxLines: widget.maxLines,
-        overflow: widget.overflow,
-      );
+      return widget.child;
     }
-    final highlight = Color.lerp(base, Colors.white, 0.55) ?? base;
-    final dim = base.withValues(alpha: 0.38);
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -370,19 +348,52 @@ class _LicoShimmerTextState extends State<LicoShimmerText>
             return LinearGradient(
               begin: Alignment(-1.2 + shift, 0),
               end: Alignment(0.8 + shift, 0),
-              colors: [dim, base, highlight, base, dim],
-              stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
-            ).createShader(bounds);
+              colors: const [
+                Color(0x61FFFFFF),
+                Color(0xFFFFFFFF),
+                Color(0xFFFFFFFF),
+                Color(0x61FFFFFF),
+              ],
+              stops: const [0.0, 0.35, 0.65, 1.0],
+            ).createShader(
+              Rect.fromLTWH(
+                bounds.left + bounds.width * shift,
+                bounds.top,
+                bounds.width,
+                bounds.height,
+              ),
+            );
           },
           child: child,
         );
       },
-      child: Text(
-        widget.text,
-        maxLines: widget.maxLines,
-        overflow: widget.overflow,
-        style: widget.style.copyWith(color: Colors.white),
-      ),
+      child: widget.child,
+    );
+  }
+}
+
+/// Left-to-right shimmer used for the currently executing step or process title.
+class LicoShimmerText extends StatelessWidget {
+  const LicoShimmerText({
+    super.key,
+    required this.text,
+    required this.style,
+    this.enabled = true,
+    this.maxLines = 1,
+    this.overflow = TextOverflow.ellipsis,
+  });
+
+  final String text;
+  final TextStyle style;
+  final bool enabled;
+  final int maxLines;
+  final TextOverflow overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    return LicoShimmerMask(
+      enabled: enabled,
+      child: Text(text, maxLines: maxLines, overflow: overflow, style: style),
     );
   }
 }

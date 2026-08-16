@@ -109,6 +109,11 @@ final class SemanticDestinationCatalog {
 
   static final List<SemanticDestinationDescriptor> _currentDescriptors = [
     SemanticDestinationDescriptor(
+      destination: ClientSection.agentHub,
+      labelKey: 'destination.agent-hub',
+      surfaces: const {LayoutRuntimeSurface.desktop},
+    ),
+    SemanticDestinationDescriptor(
       destination: ClientSection.agents,
       labelKey: 'destination.agents',
       surfaces: const {
