@@ -236,13 +236,21 @@ if (manifest.platforms[hostId]) {
 }
 const sanitizedEnvironment = minimalReleaseToolEnvironment({
   HOME: "/fixture-home",
+  ANDROID_HOME: "/fixture-android-sdk",
+  ANDROID_SDK_ROOT: "/fixture-android-sdk-root",
+  LICO_ANDROID_JAVA_HOME: "/fixture-lico-java",
+  JAVA_HOME: "/fixture-java-from-base",
   JAVA_TOOL_OPTIONS: "-javaagent:fixture",
   _JAVA_OPTIONS: "-javaagent:fixture",
   JDK_JAVA_OPTIONS: "-javaagent:fixture",
   DYLD_INSERT_LIBRARIES: "fixture",
   LD_PRELOAD: "fixture",
+  GH_TOKEN: "fixture-token",
 }, { JAVA_HOME: "/fixture-java", PATH: "/fixture-bin" });
 if (sanitizedEnvironment.HOME !== "/fixture-home" ||
+  sanitizedEnvironment.ANDROID_HOME !== "/fixture-android-sdk" ||
+  sanitizedEnvironment.ANDROID_SDK_ROOT !== "/fixture-android-sdk-root" ||
+  sanitizedEnvironment.LICO_ANDROID_JAVA_HOME !== "/fixture-lico-java" ||
   sanitizedEnvironment.JAVA_HOME !== "/fixture-java" ||
   sanitizedEnvironment.PATH !== "/fixture-bin" ||
   [
@@ -251,6 +259,7 @@ if (sanitizedEnvironment.HOME !== "/fixture-home" ||
     "JDK_JAVA_OPTIONS",
     "DYLD_INSERT_LIBRARIES",
     "LD_PRELOAD",
+    "GH_TOKEN",
   ].some((name) => Object.hasOwn(sanitizedEnvironment, name))) {
   throw new Error("Android release tool environment is injectable");
 }
