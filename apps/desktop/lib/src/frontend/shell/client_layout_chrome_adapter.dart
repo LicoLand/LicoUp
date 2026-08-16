@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
@@ -38,13 +39,27 @@ final class ClientLayoutChromeAdapter extends ChangeNotifier
 
   @override
   Future<void> openGlobalSearch(BuildContext context) async {
+    final strings = LicoStrings.of(context);
     showAgentConversationSearchPalette(
       context,
       _controller,
       features: buildGlobalSearchFeatures(
-        strings: LicoStrings.of(context),
+        strings: strings,
         onSelectSection: _controller.selectSection,
         onNewConversation: _controller.startNewConversationSession,
+      ),
+      settingsFeatures: buildSettingsSearchFeatures(
+        strings: strings,
+        onOpenSettings: () => _controller.selectSection(ClientSection.settings),
+      ),
+      agentFeatures: buildAgentSearchFeatures(
+        targets: _controller.scannedTargets,
+        onOpenAgentHub: () => _controller.selectSection(ClientSection.agentHub),
+      ),
+      pluginFeatures: buildPluginSearchFeatures(
+        adapters: _controller.adapterPluginController.adapters,
+        onOpenPlugins: () =>
+            _controller.selectSection(ClientSection.pluginManagement),
       ),
     );
   }
