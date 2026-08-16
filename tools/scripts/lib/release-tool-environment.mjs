@@ -13,6 +13,10 @@ const ALLOWED_RELEASE_TOOL_ENVIRONMENT = Object.freeze([
   "ComSpec",
   "PATHEXT",
   "ADB_VENDOR_KEYS",
+  "ANDROID_HOME",
+  "ANDROID_SDK_ROOT",
+  "JAVA_HOME",
+  "LICO_ANDROID_JAVA_HOME",
 ]);
 
 export function minimalReleaseToolEnvironment(base = process.env, overrides = {}) {
