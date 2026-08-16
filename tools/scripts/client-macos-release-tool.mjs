@@ -114,7 +114,7 @@ function runCapture(program, args, code, {
     encoding: "utf8",
     stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     ...(input === undefined ? {} : { input }),
-    timeout,
+    ...(timeout == null ? {} : { timeout }),
     maxBuffer: maximumCommandOutputBytes,
   });
   if (result.error || result.status !== 0) fail(code);
@@ -638,7 +638,7 @@ function runBeta() {
     safeStage(stage, "running");
     runCapture(process.execPath, args, code, {
       env: stageEnvironment,
-      timeout: stage === "package" ? 2 * 60 * 60 * 1000 : 45 * 60 * 1000,
+      timeout: stage === "package" ? null : 45 * 60 * 1000,
     });
     safeStage(stage, "passed");
   }
