@@ -172,7 +172,6 @@ export async function runLive(options, selfTestEvidence) {
           productReceiptJoined: true,
           productArtifactDigest: productReceipt.artifactDigest,
           productContinuityBindingDigest: productReceipt.continuityBindingDigest,
-          interruptSteerProven: productReceipt.interruptSteerProven,
         };
         aggregate.evidenceDigest = digest({ ...aggregate, evidenceDigest: undefined });
       }
@@ -204,7 +203,6 @@ export async function runLive(options, selfTestEvidence) {
         productReceiptJoined: true,
         productArtifactDigest: productReceipt.artifactDigest,
         productContinuityBindingDigest: productReceipt.continuityBindingDigest,
-        interruptSteerProven: productReceipt.interruptSteerProven,
       };
       aggregate.evidenceDigest = digest({ ...aggregate, evidenceDigest: undefined });
     }
