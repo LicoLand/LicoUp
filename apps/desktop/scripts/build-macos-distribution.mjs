@@ -777,6 +777,7 @@ export function coordinatePlatformChannel({
           : spawnTimeout(options)),
         ...(options.input !== undefined ? { input: options.input } : {}),
         ...(options.maxBuffer !== undefined ? { maxBuffer: options.maxBuffer } : {}),
+        ...(options.stdio !== undefined ? { stdio: options.stdio } : {}),
       });
     } catch {
       capture({ kind, program, args, failed: true });
@@ -929,7 +930,7 @@ export function coordinatePlatformChannel({
     run("app-notarize", "/usr/bin/xcrun", [
       "notarytool", "submit", submissionZip,
       "--keychain-profile", notaryKeychainProfile, "--wait",
-    ], "macos_distribution_notarization_failed", { timeout: null });
+    ], "macos_distribution_notarization_failed", { timeout: null, stdio: "ignore" });
   } finally {
     fs.rm(submissionZip, { force: true });
   }
@@ -983,7 +984,7 @@ export function coordinatePlatformChannel({
   run("dmg-notarize", "/usr/bin/xcrun", [
     "notarytool", "submit", dmgPath,
     "--keychain-profile", notaryKeychainProfile, "--wait",
-  ], "macos_distribution_notarization_failed", { timeout: null });
+  ], "macos_distribution_notarization_failed", { timeout: null, stdio: "ignore" });
   run("dmg-staple", "/usr/bin/xcrun", ["stapler", "staple", dmgPath],
     "macos_distribution_staple_failed");
   run("dmg-staple-validate", "/usr/bin/xcrun", ["stapler", "validate", dmgPath],
