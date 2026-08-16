@@ -437,9 +437,11 @@ export function parsePushUpdates(input) {
     const fields = line.trim().split(/\s+/u);
     requireValue(fields.length === 4, "audit_branch_flow_invalid");
     const [localRef, localSha, remoteRef, remoteSha] = fields;
-    requireValue(/^refs\/(?:heads|tags)\//u.test(localRef) &&
+    const localRefReady = localRef === "(delete)"
+      ? zeroObjectId.test(localSha)
+      : /^refs\/(?:heads|tags)\//u.test(localRef) && objectIdPattern.test(localSha);
+    requireValue(localRefReady &&
       /^refs\/(?:heads|tags)\//u.test(remoteRef) &&
-      (objectIdPattern.test(localSha) || zeroObjectId.test(localSha)) &&
       (objectIdPattern.test(remoteSha) || zeroObjectId.test(remoteSha)),
     "audit_branch_flow_invalid");
     updates.push({ localRef, localSha, remoteRef, remoteSha });
@@ -451,8 +453,8 @@ function hook(args) {
   requireValue(args.length >= 1 && args.length <= 2 && args[0] === "origin",
     "audit_branch_flow_invalid");
   for (const update of parsePushUpdates(readFileSync(0, "utf8"))) {
-    if (zeroObjectId.test(update.localSha)) continue;
     requireValue(!longLivedRefs.has(update.remoteRef), "audit_branch_flow_invalid");
+    if (zeroObjectId.test(update.localSha)) continue;
     if (!update.remoteRef.startsWith("refs/heads/release-candidate/")) continue;
     const version = JSON.parse(git(["show", `${update.localSha}:tools/client-version.json`],
       "audit_version_authority_invalid"));
