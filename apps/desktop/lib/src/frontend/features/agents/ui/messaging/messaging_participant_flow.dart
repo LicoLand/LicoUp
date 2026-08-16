@@ -10,7 +10,9 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
@@ -303,11 +305,25 @@ class MessagingParticipantFlow extends StatefulWidget {
 
 class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   late int _visibleEntryCount;
+  ScrollController? _ownedScrollController;
+  bool _atLatest = true;
+
+  /// Reverse lists keep the newest rows at offset 0. Treat a small residual
+  /// as still "at latest" so the control does not flicker.
+  static const double _atLatestThreshold = 48;
+
+  ScrollController get _scrollController =>
+      widget.scrollController ?? _ownedScrollController!;
 
   @override
   void initState() {
     super.initState();
     _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
+    if (widget.scrollController == null) {
+      _ownedScrollController = ScrollController();
+    }
+    _scrollController.addListener(_syncAtLatest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAtLatest());
   }
 
   @override
@@ -316,7 +332,47 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     if (oldWidget.sessionKey != widget.sessionKey) {
       // A different conversation starts from its own newest window.
       _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
+      _atLatest = true;
     }
+    if (oldWidget.scrollController != widget.scrollController) {
+      (oldWidget.scrollController ?? _ownedScrollController)?.removeListener(
+        _syncAtLatest,
+      );
+      if (widget.scrollController == null) {
+        _ownedScrollController ??= ScrollController();
+      } else {
+        _ownedScrollController?.dispose();
+        _ownedScrollController = null;
+      }
+      _scrollController.addListener(_syncAtLatest);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncAtLatest());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_syncAtLatest);
+    _ownedScrollController?.dispose();
+    super.dispose();
+  }
+
+  void _syncAtLatest() {
+    final atLatest =
+        !_scrollController.hasClients ||
+        _scrollController.position.maxScrollExtent <= 0 ||
+        _scrollController.position.pixels <= _atLatestThreshold;
+    if (atLatest == _atLatest || !mounted) {
+      return;
+    }
+    setState(() => _atLatest = atLatest);
+  }
+
+  void _jumpToLatest() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    _scrollController.jumpTo(0);
+    _syncAtLatest();
   }
 
   TargetCandidate? _participantTarget(String participantAgentId) {
@@ -371,27 +427,49 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     return NotificationListener<ScrollNotification>(
       onNotification: _loadEarlierOnScroll,
       child: SelectionArea(
-        child: ListView.builder(
-          controller: widget.scrollController,
-          key: PageStorageKey<String>(
-            'messaging-participant-flow-${widget.sessionKey}',
-          ),
-          reverse: true,
-          padding: EdgeInsets.fromLTRB(
-            LicoContentSpacing.item,
-            LicoContentSpacing.item + widget.topOverlayInset,
-            LicoContentSpacing.item,
-            LicoContentSpacing.item +
-                widget.adapter.assistantVerticalPadding +
-                widget.bottomOverlayInset,
-          ),
-          itemCount: visibleEntries.length,
-          itemBuilder: (context, index) {
-            final entry = visibleEntries[index];
-            // A streamed reply changes one entry per frame. Without a repaint
-            // boundary per entry the whole visible flow repaints with it.
-            return RepaintBoundary(child: _entryContent(context, entry));
-          },
+        child: Stack(
+          children: [
+            ListView.builder(
+              controller: _scrollController,
+              key: PageStorageKey<String>(
+                'messaging-participant-flow-${widget.sessionKey}',
+              ),
+              reverse: true,
+              padding: EdgeInsets.fromLTRB(
+                LicoContentSpacing.item,
+                LicoContentSpacing.item + widget.topOverlayInset,
+                LicoContentSpacing.item,
+                LicoContentSpacing.item +
+                    widget.adapter.assistantVerticalPadding +
+                    widget.bottomOverlayInset,
+              ),
+              itemCount: visibleEntries.length,
+              itemBuilder: (context, index) {
+                final entry = visibleEntries[index];
+                // A streamed reply changes one entry per frame. Without a
+                // repaint boundary per entry the whole visible flow
+                // repaints with it.
+                return RepaintBoundary(child: _entryContent(context, entry));
+              },
+            ),
+            if (!_atLatest)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    bottom:
+                        widget.bottomOverlayInset +
+                        MessagingDesktopMetrics.conversationScrollToLatestGap,
+                  ),
+                  child: SelectionContainer.disabled(
+                    child: MessagingScrollToLatestButton(
+                      key: const Key('conversation-scroll-to-latest'),
+                      onPressed: _jumpToLatest,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

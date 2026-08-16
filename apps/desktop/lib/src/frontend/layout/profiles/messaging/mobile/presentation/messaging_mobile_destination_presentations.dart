@@ -79,9 +79,9 @@ final class MessagingMobileSettingsPresentation
   @override
   EdgeInsetsGeometry get sectionHeaderPadding => const EdgeInsets.fromLTRB(
     LicoContentSpacing.item,
-    LicoContentSpacing.section,
     LicoContentSpacing.item,
-    LicoContentSpacing.inline,
+    LicoContentSpacing.item,
+    LicoContentSpacing.compact,
   );
 
   @override
@@ -89,20 +89,12 @@ final class MessagingMobileSettingsPresentation
     LicoContentSpacing.item,
     LicoContentSpacing.item,
     LicoContentSpacing.item,
-    0,
+    LicoContentSpacing.item,
   );
 
   @override
   EdgeInsetsGeometry get selectorGridPadding =>
       const EdgeInsets.only(top: LicoContentSpacing.item);
-
-  @override
-  EdgeInsetsGeometry get selectorActionPadding => const EdgeInsets.fromLTRB(
-    LicoContentSpacing.item,
-    0,
-    LicoContentSpacing.item,
-    LicoContentSpacing.compact,
-  );
 
   @override
   Widget frameIndex(

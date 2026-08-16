@@ -30,6 +30,8 @@ void main() {
 
       final conversationService = AcceptanceConversationService();
       final controller = createAcceptanceController(conversationService);
+      addTearDown(controller.dispose);
+      await controller.layoutManager.initialize();
 
       await tester.pumpWidget(
         LicoApp(

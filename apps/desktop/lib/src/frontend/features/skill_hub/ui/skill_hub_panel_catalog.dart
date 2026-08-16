@@ -4,8 +4,11 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_search.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SkillCategoryFilter extends StatelessWidget {
@@ -23,10 +26,10 @@ class SkillCategoryFilter extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.only(bottom: LicoContentSpacing.item),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: LicoContentSpacing.compact,
+        runSpacing: LicoContentSpacing.compact,
         children: [
           _SkillCategoryChip(
             label: strings.allSkills,
@@ -70,7 +73,7 @@ class _SkillCategoryChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: LicoMotion.short,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? colors.primary : colors.surfaceLow,
@@ -99,22 +102,23 @@ class SkillCollection extends StatelessWidget {
     super.key,
     required this.controller,
     required this.selectedCategory,
+    this.searchQuery = '',
   });
 
   final ClientController controller;
   final String selectedCategory;
+  final String searchQuery;
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    final skills = controller.skillHubSkills.where((skill) {
-      final isPublic = skill['isPublic'] == true;
-      if (selectedCategory == 'public') return isPublic;
-      if (selectedCategory == 'private') return !isPublic;
-      return true;
-    }).toList();
+    final skills = filterAndRankSkillHubSkills(
+      skills: controller.skillHubSkills,
+      category: selectedCategory,
+      query: searchQuery,
+    );
 
-    if (controller.isSkillHubBusy && skills.isEmpty) {
+    if (controller.isSkillHubBusy && controller.skillHubSkills.isEmpty) {
       return const SliverFillRemaining(
         hasScrollBody: false,
         child: SkillScanningPlaceholder(),
@@ -134,13 +138,13 @@ class SkillCollection extends StatelessWidget {
     }
 
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      padding: EdgeInsets.zero,
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 340,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.35,
+          mainAxisExtent: 248,
         ),
         delegate: SliverChildBuilderDelegate((context, index) {
           return _SkillCard(controller: controller, skill: skills[index]);
@@ -218,22 +222,14 @@ class _SkillCard extends StatelessWidget {
                       colors: colors,
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: colors.text,
-                      ),
-                    ),
+                    SkillCardTitle(title: title, color: colors.text),
                     if (author.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         author,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        softWrap: true,
                         style: TextStyle(
                           fontSize: 11,
                           color: colors.textMuted,
@@ -242,19 +238,11 @@ class _SkillCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 6),
-                    Expanded(
-                      child: Text(
-                        description.isNotEmpty
-                            ? description
-                            : strings.noDescription,
-                        maxLines: author.isNotEmpty ? 2 : 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.textMuted,
-                          height: 1.35,
-                        ),
-                      ),
+                    SkillCardDescription(
+                      text: description.isNotEmpty
+                          ? description
+                          : strings.noDescription,
+                      color: colors.textMuted,
                     ),
                   ],
                 ),

@@ -186,7 +186,7 @@ void main() {
         find.byKey(const Key('secure-mesh-file-sync-pick-source')),
         findsOneWidget,
       );
-      expect(find.text('Pairing'), findsOneWidget);
+      expect(find.text('Communication'), findsOneWidget);
       expect(
         find.byKey(const Key('pairing-qr-workspace-card')),
         findsOneWidget,
