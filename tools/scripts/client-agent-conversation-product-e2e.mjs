@@ -39,14 +39,6 @@ const defaultAgent = "codex";
 const selfTestChallengeDigest = `sha256:${"a".repeat(64)}`;
 const selfTestModel = verificationModelForAgent(defaultAgent);
 const validationModels = verificationModelsMap();
-const interruptSteerAgents = new Set(
-  JSON.parse(readFileSync(resolve(
-    root,
-    "crates/licoup-native/resources/agent-conversation-drivers.json",
-  ), "utf8")).drivers
-    .filter((driver) => driver?.capabilityMatrix?.interruptSteer === true)
-    .map((driver) => driver.agentId),
-);
 const runnableApp = resolve(root, "build/apps/desktop/runnable/macos/release/LicoUp.app");
 const defaultOutput = resolve(root, "build/reports/agent-conversation-product-e2e.json");
 const liveReceiptFields = new Set([
@@ -65,7 +57,6 @@ const liveReceiptFields = new Set([
   "progressiveTimelineVisible",
   "sameNativeSessionId",
   "historyReadback",
-  "interruptSteerProven",
   "turnCount",
   "invocationChallengeDigest",
 ]);
@@ -155,7 +146,6 @@ function decodeLiveReceipt(encodedOutput, expectedAgent = defaultAgent, expected
     && receipt.progressiveTimelineVisible === true
     && receipt.sameNativeSessionId === true
     && receipt.historyReadback === true
-    && receipt.interruptSteerProven === interruptSteerAgents.has(expectedAgent)
     && receipt.turnCount === 2;
   const challengeBound = receipt.invocationChallengeDigest === expectedChallengeDigest;
   if (!valid || !challengeBound) fail("release_ui_live_receipt_incomplete");
@@ -178,12 +168,15 @@ function encodedLiveReceipt(overrides = {}) {
     progressiveTimelineVisible: true,
     sameNativeSessionId: true,
     historyReadback: true,
-    interruptSteerProven: interruptSteerAgents.has(defaultAgent),
     turnCount: 2,
     invocationChallengeDigest: selfTestChallengeDigest,
     ...overrides,
   };
   return `${sentinel}${Buffer.from(JSON.stringify(receipt)).toString("base64url")}`;
+}
+
+function occurrenceCount(source, token) {
+  return source.split(token).length - 1;
 }
 
 function selfTest() {
@@ -211,7 +204,6 @@ function selfTest() {
     { progressiveTimelineVisible: false },
     { sameNativeSessionId: false },
     { historyReadback: false },
-    { interruptSteerProven: false },
     { nativeSessionId: "" },
     { turnCount: 1 },
     { agentId: "unexpected-agent" },
@@ -230,6 +222,15 @@ function selfTest() {
       rejects.push(true);
     }
   }
+  const oneConversationTwoMessagesBound =
+    occurrenceCount(liveSource, "controller.startNewConversationSession();") === 1
+    && occurrenceCount(liveSource, "await _submitComposer(") === 2
+    && !liveSource.includes(".steer(")
+    && !runnerSource.includes([
+      "LICO_AGENT_CONVERSATION_PRODUCT",
+      "STEER_PROMPT",
+    ].join("_"))
+    && runnerSource.includes("const secondPrompt = acceptancePrompt(secondExpected);");
   const sourceBound = runnerSource.includes('spawnSync("npm", ["run", "client:build:macos"]')
     && runnerSource.includes("LICO_AGENT_CONVERSATION_RELEASE_LIVE")
     && liveSource.includes("ClientController()")
@@ -251,7 +252,8 @@ function selfTest() {
     && runnerSource.includes("LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED")
     && runnerSource.includes("LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED")
     && runnerSource.includes("delete runtimeEnvironment.CARGO_TARGET_DIR")
-    && runnerSource.includes("releaseUiPassed: false");
+    && runnerSource.includes("releaseUiPassed: false")
+    && oneConversationTwoMessagesBound;
   const bindingInput = {
     artifactDigest: `sha256:${"1".repeat(64)}`,
     invocationChallengeDigest: selfTestChallengeDigest,
@@ -275,6 +277,7 @@ function selfTest() {
     fixtureReceiptRejected: rejects[3] === true,
     releaseReceiptFailClosed: rejects.every(Boolean),
     packagedLivePathBound: sourceBound,
+    oneConversationTwoMessagesBound,
     invocationBindingRecomputed: bindingBound,
   };
 }
@@ -385,12 +388,7 @@ function runReleaseApplication(appBundle, agentId, invocationChallengeDigest) {
   const secondExpected = String((Number.parseInt(canary.slice(20, 28), 16) % 9000) + 1000);
   const acceptancePrompt = (expected) =>
     `Acceptance marker ${marker}. Do not repeat the marker. Reply with exactly ${expected} and no other text. Do not call tools or request permissions.`;
-  const steerExpected = interruptSteerAgents.has(agentId);
-  const secondPrompt = steerExpected
-    ? `Acceptance marker ${marker}. Begin a long numbered list from 500 down to 1. Keep writing until interrupted. Do not call tools or request permissions.`
-    : acceptancePrompt(secondExpected);
-  const steerPrompt =
-    `Stop the active reply. Reply with exactly ${secondExpected} and no other text. Do not call tools or request permissions.`;
+  const secondPrompt = acceptancePrompt(secondExpected);
   try {
     const runtimeEnvironment = {
       ...process.env,
@@ -411,7 +409,6 @@ function runReleaseApplication(appBundle, agentId, invocationChallengeDigest) {
         LICO_AGENT_CONVERSATION_PRODUCT_MODEL: validationModels[agentId] || "agent-default",
         LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT: acceptancePrompt(firstExpected),
         LICO_AGENT_CONVERSATION_PRODUCT_SECOND_PROMPT: secondPrompt,
-        LICO_AGENT_CONVERSATION_PRODUCT_STEER_PROMPT: steerPrompt,
         LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED: firstExpected,
         LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED: secondExpected,
         LICO_AGENT_CONVERSATION_PRODUCT_RECEIPT: receiptPath,
@@ -491,7 +488,6 @@ function runProductAcceptance(options) {
         productLivePassed: true,
         releaseUiPassed: false,
         cleanupPassed,
-        interruptSteerProven: receipt.interruptSteerProven,
         nativeContinuityDigest: nativeDigest,
         productContinuityBindingDigest: productContinuityBindingDigest({
           artifactDigest: artifact.digest,
@@ -507,8 +503,6 @@ function runProductAcceptance(options) {
     progressiveTimelineVisible: receipts.every(({ receipt }) => receipt.progressiveTimelineVisible),
     sameNativeSessionId: receipts.every(({ receipt }) => receipt.sameNativeSessionId),
     historyReadback: receipts.every(({ receipt }) => receipt.historyReadback),
-    interruptSteerProven: receipts.every(({ receipt }) =>
-      receipt.interruptSteerProven === interruptSteerAgents.has(receipt.agentId)),
     artifactDigest: artifact.digest,
     artifactFileCount: artifact.fileCount,
     artifactName: basename(appBundle),
