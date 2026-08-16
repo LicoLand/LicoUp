@@ -325,7 +325,8 @@ export async function checkClientRootAndShell(context, {
     clientShellSource.includes("ClientSection.skillHub => SkillHubPanel") &&
     clientShellSource.includes("ClientSection.pluginManagement => AdapterPluginPanel") &&
     clientShellSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
-    clientShellSource.includes("ClientSection.settings => SettingsPanel"),
+    clientShellSource.includes("ClientSection.settings => SettingsPanel") &&
+    clientShellSource.includes("ClientSection.agentHub => AgentHubPanel"),
     "LicoUp client shell must expose only the current top-level section bodies"
   );
   for (const [relativePath, source] of [
@@ -344,6 +345,7 @@ export async function checkClientRootAndShell(context, {
     ["agents", "Agents"],
     ["tokenUsage", "Token Usage"],
     ["skillHub", "Skill Hub"],
+    ["agentHub", "Agent Hub"],
     ["mobileRelay", "Mobile Relay"],
     ["settings", "Settings"]
   ]) {
@@ -353,7 +355,7 @@ export async function checkClientRootAndShell(context, {
       `LicoStrings must expose the current module label through ${getter}`
     );
   }
-  for (const getter of ["agents", "tokenUsage", "skillHub", "mobileRelay", "settings"]) {
+  for (const getter of ["agents", "tokenUsage", "skillHub", "agentHub", "mobileRelay", "settings"]) {
     assert(
       clientShellSource.includes(`strings.${getter}`),
       `client shell must resolve destination labels through LicoStrings.${getter}`

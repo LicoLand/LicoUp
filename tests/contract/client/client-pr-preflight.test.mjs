@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,9 +116,24 @@ test("receipt is strict, source-bound, and privacy-safe", () => {
 });
 
 test("pre-push parser is bounded and target stages include real closure", () => {
+  const zeroObjectId = "0".repeat(40);
   const line = `refs/heads/release-candidate/v1.2.3-macos-arm64 ${sourceRevision} ` +
-    `refs/heads/release-candidate/v1.2.3-macos-arm64 ${"0".repeat(40)}\n`;
+    `refs/heads/release-candidate/v1.2.3-macos-arm64 ${zeroObjectId}\n`;
   assert.equal(parsePushUpdates(line).length, 1);
+  assert.deepEqual(
+    parsePushUpdates(
+      `(delete) ${zeroObjectId} refs/heads/fix/merged ${sourceRevision}\n`,
+    ),
+    [{
+      localRef: "(delete)",
+      localSha: zeroObjectId,
+      remoteRef: "refs/heads/fix/merged",
+      remoteSha: sourceRevision,
+    }],
+  );
+  assert.throws(() => parsePushUpdates(
+    `(delete) ${sourceRevision} refs/heads/fix/merged ${sourceRevision}\n`,
+  ));
   assert.throws(() => parsePushUpdates("malformed"));
   assert.deepEqual(
     targetStages("macos-direct-arm64").map(([id]) => id),
@@ -130,6 +146,25 @@ test("pre-push parser is bounded and target stages include real closure", () => 
       "verify-package",
     ],
   );
+});
+
+test("pre-push hook allows temporary branch deletion but protects long-lived branches", () => {
+  const script = path.join(repoRoot, "tools/scripts/client-pr-preflight.mjs");
+  const zeroObjectId = "0".repeat(40);
+  const runDeletion = (branch) => spawnSync(
+    process.execPath,
+    [script, "hook", "origin"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      input: `(delete) ${zeroObjectId} refs/heads/${branch} ${sourceRevision}\n`,
+    },
+  );
+
+  assert.equal(runDeletion("fix/merged").status, 0);
+  const longLivedDeletion = runDeletion("nightly");
+  assert.equal(longLivedDeletion.status, 1);
+  assert.match(longLivedDeletion.stderr, /audit_branch_flow_invalid/u);
 });
 
 test("release preflight runs each selected platform demo exactly once", () => {

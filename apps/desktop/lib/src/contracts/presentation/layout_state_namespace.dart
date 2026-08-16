@@ -35,6 +35,10 @@ abstract final class LayoutStateChannels {
     'settings-index',
     LayoutStateValueKind.paneExtent,
   );
+  static const communicationSection = LayoutStateChannel(
+    'communication-section',
+    LayoutStateValueKind.tab,
+  );
 }
 
 /// A bounded presentation-state address declared by a profile manifest.

@@ -52,8 +52,23 @@ void main() {
       expect(find.byKey(const Key('messaging-sidebar-search')), findsOneWidget);
       expect(find.byKey(const Key('messaging-topstrip-search')), findsNothing);
 
+      expect(
+        find.byKey(const Key('agents-workspace-split-divider')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('messaging-sidebar-resize-handle')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('messaging-sidebar-foundation')),
+          matching: find.byKey(const Key('messaging-sidebar-resize-handle')),
+        ),
+        findsNothing,
+      );
       final sidebarCard = tester.widget<DecoratedBox>(
-        find.byKey(const Key('agents-workspace-sidebar-card')),
+        find.byKey(const Key('messaging-sidebar-column-card')),
       );
       final sidebarDecoration = sidebarCard.decoration as BoxDecoration;
       expect(

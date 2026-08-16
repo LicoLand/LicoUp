@@ -5,6 +5,7 @@ import 'package:licoup/src/application/features/agents/policy/conversation_sessi
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
@@ -14,9 +15,11 @@ import 'package:licoup/src/frontend/features/agents/ui/history_session_models.da
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/components/messaging_search_capsule.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_foundation.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
@@ -58,6 +61,10 @@ class MessagingContactList extends StatefulWidget {
     this.onTogglePinned,
     this.scanning = false,
     this.loading = false,
+    this.activeDestination = ClientSection.agents,
+    this.onSelectDestination,
+    this.settingsSectionIndex = 0,
+    this.onSelectSettingsSection,
   });
 
   final List<TargetCandidate> targets;
@@ -94,6 +101,13 @@ class MessagingContactList extends StatefulWidget {
   final ValueChanged<String>? onTogglePinned;
   final bool scanning;
   final bool loading;
+
+  /// Which of the four sidebar tabs is active. The list body follows this
+  /// identity; the bottom nav stays mounted across the four destinations.
+  final ClientSection activeDestination;
+  final ValueChanged<ClientSection>? onSelectDestination;
+  final int settingsSectionIndex;
+  final ValueChanged<int>? onSelectSettingsSection;
 
   @override
   State<MessagingContactList> createState() => _MessagingContactListState();
@@ -152,6 +166,9 @@ class _MessagingContactListState extends State<MessagingContactList> {
     final groups = <_MessagingContactGroup>[];
     final indexByName = <String, int>{};
     for (final target in widget.targets) {
+      if (!target.isConversationAgent) {
+        continue;
+      }
       final name = agentConversationTargetDisplayName(target);
       final key = name.toLowerCase();
       final index = indexByName[key];
@@ -302,259 +319,207 @@ class _MessagingContactListState extends State<MessagingContactList> {
     }
   }
 
+  bool get _showsConversations =>
+      widget.activeDestination == ClientSection.agents;
+
   @override
   Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    return MessagingSidebarFoundation(
+      key: widget.showConversationList && _showsConversations
+          ? const Key('messaging-conversation-list')
+          : const Key('messaging-contact-list'),
+      heading: messagingSidebarHeading(strings, widget.activeDestination),
+      headingKey: const Key('messaging-contact-list-heading'),
+      headingActions: _showsConversations
+          ? _conversationHeadingActions()
+          : null,
+      onSearch: widget.onSearch,
+      searchBottomPadding: widget.showConversationList
+          ? 0
+          : LicoContentSpacing.compact,
+      contextualAction: _showsConversations && widget.showConversationList
+          ? _contextualActionBar()
+          : null,
+      list: _sidebarBody(),
+      bottomNav: MessagingSidebarBottomNav(
+        current: widget.activeDestination,
+        onSelectDestination: widget.onSelectDestination ?? (_) {},
+      ),
+    );
+  }
+
+  Widget _sidebarBody() {
+    if (!_showsConversations) {
+      return messagingSidebarListFor(
+        destination: widget.activeDestination,
+        onSelectDestination: widget.onSelectDestination ?? (_) {},
+        settingsSectionIndex: widget.settingsSectionIndex,
+        onSelectSettings: widget.onSelectSettingsSection,
+      );
+    }
+    if (widget.showConversationList) {
+      return SidebarConversationListView(
+        entries: flattenSidebarConversations(
+          targets: widget.conversationListTargets,
+          sessionsByAgent: widget.sessionsByAgent,
+          activityFor: widget.activityFor,
+        ),
+        selectedSessionId: widget.selectedSessionId,
+        earlierExpanded: _earlierExpanded,
+        showAgentIcons: widget.showConversationAgentIcons,
+        runningFor: widget.runningFor,
+        onToggleEarlier: () =>
+            setState(() => _earlierExpanded = !_earlierExpanded),
+        onSelectSession: widget.onSelectSession ?? (_, _) {},
+      );
+    }
+    return _contactListBody();
+  }
+
+  List<Widget> _conversationHeadingActions() {
+    final strings = LicoStrings.of(context);
+    return [
+      if (kDebugMode && widget.onOpenWelcome != null)
+        _MessagingContactActionButton(
+          key: const Key('messaging-open-welcome'),
+          tooltip: strings.welcome,
+          onPressed: widget.onOpenWelcome!,
+          icon: Icons.home_outlined,
+        ),
+      if (widget.onAdaptiveFlywheel != null)
+        _MessagingContactActionButton(
+          key: const Key('messaging-adaptive-flywheel'),
+          tooltip: 'Adaptive Flywheel',
+          onPressed: widget.onAdaptiveFlywheel!,
+          icon: Icons.account_tree_outlined,
+        ),
+      _MessagingContactActionButton(
+        key: _createMenuAnchorKey,
+        tooltip: strings.createConversation,
+        onPressed: _showCreateMenu,
+        icon: Icons.add_rounded,
+      ),
+    ];
+  }
+
+  Widget _contextualActionBar() {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    if (widget.showConversationList) {
-      final conversationEntries = flattenSidebarConversations(
-        targets: widget.conversationListTargets,
-        sessionsByAgent: widget.sessionsByAgent,
-        activityFor: widget.activityFor,
-      );
-      return ColoredBox(
-        key: const Key('messaging-conversation-list'),
-        color: Colors.transparent,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.onSearch != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
-                child: MessagingSearchCapsule(
-                  key: const Key('messaging-sidebar-search'),
-                  onTap: widget.onSearch!,
-                ),
-              ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                8,
-                widget.onSearch == null
-                    ? 12
-                    : MessagingDesktopMetrics.sidebarPrimaryControlGap,
-                8,
-                0,
-              ),
-              child: SizedBox(
-                height: 36,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        8,
+        widget.onSearch == null
+            ? 12
+            : MessagingDesktopMetrics.sidebarPrimaryControlGap,
+        8,
+        0,
+      ),
+      child: SizedBox(
+        height: 36,
+        child: Tooltip(
+          message: strings.conversationBack,
+          waitDuration: LicoMotion.tooltipWait,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const Key('messaging-conversation-list-back'),
+              onTap: widget.onBack,
+              borderRadius: BorderRadius.circular(LicoRadius.floating),
+              hoverColor: ConversationVisualTokens.quietRowHover(colors),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: Row(
                   children: [
+                    Icon(
+                      Icons.arrow_back_rounded,
+                      size: 18,
+                      color: colors.textMuted,
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: SizedBox.expand(
-                        child: Tooltip(
-                          message: strings.conversationBack,
-                          waitDuration: LicoMotion.tooltipWait,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              key: const Key(
-                                'messaging-conversation-list-back',
-                              ),
-                              onTap: widget.onBack,
-                              borderRadius: BorderRadius.circular(
-                                LicoRadius.floating,
-                              ),
-                              hoverColor:
-                                  ConversationVisualTokens.quietRowHover(
-                                    colors,
-                                  ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.arrow_back_rounded,
-                                      size: 18,
-                                      color: colors.textMuted,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        strings.conversationBack,
-                                        key: const Key(
-                                          'messaging-conversation-list-back-label',
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: LicoTypography.actionLabel(
-                                          color: colors.text,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
+                      child: Text(
+                        strings.conversationBack,
+                        key: const Key(
+                          'messaging-conversation-list-back-label',
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: LicoTypography.actionLabel(color: colors.text),
                       ),
                     ),
-                    if (kDebugMode && widget.onOpenWelcome != null)
-                      _MessagingContactActionButton(
-                        key: const Key('messaging-open-welcome'),
-                        tooltip: strings.welcome,
-                        onPressed: widget.onOpenWelcome!,
-                        icon: Icons.home_outlined,
-                      ),
                   ],
                 ),
               ),
             ),
-            Expanded(
-              child: SidebarConversationListView(
-                entries: conversationEntries,
-                selectedSessionId: widget.selectedSessionId,
-                earlierExpanded: _earlierExpanded,
-                showAgentIcons: widget.showConversationAgentIcons,
-                runningFor: widget.runningFor,
-                onToggleEarlier: () =>
-                    setState(() => _earlierExpanded = !_earlierExpanded),
-                onSelectSession: widget.onSelectSession ?? (_, _) {},
-              ),
-            ),
-          ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _contactListBody() {
+    final listItems = _combinedItems(_entries());
+    if (listItems.isEmpty) {
+      return _MessagingContactListEmpty(
+        scanning: widget.scanning,
+        loading: widget.loading,
       );
     }
-    final entries = _entries();
-    final listItems = _combinedItems(entries);
-    return ColoredBox(
-      key: const Key('messaging-contact-list'),
-      color: Colors.transparent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.onSearch != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
-              child: MessagingSearchCapsule(
-                key: const Key('messaging-sidebar-search'),
-                onTap: widget.onSearch!,
+    return ScrollConfiguration(
+      behavior: const _MessagingSlimScrollbarBehavior(),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+        itemCount: listItems.length,
+        itemBuilder: (context, index) {
+          final item = listItems[index];
+          final conversation = item.groupConversation;
+          if (conversation != null) {
+            final setPinned = widget.onSetGroupConversationPinned;
+            return _MessagingCanonicalGroupRow(
+              key: ValueKey<String>(
+                'messaging-group-conversation-${conversation.id}',
               ),
+              conversation: conversation,
+              selected: conversation.id == widget.selectedGroupConversationId,
+              onTap: widget.onSelectGroupConversation == null
+                  ? null
+                  : () => widget.onSelectGroupConversation!(conversation.id),
+              onSecondaryTapDown: setPinned == null
+                  ? null
+                  : (details) => _showPinMenu(
+                      context: context,
+                      globalPosition: details.globalPosition,
+                      pinned: conversation.pinned,
+                      onToggle: () =>
+                          setPinned(conversation.id, !conversation.pinned),
+                    ),
+            );
+          }
+          final entry = item.contact!;
+          return _MessagingContactRow(
+            key: ValueKey<String>(
+              'messaging-contact-${entry.group.members.first.id}',
             ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              14,
-              widget.onSearch == null ? 12 : 6,
-              6,
-              6,
-            ),
-            child: SizedBox(
-              height: 36,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      strings.contacts,
-                      key: const Key('messaging-contact-list-heading'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.text,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+            entry: entry,
+            selected:
+                widget.selectedGroupConversationId.isEmpty &&
+                entry.group.members.any(
+                  (member) =>
+                      member.id == widget.selectedAgentId ||
+                      member.target == widget.selectedAgentId,
+                ),
+            onTap: () => widget.onSelectAgent(entry.group.members.first.id),
+            onSecondaryTapDown: widget.onTogglePinned == null
+                ? null
+                : (details) => _showPinMenu(
+                    context: context,
+                    globalPosition: details.globalPosition,
+                    pinned: entry.pinned,
+                    onToggle: () => _toggleContactPinned(entry),
                   ),
-                  if (kDebugMode && widget.onOpenWelcome != null)
-                    _MessagingContactActionButton(
-                      key: const Key('messaging-open-welcome'),
-                      tooltip: strings.welcome,
-                      onPressed: widget.onOpenWelcome!,
-                      icon: Icons.home_outlined,
-                    ),
-                  if (widget.onAdaptiveFlywheel != null)
-                    _MessagingContactActionButton(
-                      key: const Key('messaging-adaptive-flywheel'),
-                      tooltip: 'Adaptive Flywheel',
-                      onPressed: widget.onAdaptiveFlywheel!,
-                      icon: Icons.account_tree_outlined,
-                    ),
-                  _MessagingContactActionButton(
-                    key: _createMenuAnchorKey,
-                    tooltip: strings.createConversation,
-                    onPressed: _showCreateMenu,
-                    icon: Icons.add_rounded,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: listItems.isEmpty
-                ? _MessagingContactListEmpty(
-                    scanning: widget.scanning,
-                    loading: widget.loading,
-                  )
-                : ScrollConfiguration(
-                    behavior: const _MessagingSlimScrollbarBehavior(),
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-                      itemCount: listItems.length,
-                      itemBuilder: (context, index) {
-                        final item = listItems[index];
-                        final conversation = item.groupConversation;
-                        if (conversation != null) {
-                          final setPinned = widget.onSetGroupConversationPinned;
-                          return _MessagingCanonicalGroupRow(
-                            key: ValueKey<String>(
-                              'messaging-group-conversation-${conversation.id}',
-                            ),
-                            conversation: conversation,
-                            selected:
-                                conversation.id ==
-                                widget.selectedGroupConversationId,
-                            onTap: widget.onSelectGroupConversation == null
-                                ? null
-                                : () => widget.onSelectGroupConversation!(
-                                    conversation.id,
-                                  ),
-                            onSecondaryTapDown: setPinned == null
-                                ? null
-                                : (details) => _showPinMenu(
-                                    context: context,
-                                    globalPosition: details.globalPosition,
-                                    pinned: conversation.pinned,
-                                    onToggle: () => setPinned(
-                                      conversation.id,
-                                      !conversation.pinned,
-                                    ),
-                                  ),
-                          );
-                        }
-                        final entry = item.contact!;
-                        return _MessagingContactRow(
-                          key: ValueKey<String>(
-                            'messaging-contact-${entry.group.members.first.id}',
-                          ),
-                          entry: entry,
-                          selected:
-                              widget.selectedGroupConversationId.isEmpty &&
-                              entry.group.members.any(
-                                (member) =>
-                                    member.id == widget.selectedAgentId ||
-                                    member.target == widget.selectedAgentId,
-                              ),
-                          onTap: () => widget.onSelectAgent(
-                            entry.group.members.first.id,
-                          ),
-                          onSecondaryTapDown: widget.onTogglePinned == null
-                              ? null
-                              : (details) => _showPinMenu(
-                                  context: context,
-                                  globalPosition: details.globalPosition,
-                                  pinned: entry.pinned,
-                                  onToggle: () => _toggleContactPinned(entry),
-                                ),
-                        );
-                      },
-                    ),
-                  ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

@@ -1,7 +1,7 @@
 import Cocoa
 import FlutterMacOS
 
-class MainFlutterWindow: NSWindow {
+class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// Must stay in sync with `AppleControlMetrics.topBarHeight` in Flutter.
   private let flutterTopBarHeight: CGFloat = 48
 
@@ -96,6 +96,10 @@ class MainFlutterWindow: NSWindow {
     )
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    self.delegate = self
+    if MacStatusBarPresencePolicy.createsStatusItemAtLaunch {
+      MacStatusBarPresence.shared.attach(mainWindow: self)
+    }
 
     // Window-chrome bridge for the Flutter shell's hidden-titlebar chrome:
     // hand in-flight drags to AppKit and offer deliberate zoom, mirroring the
@@ -127,6 +131,16 @@ class MainFlutterWindow: NSWindow {
     }
 
     super.awakeFromNib()
+  }
+
+  override func performClose(_ sender: Any?) {
+    if MacStatusBarPresence.shared.windowShouldClose(self) {
+      super.performClose(sender)
+    }
+  }
+
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    MacStatusBarPresence.shared.windowShouldClose(sender)
   }
 
   @objc private func windowDidResizeNotification(_ notification: Notification) {
