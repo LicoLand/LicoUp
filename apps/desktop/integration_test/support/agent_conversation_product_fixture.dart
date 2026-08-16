@@ -36,6 +36,7 @@ final acceptanceAgentTarget = TargetCandidate(
   status: 'detected',
   configured: true,
   confidence: 1,
+  binaryPath: '/synthetic/bin/$acceptanceAgentId',
   adapterStatus: 'implemented',
   adapterCapabilities: const {
     'conversationDriver': 'implemented',
