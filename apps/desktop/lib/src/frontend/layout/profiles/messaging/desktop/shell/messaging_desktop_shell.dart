@@ -8,18 +8,16 @@ import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_content_region.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_destination_rail.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_main_content_card.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_profile_page.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_column.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_top_strip.dart';
 
 /// Messaging desktop shell hierarchy: a full-width frosted-glass chrome band
-/// (traffic-light inset plus the global search capsule), then a content row
-/// of the destination rail, [MessagingContentRegion], and one rounded main
-/// card on the shared glass shell.
-/// The rail holds the page destinations; an optional aux chrome panel can
-/// still replace the card with the local profile page without touching the
-/// semantic destination model.
+/// (traffic-light inset, conversation tabs, token-usage, and notifications),
+/// then [MessagingContentRegion] with one rounded main card whose left column
+/// is the shared resizable sidebar foundation.
 Widget buildMessagingDesktopMediumShell(
   BuildContext context,
   LayoutShellBuildContext data,
@@ -115,25 +113,15 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
       children: [
         MessagingChromeBand(
           chrome: data.chrome,
-          showSearch: data.activeDestination != ClientSection.agents,
+          showSearch: !messagingSidebarNavHosts(data.activeDestination),
+          section: data.activeDestination,
+          onSelectSection: _selectDestination,
         ),
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              MessagingDestinationRail(
-                section: data.activeDestination,
-                onSelectSection: _selectDestination,
-                profileOpen: profileOpen,
-              ),
-              Expanded(
-                child: MessagingContentRegion(
-                  child: MessagingMainContentCard(
-                    child: _mainCardBody(data, profileOpen: profileOpen),
-                  ),
-                ),
-              ),
-            ],
+          child: MessagingContentRegion(
+            child: MessagingMainContentCard(
+              child: _mainCardBody(data, profileOpen: profileOpen),
+            ),
           ),
         ),
       ],
@@ -156,7 +144,29 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
                   _selectDestination(ClientSection.mobileRelay),
               onOpenSettings: () => _selectDestination(ClientSection.settings),
             )
-          : LayoutChromePortScope(chrome: data.chrome, child: data.destination),
+          : LayoutChromePortScope(
+              chrome: data.chrome,
+              child: MessagingSidebarGeometry(
+                child: _destinationWithSidebar(data),
+              ),
+            ),
+    );
+  }
+
+  Widget _destinationWithSidebar(LayoutShellBuildContext data) {
+    final destination = data.activeDestination;
+    // Agents renders the conversation list through the same column widget,
+    // reading width from MessagingSidebarGeometry. Monitoring is full-width.
+    // Other hosted destinations keep that column so width does not jump.
+    if (!messagingSidebarKeepsColumn(destination)) {
+      return data.destination;
+    }
+    return MessagingSidebarColumn(
+      sidebar: MessagingDesktopNavSidebar(
+        destination: destination,
+        onSelectDestination: _selectDestination,
+      ),
+      detail: data.destination,
     );
   }
 }

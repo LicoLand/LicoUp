@@ -1,20 +1,92 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-class AgentUsageEmptyState extends StatelessWidget {
-  const AgentUsageEmptyState({super.key});
+class AgentUsagePanelHeader extends StatelessWidget {
+  const AgentUsagePanelHeader({
+    super.key,
+    required this.title,
+    this.onExit,
+    this.trailing = const <Widget>[],
+  });
+
+  final String title;
+  final VoidCallback? onExit;
+  final List<Widget> trailing;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
-        LicoStrings.of(context).noUsageReportYet,
-        style: TextStyle(color: colors.textMuted, fontWeight: FontWeight.w700),
-      ),
+    final strings = LicoStrings.of(context);
+    return Row(
+      children: [
+        if (onExit != null)
+          Tooltip(
+            message: strings.exit,
+            waitDuration: LicoMotion.tooltipWait,
+            child: InkWell(
+              key: const Key('agent-usage-exit-button'),
+              onTap: onExit,
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  right: LicoContentSpacing.compact,
+                ),
+                child: Icon(
+                  Icons.chevron_left_rounded,
+                  size: 20,
+                  color: colors.text,
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colors.text,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        ...trailing,
+      ],
+    );
+  }
+}
+
+class AgentUsageEmptyState extends StatelessWidget {
+  const AgentUsageEmptyState({super.key, this.onExit});
+
+  final VoidCallback? onExit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final empty = Text(
+      strings.noUsageReportYet,
+      style: TextStyle(color: colors.textMuted, fontWeight: FontWeight.w700),
+    );
+    if (onExit == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: empty,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AgentUsagePanelHeader(title: strings.tokenUsage, onExit: onExit),
+        const SizedBox(height: LicoContentSpacing.compact),
+        empty,
+      ],
     );
   }
 }

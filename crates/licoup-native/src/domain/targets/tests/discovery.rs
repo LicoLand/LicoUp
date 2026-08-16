@@ -47,6 +47,7 @@ fn scan_includes_required_first_targets() {
             "kimi",
             "kimi-code",
             "pi",
+            "deepseek-harness",
             "lico-agent",
             "workbuddy",
             "codebuddy",
