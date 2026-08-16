@@ -18,6 +18,7 @@ String? agentProductDisplayName(String value) {
     'chatgpt' || 'codex' => 'Codex',
     'copilot' || 'github-copilot' => 'GitHub Copilot',
     'cursor' => 'Cursor',
+    'deepseek-harness' || 'dsh' => 'DeepSeek Harness',
     'hermes' || 'hermes-agent' => 'Hermes Agent',
     'kilo' || 'kilo-code' => 'Kilo Code',
     'kimi' => 'Kimi',

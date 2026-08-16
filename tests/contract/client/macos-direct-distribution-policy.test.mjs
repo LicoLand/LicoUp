@@ -410,6 +410,15 @@ test("downstream macOS verifiers consume the corrected entitlement authority", (
   ), true);
   assert.ok(distributionBuilder.includes("developerIdApplication !== true"));
   assert.ok(distributionBuilder.includes('"notarytool", "submit"'));
+  assert.ok(distributionBuilder.includes('"--wait"'));
+  assert.equal(distributionBuilder.includes('"--timeout"'), false);
+  assert.equal(
+    distributionBuilder.split(
+      'macos_distribution_notarization_failed", { timeout: null }',
+    ).length - 1,
+    2,
+  );
+  assert.equal(distributionBuilder.includes("30 * 60 * 1000"), false);
   assert.ok(distributionBuilder.includes('"--keychain-profile", notaryKeychainProfile'));
   for (const removedCredential of [
     "LICO_MACOS_NOTARY_KEY_ID",

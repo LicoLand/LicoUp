@@ -9,7 +9,9 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/destination_search_ranking.dart';
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_search.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
@@ -23,6 +25,9 @@ void showAgentConversationSearchPalette(
   BuildContext context,
   ClientController controller, {
   List<GlobalSearchFeatureEntry> features = const [],
+  List<GlobalSearchFeatureEntry> settingsFeatures = const [],
+  List<GlobalSearchFeatureEntry> agentFeatures = const [],
+  List<GlobalSearchFeatureEntry> pluginFeatures = const [],
 }) {
   final overlay = Overlay.maybeOf(context);
   if (overlay == null) {
@@ -33,6 +38,9 @@ void showAgentConversationSearchPalette(
     builder: (context) => AgentConversationSearchPalette(
       controller: controller,
       features: features,
+      settingsFeatures: settingsFeatures,
+      agentFeatures: agentFeatures,
+      pluginFeatures: pluginFeatures,
       onClose: () => entry.remove(),
     ),
   );
@@ -45,11 +53,17 @@ class AgentConversationSearchPalette extends StatefulWidget {
     required this.controller,
     required this.onClose,
     this.features = const [],
+    this.settingsFeatures = const [],
+    this.agentFeatures = const [],
+    this.pluginFeatures = const [],
   });
 
   final ClientController controller;
   final VoidCallback onClose;
   final List<GlobalSearchFeatureEntry> features;
+  final List<GlobalSearchFeatureEntry> settingsFeatures;
+  final List<GlobalSearchFeatureEntry> agentFeatures;
+  final List<GlobalSearchFeatureEntry> pluginFeatures;
 
   @override
   State<AgentConversationSearchPalette> createState() =>
@@ -63,9 +77,7 @@ class _AgentConversationSearchPaletteState
   final AgentConversationSearchIndex _index = AgentConversationSearchIndex();
   Map<String, List<AgentConversationSession>>? _indexedSessions;
   List<Map<String, dynamic>>? _indexedSkills;
-  List<GlobalSearchFeatureEntry> _featureHits = const [];
-  List<Map<String, dynamic>> _skillHits = const [];
-  List<AgentConversationSearchHit> _hits = const [];
+  DestinationSearchHits _hits = const DestinationSearchHits();
   int _selectedIndex = 0;
 
   @override
@@ -142,31 +154,29 @@ class _AgentConversationSearchPaletteState
 
   void _applyQuery() {
     final query = _queryController.text;
-    final featureHits = [
-      for (final feature in widget.features)
-        if (feature.matchScore(query) > 0) feature,
-    ]..sort((a, b) => b.matchScore(query).compareTo(a.matchScore(query)));
-    final skillHits =
-        [
-          for (final skill in widget.controller.skillHubSkills)
-            if (scoreSkillSearchEntry(skill, query) > 0) skill,
-        ]..sort(
-          (a, b) => scoreSkillSearchEntry(
-            b,
-            query,
-          ).compareTo(scoreSkillSearchEntry(a, query)),
-        );
-    final hits = _index.search(query);
+    final destination = widget.controller.currentSection;
+    final skillScore = destination == ClientSection.skillHub
+        ? (Map<String, dynamic> skill, String needle) =>
+              skillHubSearchScore(skill, needle).toDouble()
+        : scoreSkillSearchEntry;
+    final hits = rankDestinationSearch(
+      destination: destination,
+      query: query,
+      features: widget.features,
+      settingsFeatures: widget.settingsFeatures,
+      agentFeatures: widget.agentFeatures,
+      pluginFeatures: widget.pluginFeatures,
+      skills: widget.controller.skillHubSkills,
+      skillScore: skillScore,
+      conversations: _index.search(query),
+    );
     setState(() {
-      _featureHits = featureHits;
-      _skillHits = skillHits.take(6).toList(growable: false);
       _hits = hits;
       _selectedIndex = 0;
     });
   }
 
-  int get _resultCount =>
-      _featureHits.length + _skillHits.length + _hits.length;
+  int get _resultCount => _hits.resultCount;
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) {
@@ -202,20 +212,49 @@ class _AgentConversationSearchPaletteState
   }
 
   void _activateAt(int index) {
-    if (index < _featureHits.length) {
-      final feature = _featureHits[index];
+    final skillsFirst =
+        widget.controller.currentSection == ClientSection.skillHub;
+    var remaining = index;
+    if (skillsFirst) {
+      if (remaining < _hits.skills.length) {
+        widget.onClose();
+        widget.controller.selectSection(ClientSection.skillHub);
+        return;
+      }
+      remaining -= _hits.skills.length;
+    }
+    if (remaining < _hits.primary.length) {
+      final feature = _hits.primary[remaining];
       widget.onClose();
       unawaited(feature.run());
       return;
     }
-    final skillIndex = index - _featureHits.length;
-    if (skillIndex < _skillHits.length) {
-      final controller = widget.controller;
+    remaining -= _hits.primary.length;
+    if (remaining < _hits.features.length) {
+      final feature = _hits.features[remaining];
       widget.onClose();
-      controller.selectSection(ClientSection.skillHub);
+      unawaited(feature.run());
       return;
     }
-    unawaited(_activate(_hits[skillIndex - _skillHits.length]));
+    remaining -= _hits.features.length;
+    if (!skillsFirst) {
+      if (remaining < _hits.skills.length) {
+        widget.onClose();
+        widget.controller.selectSection(ClientSection.skillHub);
+        return;
+      }
+      remaining -= _hits.skills.length;
+    }
+    unawaited(_activate(_hits.conversations[remaining]));
+  }
+
+  static String _primaryGroupLabel(LicoStrings strings, ClientSection section) {
+    return switch (section) {
+      ClientSection.settings => strings.settings,
+      ClientSection.agentHub => strings.agentHub,
+      ClientSection.pluginManagement => strings.pluginManagement,
+      _ => strings.searchFeaturesGroup,
+    };
   }
 
   Future<void> _activate(AgentConversationSearchHit hit) async {
@@ -313,12 +352,20 @@ class _AgentConversationSearchPaletteState
                                   label: strings.noConversationSearchResults,
                                 )
                               : _GroupedHitList(
-                                  featureHits: _featureHits,
+                                  primaryHits: _hits.primary,
+                                  primaryGroupLabel: _primaryGroupLabel(
+                                    strings,
+                                    widget.controller.currentSection,
+                                  ),
+                                  featureHits: _hits.features,
                                   featuresGroupLabel:
                                       strings.searchFeaturesGroup,
-                                  skillHits: _skillHits,
+                                  skillHits: _hits.skills,
                                   skillsGroupLabel: strings.skillHub,
-                                  hits: _hits,
+                                  skillsFirst:
+                                      widget.controller.currentSection ==
+                                      ClientSection.skillHub,
+                                  hits: _hits.conversations,
                                   targets: widget.controller.scannedTargets,
                                   selectedIndex: _selectedIndex,
                                   onActivateAt: _activateAt,
@@ -391,20 +438,26 @@ class _PaletteHint extends StatelessWidget {
 
 class _GroupedHitList extends StatelessWidget {
   const _GroupedHitList({
+    required this.primaryHits,
+    required this.primaryGroupLabel,
     required this.featureHits,
     required this.featuresGroupLabel,
     required this.skillHits,
     required this.skillsGroupLabel,
+    required this.skillsFirst,
     required this.hits,
     required this.targets,
     required this.selectedIndex,
     required this.onActivateAt,
   });
 
+  final List<GlobalSearchFeatureEntry> primaryHits;
+  final String primaryGroupLabel;
   final List<GlobalSearchFeatureEntry> featureHits;
   final String featuresGroupLabel;
   final List<Map<String, dynamic>> skillHits;
   final String skillsGroupLabel;
+  final bool skillsFirst;
   final List<AgentConversationSearchHit> hits;
   final List<TargetCandidate> targets;
   final int selectedIndex;
@@ -414,23 +467,32 @@ class _GroupedHitList extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final rows = <Widget>[];
-    if (featureHits.isNotEmpty) {
+    var cursor = 0;
+    void addFeatureGroup(
+      List<GlobalSearchFeatureEntry> entries,
+      String label,
+      IconData icon,
+    ) {
+      if (entries.isEmpty) {
+        return;
+      }
       rows.add(
         LicoGroupHeader(
-          label: featuresGroupLabel,
-          count: featureHits.length,
+          label: label,
+          count: entries.length,
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-          leading: Icon(Icons.bolt_outlined, size: 15, color: colors.textMuted),
+          leading: Icon(icon, size: 15, color: colors.textMuted),
         ),
       );
-      for (var index = 0; index < featureHits.length; index++) {
-        final feature = featureHits[index];
-        final selected = index == selectedIndex;
+      for (var index = 0; index < entries.length; index++) {
+        final feature = entries[index];
+        final flatIndex = cursor + index;
+        final selected = flatIndex == selectedIndex;
         rows.add(
           Material(
             color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
-              onTap: () => onActivateAt(index),
+              onTap: () => onActivateAt(flatIndex),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(30, 8, 14, 8),
                 child: Row(
@@ -461,8 +523,13 @@ class _GroupedHitList extends StatelessWidget {
           ),
         );
       }
+      cursor += entries.length;
     }
-    if (skillHits.isNotEmpty) {
+
+    void addSkills() {
+      if (skillHits.isEmpty) {
+        return;
+      }
       rows.add(
         LicoGroupHeader(
           label: skillsGroupLabel,
@@ -477,7 +544,7 @@ class _GroupedHitList extends StatelessWidget {
       );
       for (var index = 0; index < skillHits.length; index++) {
         final skill = skillHits[index];
-        final flatIndex = featureHits.length + index;
+        final flatIndex = cursor + index;
         final selected = flatIndex == selectedIndex;
         final title = (skill['title'] ?? skill['skillId'] ?? '').toString();
         final description = (skill['description'] ?? '').toString();
@@ -523,7 +590,18 @@ class _GroupedHitList extends StatelessWidget {
           ),
         );
       }
+      cursor += skillHits.length;
     }
+
+    if (skillsFirst) {
+      addSkills();
+    }
+    addFeatureGroup(primaryHits, primaryGroupLabel, Icons.bolt_outlined);
+    addFeatureGroup(featureHits, featuresGroupLabel, Icons.bolt_outlined);
+    if (!skillsFirst) {
+      addSkills();
+    }
+    final conversationBase = cursor;
     final groups = <String, List<int>>{};
     final groupOrder = <String>[];
     for (var index = 0; index < hits.length; index++) {
@@ -550,7 +628,7 @@ class _GroupedHitList extends StatelessWidget {
       );
       for (final hitIndex in groups[agentId]!) {
         final hit = hits[hitIndex];
-        final flatIndex = featureHits.length + skillHits.length + hitIndex;
+        final flatIndex = conversationBase + hitIndex;
         final selected = flatIndex == selectedIndex;
         rows.add(
           Material(

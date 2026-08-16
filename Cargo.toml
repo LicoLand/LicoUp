@@ -1,5 +1,14 @@
 [workspace]
-members = ["crates/lico-catalog-convergence", "crates/licoup-native", "crates/trybuild"]
+members = [
+    "crates/lico-catalog-convergence",
+    "crates/licoup-protocol-bindings",
+    "crates/licoup-client-state",
+    "crates/licoup-endpoint-core",
+    "crates/licoup-platform-bridges",
+    "crates/licoup-agent-adapters",
+    "crates/licoup-native",
+    "crates/trybuild",
+]
 resolver = "3"
 
 [workspace.package]

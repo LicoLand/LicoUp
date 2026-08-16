@@ -1,3 +1,32 @@
+/// Public GitHub repository the signed client-update path already uses.
+const kClientUpdateGithubRepo = 'LicoLand/LicoUp';
+
+/// Public GitHub releases origin for [kClientUpdateGithubRepo].
+const kClientUpdateGithubReleasesUrl =
+    'https://github.com/LicoLand/LicoUp/releases';
+
+/// Returns the public GitHub release origin, or a specific signed release URL
+/// when native check already returned one. Rejects credentialed or query URLs.
+String clientUpdatePublicSourceAddress({
+  String repo = kClientUpdateGithubRepo,
+  String githubReleaseUrl = '',
+}) {
+  final release = githubReleaseUrl.trim();
+  final releaseUri = Uri.tryParse(release);
+  if (releaseUri != null &&
+      releaseUri.scheme == 'https' &&
+      releaseUri.host == 'github.com' &&
+      releaseUri.userInfo.isEmpty &&
+      releaseUri.query.isEmpty &&
+      releaseUri.fragment.isEmpty) {
+    return release;
+  }
+  final normalized = repo.trim().isEmpty
+      ? kClientUpdateGithubRepo
+      : repo.trim();
+  return 'https://github.com/$normalized/releases';
+}
+
 /// Client update status projection for Settings UI (public metadata only).
 enum ClientUpdatePhase {
   idle,
@@ -21,6 +50,7 @@ final class ClientUpdateStatus {
     required this.channel,
     this.availableVersion = '',
     this.releaseNotesUrl = '',
+    this.githubReleaseUrl = '',
     this.verifiedKeyIds = const [],
     this.artifactSha256 = '',
     this.artifactReceiptId = '',
@@ -39,6 +69,7 @@ final class ClientUpdateStatus {
   final String channel;
   final String availableVersion;
   final String releaseNotesUrl;
+  final String githubReleaseUrl;
   final List<String> verifiedKeyIds;
   final String artifactSha256;
   final String artifactReceiptId;
@@ -87,6 +118,7 @@ final class ClientUpdateStatus {
       channel: (json['channel'] as String?)?.trim() ?? 'stable',
       availableVersion: (json['availableVersion'] as String?)?.trim() ?? '',
       releaseNotesUrl: (json['releaseNotesUrl'] as String?)?.trim() ?? '',
+      githubReleaseUrl: (json['githubReleaseUrl'] as String?)?.trim() ?? '',
       verifiedKeyIds: [
         for (final item in (json['verifiedKeyIds'] as List?) ?? const [])
           if (item != null && item.toString().trim().isNotEmpty)
@@ -124,6 +156,7 @@ final class ClientUpdateStatus {
     String? channel,
     String? availableVersion,
     String? releaseNotesUrl,
+    String? githubReleaseUrl,
     List<String>? verifiedKeyIds,
     String? artifactSha256,
     String? artifactReceiptId,
@@ -142,6 +175,7 @@ final class ClientUpdateStatus {
       channel: channel ?? this.channel,
       availableVersion: availableVersion ?? this.availableVersion,
       releaseNotesUrl: releaseNotesUrl ?? this.releaseNotesUrl,
+      githubReleaseUrl: githubReleaseUrl ?? this.githubReleaseUrl,
       verifiedKeyIds: verifiedKeyIds ?? this.verifiedKeyIds,
       artifactSha256: artifactSha256 ?? this.artifactSha256,
       artifactReceiptId: artifactReceiptId ?? this.artifactReceiptId,

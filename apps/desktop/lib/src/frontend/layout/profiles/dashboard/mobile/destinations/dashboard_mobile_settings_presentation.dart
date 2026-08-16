@@ -25,9 +25,9 @@ final class DashboardMobileSettingsPresentation
   @override
   EdgeInsetsGeometry get sectionHeaderPadding => const EdgeInsets.fromLTRB(
     LicoContentSpacing.item,
-    LicoContentSpacing.section,
     LicoContentSpacing.item,
-    LicoContentSpacing.inline,
+    LicoContentSpacing.item,
+    LicoContentSpacing.compact,
   );
 
   @override
@@ -35,7 +35,7 @@ final class DashboardMobileSettingsPresentation
     LicoContentSpacing.item,
     LicoContentSpacing.item,
     LicoContentSpacing.item,
-    0,
+    LicoContentSpacing.item,
   );
 
   @override
@@ -44,14 +44,6 @@ final class DashboardMobileSettingsPresentation
     LicoContentSpacing.item,
     LicoContentSpacing.item,
     0,
-  );
-
-  @override
-  EdgeInsetsGeometry get selectorActionPadding => const EdgeInsets.fromLTRB(
-    LicoContentSpacing.item,
-    0,
-    LicoContentSpacing.item,
-    LicoContentSpacing.item,
   );
 
   @override
@@ -80,19 +72,16 @@ final class DashboardMobileSettingsPresentation
     BuildContext context, {
     required Key key,
     required Widget child,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: LicoContentSpacing.item),
-    child: KeyedSubtree(
-      key: key,
-      child: Card(
-        elevation: 0,
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            vertical: LicoContentSpacing.compact,
-          ),
-          child: child,
+  }) => KeyedSubtree(
+    key: key,
+    child: Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: LicoContentSpacing.compact,
         ),
+        child: child,
       ),
     ),
   );

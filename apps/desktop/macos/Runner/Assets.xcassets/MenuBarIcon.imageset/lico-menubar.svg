@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="796" height="921" viewBox="245 265 796 921" role="img" aria-labelledby="title desc">
+  <title id="title">LicoUp menu-bar mark</title>
+  <desc id="desc">Approved M2 orbit sundae with the square background plate removed. Same paths, fills, and strokes as lico-app-icon.svg.</desc>
+
+  <defs>
+    <radialGradient id="scoop" cx="47%" cy="36%" r="72%">
+      <stop offset="0" stop-color="#ffeac7"/>
+      <stop offset="0.70" stop-color="#fde5bf"/>
+      <stop offset="1" stop-color="#f5dab4"/>
+    </radialGradient>
+
+    <radialGradient id="cherry" cx="42%" cy="34%" r="72%">
+      <stop offset="0" stop-color="#e46b5b"/>
+      <stop offset="0.76" stop-color="#da5e51"/>
+      <stop offset="1" stop-color="#cc5048"/>
+    </radialGradient>
+
+    <linearGradient id="orbitPaint" gradientUnits="userSpaceOnUse" x1="438" y1="626" x2="936" y2="670">
+      <stop offset="0" stop-color="#6e2b05"/>
+      <stop offset="0.22" stop-color="#3b1400"/>
+      <stop offset="0.48" stop-color="#6d2a04"/>
+      <stop offset="0.72" stop-color="#401500"/>
+      <stop offset="1" stop-color="#6a2904"/>
+    </linearGradient>
+
+    <linearGradient id="glassBack" gradientUnits="userSpaceOnUse" x1="0" y1="620" x2="0" y2="1145">
+      <stop offset="0" stop-color="#d3f1f4" stop-opacity="0.34"/>
+      <stop offset="0.38" stop-color="#b5e5ee" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#a8d9e7" stop-opacity="0.25"/>
+    </linearGradient>
+
+    <linearGradient id="glassFront" gradientUnits="userSpaceOnUse" x1="0" y1="646" x2="0" y2="1145">
+      <stop offset="0" stop-color="#c9edf2" stop-opacity="0.48"/>
+      <stop offset="0.28" stop-color="#acdfea" stop-opacity="0.56"/>
+      <stop offset="0.72" stop-color="#91cfe4" stop-opacity="0.57"/>
+      <stop offset="1" stop-color="#abdce9" stop-opacity="0.51"/>
+    </linearGradient>
+
+    <linearGradient id="glassBase" gradientUnits="userSpaceOnUse" x1="520" y1="1000" x2="740" y2="1140">
+      <stop offset="0" stop-color="#b8e2eb" stop-opacity="0.54"/>
+      <stop offset="1" stop-color="#9cd2e3" stop-opacity="0.48"/>
+    </linearGradient>
+
+    <radialGradient id="submergedScoop" cx="48%" cy="28%" r="70%">
+      <stop offset="0" stop-color="#fee6bf" stop-opacity="0.68"/>
+      <stop offset="0.62" stop-color="#f9e0bb" stop-opacity="0.48"/>
+      <stop offset="0.88" stop-color="#efd6b4" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#efd6b4" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="submergedCherry" cx="45%" cy="32%" r="70%">
+      <stop offset="0" stop-color="#dc6257" stop-opacity="0.66"/>
+      <stop offset="0.66" stop-color="#d85b54" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#d85b54" stop-opacity="0"/>
+    </radialGradient>
+
+    <path id="rimBackArc" d="M324 646 A304 39 0 0 1 932 646"/>
+    <path id="rimFrontArc" d="M932 646 A304 39 0 0 1 324 646"/>
+
+    <path id="gobletSilhouette" d="M324 646
+      A304 39 0 0 1 932 646
+      C932 700 932 740 920 780
+      C908 832 889 870 862 900
+      C834 930 795 960 756 977
+      C740 984 722 990 706 994
+      C685 998 674 1011 674 1032
+      C674 1054 695 1068 737 1083
+      C776 1097 793 1115 775 1128
+      C739 1150 516 1150 479 1128
+      C461 1115 478 1097 518 1083
+      C558 1068 578 1054 578 1032
+      C578 1011 568 999 547 994
+      C531 990 518 984 502 977
+      C463 960 424 930 396 900
+      C369 870 350 832 338 780
+      C326 740 324 700 324 646 Z"/>
+
+    <path id="gobletFront" d="M324 646
+      A304 39 0 0 0 932 646
+      C932 700 932 740 920 780
+      C908 832 889 870 862 900
+      C834 930 795 960 756 977
+      C740 984 722 990 706 994
+      C685 998 674 1011 674 1032
+      C674 1054 695 1068 737 1083
+      C776 1097 793 1115 775 1128
+      C739 1150 516 1150 479 1128
+      C461 1115 478 1097 518 1083
+      C558 1068 578 1054 578 1032
+      C578 1011 568 999 547 994
+      C531 990 518 984 502 977
+      C463 960 424 930 396 900
+      C369 870 350 832 338 780
+      C326 740 324 700 324 646 Z"/>
+
+    <clipPath id="bowlInterior">
+      <path d="M324 646 A304 39 0 0 0 932 646
+        C932 700 932 740 920 780
+        C908 832 889 870 862 900
+        C834 930 795 960 756 977
+        C740 984 722 990 700 982
+        C678 986 575 986 552 982
+        C531 990 518 984 502 977
+        C463 960 424 930 396 900
+        C369 870 350 832 338 780
+        C326 740 324 700 324 646 Z"/>
+    </clipPath>
+
+    <clipPath id="orbitFrontWindow">
+      <path d="M365 555 L480 555 L480 665 L365 665 Z"/>
+    </clipPath>
+
+    <path id="orbitContinuous" d="M438 626
+      C426 608 402 590 373 572
+      C304 529 263 480 297 438
+      C327 404 402 393 492 414
+      C598 438 739 461 846 496
+      C912 521 962 553 976 585
+      C991 620 971 646 930 663"/>
+  </defs>
+
+  <use href="#gobletSilhouette" fill="url(#glassBack)"/>
+  <ellipse cx="628" cy="646" rx="304" ry="39" fill="#d8f1f2" fill-opacity="0.14"/>
+  <use href="#rimBackArc" fill="none" stroke="#c9ebef" stroke-opacity="0.64" stroke-width="8" stroke-linecap="round"/>
+
+  <path d="M1005 350 L869 307 Q852 301 847 316 L791 454 L791 760"
+        fill="none" stroke="#83c9e9" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+
+  <use href="#orbitContinuous" fill="none" stroke="url(#orbitPaint)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="630" cy="615" r="255" fill="url(#scoop)"/>
+
+  <use href="#orbitContinuous" clip-path="url(#orbitFrontWindow)"
+       fill="none" stroke="url(#orbitPaint)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="460" cy="670" r="68" fill="url(#cherry)"/>
+
+  <g clip-path="url(#bowlInterior)">
+    <circle cx="630" cy="615" r="255" fill="url(#submergedScoop)"/>
+    <circle cx="460" cy="670" r="74" fill="url(#submergedCherry)"/>
+  </g>
+
+  <use href="#gobletFront" fill="url(#glassFront)"/>
+  <path d="M547 994
+      C568 999 578 1011 578 1032
+      C578 1054 558 1068 518 1083
+      C478 1097 461 1115 479 1128
+      C516 1150 739 1150 775 1128
+      C793 1115 776 1097 737 1083
+      C695 1068 674 1054 674 1032
+      C674 1011 685 998 706 994 Z"
+        fill="url(#glassBase)"/>
+
+  <use href="#rimFrontArc" fill="none" stroke="#dcf1f2" stroke-opacity="0.92" stroke-width="9" stroke-linecap="round"/>
+  <use href="#rimFrontArc" fill="none" stroke="#afe0ea" stroke-opacity="0.56" stroke-width="3" stroke-linecap="round"/>
+</svg>

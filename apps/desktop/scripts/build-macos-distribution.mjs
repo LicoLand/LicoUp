@@ -137,13 +137,22 @@ function parsePlistText(text) {
   }
 }
 
+function spawnTimeout(options = {}) {
+  if (Object.hasOwn(options, "timeout")) {
+    return options.timeout == null ? {} : { timeout: options.timeout };
+  }
+  return { timeout: 15 * 60 * 1000 };
+}
+
 function defaultExecutor(program, args, options = {}) {
+  const rest = { ...options };
+  delete rest.timeout;
   return spawnSync(program, args, {
     encoding: "utf8",
     stdio: "pipe",
     maxBuffer: commandOutputLimit,
-    timeout: 15 * 60 * 1000,
-    ...options,
+    ...spawnTimeout(options),
+    ...rest,
   });
 }
 
@@ -763,7 +772,9 @@ export function coordinatePlatformChannel({
     try {
       result = executor(program, args, {
         env: options.env || toolEnvironment,
-        timeout: options.timeout ?? 15 * 60 * 1000,
+        ...(Object.hasOwn(options, "timeout")
+          ? { timeout: options.timeout }
+          : spawnTimeout(options)),
         ...(options.input !== undefined ? { input: options.input } : {}),
         ...(options.maxBuffer !== undefined ? { maxBuffer: options.maxBuffer } : {}),
       });
@@ -918,7 +929,7 @@ export function coordinatePlatformChannel({
     run("app-notarize", "/usr/bin/xcrun", [
       "notarytool", "submit", submissionZip,
       "--keychain-profile", notaryKeychainProfile, "--wait",
-    ], "macos_distribution_notarization_failed", { timeout: 30 * 60 * 1000 });
+    ], "macos_distribution_notarization_failed", { timeout: null });
   } finally {
     fs.rm(submissionZip, { force: true });
   }
@@ -972,7 +983,7 @@ export function coordinatePlatformChannel({
   run("dmg-notarize", "/usr/bin/xcrun", [
     "notarytool", "submit", dmgPath,
     "--keychain-profile", notaryKeychainProfile, "--wait",
-  ], "macos_distribution_notarization_failed", { timeout: 30 * 60 * 1000 });
+  ], "macos_distribution_notarization_failed", { timeout: null });
   run("dmg-staple", "/usr/bin/xcrun", ["stapler", "staple", dmgPath],
     "macos_distribution_staple_failed");
   run("dmg-staple-validate", "/usr/bin/xcrun", ["stapler", "validate", dmgPath],

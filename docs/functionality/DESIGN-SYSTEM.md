@@ -322,7 +322,7 @@ floating layers — a shadow.
 | **L2** floating | `surfaceRaised` | `line` | yes |
 | **L3** modal | `surfaceRaised` | `line` | yes, deeper |
 
-In the Messaging desktop profile, shell chrome (band, rail, and content-region
+In the Messaging desktop profile, shell chrome (band and content-region
 gutters) is a transparent native-blur layer with a shared glass tint — not an
 opaque `background` fill. The `background` token still applies to filled content
 inside the main card and to other profiles that paint the window directly.
@@ -384,17 +384,16 @@ On macOS, `apps/desktop/macos/Runner/MainFlutterWindow.swift` owns this:
 Flutter shell code sets its scaffold base to `Colors.transparent` for the same
 reason: opaque Flutter fills would hide the native blur.
 
-### Unified glass on three shell regions
+### Unified glass on the shell regions
 
-The top chrome band, left destination rail, and the content region beneath them
-(the area to the right of the rail and below the band, including margin gutters
-around the main card) must read as **one identical glass layer**. They share:
+The top chrome band and the content region beneath it (including margin
+gutters around the main card) must read as **one identical glass layer**. They
+share:
 
 | Component | Role |
 | --- | --- |
-| `MessagingChromeBand` | Top tab/chrome bar: conversation tabs, search, notifications |
-| `MessagingDestinationRail` | Left icon navigation rail |
-| `MessagingContentRegion` | Remaining shell area under the band and right of the rail |
+| `MessagingChromeBand` | Top tab/chrome bar: conversation tabs, search, token usage, notifications |
+| `MessagingContentRegion` | Remaining shell area under the band |
 | `MessagingMainContentCard` | Shared outer content card (glass + black veil, border, shadow, radius via `mainContentCard*`) |
 
 The rounded **main content card** (`MessagingMainContentCard`, key
@@ -409,7 +408,7 @@ through). Dense chat and list text on that raw glass is hard to read — contras
 collapses against busy wallpaper blur. Therefore the main content card paints a
 **black mask** (`Colors.black` via `mainContentCardFill` /
 `mainContentCardOverlayDarkAlpha` / `mainContentCardOverlayLightAlpha`) to
-raise text readability while keeping the glass character. Shell band / rail /
+raise text readability while keeping the glass character. Shell band /
 content-region gutters stay **untinted** (`surfaceGlassTint` → transparent):
 they are chrome, not a reading surface, and a shell-wide Flutter tint muddies
 the frosted material (see **Shared tint tokens** below).
@@ -422,10 +421,10 @@ native VE beneath the transparent shell.
 
 Frosted blur comes from the native visual-effect view. Flutter chrome does
 **not** apply a color tint overlay in either preset — shared tokens in
-`MessagingDesktopMetrics` (`messaging_desktop_tokens.dart`) keep all three
+`MessagingDesktopMetrics` (`messaging_desktop_tokens.dart`) keep the shell
 regions on one path:
 
-- `surfaceGlassTint(isDark:)` — the single entry point all three regions use;
+- `surfaceGlassTint(isDark:)` — the single entry point the shell regions use;
   returns fully transparent in both presets
 - `chromeTintDarkAlpha` — `0`; dark preset uses native VE only
 - `lightSurfaceGlassAlpha` — `0`; light preset uses native VE only
@@ -453,8 +452,8 @@ treatment. The shell should read as translucent blur in both modes; light mode
 must not fall back to painting chrome as an opaque `background` fill while dark
 mode keeps native frosted glass.
 
-**Chrome backgrounds.** The three shell regions (`MessagingChromeBand`,
-`MessagingDestinationRail`, `MessagingContentRegion`) use the same structure in
+**Chrome backgrounds.** The shell regions (`MessagingChromeBand`,
+`MessagingContentRegion`) use the same structure in
 both presets: transparent window base and native blur beneath. Each region still
 uses a `ColoredBox` from `surfaceGlassTint(isDark:)` so call sites stay
 unified; in both presets that tint is fully transparent (no stacked white or
@@ -477,18 +476,18 @@ All chrome foreground colors and alphas **must** go through shared tokens in
 hardcoded `Colors.white` / theme-specific one-offs. Widgets call the token
 helpers only; token values live in one place.
 
-Selected rail tiles and other brand-primary fills keep `textOnPrimary` (or
-equivalent) on the fill for readable contrast. Unselected chrome icons follow
-the shared light-on-glass foreground path in **both** presets. Do not introduce
-opaque rail tiles or desaturated solid chrome buttons where the shared glass
-system applies.
+Selected destination controls and other brand-primary fills keep
+`textOnPrimary` (or equivalent) on the fill for readable contrast. Unselected
+chrome icons follow the shared light-on-glass foreground path in **both**
+presets. Do not introduce opaque nav tiles or desaturated solid chrome buttons
+where the shared glass system applies.
 
 ### Seamless shell edges
 
-The band, rail, and content region form one continuous glass layer. Do **not**
-draw hairline or border dividers along their shared edges (band↔rail,
-rail↔content region, band↔content region). Separation comes from the main card
-inset and internal content structure, not chrome edge rules.
+The band and content region form one continuous glass layer. Do **not** draw
+hairline or border dividers along their shared edge (band↔content region).
+Separation comes from the main card inset and internal content structure, not
+chrome edge rules.
 
 ### Enforcement
 
@@ -600,16 +599,21 @@ Paths, error codes, PIDs, session ids, and diagnostic fields use
 
 ## Navigation
 
-Desktop first-level destinations live in a left icon rail on the unified
-frosted-glass shell — no rail card, no labels, no collapse chrome, and no edge
-divider separating the rail from the band or content region. The rail, the
-transparent top band, and the content region beneath them share one frosted
-glass treatment (see **Window Chrome and Frosted Glass**); macOS traffic lights
-overlay the rail's top clearance.
+Desktop first-level destinations live in the shared sidebar foundation inside
+the main content card (conversation, settings, skills/plugins, and
+keys/communication lists, plus a bottom nav) and in the chrome band (token
+usage immediately left of notifications). One shell-owned column hosts that
+foundation: it owns the drag-resize handle and the persisted width. Dedicated
+lists are only the slot content. Switching destinations does not change the
+column width; Token 用量 keeps the same column so the left edge does not jump.
+There is no far-left destination icon rail outside the card. The transparent
+top band and the content region beneath it share one frosted glass treatment
+(see **Window Chrome and Frosted Glass**); macOS traffic lights overlay the
+band's leading clearance.
 
 Content stacks in three flat layers: transparent window base with native blur,
-one unified-glass shell (rail, top band, and margin gutters), then the rounded
-main content card standing off the trailing and bottom edges, and the
+one unified-glass shell (top band and margin gutters), then the rounded main
+content card standing off the leading, trailing, and bottom edges, and the
 destination detail as the innermost layer.
 
 Mobile keeps a compact Agents/Settings shell; pairing and encrypted relay flows
@@ -668,8 +672,9 @@ may still surface the same facts more visibly via `showRuntimeSettings`.
 
 **Agents workspace framing (Telegram-style).** The Messaging desktop Agents
 destination sits inside the shell **main content glass card**
-(`MessagingMainContentCard`). Inside that card, a two-column split shares the
-card's glass as the conversation background:
+(`MessagingMainContentCard`). Inside that card, the shell-owned sidebar
+column and the detail pane share the card's glass as the conversation
+background:
 
 | Region | Treatment |
 | --- | --- |
