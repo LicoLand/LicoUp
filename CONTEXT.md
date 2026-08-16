@@ -104,6 +104,20 @@ A user-approved action that discloses exact content to a named external
 destination or produces an external effect.
 _Avoid_: plugin permission, background authorization
 
+**Agent Scan Path Manifest**:
+The TOML allowlist of Agent binaries, config, and history locations automatic
+discovery may probe. The scanner never walks PATH, personal library roots,
+photo or music libraries, or network volumes. macOS firmlink-equivalent home
+paths classify as the same locations. Unused-agent probes classify
+other-app containers lexically and do not stat them.
+_Avoid_: full-disk scan, launch-time personal-folder probe, unused-agent store probe
+
+**OS Privacy Permission**:
+A platform runtime consent such as Files and Folders, Photos, Media Library,
+other app data, camera, microphone, or network volumes. The current user
+action that needs the resource is the only request site.
+_Avoid_: launch-time bulk probe, unused-agent scan, unused usage string
+
 **Gateway Runtime**:
 The single local process that hosts the LLM Gateway layer and the Communication
 Channel layer.

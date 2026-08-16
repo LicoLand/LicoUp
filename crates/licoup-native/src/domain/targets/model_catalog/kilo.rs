@@ -73,7 +73,9 @@ pub(super) fn kilo_vscode_state_db_paths(home: &Path) -> Vec<PathBuf> {
     roots
         .into_iter()
         .map(|root| root.join("User").join("globalStorage").join("state.vscdb"))
-        .filter(|path| path.exists())
+        .filter(|path| {
+            !crate::domain::targets::scan_paths::is_other_app_container(path) && path.exists()
+        })
         .collect()
 }
 
@@ -134,11 +136,17 @@ pub(super) fn collect_kilo_models_from_state_value(
     }
     if let Some(selections) = object.get("variantSelections").and_then(Value::as_object) {
         for (raw_key, variant) in selections {
+            if kilo_is_session_identity(raw_key) {
+                continue;
+            }
             let Some((provider_id, model_id)) =
                 kilo_provider_and_model_id_from_selection_key(raw_key)
             else {
                 continue;
             };
+            if kilo_is_session_identity(&model_id) {
+                continue;
+            }
             let efforts = variant
                 .as_str()
                 .and_then(sanitize_option_name)
@@ -168,10 +176,11 @@ pub(super) fn collect_kilo_model_ref(
     let Some(model_id) = object
         .get("modelID")
         .or_else(|| object.get("modelId"))
-        .or_else(|| object.get("id"))
         .or_else(|| object.get("model"))
+        .or_else(|| object.get("id"))
         .and_then(Value::as_str)
         .and_then(sanitize_model_name)
+        .filter(|name| !kilo_is_session_identity(name))
     else {
         return;
     };
@@ -210,7 +219,7 @@ pub(super) fn kilo_provider_and_model_id_from_selection_key(
     value: &str,
 ) -> Option<(Option<String>, String)> {
     let trimmed = value.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || kilo_is_session_identity(trimmed) {
         return None;
     }
     let parts = trimmed.split('/').collect::<Vec<_>>();
@@ -288,10 +297,31 @@ pub(super) fn collect_kilo_models_from_session_rows(
         return;
     };
     for row in rows.flatten() {
-        if let Some(name) = sanitize_model_name(&row) {
+        if let Some(name) = sanitize_model_name(&row).filter(|name| !kilo_is_session_identity(name))
+        {
             add_model_catalog_entry(entries, &name, "kilo-local-db", BTreeSet::new());
         }
     }
+}
+
+/// Kilo session store keys (`session/ses_…`) are conversation identities, not
+/// callable model ids. Keep this filter inside the Kilo adapter so other
+/// agents are not subject to a shared heuristic.
+pub(super) fn kilo_is_session_identity(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("session/") || lower.contains("/session/") {
+        return true;
+    }
+    let tail = lower.rsplit('/').next().unwrap_or(lower.as_str());
+    tail.starts_with("ses_")
+}
+
+pub(super) fn remove_kilo_session_identities(entries: &mut BTreeMap<String, ModelCatalogEntry>) {
+    entries.retain(|_, entry| !kilo_is_session_identity(&entry.name));
 }
 
 pub(super) fn open_sqlite_readonly(path: &Path) -> Option<Connection> {

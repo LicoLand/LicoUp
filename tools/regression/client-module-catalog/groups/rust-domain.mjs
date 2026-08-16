@@ -488,6 +488,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Agent history adapter and source-root catalog",
       inputs: [
         "crates/licoup-native/src/domain/conversation/source_catalog.rs",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::conversation::source_catalog::tests"),
     }),
@@ -2063,11 +2065,24 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::targets::tests::"),
     }),
   defineModule({
+      id: "rust.domain.targets.scan-paths",
+      kind: "rust-domain",
+      summary: "Agent Scan Path Manifest: allowlisted discovery, lexical deny, unused-agent other-app skip",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
+      ],
+      command: rustLayer("domain::targets::scan_paths::tests::"),
+    }),
+  defineModule({
       id: "rust.domain.targets.binaries",
       kind: "rust-domain",
       summary: "Bounded platform executable discovery and source classification",
       inputs: [
         "crates/licoup-native/src/domain/targets/binaries.rs",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::targets::binaries::tests::"),
     }),
@@ -2095,6 +2110,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Cross-platform target configuration and evidence paths",
       inputs: [
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::targets::platform_paths::tests::"),
     }),
@@ -2234,6 +2252,24 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
       ],
       command: rustLayer("domain::targets::model_catalog::tests::kilo::"),
+    }),
+  defineModule({
+      id: "rust.domain.targets.model-catalog.claude-code",
+      kind: "rust-domain",
+      summary: "Claude Code backend model discovery without family aliases",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
+      ],
+      command: rustLayer("domain::targets::model_catalog::tests::claude_code::"),
+    }),
+  defineModule({
+      id: "rust.domain.targets.model-catalog.opencode",
+      kind: "rust-domain",
+      summary: "OpenCode provider-scoped model catalog discovery",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/opencode.rs",
+      ],
+      command: rustLayer("domain::targets::model_catalog::tests::opencode::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.normalization",

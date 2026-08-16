@@ -183,7 +183,7 @@ class NativeCommandActions {
       '--include-accessible-environments',
       'true',
       '--include-history-model-catalog',
-      'true',
+      'false',
     ]);
     if (output['ok'] != true || output['candidates'] is! List) {
       return const [];

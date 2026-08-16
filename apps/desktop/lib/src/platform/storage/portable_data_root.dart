@@ -119,9 +119,10 @@ class PortableDataRoot {
     if (!_isMobileRuntime) {
       final home = (_environment['HOME'] ?? _environment['USERPROFILE'] ?? '')
           .trim();
-      if (home.isNotEmpty) {
-        return Directory(p.join(home, homeStateDirectoryName));
+      if (home.isEmpty) {
+        throw StateError('desktop state root requires HOME');
       }
+      return Directory(p.join(home, homeStateDirectoryName));
     }
     final appSupport = await _applicationSupportDirectoryResolver();
     return Directory(

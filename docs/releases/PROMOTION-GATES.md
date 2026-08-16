@@ -19,9 +19,18 @@ The stable proof uses the repository's ordinary local ad-hoc package path. It
 uses no publisher identity, repository credential, or notarization secret. The
 installed app and its local proof are not carried into publication.
 
-Promotion readiness is not publication. The manually authorized workflow in
-`.github/workflows/client-release.yml` remains the sole path that builds formal
-artifacts and creates or updates a GitHub Release from `release`.
+Promotion readiness is not publication. `client:promotion -- train` cuts one
+verified snapshot onto `release`. Later commits on `nightly` are a later cut,
+not that in-flight version. Public publication is only from exact
+`origin/release` (a clean detached worktree and
+`npm run client:release:macos:publish`, or the manually authorized workflow in
+`.github/workflows/client-release.yml`). Never publish from `nightly` or
+`stable`.
+
+During an in-flight publication, `nightly` stays open for ordinary
+action-prefixed merge-commit pull requests. Do not run `nightly` → `stable` or
+`stable` → `release` again until the current publication succeeds or is
+explicitly abandoned.
 
 ## Repeatable promotion
 

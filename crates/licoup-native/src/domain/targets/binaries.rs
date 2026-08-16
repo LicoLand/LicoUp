@@ -1,14 +1,13 @@
 use super::catalog::TargetDef;
 use super::parameters::param_string;
-use super::platform_paths::kilo_code_extension_roots;
+use super::scan_paths::{self, HostRoots, probe_is_file};
 use crate::platform::agent_workspace::default_local_agent_workspace;
 use crate::platform::runtime_adapters;
-use directories::UserDirs;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 pub(super) const BINARY_SOURCE_APPLICATION_STORE: &str = "application-store";
 pub(super) const BINARY_SOURCE_PACKAGE_MANAGER: &str = "package-manager";
@@ -34,8 +33,8 @@ fn find_cursor_binary_in_dirs(dirs: &[PathBuf], params: &Value) -> Option<PathBu
         };
         // Prefer a probed Agent CLI. Keep the first `cursor-agent` as fallback
         // so a flaky short probe (or missing default workspace) cannot hide a
-        // PATH-visible conversation binary. Never fall back to the IDE `cursor`
-        // shim — it is not the Agent CLI lane.
+        // conversation binary from the Agent Scan Path Manifest. Never fall
+        // back to the IDE `cursor` shim — it is not the Agent CLI lane.
         if name == "cursor-agent" {
             first_cursor_agent.get_or_insert_with(|| candidate.clone());
         }
@@ -70,32 +69,14 @@ pub(super) fn find_target_binary_with_source(
 /// honest even though the app exposes no local conversation lane.
 pub(super) fn find_extension_bundled_binary(def: &TargetDef) -> Option<PathBuf> {
     match def.id {
-        "kilo-code" => {
-            let home = UserDirs::new()?.home_dir().to_path_buf();
-            find_kilo_code_extension_cli(&kilo_code_extension_roots(&home))
-        }
-        "kimi" => find_kimi_desktop_app_executable(&kimi_desktop_app_roots()),
+        "kilo-code" => find_kilo_code_extension_cli(&scan_paths::extension_roots(
+            "kilo-code",
+            &HostRoots::from_environment(),
+        )),
+        "kimi" => scan_paths::app_executables("kimi", &HostRoots::from_environment())
+            .into_iter()
+            .find(|path| probe_is_file(path)),
         _ => None,
-    }
-}
-
-fn kimi_desktop_app_roots() -> Vec<PathBuf> {
-    macos_application_roots()
-}
-
-/// System and per-user application folders used for macOS `.app` bundle
-/// detection. Windows and Linux install locations for these desktop apps are
-/// not mapped; only verified locations may be listed here.
-fn macos_application_roots() -> Vec<PathBuf> {
-    match std::env::consts::OS {
-        "macos" => {
-            let mut roots = vec![PathBuf::from("/Applications")];
-            if let Some(home) = UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf()) {
-                roots.push(home.join("Applications"));
-            }
-            roots
-        }
-        _ => Vec::new(),
     }
 }
 
@@ -104,6 +85,7 @@ pub(super) fn find_macos_app_executable(
     executable: &str,
     roots: &[PathBuf],
 ) -> Option<PathBuf> {
+    let home = crate::platform::paths::user_home_from_env();
     roots
         .iter()
         .map(|root| {
@@ -112,7 +94,7 @@ pub(super) fn find_macos_app_executable(
                 .join("MacOS")
                 .join(executable)
         })
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| !scan_paths::denied(candidate, home.as_deref()) && candidate.is_file())
 }
 
 pub(super) fn find_kimi_desktop_app_executable(roots: &[PathBuf]) -> Option<PathBuf> {
@@ -123,13 +105,9 @@ pub(super) fn find_kimi_desktop_app_executable(roots: &[PathBuf]) -> Option<Path
 /// verified macOS bundle. Agents without a mapped desktop product never
 /// report detection.
 pub(super) fn desktop_app_executable(agent_id: &str) -> Option<PathBuf> {
-    let (app_bundle, executable) = match agent_id {
-        "codex" => ("ChatGPT.app", "ChatGPT"),
-        "antigravity" => ("Antigravity.app", "Antigravity"),
-        "cursor" => ("Cursor.app", "Cursor"),
-        _ => return None,
-    };
-    find_macos_app_executable(app_bundle, executable, &macos_application_roots())
+    scan_paths::app_executables(agent_id, &HostRoots::from_environment())
+        .into_iter()
+        .find(|path| probe_is_file(path))
 }
 
 pub(super) fn find_kilo_code_extension_cli(roots: &[PathBuf]) -> Option<PathBuf> {
@@ -208,9 +186,13 @@ pub(super) fn cursor_binary_supports_acp(binary: &Path, params: &Value) -> bool 
 }
 
 pub(super) fn find_binary_in_dirs(names: &[&str], dirs: &[PathBuf]) -> Option<PathBuf> {
+    let home = crate::platform::paths::user_home_from_env();
     for dir in dirs {
         for name in names {
             for candidate in binary_candidate_paths(dir, name) {
+                if scan_paths::denied(&candidate, home.as_deref()) {
+                    continue;
+                }
                 if candidate.is_file() {
                     return Some(candidate);
                 }
@@ -221,60 +203,7 @@ pub(super) fn find_binary_in_dirs(names: &[&str], dirs: &[PathBuf]) -> Option<Pa
 }
 
 fn binary_search_dirs() -> Vec<PathBuf> {
-    let roots = PlatformBinaryRoots::from_environment();
-    let mut dirs = env::var_os("PATH")
-        .map(|path_var| {
-            env::split_paths(&path_var)
-                .filter(|path| {
-                    automatic_binary_search_dir_allowed(
-                        std::env::consts::OS,
-                        path,
-                        roots.home.as_deref(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    dirs.extend(common_binary_dirs_for_platform(
-        std::env::consts::OS,
-        &roots,
-    ));
-    dedupe_paths(dirs)
-}
-
-fn automatic_binary_search_dir_allowed(platform: &str, path: &Path, home: Option<&Path>) -> bool {
-    if platform != "macos" {
-        return true;
-    }
-    let mut components = path.components();
-    if !matches!(components.next(), Some(Component::RootDir)) {
-        return false;
-    }
-    let Some(Component::Normal(root_name)) = components.next() else {
-        return false;
-    };
-    if root_name == "Volumes" {
-        return false;
-    }
-    if matches!(
-        root_name.to_str(),
-        Some("usr" | "opt" | "bin" | "sbin" | "Applications")
-    ) {
-        return true;
-    }
-    let Some(home) = home else {
-        return false;
-    };
-    let Ok(relative) = path.strip_prefix(home) else {
-        return false;
-    };
-    let Some(first) = relative.components().next() else {
-        return false;
-    };
-    let first = first.as_os_str().to_string_lossy();
-    first.starts_with('.')
-        || relative.starts_with("Library/pnpm")
-        || relative.starts_with("Applications")
+    scan_paths::binary_dirs(std::env::consts::OS, &HostRoots::from_environment())
 }
 
 fn binary_candidate_paths(dir: &Path, name: &str) -> Vec<PathBuf> {
@@ -320,178 +249,11 @@ fn windows_binary_extensions() -> Vec<String> {
     extensions
 }
 
-#[derive(Default)]
-struct PlatformBinaryRoots {
-    home: Option<PathBuf>,
-    app_data: Option<PathBuf>,
-    local_app_data: Option<PathBuf>,
-    program_data: Option<PathBuf>,
-    program_files: Option<PathBuf>,
-    program_files_x86: Option<PathBuf>,
-}
-
-impl PlatformBinaryRoots {
-    fn from_environment() -> Self {
-        Self {
-            home: UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf()),
-            app_data: non_empty_env_path("APPDATA"),
-            local_app_data: non_empty_env_path("LOCALAPPDATA"),
-            program_data: non_empty_env_path("ProgramData"),
-            program_files: non_empty_env_path("ProgramFiles"),
-            program_files_x86: non_empty_env_path("ProgramFiles(x86)"),
-        }
-    }
-}
-
-fn non_empty_env_path(name: &str) -> Option<PathBuf> {
-    env::var_os(name)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
-fn common_binary_dirs_for_platform(platform: &str, roots: &PlatformBinaryRoots) -> Vec<PathBuf> {
-    match platform {
-        "windows" => windows_binary_dirs(roots),
-        "macos" => macos_binary_dirs(roots),
-        "linux" => linux_binary_dirs(roots),
-        _ => Vec::new(),
-    }
-}
-
-fn windows_binary_dirs(roots: &PlatformBinaryRoots) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Some(app_data) = &roots.app_data {
-        dirs.push(app_data.join("npm"));
-    }
-    if let Some(local) = &roots.local_app_data {
-        dirs.push(local.join("Microsoft").join("WindowsApps"));
-        dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
-        dirs.push(local.join("pnpm"));
-        dirs.push(local.join("Programs").join("Microsoft VS Code").join("bin"));
-        dirs.push(
-            local
-                .join("Programs")
-                .join("Microsoft VS Code Insiders")
-                .join("bin"),
-        );
-        dirs.push(
-            local
-                .join("Programs")
-                .join("Cursor")
-                .join("resources")
-                .join("app")
-                .join("bin"),
-        );
-    }
-    if let Some(program_data) = &roots.program_data {
-        dirs.push(program_data.join("chocolatey").join("bin"));
-    }
-    if let Some(home) = &roots.home {
-        dirs.push(home.join("scoop").join("shims"));
-        append_user_package_bins(&mut dirs, home);
-    }
-    for root in [&roots.program_files, &roots.program_files_x86]
-        .into_iter()
-        .flatten()
-    {
-        dirs.push(root.join("Microsoft VS Code").join("bin"));
-        dirs.push(root.join("Microsoft VS Code Insiders").join("bin"));
-        dirs.push(
-            root.join("Cursor")
-                .join("resources")
-                .join("app")
-                .join("bin"),
-        );
-    }
-    dirs
-}
-
-fn macos_binary_dirs(roots: &PlatformBinaryRoots) -> Vec<PathBuf> {
-    let mut dirs = vec![
-        posix_path(&["opt", "homebrew", "bin"]),
-        posix_path(&["usr", "local", "bin"]),
-        posix_path(&["usr", "bin"]),
-        posix_path(&[
-            "Applications",
-            "Visual Studio Code.app",
-            "Contents",
-            "Resources",
-            "app",
-            "bin",
-        ]),
-        posix_path(&[
-            "Applications",
-            "Visual Studio Code - Insiders.app",
-            "Contents",
-            "Resources",
-            "app",
-            "bin",
-        ]),
-        posix_path(&[
-            "Applications",
-            "Cursor.app",
-            "Contents",
-            "Resources",
-            "app",
-            "bin",
-        ]),
-    ];
-    if let Some(home) = &roots.home {
-        append_user_package_bins(&mut dirs, home);
-        dirs.push(home.join("Library").join("pnpm"));
-        dirs.push(
-            home.join("Applications")
-                .join("Visual Studio Code.app")
-                .join("Contents")
-                .join("Resources")
-                .join("app")
-                .join("bin"),
-        );
-        dirs.push(
-            home.join("Applications")
-                .join("Cursor.app")
-                .join("Contents")
-                .join("Resources")
-                .join("app")
-                .join("bin"),
-        );
-    }
-    dirs
-}
-
-fn linux_binary_dirs(roots: &PlatformBinaryRoots) -> Vec<PathBuf> {
-    let mut dirs = vec![
-        posix_path(&["usr", "local", "bin"]),
-        posix_path(&["usr", "bin"]),
-        posix_path(&["snap", "bin"]),
-        posix_path(&["var", "lib", "flatpak", "exports", "bin"]),
-    ];
-    if let Some(home) = &roots.home {
-        append_user_package_bins(&mut dirs, home);
-        dirs.push(
-            home.join(".local")
-                .join("share")
-                .join("flatpak")
-                .join("exports")
-                .join("bin"),
-        );
-        dirs.push(home.join(".local").join("share").join("pnpm"));
-    }
-    dirs
-}
-
 fn posix_path(components: &[&str]) -> PathBuf {
     components.iter().fold(
         PathBuf::from(char::from(47).to_string()),
         |path, component| path.join(component),
     )
-}
-
-fn append_user_package_bins(dirs: &mut Vec<PathBuf>, home: &Path) {
-    dirs.push(home.join(".local").join("bin"));
-    dirs.push(home.join(".npm-global").join("bin"));
-    dirs.push(home.join(".cargo").join("bin"));
-    dirs.push(home.join(".bun").join("bin"));
 }
 
 fn classify_binary_source(path: &Path) -> &'static str {
@@ -562,15 +324,18 @@ mod tests {
 
     #[test]
     fn platform_sources_cover_application_stores_and_package_managers() {
-        let roots = PlatformBinaryRoots {
+        let roots = HostRoots {
             home: Some(posix_path(&["profile"])),
-            app_data: Some(posix_path(&["app-data"])),
-            local_app_data: Some(posix_path(&["local-app-data"])),
+            appdata: Some(posix_path(&["app-data"])),
+            local_appdata: Some(posix_path(&["local-app-data"])),
+            xdg_config: Some(posix_path(&["profile", ".config"])),
+            xdg_data: Some(posix_path(&["profile", ".local", "share"])),
             program_data: Some(posix_path(&["program-data"])),
             program_files: Some(posix_path(&["program-files"])),
             program_files_x86: None,
+            portable: None,
         };
-        let windows = common_binary_dirs_for_platform("windows", &roots);
+        let windows = scan_paths::binary_dirs("windows", &roots);
         assert!(windows.contains(&posix_path(&["local-app-data", "Microsoft", "WindowsApps"])));
         assert!(windows.contains(&posix_path(&[
             "local-app-data",
@@ -581,7 +346,7 @@ mod tests {
         assert!(windows.contains(&posix_path(&["profile", "scoop", "shims"])));
         assert!(windows.contains(&posix_path(&["program-data", "chocolatey", "bin"])));
 
-        let macos = common_binary_dirs_for_platform("macos", &roots);
+        let macos = scan_paths::binary_dirs("macos", &roots);
         assert!(macos.contains(&posix_path(&["opt", "homebrew", "bin"])));
         assert!(
             macos
@@ -589,7 +354,7 @@ mod tests {
                 .any(|path| path.to_string_lossy().contains("Cursor.app"))
         );
 
-        let linux = common_binary_dirs_for_platform("linux", &roots);
+        let linux = scan_paths::binary_dirs("linux", &roots);
         assert!(linux.contains(&posix_path(&["snap", "bin"])));
         assert!(linux.contains(&posix_path(&["var", "lib", "flatpak", "exports", "bin"])));
     }
@@ -603,17 +368,24 @@ mod tests {
             posix_path(&["profile", "Documents", "scripts"]),
             posix_path(&["Volumes", "team-share", "bin"]),
         ] {
-            assert!(!automatic_binary_search_dir_allowed(
-                "macos",
-                &protected,
-                Some(&home),
-            ));
+            assert!(scan_paths::denied(&protected, Some(&home)));
         }
     }
 
     #[test]
     fn macos_automatic_search_keeps_system_and_hidden_package_locations() {
-        let home = posix_path(&["profile"]);
+        let roots = HostRoots {
+            home: Some(posix_path(&["profile"])),
+            appdata: None,
+            local_appdata: None,
+            xdg_config: Some(posix_path(&["profile", ".config"])),
+            xdg_data: Some(posix_path(&["profile", ".local", "share"])),
+            program_data: None,
+            program_files: None,
+            program_files_x86: None,
+            portable: None,
+        };
+        let dirs = scan_paths::binary_dirs("macos", &roots);
         for allowed in [
             posix_path(&["usr", "local", "bin"]),
             posix_path(&["opt", "homebrew", "bin"]),
@@ -626,14 +398,11 @@ mod tests {
                 "bin",
             ]),
             posix_path(&["profile", ".local", "bin"]),
-            posix_path(&["profile", ".nvm", "versions", "node", "current", "bin"]),
+            posix_path(&["profile", ".nvm", "current", "bin"]),
+            posix_path(&["profile", ".local", "share", "mise", "shims"]),
             posix_path(&["profile", "Library", "pnpm"]),
         ] {
-            assert!(automatic_binary_search_dir_allowed(
-                "macos",
-                &allowed,
-                Some(&home),
-            ));
+            assert!(dirs.contains(&allowed), "missing {allowed:?}");
         }
     }
 

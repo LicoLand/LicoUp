@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow, ensure};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -21,17 +21,9 @@ const MAX_PACKAGE_ENTRIES: usize = 128;
 const MAX_PACKAGE_DEPTH: usize = 8;
 const MAX_SCRIPT_FILES: usize = 64;
 const PREPARATION_SCHEMA: &str = "licoup.adaptive-flywheel.preparation.v1";
-const BUILTIN_WORKFLOW: &[u8] = include_bytes!(concat!(
+const SYNTHETIC_FIXTURE_WORKFLOW: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/resources/adaptive_flywheel/builtin-basic/workflow.json"
-));
-const BUILTIN_GRAPH_HELPERS: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/resources/adaptive_flywheel/builtin-basic/scripts/graph_helpers.py"
-));
-const BUILTIN_VALIDATE_DESIGN: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/resources/adaptive_flywheel/builtin-basic/scripts/validate_design.py"
+    "/tests/fixtures/adaptive_flywheel/synthetic-entry-worker.json"
 ));
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -45,15 +37,6 @@ pub struct PreparedPackage {
     pub version: String,
     pub asset_count: usize,
     pub prepared_at_unix_ms: i64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct BuiltinStrategyIdentity {
-    pub definition_id: String,
-    pub name: String,
-    pub version: String,
-    pub revision_digest: String,
-    pub semantics_digest: String,
 }
 
 #[derive(Clone, Debug)]
@@ -494,19 +477,15 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-pub fn builtin_strategy_package_bytes() -> Result<Vec<u8>> {
+pub fn zip_package_files(files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
     let mut cursor = std::io::Cursor::new(Vec::new());
     {
         let mut writer = zip::ZipWriter::new(&mut cursor);
         let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o100600);
-        for (path, bytes) in [
-            ("workflow.json", BUILTIN_WORKFLOW),
-            ("scripts/graph_helpers.py", BUILTIN_GRAPH_HELPERS),
-            ("scripts/validate_design.py", BUILTIN_VALIDATE_DESIGN),
-        ] {
-            writer.start_file(path, options)?;
+        for (path, bytes) in files {
+            writer.start_file(*path, options)?;
             writer.write_all(bytes)?;
         }
         writer.finish()?;
@@ -514,28 +493,8 @@ pub fn builtin_strategy_package_bytes() -> Result<Vec<u8>> {
     Ok(cursor.into_inner())
 }
 
-pub(crate) fn builtin_strategy_identity() -> Result<BuiltinStrategyIdentity> {
-    let workflow: WorkflowDefinition =
-        serde_json::from_slice(BUILTIN_WORKFLOW).map_err(|_| anyhow!("workflow_invalid"))?;
-    let compiled = compile_workflow(workflow).map_err(|_| anyhow!("workflow_invalid"))?;
-    let canonical = serde_json::to_vec(&compiled.definition)?;
-    let semantics_digest = sha256_hex(&canonical);
-    let assets = BTreeMap::from([
-        ("scripts/graph_helpers.py", BUILTIN_GRAPH_HELPERS),
-        ("scripts/validate_design.py", BUILTIN_VALIDATE_DESIGN),
-        ("workflow.json", canonical.as_slice()),
-    ]);
-    let mut hasher = revision_hasher(&semantics_digest);
-    for (path, bytes) in assets {
-        hash_revision_asset(&mut hasher, path, bytes);
-    }
-    Ok(BuiltinStrategyIdentity {
-        definition_id: compiled.definition.metadata.id,
-        name: compiled.definition.metadata.name,
-        version: compiled.definition.metadata.version,
-        revision_digest: hex_digest(hasher.finalize().as_slice()),
-        semantics_digest,
-    })
+pub fn synthetic_fixture_package_bytes() -> Result<Vec<u8>> {
+    zip_package_files(&[("workflow.json", SYNTHETIC_FIXTURE_WORKFLOW)])
 }
 
 #[cfg(test)]
@@ -581,15 +540,25 @@ mod tests {
     }
 
     #[test]
-    fn builtin_package_round_trips_and_commit_is_idempotent() {
+    fn synthetic_package_round_trips_and_commit_is_idempotent() {
         let root = root();
         let importer = StrategyPackageImporter::open(&root).unwrap();
-        let bytes = builtin_strategy_package_bytes().unwrap();
+        let bytes = synthetic_fixture_package_bytes().unwrap();
         let first = importer.prepare_bytes(&bytes).unwrap();
         let committed = importer
             .commit(&first.preparation_id, &first.revision_digest)
             .unwrap();
-        assert_eq!(committed.workflow.metadata.id, "licoup-basic");
+        assert_eq!(committed.workflow.metadata.id, "fixture-entry-worker");
+        assert_eq!(
+            committed
+                .workflow
+                .actor_slots
+                .iter()
+                .filter(|slot| slot.entry)
+                .map(|slot| slot.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["entry"]
+        );
         let second = importer.prepare_bytes(&bytes).unwrap();
         assert_eq!(second.revision_digest, first.revision_digest);
         let committed_again = importer
@@ -609,9 +578,6 @@ mod tests {
                 .join("source.zip")
                 .exists()
         );
-        let identity = builtin_strategy_identity().unwrap();
-        assert_eq!(identity.revision_digest, first.revision_digest);
-        assert_eq!(identity.semantics_digest, first.semantics_digest);
         remove_root(root);
     }
 
@@ -620,7 +586,7 @@ mod tests {
         let root = root();
         let importer = StrategyPackageImporter::open(&root).unwrap();
         let prepared = importer
-            .prepare_bytes(&builtin_strategy_package_bytes().unwrap())
+            .prepare_bytes(&synthetic_fixture_package_bytes().unwrap())
             .unwrap();
         importer
             .commit(&prepared.preparation_id, &prepared.revision_digest)

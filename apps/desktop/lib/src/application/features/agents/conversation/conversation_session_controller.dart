@@ -653,13 +653,13 @@ mixin AgentConversationSessionController
       // Cached/durable sessions often lack a real project cwd (or still carry
       // the retired agent-workspace fallback). Refresh native history so the
       // composer can bind the trusted workspace path from Cursor projects.
-      final hasUsableWorkingDirectory =
+      final hasBoundableWorkingDirectory =
           (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
-            (session) => isUsableLocalConversationWorkingDirectory(
+            (session) => isBoundableConversationWorkingDirectory(
               session.workingDirectory,
             ),
           );
-      if (!hasUsableWorkingDirectory) {
+      if (!hasBoundableWorkingDirectory) {
         await loadConversationSessions(normalizedAgentId);
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {

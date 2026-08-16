@@ -64,6 +64,7 @@ final class AdaptiveFlywheelBinding {
   const AdaptiveFlywheelBinding({
     required this.slotId,
     required this.valueId,
+    this.ordinal = 0,
     this.model = '',
     this.reasoningEffort = '',
     this.revision = 0,
@@ -72,6 +73,7 @@ final class AdaptiveFlywheelBinding {
   factory AdaptiveFlywheelBinding.fromJson(Map<String, dynamic> json) =>
       AdaptiveFlywheelBinding(
         slotId: (json['slotId'] ?? '').toString(),
+        ordinal: (json['ordinal'] as num?)?.toInt() ?? 0,
         valueId: (json['valueId'] ?? '').toString(),
         model: (json['model'] ?? '').toString(),
         reasoningEffort: (json['reasoningEffort'] ?? '').toString(),
@@ -79,6 +81,7 @@ final class AdaptiveFlywheelBinding {
       );
 
   final String slotId;
+  final int ordinal;
   final String valueId;
   final String model;
   final String reasoningEffort;
@@ -109,6 +112,7 @@ final class AdaptiveFlywheelGraphEdge {
     required this.from,
     required this.to,
     required this.event,
+    this.guardLabel = '',
   });
 
   factory AdaptiveFlywheelGraphEdge.fromJson(Map<String, dynamic> json) =>
@@ -116,11 +120,27 @@ final class AdaptiveFlywheelGraphEdge {
         from: (json['from'] ?? '').toString(),
         to: (json['to'] ?? '').toString(),
         event: (json['event'] ?? '').toString(),
+        guardLabel: _guardLabel(json['guard']),
       );
 
   final String from;
   final String to;
   final String event;
+  final String guardLabel;
+}
+
+String _guardLabel(Object? guard) {
+  if (guard is! Map) return '';
+  final path = (guard['path'] ?? '').toString().trim();
+  if (path.isEmpty) return '';
+  final segments = path.split('.').where((part) => part.isNotEmpty);
+  final name = segments.isEmpty ? '' : segments.last;
+  if (name.isEmpty) return '';
+  final equals = guard['equals'];
+  if (equals != null && equals.toString().isNotEmpty) {
+    return '$name=$equals';
+  }
+  return name;
 }
 
 final class AdaptiveFlywheelInspection {
@@ -145,12 +165,7 @@ final class AdaptiveFlywheelInspection {
       currentStates: _strings(projection['currentStates']),
       neighborStates: _strings(projection['neighborStates']),
       allowedOperations: _strings(projection['allowedOperations']),
-      bindings: {
-        for (final binding in _maps(projection['bindings']))
-          if ((binding['slotId'] ?? '').toString().isNotEmpty)
-            (binding['slotId'] ?? '').toString():
-                AdaptiveFlywheelBinding.fromJson(binding),
-      },
+      bindings: _bindingsBySlot(_maps(projection['bindings'])),
       slots: _maps(
         workflow['actorSlots'],
       ).map(AdaptiveFlywheelSlot.fromJson).toList(growable: false),
@@ -170,12 +185,29 @@ final class AdaptiveFlywheelInspection {
   final List<String> currentStates;
   final List<String> neighborStates;
   final List<String> allowedOperations;
-  final Map<String, AdaptiveFlywheelBinding> bindings;
+  final Map<String, List<AdaptiveFlywheelBinding>> bindings;
   final List<AdaptiveFlywheelSlot> slots;
   final List<AdaptiveFlywheelGraphState> states;
   final List<AdaptiveFlywheelGraphEdge> edges;
   final String initialState;
   final String diagnosticCode;
+}
+
+Map<String, List<AdaptiveFlywheelBinding>> _bindingsBySlot(
+  List<Map<String, dynamic>> rows,
+) {
+  final grouped = <String, List<AdaptiveFlywheelBinding>>{};
+  for (final row in rows) {
+    final binding = AdaptiveFlywheelBinding.fromJson(row);
+    if (binding.slotId.isEmpty) continue;
+    grouped
+        .putIfAbsent(binding.slotId, () => <AdaptiveFlywheelBinding>[])
+        .add(binding);
+  }
+  for (final chain in grouped.values) {
+    chain.sort((a, b) => a.ordinal.compareTo(b.ordinal));
+  }
+  return grouped;
 }
 
 Map<String, dynamic> adaptiveFlywheelStringMap(Object? value) =>

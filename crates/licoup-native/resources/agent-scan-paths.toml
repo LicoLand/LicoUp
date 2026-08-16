@@ -1,0 +1,383 @@
+schema_version = "licoup.agent-scan-paths.v1"
+
+# Automatic Agent discovery may probe only the paths listed here. The scanner
+# never walks PATH, personal library roots, photo/music libraries, or network
+# volumes. Classification is lexical; a denied location is not stated.
+
+[deny]
+network_prefixes = ["/Volumes"]
+home_roots = [
+  "Desktop",
+  "Documents",
+  "Downloads",
+  "Pictures",
+  "Music",
+  "Movies",
+  "Videos",
+  "Public",
+]
+media_library_extensions = [
+    "photoslibrary",
+    "photolibrary",
+    "imovielibrary",
+    "tvlibrary",
+    "theater",
+]
+# Automatic unused-agent probes never stat these prefixes. Selecting that
+# Agent may still read its own store. Binary dirs under Library/pnpm stay
+# outside this list.
+other_app_home_prefixes = [
+    "Library/Application Support",
+    "Library/Logs",
+    "Library/Containers",
+    "Library/Group Containers",
+    "Library/Mobile Documents",
+    "Library/CloudStorage",
+]
+
+# Shared CLI search directories. Binary names are joined onto these dirs;
+# the directories themselves are not recursively listed. nvm's default Node
+# bin is resolved from `{home}/.nvm/alias/default` in code, without listing
+# every installed Node version.
+[[binaries]]
+oses = ["macos"]
+dirs = [
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "/usr/bin",
+  "/Applications/Cursor.app/Contents/Resources/app/bin",
+  "/Applications/Visual Studio Code.app/Contents/Resources/app/bin",
+  "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin",
+  "{home}/.local/bin",
+  "{home}/.npm-global/bin",
+  "{home}/.cargo/bin",
+  "{home}/.bun/bin",
+  "{home}/.volta/bin",
+  "{home}/.fnm/aliases/default/bin",
+  "{home}/.local/share/fnm/aliases/default/bin",
+  "{home}/.asdf/shims",
+  "{home}/.mise/shims",
+  "{home}/.local/share/mise/shims",
+  "{home}/.nvm/current/bin",
+  "{home}/.yarn/bin",
+  "{home}/Library/pnpm",
+  "{home}/Applications/Cursor.app/Contents/Resources/app/bin",
+  "{home}/Applications/Visual Studio Code.app/Contents/Resources/app/bin",
+]
+
+[[binaries]]
+oses = ["linux"]
+dirs = [
+  "/usr/local/bin",
+  "/usr/bin",
+  "/snap/bin",
+  "/var/lib/flatpak/exports/bin",
+  "{home}/.local/bin",
+  "{home}/.npm-global/bin",
+  "{home}/.cargo/bin",
+  "{home}/.bun/bin",
+  "{home}/.volta/bin",
+  "{home}/.fnm/aliases/default/bin",
+  "{home}/.local/share/fnm/aliases/default/bin",
+  "{home}/.asdf/shims",
+  "{home}/.mise/shims",
+  "{home}/.local/share/mise/shims",
+  "{home}/.nvm/current/bin",
+  "{home}/.yarn/bin",
+  "{home}/.local/share/pnpm",
+  "{home}/.local/share/flatpak/exports/bin",
+]
+
+[[binaries]]
+oses = ["windows"]
+dirs = [
+  "{appdata}/npm",
+  "{local_appdata}/Microsoft/WindowsApps",
+  "{local_appdata}/Microsoft/WinGet/Links",
+  "{local_appdata}/pnpm",
+  "{local_appdata}/Programs/Microsoft VS Code/bin",
+  "{local_appdata}/Programs/Microsoft VS Code Insiders/bin",
+  "{local_appdata}/Programs/Cursor/resources/app/bin",
+  "{program_data}/chocolatey/bin",
+  "{home}/scoop/shims",
+  "{home}/.local/bin",
+  "{home}/.npm-global/bin",
+  "{home}/.cargo/bin",
+  "{home}/.bun/bin",
+  "{program_files}/Microsoft VS Code/bin",
+  "{program_files}/Microsoft VS Code Insiders/bin",
+  "{program_files}/Cursor/resources/app/bin",
+  "{program_files_x86}/Microsoft VS Code/bin",
+  "{program_files_x86}/Microsoft VS Code Insiders/bin",
+  "{program_files_x86}/Cursor/resources/app/bin",
+]
+
+[[agents]]
+id = "cursor"
+binaries = [
+  "/Applications/Cursor.app/Contents/Resources/app/bin",
+  "{home}/Applications/Cursor.app/Contents/Resources/app/bin",
+]
+apps = [
+  "/Applications/Cursor.app/Contents/MacOS/Cursor",
+  "{home}/Applications/Cursor.app/Contents/MacOS/Cursor",
+]
+config = [
+  { oses = ["macos"], path = "{home}/Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" },
+  { oses = ["windows"], path = "{appdata}/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" },
+  { oses = ["linux"], path = "{xdg_config}/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" },
+]
+detection = [
+  { oses = ["macos"], path = "{home}/Library/Application Support/Cursor" },
+  { oses = ["windows"], path = "{appdata}/Cursor" },
+  { oses = ["linux"], path = "{xdg_config}/Cursor" },
+]
+history = [
+  { path = "{home}/.cursor/chats", kind = "cursor-cli-chats" },
+  { path = "{home}/.cursor/projects", kind = "cursor-cli-projects" },
+  { path = "{home}/Library/Application Support/Cursor/User/workspaceStorage", kind = "cursor-workspace-storage" },
+  { path = "{home}/Library/Application Support/Cursor/User/globalStorage", kind = "cursor-global-storage" },
+  { path = "{appdata}/Cursor/User/workspaceStorage", kind = "cursor-workspace-storage" },
+  { path = "{appdata}/Cursor/User/globalStorage", kind = "cursor-global-storage" },
+  { path = "{xdg_config}/Cursor/User/workspaceStorage", kind = "cursor-workspace-storage" },
+  { path = "{xdg_config}/Cursor/User/globalStorage", kind = "cursor-global-storage" },
+]
+
+[[agents]]
+id = "code"
+binaries = [
+  "/Applications/Visual Studio Code.app/Contents/Resources/app/bin",
+  "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin",
+]
+config = [
+  { oses = ["macos"], path = "{home}/Library/Application Support/Code/User/settings.json" },
+  { oses = ["windows"], path = "{appdata}/Code/User/settings.json" },
+  { oses = ["linux"], path = "{xdg_config}/Code/User/settings.json" },
+]
+history = [
+  { path = "{home}/Library/Application Support/Code/User/workspaceStorage", kind = "vscode-workspace-storage" },
+  { path = "{home}/Library/Application Support/Code/User/globalStorage", kind = "vscode-global-storage" },
+  { path = "{appdata}/Code/User/workspaceStorage", kind = "vscode-workspace-storage" },
+  { path = "{appdata}/Code/User/globalStorage", kind = "vscode-global-storage" },
+  { path = "{xdg_config}/Code/User/workspaceStorage", kind = "vscode-workspace-storage" },
+  { path = "{xdg_config}/Code/User/globalStorage", kind = "vscode-global-storage" },
+]
+
+[[agents]]
+id = "codex"
+config = [{ path = "{home}/.codex/config.toml" }]
+history = [
+  { path = "{home}/.codex/history.jsonl", kind = "codex-prompt-history" },
+  { path = "{home}/.codex/session_index.jsonl", kind = "codex-session-index" },
+  { path = "{home}/.codex/sessions", kind = "codex-session-store" },
+  { path = "{home}/.codex/archived_sessions", kind = "codex-archived-session-store" },
+  { path = "{home}/.codex/memories/MEMORY.md", kind = "codex-memory" },
+  { path = "{home}/.codex/memories/rollout_summaries", kind = "codex-rollout-summary" },
+]
+apps = [
+  "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+  "{home}/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+]
+
+[[agents]]
+id = "claude-code"
+binaries = [
+  "{home}/.claude/local",
+  "{home}/.claude/local/node_modules/.bin",
+]
+config = [{ path = "{home}/.claude/settings.json" }]
+detection = [{ path = "{home}/.claude" }]
+history = [
+  { path = "{home}/.claude/projects", kind = "claude-project-transcripts" },
+  { path = "{home}/.claude.json", kind = "claude-global-state" },
+]
+
+[[agents]]
+id = "opencode"
+binaries = ["{home}/.opencode/bin"]
+config = [
+  { oses = ["windows"], path = "{appdata}/opencode/opencode.jsonc" },
+  { oses = ["macos", "linux"], path = "{xdg_config}/opencode/opencode.jsonc" },
+]
+history = [
+  { path = "{home}/.config/opencode", kind = "opencode-config" },
+  { path = "{home}/.local/share/opencode", kind = "opencode-data" },
+  { path = "{appdata}/opencode", kind = "opencode-appdata" },
+  { path = "{xdg_data}/opencode", kind = "opencode-data" },
+]
+
+[[agents]]
+id = "antigravity"
+config = [{ path = "{home}/.gemini/antigravity/mcp_config.json" }]
+apps = [
+  "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+  "{home}/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+]
+history = [
+  { path = "{home}/Library/Application Support/Antigravity IDE", kind = "antigravity-ide-state" },
+  { path = "{appdata}/Antigravity IDE", kind = "antigravity-ide-state" },
+  { path = "{local_appdata}/Antigravity IDE", kind = "antigravity-ide-state" },
+  { path = "{xdg_config}/Antigravity IDE", kind = "antigravity-ide-state" },
+  { path = "{home}/.gemini/antigravity", kind = "antigravity-bridge" },
+  { path = "{home}/.gemini/antigravity-ide", kind = "antigravity-bridge" },
+  { path = "{home}/.gemini/antigravity-cli", kind = "antigravity-cli" },
+]
+
+[[agents]]
+id = "copilot"
+history = [
+  { path = "{home}/.copilot/session-state", kind = "copilot-cli-session-store" },
+  { path = "{home}/Library/Application Support/Code/User/workspaceStorage", kind = "vscode-copilot-workspace-storage" },
+  { path = "{home}/Library/Application Support/Code/User/globalStorage", kind = "vscode-copilot-global-storage" },
+  { path = "{appdata}/Code/User/workspaceStorage", kind = "vscode-copilot-workspace-storage" },
+  { path = "{appdata}/Code/User/globalStorage", kind = "vscode-copilot-global-storage" },
+  { path = "{xdg_config}/Code/User/workspaceStorage", kind = "vscode-copilot-workspace-storage" },
+  { path = "{xdg_config}/Code/User/globalStorage", kind = "vscode-copilot-global-storage" },
+]
+
+[[agents]]
+id = "kilo-code"
+config = [
+  { oses = ["windows"], path = "{appdata}/kilo/kilo.json" },
+  { oses = ["macos", "linux"], path = "{xdg_config}/kilo/kilo.json" },
+]
+extension_roots = [
+  "{home}/.vscode/extensions",
+  "{home}/.vscode-insiders/extensions",
+  "{home}/.cursor/extensions",
+  "{home}/.vscodium/extensions",
+]
+detection = [
+  { oses = ["windows"], path = "{appdata}/Code/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["windows"], path = "{appdata}/Code - Insiders/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["windows"], path = "{appdata}/Cursor/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["windows"], path = "{appdata}/VSCodium/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["macos"], path = "{home}/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["macos"], path = "{home}/Library/Application Support/Code - Insiders/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["macos"], path = "{home}/Library/Application Support/Cursor/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["macos"], path = "{home}/Library/Application Support/VSCodium/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["linux"], path = "{xdg_config}/Code/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["linux"], path = "{xdg_config}/Code - Insiders/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["linux"], path = "{xdg_config}/Cursor/User/globalStorage/kilocode.kilo-code" },
+  { oses = ["linux"], path = "{xdg_config}/VSCodium/User/globalStorage/kilocode.kilo-code" },
+]
+history = [
+  { path = "{home}/.local/share/kilo/kilo.db", kind = "kilo-session-database" },
+  { path = "{home}/.local/share/kilo/storage/session_diff", kind = "kilo-session-diff" },
+  { path = "{home}/.local/share/kilo/storage/session_share", kind = "kilo-session-share" },
+  { path = "{home}/.local/share/kilo/log", kind = "kilo-log" },
+  { path = "{home}/.config/kilo", kind = "kilo-config" },
+  { path = "{appdata}/kilo", kind = "kilo-appdata" },
+  { path = "{xdg_data}/kilo", kind = "kilo-data" },
+]
+
+[[agents]]
+id = "kimi"
+apps = [
+  "/Applications/Kimi.app/Contents/MacOS/Kimi",
+  "{home}/Applications/Kimi.app/Contents/MacOS/Kimi",
+]
+config = [
+  { oses = ["macos"], path = "{home}/Library/Application Support/Kimi/config.json" },
+  { oses = ["windows"], path = "{appdata}/Kimi/config.json" },
+  { oses = ["linux"], path = "{xdg_config}/Kimi/config.json" },
+]
+detection = [
+  { oses = ["macos"], path = "{home}/Library/Application Support/Kimi" },
+  { oses = ["macos"], path = "{home}/Library/Application Support/com.moonshot.kimi" },
+  { oses = ["windows"], path = "{appdata}/Kimi" },
+  { oses = ["windows"], path = "{appdata}/com.moonshot.kimi" },
+  { oses = ["linux"], path = "{xdg_config}/Kimi" },
+  { oses = ["linux"], path = "{xdg_data}/Kimi" },
+]
+history = [
+  { path = "{home}/Library/Application Support/Kimi", kind = "kimi-app-state" },
+  { path = "{home}/Library/Application Support/com.moonshot.kimi", kind = "kimi-app-state" },
+  { path = "{home}/Library/Logs/Kimi", kind = "kimi-log" },
+  { path = "{appdata}/Kimi", kind = "kimi-appdata" },
+  { path = "{appdata}/com.moonshot.kimi", kind = "kimi-appdata" },
+  { path = "{local_appdata}/Kimi", kind = "kimi-local-appdata" },
+  { path = "{xdg_config}/Kimi", kind = "kimi-config" },
+  { path = "{xdg_data}/Kimi", kind = "kimi-data" },
+]
+
+[[agents]]
+id = "kimi-code"
+config = [{ path = "{home}/.kimi-code/config.toml" }]
+detection = [
+  { path = "{home}/.kimi-code/config.toml" },
+  { path = "{home}/.kimi-code/session_index.jsonl" },
+  { path = "{home}/.kimi-code/sessions" },
+]
+history = [
+  { path = "{home}/.kimi-code/sessions", kind = "kimi-code-session-store" },
+]
+
+[[agents]]
+id = "pi"
+config = [{ path = "{home}/.pi/agent/settings.json" }]
+detection = [
+  { path = "{home}/.pi/agent/settings.json" },
+  { path = "{home}/.pi/agent/sessions" },
+]
+history = [
+  { path = "{home}/.pi/agent/sessions", kind = "pi-session-store" },
+]
+
+[[agents]]
+id = "openclaw"
+binaries = [
+  "{home}/.openclaw",
+  "{home}/.openclaw/bin",
+]
+history = [
+  { path = "{home}/.openclaw", kind = "openclaw-home" },
+  { path = "{home}/.config/openclaw", kind = "openclaw-config" },
+  { path = "{appdata}/OpenClaw", kind = "openclaw-appdata" },
+  { path = "{xdg_config}/openclaw", kind = "openclaw-config" },
+]
+
+[[agents]]
+id = "hermes"
+binaries = [
+  "{home}/.hermes/hermes-agent/venv/bin",
+  "{home}/.hermes/bin",
+]
+history = [
+  { path = "{home}/.hermes", kind = "hermes-home" },
+  { path = "{home}/.config/hermes", kind = "hermes-config" },
+  { path = "{appdata}/Hermes", kind = "hermes-appdata" },
+  { path = "{xdg_config}/hermes", kind = "hermes-config" },
+]
+
+[[agents]]
+id = "lico-agent"
+history = [
+  { path = "{portable}/client-state/lico-agent/sessions", kind = "lico-agent-session-store" },
+]
+
+[[agents]]
+id = "workbuddy"
+history = [
+  { path = "{home}/.workbuddy", kind = "workbuddy-app-state" },
+]
+
+[[agents]]
+id = "codebuddy"
+history = [
+  { path = "{home}/.codebuddy/history.jsonl", kind = "codebuddy-global-history" },
+  { path = "{home}/.codebuddy/sessions", kind = "codebuddy-session-store" },
+  { path = "{home}/.codebuddy/projects", kind = "codebuddy-project-transcripts" },
+]
+
+[[agents]]
+id = "trae-work"
+history = [
+  { path = "{home}/.trae/sessions", kind = "trae-work-session-store" },
+]
+
+[[agents]]
+id = "trae-agent"
+
+[[agents]]
+id = "deepseek-harness"

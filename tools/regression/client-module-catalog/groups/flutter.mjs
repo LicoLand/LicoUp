@@ -146,8 +146,14 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/adaptive_flywheel_workflow_diagram.dart",
         "apps/desktop/test/adaptive_flywheel_controller_test.dart",
+        "apps/desktop/test/adaptive_flywheel_multi_capsule_section_test.dart",
+        "apps/desktop/test/adaptive_flywheel_target_catalog_test.dart",
       ],
-      command: flutterTests(["test/adaptive_flywheel_controller_test.dart"]),
+      command: flutterTests([
+        "test/adaptive_flywheel_controller_test.dart",
+        "test/adaptive_flywheel_multi_capsule_section_test.dart",
+        "test/adaptive_flywheel_target_catalog_test.dart",
+      ]),
     }),
   defineModule({
       id: "flutter.feature.agents.workspace.renderer-process-card",

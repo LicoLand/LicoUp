@@ -145,3 +145,11 @@ pub(super) fn collect_cursor_model_catalog_from_cli_output(
         current_model,
     }
 }
+
+pub(super) fn remove_cursor_independent_reasoning_efforts(
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+) {
+    for entry in entries.values_mut() {
+        entry.reasoning_efforts.clear();
+    }
+}

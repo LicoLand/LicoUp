@@ -54,12 +54,10 @@ pub(super) fn scan_target_with_manual(
         .unwrap_or_default();
     let config_exists = config_path
         .as_ref()
-        .map(|path| path.exists())
-        .unwrap_or(false);
+        .is_some_and(|path| crate::domain::targets::scan_paths::probe_exists(path));
     let detection_exists = detection_path
         .as_ref()
-        .map(|path| path.exists())
-        .unwrap_or(false);
+        .is_some_and(|path| crate::domain::targets::scan_paths::probe_exists(path));
     let detected_without_process = config_exists || binary_path.is_some() || detection_exists;
     let should_check_process = scan_context.running_processes_injected
         || (!detected_without_process && target_uses_running_process_detection(def.id));

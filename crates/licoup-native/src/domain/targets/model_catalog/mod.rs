@@ -1,7 +1,6 @@
 use super::binaries::find_binary;
 use super::parameters::{param_bool, param_paths, param_string, param_u64};
 use super::platform_paths::default_app_data_dir;
-use directories::UserDirs;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,28 +11,32 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod antigravity;
 mod builtin;
+mod claude;
 mod config;
 mod cursor;
 mod history;
 mod kilo;
 mod merge;
 mod normalization;
+mod opencode;
 mod pi;
 mod provider;
 mod reasoning;
 
 use antigravity::{
-    collect_antigravity_available_models_param, collect_antigravity_cli_model_catalog,
-    remove_unsupported_antigravity_reasoning_efforts,
+    collect_antigravity_available_models_from_disk, collect_antigravity_available_models_param,
+    collect_antigravity_cli_model_catalog, remove_unsupported_antigravity_reasoning_efforts,
 };
 use builtin::apply_builtin_model_catalog_overlay;
+use claude::{collect_claude_code_cli_model_catalog, remove_claude_code_family_aliases};
 use config::{
     collect_model_catalog_from_config_path, collect_model_catalog_from_model_collection_path,
     extra_model_collection_paths, extra_model_config_paths, home_dir_for_model_catalog,
+    parse_model_config_document,
 };
-use cursor::collect_cursor_cli_model_catalog;
+use cursor::{collect_cursor_cli_model_catalog, remove_cursor_independent_reasoning_efforts};
 use history::collect_model_catalog_from_history;
-use kilo::collect_kilo_code_model_catalog;
+use kilo::{collect_kilo_code_model_catalog, remove_kilo_session_identities};
 use merge::{
     add_model_catalog_entry, add_model_catalog_entry_with_provider, build_model_catalog,
     collapse_kimi_code_qualified_duplicates, merge_model_catalog_value_into,
@@ -46,6 +49,7 @@ use normalization::{
     model_name_from_value, normalize_model_catalog_key, prefer_model_display_name,
     sanitize_model_name, sanitize_option_name,
 };
+use opencode::collect_opencode_model_catalog;
 use pi::collect_pi_cli_model_catalog;
 use provider::{
     provider_id_from_model_object, provider_id_from_model_value, provider_label_from_provider_id,
@@ -165,11 +169,35 @@ pub(super) fn model_catalog_for_target(
         collect_kilo_code_model_catalog(params, &mut entries, &mut diagnostics);
     }
 
+    if target == "opencode" {
+        sources.insert("opencode-config".to_string());
+        collect_opencode_model_catalog(config_path, params, &mut entries, &mut diagnostics);
+    }
+
+    if target == "claude-code" {
+        if collect_claude_code_cli_model_catalog(params, &mut entries, &mut diagnostics) {
+            sources.insert("claude-cli".to_string());
+        }
+    }
+
     if target == "antigravity" {
+        let before_available = entries.len();
         collect_antigravity_available_models_param(params, &mut entries, &mut diagnostics);
-        authoritative_native_catalog =
-            collect_antigravity_cli_model_catalog(params, &mut entries, &mut diagnostics);
-        if authoritative_native_catalog {
+        if collect_antigravity_available_models_from_disk(params, &mut entries, &mut diagnostics) {
+            sources.insert("antigravity-local".to_string());
+        }
+        let had_available_models = entries.len() > before_available;
+        let cli_ok = collect_antigravity_cli_model_catalog(
+            params,
+            &mut entries,
+            &mut diagnostics,
+            !had_available_models,
+        );
+        authoritative_native_catalog = cli_ok || had_available_models;
+        if cli_ok {
+            sources.insert("antigravity-cli".to_string());
+        }
+        if authoritative_native_catalog && !had_available_models {
             sources.clear();
             sources.insert("antigravity-cli".to_string());
         }
@@ -195,6 +223,13 @@ pub(super) fn model_catalog_for_target(
     {
         sources.insert("history".to_string());
         collect_model_catalog_from_history(target, params, &mut entries, &mut diagnostics);
+    }
+
+    if target == "kilo-code" {
+        remove_kilo_session_identities(&mut entries);
+    }
+    if target == "claude-code" {
+        remove_claude_code_family_aliases(&mut entries, &mut default_model);
     }
 
     if !global_efforts.is_empty() {
@@ -228,6 +263,9 @@ pub(super) fn model_catalog_for_target(
     }
     if target == "antigravity" {
         remove_unsupported_antigravity_reasoning_efforts(&mut entries);
+    }
+    if target == "cursor" {
+        remove_cursor_independent_reasoning_efforts(&mut entries);
     }
 
     build_model_catalog(entries, sources, diagnostics, default_model)

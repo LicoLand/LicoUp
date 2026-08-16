@@ -631,7 +631,7 @@ final class _DailyConversationCascadeCardsState
     extends State<_DailyConversationCascadeCards> {
   static const double _rowExtent = 32;
   static const double _agentCardWidth = 220;
-  static const double _modelCardWidth = 200;
+  static const double _modelCardWidth = 320;
   static const double _settingsCardWidth = 200;
   static const Duration _dismissGrace = LicoMotion.short;
 
@@ -828,7 +828,7 @@ final class _DailyConversationCascadeCardsState
                           model,
                         ),
                         selected: model == draftForActive.modelName,
-                        rowExtent: _rowExtent,
+                        wrapLabel: true,
                         onEnter: () {
                           _dismissTimer?.cancel();
                           setState(() => _hoveredModel = model);
@@ -845,66 +845,56 @@ final class _DailyConversationCascadeCardsState
                       ),
                 ],
               ),
-              SizedBox(width: gap),
-              glassCard(
-                key: Key('${widget.keyPrefix}-settings-card'),
-                width: _settingsCardWidth,
-                header: sectionHeader(strings.reasoningEffort),
-                children: [
-                  if (efforts.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                      child: Text(
-                        strings.noReasoningEffortsFound,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 12.5,
+              if (efforts.isNotEmpty || widget.showFast) ...[
+                SizedBox(width: gap),
+                glassCard(
+                  key: Key('${widget.keyPrefix}-settings-card'),
+                  width: _settingsCardWidth,
+                  header: sectionHeader(strings.reasoningEffort),
+                  children: [
+                    if (efforts.isNotEmpty)
+                      for (final effort in efforts)
+                        _CascadeOptionRow(
+                          key: Key(
+                            '${widget.keyPrefix}-effort-${active.target}-$effort',
+                          ),
+                          label: strings.reasoningEffortOptionLabel(
+                            effort,
+                            effort,
+                          ),
+                          selected: effort == draftForActive.reasoningEffort,
+                          onEnter: () => _dismissTimer?.cancel(),
+                          onTap: () {
+                            widget.onDraftChanged(
+                              draftForActive.copyWith(
+                                agentId: active.target,
+                                modelName: draftForActive.modelName.isEmpty
+                                    ? effectiveModel
+                                    : draftForActive.modelName,
+                                reasoningEffort: effort,
+                              ),
+                            );
+                          },
                         ),
-                      ),
-                    )
-                  else
-                    for (final effort in efforts)
-                      _CascadeOptionRow(
-                        key: Key(
-                          '${widget.keyPrefix}-effort-${active.target}-$effort',
-                        ),
-                        label: strings.reasoningEffortOptionLabel(
-                          effort,
-                          effort,
-                        ),
-                        selected: effort == draftForActive.reasoningEffort,
-                        rowExtent: _rowExtent,
-                        onEnter: () => _dismissTimer?.cancel(),
-                        onTap: () {
+                    if (widget.showFast)
+                      _FastSwitchRow(
+                        keyPrefix: widget.keyPrefix,
+                        enabled: draftForActive.fast,
+                        onChanged: (fast) {
                           widget.onDraftChanged(
                             draftForActive.copyWith(
                               agentId: active.target,
                               modelName: draftForActive.modelName.isEmpty
                                   ? effectiveModel
                                   : draftForActive.modelName,
-                              reasoningEffort: effort,
+                              fast: fast,
                             ),
                           );
                         },
                       ),
-                  if (widget.showFast)
-                    _FastSwitchRow(
-                      keyPrefix: widget.keyPrefix,
-                      enabled: draftForActive.fast,
-                      onChanged: (fast) {
-                        widget.onDraftChanged(
-                          draftForActive.copyWith(
-                            agentId: active.target,
-                            modelName: draftForActive.modelName.isEmpty
-                                ? effectiveModel
-                                : draftForActive.modelName,
-                            fast: fast,
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ],
         ),
@@ -991,14 +981,14 @@ final class _CascadeOptionRow extends StatelessWidget {
     super.key,
     required this.label,
     required this.selected,
-    required this.rowExtent,
     required this.onEnter,
     required this.onTap,
+    this.wrapLabel = false,
   });
 
   final String label;
   final bool selected;
-  final double rowExtent;
+  final bool wrapLabel;
   final VoidCallback onEnter;
   final VoidCallback onTap;
 
@@ -1009,17 +999,26 @@ final class _CascadeOptionRow extends StatelessWidget {
       onEnter: (_) => onEnter(),
       child: InkWell(
         onTap: onTap,
-        child: SizedBox(
-          height: rowExtent,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: wrapLabel ? 8 : 0,
+          ),
+          child: SizedBox(
+            height: wrapLabel ? null : 32,
             child: Row(
+              crossAxisAlignment: wrapLabel
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Text(
                     label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: wrapLabel ? 4 : 1,
+                    softWrap: wrapLabel,
+                    overflow: wrapLabel
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
                     style: TextStyle(
                       color: colors.text,
                       fontSize: 12.5,

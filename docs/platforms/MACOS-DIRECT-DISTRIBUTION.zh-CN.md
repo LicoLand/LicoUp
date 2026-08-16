@@ -14,7 +14,7 @@ Mac App Store 目标仍受沙盒、进程模型、自更新权威和提交流程
 | 站外分发的 `.app` 使用 `Developer ID Application` | 本机平台渠道协调器在打包前校验证书类型、团队、应用标识符和 Profile 授权 | 已实现；真实发行证据待执行 |
 | 所有可执行代码签名，启用 Hardened Runtime，带安全时间戳，并禁止 `get-task-allow` | 先清点并签名嵌套代码，再签外层应用；签名后逐项校验 Developer ID、Runtime、时间戳、权限和嵌套闭包 | 已实现；真实发行证据待执行 |
 | Developer ID 软件提交 Apple 公证并装订票据 | 应用与最终 DMG 均通过 `notarytool` 提交、`stapler` 装订与复验，并用 `spctl` 验收；失败时不生成就绪清单 | 已实现；真实发行证据待执行 |
-| macOS 只申请实际需要的敏感资源 | macOS 目标不含摄像头用途说明、摄像头 entitlement 或摄像头插件注册。扫码视图只在 Android/iOS 实例化，macOS 只展示配对二维码；最终 macOS 嵌套代码清单在签名前拒绝 camera/scanner 插件 | 已实现 |
+| macOS 只申请实际需要的敏感资源，并且只在当前操作需要时申请 | macOS 目标不含摄像头用途说明。自动发现只探测 Agent 扫描路径清单，家目录只从环境变量读取（含 firmlink 等价路径），并对个人资料库根、照片/音乐库、网络宗卷、iCloud 容器和其他 App 容器做词法分类，不去 `stat`。Token 用量在打开监测页之前不会扫描。选中某个 Agent 后仍可读取该 Agent 自己的存储 | 已实现 |
 | 准确披露隐私实践和第三方 SDK 行为 | `PrivacyInfo.xcprivacy` 与中英双语隐私政策只进入 macOS 应用/DMG 发行路径；当前声明无跟踪、无项目方运营的数据收集，并披露有代码证据的文件时间戳、系统启动时间与 User Defaults Required Reason API 用途 | 已实现；依赖或数据流变化时必须重审 |
 | 防止自更新被替换或降级为其他签名者 | 更新候选必须匹配当前应用的准确 Developer ID designated requirement 与团队，并通过签名、Runtime、时间戳、公证票据和 Gatekeeper；替换脚本会再次复验 | 已实现；真实更新证据待执行 |
 | 对发行代码和依赖负责 | LicoUp 不再下载、安装、更新、回滚或跨设备同步技能；只发现本机已有技能，并可把选中目录移入系统废纸篓。发行包附带 AGPL、项目 Notice、Flutter/Dart notices，以及从锁定 Rust 依赖图按目标筛选生成的依赖清单和可用许可证文本 | 技能与随包材料已实现 |
