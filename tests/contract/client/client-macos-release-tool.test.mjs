@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { minimalReleaseToolEnvironment } from "../../../tools/scripts/lib/release-tool-environment.mjs";
 import {
   BETA_STAGE_ORDER,
   deriveManagedReleaseConfig,
@@ -174,4 +175,23 @@ test("macOS publication reuses the verified beta artifact and publishes once", (
   assert.ok(publisherSource.includes('"--publish", "true"'));
   assert.ok(publisherSource.includes("updateSigningKeyEnvironment()"));
   assert.ok(publisherSource.includes("sourceRevision !== releaseRevision"));
+});
+
+test("release-policy child environment keeps Android SDK locations", () => {
+  const env = minimalReleaseToolEnvironment({
+    HOME: "/fixture-home",
+    ANDROID_HOME: "/fixture-sdk",
+    ANDROID_SDK_ROOT: "/fixture-sdk-root",
+    JAVA_HOME: "/fixture-java-home",
+    LICO_ANDROID_JAVA_HOME: "/fixture-lico-java",
+    JAVA_TOOL_OPTIONS: "inject",
+    GH_TOKEN: "secret",
+  }, { PATH: "/fixture-bin" });
+  assert.equal(env.ANDROID_HOME, "/fixture-sdk");
+  assert.equal(env.ANDROID_SDK_ROOT, "/fixture-sdk-root");
+  assert.equal(env.JAVA_HOME, "/fixture-java-home");
+  assert.equal(env.LICO_ANDROID_JAVA_HOME, "/fixture-lico-java");
+  assert.equal(env.PATH, "/fixture-bin");
+  assert.equal(Object.hasOwn(env, "JAVA_TOOL_OPTIONS"), false);
+  assert.equal(Object.hasOwn(env, "GH_TOKEN"), false);
 });
