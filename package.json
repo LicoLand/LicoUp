@@ -41,7 +41,7 @@
     "client:regression": "node tools/scripts/client-module-regression.mjs",
     "client:regression:list": "node tools/scripts/client-module-regression.mjs --list",
     "client:regression:self-test": "node tools/scripts/client-module-regression-self-test.mjs",
-    "client:version:check": "node tools/scripts/client-version.mjs check && node tools/scripts/client-support-matrix.mjs check",
+    "client:version:check": "node --test tests/contract/client/client-version.test.mjs && node tools/scripts/client-version.mjs check && node tools/scripts/client-support-matrix.mjs check",
     "client:version:sync": "node tools/scripts/client-version.mjs sync && node tools/scripts/client-support-matrix.mjs sync",
     "client:version:set": "node tools/scripts/client-version.mjs set && node tools/scripts/client-support-matrix.mjs sync",
     "client:support-matrix:check": "node tools/scripts/client-support-matrix.mjs check",
