@@ -46,6 +46,7 @@ pub(crate) fn discover_history_files(
             adapter,
             &root.path,
             &root.source_kind,
+            root.explicitly_selected,
             &options,
             &mut discovery,
             0,
@@ -61,6 +62,7 @@ fn discover_path(
     adapter: HistoryAdapter,
     path: &Path,
     source_kind: &str,
+    explicitly_selected: bool,
     options: &HistoryDiscoveryOptions,
     discovery: &mut HistoryDiscovery,
     depth: usize,
@@ -71,6 +73,19 @@ fn discover_path(
     }
     if let Some(reason) = excluded_history_path_reason(path) {
         record_skip(discovery, path, reason);
+        return;
+    }
+    if !explicitly_selected
+        && crate::domain::targets::scan_paths::denied(
+            path,
+            crate::platform::paths::user_home_from_env().as_deref(),
+        )
+    {
+        record_skip(discovery, path, "denied_personal_location");
+        return;
+    }
+    if crate::domain::targets::scan_paths::symlink_escapes_denied_location(path) {
+        record_skip(discovery, path, "denied_symlink_escape");
         return;
     }
     if !path.exists() {
@@ -119,6 +134,7 @@ fn discover_path(
                 adapter,
                 &entry.path(),
                 source_kind,
+                explicitly_selected,
                 options,
                 discovery,
                 depth.saturating_add(1),
@@ -357,6 +373,7 @@ mod tests {
         let roots = [HistoryRoot {
             path: root.clone(),
             source_kind: "test".to_owned(),
+            explicitly_selected: false,
         }];
         let discovery = discover_history_files(
             HistoryAdapter::Codex,
@@ -374,6 +391,82 @@ mod tests {
     }
 
     #[test]
+    fn discovery_does_not_stat_denied_network_volumes() {
+        fn posix(parts: &[&str]) -> PathBuf {
+            PathBuf::from(format!("/{}", parts.join("/")))
+        }
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: posix(&["Volumes", "team-share", "sessions"]),
+                source_kind: "codex-session-store".to_owned(),
+                explicitly_selected: false,
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+        assert!(discovery.candidates.is_empty());
+        assert!(
+            discovery
+                .skipped
+                .iter()
+                .any(|skip| skip["reason"] == "denied_personal_location")
+        );
+    }
+
+    #[test]
+    fn explicitly_selected_root_is_not_rejected_as_automatic_discovery() {
+        let path = PathBuf::from(format!(
+            "/{}",
+            ["Volumes", "selected", "sessions"].join("/")
+        ));
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path,
+                source_kind: "codex-session-store".to_owned(),
+                explicitly_selected: true,
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+        assert!(
+            !discovery
+                .skipped
+                .iter()
+                .any(|skip| skip["reason"] == "denied_personal_location")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_does_not_follow_symlink_into_personal_library() {
+        let Some(home) = crate::platform::paths::user_home_from_env() else {
+            return;
+        };
+        let root = temp_root("symlink-escape");
+        fs::create_dir_all(&root).unwrap();
+        let link = root.join("escaped-session.jsonl");
+        std::os::unix::fs::symlink(home.join("Desktop").join("secret-session.jsonl"), &link)
+            .unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "codex-session-store".to_owned(),
+                explicitly_selected: false,
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+        assert!(discovery.candidates.is_empty());
+        assert!(
+            discovery
+                .skipped
+                .iter()
+                .any(|skip| skip["reason"] == "denied_symlink_escape")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn exact_codex_discovery_only_keeps_the_requested_rollout() {
         let root = temp_root("exact");
         fs::create_dir_all(&root).unwrap();
@@ -382,6 +475,7 @@ mod tests {
         let roots = [HistoryRoot {
             path: root.clone(),
             source_kind: "codex-session-store".to_owned(),
+            explicitly_selected: false,
         }];
         let discovery = discover_history_files(
             HistoryAdapter::Codex,
@@ -413,6 +507,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "codex-session-store".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,
@@ -442,6 +537,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "cursor-cli-chats".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,
@@ -462,6 +558,7 @@ mod tests {
         let roots = [HistoryRoot {
             path: root.clone(),
             source_kind: "claude-project-transcripts".to_owned(),
+            explicitly_selected: false,
         }];
         let discovery = discover_history_files(
             HistoryAdapter::ClaudeCode,
@@ -508,6 +605,7 @@ mod tests {
             let roots = [HistoryRoot {
                 path: root.clone(),
                 source_kind: source_kind.to_owned(),
+                explicitly_selected: false,
             }];
             let discovery = discover_history_files(
                 adapter,
@@ -547,6 +645,7 @@ mod tests {
             HistoryAdapter::Codex,
             &root,
             "codex-session-store",
+            false,
             &HistoryDiscoveryOptions {
                 archive_mode: false,
                 exact_session_ids: vec!["bound".to_owned()],
@@ -576,6 +675,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "cursor-cli-projects".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,
@@ -616,6 +716,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "claude-project-transcripts".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,
@@ -653,6 +754,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "cursor-cli-chats".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,
@@ -684,6 +786,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "kimi-code-session-store".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,
@@ -718,6 +821,7 @@ mod tests {
             &[HistoryRoot {
                 path: root.clone(),
                 source_kind: "codex-session-store".to_owned(),
+                explicitly_selected: false,
             }],
             HistoryDiscoveryOptions {
                 archive_mode: false,

@@ -19,9 +19,16 @@ pub(super) fn extra_model_config_paths(target: &str, params: &Value) -> Vec<Path
             home.join(".claude").join("settings.local.json"),
             home.join(".claude.json"),
         ],
+        "opencode" => vec![
+            home.join(".config").join("opencode").join("opencode.jsonc"),
+            home.join(".config").join("opencode").join("opencode.json"),
+        ],
         _ => Vec::new(),
     };
-    paths.into_iter().filter(|path| path.exists()).collect()
+    paths
+        .into_iter()
+        .filter(|path| crate::domain::targets::scan_paths::probe_exists_under_home(path, &home))
+        .collect()
 }
 
 pub(super) fn extra_model_collection_paths(target: &str, params: &Value) -> Vec<PathBuf> {
@@ -40,17 +47,15 @@ pub(super) fn extra_model_collection_paths(target: &str, params: &Value) -> Vec<
         collect_json_model_catalog_files(&home.join(".codex").join("model-catalogs"), &mut paths);
     }
     if target == "copilot" {
-        collect_named_model_cache_files(
-            &home
-                .join("Library")
-                .join("Application Support")
-                .join("Code")
-                .join("User")
-                .join("workspaceStorage"),
-            "GitHub.copilot-chat",
-            &mut paths,
-            0,
-        );
+        let root = home
+            .join("Library")
+            .join("Application Support")
+            .join("Code")
+            .join("User")
+            .join("workspaceStorage");
+        if !crate::domain::targets::scan_paths::is_other_app_container(&root) {
+            collect_named_model_cache_files(&root, "GitHub.copilot-chat", &mut paths, 0);
+        }
     }
     paths.sort_by(|left, right| {
         file_modified_at(right)
@@ -82,7 +87,7 @@ pub(super) fn collect_json_model_catalog_files(root: &Path, paths: &mut Vec<Path
 pub(super) fn home_dir_for_model_catalog(params: &Value) -> Option<PathBuf> {
     param_string(params, "homeDir")
         .map(PathBuf::from)
-        .or_else(|| UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf()))
+        .or_else(crate::platform::paths::user_home_from_env)
 }
 
 pub(super) fn collect_named_model_cache_files(

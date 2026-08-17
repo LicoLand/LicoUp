@@ -35,7 +35,6 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
     this.runningFor,
     this.onPrefetchSessions,
     this.onArchive,
-    this.onAdaptiveFlywheel,
     this.onAddTarget,
     this.onRefresh,
     this.allowManualTargetActions = true,
@@ -57,7 +56,6 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
   /// the messaging contact list's prefetch.
   final ValueChanged<String>? onPrefetchSessions;
   final VoidCallback? onArchive;
-  final VoidCallback? onAdaptiveFlywheel;
   final VoidCallback? onAddTarget;
 
   /// Reloads the conversation list. Wired to the header refresh button that
@@ -201,16 +199,6 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                 label: strings.backupConversations,
                 icon: Icons.archive_outlined,
                 buttonKey: const Key('agents-sidebar-backup-conversations'),
-              ),
-            ),
-          if (widget.onAdaptiveFlywheel != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-              child: _NewConversationGuideButton(
-                onPressed: widget.onAdaptiveFlywheel!,
-                label: 'Adaptive Flywheel',
-                icon: Icons.account_tree_outlined,
-                buttonKey: const Key('agents-sidebar-adaptive-flywheel'),
               ),
             ),
           Expanded(

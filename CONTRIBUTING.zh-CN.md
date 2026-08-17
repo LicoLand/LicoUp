@@ -48,6 +48,13 @@ npm run client:artifacts:prune
 下载的依赖。未纳管的旧目标只会被报告，不会自动删除。测试异常退出后，结构完整的失效
 租约会先经过保护宽限期，之后才进入可回收状态；格式错误或被篡改的记录始终关闭失败。
 
+## 系统权限
+
+只在当前用户操作真正需要某项系统隐私权限时才向操作系统申请。自动发现只探测 Agent
+扫描路径清单，不得遍历 PATH、桌面、文稿、下载、图片、音乐、照片图库、媒体资料库、
+网络宗卷或未使用的 Agent 存储。当前操作用不到的用途说明、entitlement 或插件不得随
+包提供。
+
 锁定依赖均已缓存时，可单独运行离线依赖审计
 `npm run client:deps:audit:offline`。它不会带动未受影响的语言或平台通道。
 
@@ -116,39 +123,48 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 带版本的副本。发布前必须复核每个官方 HTTPS 来源、刷新日期，并删除已经停止提供的
 行。当前目录旁不得保留生成文件或兼容定价来源。
 
-## 发布冻结期间并行开发下一版本
+## 把版本切到 `release`；保持 `nightly` 开放
 
-LicoUp 只使用一条发布列车。发布窗口从最新且已验证的 `nightly` 切出候选时开始。
-只有在完成下文要求的最终公开下载、来源与摘要校验、公开路径安装、稳定启动和已发布
-更新检查后，发布窗口才会成功关闭；也可以先明确宣布放弃发布并使候选失效，再关闭
-窗口。
+LicoUp 只使用一条发布列车。`nightly` 是始终开放的集成线。正在发布期间，带动作
+前缀的普通功能与修复 Pull Request 继续合入 `nightly`。
 
-窗口期间可以继续开发下一版本，但必须保持隔离：
+项目必须完成 100 次独立发布后，才能把任何构建提升到 `1.0.0` 线。每一个 1.0
+之前的发布都保留自己的不可变版本、候选证据和制品收据；被跳过或被替换的候选不
+计入发布次数。
 
-- 冻结候选与下一版本分支必须使用不同的 Git worktree。严禁把候选 worktree、构建
-  输出或预检收据用于下一版本开发。
-- 下一版本使用 `feature/<topic>`、`fix/<topic>` 等带动作前缀的普通分支。该分支
-  可以构建和测试下一版本，但无权准备、晋级或发布被冻结版本。
-- 冻结所有进入 `nightly` 的普通合并，只允许发布候选晋级。如果发现发布阻断问题，
-  必须先使候选失效，再通过普通 Pull Request 合入一个经批准的聚焦修复，然后重新
-  创建候选。
-- 窗口关闭前，严禁把下一版本或无关改动合入 `nightly`、`stable` 或 `release`。
-  发布验证成功或明确放弃后，解除 `nightly` 冻结，再通过普通 merge-commit Pull
-  Request 合入下一版本分支。
+切版本：维护者授权一次切分后，将已验证的 `nightly` → `stable` → `release`
+晋升一次。该快照即为 `origin/release`。之后的 `nightly` 尖端是下一次切分，不是
+正在发布的版本。在当前发布成功或被明确放弃之前，不要再次运行 `nightly` →
+`stable` 或 `stable` → `release`。
 
-例如，这可以保证 `0.1.1` 的开发不会改变被冻结的 `0.1.0` 发布，但不会创建两条
-可以同时晋级的 `stable` 或 `release` 发布通道。
+发布：在精确的 `origin/release` revision 上使用干净的 detached worktree，运行
+`npm run client:release:macos:publish`。公开发布只来自 `origin/release`。严禁
+从 `nightly` 或 `stable` 发布。
+
+公证与发布期间：
+
+- 保持 `nightly` 开放，继续接受普通 merge-commit Pull Request。
+- 冻结 `stable` 和 `release`。在此版本发布成功或被放弃前，不要再向它们晋升。
+- 把冻结的 `origin/release` 发布 worktree 与 `nightly` 功能 worktree 分开。严禁
+  把本次发布的输出或收据用于下一版本开发。
+- 正在进行的切分就是当前的 `origin/release` 尖端。不要把之后的 `nightly`
+  提交吸进这次切分。
+
+例如，这可以保证 `nightly` 上的 `0.1.1` 开发不会改变 `release` 上已冻结的
+`0.1.0`，或正在发布的 `0.1.1`。它不会创建两条可以同时晋级的 `stable` 或
+`release` 通道。
 
 ## 合并请求检查
 
-开始发布前，产品改动、重构、迁移、发布工具、Workflow、Ruleset、身份策略和
-Auditor 策略必须分别通过普通 Pull Request 完成。发布候选必须从最新且已验证的
-`nightly` 创建，只能包含规范发布命令产生的版本、构建号、目标和发布清单改动。
-严禁把整个工作树复制进候选，也不得携带已知门禁失败、未完成迁移、陈旧检查器或
-意外路径。运行预检前必须完整检查 `origin/nightly...HEAD` 差异。
+产品改动、重构、迁移、发布工具、Workflow、Ruleset、身份策略和 Auditor 策略必须
+分别通过普通 Pull Request 完成。产品工作持续合入 `nightly`。切分是晋升到
+`release`。公开发布来自精确的 `origin/release` revision。
 
-使用干净、已提交且命名为 `release-candidate/v<version>-<target>` 的分支，并在
-目标的真实平台运行唯一的本地预检：
+切分前的候选验证仍使用干净、已提交且命名为
+`release-candidate/v<version>-<target>` 的分支，并从最新且已验证的 `nightly`
+创建。它只能包含规范发布命令产生的版本、构建号、目标和发布清单改动。严禁把
+整个工作树复制进候选，也不得携带已知门禁失败、未完成迁移、陈旧检查器或意外
+路径。运行预检前必须完整检查 `origin/nightly...HEAD` 差异。
 
 ```bash
 npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target
@@ -156,15 +172,21 @@ npm run client:pr:preflight -- --base origin/nightly --target <target> --full-ta
 
 预检会对同一候选执行构建、签名、归档、安装、更新、回滚和真实启动，然后
 写入被忽略且已脱敏的收据。pre-push Hook 只核验该收据，不会重复昂贵步骤。
+候选分支在每个选定打包目标的收据通过之前必须保持本地；只有这时才可推送该已
+验证提交，或用它打开远程发布候选 Pull Request。远程分支绝不是打包或签名的调试
+循环。该预检是切分前的打包验证，不是公开发布。切分之后从 `origin/release`
+发布，并保持 `nightly` 开放。
 预检是最终验收，不是开发循环。如果它发现发布专用差异之外的缺陷，候选立即失效。
-应在普通分支修复权威实现、合入 `nightly` 后重新创建候选；严禁在失败候选上修改
-产品代码、检查器、Workflow 或 Ruleset。
+应在普通分支修复权威实现、合入 `nightly`，并在下一次授权切分前重新验证候选；
+严禁在失败候选上修改产品代码、检查器、Workflow 或 Ruleset，也不得把之后的
+`nightly` 提交晋升进已经切出的 `origin/release`。
 
-发布候选 Pull Request 一经创建，其 HEAD、Required Checks、Ruleset、分支拓扑、
+发布候选 Pull Request 一经创建，该候选 HEAD、Required Checks、Ruleset、分支拓扑、
 身份权威、Auditor 策略、Workflow 契约和制品契约全部冻结。收据缺失或失效时不得
 创建或更新候选。Required Checks 必须逐字为 `Branch flow`、`Commit identity`、
-`Client required` 和 `Auditor`。首个无法解释的远程失败必须冻结发布；发布窗口内
-禁止修复 Pull Request、重复 publish 或修改任何冻结权威。
+`Client required` 和 `Auditor`。首个无法解释的远程失败必须冻结继续向 `stable`
+和 `release` 的晋升；进入 `nightly` 的普通合并继续进行。发布窗口内禁止用修复
+Pull Request 重切正在发布的版本、重复 publish 或修改任何冻结权威。
 
 远程构建成功、晋升合并、Workflow 成功或生成草稿都不代表发布成功。只有重新下载
 最终公开制品、验证绑定的来源和摘要、按公开路径安装、确认稳定启动并验证公开更新

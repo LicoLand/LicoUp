@@ -5,6 +5,7 @@ mixin FakeAgentStateSupport on AgentService {
   int scanTargetsCalls = 0;
   int scanOneTargetCalls = 0;
   final List<String> scannedOneTargetIds = <String>[];
+  final List<bool> catalogLookups = <bool>[];
   int inspectTargetCalls = 0;
   int addTargetCalls = 0;
   int restoreSnapshotCount = 0;
@@ -84,10 +85,14 @@ mixin FakeAgentStateSupport on AgentService {
   }
 
   @override
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
     scanTargetsCalls++;
     scanOneTargetCalls++;
     scannedOneTargetIds.add(targetId);
+    catalogLookups.add(enableAgentCliModelLookup);
     if (throwScanTargets) {
       throw Exception('scan failed');
     }

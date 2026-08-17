@@ -4,21 +4,27 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
+import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -222,6 +228,8 @@ class CanonicalGroupConversationPane extends StatefulWidget {
     required this.onCopyText,
     this.onOpenAgentConversations,
     this.framed = true,
+    this.flywheelGateway,
+    this.onOpenAdaptiveFlywheel,
   });
 
   final ClientConversationController controller;
@@ -229,6 +237,8 @@ class CanonicalGroupConversationPane extends StatefulWidget {
   final Future<void> Function(String) onCopyText;
   final ValueChanged<String>? onOpenAgentConversations;
   final bool framed;
+  final AdaptiveFlywheelGateway? flywheelGateway;
+  final Future<void> Function(String? revisionDigest)? onOpenAdaptiveFlywheel;
 
   @override
   State<CanonicalGroupConversationPane> createState() =>
@@ -239,11 +249,423 @@ class _CanonicalGroupConversationPaneState
     extends State<CanonicalGroupConversationPane> {
   bool _rosterVisible = true;
   final ScrollController _messageScrollController = ScrollController();
+  List<AdaptiveFlywheelDefinition> _authorizedStrategies = const [];
+  String? _strategyRevision;
+  String _strategyName = '';
+  String _entrySlotLabel = '';
+  String _entryAgentId = '';
+  String? _strategyRunId;
+  bool _strategyNeedsHumanInput = false;
+  String _strategyProjectionConversationId = '';
+  String _strategyProjectionRevision = '';
+  int _strategyProjectionGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onConversationChanged);
+    unawaited(_loadAuthorizedStrategies());
+  }
+
+  @override
+  void didUpdateWidget(covariant CanonicalGroupConversationPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onConversationChanged);
+      widget.controller.addListener(_onConversationChanged);
+      unawaited(_syncStrategyFromConversation(force: true));
+    }
+    if (oldWidget.flywheelGateway != widget.flywheelGateway) {
+      unawaited(_loadAuthorizedStrategies());
+    }
+  }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onConversationChanged);
     _messageScrollController.dispose();
     super.dispose();
+  }
+
+  void _onConversationChanged() {
+    if (!mounted) return;
+    setState(() {});
+    unawaited(_syncStrategyFromConversation());
+  }
+
+  Future<void> _loadAuthorizedStrategies() async {
+    final gateway = widget.flywheelGateway;
+    if (gateway == null) {
+      if (!mounted) return;
+      setState(() {
+        _authorizedStrategies = const [];
+        _clearStrategyFields();
+      });
+      return;
+    }
+    try {
+      final definitions =
+          adaptiveFlywheelMaps(
+                await gateway.execute({'action': 'strategy.definition.list'}),
+              )
+              .map(AdaptiveFlywheelDefinition.fromJson)
+              .where((definition) {
+                return definition.authorized &&
+                    definition.revisionDigest.isNotEmpty;
+              })
+              .toList(growable: false);
+      if (!mounted) return;
+      setState(() => _authorizedStrategies = definitions);
+      await _syncStrategyFromConversation(force: true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _authorizedStrategies = const []);
+    }
+  }
+
+  void _clearStrategyFields() {
+    _strategyRevision = null;
+    _strategyName = '';
+    _entrySlotLabel = '';
+    _entryAgentId = '';
+    _strategyRunId = null;
+    _strategyNeedsHumanInput = false;
+  }
+
+  Future<void> _exitStrategyMode() async {
+    final conversationId = widget.controller.selectedConversationId;
+    final cleared = await widget.controller.setSelectedStrategyRevision(null);
+    if (!mounted ||
+        !cleared ||
+        widget.controller.selectedConversationId != conversationId) {
+      return;
+    }
+    _strategyProjectionConversationId = conversationId;
+    _strategyProjectionRevision = '';
+    _strategyProjectionGeneration += 1;
+    setState(_clearStrategyFields);
+  }
+
+  Future<void> _openAdaptiveFlywheel(String? revisionDigest) async {
+    final open = widget.onOpenAdaptiveFlywheel;
+    if (open == null) return;
+    await open(revisionDigest);
+    if (!mounted) return;
+    await _loadAuthorizedStrategies();
+  }
+
+  Future<void> _selectStrategy(String revisionDigest) async {
+    final controller = widget.controller;
+    final gateway = widget.flywheelGateway;
+    final conversation = controller.selectedConversation;
+    final conversationId = conversation?.id ?? '';
+    if (conversationId.isEmpty || revisionDigest.isEmpty || gateway == null) {
+      return;
+    }
+    final strategies = List<AdaptiveFlywheelDefinition>.unmodifiable(
+      _authorizedStrategies,
+    );
+    final agentLabels = <String, String>{
+      for (final target in widget.targets)
+        if (target.target.trim().isNotEmpty)
+          target.target: agentConversationTargetDisplayName(target),
+      for (final target in widget.targets)
+        if (target.id.trim().isNotEmpty)
+          target.id: agentConversationTargetDisplayName(target),
+      for (final membership in conversation!.activeAgentMemberships)
+        if (membership.principal.agentId.trim().isNotEmpty)
+          membership.principal.agentId:
+              membership.principal.displayName.trim().isEmpty
+              ? membership.principal.agentId
+              : membership.principal.displayName,
+    };
+
+    // The user's click is the durable state transition. Persist it before
+    // inspection and membership reconciliation so navigation cannot dispose
+    // the pane and cancel the selection before it reaches the Conversation.
+    final persisted = await controller.setSelectedStrategyRevision(
+      revisionDigest,
+    );
+    if (!persisted) return;
+    try {
+      final projection = await _inspectStrategy(
+        revisionDigest,
+        gatewayOverride: gateway,
+        strategiesOverride: strategies,
+      );
+      if (projection == null) return;
+      for (final agentId in projection.agentIds) {
+        if (controller.selectedConversationId != conversationId ||
+            controller.selectedConversation?.strategyRevision.trim() !=
+                revisionDigest) {
+          return;
+        }
+        await controller.ensureSelectedAgentMembership(
+          agentId: agentId,
+          displayName: agentLabels[agentId] ?? agentId,
+        );
+      }
+      if (!mounted ||
+          controller.selectedConversationId != conversationId ||
+          controller.selectedConversation?.strategyRevision.trim() !=
+              revisionDigest) {
+        return;
+      }
+      _strategyProjectionConversationId = conversationId;
+      _strategyProjectionRevision = revisionDigest;
+      _strategyProjectionGeneration += 1;
+      _applyStrategyProjection(projection);
+      await _refreshActiveRun();
+    } on AdaptiveFlywheelFailure {
+      return;
+    }
+  }
+
+  Future<void> _syncStrategyFromConversation({bool force = false}) async {
+    final conversation = widget.controller.selectedConversation;
+    final conversationId = conversation?.id ?? '';
+    final revision = conversation?.strategyRevision.trim() ?? '';
+    if (!force &&
+        conversationId == _strategyProjectionConversationId &&
+        revision == _strategyProjectionRevision) {
+      await _refreshActiveRun();
+      return;
+    }
+    _strategyProjectionConversationId = conversationId;
+    _strategyProjectionRevision = revision;
+    final generation = ++_strategyProjectionGeneration;
+    if (conversation == null || !conversation.group || revision.isEmpty) {
+      if (!mounted) return;
+      setState(_clearStrategyFields);
+      return;
+    }
+    try {
+      final projection = await _inspectStrategy(revision);
+      if (!mounted ||
+          generation != _strategyProjectionGeneration ||
+          widget.controller.selectedConversationId != conversationId ||
+          widget.controller.selectedConversation?.strategyRevision.trim() !=
+              revision) {
+        return;
+      }
+      if (projection == null) {
+        setState(_clearStrategyFields);
+        return;
+      }
+      _applyStrategyProjection(projection);
+      await _refreshActiveRun();
+    } on AdaptiveFlywheelFailure {
+      return;
+    }
+  }
+
+  Future<_GroupStrategyProjection?> _inspectStrategy(
+    String revisionDigest, {
+    AdaptiveFlywheelGateway? gatewayOverride,
+    List<AdaptiveFlywheelDefinition>? strategiesOverride,
+  }) async {
+    final gateway = gatewayOverride ?? widget.flywheelGateway;
+    if (gateway == null) return null;
+    final strategies = strategiesOverride ?? _authorizedStrategies;
+    AdaptiveFlywheelDefinition? selected;
+    for (final definition in strategies) {
+      if (definition.revisionDigest == revisionDigest) {
+        selected = definition;
+        break;
+      }
+    }
+    if (selected == null) return null;
+    final inspection = AdaptiveFlywheelInspection.fromJson(
+      adaptiveFlywheelStringMap(
+        await gateway.execute({
+          'action': 'strategy.definition.inspect',
+          'revisionDigest': revisionDigest,
+        }),
+      ),
+    );
+    if (!inspection.authorized) return null;
+    final entry = inspection.entrySlot;
+    final entryBindings = entry == null
+        ? const <AdaptiveFlywheelBinding>[]
+        : inspection.bindings[entry.id] ?? const <AdaptiveFlywheelBinding>[];
+    final agentIds = <String>{};
+    for (final slot in inspection.slots.where((slot) => slot.kind == 'actor')) {
+      for (final binding in inspection.bindings[slot.id] ?? const []) {
+        final agentId = binding.valueId.trim();
+        if (agentId.isNotEmpty) agentIds.add(agentId);
+      }
+    }
+    final selectedName = selected.name.trim();
+    return _GroupStrategyProjection(
+      revision: revisionDigest,
+      name: selectedName.isEmpty ? selected.id : selectedName,
+      entrySlotLabel: entry?.label.trim().isNotEmpty == true
+          ? entry!.label.trim()
+          : (entry?.id ?? ''),
+      entryAgentId: entryBindings.isEmpty
+          ? ''
+          : entryBindings.first.valueId.trim(),
+      agentIds: Set<String>.unmodifiable(agentIds),
+    );
+  }
+
+  void _applyStrategyProjection(_GroupStrategyProjection projection) {
+    setState(() {
+      _strategyRevision = projection.revision;
+      _strategyName = projection.name;
+      _entrySlotLabel = projection.entrySlotLabel;
+      _entryAgentId = projection.entryAgentId;
+    });
+  }
+
+  String _agentDisplayName(String agentId) {
+    for (final target in widget.targets) {
+      if (target.target == agentId || target.id == agentId) {
+        return agentConversationTargetDisplayName(target);
+      }
+    }
+    final conversation = widget.controller.selectedConversation;
+    if (conversation != null) {
+      for (final membership in conversation.activeAgentMemberships) {
+        if (membership.principal.agentId == agentId) {
+          final label = membership.principal.displayName.trim();
+          if (label.isNotEmpty) return label;
+        }
+      }
+    }
+    return agentId;
+  }
+
+  String get _entryCapsuleLabel {
+    if (_entryAgentId.isNotEmpty) {
+      return _agentDisplayName(_entryAgentId);
+    }
+    return _entrySlotLabel.isEmpty ? 'entry' : _entrySlotLabel;
+  }
+
+  Future<void> _refreshActiveRun() async {
+    final gateway = widget.flywheelGateway;
+    final revision = _strategyRevision;
+    final conversationId = widget.controller.selectedConversationId;
+    if (gateway == null || revision == null || conversationId.isEmpty) {
+      if (!mounted) return;
+      if (_strategyRunId != null || _strategyNeedsHumanInput) {
+        setState(() {
+          _strategyRunId = null;
+          _strategyNeedsHumanInput = false;
+        });
+      }
+      return;
+    }
+    try {
+      final projection = adaptiveFlywheelStringMap(
+        await gateway.execute({
+          'action': 'strategy.run.active',
+          'revisionDigest': revision,
+          'conversationId': conversationId,
+        }),
+      );
+      if (!mounted ||
+          widget.controller.selectedConversationId != conversationId ||
+          _strategyRevision != revision) {
+        return;
+      }
+      final runId = (projection['runId'] ?? '').toString();
+      setState(() {
+        _strategyRunId = runId.isEmpty ? null : runId;
+        _strategyNeedsHumanInput = projection['needsHumanInput'] == true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _strategyRunId = null;
+        _strategyNeedsHumanInput = false;
+      });
+    }
+  }
+
+  Future<bool> _startStrategyRun(String text) async {
+    final gateway = widget.flywheelGateway;
+    final revision = _strategyRevision;
+    final conversation = widget.controller.selectedConversation;
+    if (gateway == null || revision == null || conversation == null) {
+      return false;
+    }
+    final projection = adaptiveFlywheelStringMap(
+      await gateway.execute({
+        'action': 'strategy.run.start',
+        'revisionDigest': revision,
+        'input': {'message': text},
+        'idempotencyKey':
+            'strategy-run-${conversation.id}-${DateTime.now().microsecondsSinceEpoch}',
+        'conversationId': conversation.id,
+      }),
+    );
+    final runId = (projection['runId'] ?? '').toString();
+    if (runId.isEmpty) return false;
+    if (mounted) {
+      setState(() {
+        _strategyRunId = runId;
+        _strategyNeedsHumanInput = projection['needsHumanInput'] == true;
+      });
+    }
+    return true;
+  }
+
+  Future<bool> _cancelActiveStrategyRun() async {
+    final gateway = widget.flywheelGateway;
+    final runId = _strategyRunId;
+    if (gateway == null || runId == null) return false;
+    await gateway.execute({'action': 'strategy.run.cancel', 'runId': runId});
+    if (mounted) {
+      setState(() {
+        _strategyRunId = null;
+        _strategyNeedsHumanInput = false;
+      });
+    }
+    return true;
+  }
+
+  Future<bool> _postAndStartStrategyRun(String text) async {
+    final posted = await widget.controller.postMessage(
+      text,
+      suppressMentions: true,
+    );
+    if (!posted) return false;
+    // The transcript is authoritative: persist the human turn before the
+    // strategy runtime can emit its first agent event.
+    try {
+      await _startStrategyRun(text);
+    } on AdaptiveFlywheelFailure {
+      return true;
+    }
+    return true;
+  }
+
+  Future<bool> _sendComposerMessage(String text) async {
+    final revision = _strategyRevision;
+    if (revision == null) {
+      return widget.controller.postMessage(text);
+    }
+    await _refreshActiveRun();
+    if (!mounted) return false;
+    var posted = false;
+    try {
+      if (_strategyRunId == null) {
+        posted = await _postAndStartStrategyRun(text);
+        return posted;
+      }
+      if (_strategyNeedsHumanInput) {
+        if (!await _cancelActiveStrategyRun()) return false;
+        posted = await _postAndStartStrategyRun(text);
+        return posted;
+      }
+      return widget.controller.postMessage(text, suppressMentions: true);
+    } on AdaptiveFlywheelFailure {
+      // If the chat turn was already persisted, clear the composer even when
+      // strategy startup failed so the user cannot accidentally duplicate it.
+      return posted;
+    }
   }
 
   void _continueConversationScroll(double overscroll) {
@@ -344,12 +766,36 @@ class _CanonicalGroupConversationPaneState
         for (final membership in conversation.activeAgentMemberships)
           membership.principal.agentId: conversation.id,
       },
+      composerFlywheel: widget.flywheelGateway == null
+          ? null
+          : _GroupStrategyPickerCapsule(
+              label: _strategyRevision == null
+                  ? strings.optionalStrategy
+                  : (_strategyName.isEmpty
+                        ? strings.optionalStrategy
+                        : _strategyName),
+              strategies: _authorizedStrategies,
+              selectedRevision: _strategyRevision,
+              onSelected: (revision) => unawaited(_selectStrategy(revision)),
+              onOpen: widget.onOpenAdaptiveFlywheel == null
+                  ? null
+                  : (revision) => unawaited(_openAdaptiveFlywheel(revision)),
+            ),
+      composerLeading: _strategyRevision == null
+          ? null
+          : _GroupStrategyEntryCapsule(
+              label: _entryCapsuleLabel,
+              onOpen: widget.onOpenAdaptiveFlywheel == null
+                  ? null
+                  : () => unawaited(_openAdaptiveFlywheel(_strategyRevision)),
+              onClear: () => unawaited(_exitStrategyMode()),
+            ),
     );
     final actions = AgentConversationPaneActions(
       onModelChanged: (_) {},
       onReasoningEffortChanged: (_) {},
       onDraftChanged: controller.updateDraft,
-      onSend: controller.postMessage,
+      onSend: _sendComposerMessage,
       onSelectSession: (_) {},
       onCopyText: widget.onCopyText,
     );
@@ -1468,3 +1914,325 @@ String _iso(int unixMs) => unixMs <= 0
         unixMs,
         isUtc: true,
       ).toIso8601String();
+
+final class _GroupStrategyProjection {
+  const _GroupStrategyProjection({
+    required this.revision,
+    required this.name,
+    required this.entrySlotLabel,
+    required this.entryAgentId,
+    required this.agentIds,
+  });
+
+  final String revision;
+  final String name;
+  final String entrySlotLabel;
+  final String entryAgentId;
+  final Set<String> agentIds;
+}
+
+final class _GroupStrategyPickerCapsule extends StatelessWidget {
+  const _GroupStrategyPickerCapsule({
+    required this.label,
+    required this.strategies,
+    required this.selectedRevision,
+    required this.onSelected,
+    this.onOpen,
+  });
+
+  final String label;
+  final List<AdaptiveFlywheelDefinition> strategies;
+  final String? selectedRevision;
+  final ValueChanged<String> onSelected;
+  final ValueChanged<String?>? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final menuRadius = BorderRadius.circular(
+      AppleControlMetrics.menuCornerRadius,
+    );
+    return MessagingHoverPopover(
+      popoverKey: const Key('canonical-group-strategy-picker-panel'),
+      targetAnchor: Alignment.topLeft,
+      followerAnchor: Alignment.bottomLeft,
+      offset: const Offset(0, -4),
+      maxHeight: MessagingDesktopMetrics.composerOptionPopoverMaxHeight,
+      borderRadius: menuRadius,
+      wrapInGlass: false,
+      cardBuilder: (context, close) {
+        return _GroupStrategyGlassOptionCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (strategies.isEmpty)
+                MessagingGlassMenuItem(
+                  label: strings.noAuthorizedStrategies,
+                  dense: true,
+                  enabled: false,
+                )
+              else
+                for (final strategy in strategies)
+                  _GroupStrategyGlassMenuItem(
+                    key: Key(
+                      'canonical-group-strategy-option-${strategy.revisionDigest}',
+                    ),
+                    label: strategy.name.trim().isEmpty
+                        ? strategy.id
+                        : strategy.name,
+                    selected: strategy.revisionDigest == selectedRevision,
+                    iconColor: context.licoColors.text,
+                    accentColor: context.licoColors.accent,
+                    editTooltip: strings.edit,
+                    editKey: Key(
+                      'canonical-group-strategy-edit-${strategy.revisionDigest}',
+                    ),
+                    onEdit: onOpen == null
+                        ? null
+                        : () {
+                            close();
+                            onOpen!(strategy.revisionDigest);
+                          },
+                    onTap: () {
+                      onSelected(strategy.revisionDigest);
+                      close();
+                    },
+                  ),
+            ],
+          ),
+        );
+      },
+      triggerBuilder:
+          (context, {required open, required toggle, required close}) {
+            return _GroupStrategyPickerTrigger(
+              label: label,
+              open: open,
+              onTap: onOpen == null
+                  ? toggle
+                  : () {
+                      close();
+                      onOpen!(selectedRevision);
+                    },
+            );
+          },
+    );
+  }
+}
+
+final class _GroupStrategyGlassOptionCard extends MessagingGlassOptionCard {
+  const _GroupStrategyGlassOptionCard({required super.child})
+    : super(
+        constraints: const BoxConstraints(
+          minWidth: 156,
+          maxWidth: 240,
+          maxHeight: MessagingDesktopMetrics.composerOptionPopoverMaxHeight,
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 4),
+      );
+}
+
+final class _GroupStrategyGlassMenuItem extends MessagingGlassMenuItem {
+  _GroupStrategyGlassMenuItem({
+    super.key,
+    required super.label,
+    required bool selected,
+    required Color iconColor,
+    required Color accentColor,
+    required String editTooltip,
+    required Key editKey,
+    required VoidCallback? onEdit,
+    required VoidCallback onTap,
+  }) : super(
+         selected: selected && onEdit == null,
+         dense: true,
+         leading: Icon(Icons.account_tree_outlined, size: 14, color: iconColor),
+         trailing: onEdit == null
+             ? null
+             : _GroupStrategyOptionTrailing(
+                 selected: selected,
+                 accentColor: accentColor,
+                 editTooltip: editTooltip,
+                 editKey: editKey,
+                 onEdit: onEdit,
+               ),
+         onTap: onTap,
+       );
+}
+
+final class _GroupStrategyOptionTrailing extends StatelessWidget {
+  const _GroupStrategyOptionTrailing({
+    required this.selected,
+    required this.accentColor,
+    required this.editTooltip,
+    required this.editKey,
+    required this.onEdit,
+  });
+
+  final bool selected;
+  final Color accentColor;
+  final String editTooltip;
+  final Key editKey;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (selected) ...[
+          Icon(Icons.check_rounded, size: 15, color: accentColor),
+          const SizedBox(width: 3),
+        ],
+        LicoIconButton(
+          key: editKey,
+          icon: const Icon(Icons.edit_outlined),
+          tooltip: editTooltip,
+          size: LicoIconButtonSize.small,
+          onPressed: onEdit,
+        ),
+      ],
+    );
+  }
+}
+
+final class _GroupStrategyPickerTrigger extends StatelessWidget {
+  const _GroupStrategyPickerTrigger({
+    required this.label,
+    required this.open,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Semantics(
+      button: true,
+      label: strings.optionalStrategy,
+      child: AppleGlassSurface(
+        borderRadius: kComposerCapsuleBorderRadius,
+        fillAlpha: colors.isDark ? 22 : 10,
+        child: InkWell(
+          key: const Key('canonical-group-strategy-picker'),
+          onTap: onTap,
+          borderRadius: kComposerCapsuleBorderRadius,
+          mouseCursor: SystemMouseCursors.click,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.account_tree_outlined,
+                  size: 15,
+                  color: colors.primaryStrong,
+                ),
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.text.withAlpha(235),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.08,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  size: 15,
+                  color: colors.textMuted.withAlpha(160),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _GroupStrategyEntryCapsule extends StatelessWidget {
+  const _GroupStrategyEntryCapsule({
+    required this.label,
+    required this.onClear,
+    this.onOpen,
+  });
+
+  final String label;
+  final VoidCallback onClear;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final radius = BorderRadius.circular(
+      MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+    );
+    return MessagingConversationOverlayGlass(
+      key: const Key('canonical-group-strategy-entry'),
+      borderRadius: radius,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const Key('canonical-group-strategy-entry-open'),
+          onTap: onOpen,
+          borderRadius: radius,
+          mouseCursor: onOpen == null
+              ? MouseCursor.defer
+              : SystemMouseCursors.click,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '@$label',
+                  key: const Key('canonical-group-strategy-entry-capsule'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.text.withAlpha(235),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.08,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Tooltip(
+                  message: strings.exitStrategyMode,
+                  waitDuration: LicoMotion.tooltipWait,
+                  child: InkWell(
+                    key: const Key('canonical-group-strategy-entry-clear'),
+                    customBorder: const CircleBorder(),
+                    onTap: onClear,
+                    child: SizedBox.square(
+                      dimension: 22,
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 14,
+                        color: colors.textMuted.withAlpha(200),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

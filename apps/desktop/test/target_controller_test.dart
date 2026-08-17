@@ -51,6 +51,196 @@ void main() {
     expect(next, ['codex', 'opencode', 'missing']);
   });
 
+  test('unused scan keeps a selected-agent model catalog', () {
+    final selected = _cursor(
+      modelCatalog: {
+        'sources': ['cursor-cli'],
+        'models': [
+          {'name': 'composer-2.5'},
+          {'name': 'auto'},
+        ],
+      },
+    );
+    final scan = _cursor(
+      modelCatalog: {
+        'sources': ['config'],
+        'models': [
+          {'name': 'stale-cursor-model'},
+        ],
+      },
+    );
+    final merged = TargetPolicy.mergeProbe(
+      [selected],
+      'cursor',
+      scan,
+      replaceModelCatalog: false,
+    );
+    expect(merged.single.modelCatalog['sources'], ['cursor-cli']);
+    expect(
+      (merged.single.modelCatalog['models'] as List).map(
+        (model) => (model as Map)['name'],
+      ),
+      ['composer-2.5', 'auto'],
+    );
+  });
+
+  test('Kilo editor history remains a fallback until CLI catalog refresh', () {
+    final historyOnly = _target('kilo-code').withModelCatalog({
+      'sources': ['kilo-vscode-state'],
+      'models': [
+        {'name': 'recent-only'},
+      ],
+    });
+    final native = _target('kilo-code').withModelCatalog({
+      'sources': ['kilo-cli'],
+      'models': [
+        {'name': 'kilo/kilo-auto/free'},
+      ],
+    });
+
+    expect(TargetPolicy.hasSelectedAgentModelCatalog(historyOnly), isFalse);
+    expect(TargetPolicy.hasSelectedAgentModelCatalog(native), isTrue);
+    expect(
+      TargetPolicy.hasSelectedAgentModelCatalog(
+        _target('opencode').withModelCatalog({
+          'sources': ['opencode-cli:models'],
+        }),
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+    'a persisted native catalog is refreshed once in each process',
+    () async {
+      final persisted = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'persisted'},
+          ],
+        },
+      );
+      final refreshed = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'fresh'},
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'cursor': persisted},
+        selectedProbes: {'cursor': refreshed},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['cursor'],
+        isMobileRuntime: () => false,
+        scanMobileTargets: () async => const [],
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([persisted]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      await Future<void>.delayed(Duration.zero);
+      while (controller.isRefreshingNativeModelCatalog('cursor')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List)
+            .single['name'],
+        'fresh',
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+    },
+  );
+
+  test(
+    'opening a bound agent conversation interface refreshes its native model catalog once',
+    () async {
+      final incomplete = _cursor(
+        modelCatalog: {
+          'sources': ['config'],
+          'models': [
+            {'name': 'stale-cursor-model'},
+          ],
+        },
+      );
+      final complete = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'auto'},
+            {'name': 'composer-2.5'},
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'cursor': incomplete},
+        selectedProbes: {'cursor': complete},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['cursor'],
+        isMobileRuntime: () => false,
+        scanMobileTargets: () async => const [],
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([incomplete]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 1));
+      while (!TargetPolicy.hasSelectedAgentModelCatalog(
+            controller.targets.single,
+          ) &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(
+        controller.targets.single.modelCatalog['sources'],
+        contains('cursor-cli'),
+      );
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List).length,
+        2,
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+    },
+  );
+
   test('conversation order keeps host installs and drops automatic VMs', () {
     final workingDirectory = ['', 'srv', 'project'].join('/');
     final ordered = TargetPolicy.orderedConversationTargets(
@@ -288,27 +478,51 @@ TargetCandidate _target(String id) => TargetCandidate(
   adapterStatus: 'ready',
 );
 
+TargetCandidate _cursor({required Map<String, dynamic> modelCatalog}) =>
+    TargetCandidate(
+      target: 'cursor',
+      label: 'Cursor',
+      kind: 'cli',
+      status: 'detected',
+      configured: true,
+      confidence: 1,
+      binaryPath: ['', 'synthetic', 'bin', 'cursor-agent'].join('/'),
+      adapterStatus: 'implemented',
+      adapterCapabilities: const {'conversationDriver': 'implemented'},
+      modelCatalog: modelCatalog,
+    );
+
 class _Gateway implements TargetManagementGateway {
   _Gateway({
     this.probes = const {},
+    this.selectedProbes = const {},
     this.delays = const {},
     this.failTools = false,
   });
 
   final Map<String, TargetCandidate?> probes;
+  final Map<String, TargetCandidate?> selectedProbes;
   final Map<String, Duration> delays;
   final bool failTools;
   var _inFlight = 0;
   var maxInFlight = 0;
   final Map<String, int> scanCounts = {};
+  final List<bool> catalogLookups = [];
 
   @override
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
+    catalogLookups.add(enableAgentCliModelLookup);
     scanCounts.update(targetId, (count) => count + 1, ifAbsent: () => 1);
     _inFlight += 1;
     maxInFlight = _inFlight > maxInFlight ? _inFlight : maxInFlight;
     try {
       await Future<void>.delayed(delays[targetId] ?? Duration.zero);
+      if (enableAgentCliModelLookup && selectedProbes.containsKey(targetId)) {
+        return selectedProbes[targetId];
+      }
       return probes[targetId];
     } finally {
       _inFlight -= 1;

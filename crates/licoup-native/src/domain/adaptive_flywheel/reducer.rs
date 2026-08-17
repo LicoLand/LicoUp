@@ -5,8 +5,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    CompiledWorkflow, FailureClass, GraphStateKind, MAX_WORKSET_ITEMS, SessionPolicy,
-    StrategyRunStatus,
+    CompiledWorkflow, FailureClass, FallbackReceipt, GraphStateKind, MAX_WORKSET_ITEMS,
+    SessionPolicy, StrategyRunStatus,
 };
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -53,6 +53,8 @@ pub struct RunCommand {
     pub item_id: Option<String>,
     #[serde(default)]
     pub session_policy: SessionPolicy,
+    #[serde(default)]
+    pub binding_ordinal: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_session_id: Option<String>,
     pub input_digest: String,
@@ -81,6 +83,16 @@ pub struct RunSnapshot {
     pub join_arrivals: BTreeMap<String, BTreeSet<String>>,
     #[serde(default)]
     pub actor_sessions: BTreeMap<String, String>,
+    #[serde(default)]
+    pub slot_ordinals: BTreeMap<String, u8>,
+    #[serde(default)]
+    pub slot_candidate_counts: BTreeMap<String, u8>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<FallbackReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
     pub commands: BTreeMap<String, RunCommand>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diagnostic_code: Option<String>,
@@ -104,6 +116,11 @@ impl RunSnapshot {
             state_visits: BTreeMap::new(),
             join_arrivals: BTreeMap::new(),
             actor_sessions: BTreeMap::new(),
+            slot_ordinals: BTreeMap::new(),
+            slot_candidate_counts: BTreeMap::new(),
+            fallbacks: Vec::new(),
+            conversation_id: None,
+            cwd: None,
             commands: BTreeMap::new(),
             diagnostic_code: None,
         }
@@ -151,6 +168,15 @@ pub enum ReducerEvent {
     CancellationUnknown {
         command_id: String,
         attempt_token: String,
+    },
+    FallbackIssued {
+        failed_command_id: String,
+        next_ordinal: u8,
+        locator: Value,
+        from_value_id: String,
+        to_value_id: String,
+        reason: String,
+        attempts: u8,
     },
 }
 
@@ -284,6 +310,23 @@ pub fn reduce(
             command_id,
             attempt_token,
         } => machine.cancel_unknown(&command_id, &attempt_token)?,
+        ReducerEvent::FallbackIssued {
+            failed_command_id,
+            next_ordinal,
+            locator,
+            from_value_id,
+            to_value_id,
+            reason,
+            attempts,
+        } => machine.issue_fallback(
+            &failed_command_id,
+            next_ordinal,
+            locator,
+            from_value_id,
+            to_value_id,
+            reason,
+            attempts,
+        )?,
     }
     machine.drain_automatic()?;
     if !machine.applied {
@@ -571,14 +614,20 @@ impl Machine<'_> {
     ) -> Result<()> {
         let state = self.workflow.state(state_id).unwrap();
         let visit = self.snapshot.state_visits[state_id];
+        let ordinal = state
+            .binding
+            .as_deref()
+            .map(|slot| self.current_ordinal(slot, item_id.as_deref()))
+            .unwrap_or(0);
         let input_bytes = serde_json::to_vec(&input)?;
         let input_digest = sha256_hex(&input_bytes);
         let identity = format!(
-            "{}\0{}\0{}\0{}\0{}",
+            "{}\0{}\0{}\0{}\0{}\0{}",
             self.snapshot.run_id,
             state_id,
             visit,
             item_id.as_deref().unwrap_or(""),
+            ordinal,
             1
         );
         let id = format!("command:{}", sha256_hex(identity.as_bytes()));
@@ -609,10 +658,146 @@ impl Machine<'_> {
                         .find(|slot| slot.id == binding)
                 })
                 .map_or(SessionPolicy::New, |slot| slot.session_policy),
+            binding_ordinal: ordinal,
             resume_session_id: state
                 .binding
                 .as_ref()
                 .and_then(|binding| self.snapshot.actor_sessions.get(binding).cloned()),
+            input_digest,
+            input,
+            output_digest: None,
+            failure_class: None,
+            failure_code: None,
+        };
+        ensure!(
+            self.snapshot.commands.insert(id, command.clone()).is_none(),
+            "strategy_command_identity_conflict"
+        );
+        self.emitted.push(command);
+        Ok(())
+    }
+
+    fn current_ordinal(&self, slot_id: &str, item_id: Option<&str>) -> u8 {
+        self.snapshot
+            .slot_ordinals
+            .get(&ordinal_key(slot_id, item_id))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn issue_fallback(
+        &mut self,
+        failed_command_id: &str,
+        next_ordinal: u8,
+        locator: Value,
+        from_value_id: String,
+        to_value_id: String,
+        reason: String,
+        attempts: u8,
+    ) -> Result<()> {
+        let old = self
+            .snapshot
+            .commands
+            .get(failed_command_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+        ensure!(
+            matches!(old.status, CommandStatus::Failed | CommandStatus::Retryable),
+            "strategy_callback_conflict"
+        );
+        let slot_id = old
+            .binding_id
+            .clone()
+            .ok_or_else(|| anyhow!("binding_incomplete"))?;
+        ensure!(
+            next_ordinal == old.binding_ordinal.saturating_add(1),
+            "strategy_fallback_ordinal_invalid"
+        );
+        let count = self
+            .snapshot
+            .slot_candidate_counts
+            .get(&slot_id)
+            .copied()
+            .unwrap_or(1);
+        ensure!(next_ordinal < count, "strategy_fallback_exhausted");
+        self.snapshot
+            .slot_ordinals
+            .insert(ordinal_key(&slot_id, old.item_id.as_deref()), next_ordinal);
+        let mut input = old.input.clone();
+        if let Value::Object(ref mut object) = input {
+            object.insert("predecessorLocator".into(), locator);
+        } else {
+            input = json!({
+                "context": old.input,
+                "predecessorLocator": locator,
+            });
+        }
+        let state_id = old.state_id.clone();
+        let kind = old.kind;
+        let item_id = old.item_id.clone();
+        self.snapshot.fallbacks.push(FallbackReceipt {
+            fallback_from: from_value_id,
+            fallback_to: to_value_id,
+            reason,
+            attempts,
+        });
+        self.emit_fallback_command(&state_id, kind, item_id, next_ordinal, input)?;
+        self.snapshot.status = StrategyRunStatus::Running;
+        self.snapshot.diagnostic_code = None;
+        Ok(())
+    }
+
+    fn emit_fallback_command(
+        &mut self,
+        state_id: &str,
+        kind: CommandKind,
+        item_id: Option<String>,
+        ordinal: u8,
+        input: Value,
+    ) -> Result<()> {
+        let state = self.workflow.state(state_id).unwrap();
+        let visit = self.snapshot.state_visits[state_id];
+        let input_bytes = serde_json::to_vec(&input)?;
+        let input_digest = sha256_hex(&input_bytes);
+        let identity = format!(
+            "{}\0{}\0{}\0{}\0{}\0{}",
+            self.snapshot.run_id,
+            state_id,
+            visit,
+            item_id.as_deref().unwrap_or(""),
+            ordinal,
+            1
+        );
+        let id = format!("command:{}", sha256_hex(identity.as_bytes()));
+        let attempt_token = format!(
+            "attempt:{}",
+            sha256_hex(format!("{}\0{}", id, 1).as_bytes())
+        );
+        let command = RunCommand {
+            id: id.clone(),
+            state_id: state_id.to_owned(),
+            state_visit: visit,
+            kind,
+            status: CommandStatus::Pending,
+            attempt: 1,
+            attempt_token,
+            binding_id: state.binding.clone(),
+            runtime_id: state.runtime.clone(),
+            entry: state.entry.clone(),
+            item_id,
+            session_policy: state
+                .binding
+                .as_deref()
+                .and_then(|binding| {
+                    self.workflow
+                        .definition
+                        .actor_slots
+                        .iter()
+                        .find(|slot| slot.id == binding)
+                })
+                .map_or(SessionPolicy::New, |slot| slot.session_policy),
+            binding_ordinal: ordinal,
+            resume_session_id: None,
             input_digest,
             input,
             output_digest: None,
@@ -700,6 +885,7 @@ impl Machine<'_> {
             self.applied = false;
             return Ok(());
         }
+        merge_run_context(&mut self.snapshot.input, &output)?;
         if session_policy != SessionPolicy::New
             && let (Some(binding_id), Some(session_id)) = (
                 binding_id,
@@ -782,15 +968,32 @@ impl Machine<'_> {
                 command.failure_class = Some(class);
                 command.failure_code = Some(code.to_owned());
                 let state = self.workflow.state(&command.state_id).unwrap();
+                let slot = state.binding.as_deref().and_then(|binding| {
+                    self.workflow
+                        .definition
+                        .actor_slots
+                        .iter()
+                        .find(|slot| slot.id == binding)
+                });
                 let retryable = command.kind != CommandKind::Authorization
-                    && command.attempt < state.retry.max_attempts
-                    && match class {
-                        FailureClass::Transient
-                        | FailureClass::Authority
-                        | FailureClass::Runtime
-                        | FailureClass::Sandbox => true,
-                        FailureClass::Permanent => !state.retry.transient_only,
-                        FailureClass::InDoubt => false,
+                    && match command.kind {
+                        CommandKind::Actor | CommandKind::WorksetItem => {
+                            class == FailureClass::Transient
+                                && slot.is_some_and(|slot| {
+                                    command.attempt < slot.fallback.after_transient_attempts
+                                })
+                        }
+                        _ => {
+                            command.attempt < state.retry.max_attempts
+                                && match class {
+                                    FailureClass::Transient
+                                    | FailureClass::Authority
+                                    | FailureClass::Runtime
+                                    | FailureClass::Sandbox => true,
+                                    FailureClass::Permanent => !state.retry.transient_only,
+                                    FailureClass::InDoubt => false,
+                                }
+                        }
                     };
                 command.status = if retryable {
                     CommandStatus::Retryable
@@ -859,10 +1062,22 @@ impl Machine<'_> {
             "strategy_run_not_retryable"
         );
         let state = self.workflow.state(&old.state_id).unwrap();
-        ensure!(
-            old.attempt < state.retry.max_attempts,
-            "strategy_run_not_retryable"
-        );
+        let max_attempts = match old.kind {
+            CommandKind::Actor | CommandKind::WorksetItem => state
+                .binding
+                .as_deref()
+                .and_then(|binding| {
+                    self.workflow
+                        .definition
+                        .actor_slots
+                        .iter()
+                        .find(|slot| slot.id == binding)
+                })
+                .map(|slot| slot.fallback.after_transient_attempts)
+                .unwrap_or(state.retry.max_attempts),
+            _ => state.retry.max_attempts,
+        };
+        ensure!(old.attempt < max_attempts, "strategy_run_not_retryable");
         let next_attempt = old.attempt + 1;
         let new_id = format!(
             "command:{}",
@@ -962,6 +1177,48 @@ fn sha256_hex(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn ordinal_key(slot_id: &str, item_id: Option<&str>) -> String {
+    match item_id {
+        Some(item) if !item.is_empty() => format!("{slot_id}\0{item}"),
+        _ => slot_id.to_owned(),
+    }
+}
+
+fn merge_run_context(input: &mut Value, output: &Value) -> Result<()> {
+    let Some(output) = output.as_object() else {
+        return Ok(());
+    };
+    if !input.is_object() {
+        *input = Value::Object(Default::default());
+    }
+    let Some(target) = input.as_object_mut() else {
+        return Ok(());
+    };
+    if let Some(worksets) = output.get("worksets").and_then(Value::as_object) {
+        let destination = target
+            .entry("worksets".to_owned())
+            .or_insert_with(|| Value::Object(Default::default()));
+        if let Some(destination) = destination.as_object_mut() {
+            for (key, value) in worksets {
+                destination.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    if let Some(context) = output.get("context") {
+        match (target.get_mut("context"), context) {
+            (Some(Value::Object(existing)), Value::Object(incoming)) => {
+                for (key, value) in incoming {
+                    existing.insert(key.clone(), value.clone());
+                }
+            }
+            _ => {
+                target.insert("context".into(), context.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
 const fn default_state_visit() -> u64 {
     1
 }
@@ -970,8 +1227,8 @@ const fn default_state_visit() -> u64 {
 mod tests {
     use super::*;
     use crate::domain::adaptive_flywheel::{
-        ActorSlot, BindingKind, GraphState, RetryPolicy, SessionPolicy, Transition,
-        WorkflowDefinition, WorkflowLimits, WorkflowMetadata, WorksetTemplate, compile_workflow,
+        ActorSlot, GraphState, RetryPolicy, SessionPolicy, Transition, WorkflowDefinition,
+        WorkflowLimits, WorkflowMetadata, WorksetTemplate, compile_workflow,
     };
 
     fn state(id: &str, kind: GraphStateKind) -> GraphState {
@@ -998,12 +1255,10 @@ mod tests {
                 description: String::new(),
             },
             limits: WorkflowLimits::default(),
-            actor_slots: vec![ActorSlot {
-                id: "worker".into(),
-                kind: BindingKind::Actor,
-                label: "Worker".into(),
-                required: true,
-                session_policy: SessionPolicy::Sticky,
+            actor_slots: vec![{
+                let mut slot = ActorSlot::required_actor("worker", "Worker");
+                slot.session_policy = SessionPolicy::Sticky;
+                slot
             }],
             runtimes: vec![],
             worksets: vec![],
@@ -1119,13 +1374,7 @@ mod tests {
                 description: String::new(),
             },
             limits: WorkflowLimits::default(),
-            actor_slots: vec![ActorSlot {
-                id: "worker".into(),
-                kind: BindingKind::Actor,
-                label: "Worker".into(),
-                required: true,
-                session_policy: SessionPolicy::New,
-            }],
+            actor_slots: vec![ActorSlot::required_actor("worker", "Worker")],
             runtimes: vec![],
             worksets: vec![WorksetTemplate {
                 id: "tasks".into(),
@@ -1279,13 +1528,7 @@ mod tests {
                 description: String::new(),
             },
             limits: WorkflowLimits::default(),
-            actor_slots: vec![ActorSlot {
-                id: "worker".into(),
-                kind: BindingKind::Actor,
-                label: "Worker".into(),
-                required: true,
-                session_policy: SessionPolicy::New,
-            }],
+            actor_slots: vec![ActorSlot::required_actor("worker", "Worker")],
             runtimes: vec![],
             worksets: vec![WorksetTemplate {
                 id: "tasks".into(),
@@ -1351,5 +1594,250 @@ mod tests {
         assert_eq!(looped.emitted_commands.len(), 1);
         assert_eq!(looped.emitted_commands[0].item_id.as_deref(), Some("same"));
         assert_eq!(looped.emitted_commands[0].state_visit, 2);
+    }
+
+    #[test]
+    fn actor_json_worksets_are_merged_into_run_input_before_guards() {
+        let workflow = compile_workflow(WorkflowDefinition {
+            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "merge".into(),
+                name: "Merge".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: WorkflowLimits::default(),
+            actor_slots: vec![ActorSlot::required_actor("entry", "Entry")],
+            runtimes: vec![],
+            worksets: vec![WorksetTemplate {
+                id: "tasks".into(),
+                item_binding: "id".into(),
+                predecessor_field: String::new(),
+            }],
+            initial: "plan".into(),
+            states: vec![
+                GraphState {
+                    id: "plan".into(),
+                    kind: GraphStateKind::Actor,
+                    label: "Plan".into(),
+                    instruction: "Plan".into(),
+                    binding: Some("entry".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+                GraphState {
+                    id: "tasks".into(),
+                    kind: GraphStateKind::Workset,
+                    label: "Tasks".into(),
+                    instruction: "Do".into(),
+                    binding: Some("entry".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: Some("tasks".into()),
+                    retry: RetryPolicy::default(),
+                },
+                state("done", GraphStateKind::Succeed),
+            ],
+            transitions: vec![
+                Transition {
+                    id: "planned".into(),
+                    from: "plan".into(),
+                    to: "tasks".into(),
+                    event: "success".into(),
+                    guard: None,
+                },
+                Transition {
+                    id: "finished".into(),
+                    from: "tasks".into(),
+                    to: "done".into(),
+                    event: "success".into(),
+                    guard: None,
+                },
+            ],
+        })
+        .unwrap();
+        let started = reduce(
+            &workflow,
+            &RunSnapshot::empty("run", "revision", "semantics"),
+            ReducerEvent::Start { input: json!({}) },
+        )
+        .unwrap();
+        let command = &started.emitted_commands[0];
+        let planned = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::CommandSucceeded {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                output: json!({
+                    "worksets": {"tasks": [{"id": "from-actor"}]},
+                    "context": {"note": "keep"}
+                }),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            planned.snapshot.input["worksets"]["tasks"][0]["id"],
+            "from-actor"
+        );
+        assert_eq!(planned.snapshot.input["context"]["note"], "keep");
+        assert_eq!(planned.emitted_commands.len(), 1);
+        assert_eq!(
+            planned.emitted_commands[0].item_id.as_deref(),
+            Some("from-actor")
+        );
+    }
+
+    #[test]
+    fn quota_fallback_opens_a_new_command_with_locator_and_no_resume() {
+        let workflow = actor_loop();
+        let mut empty = RunSnapshot::empty("run-1", "revision", "semantics");
+        empty.slot_candidate_counts.insert("worker".into(), 2);
+        let started = reduce(&workflow, &empty, ReducerEvent::Start { input: json!({}) }).unwrap();
+        let command = started.emitted_commands[0].clone();
+        let failed = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::CommandFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class: FailureClass::Permanent,
+                code: "quota_exhausted".into(),
+            },
+        )
+        .unwrap();
+        let next = reduce(
+            &workflow,
+            &failed.snapshot,
+            ReducerEvent::FallbackIssued {
+                failed_command_id: command.id,
+                next_ordinal: 1,
+                locator: json!({
+                    "sourcePath": "/synthetic/store",
+                    "nativeSessionId": "native-1",
+                    "sourceKind": "fixture"
+                }),
+                from_value_id: "agent:primary".into(),
+                to_value_id: "agent:fallback".into(),
+                reason: "quota".into(),
+                attempts: 1,
+            },
+        )
+        .unwrap();
+        assert_eq!(next.emitted_commands.len(), 1);
+        assert_eq!(next.emitted_commands[0].binding_ordinal, 1);
+        assert_eq!(next.emitted_commands[0].resume_session_id, None);
+        assert_eq!(
+            next.emitted_commands[0].input["predecessorLocator"]["sourcePath"],
+            "/synthetic/store"
+        );
+        assert_eq!(next.snapshot.fallbacks[0].fallback_from, "agent:primary");
+        assert_eq!(next.snapshot.fallbacks[0].fallback_to, "agent:fallback");
+        assert!(
+            !serde_json::to_string(&next.snapshot.fallbacks)
+                .unwrap()
+                .contains("sourcePath")
+        );
+    }
+
+    #[test]
+    fn transient_failure_is_retryable_until_slot_attempts_then_can_fallback() {
+        let workflow = actor_loop();
+        let mut empty = RunSnapshot::empty("run-1", "revision", "semantics");
+        empty.slot_candidate_counts.insert("worker".into(), 2);
+        let started = reduce(&workflow, &empty, ReducerEvent::Start { input: json!({}) }).unwrap();
+        let command = started.emitted_commands[0].clone();
+        let first = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::CommandFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class: FailureClass::Transient,
+                code: "effect_temporarily_unavailable".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(first.snapshot.status, StrategyRunStatus::Retryable);
+        let retried = reduce(
+            &workflow,
+            &first.snapshot,
+            ReducerEvent::RetryRequested {
+                command_id: command.id,
+            },
+        )
+        .unwrap();
+        let retry_command = retried.emitted_commands[0].clone();
+        assert_eq!(retry_command.attempt, 2);
+        let exhausted = reduce(
+            &workflow,
+            &retried.snapshot,
+            ReducerEvent::CommandFailed {
+                command_id: retry_command.id.clone(),
+                attempt_token: retry_command.attempt_token.clone(),
+                class: FailureClass::Transient,
+                code: "effect_temporarily_unavailable".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            exhausted.snapshot.commands[&retry_command.id].status,
+            CommandStatus::Failed
+        );
+        let next = reduce(
+            &workflow,
+            &exhausted.snapshot,
+            ReducerEvent::FallbackIssued {
+                failed_command_id: retry_command.id,
+                next_ordinal: 1,
+                locator: json!({"locatorUnavailable": true}),
+                from_value_id: "agent:primary".into(),
+                to_value_id: "agent:fallback".into(),
+                reason: "transient-exhausted".into(),
+                attempts: 2,
+            },
+        )
+        .unwrap();
+        assert_eq!(next.emitted_commands[0].binding_ordinal, 1);
+        assert_eq!(next.snapshot.status, StrategyRunStatus::Running);
+    }
+
+    #[test]
+    fn fallback_list_exhaustion_keeps_the_failed_run() {
+        let workflow = actor_loop();
+        let mut empty = RunSnapshot::empty("run-1", "revision", "semantics");
+        empty.slot_candidate_counts.insert("worker".into(), 1);
+        let started = reduce(&workflow, &empty, ReducerEvent::Start { input: json!({}) }).unwrap();
+        let command = started.emitted_commands[0].clone();
+        let failed = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::CommandFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class: FailureClass::Permanent,
+                code: "quota_exhausted".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(failed.snapshot.status, StrategyRunStatus::Failed);
+        assert!(
+            reduce(
+                &workflow,
+                &failed.snapshot,
+                ReducerEvent::FallbackIssued {
+                    failed_command_id: command.id,
+                    next_ordinal: 1,
+                    locator: json!({"locatorUnavailable": true}),
+                    from_value_id: "agent:primary".into(),
+                    to_value_id: "agent:fallback".into(),
+                    reason: "quota".into(),
+                    attempts: 1,
+                },
+            )
+            .is_err()
+        );
     }
 }

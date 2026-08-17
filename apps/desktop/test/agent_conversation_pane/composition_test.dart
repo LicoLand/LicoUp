@@ -670,6 +670,10 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('conversation-model-button')), findsNothing);
+    expect(
+      find.byKey(const Key('canonical-group-strategy-picker')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 

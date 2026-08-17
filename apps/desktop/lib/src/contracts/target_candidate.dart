@@ -270,6 +270,30 @@ class TargetCandidate {
     );
   }
 
+  TargetCandidate withModelCatalog(Map<String, dynamic> catalog) {
+    return TargetCandidate(
+      id: id,
+      target: target,
+      label: label,
+      kind: kind,
+      status: status,
+      configured: configured,
+      confidence: confidence,
+      detail: detail,
+      configPath: configPath,
+      binaryPath: binaryPath,
+      historyRoots: historyRoots,
+      manual: manual,
+      adapterStatus: adapterStatus,
+      adapterCapabilities: adapterCapabilities,
+      supportedActions: supportedActions,
+      scanSource: scanSource,
+      location: location,
+      runtimeConnection: runtimeConnection,
+      modelCatalog: catalog,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

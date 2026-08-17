@@ -421,7 +421,10 @@ class _SlowPerAgentService extends AgentService {
   }
 
   @override
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
     _inFlight += 1;
     if (_inFlight > maxInFlight) {
       maxInFlight = _inFlight;

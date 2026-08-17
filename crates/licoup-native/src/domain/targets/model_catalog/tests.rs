@@ -407,6 +407,7 @@ mod antigravity {
         let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
         let added = collect_model_catalog_from_cli_lines(
             r#"
+Model ID          Name
 Gemini 3.5 Flash (Medium)
 Gemini 3.5 Flash (High)
 Claude Opus 4.6 (Thinking)
@@ -468,6 +469,41 @@ printf 'gemini-3.6-flash-medium\nclaude-opus-4-6-thinking\ngpt-oss-120b-medium\n
                 .unwrap()
                 .contains(&json!("antigravity-cli"))
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn antigravity_cli_model_lookup_inherits_process_environment() {
+        let dir = temp_test_dir("antigravity-cli-inherit-env");
+        let executable = dir.join("agent-models");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+if [ -z "$PATH" ]; then
+exit 1
+fi
+printf 'gemini-account-model\nclaude-account-model\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "antigravityCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"gemini-account-model"));
+        assert!(names.contains(&"claude-account-model"));
     }
 
     #[cfg(unix)]
@@ -541,6 +577,66 @@ printf 'gemini-3.6-flash-medium\nclaude-opus-4-6-thinking\ngpt-oss-120b-medium\n
         assert_eq!(names.len(), 2);
         assert!(names.contains(&"gemini-3.1-pro-preview"));
         assert!(names.contains(&"Gemini 3.5 Flash (High)"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn antigravity_local_catalog_unions_cli_instead_of_replacing() {
+        let dir = temp_test_dir("antigravity-local-union");
+        let home = dir.join("home");
+        let available = home
+            .join(".gemini")
+            .join("antigravity")
+            .join("available-models.json");
+        fs::create_dir_all(available.parent().unwrap()).unwrap();
+        fs::write(
+            &available,
+            json!({
+                "models": {
+                    "gemini-3-pro": { "displayName": "Gemini 3 Pro" },
+                    "claude-sonnet-4-6": { "displayName": "Claude Sonnet 4.6" }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let executable = dir.join("agent-models");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+printf 'gemini-3-flash\nclaude-sonnet-4-6\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "antigravityCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(
+            names
+                .iter()
+                .any(|name| name.contains("Gemini 3 Pro") || *name == "gemini-3-pro")
+        );
+        assert!(names.contains(&"gemini-3-flash"));
+        assert!(
+            names
+                .iter()
+                .any(|name| name.contains("Claude Sonnet 4.6") || *name == "claude-sonnet-4-6")
+        );
     }
 }
 
@@ -654,6 +750,42 @@ printf 'Available models\n\ncomposer-2.5 - Composer 2.5 (current)\n'
         assert_eq!(names, vec!["composer-2.5"]);
         assert_eq!(catalog["defaultModel"], json!("composer-2.5"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn cursor_cli_model_lookup_inherits_process_environment() {
+        let dir = temp_test_dir("cursor-cli-inherit-env");
+        let executable = dir.join("cursor-agent");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+if [ -z "$PATH" ]; then
+printf 'Available models\n\nstale-isolated - Isolated\n'
+exit 0
+fi
+printf 'Available models\n\nauto - Auto (default)\nfull-cursor-model - Full Cursor Model\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let catalog = model_catalog_for_target(
+            "cursor",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "cursorCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"full-cursor-model"));
+        assert!(!names.contains(&"stale-isolated"));
+    }
 }
 
 mod kimi_code {
@@ -738,7 +870,68 @@ mod config_collections {
 }
 
 mod kilo {
+    use super::super::kilo::collect_kilo_model_catalog_from_cli_output;
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn kilo_cli_output_preserves_every_provider_qualified_selector() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_kilo_model_catalog_from_cli_output(
+            "kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\nignored log line\n",
+            "kilo-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(added, 3);
+        let names = entries
+            .values()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"kilo/kilo-auto/free"));
+        assert!(names.contains(&"anthropic/claude-opus-4-6"));
+        assert!(names.contains(&"openai/gpt-5.5"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kilo_selected_catalog_uses_full_cli_output_and_account_environment() {
+        let home = temp_test_dir("kilo-cli-model-catalog");
+        let executable = home.join("kilo");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+if [ -z "$PATH" ]; then
+exit 1
+fi
+printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let catalog = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "kiloCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"kilo/kilo-auto/free"));
+        assert!(names.contains(&"anthropic/claude-opus-4-6"));
+        assert!(names.contains(&"openai/gpt-5.5"));
+        assert_eq!(catalog["sources"], json!(["kilo-cli"]));
+    }
 
     #[test]
     fn kilo_model_catalog_reads_vscode_state_and_local_db() {
@@ -830,6 +1023,8 @@ mod kilo {
             &json!({
                 "homeDir": display_path(home),
                 "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "disableKiloCliModelLookup": true,
             }),
         );
         let models = catalog["models"].as_array().unwrap();
@@ -856,6 +1051,189 @@ mod kilo {
                 .iter()
                 .any(|model| model["name"] == "deepseek/deepseek-v4"
                     && model["providerId"] == "kilo")
+        );
+    }
+
+    #[test]
+    fn kilo_model_catalog_excludes_session_identities() {
+        let home = temp_test_dir("kilo-session-identities");
+        let vscode_root = match std::env::consts::OS {
+            "windows" => default_app_data_dir(&home).join("Code"),
+            "macos" => home
+                .join("Library")
+                .join("Application Support")
+                .join("Code"),
+            _ => home.join(".config").join("Code"),
+        };
+        let vscode_state = vscode_root
+            .join("User")
+            .join("globalStorage")
+            .join("state.vscdb");
+        fs::create_dir_all(vscode_state.parent().unwrap()).unwrap();
+        let connection = Connection::open(&vscode_state).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+                (
+                    "kilocode.kilo-code",
+                    json!({
+                        "recentModels": [
+                            {
+                                "providerID": "kilo",
+                                "modelID": "anthropic/claude-sonnet-4.6"
+                            },
+                            {
+                                "id": "session/ses_01fakekilosessionid"
+                            }
+                        ],
+                        "variantSelections": {
+                            "session/ses_01anotherfakeid": "max",
+                            "agent/code/kilo/anthropic/claude-sonnet-4.6": "low"
+                        }
+                    })
+                    .to_string(),
+                ),
+            )
+            .unwrap();
+        drop(connection);
+
+        let kilo_db = home
+            .join(".local")
+            .join("share")
+            .join("kilo")
+            .join("kilo.db");
+        fs::create_dir_all(kilo_db.parent().unwrap()).unwrap();
+        let connection = Connection::open(&kilo_db).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE session (model TEXT, time_updated INTEGER)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO session (model, time_updated) VALUES (?1, ?2)",
+                ("session/ses_01storedsession", 1_i64),
+            )
+            .unwrap();
+        drop(connection);
+
+        let catalog = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "disableKiloCliModelLookup": true,
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"anthropic/claude-sonnet-4.6"));
+        assert!(
+            !names
+                .iter()
+                .any(|name| name.contains("session/") || name.contains("ses_")),
+            "session identities leaked into Kilo models: {names:?}"
+        );
+    }
+
+    #[test]
+    fn kilo_unused_agent_catalog_skips_other_app_vscode_state() {
+        let home = temp_test_dir("kilo-unused-vscode");
+        let vscode_root = match std::env::consts::OS {
+            "windows" => default_app_data_dir(&home).join("Code"),
+            "macos" => home
+                .join("Library")
+                .join("Application Support")
+                .join("Code"),
+            _ => home.join(".config").join("Code"),
+        };
+        let vscode_state = vscode_root
+            .join("User")
+            .join("globalStorage")
+            .join("state.vscdb");
+        fs::create_dir_all(vscode_state.parent().unwrap()).unwrap();
+        let connection = Connection::open(&vscode_state).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+                (
+                    "kilocode.kilo-code",
+                    json!({
+                        "recentModels": [
+                            {
+                                "providerID": "kilo",
+                                "modelID": "anthropic/claude-opus-4.6"
+                            }
+                        ]
+                    })
+                    .to_string(),
+                ),
+            )
+            .unwrap();
+        drop(connection);
+
+        let unused = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home.clone()),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let selected = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "disableKiloCliModelLookup": true,
+            }),
+        );
+        let unused_names = unused["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect::<Vec<_>>();
+        let selected_names = selected["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect::<Vec<_>>();
+        let unused_has_vscode = unused_names.contains(&"anthropic/claude-opus-4.6");
+        assert!(selected_names.contains(&"anthropic/claude-opus-4.6"));
+        if cfg!(target_os = "macos") {
+            assert!(
+                !unused_has_vscode,
+                "unused-agent Kilo catalog must not stat VS Code Application Support"
+            );
+        }
+        assert!(
+            selected["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("kilo-vscode-state"))
         );
     }
 }
@@ -937,7 +1315,7 @@ mod normalization {
     }
 
     #[test]
-    fn model_normalization_rejects_unsafe_names_and_canonicalizes_known_families() {
+    fn model_normalization_rejects_untrusted_names_and_canonicalizes_known_families() {
         assert_eq!(canonical_model_display_name("gpt-5.5-mini"), "GPT-5.5-Mini");
         assert_eq!(
             canonical_model_display_name("deepseek-v4-pro"),
@@ -1173,6 +1551,34 @@ mod builtin {
     }
 
     #[test]
+    fn cursor_never_exposes_a_separate_reasoning_effort() {
+        let catalog = catalog_with_fixture(
+            "cursor",
+            json!({
+                "models": [
+                    {
+                        "name": "fable-5-1m-medium",
+                        "displayName": "Fable 5 1M Medium",
+                        "reasoningEfforts": ["low", "medium", "high"]
+                    },
+                    {
+                        "name": "gpt-5.4",
+                        "reasoningEfforts": ["low", "high"]
+                    }
+                ]
+            }),
+        );
+
+        assert!(
+            catalog["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|model| model["reasoningEfforts"].as_array().unwrap().is_empty())
+        );
+    }
+
+    #[test]
     fn builtin_overlay_matches_provider_prefixed_names() {
         let catalog = catalog_with_fixture(
             "openclaw",
@@ -1208,6 +1614,348 @@ mod builtin {
                 .unwrap()
                 .contains(&json!("builtin"))
         );
+    }
+}
+
+mod claude_code {
+    use super::super::claude::collect_claude_code_models_from_cli_output;
+    use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn claude_code_catalog_drops_family_aliases_and_keeps_backend_ids() {
+        let home = temp_test_dir("claude-code-alias-catalog");
+        let settings_path = home.join(".claude").join("settings.json");
+        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        fs::write(
+            &settings_path,
+            json!({
+                "model": "opus",
+                "env": {
+                    "ANTHROPIC_MODEL": "claude-sonnet-4-6",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5"
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"claude-sonnet-4-6"));
+        assert!(names.contains(&"claude-opus-4-6"));
+        assert!(names.contains(&"claude-haiku-4-5"));
+        assert!(
+            !names
+                .iter()
+                .any(|name| *name == "opus" || *name == "sonnet")
+        );
+        assert_ne!(catalog["defaultModel"], json!("opus"));
+    }
+
+    #[test]
+    fn claude_cli_output_skips_family_aliases() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_claude_code_models_from_cli_output(
+            "Available models\nopus\nclaude-opus-4-6\nsonnet\nclaude-sonnet-4-6\n",
+            "claude-cli:models",
+            &mut entries,
+        );
+        assert_eq!(added, 2);
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "claude-opus-4-6")
+        );
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "claude-sonnet-4-6")
+        );
+        assert!(!entries.values().any(|entry| entry.name == "opus"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_cli_model_lookup_merges_real_backend_ids() {
+        let home = temp_test_dir("claude-cli-models");
+        let settings_path = home.join(".claude").join("settings.json");
+        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        fs::write(&settings_path, r#"{"model":"opus"}"#).unwrap();
+        let executable = home.join("claude");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+printf 'claude-opus-4-6\nclaude-sonnet-4-6\nopus\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "claudeCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"claude-opus-4-6"));
+        assert!(names.contains(&"claude-sonnet-4-6"));
+        assert!(!names.contains(&"opus"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn default_catalog_does_not_execute_the_agent_cli() {
+        let home = temp_test_dir("claude-cli-no-exec");
+        let marker = home.join("executed");
+        let executable = home.join("claude");
+        fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\nprintf x > \"{}\"\nprintf 'claude-opus-4-6\\n'\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            None,
+            &json!({
+                "homeDir": display_path(home.clone()),
+                "includeHistoryModelCatalog": false,
+                "claudeCliPath": display_path(executable),
+            }),
+        );
+        assert!(!marker.exists());
+        let diagnostics = catalog["diagnostics"].as_array().unwrap();
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic["source"] == "claude-cli:models" && diagnostic["status"] == "disabled"
+        }));
+    }
+}
+
+mod opencode {
+    use super::super::opencode::{
+        collect_opencode_models_from_cli_output, collect_opencode_provider_catalog,
+    };
+    use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn opencode_provider_config_surfaces_qualified_models() {
+        let home = temp_test_dir("opencode-provider-catalog");
+        let config_path = home.join(".config").join("opencode").join("opencode.jsonc");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            json!({
+                "provider": {
+                    "anthropic": {
+                        "name": "Anthropic",
+                        "models": {
+                            "claude-sonnet-4-5": { "name": "Claude Sonnet 4.5" },
+                            "claude-opus-4-6": { "name": "Claude Opus 4.6" }
+                        }
+                    },
+                    "openai": {
+                        "models": ["gpt-5.4"]
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "opencode",
+            Some(&config_path),
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"anthropic/claude-sonnet-4-5"));
+        assert!(names.contains(&"anthropic/claude-opus-4-6"));
+        assert!(names.contains(&"openai/gpt-5.4"));
+        assert!(names.iter().all(|name| name.contains('/')));
+        assert!(!names.contains(&"Claude Sonnet 4.5"));
+    }
+
+    #[test]
+    fn opencode_cli_output_reads_provider_scoped_lines() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_opencode_models_from_cli_output(
+            "anthropic/claude-sonnet-4-5\nopenai/gpt-5.4 - GPT-5.4\n",
+            "opencode-cli:models",
+            &mut entries,
+        );
+        assert_eq!(added, 2);
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "anthropic/claude-sonnet-4-5"
+                    && entry.provider_id.as_deref() == Some("anthropic"))
+        );
+    }
+
+    #[test]
+    fn opencode_json_providers_are_not_an_empty_catalog() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        collect_opencode_provider_catalog(
+            &json!({
+                "providers": [
+                    {
+                        "id": "anthropic",
+                        "models": { "claude-haiku-4-5": { "name": "Haiku 4.5" } }
+                    }
+                ]
+            }),
+            "opencode-config",
+            &mut entries,
+        );
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "anthropic/claude-haiku-4-5")
+        );
+    }
+
+    #[test]
+    fn opencode_cli_json_array_reads_provider_scoped_models() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_opencode_models_from_cli_output(
+            r#"["anthropic/claude-sonnet-4-5","openai/gpt-5.4"]"#,
+            "opencode-cli:models",
+            &mut entries,
+        );
+        assert_eq!(added, 2);
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "anthropic/claude-sonnet-4-5")
+        );
+        assert!(entries.values().any(|entry| entry.name == "openai/gpt-5.4"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_cli_model_lookup_fills_provider_catalog() {
+        let dir = temp_test_dir("opencode-cli-models");
+        let executable = dir.join("opencode");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+printf 'anthropic/claude-sonnet-4-5\nopenai/gpt-5.4\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "opencode",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "opencodeCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"anthropic/claude-sonnet-4-5"));
+        assert!(names.contains(&"openai/gpt-5.4"));
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .is_some_and(|sources| sources.contains(&json!("opencode-cli:models")))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_provider_without_nested_models_uses_cli_catalog() {
+        let dir = temp_test_dir("opencode-provider-cli-fill");
+        let home = dir.join("home");
+        let config_path = home.join(".config").join("opencode").join("opencode.json");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            json!({
+                "provider": {
+                    "anthropic": { "npm": "@ai-sdk/anthropic" },
+                    "openai": { "npm": "@ai-sdk/openai" }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let executable = dir.join("opencode");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+printf 'anthropic/claude-sonnet-4-5\nopenai/gpt-5.4\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "opencode",
+            Some(&config_path),
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "opencodeCliPath": display_path(executable),
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"anthropic/claude-sonnet-4-5"));
+        assert!(names.contains(&"openai/gpt-5.4"));
+        assert!(!names.is_empty());
     }
 }
 
