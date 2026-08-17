@@ -411,6 +411,23 @@ void main() {
     expect(shuffled.map((recipe) => recipe.id), unorderedEquals(_ids));
   });
 
+  test('cached catalog remains visible and marks a failed refresh', () async {
+    final cached = _snapshot(ownedIds: const {'codex'});
+    final pending = Completer<AgentHubCatalogSnapshot>();
+    final controller = AgentHubCatalogController(
+      engine: _FakeHubEngine(seedCache: cached, catalogFuture: pending.future),
+    );
+
+    final refresh = controller.refresh();
+    pending.completeError(StateError('catalog unavailable'));
+    final result = await refresh;
+
+    expect(result, same(cached));
+    expect(controller.catalog, same(cached));
+    expect(controller.failed, isTrue);
+    expect(controller.busy, isFalse);
+  });
+
   testWidgets('Agent Hub renders native portrait recipe cards', (tester) async {
     await _pumpHub(tester, _harness(_FakeHubEngine()));
 
