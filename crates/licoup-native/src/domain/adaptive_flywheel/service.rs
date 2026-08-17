@@ -8,13 +8,15 @@ use crate::platform::strategy_runtime::{
     execute_script, predecessor_locator,
 };
 
+use super::reducer::fallback_reason;
 use super::{
     BindingCandidate, BindingKind, CommandKind, CommandStatus, FailureClass, ReducerEvent,
-    StrategyPackageImporter, StrategyRunStatus, StrategyStore,
+    StrategyPackageImporter, StrategyRunStatus, StrategyStore, compile_workflow,
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_DRIVE_EFFECTS_PER_CALL: usize = 512;
+const EFFECT_LEASE_DURATION_MS: i64 = 5 * 60 * 1000;
 
 #[derive(Clone, Debug)]
 pub struct StrategyService {
@@ -457,6 +459,7 @@ impl StrategyService {
         self.recover_expired_commands(run_id)?;
         let mut executed = 0usize;
         while executed < MAX_DRIVE_EFFECTS_PER_CALL {
+            self.recover_persisted_effects(run_id)?;
             let snapshot = self.store.run(run_id)?;
             if snapshot.status == StrategyRunStatus::AuthorizationRequired {
                 let definition = self
@@ -491,6 +494,7 @@ impl StrategyService {
                 } else {
                     break;
                 }
+                executed = executed.saturating_add(1);
                 continue;
             }
             let mut commands = Vec::new();
@@ -504,7 +508,7 @@ impl StrategyService {
                 let Some(command) = self.store.claim_next_command(
                     run_id,
                     &claimant,
-                    now_ms().saturating_add(5 * 60 * 1000),
+                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
                 )?
                 else {
                     break;
@@ -521,18 +525,18 @@ impl StrategyService {
             if commands.is_empty() {
                 break;
             }
-            let outcomes = std::thread::scope(|scope| -> Result<Vec<_>> {
+            let mut outcomes = std::thread::scope(|scope| -> Result<Vec<_>> {
                 let (sender, receiver) = std::sync::mpsc::channel();
                 let leases = commands
                     .iter()
                     .map(|(command, claimant)| (command.id.clone(), claimant.clone()))
                     .collect::<Vec<_>>();
-                for (command, _) in commands {
+                for (command, claimant) in commands {
                     let service = self.clone();
                     let run_id = run_id.to_owned();
                     let sender = sender.clone();
                     scope.spawn(move || {
-                        let result = service.execute_command(&run_id, &command);
+                        let result = service.execute_command(&run_id, &command, &claimant);
                         let _ = sender.send((command, result));
                     });
                 }
@@ -542,7 +546,7 @@ impl StrategyService {
                     match receiver.recv_timeout(std::time::Duration::from_secs(30)) {
                         Ok(outcome) => outcomes.push(outcome),
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            let lease_until = now_ms().saturating_add(5 * 60 * 1000);
+                            let lease_until = now_ms().saturating_add(EFFECT_LEASE_DURATION_MS);
                             for (command_id, claimant) in &leases {
                                 self.store.renew_command_lease(
                                     command_id,
@@ -559,6 +563,7 @@ impl StrategyService {
                 Ok(outcomes)
             })?;
             executed = executed.saturating_add(outcomes.len());
+            outcomes.sort_by(|left, right| left.0.id.cmp(&right.0.id));
             for (command, result) in outcomes {
                 match result {
                     Ok(output) => {
@@ -583,7 +588,7 @@ impl StrategyService {
                                 code: code.into(),
                             },
                         )?;
-                        self.recover_failed_effect(run_id, &command, class, code)?;
+                        self.recover_failed_effect(run_id, &command.id)?;
                     }
                 }
             }
@@ -596,7 +601,35 @@ impl StrategyService {
         Ok(())
     }
 
-    fn execute_command(&self, run_id: &str, command: &super::RunCommand) -> Result<Value> {
+    fn recover_persisted_effects(&self, run_id: &str) -> Result<()> {
+        loop {
+            let snapshot = self.store.run(run_id)?;
+            let definition = self
+                .store
+                .definition_by_revision(&snapshot.definition_digest)?;
+            let workflow = compile_workflow(definition.workflow.clone())?;
+            let candidate = snapshot.commands.values().find(|command| {
+                matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+                    && ((command.status == CommandStatus::Retryable
+                        && command.failure_class == Some(FailureClass::Transient))
+                        || fallback_reason(&workflow, &snapshot, command).is_some())
+            });
+            let Some(command_id) = candidate.map(|command| command.id.clone()) else {
+                return Ok(());
+            };
+            ensure!(
+                self.recover_failed_effect(run_id, &command_id)?,
+                "strategy_recovery_state_conflict"
+            );
+        }
+    }
+
+    fn execute_command(
+        &self,
+        run_id: &str,
+        command: &super::RunCommand,
+        claimant: &str,
+    ) -> Result<Value> {
         let snapshot = self.store.run(run_id)?;
         let definition = self
             .store
@@ -626,6 +659,8 @@ impl StrategyService {
                     &command.id,
                     &command.attempt_token,
                     &authorization.authorization_digest,
+                    claimant,
+                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
                 )?;
                 let mut permit = StrategyEffectPermit::issue(
                     &command.id,
@@ -666,6 +701,8 @@ impl StrategyService {
                     &command.id,
                     &command.attempt_token,
                     &authorization.authorization_digest,
+                    claimant,
+                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
                 )?;
                 let mut permit = StrategyEffectPermit::issue(
                     &command.id,
@@ -691,66 +728,52 @@ impl StrategyService {
         }
     }
 
-    fn recover_failed_effect(
-        &self,
-        run_id: &str,
-        command: &super::RunCommand,
-        class: FailureClass,
-        code: &str,
-    ) -> Result<()> {
-        if !matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem) {
-            return Ok(());
-        }
+    fn recover_failed_effect(&self, run_id: &str, command_id: &str) -> Result<bool> {
         let snapshot = self.store.run(run_id)?;
         let current = snapshot
             .commands
-            .get(&command.id)
+            .get(command_id)
             .cloned()
             .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
-        if current.status == CommandStatus::Retryable && class == FailureClass::Transient {
+        if !matches!(current.kind, CommandKind::Actor | CommandKind::WorksetItem) {
+            return Ok(false);
+        }
+        if current.status == CommandStatus::Retryable
+            && current.failure_class == Some(FailureClass::Transient)
+        {
             self.store.apply_event(
                 run_id,
                 ReducerEvent::RetryRequested {
                     command_id: current.id,
                 },
             )?;
-            return Ok(());
+            return Ok(true);
         }
         let Some(slot_id) = current.binding_id.as_deref() else {
-            return Ok(());
+            return Ok(false);
         };
         let definition = self
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
-        let slot = definition
-            .workflow
-            .actor_slots
-            .iter()
-            .find(|slot| slot.id == slot_id);
-        let quota = class == FailureClass::Permanent && code == "quota_exhausted";
-        let transient_exhausted = class == FailureClass::Transient;
-        let should_fallback =
-            (quota && slot.is_some_and(|slot| slot.fallback.on_quota)) || transient_exhausted;
-        if !should_fallback || current.status != CommandStatus::Failed {
-            return Ok(());
-        }
+        let workflow = compile_workflow(definition.workflow.clone())?;
+        let Some(reason) = fallback_reason(&workflow, &snapshot, &current) else {
+            return Ok(false);
+        };
         let next_ordinal = current.binding_ordinal.saturating_add(1);
-        let Some(next) = definition
+        let next = definition
             .bindings
             .iter()
             .find(|binding| binding.slot_id == slot_id && binding.ordinal == next_ordinal)
-        else {
-            return Ok(());
-        };
-        let previous = definition.bindings.iter().find(|binding| {
-            binding.slot_id == slot_id && binding.ordinal == current.binding_ordinal
-        });
+            .ok_or_else(|| anyhow!("binding_incomplete"))?;
+        let previous = definition
+            .bindings
+            .iter()
+            .find(|binding| {
+                binding.slot_id == slot_id && binding.ordinal == current.binding_ordinal
+            })
+            .ok_or_else(|| anyhow!("binding_incomplete"))?;
         let mut facts = current.input.clone();
-        if let Some(session) = current
-            .resume_session_id
-            .as_deref()
-            .or_else(|| snapshot.actor_sessions.get(slot_id).map(String::as_str))
-        {
+        if let Some(session) = current.resume_session_id.as_deref() {
             if let Value::Object(ref mut object) = facts {
                 object
                     .entry("nativeSessionId")
@@ -763,19 +786,13 @@ impl StrategyService {
                 failed_command_id: current.id,
                 next_ordinal,
                 locator: predecessor_locator(&facts),
-                from_value_id: previous
-                    .map(|binding| binding.value_id.clone())
-                    .unwrap_or_default(),
+                from_value_id: previous.value_id.clone(),
                 to_value_id: next.value_id.clone(),
-                reason: if quota {
-                    "quota".into()
-                } else {
-                    "transient-exhausted".into()
-                },
+                reason: reason.into(),
                 attempts: current.attempt,
             },
         )?;
-        Ok(())
+        Ok(true)
     }
 
     fn project_membership_event(
@@ -1240,6 +1257,154 @@ mod tests {
             .execute(json!({"action": "strategy.definition.list"}))
             .unwrap();
         assert_eq!(relisted["result"].as_array().unwrap().len(), 1);
+        remove_root(root);
+    }
+
+    #[test]
+    fn persisted_fallback_recovery_is_resumable_and_idempotent() {
+        use crate::domain::adaptive_flywheel::{
+            ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
+            WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
+        };
+
+        let root = root();
+        let store = StrategyStore::open(&root).unwrap();
+        let mut slot = ActorSlot::required_actor("worker", "Worker");
+        slot.fallback.after_transient_attempts = 1;
+        let workflow = WorkflowDefinition {
+            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "fallback-recovery".into(),
+                name: "Fallback recovery".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: WorkflowLimits {
+                max_parallelism: 1,
+                max_workset_items: 1,
+                max_attempts: 2,
+            },
+            actor_slots: vec![slot],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "work".into(),
+            states: vec![
+                GraphState {
+                    id: "work".into(),
+                    kind: GraphStateKind::Actor,
+                    label: "Work".into(),
+                    instruction: String::new(),
+                    binding: Some("worker".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy {
+                        max_attempts: 1,
+                        transient_only: true,
+                    },
+                },
+                GraphState {
+                    id: "done".into(),
+                    kind: GraphStateKind::Succeed,
+                    label: "Done".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+                GraphState {
+                    id: "failed".into(),
+                    kind: GraphStateKind::Fail,
+                    label: "Failed".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+            ],
+            transitions: vec![
+                Transition {
+                    id: "succeeded".into(),
+                    from: "work".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "work".into(),
+                    to: "failed".into(),
+                    event: TransitionEvent::Failure,
+                    guard: None,
+                },
+            ],
+        };
+        let revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        store
+            .register_definition(revision, revision, &workflow, 1, 1)
+            .unwrap();
+        store
+            .replace_slot_bindings(
+                revision,
+                "worker",
+                &[
+                    BindingCandidate {
+                        value_id: "agent:primary".into(),
+                        model: String::new(),
+                        reasoning_effort: String::new(),
+                    },
+                    BindingCandidate {
+                        value_id: "agent:fallback".into(),
+                        model: String::new(),
+                        reasoning_effort: String::new(),
+                    },
+                ],
+                None,
+            )
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "fallback-recovery-run", None, None)
+            .unwrap();
+        let command = run.commands.values().next().unwrap().clone();
+        let failed = store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandFailed {
+                    command_id: command.id.clone(),
+                    attempt_token: command.attempt_token,
+                    class: FailureClass::Transient,
+                    code: "effect_temporarily_unavailable".into(),
+                },
+            )
+            .unwrap();
+        assert_eq!(failed.status, StrategyRunStatus::Running);
+        assert_eq!(failed.commands[&command.id].status, CommandStatus::Failed);
+
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        );
+        service.recover_persisted_effects(&run.run_id).unwrap();
+        let recovered = store.run(&run.run_id).unwrap();
+        assert_eq!(
+            recovered.commands[&command.id].status,
+            CommandStatus::Cancelled
+        );
+        assert_eq!(recovered.fallbacks.len(), 1);
+        assert!(recovered.commands.values().any(|candidate| {
+            candidate.binding_ordinal == 1 && candidate.status == CommandStatus::Pending
+        }));
+        service.recover_persisted_effects(&run.run_id).unwrap();
+        assert_eq!(store.run(&run.run_id).unwrap(), recovered);
         remove_root(root);
     }
 }
