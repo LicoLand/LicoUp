@@ -486,10 +486,27 @@ pub(crate) fn symlink_escapes_denied_location(path: &Path) -> bool {
 }
 
 /// Other-app containers listed in the manifest. Lexical; does not stat.
-/// Automatic unused-agent probes skip these. Selecting that Agent may still
-/// read its store.
+/// Automatic unused-agent probes skip these. Opening that Agent's conversation
+/// interface may still read its store.
 pub fn is_other_app_container(path: &Path) -> bool {
     is_other_app_container_with(path, &HostRoots::from_environment())
+}
+
+pub fn is_other_app_container_under_home(path: &Path, home: &Path) -> bool {
+    is_other_app_container_with(path, &HostRoots::from_home(home))
+}
+
+/// Named files inside another app's container. Unused-agent scans never stat
+/// these. Opening that Agent's conversation interface may `exists` and read them.
+pub fn selected_agent_named_store_exists(path: &Path, catalog_home: &Path, selected: bool) -> bool {
+    let real_home = user_home_from_env();
+    if denied(path, Some(catalog_home)) || denied(path, real_home.as_deref()) {
+        return false;
+    }
+    if !selected && is_other_app_container_under_home(path, catalog_home) {
+        return false;
+    }
+    path.exists()
 }
 
 fn is_other_app_container_with(path: &Path, roots: &HostRoots) -> bool {
@@ -759,5 +776,38 @@ mod tests {
             &PathBuf::from("/profile/Library/CloudStorage/iCloudDrive"),
             &roots
         ));
+    }
+
+    #[test]
+    fn selected_agent_named_store_exists_skips_other_app_until_selected() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let home = std::env::temp_dir().join(format!(
+            "lico-selected-agent-store-{}-{}",
+            stamp.as_secs(),
+            stamp.subsec_nanos()
+        ));
+        let other_app = home
+            .join("Library")
+            .join("Application Support")
+            .join("Code")
+            .join("User")
+            .join("globalStorage")
+            .join("state.vscdb");
+        fs::create_dir_all(other_app.parent().unwrap()).unwrap();
+        fs::write(&other_app, []).unwrap();
+        let own_store = home
+            .join(".local")
+            .join("share")
+            .join("kilo")
+            .join("kilo.db");
+        fs::create_dir_all(own_store.parent().unwrap()).unwrap();
+        fs::write(&own_store, []).unwrap();
+
+        assert!(!selected_agent_named_store_exists(&other_app, &home, false));
+        assert!(selected_agent_named_store_exists(&other_app, &home, true));
+        assert!(selected_agent_named_store_exists(&own_store, &home, false));
+        let _ = fs::remove_dir_all(&home);
     }
 }

@@ -29,6 +29,8 @@ TargetCandidate _target({
 Future<void> _pumpSection(
   WidgetTester tester, {
   required List<TargetCandidate> targets,
+  bool Function(String agentId)? isRefreshingAgentCatalog,
+  ValueChanged<String>? onAgentCatalogRequested,
 }) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
@@ -53,6 +55,8 @@ Future<void> _pumpSection(
             assignments: const <DailyConversationAgentAssignment>[],
             targets: targets,
             onChanged: (_) {},
+            isRefreshingAgentCatalog: isRefreshingAgentCatalog,
+            onAgentCatalogRequested: onAgentCatalogRequested,
           ),
         ),
       ),
@@ -128,5 +132,48 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('思考强度'), findsOneWidget);
+  });
+
+  testWidgets('requests a native catalog when an agent becomes active', (
+    tester,
+  ) async {
+    final requested = <String>[];
+    await _pumpSection(
+      tester,
+      targets: [
+        _target(id: 'cursor', label: 'Cursor', models: const []),
+        _target(id: 'kilo-code', label: 'Kilo Code', models: const []),
+      ],
+      onAgentCatalogRequested: requested.add,
+    );
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+    await tester.pump();
+    expect(requested, contains('cursor'));
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-option-kilo-code')));
+    await tester.pump();
+    expect(requested, contains('kilo-code'));
+  });
+
+  testWidgets('animates while the active native catalog is loading', (
+    tester,
+  ) async {
+    await _pumpSection(
+      tester,
+      targets: [
+        _target(id: 'antigravity', label: 'Antigravity', models: const []),
+      ],
+      isRefreshingAgentCatalog: (agentId) => agentId == 'antigravity',
+    );
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('flywheel-actors-model-loading')),
+      findsOneWidget,
+    );
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 }

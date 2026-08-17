@@ -635,6 +635,7 @@ extension LicoStringsLabels on LicoStrings {
   String get confirmDailyConversationSelection =>
       isChinese ? '确认添加' : 'Confirm';
   String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
+  String get discoveringModels => isChinese ? '正在发现模型…' : 'Discovering models…';
   String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';

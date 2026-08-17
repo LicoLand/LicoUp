@@ -2259,7 +2259,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.targets.model-catalog.kilo",
       kind: "rust-domain",
-      summary: "Read-only Kilo state and SQLite model discovery",
+      summary: "Kilo CLI catalog with local-state fallback discovery",
       inputs: [
         "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
       ],

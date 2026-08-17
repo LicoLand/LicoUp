@@ -198,18 +198,25 @@ class NativeCommandActions {
         .toList();
   }
 
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
     final normalizedTargetId = targetId.trim();
     if (normalizedTargetId.isEmpty) {
       return null;
     }
-    final output = await _concurrentCommandExecutor.execute([
+    final arguments = <String>[
       'targets',
       'inspect',
       normalizedTargetId,
       '--include-accessible-environments',
       'true',
-    ]);
+    ];
+    if (enableAgentCliModelLookup) {
+      arguments.addAll(const ['--enable-agent-cli-model-lookup', 'true']);
+    }
+    final output = await _concurrentCommandExecutor.execute(arguments);
     if (output['ok'] != true || output['target'] is! Map) {
       return null;
     }

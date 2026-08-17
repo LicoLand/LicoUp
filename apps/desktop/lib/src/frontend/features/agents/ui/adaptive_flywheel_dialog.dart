@@ -69,6 +69,7 @@ final class _AdaptiveFlywheelDialogState
   @override
   void initState() {
     super.initState();
+    widget.clientController.addListener(_onClientChanged);
     _controller = AdaptiveFlywheelController(
       gateway: widget.clientController.adaptiveFlywheelGateway,
     )..addListener(_changed);
@@ -77,9 +78,15 @@ final class _AdaptiveFlywheelDialogState
 
   @override
   void dispose() {
+    widget.clientController.removeListener(_onClientChanged);
     _controller.removeListener(_changed);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onClientChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _changed() {
@@ -335,6 +342,12 @@ final class _AdaptiveFlywheelDialogState
                         targets: _targets,
                         onChanged: (values) =>
                             _setAssignments(actorSlots[index].id, values),
+                        isRefreshingAgentCatalog: widget
+                            .clientController
+                            .isRefreshingNativeModelCatalog,
+                        onAgentCatalogRequested: widget
+                            .clientController
+                            .ensureSelectedAgentModelCatalog,
                       ),
                       if (index != actorSlots.length - 1)
                         const SizedBox(height: 16),

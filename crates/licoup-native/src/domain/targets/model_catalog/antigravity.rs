@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_untrusted_agent_output;
+use crate::platform::run_bounded_command_output;
 use std::time::Duration;
 
 // The native account catalog is network-backed. Cold start, auth refresh, or a
@@ -64,7 +64,10 @@ pub(super) fn collect_antigravity_cli_model_catalog(
     }
     let mut command = Command::new(program);
     command.arg("models");
-    let output = run_bounded_untrusted_agent_output(
+    // This lookup runs only after the user selects Antigravity. Preserve the
+    // account environment used by `agy models`; clearing it can hide every
+    // entitled model while leaving only local settings fallbacks.
+    let output = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),
         MAX_AGENT_CLI_MODEL_LOOKUP_OUTPUT_BYTES,

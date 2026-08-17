@@ -38,6 +38,8 @@ final class AdaptiveFlywheelMultiCapsuleSection extends StatefulWidget {
     this.showFast = false,
     this.highlightFirstAsCurrentConversation = false,
     this.description = '',
+    this.isRefreshingAgentCatalog,
+    this.onAgentCatalogRequested,
   });
 
   final String title;
@@ -51,6 +53,8 @@ final class AdaptiveFlywheelMultiCapsuleSection extends StatefulWidget {
   final List<DailyConversationAgentAssignment> assignments;
   final List<TargetCandidate> targets;
   final ValueChanged<List<DailyConversationAgentAssignment>> onChanged;
+  final bool Function(String agentId)? isRefreshingAgentCatalog;
+  final ValueChanged<String>? onAgentCatalogRequested;
 
   @override
   State<AdaptiveFlywheelMultiCapsuleSection> createState() =>
@@ -188,6 +192,9 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
       _draft = const DailyConversationAgentAssignment();
       _queryController.clear();
     });
+    if (widget.targets.isNotEmpty) {
+      widget.onAgentCatalogRequested?.call(widget.targets.first.target);
+    }
     _cascadePortalController.show();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -273,6 +280,7 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
   }
 
   void _selectDraftAgent(TargetCandidate target) {
+    widget.onAgentCatalogRequested?.call(target.target);
     _setDraft(_draftForTarget(target));
   }
 
@@ -350,6 +358,8 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
                 draft: _draft,
                 selectedAgentIds: selectedIds,
                 onDraftChanged: _setDraft,
+                isRefreshingAgentCatalog: widget.isRefreshingAgentCatalog,
+                onAgentCatalogRequested: widget.onAgentCatalogRequested,
               ),
             ),
           ),
@@ -611,6 +621,8 @@ final class _DailyConversationCascadeCards extends StatefulWidget {
     required this.draft,
     required this.selectedAgentIds,
     required this.onDraftChanged,
+    this.isRefreshingAgentCatalog,
+    this.onAgentCatalogRequested,
   });
 
   final String keyPrefix;
@@ -621,6 +633,8 @@ final class _DailyConversationCascadeCards extends StatefulWidget {
   final DailyConversationAgentAssignment draft;
   final Set<String> selectedAgentIds;
   final ValueChanged<DailyConversationAgentAssignment> onDraftChanged;
+  final bool Function(String agentId)? isRefreshingAgentCatalog;
+  final ValueChanged<String>? onAgentCatalogRequested;
 
   @override
   State<_DailyConversationCascadeCards> createState() =>
@@ -660,6 +674,7 @@ final class _DailyConversationCascadeCardsState
 
   void _onAgentEnter(String agentId) {
     _dismissTimer?.cancel();
+    widget.onAgentCatalogRequested?.call(agentId);
     setState(() {
       _previewAgentId = agentId;
       _hoveredModel = null;
@@ -712,6 +727,9 @@ final class _DailyConversationCascadeCardsState
     final strings = LicoStrings.of(context);
     final active = _activeTarget;
     final models = active == null ? const <String>[] : _modelsFor(active);
+    final refreshing =
+        active != null &&
+        widget.isRefreshingAgentCatalog?.call(active.target) == true;
     final effectiveModel = active == null ? '' : _effectiveModel(active);
     final efforts = active == null || effectiveModel.isEmpty
         ? const <String>[]
@@ -795,7 +813,10 @@ final class _DailyConversationCascadeCardsState
                       hasModels: _modelsFor(target).isNotEmpty,
                       rowExtent: _rowExtent,
                       onEnter: () => _onAgentEnter(target.target),
-                      onTap: () => widget.onDraftChanged(_draftSeed(target)),
+                      onTap: () {
+                        widget.onAgentCatalogRequested?.call(target.target);
+                        widget.onDraftChanged(_draftSeed(target));
+                      },
                     ),
               ],
             ),
@@ -806,11 +827,21 @@ final class _DailyConversationCascadeCardsState
                 width: _modelCardWidth,
                 header: sectionHeader(strings.model),
                 children: [
+                  if (refreshing)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                      child: LinearProgressIndicator(
+                        key: Key('${widget.keyPrefix}-model-loading'),
+                        minHeight: 2,
+                      ),
+                    ),
                   if (models.isEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                       child: Text(
-                        strings.noModelsFound,
+                        refreshing
+                            ? strings.discoveringModels
+                            : strings.noModelsFound,
                         style: TextStyle(
                           color: colors.textMuted,
                           fontSize: 12.5,

@@ -132,16 +132,23 @@ pub(super) fn model_catalog_for_target(
     }
 
     if let Some(path) = config_path {
-        sources.insert("config".to_string());
-        let configured_default = collect_model_catalog_from_config_path(
-            path,
-            "config",
-            &mut entries,
-            &mut global_efforts,
-            &mut diagnostics,
-        );
-        if default_model.is_none() {
-            default_model = configured_default;
+        let other_app = home_dir_for_model_catalog(params)
+            .map(|home| {
+                crate::domain::targets::scan_paths::is_other_app_container_under_home(path, &home)
+            })
+            .unwrap_or_else(|| crate::domain::targets::scan_paths::is_other_app_container(path));
+        if agent_cli_model_lookup_enabled(params) || !other_app {
+            sources.insert("config".to_string());
+            let configured_default = collect_model_catalog_from_config_path(
+                path,
+                "config",
+                &mut entries,
+                &mut global_efforts,
+                &mut diagnostics,
+            );
+            if default_model.is_none() {
+                default_model = configured_default;
+            }
         }
     }
     for path in extra_model_config_paths(target, params) {
@@ -167,8 +174,8 @@ pub(super) fn model_catalog_for_target(
         );
     }
     if target == "kilo-code" {
-        sources.insert("kilo-state".to_string());
-        collect_kilo_code_model_catalog(params, &mut entries, &mut diagnostics);
+        authoritative_native_catalog =
+            collect_kilo_code_model_catalog(params, &mut entries, &mut sources, &mut diagnostics);
     }
 
     if target == "opencode" {

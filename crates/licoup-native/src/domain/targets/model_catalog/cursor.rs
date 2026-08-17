@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::run_bounded_untrusted_agent_output;
+use crate::platform::run_bounded_command_output;
 use std::time::Duration;
 
 // The account-scoped native catalog performs a network-backed entitlement
@@ -49,7 +49,10 @@ pub(super) fn collect_cursor_cli_model_catalog(
     }
     let mut command = Command::new(program);
     command.arg("models");
-    let Ok(output) = run_bounded_untrusted_agent_output(
+    // Selected-agent catalog lookup is a user action. Inherit the process
+    // environment so `cursor-agent models` can read the same account catalog
+    // it did before unused-agent discovery stopped spawning CLIs.
+    let Ok(output) = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),
         MAX_CURSOR_CLI_MODEL_LOOKUP_OUTPUT_BYTES,

@@ -473,6 +473,49 @@ printf 'gemini-3.6-flash-medium\nclaude-opus-4-6-thinking\ngpt-oss-120b-medium\n
 
     #[cfg(unix)]
     #[test]
+    fn antigravity_cli_model_lookup_inherits_process_environment() {
+        let dir = temp_test_dir("antigravity-cli-inherit-env");
+        let executable = dir.join("agent-models");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+if [ -z "$LICO_ANTIGRAVITY_CATALOG_MARKER" ]; then
+exit 1
+fi
+printf 'gemini-account-model\nclaude-account-model\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_CATALOG_MARKER", "1");
+        }
+
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "antigravityCliPath": display_path(executable),
+            }),
+        );
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_CATALOG_MARKER");
+        }
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"gemini-account-model"));
+        assert!(names.contains(&"claude-account-model"));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn antigravity_cli_model_lookup_times_out_without_blocking_catalog() {
         let dir = temp_test_dir("antigravity-cli-timeout");
         let executable = dir.join("agent-models");
@@ -715,6 +758,50 @@ printf 'Available models\n\ncomposer-2.5 - Composer 2.5 (current)\n'
         assert_eq!(names, vec!["composer-2.5"]);
         assert_eq!(catalog["defaultModel"], json!("composer-2.5"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn cursor_cli_model_lookup_inherits_process_environment() {
+        let dir = temp_test_dir("cursor-cli-inherit-env");
+        let executable = dir.join("cursor-agent");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+if [ -z "$LICO_CURSOR_CATALOG_MARKER" ]; then
+printf 'Available models\n\nstale-isolated - Isolated\n'
+exit 0
+fi
+printf 'Available models\n\nauto - Auto (default)\nfull-cursor-model - Full Cursor Model\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        unsafe {
+            std::env::set_var("LICO_CURSOR_CATALOG_MARKER", "1");
+        }
+
+        let catalog = model_catalog_for_target(
+            "cursor",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "cursorCliPath": display_path(executable),
+            }),
+        );
+        unsafe {
+            std::env::remove_var("LICO_CURSOR_CATALOG_MARKER");
+        }
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"full-cursor-model"));
+        assert!(!names.contains(&"stale-isolated"));
+    }
 }
 
 mod kimi_code {
@@ -799,7 +886,76 @@ mod config_collections {
 }
 
 mod kilo {
+    use super::super::kilo::collect_kilo_model_catalog_from_cli_output;
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn kilo_cli_output_preserves_every_provider_qualified_selector() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_kilo_model_catalog_from_cli_output(
+            "kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\nignored log line\n",
+            "kilo-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(added, 3);
+        let names = entries
+            .values()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"kilo/kilo-auto/free"));
+        assert!(names.contains(&"anthropic/claude-opus-4-6"));
+        assert!(names.contains(&"openai/gpt-5.5"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kilo_selected_catalog_uses_full_cli_output_and_account_environment() {
+        let home = temp_test_dir("kilo-cli-model-catalog");
+        let executable = home.join("kilo");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+if [ -z "$LICO_KILO_CATALOG_MARKER" ]; then
+exit 1
+fi
+printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        unsafe {
+            std::env::set_var("LICO_KILO_CATALOG_MARKER", "1");
+        }
+
+        let catalog = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "kiloCliPath": display_path(executable),
+            }),
+        );
+        unsafe {
+            std::env::remove_var("LICO_KILO_CATALOG_MARKER");
+        }
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"kilo/kilo-auto/free"));
+        assert!(names.contains(&"anthropic/claude-opus-4-6"));
+        assert!(names.contains(&"openai/gpt-5.5"));
+        assert_eq!(catalog["sources"], json!(["kilo-cli"]));
+    }
 
     #[test]
     fn kilo_model_catalog_reads_vscode_state_and_local_db() {
@@ -891,6 +1047,8 @@ mod kilo {
             &json!({
                 "homeDir": display_path(home),
                 "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "disableKiloCliModelLookup": true,
             }),
         );
         let models = catalog["models"].as_array().unwrap();
@@ -996,6 +1154,8 @@ mod kilo {
             &json!({
                 "homeDir": display_path(home),
                 "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "disableKiloCliModelLookup": true,
             }),
         );
         let names = catalog["models"]
@@ -1010,6 +1170,94 @@ mod kilo {
                 .iter()
                 .any(|name| name.contains("session/") || name.contains("ses_")),
             "session identities leaked into Kilo models: {names:?}"
+        );
+    }
+
+    #[test]
+    fn kilo_unused_agent_catalog_skips_other_app_vscode_state() {
+        let home = temp_test_dir("kilo-unused-vscode");
+        let vscode_root = match std::env::consts::OS {
+            "windows" => default_app_data_dir(&home).join("Code"),
+            "macos" => home
+                .join("Library")
+                .join("Application Support")
+                .join("Code"),
+            _ => home.join(".config").join("Code"),
+        };
+        let vscode_state = vscode_root
+            .join("User")
+            .join("globalStorage")
+            .join("state.vscdb");
+        fs::create_dir_all(vscode_state.parent().unwrap()).unwrap();
+        let connection = Connection::open(&vscode_state).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+                (
+                    "kilocode.kilo-code",
+                    json!({
+                        "recentModels": [
+                            {
+                                "providerID": "kilo",
+                                "modelID": "anthropic/claude-opus-4.6"
+                            }
+                        ]
+                    })
+                    .to_string(),
+                ),
+            )
+            .unwrap();
+        drop(connection);
+
+        let unused = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home.clone()),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let selected = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "disableKiloCliModelLookup": true,
+            }),
+        );
+        let unused_names = unused["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect::<Vec<_>>();
+        let selected_names = selected["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect::<Vec<_>>();
+        let unused_has_vscode = unused_names.contains(&"anthropic/claude-opus-4.6");
+        assert!(selected_names.contains(&"anthropic/claude-opus-4.6"));
+        if cfg!(target_os = "macos") {
+            assert!(
+                !unused_has_vscode,
+                "unused-agent Kilo catalog must not stat VS Code Application Support"
+            );
+        }
+        assert!(
+            selected["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("kilo-vscode-state"))
         );
     }
 }

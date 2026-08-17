@@ -53,6 +53,18 @@ void main() {
         isNot(contains('--enable-agent-cli-model-lookup')),
       );
 
+      concurrent.calls.clear();
+      await actions.scanOneTarget('cursor', enableAgentCliModelLookup: true);
+      expect(concurrent.calls.single, [
+        'targets',
+        'inspect',
+        'cursor',
+        '--include-accessible-environments',
+        'true',
+        '--enable-agent-cli-model-lookup',
+        'true',
+      ]);
+
       serialized.calls.clear();
       await actions.inspectTarget('codex');
       expect(serialized.calls.single, [

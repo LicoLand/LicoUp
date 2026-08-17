@@ -56,8 +56,9 @@ pub(super) fn param_bool(params: &Value, key: &str) -> Option<bool> {
     })
 }
 
-/// Third-party Agent CLIs run only when the caller opts in. Cold-start scan
-/// and inspect stay off so unused-agent discovery cannot inherit TCC prompts.
+/// Third-party Agent CLIs and other-app Agent stores run only when the
+/// caller opts in. Cold-start scan stays off so unused-agent discovery cannot
+/// inherit TCC prompts. Opening that Agent's conversation interface sets this flag.
 pub(super) fn agent_cli_model_lookup_enabled(params: &Value) -> bool {
     if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false) {
         return false;
