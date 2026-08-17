@@ -1902,6 +1902,11 @@ printf 'anthropic/claude-sonnet-4-5\nopenai/gpt-5.4\n'
             .collect::<Vec<_>>();
         assert!(names.contains(&"anthropic/claude-sonnet-4-5"));
         assert!(names.contains(&"openai/gpt-5.4"));
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .is_some_and(|sources| sources.contains(&json!("opencode-cli:models")))
+        );
     }
 
     #[cfg(unix)]

@@ -13,12 +13,13 @@ pub(super) fn collect_opencode_model_catalog(
     params: &Value,
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
     diagnostics: &mut Vec<Value>,
-) {
+) -> bool {
     for path in opencode_config_paths(config_path, params) {
         collect_opencode_provider_catalog_from_path(&path, entries, diagnostics);
     }
-    collect_opencode_cli_model_catalog(params, entries, diagnostics);
+    let cli_refreshed = collect_opencode_cli_model_catalog(params, entries, diagnostics);
     retain_opencode_provider_scoped_models(entries);
+    cli_refreshed
 }
 
 fn opencode_config_paths(config_path: Option<&Path>, params: &Value) -> Vec<PathBuf> {
@@ -225,13 +226,13 @@ fn collect_opencode_cli_model_catalog(
     params: &Value,
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
     diagnostics: &mut Vec<Value>,
-) {
+) -> bool {
     let source = "opencode-cli:models";
     if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableOpencodeCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({"source": source, "status": "disabled"}));
-        return;
+        return false;
     }
 
     let program = param_string(params, "opencodeCliPath")
@@ -240,11 +241,11 @@ fn collect_opencode_cli_model_catalog(
         .or_else(|| find_binary(&["opencode"]));
     let Some(program) = program else {
         diagnostics.push(json!({"source": source, "status": "binary-unavailable"}));
-        return;
+        return false;
     };
     if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
         diagnostics.push(json!({"source": source, "status": "execution-denied"}));
-        return;
+        return false;
     }
     let timeout_ms = param_u64(params, "opencodeCliModelLookupTimeoutMs")
         .or_else(|| param_u64(params, "agentCliModelLookupTimeoutMs"))
@@ -261,15 +262,15 @@ fn collect_opencode_cli_model_catalog(
         MAX_OPENCODE_CLI_MODEL_LOOKUP_OUTPUT_BYTES,
     ) else {
         diagnostics.push(json!({"source": source, "status": "command-failed"}));
-        return;
+        return false;
     };
     if output.timed_out {
         diagnostics.push(json!({"source": source, "status": "timeout"}));
-        return;
+        return false;
     }
     if output.truncated {
         diagnostics.push(json!({"source": source, "status": "output-too-large"}));
-        return;
+        return false;
     }
     if !output.status.is_some_and(|status| status.success()) {
         diagnostics.push(json!({
@@ -277,12 +278,14 @@ fn collect_opencode_cli_model_catalog(
             "status": "command-exited",
             "code": output.status.and_then(|status| status.code()),
         }));
-        return;
+        return false;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     if collect_opencode_models_from_cli_output(&stdout, source, entries) == 0 {
         diagnostics.push(json!({"source": source, "status": "empty"}));
+        return false;
     }
+    true
 }
 
 pub(super) fn collect_opencode_models_from_cli_output(
