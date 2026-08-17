@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
+import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
@@ -352,6 +353,58 @@ void main() {
       expect(conversationRunner.strategyRevision, 'rev-auth');
     },
   );
+
+  testWidgets(
+    'controller notification retries strategy inspection after a transient failure',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner();
+      final gateway = _StrategyGateway();
+      final controller = ClientConversationController(
+        runner: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      gateway.inspectionFailures = 1;
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(gateway.inspectionCount, 1);
+      expect(
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        findsNothing,
+      );
+
+      controller.updateDraft('notify projection retry');
+      await tester.pumpAndSettle();
+
+      expect(gateway.inspectionCount, 2);
+      expect(
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        findsOneWidget,
+      );
+      expect(find.text('Authorized Graph'), findsWidgets);
+    },
+  );
 }
 
 Widget _groupApp(Widget child) {
@@ -403,6 +456,8 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
   final List<String>? callOrder;
   final List<String> actions = [];
   int startCount = 0;
+  int inspectionCount = 0;
+  int inspectionFailures = 0;
   bool needsHumanInput = false;
 
   @override
@@ -411,6 +466,15 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
     actions.add(action);
     callOrder?.add('flywheel:$action');
     if (action == 'strategy.definition.inspect') {
+      inspectionCount += 1;
+      if (inspectionFailures > 0) {
+        inspectionFailures -= 1;
+        throw const AdaptiveFlywheelFailure(
+          code: 'strategy_inspection_failed',
+          recovery: 'Retry strategy inspection.',
+          retryable: true,
+        );
+      }
       await inspectionBarrier?.future;
       return {
         'projection': {

@@ -431,11 +431,11 @@ class _CanonicalGroupConversationPaneState
       await _refreshActiveRun();
       return;
     }
-    _strategyProjectionConversationId = conversationId;
-    _strategyProjectionRevision = revision;
     final generation = ++_strategyProjectionGeneration;
     if (conversation == null || !conversation.group || revision.isEmpty) {
       if (!mounted) return;
+      _strategyProjectionConversationId = conversationId;
+      _strategyProjectionRevision = revision;
       setState(_clearStrategyFields);
       return;
     }
@@ -448,6 +448,8 @@ class _CanonicalGroupConversationPaneState
               revision) {
         return;
       }
+      _strategyProjectionConversationId = conversationId;
+      _strategyProjectionRevision = revision;
       if (projection == null) {
         setState(_clearStrategyFields);
         return;
