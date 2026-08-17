@@ -312,6 +312,7 @@ class ComposerRuntimeCapsule extends StatelessWidget {
       targetAnchor: Alignment.topLeft,
       followerAnchor: Alignment.bottomLeft,
       offset: const Offset(0, -4),
+      maxWidth: MessagingDesktopMetrics.composerRuntimeSelectorPopoverMaxWidth,
       maxHeight:
           MessagingDesktopMetrics.composerRuntimeSelectorPopoverMaxHeight,
       borderRadius: menuRadius,
@@ -638,13 +639,12 @@ class _ComposerRuntimeSelectorPanelState
           for (final option in widget.modelOptions)
             _RuntimeSelectorOptionRow(
               label: option == effectiveDefault
-                  ? strings.defaultValueDisplay(
-                      shortenComposerModelName(option),
-                    )
-                  : shortenComposerModelName(option),
+                  ? strings.defaultValueDisplay(option)
+                  : option,
               selected:
                   (option == effectiveDefault ? '' : option) ==
                   selectedMenuValue,
+              wrapLabel: true,
               onTap: widget.onModelChanged == null
                   ? null
                   : () => widget.onModelChanged!(
@@ -789,10 +789,12 @@ class _RuntimeSelectorOptionRow extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.wrapLabel = false,
   });
 
   final String label;
   final bool selected;
+  final bool wrapLabel;
   final VoidCallback? onTap;
 
   @override
@@ -809,12 +811,18 @@ class _RuntimeSelectorOptionRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
+            crossAxisAlignment: wrapLabel
+                ? CrossAxisAlignment.start
+                : CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Text(
                   label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: wrapLabel ? 4 : 1,
+                  softWrap: wrapLabel,
+                  overflow: wrapLabel
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
                   style: TextStyle(
                     color: colors.text,
                     fontSize: 12.5,

@@ -2,9 +2,9 @@ use anyhow::{Result, anyhow, ensure};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    GraphState, GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS, MAX_BINDING_SLOTS,
-    MAX_GRAPH_STATES, MAX_GRAPH_TRANSITIONS, MAX_RETRY_ATTEMPTS, MAX_RUNTIME_REQUIREMENTS,
-    MAX_WORKSET_ITEMS, Transition, WorkflowDefinition,
+    BindingKind, GraphState, GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS,
+    MAX_BINDING_SLOTS, MAX_GRAPH_STATES, MAX_GRAPH_TRANSITIONS, MAX_RETRY_ATTEMPTS,
+    MAX_RUNTIME_REQUIREMENTS, MAX_WORKSET_ITEMS, Transition, WorkflowDefinition,
 };
 
 #[derive(Clone, Debug)]
@@ -120,7 +120,28 @@ pub fn compile_workflow(definition: WorkflowDefinition) -> Result<CompiledWorkfl
     )?;
     for slot in &definition.actor_slots {
         validate_text(&slot.label, 128, "workflow_binding_label")?;
+        ensure!(
+            (1..=MAX_RETRY_ATTEMPTS).contains(&slot.fallback.after_transient_attempts),
+            "workflow_fallback_invalid"
+        );
+        if slot.kind != BindingKind::Actor {
+            ensure!(!slot.entry, "workflow_entry_slot_invalid");
+        }
     }
+    let actor_entries = definition
+        .actor_slots
+        .iter()
+        .filter(|slot| slot.kind == BindingKind::Actor && slot.entry)
+        .count();
+    let actor_count = definition
+        .actor_slots
+        .iter()
+        .filter(|slot| slot.kind == BindingKind::Actor)
+        .count();
+    ensure!(
+        actor_count == 0 || actor_entries == 1,
+        "workflow_entry_slot_invalid"
+    );
     let runtimes = unique_ids(
         definition
             .runtimes
@@ -621,6 +642,36 @@ mod tests {
         .unwrap();
         assert_eq!(compiled.reachable().len(), 2);
         assert_eq!(compiled.transitions("start", "complete").count(), 1);
+    }
+
+    #[test]
+    fn actor_graphs_require_exactly_one_entry_slot() {
+        let mut definition = workflow(
+            vec![
+                state("start", GraphStateKind::Pass),
+                state("done", GraphStateKind::Succeed),
+            ],
+            vec![Transition {
+                id: "finish".into(),
+                from: "start".into(),
+                to: "done".into(),
+                event: "complete".into(),
+                guard: None,
+            }],
+        );
+        definition.actor_slots = vec![
+            crate::domain::adaptive_flywheel::ActorSlot::required_actor("entry", "Entry"),
+            {
+                let mut slot = crate::domain::adaptive_flywheel::ActorSlot::required_actor(
+                    "worker-a", "Worker",
+                );
+                slot.entry = false;
+                slot
+            },
+        ];
+        compile_workflow(definition.clone()).unwrap();
+        definition.actor_slots[1].entry = true;
+        assert!(compile_workflow(definition).is_err());
     }
 
     #[test]

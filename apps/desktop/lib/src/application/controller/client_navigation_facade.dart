@@ -86,7 +86,6 @@ mixin ClientNavigationFacade
       ]);
       await applyCurrentConversationViewRestore();
     },
-    ClientSection.monitoring: () => ensureAgentUsageLoadedAndFresh(limit: 20),
     ClientSection.skillHub: () =>
         refreshSkillHub(selectedConversationAgentId, showProgress: false),
     ClientSection.mobileRelay: () =>
@@ -127,6 +126,7 @@ mixin ClientNavigationFacade
   void clientEnterMonitoringSection() {
     if (!mobileClientRuntimePlatform) {
       agentUsageController.acquirePollingOwner(_navigationUsagePollingOwner);
+      unawaited(agentUsageController.ensureLoadedAndFresh(limit: 20));
     }
   }
 

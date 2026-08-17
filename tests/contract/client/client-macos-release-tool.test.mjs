@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { minimalReleaseToolEnvironment } from "../../../tools/scripts/lib/release-tool-environment.mjs";
+import { assertPublishableReleaseRef } from "../../../tools/scripts/client-macos-release-publish.mjs";
 import {
   BETA_STAGE_ORDER,
   deriveManagedReleaseConfig,
@@ -175,6 +176,43 @@ test("macOS publication reuses the verified beta artifact and publishes once", (
   assert.ok(publisherSource.includes('"--publish", "true"'));
   assert.ok(publisherSource.includes("updateSigningKeyEnvironment()"));
   assert.ok(publisherSource.includes("sourceRevision !== releaseRevision"));
+});
+
+test("macOS publisher binds origin/release and rejects nightly or stable as the symbolic branch", () => {
+  const sha = "a".repeat(40);
+  assert.doesNotThrow(() => assertPublishableReleaseRef({
+    sourceRevision: sha,
+    releaseRevision: sha,
+    symbolicRef: "",
+  }));
+  assert.doesNotThrow(() => assertPublishableReleaseRef({
+    sourceRevision: sha,
+    releaseRevision: sha,
+    symbolicRef: "release",
+  }));
+  for (const symbolicRef of ["nightly", "stable"]) {
+    assert.throws(
+      () => assertPublishableReleaseRef({
+        sourceRevision: sha,
+        releaseRevision: sha,
+        symbolicRef,
+      }),
+      (error) => error instanceof Error &&
+        error.message === "macos_release_publication_failed",
+    );
+  }
+  assert.throws(
+    () => assertPublishableReleaseRef({
+      sourceRevision: sha,
+      releaseRevision: "b".repeat(40),
+      symbolicRef: "release",
+    }),
+    (error) => error instanceof Error &&
+      error.message === "macos_release_publication_failed",
+  );
+  assert.ok(publisherSource.includes("refs/remotes/origin/release"));
+  assert.ok(publisherSource.includes("symbolic-ref"));
+  assert.ok(publisherSource.includes("allowFailure"));
 });
 
 test("release-policy child environment keeps Android SDK locations", () => {

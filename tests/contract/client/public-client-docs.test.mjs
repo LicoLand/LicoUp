@@ -117,3 +117,25 @@ test("MCP external effects require fresh user presence and a one-shot preview cl
     assert.doesNotMatch(compact(source), /authenticated client broker|native broker|客户端授权代理|原生授权代理/u);
   }
 });
+
+test("contributing documents keep nightly open and publish only from origin/release", async () => {
+  const [english, chinese] = await Promise.all([
+    read("CONTRIBUTING.md"),
+    read("CONTRIBUTING.zh-CN.md"),
+  ]);
+  const englishCompact = compact(english);
+  const chineseCompact = compact(chinese);
+
+  assert.match(englishCompact, /always-open integration line/u);
+  assert.match(englishCompact, /Public publication is only from `origin\/release`/u);
+  assert.match(englishCompact, /npm run client:release:macos:publish/u);
+  assert.match(englishCompact, /Freeze `stable` and `release`/u);
+  assert.doesNotMatch(english, /Freeze ordinary merges into `nightly`/u);
+  assert.doesNotMatch(english, /unfreeze `nightly`/u);
+
+  assert.match(chineseCompact, /始终开放的集成线/u);
+  assert.match(chineseCompact, /公开发布只来自 `origin\/release`/u);
+  assert.match(chineseCompact, /冻结 `stable` 和 `release`/u);
+  assert.doesNotMatch(chinese, /冻结所有进入 `nightly` 的普通合并/u);
+  assert.doesNotMatch(chinese, /解除 `nightly` 冻结/u);
+});

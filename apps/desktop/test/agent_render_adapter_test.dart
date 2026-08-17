@@ -116,8 +116,6 @@ void main() {
         DefaultAgentRenderAdapterJsonSource.externalRootsEnvironmentKey:
             root.path,
       },
-      applicationSupportDirectoryResolver: () async =>
-          Directory('${root.path}/support'),
     );
 
     final adapters = await source.loadAdapterJson();

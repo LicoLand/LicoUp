@@ -134,10 +134,16 @@ test("product metadata and entitlement authorities are exact and minimal", () =>
   const infoPlist = readFileSync(infoPlistPath, "utf8");
   assert.equal(plistValue(infoPlist, "CFBundleName"), "LicoUp");
   assert.equal(plistValue(infoPlist, "CFBundleDisplayName"), "LicoUp");
+  assert.equal(plistValue(infoPlist, "LSMultipleInstancesProhibited"), true);
   for (const sensitivePurpose of [
     "NSCameraUsageDescription",
     "NSMicrophoneUsageDescription",
     "NSScreenCaptureUsageDescription",
+    "NSDesktopFolderUsageDescription",
+    "NSDocumentsFolderUsageDescription",
+    "NSDownloadsFolderUsageDescription",
+    "NSNetworkVolumesUsageDescription",
+    "NSRemovableVolumesUsageDescription",
   ]) {
     assert.equal(infoPlist.includes(sensitivePurpose), false);
   }

@@ -44,8 +44,8 @@ void registerClientPreloadScenarios() {
         everyElement(isFalse),
       );
       expect(controller.skillHubSkills, isNotEmpty);
-      expect(controller.agentUsageReport, isNotNull);
-      // Background preload must not churn the visible status line.
+      // Usage is loaded when Monitoring is opened, not during cold-start
+      // preload, so unused Agent stores are not walked at launch.
       expect(controller.statusMessage, isNot(contains('Secure Mesh')));
       expect(controller.statusMessage, isNot(contains('技能')));
     },

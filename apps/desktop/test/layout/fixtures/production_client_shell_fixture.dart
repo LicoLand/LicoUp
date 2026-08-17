@@ -213,7 +213,10 @@ final class _FixtureAgentService extends AgentService {
   Future<List<TargetCandidate>> scanTargets() async => targets;
 
   @override
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
     for (final target in targets) {
       if (target.target == targetId) {
         return target;

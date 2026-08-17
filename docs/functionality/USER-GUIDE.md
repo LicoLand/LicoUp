@@ -57,11 +57,14 @@ Hover the top-right conversation, details, or notification controls to open
 floating glass cards anchored to those icons; there is no conversation-details
 sidebar.
 
-Discovery checks the application sources appropriate to the current platform,
-including package managers and common executable/configuration locations. The
-probes run concurrently with a fixed bound. Normalized paths and configuration
-references are cached only in the client so later launches do not need a full
-scan.
+Discovery probes only the Agent Scan Path Manifest: named Agent binaries,
+configuration, and history directories. It does not walk `PATH`, Desktop,
+Documents, Downloads, Pictures, Music, or network volumes, does not execute
+third-party Agent binaries at launch, and unused-agent
+scans do not open other apps' containers. Token usage is read when you open
+Monitoring, not at launch. The probes run concurrently with a
+fixed bound. Normalized paths and configuration references stay in the client
+cache so later launches do not need a full scan.
 
 When continuing a conversation, LicoUp prefers the agent's native attach or
 resume operation. If an adapter cannot accept input during a running turn, the
@@ -77,9 +80,9 @@ the last IDE assistant return, followed by your message. Later sends on that
 CLI session resume normally without repeating the handoff.
 
 The unified group-Conversation foundation remains separate from the direct
-Agent entry point. Adaptive Flywheel has its own desktop strategy surface: it
-starts with one automatically available LicoUp basic strategy and accepts
-immutable JSON Graph strategy packages. See
+Agent entry point. Adaptive Flywheel has its own desktop strategy surface: the
+catalog stays empty until you import a ZIP package of an immutable JSON Graph
+strategy. See
 [Adaptive Flywheel strategies](ADAPTIVE-FLYWHEEL.md) for strategy import, the
 capsule role editor, background runtime detection, and the workflow diagram.
 
@@ -114,7 +117,7 @@ Hermes in the VM first. OpenClaw's ACP command must be able to reach its
 configured Gateway inside the VM.
 
 Open **Agents** while your local OrbStack machines are running. LicoUp
-automatically checks the executable on `PATH` plus these install families:
+checks the Agent Scan Path Manifest for these install families:
 
 - OpenClaw: the installer prefix under `~/.openclaw`, the user wrapper under
   `~/.local/bin`, common npm/pnpm/Bun/Volta/Nix user bins, and system bins.

@@ -14,7 +14,16 @@
 
 稳定性证明使用仓库普通的本地 ad-hoc 打包路径，不使用发布者身份、仓库凭据或公证密钥；已安装 App 与本地证明都不会进入后续发布流程。
 
-晋升就绪不等于发布。`.github/workflows/client-release.yml` 中需要人工授权的工作流仍是从 `release` 构建正式产物以及创建或更新 GitHub Release 的唯一入口。
+晋升就绪不等于发布。`client:promotion -- train` 把一份已验证快照切到 `release`。
+之后出现在 `nightly` 上的提交属于下一次切分，不是正在发布的版本。公开发布只来自
+精确的 `origin/release`（干净的 detached worktree 并运行
+`npm run client:release:macos:publish`，或
+`.github/workflows/client-release.yml` 中需人工授权的工作流）。严禁从 `nightly`
+或 `stable` 发布。
+
+正在发布期间，`nightly` 保持开放，继续接受带动作前缀的普通 merge-commit Pull
+Request。在当前发布成功或被明确放弃之前，不要再次运行 `nightly` → `stable` 或
+`stable` → `release`。
 
 ## 可重复的晋升操作
 
