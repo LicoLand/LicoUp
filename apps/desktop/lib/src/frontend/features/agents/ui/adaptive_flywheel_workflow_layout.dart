@@ -125,14 +125,10 @@ final class AdaptiveFlywheelWorkflowLayout {
         final preferred = xs.isEmpty
             ? cursor
             : xs.reduce((a, b) => a + b) / xs.length - nodeWidth / 2;
-        final left = xs.isEmpty
-            ? cursor
-            : preferred
-                  .clamp(
-                    margin,
-                    math.max(margin, mainWidth - margin - nodeWidth),
-                  )
-                  .toDouble();
+        final clampedPreferred = preferred
+            .clamp(margin, math.max(margin, mainWidth - margin - nodeWidth))
+            .toDouble();
+        final left = math.max(cursor, clampedPreferred);
         positions[id] = Offset(left, exceptionTop);
         cursor = left + nodeWidth + columnGap;
       }

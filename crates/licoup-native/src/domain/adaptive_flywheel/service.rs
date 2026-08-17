@@ -351,8 +351,8 @@ impl StrategyService {
         }
     }
 
-    fn validate_import_identity(&self, _prepared: &super::PreparedPackage) -> Result<()> {
-        Ok(())
+    fn validate_import_identity(&self, prepared: &super::PreparedPackage) -> Result<()> {
+        super::store::validate_import_identity(&prepared.definition_id, &prepared.name)
     }
 
     fn refresh_runtime_bindings(&self) -> Result<()> {

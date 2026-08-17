@@ -100,7 +100,77 @@ void main() {
 
     expect(TargetPolicy.hasSelectedAgentModelCatalog(historyOnly), isFalse);
     expect(TargetPolicy.hasSelectedAgentModelCatalog(native), isTrue);
+    expect(
+      TargetPolicy.hasSelectedAgentModelCatalog(
+        _target('opencode').withModelCatalog({
+          'sources': ['opencode-cli:models'],
+        }),
+      ),
+      isTrue,
+    );
   });
+
+  test(
+    'a persisted native catalog is refreshed once in each process',
+    () async {
+      final persisted = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'persisted'},
+          ],
+        },
+      );
+      final refreshed = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'fresh'},
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'cursor': persisted},
+        selectedProbes: {'cursor': refreshed},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['cursor'],
+        isMobileRuntime: () => false,
+        scanMobileTargets: () async => const [],
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([persisted]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      await Future<void>.delayed(Duration.zero);
+      while (controller.isRefreshingNativeModelCatalog('cursor')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List)
+            .single['name'],
+        'fresh',
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+    },
+  );
 
   test(
     'opening a bound agent conversation interface refreshes its native model catalog once',

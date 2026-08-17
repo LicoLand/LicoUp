@@ -52,9 +52,13 @@ pub(super) fn scan_target_with_manual(
     let history_roots = manual
         .map(|item| item.history_roots.clone())
         .unwrap_or_default();
-    let config_exists = config_path
-        .as_ref()
-        .is_some_and(|path| crate::domain::targets::scan_paths::probe_exists(path));
+    let config_exists = config_path.as_ref().is_some_and(|path| {
+        if manual.and_then(|item| item.config_path.as_ref()) == Some(path) {
+            crate::domain::targets::scan_paths::explicit_file_exists(path)
+        } else {
+            crate::domain::targets::scan_paths::probe_exists(path)
+        }
+    });
     let detection_exists = detection_path
         .as_ref()
         .is_some_and(|path| crate::domain::targets::scan_paths::probe_exists(path));
@@ -326,15 +330,22 @@ fn project_virtual_machine_target(
 /// Reuse the executable already bound for this candidate so selected-agent
 /// model lookup does not depend on a second PATH search. This is required for
 /// package-bundled CLIs such as Kilo Code's extension binary.
-fn model_catalog_params(target: &str, binary_path: Option<&Path>, params: &Value) -> Value {
+pub(super) fn model_catalog_params(
+    target: &str,
+    binary_path: Option<&Path>,
+    params: &Value,
+) -> Value {
     let mut next = params.clone();
     let Some(binary_path) = binary_path else {
         return next;
     };
     let parameter = match target {
         "antigravity" => "antigravityCliPath",
+        "claude-code" => "claudeCliPath",
         "cursor" => "cursorCliPath",
         "kilo-code" => "kiloCliPath",
+        "opencode" => "opencodeCliPath",
+        "pi" => "piCliPath",
         _ => return next,
     };
     if let Some(object) = next.as_object_mut() {

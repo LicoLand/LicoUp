@@ -68,6 +68,7 @@ class TargetPolicy {
       'kilo-cli',
       'claude-cli',
       'codex-app-server',
+      'opencode-cli:models',
       'pi-cli:list-models',
     };
     return sources.any((source) => selected.contains(source.toString()));

@@ -17,6 +17,14 @@ const DATABASE_FILE: &str = "strategies.sqlite3";
 const RETIRED_BUILTIN_DEFINITION_ID: &str = "licoup-basic";
 const RETIRED_BUILTIN_DEFINITION_NAME: &str = "LicoUp Basic Strategy";
 
+pub(crate) fn validate_import_identity(definition_id: &str, name: &str) -> Result<()> {
+    ensure!(
+        definition_id != RETIRED_BUILTIN_DEFINITION_ID && name != RETIRED_BUILTIN_DEFINITION_NAME,
+        "strategy_definition_identity_reserved"
+    );
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 pub struct StrategyStore {
     db_path: PathBuf,
@@ -71,6 +79,7 @@ impl StrategyStore {
         asset_count: usize,
         imported_at_unix_ms: i64,
     ) -> Result<StrategyDefinition> {
+        validate_import_identity(&workflow.metadata.id, &workflow.metadata.name)?;
         let compiled = compile_workflow(workflow.clone())?;
         let workflow_json = serde_json::to_string(&compiled.definition)?;
         self.with_connection(|connection| {
@@ -464,8 +473,9 @@ impl StrategyStore {
             transaction.execute(
                 "INSERT INTO strategy_runs(
                    run_id, revision_digest, semantics_digest, idempotency_key,
-                   request_digest, snapshot_json, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                   request_digest, snapshot_json, conversation_id, terminal,
+                   created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
                 params![
                     run_id,
                     revision_digest,
@@ -473,6 +483,8 @@ impl StrategyStore {
                     idempotency_key,
                     request_digest,
                     serde_json::to_string(&snapshot)?,
+                    snapshot.conversation_id,
+                    i64::from(run_is_terminal(snapshot.status)),
                     now,
                 ],
             )?;
@@ -510,8 +522,15 @@ impl StrategyStore {
                     now,
                 )?;
                 transaction.execute(
-                    "UPDATE strategy_runs SET snapshot_json=?2, updated_at=?3 WHERE run_id=?1",
-                    params![run_id, serde_json::to_string(&output.snapshot)?, now],
+                    "UPDATE strategy_runs SET snapshot_json=?2, conversation_id=?3,
+                     terminal=?4, updated_at=?5 WHERE run_id=?1",
+                    params![
+                        run_id,
+                        serde_json::to_string(&output.snapshot)?,
+                        output.snapshot.conversation_id,
+                        i64::from(run_is_terminal(output.snapshot.status)),
+                        now
+                    ],
                 )?;
             }
             transaction.commit()?;
@@ -572,8 +591,15 @@ impl StrategyStore {
                 now,
             )?;
             transaction.execute(
-                "UPDATE strategy_runs SET snapshot_json=?2, updated_at=?3 WHERE run_id=?1",
-                params![run_id, serde_json::to_string(&output.snapshot)?, now],
+                "UPDATE strategy_runs SET snapshot_json=?2, conversation_id=?3,
+                 terminal=?4, updated_at=?5 WHERE run_id=?1",
+                params![
+                    run_id,
+                    serde_json::to_string(&output.snapshot)?,
+                    output.snapshot.conversation_id,
+                    i64::from(run_is_terminal(output.snapshot.status)),
+                    now
+                ],
             )?;
             transaction.execute(
                 "UPDATE strategy_commands SET status='claimed', lease_owner=?2,
@@ -743,8 +769,15 @@ impl StrategyStore {
                 failure.snapshot
             };
             transaction.execute(
-                "UPDATE strategy_runs SET snapshot_json=?2, updated_at=?3 WHERE run_id=?1",
-                params![run_id, serde_json::to_string(&final_snapshot)?, now],
+                "UPDATE strategy_runs SET snapshot_json=?2, conversation_id=?3,
+                 terminal=?4, updated_at=?5 WHERE run_id=?1",
+                params![
+                    run_id,
+                    serde_json::to_string(&final_snapshot)?,
+                    final_snapshot.conversation_id,
+                    i64::from(run_is_terminal(final_snapshot.status)),
+                    now
+                ],
             )?;
             transaction.execute(
                 "UPDATE strategy_commands SET lease_owner=NULL, lease_until=NULL
@@ -901,29 +934,17 @@ impl StrategyStore {
     ) -> Result<Option<RunSnapshot>> {
         validate_opaque_id(conversation_id, "strategy_conversation_id_invalid")?;
         self.with_connection(|connection| {
-            let mut statement = connection.prepare(
-                "SELECT snapshot_json FROM strategy_runs
-                 WHERE revision_digest=?1 ORDER BY updated_at DESC",
-            )?;
-            let snapshots = statement
-                .query_map(params![revision_digest], |row| row.get::<_, String>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            for snapshot_json in snapshots {
-                let snapshot: RunSnapshot = serde_json::from_str(&snapshot_json)?;
-                if snapshot.conversation_id.as_deref() == Some(conversation_id)
-                    && !matches!(
-                        snapshot.status,
-                        StrategyRunStatus::Completed
-                            | StrategyRunStatus::Failed
-                            | StrategyRunStatus::Cancelled
-                            | StrategyRunStatus::Blocked
-                            | StrategyRunStatus::CancelInDoubt
-                    )
-                {
-                    return Ok(Some(snapshot));
-                }
-            }
-            Ok(None)
+            connection
+                .query_row(
+                    "SELECT snapshot_json FROM strategy_runs
+                     WHERE revision_digest=?1 AND conversation_id=?2 AND terminal=0
+                     ORDER BY updated_at DESC LIMIT 1",
+                    params![revision_digest, conversation_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .map(|snapshot_json| serde_json::from_str(&snapshot_json).map_err(Into::into))
+                .transpose()
         })
     }
 
@@ -1036,6 +1057,8 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
            idempotency_key TEXT NOT NULL UNIQUE,
            request_digest TEXT NOT NULL,
            snapshot_json TEXT NOT NULL,
+           conversation_id TEXT,
+           terminal INTEGER NOT NULL,
            created_at INTEGER NOT NULL,
            updated_at INTEGER NOT NULL
          );
@@ -1079,8 +1102,49 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
         "reasoning_effort",
         "TEXT NOT NULL DEFAULT ''",
     )?;
+    ensure_column(connection, "strategy_runs", "conversation_id", "TEXT")?;
+    ensure_column(connection, "strategy_runs", "terminal", "INTEGER")?;
+    backfill_run_query_columns(connection)?;
+    connection.execute_batch(
+        "CREATE INDEX IF NOT EXISTS strategy_runs_active_conversation_idx
+           ON strategy_runs(revision_digest, conversation_id, terminal, updated_at DESC);",
+    )?;
     migrate_bindings_ordinal_primary_key(connection)?;
     Ok(())
+}
+
+fn backfill_run_query_columns(connection: &mut Connection) -> Result<()> {
+    let mut statement = connection
+        .prepare("SELECT run_id, snapshot_json FROM strategy_runs WHERE terminal IS NULL")?;
+    let runs = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    for (run_id, snapshot_json) in runs {
+        let snapshot: RunSnapshot = serde_json::from_str(&snapshot_json)?;
+        connection.execute(
+            "UPDATE strategy_runs SET conversation_id=?2, terminal=?3 WHERE run_id=?1",
+            params![
+                run_id,
+                snapshot.conversation_id,
+                i64::from(run_is_terminal(snapshot.status))
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn run_is_terminal(status: StrategyRunStatus) -> bool {
+    matches!(
+        status,
+        StrategyRunStatus::Completed
+            | StrategyRunStatus::Failed
+            | StrategyRunStatus::Cancelled
+            | StrategyRunStatus::Blocked
+            | StrategyRunStatus::CancelInDoubt
+    )
 }
 
 fn migrate_bindings_ordinal_primary_key(connection: &mut Connection) -> Result<()> {
@@ -1605,17 +1669,39 @@ mod tests {
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 json!({}),
                 "idempotency-test",
-                None,
+                Some("conversation:test"),
                 None,
             )
             .unwrap();
         assert_eq!(run.commands.len(), 1);
+        assert_eq!(
+            store
+                .active_run_for_conversation(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "conversation:test",
+                )
+                .unwrap()
+                .map(|snapshot| snapshot.run_id),
+            Some(run.run_id.clone())
+        );
+        let indexed: (String, i64) = store
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT conversation_id, terminal FROM strategy_runs WHERE run_id=?1",
+                        params![run.run_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(Into::into)
+            })
+            .unwrap();
+        assert_eq!(indexed, ("conversation:test".to_owned(), 0));
         let replay = store
             .start_run(
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 json!({}),
                 "idempotency-test",
-                None,
+                Some("conversation:test"),
                 None,
             )
             .unwrap();
@@ -1753,39 +1839,63 @@ mod tests {
         let retired_id_digest = digest('a');
         let retired_name_digest = digest('b');
         let kept_digest = digest('c');
+        assert!(
+            store
+                .register_definition(
+                    &retired_id_digest,
+                    &digest('d'),
+                    &named_workflow("licoup-basic", "LicoUp Basic Strategy"),
+                    1,
+                    1,
+                )
+                .is_err()
+        );
+        assert!(
+            store
+                .register_definition(
+                    &retired_name_digest,
+                    &digest('e'),
+                    &named_workflow("other-id", "LicoUp Basic Strategy"),
+                    1,
+                    2,
+                )
+                .is_err()
+        );
         store
-            .register_definition(
-                &retired_id_digest,
-                &digest('d'),
-                &named_workflow("licoup-basic", "LicoUp Basic Strategy"),
-                1,
-                1,
-            )
-            .unwrap();
-        store
-            .update_binding(&retired_id_digest, "worker", "agent:test", "", "", None)
-            .unwrap();
-        let preview = store.authorization_preview(&retired_id_digest).unwrap();
-        store
-            .grant_authorization(&retired_id_digest, &preview.authorization_digest)
-            .unwrap();
-        let run = store
-            .start_run(
-                &retired_id_digest,
-                json!({}),
-                "retired-builtin-run",
-                None,
-                None,
-            )
-            .unwrap();
-        store
-            .register_definition(
-                &retired_name_digest,
-                &digest('e'),
-                &named_workflow("other-id", "LicoUp Basic Strategy"),
-                1,
-                2,
-            )
+            .with_connection(|connection| {
+                for (definition_id, revision, semantics, name, imported_at) in [
+                    (
+                        "licoup-basic",
+                        &retired_id_digest,
+                        digest('d'),
+                        "LicoUp Basic Strategy",
+                        1,
+                    ),
+                    (
+                        "other-id",
+                        &retired_name_digest,
+                        digest('e'),
+                        "LicoUp Basic Strategy",
+                        2,
+                    ),
+                ] {
+                    connection.execute(
+                        "INSERT INTO strategy_definitions(
+                           definition_id, revision_digest, semantics_digest, name, version,
+                           workflow_json, asset_count, imported_at
+                         ) VALUES (?1, ?2, ?3, ?4, '1', ?5, 1, ?6)",
+                        params![
+                            definition_id,
+                            revision,
+                            semantics,
+                            name,
+                            serde_json::to_string(&named_workflow(definition_id, name))?,
+                            imported_at,
+                        ],
+                    )?;
+                }
+                Ok(())
+            })
             .unwrap();
         store
             .register_definition(
@@ -1814,7 +1924,6 @@ mod tests {
         assert_eq!(listed[0].name, "Imported Graph");
         assert_eq!(listed[0].revision_digest, kept_digest);
         assert!(store.definition_by_revision(&retired_id_digest).is_err());
-        assert!(store.run(&run.run_id).is_err());
         assert!(!retired_tree.exists());
         assert!(kept_tree.join("content").join("marker.txt").exists());
         remove_directory_tree(&root);

@@ -180,7 +180,9 @@ pub(super) fn model_catalog_for_target(
 
     if target == "opencode" {
         sources.insert("opencode-config".to_string());
-        collect_opencode_model_catalog(config_path, params, &mut entries, &mut diagnostics);
+        if collect_opencode_model_catalog(config_path, params, &mut entries, &mut diagnostics) {
+            sources.insert("opencode-cli:models".to_string());
+        }
     }
 
     if target == "claude-code" {
@@ -223,8 +225,9 @@ pub(super) fn model_catalog_for_target(
     }
 
     if target == "pi" {
-        sources.insert("pi-cli:list-models".to_string());
-        collect_pi_cli_model_catalog(params, &mut entries, &mut diagnostics);
+        if collect_pi_cli_model_catalog(params, &mut entries, &mut diagnostics) {
+            sources.insert("pi-cli:list-models".to_string());
+        }
     }
 
     if !authoritative_native_catalog

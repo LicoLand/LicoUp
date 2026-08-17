@@ -386,6 +386,14 @@ pub fn probe_exists(path: &Path) -> bool {
     automatic_probe_admitted(path) && path.exists()
 }
 
+/// A file chosen explicitly by the user is not constrained to automatic scan
+/// allowlists. Symlinks are rejected so the selected identity cannot change
+/// after validation.
+pub fn explicit_file_exists(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_file() && !metadata.file_type().is_symlink())
+}
+
 pub fn probe_exists_with(path: &Path, roots: &HostRoots) -> bool {
     automatic_probe_admitted_with(path, roots) && path.exists()
 }
