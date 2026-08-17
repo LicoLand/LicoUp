@@ -56,6 +56,19 @@ fn windows_default_config_paths_use_appdata_not_macos_application_support() {
 }
 
 #[test]
+fn windows_directory_detection_preserves_the_resolved_appdata_root() {
+    let home = temp_test_dir("windows-appdata-detection");
+    let app_data = home.join("AppData").join("Roaming");
+    let cursor_state = app_data.join("Cursor");
+    fs::create_dir_all(&cursor_state).unwrap();
+
+    assert_eq!(
+        default_detection_path_for_platform("cursor", "windows", &home, &app_data),
+        Some(cursor_state)
+    );
+}
+
+#[test]
 fn kimi_default_paths_use_expected_platform_locations() {
     let home = PathBuf::from("<user-home>");
     let app_data = home.join("Library").join("Application Support");
