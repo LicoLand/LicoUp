@@ -17,6 +17,7 @@ import 'package:licoup/src/application/controller/client_routing_facade.dart';
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agents/archive/conversation_archive_controller.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
@@ -35,6 +36,7 @@ import 'package:licoup/src/application/features/messaging/messaging_notification
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
@@ -196,6 +198,15 @@ class ClientController extends AgentConversationController
            mobileClientRuntimePlatformOverride,
        _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
+    llmGatewayLifecycleController = LlmGatewayLifecycleController(
+      agentService: this.agentService,
+      readSettings: agentWorkspaceReadSettingsState,
+      monitorInterval: llmGatewayMonitorInterval,
+      recoveryRetryDelay: llmGatewayRecoveryRetryDelay,
+      diagnosticSink:
+          llmGatewayDiagnosticSink ??
+          LlmGatewayDiagnosticLog(portableData: this.portableData),
+    )..addListener(notifyClientStateChanged);
     _components = ClientComponentAssembly(
       portableData: this.portableData,
       agentService: this.agentService,
@@ -225,12 +236,10 @@ class ClientController extends AgentConversationController
       discoverMobileTargets: discoverMobileRelayTargets,
       onTargetsSettled: _onTargetsSettled,
       selectDefaultConversationAgent: selectDefaultConversationAgent,
-      onEnterAgents: clientEnterAgentsSection,
       onEnterMonitoring: clientEnterMonitoringSection,
       onExitMonitoring: clientExitMonitoringSection,
-      onEnterMobileRelay: clientEnterMobileRelaySection,
       notifyStateChanged: notifyClientStateChanged,
-      sectionPreloadTasks: resolveSectionPreloadTasks(),
+      entryHookTasks: resolveInterfaceEntryHookTasks(),
       mobileHomeLayoutRepository: mobileHomeLayoutRepository,
       skillHubGateway: skillHubGateway,
       skillDeleteGateway: skillDeleteGateway,
@@ -245,15 +254,6 @@ class ClientController extends AgentConversationController
     bootstrapController.addListener(notifyClientStateChanged);
     archiveQueryController.addListener(notifyClientStateChanged);
     archiveDestinationController.addListener(notifyClientStateChanged);
-    llmGatewayLifecycleController = LlmGatewayLifecycleController(
-      agentService: this.agentService,
-      readSettings: agentWorkspaceReadSettingsState,
-      monitorInterval: llmGatewayMonitorInterval,
-      recoveryRetryDelay: llmGatewayRecoveryRetryDelay,
-      diagnosticSink:
-          llmGatewayDiagnosticSink ??
-          LlmGatewayDiagnosticLog(portableData: this.portableData),
-    )..addListener(notifyClientStateChanged);
     messagingNotificationCenter = MessagingNotificationCenter()
       ..addListener(notifyClientStateChanged);
     clientConversationController = ClientConversationController(
@@ -357,6 +357,7 @@ class ClientController extends AgentConversationController
       _components.clientUpdateController;
   OptionalCollaborationController get optionalCollaborationController =>
       _components.optionalCollaborationController;
+  @override
   AdapterPluginController get adapterPluginController =>
       _components.adapterPluginController;
   @override
@@ -386,7 +387,11 @@ class ClientController extends AgentConversationController
   ClientNavigationController get navigationController =>
       _components.navigationController;
   @override
-  get sectionPreloadController => _components.sectionPreloadController;
+  AgentHubCatalogController get agentHubCatalogController =>
+      _components.agentHubCatalogController;
+  @override
+  ClientInterfaceEntryHookController get interfaceEntryHookController =>
+      _components.interfaceEntryHookController;
   BuiltInLayoutComposition get layoutComposition =>
       _components.layoutComposition;
   @override

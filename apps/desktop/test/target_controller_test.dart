@@ -110,6 +110,17 @@ void main() {
     );
   });
 
+  test('Claude current model is a settled native catalog', () {
+    final target = _target('claude-code').withModelCatalog({
+      'sources': ['claude-current'],
+      'models': [
+        {'name': 'configured-current-model'},
+      ],
+    });
+
+    expect(TargetPolicy.hasSelectedAgentModelCatalog(target), isTrue);
+  });
+
   test(
     'a persisted native catalog is refreshed once in each process',
     () async {

@@ -30,7 +30,7 @@ use antigravity::{
     collect_antigravity_cli_model_catalog, remove_unsupported_antigravity_reasoning_efforts,
 };
 use builtin::apply_builtin_model_catalog_overlay;
-use claude::{collect_claude_code_cli_model_catalog, remove_claude_code_family_aliases};
+use claude::claude_code_current_model_catalog;
 use config::{
     collect_model_catalog_from_config_path, collect_model_catalog_from_model_collection_path,
     extra_model_collection_paths, extra_model_config_paths, home_dir_for_model_catalog,
@@ -87,6 +87,10 @@ pub(super) fn model_catalog_for_target(
     config_path: Option<&Path>,
     params: &Value,
 ) -> Value {
+    if target == "claude-code" {
+        return claude_code_current_model_catalog(config_path, params);
+    }
+
     let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
     let mut global_efforts = BTreeSet::<String>::new();
     let mut sources = BTreeSet::<String>::new();
@@ -185,12 +189,6 @@ pub(super) fn model_catalog_for_target(
         }
     }
 
-    if target == "claude-code" {
-        if collect_claude_code_cli_model_catalog(params, &mut entries, &mut diagnostics) {
-            sources.insert("claude-cli".to_string());
-        }
-    }
-
     if target == "antigravity" {
         let before_available = entries.len();
         collect_antigravity_available_models_param(params, &mut entries, &mut diagnostics);
@@ -240,10 +238,6 @@ pub(super) fn model_catalog_for_target(
     if target == "kilo-code" {
         remove_kilo_session_identities(&mut entries);
     }
-    if target == "claude-code" {
-        remove_claude_code_family_aliases(&mut entries, &mut default_model);
-    }
-
     if !global_efforts.is_empty() {
         for entry in entries.values_mut() {
             entry.extend_reasoning_efforts(global_efforts.iter().cloned());

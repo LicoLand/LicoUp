@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
@@ -205,11 +206,6 @@ void main() {
     final directory = await Directory.systemTemp.createTemp(
       'lico-reopen-cached-target-',
     );
-    addTearDown(() async {
-      if (await directory.exists()) {
-        await directory.delete(recursive: true);
-      }
-    });
     final portable = PortableDataRoot(dataDirectoryOverride: directory);
     const cache = PlatformScannedTargetsCacheStore();
     final runtimeTarget = TargetCandidate(
@@ -233,6 +229,12 @@ void main() {
       agentService: service,
       scannedTargetsCacheStore: cache,
     );
+    addTearDown(() async {
+      await _waitForCatalogRefreshSettled(controller, 'claude-code');
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
     addTearDown(controller.dispose);
 
     await controller.targetController.hydrateCache();
@@ -395,6 +397,88 @@ void main() {
       );
     },
   );
+
+  test(
+    'entering the conversation section loads the selected agent model catalog',
+    () async {
+      final harness = await _conversationCatalogHarness();
+      addTearDown(harness.dispose);
+
+      harness.controller.clientEnterAgentsSection();
+      await _waitForSelectedCatalog(harness.controller);
+
+      expect(harness.service.catalogLookups, contains(true));
+      expect(
+        TargetPolicy.hasSelectedAgentModelCatalog(
+          harness.controller.scannedTargets.single,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'selecting a conversation session loads the selected agent model catalog',
+    () async {
+      final harness = await _conversationCatalogHarness();
+      addTearDown(harness.dispose);
+
+      harness.controller.selectConversationSession('synthetic-session');
+      await _waitForSelectedCatalog(harness.controller);
+
+      expect(harness.service.catalogLookups, contains(true));
+      expect(
+        TargetPolicy.hasSelectedAgentModelCatalog(
+          harness.controller.scannedTargets.single,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'starting a new conversation loads the selected agent model catalog',
+    () async {
+      final harness = await _conversationCatalogHarness();
+      addTearDown(harness.dispose);
+
+      harness.controller.startNewConversationSession();
+      await _waitForSelectedCatalog(harness.controller);
+
+      expect(harness.service.catalogLookups, contains(true));
+      expect(
+        TargetPolicy.hasSelectedAgentModelCatalog(
+          harness.controller.scannedTargets.single,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'restoring an agent conversation view loads that agent model catalog',
+    () async {
+      final harness = await _conversationCatalogHarness(selectAgent: false);
+      addTearDown(harness.dispose);
+
+      expect(
+        harness.controller.restoreCurrentAgentView(
+          'cursor',
+          'synthetic-session',
+        ),
+        isTrue,
+      );
+      await _waitForSelectedCatalog(harness.controller);
+
+      expect(harness.service.catalogLookups, contains(true));
+      expect(
+        TargetPolicy.hasSelectedAgentModelCatalog(
+          harness.controller.scannedTargets.single,
+        ),
+        isTrue,
+      );
+    },
+  );
 }
 
 String _guestPath(List<String> segments) => ['', ...segments].join('/');
@@ -406,6 +490,7 @@ class _SlowPerAgentService extends AgentService {
   final Map<String, TargetCandidate> results;
   final Map<String, Duration> delays;
   final List<String> scannedIds = <String>[];
+  final List<bool> catalogLookups = <bool>[];
   final List<String> conversationActions = <String>[];
   var _inFlight = 0;
   var maxInFlight = 0;
@@ -430,11 +515,21 @@ class _SlowPerAgentService extends AgentService {
       maxInFlight = _inFlight;
     }
     scannedIds.add(targetId);
+    catalogLookups.add(enableAgentCliModelLookup);
     try {
       await Future<void>.delayed(
         delays[targetId] ?? const Duration(milliseconds: 15),
       );
-      return results[targetId];
+      final candidate = results[targetId];
+      if (candidate == null || !enableAgentCliModelLookup) {
+        return candidate;
+      }
+      return candidate.withModelCatalog({
+        'sources': ['cursor-cli'],
+        'models': [
+          {'name': 'auto'},
+        ],
+      });
     } finally {
       _inFlight -= 1;
     }
@@ -443,5 +538,102 @@ class _SlowPerAgentService extends AgentService {
   @override
   Future<List<TargetCandidate>> scanTargets() async {
     return results.values.toList(growable: false);
+  }
+}
+
+class _ConversationCatalogHarness {
+  _ConversationCatalogHarness({
+    required this.controller,
+    required this.service,
+    required this.directory,
+  });
+
+  final ClientController controller;
+  final _SlowPerAgentService service;
+  final Directory directory;
+
+  Future<void> dispose() async {
+    await _waitForCatalogRefreshSettled(controller, 'cursor');
+    controller.dispose();
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  }
+}
+
+Future<_ConversationCatalogHarness> _conversationCatalogHarness({
+  bool selectAgent = true,
+}) async {
+  final directory = await Directory.systemTemp.createTemp(
+    'lico-conversation-catalog-',
+  );
+  final portable = PortableDataRoot(dataDirectoryOverride: directory);
+  const cache = PlatformScannedTargetsCacheStore();
+  final incomplete = TargetCandidate(
+    target: 'cursor',
+    label: 'Cursor',
+    kind: 'cli',
+    status: 'detected',
+    configured: true,
+    confidence: 1,
+    binaryPath: '/synthetic/bin/cursor-agent',
+    adapterStatus: 'implemented',
+    adapterCapabilities: const {'conversationDriver': 'implemented'},
+    modelCatalog: {
+      'sources': ['config'],
+      'models': [
+        {'name': 'stale-cursor-model'},
+      ],
+    },
+  );
+  await cache.save(portable, [incomplete]);
+  final service = _SlowPerAgentService(results: {'cursor': incomplete});
+  final controller = ClientController(
+    portableData: portable,
+    agentService: service,
+    scannedTargetsCacheStore: cache,
+  );
+  await controller.targetController.hydrateCache();
+  if (selectAgent) {
+    controller.selectedConversationAgentId = 'cursor';
+  }
+  controller.conversationSessionsByAgent = const {
+    'cursor': [
+      AgentConversationSession(
+        id: 'synthetic-session',
+        agentId: 'cursor',
+        title: 'Synthetic session',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        messages: [],
+      ),
+    ],
+  };
+  return _ConversationCatalogHarness(
+    controller: controller,
+    service: service,
+    directory: directory,
+  );
+}
+
+Future<void> _waitForSelectedCatalog(ClientController controller) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 2));
+  while (DateTime.now().isBefore(deadline) &&
+      (controller.scannedTargets.isEmpty ||
+          !TargetPolicy.hasSelectedAgentModelCatalog(
+            controller.scannedTargets.single,
+          ))) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+/// Lets the entry-refresh flight finish persisting its portable cache before
+/// the temporary directory is removed, so teardown cannot race a cache write.
+Future<void> _waitForCatalogRefreshSettled(
+  ClientController controller,
+  String agentId,
+) async {
+  while (controller.targetController.isRefreshingNativeModelCatalog(agentId)) {
+    await Future<void>.delayed(Duration.zero);
   }
 }

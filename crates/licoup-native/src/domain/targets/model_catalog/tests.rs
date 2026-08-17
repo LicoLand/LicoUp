@@ -305,54 +305,6 @@ model = "gpt-5.4-mini"
             "cache metadata leaked into model names: {names:?}"
         );
     }
-
-    #[test]
-    fn model_catalog_reads_claude_code_settings_models() {
-        let home = temp_test_dir("claude-code-model-catalog");
-        let settings_path = home.join(".claude").join("settings.json");
-        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
-        fs::write(
-            &settings_path,
-            json!({
-                "env": {
-                    "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash",
-                    "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-pro",
-                    "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
-
-        let catalog = model_catalog_for_target(
-            "claude-code",
-            None,
-            &json!({
-                "homeDir": display_path(home),
-                "includeHistoryModelCatalog": false,
-            }),
-        );
-        let models = catalog["models"].as_array().unwrap();
-        assert!(models.iter().any(|model| {
-            model["name"] == "deepseek-v4-pro[1m]"
-                && model["reasoningEfforts"]
-                    .as_array()
-                    .unwrap()
-                    .contains(&json!("xhigh"))
-        }));
-        assert!(
-            models
-                .iter()
-                .any(|model| model["name"] == "deepseek-v4-flash")
-        );
-        assert!(
-            models
-                .iter()
-                .any(|model| model["name"] == "deepseek-v4-pro")
-        );
-        assert_eq!(catalog["defaultModel"], json!("deepseek-v4-pro[1m]"));
-    }
 }
 
 mod antigravity {
@@ -892,6 +844,13 @@ mod kilo {
         assert!(names.contains(&"kilo/kilo-auto/free"));
         assert!(names.contains(&"anthropic/claude-opus-4-6"));
         assert!(names.contains(&"openai/gpt-5.5"));
+        assert_eq!(
+            entries
+                .values()
+                .find(|entry| entry.name == "openai/gpt-5.5")
+                .and_then(|entry| entry.provider_id.as_deref()),
+            Some("openai")
+        );
     }
 
     #[cfg(unix)]
@@ -1507,29 +1466,6 @@ mod builtin {
     }
 
     #[test]
-    fn builtin_overlay_matches_aliases_and_clears_unsupported_efforts() {
-        let catalog = catalog_with_fixture(
-            "claude-code",
-            json!({
-                "models": [
-                    { "name": "claude-haiku-4-5-20251001", "reasoningEfforts": ["high"] }
-                ]
-            }),
-        );
-
-        assert_eq!(
-            model(&catalog, "claude-haiku-4-5-20251001").unwrap()["reasoningEfforts"],
-            json!([])
-        );
-        assert!(
-            catalog["sources"]
-                .as_array()
-                .unwrap()
-                .contains(&json!("builtin"))
-        );
-    }
-
-    #[test]
     fn antigravity_never_exposes_a_separate_reasoning_effort() {
         let catalog = catalog_with_fixture(
             "antigravity",
@@ -1618,25 +1554,22 @@ mod builtin {
 }
 
 mod claude_code {
-    use super::super::claude::collect_claude_code_models_from_cli_output;
     use super::*;
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
-    fn claude_code_catalog_drops_family_aliases_and_keeps_backend_ids() {
-        let home = temp_test_dir("claude-code-alias-catalog");
+    fn catalog_exposes_only_the_configured_current_model() {
+        let home = temp_test_dir("claude-code-current-model");
         let settings_path = home.join(".claude").join("settings.json");
         fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
         fs::write(
             &settings_path,
             json!({
-                "model": "opus",
+                "model": "sonnet",
                 "env": {
-                    "ANTHROPIC_MODEL": "claude-sonnet-4-6",
-                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6",
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet",
-                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5"
+                    "ANTHROPIC_MODEL": "deepseek-v4-flash",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "ignored-opus-model",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "ignored-sonnet-model",
+                    "CLAUDE_CODE_SUBAGENT_MODEL": "ignored-subagent-model"
                 }
             })
             .to_string(),
@@ -1645,119 +1578,33 @@ mod claude_code {
 
         let catalog = model_catalog_for_target(
             "claude-code",
-            None,
-            &json!({
-                "homeDir": display_path(home),
-                "includeHistoryModelCatalog": false,
-            }),
+            Some(&settings_path),
+            &json!({"homeDir": display_path(home)}),
         );
-        let names = catalog["models"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|model| model["name"].as_str().unwrap())
-            .collect::<Vec<_>>();
-        assert!(names.contains(&"claude-sonnet-4-6"));
-        assert!(names.contains(&"claude-opus-4-6"));
-        assert!(names.contains(&"claude-haiku-4-5"));
-        assert!(
-            !names
-                .iter()
-                .any(|name| *name == "opus" || *name == "sonnet")
+        assert_eq!(catalog["models"].as_array().unwrap().len(), 1);
+        assert_eq!(catalog["models"][0]["name"], json!("deepseek-v4-flash"));
+        assert_eq!(
+            catalog["models"][0]["displayName"],
+            json!("DeepSeek V4 Flash")
         );
-        assert_ne!(catalog["defaultModel"], json!("opus"));
+        assert_eq!(catalog["models"][0]["providerId"], json!("deepseek"));
+        assert_eq!(catalog["models"][0]["provider"], json!("DeepSeek"));
+        assert_eq!(catalog["models"][0]["providerInferred"], json!(true));
+        assert_eq!(catalog["models"][0]["sources"], json!(["claude-current"]));
+        assert_eq!(catalog["sources"], json!(["claude-current"]));
+        assert_eq!(catalog["defaultModel"], json!("deepseek-v4-flash"));
     }
 
     #[test]
-    fn claude_cli_output_skips_family_aliases() {
-        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
-        let added = collect_claude_code_models_from_cli_output(
-            "Available models\nopus\nclaude-opus-4-6\nsonnet\nclaude-sonnet-4-6\n",
-            "claude-cli:models",
-            &mut entries,
-        );
-        assert_eq!(added, 2);
-        assert!(
-            entries
-                .values()
-                .any(|entry| entry.name == "claude-opus-4-6")
-        );
-        assert!(
-            entries
-                .values()
-                .any(|entry| entry.name == "claude-sonnet-4-6")
-        );
-        assert!(!entries.values().any(|entry| entry.name == "opus"));
-    }
+    fn catalog_falls_back_to_default_without_a_configured_model() {
+        let home = temp_test_dir("claude-code-default-model");
+        let catalog =
+            model_catalog_for_target("claude-code", None, &json!({"homeDir": display_path(home)}));
 
-    #[cfg(unix)]
-    #[test]
-    fn claude_cli_model_lookup_merges_real_backend_ids() {
-        let home = temp_test_dir("claude-cli-models");
-        let settings_path = home.join(".claude").join("settings.json");
-        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
-        fs::write(&settings_path, r#"{"model":"opus"}"#).unwrap();
-        let executable = home.join("claude");
-        fs::write(
-            &executable,
-            r#"#!/bin/sh
-printf 'claude-opus-4-6\nclaude-sonnet-4-6\nopus\n'
-"#,
-        )
-        .unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-
-        let catalog = model_catalog_for_target(
-            "claude-code",
-            None,
-            &json!({
-                "homeDir": display_path(home),
-                "includeHistoryModelCatalog": false,
-                "enableAgentCliModelLookup": true,
-                "claudeCliPath": display_path(executable),
-            }),
-        );
-        let names = catalog["models"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|model| model["name"].as_str().unwrap())
-            .collect::<Vec<_>>();
-        assert!(names.contains(&"claude-opus-4-6"));
-        assert!(names.contains(&"claude-sonnet-4-6"));
-        assert!(!names.contains(&"opus"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn default_catalog_does_not_execute_the_agent_cli() {
-        let home = temp_test_dir("claude-cli-no-exec");
-        let marker = home.join("executed");
-        let executable = home.join("claude");
-        fs::write(
-            &executable,
-            format!(
-                "#!/bin/sh\nprintf x > \"{}\"\nprintf 'claude-opus-4-6\\n'\n",
-                marker.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-
-        let catalog = model_catalog_for_target(
-            "claude-code",
-            None,
-            &json!({
-                "homeDir": display_path(home.clone()),
-                "includeHistoryModelCatalog": false,
-                "claudeCliPath": display_path(executable),
-            }),
-        );
-        assert!(!marker.exists());
-        let diagnostics = catalog["diagnostics"].as_array().unwrap();
-        assert!(diagnostics.iter().any(|diagnostic| {
-            diagnostic["source"] == "claude-cli:models" && diagnostic["status"] == "disabled"
-        }));
+        assert_eq!(catalog["models"].as_array().unwrap().len(), 1);
+        assert_eq!(catalog["models"][0]["name"], json!("default"));
+        assert_eq!(catalog["models"][0]["displayName"], json!("Default"));
+        assert_eq!(catalog["defaultModel"], json!("default"));
     }
 }
 
@@ -1813,6 +1660,14 @@ mod opencode {
         assert!(names.contains(&"openai/gpt-5.4"));
         assert!(names.iter().all(|name| name.contains('/')));
         assert!(!names.contains(&"Claude Sonnet 4.5"));
+        let anthropic = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|model| model["name"] == "anthropic/claude-sonnet-4-5")
+            .unwrap();
+        assert_eq!(anthropic["providerId"], json!("anthropic"));
+        assert_eq!(anthropic["provider"], json!("Anthropic"));
     }
 
     #[test]
@@ -1830,6 +1685,8 @@ mod opencode {
                 .any(|entry| entry.name == "anthropic/claude-sonnet-4-5"
                     && entry.provider_id.as_deref() == Some("anthropic"))
         );
+        assert!(entries.values().any(|entry| entry.name == "openai/gpt-5.4"
+            && entry.provider_id.as_deref() == Some("openai")));
     }
 
     #[test]
