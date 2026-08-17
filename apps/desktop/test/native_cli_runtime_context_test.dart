@@ -44,7 +44,7 @@ void main() {
         '--include-accessible-environments',
         'true',
         '--include-history-model-catalog',
-        'true',
+        'false',
       ]);
       expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
       final parentPath = Platform.environment['PATH']?.trim() ?? '';
@@ -72,6 +72,8 @@ void main() {
         'inspect',
         'opencode',
         '--include-accessible-environments',
+        'true',
+        '--enable-agent-cli-model-lookup',
         'true',
       ]);
       expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);

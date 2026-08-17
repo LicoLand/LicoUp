@@ -9,6 +9,9 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
 const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore|release-candidate)\/[A-Za-z0-9._/-]+$/u;
 
+// Train cuts one snapshot onto `release`. Later `nightly` commits are a later
+// cut, not the in-flight version. Public publish remains `origin/release` only.
+// These edges do not freeze ordinary merges into `nightly`.
 export const releaseTrainEdges = Object.freeze([
   Object.freeze({ head: "current", base: "nightly", aggregate: "Client required" }),
   Object.freeze({ head: "nightly", base: "stable", aggregate: "Stable client" }),
@@ -203,6 +206,8 @@ function main() {
   }
   if (command === "train") {
     if (!actionBranchPattern.test(head)) reject("promotion_train_source_invalid");
+    // One authorized cut: action-prefixed → nightly → stable → release.
+    // Do not run this again to fold later nightly into an in-flight publish.
     advance(head, "nightly");
     advance("nightly", "stable");
     advance("stable", "release");
