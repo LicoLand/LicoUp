@@ -56,6 +56,22 @@ pub(super) fn param_bool(params: &Value, key: &str) -> Option<bool> {
     })
 }
 
+/// Third-party Agent CLIs and other-app Agent stores run only when the
+/// caller opts in. Cold-start scan stays off so unused-agent discovery cannot
+/// inherit TCC prompts. Opening that Agent's conversation interface sets this flag.
+pub(super) fn agent_cli_model_lookup_enabled(params: &Value) -> bool {
+    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false) {
+        return false;
+    }
+    param_bool(params, "enableAgentCliModelLookup").unwrap_or(false)
+}
+
+/// Capability probes and model-catalog CLI lookups share this opt-in.
+pub(super) fn discovered_agent_execution_requested(params: &Value) -> bool {
+    agent_cli_model_lookup_enabled(params)
+        || param_bool(params, "probeConversationRuntime").unwrap_or(false)
+}
+
 pub(super) fn param_paths(params: &Value, keys: &[&str]) -> Vec<PathBuf> {
     keys.iter()
         .filter_map(|key| params.get(*key))
@@ -118,5 +134,17 @@ mod tests {
         assert_eq!(param_u64(&params, "timeoutMs"), Some(2500));
         assert_eq!(param_bool(&params, "enabled"), Some(true));
         assert_eq!(param_paths(&params, &["historyRoots"]).len(), 3);
+        assert!(!agent_cli_model_lookup_enabled(&json!({})));
+        assert!(!discovered_agent_execution_requested(&json!({})));
+        assert!(agent_cli_model_lookup_enabled(&json!({
+            "enableAgentCliModelLookup": true
+        })));
+        assert!(!agent_cli_model_lookup_enabled(&json!({
+            "enableAgentCliModelLookup": true,
+            "disableAgentCliModelLookup": true
+        })));
+        assert!(discovered_agent_execution_requested(&json!({
+            "probeConversationRuntime": true
+        })));
     }
 }

@@ -86,11 +86,10 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.adaptive-flywheel-strategy-package",
       kind: "regression-infrastructure",
-      summary: "Independent Graph strategy package, built-in basic loop, and complete ordinal retirement",
+      summary: "Independent Graph strategy ZIP catalog, empty until import, and complete ordinal retirement",
       inputs: [
         "schemas/client_bridge/strategy.json",
         "crates/licoup-native/src/domain/adaptive_flywheel/**",
-        "crates/licoup-native/resources/adaptive_flywheel/**",
         "tests/contract/client/adaptive-flywheel-strategy.test.mjs",
         "tests/contract/client/unified-conversation-backend.test.mjs",
       ],
@@ -102,6 +101,28 @@ export const REGRESSION_MODULES = Object.freeze([
           "tests/contract/client/unified-conversation-backend.test.mjs",
         ],
         60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.agent-scan-paths",
+      kind: "regression-infrastructure",
+      summary: "Agent discovery allowlist TOML, env-only home, and no unused-agent other-app probe",
+      inputs: [
+        "crates/licoup-native/resources/agent-scan-paths.toml",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/src/domain/targets/binaries.rs",
+        "crates/licoup-native/src/domain/targets/platform_paths.rs",
+        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-native/src/domain/conversation/history_discovery.rs",
+        "apps/desktop/lib/src/platform/native_client/agent_service_actions.dart",
+        "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart",
+        "apps/desktop/lib/src/application/controller/client_navigation_facade.dart",
+        "tests/contract/client/agent-scan-paths.test.mjs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/agent-scan-paths.test.mjs"],
+        30_000,
       ),
     }),
   defineModule({

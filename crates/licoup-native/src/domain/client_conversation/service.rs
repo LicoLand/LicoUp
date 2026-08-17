@@ -172,6 +172,19 @@ impl ConversationService {
                 )?;
                 Ok(json!({"ok": true}))
             }
+            "conversation.strategy.set" => {
+                let strategy_revision = match object.get("strategyRevision") {
+                    Some(Value::Null) => None,
+                    Some(Value::String(value)) if value.trim().is_empty() => None,
+                    Some(Value::String(value)) => Some(value.as_str()),
+                    _ => return Err(anyhow!("invalid_request")),
+                };
+                self.store.set_conversation_strategy_revision(
+                    required_string(object, "conversationId")?,
+                    strategy_revision,
+                )?;
+                Ok(json!({"ok": true}))
+            }
             "conversation.list" => Ok(serde_json::to_value(
                 self.store.list(
                     object
@@ -515,6 +528,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "conversation.rename" => &["action", "conversationId", "title"],
         "conversation.archive" => &["action", "conversationId", "archived"],
         "conversation.pin.set" => &["action", "conversationId", "pinned"],
+        "conversation.strategy.set" => &["action", "conversationId", "strategyRevision"],
         "conversation.list" => &["action", "includeArchived"],
         "conversation.get" => &["action", "conversationId"],
         "conversation.events.page" => &["action", "conversationId", "afterSequence", "limit"],
@@ -688,6 +702,80 @@ mod tests {
                 .len(),
             1
         );
+        drop(reopened);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn group_strategy_selection_persists_until_explicitly_cleared() {
+        let root = std::env::temp_dir().join(format!(
+            "lico-conversation-service-strategy-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let conversation_id = super::super::DEFAULT_LOCAL_AGENT_GROUP_ID;
+
+        let service = ConversationService::open(&root).unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        let selected = service
+            .execute(json!({
+                "action": "conversation.get",
+                "conversationId": conversation_id
+            }))
+            .unwrap();
+        assert_eq!(selected["strategyRevision"], "revision-one");
+        let selected_revision = selected["revision"].as_i64().unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        assert_eq!(
+            service
+                .execute(json!({
+                    "action": "conversation.get",
+                    "conversationId": conversation_id
+                }))
+                .unwrap()["revision"],
+            selected_revision
+        );
+        drop(service);
+
+        let reopened = ConversationService::open(&root).unwrap();
+        assert_eq!(
+            reopened
+                .execute(json!({
+                    "action": "conversation.get",
+                    "conversationId": conversation_id
+                }))
+                .unwrap()["strategyRevision"],
+            "revision-one"
+        );
+        reopened
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": null
+            }))
+            .unwrap();
+        assert!(
+            reopened
+                .execute(json!({
+                    "action": "conversation.get",
+                    "conversationId": conversation_id
+                }))
+                .unwrap()
+                .get("strategyRevision")
+                .is_none()
+        );
+
         drop(reopened);
         let _ = std::fs::remove_dir_all(root);
     }

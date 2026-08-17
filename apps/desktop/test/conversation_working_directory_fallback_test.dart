@@ -141,7 +141,74 @@ void main() {
     );
   });
 
-  test('historical cwd skips a recorded directory that is gone', () {
+  test('automatic fallback does not stat personal or network locations', () {
+    const home = '/synthetic-home';
+    const environment = {'HOME': home};
+    expect(
+      isAutomaticFilesystemProbeDenied(
+        '$home/Desktop/project',
+        environment: environment,
+      ),
+      isTrue,
+    );
+    expect(
+      isAutomaticFilesystemProbeDenied(
+        '/Volumes'
+        '/team-share/repo',
+        environment: environment,
+      ),
+      isTrue,
+    );
+    expect(
+      isAutomaticFilesystemProbeDenied(
+        '/synthetic/workspaces/live-project',
+        environment: environment,
+      ),
+      isFalse,
+    );
+    expect(
+      isUsableLocalConversationWorkingDirectory(
+        '$home/Desktop/project',
+        environment: environment,
+        directoryExists: (_) => true,
+      ),
+      isFalse,
+    );
+    expect(
+      isBoundableConversationWorkingDirectory(
+        '$home/Desktop/project',
+        environment: environment,
+      ),
+      isTrue,
+    );
+    const dataPrefix =
+        '/System'
+        '/Volumes'
+        '/Data';
+    expect(
+      isAutomaticFilesystemProbeDenied(
+        '$dataPrefix$home/Documents/project',
+        environment: environment,
+      ),
+      isTrue,
+    );
+    expect(
+      isAutomaticFilesystemProbeDenied(
+        '$home/Music/album',
+        environment: environment,
+      ),
+      isTrue,
+    );
+    expect(
+      isUnboundedLocalAgentWorkspace(
+        '$dataPrefix$home/Pictures',
+        environment: environment,
+      ),
+      isTrue,
+    );
+  });
+
+  test('historical cwd skips missing workspaces', () {
     final chosen = historicalConversationWorkingDirectory([
       session(
         id: 'temp',

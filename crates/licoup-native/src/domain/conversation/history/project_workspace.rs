@@ -27,7 +27,7 @@ pub(crate) fn bounded_project_workspace(raw: &str) -> Option<String> {
     if !path.is_absolute() {
         return None;
     }
-    let home = directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+    let home = crate::platform::paths::user_home_from_env();
     if is_unbounded_agent_workspace(path, home.as_deref()) {
         return None;
     }

@@ -21,14 +21,10 @@ pub(super) fn collect_cursor_cli_model_catalog(
     diagnostics: &mut Vec<Value>,
 ) -> CursorCliCatalogResult {
     let source = "cursor-cli:models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
+    if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableCursorCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({"source": source, "status": "disabled"}));
-        return CursorCliCatalogResult::default();
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
-        diagnostics.push(json!({"source": source, "status": "disabled-in-tests"}));
         return CursorCliCatalogResult::default();
     }
 
@@ -47,8 +43,15 @@ pub(super) fn collect_cursor_cli_model_catalog(
             MIN_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS,
             MAX_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS,
         );
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({"source": source, "status": "execution-denied"}));
+        return CursorCliCatalogResult::default();
+    }
     let mut command = Command::new(program);
     command.arg("models");
+    // Selected-agent catalog lookup is a user action. Inherit the process
+    // environment so `cursor-agent models` can read the same account catalog
+    // it did before unused-agent discovery stopped spawning CLIs.
     let Ok(output) = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),
@@ -143,5 +146,13 @@ pub(super) fn collect_cursor_model_catalog_from_cli_output(
         added: entries.len().saturating_sub(before),
         default_model,
         current_model,
+    }
+}
+
+pub(super) fn remove_cursor_independent_reasoning_efforts(
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+) {
+    for entry in entries.values_mut() {
+        entry.reasoning_efforts.clear();
     }
 }

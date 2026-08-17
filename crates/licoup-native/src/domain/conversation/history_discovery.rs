@@ -73,6 +73,17 @@ fn discover_path(
         record_skip(discovery, path, reason);
         return;
     }
+    if crate::domain::targets::scan_paths::denied(
+        path,
+        crate::platform::paths::user_home_from_env().as_deref(),
+    ) {
+        record_skip(discovery, path, "denied_personal_location");
+        return;
+    }
+    if crate::domain::targets::scan_paths::symlink_escapes_denied_location(path) {
+        record_skip(discovery, path, "denied_symlink_escape");
+        return;
+    }
     if !path.exists() {
         record_skip(discovery, path, "not_present");
         return;
@@ -369,6 +380,57 @@ mod tests {
                 .skipped
                 .iter()
                 .any(|skip| skip["reason"] == "excluded_non_history_directory")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discovery_does_not_stat_denied_network_volumes() {
+        fn posix(parts: &[&str]) -> PathBuf {
+            PathBuf::from(format!("/{}", parts.join("/")))
+        }
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: posix(&["Volumes", "team-share", "sessions"]),
+                source_kind: "codex-session-store".to_owned(),
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+        assert!(discovery.candidates.is_empty());
+        assert!(
+            discovery
+                .skipped
+                .iter()
+                .any(|skip| skip["reason"] == "denied_personal_location")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_does_not_follow_symlink_into_personal_library() {
+        let Some(home) = crate::platform::paths::user_home_from_env() else {
+            return;
+        };
+        let root = temp_root("symlink-escape");
+        fs::create_dir_all(&root).unwrap();
+        let link = root.join("escaped-session.jsonl");
+        std::os::unix::fs::symlink(home.join("Desktop").join("secret-session.jsonl"), &link)
+            .unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "codex-session-store".to_owned(),
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+        assert!(discovery.candidates.is_empty());
+        assert!(
+            discovery
+                .skipped
+                .iter()
+                .any(|skip| skip["reason"] == "denied_symlink_escape")
         );
         fs::remove_dir_all(root).unwrap();
     }

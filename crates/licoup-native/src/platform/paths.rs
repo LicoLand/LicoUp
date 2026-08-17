@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use std::{
     cell::RefCell,
     env,
+    ffi::OsString,
     path::{Path, PathBuf},
 };
 
@@ -52,10 +53,67 @@ fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>
     Ok(Some(PathBuf::from(trimmed)))
 }
 
+/// Home from `HOME` / `USERPROFILE` / `HOMEDRIVE`+`HOMEPATH` only.
+///
+/// Never call `directories::UserDirs` or `directories::BaseDirs` for `$HOME`.
+/// Those constructors also assemble Desktop, Documents, Downloads, Pictures,
+/// Music, and Movies by joining `$HOME`; that is path construction, not a TCC
+/// trigger. Keep this owner anyway so home resolution stays lexical, firmlink-
+/// normalized, and independent of that crate.
+pub(crate) fn user_home_from_env() -> Option<PathBuf> {
+    env_home_from(|name| env::var_os(name))
+}
+
+/// Drop the macOS data-volume firmlink prefix so a home-relative path and the
+/// same path under that prefix classify as the same location.
+/// Lexical only; does not stat.
+fn macos_data_volume_prefix() -> PathBuf {
+    Path::new("/").join("System").join("Volumes").join("Data")
+}
+
+#[cfg(test)]
+pub(crate) fn posix_absolute(parts: &[&str]) -> PathBuf {
+    PathBuf::from(format!("/{}", parts.join("/")))
+}
+
+pub(crate) fn strip_macos_data_volume(path: &Path) -> PathBuf {
+    match path.strip_prefix(macos_data_volume_prefix()) {
+        Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from("/"),
+        Ok(rest) => Path::new("/").join(rest),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+pub(crate) fn env_home_from<F>(var: F) -> Option<PathBuf>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    if let Some(path) = env_path_from(&var, "HOME") {
+        return Some(path);
+    }
+    if let Some(path) = env_path_from(&var, "USERPROFILE") {
+        return Some(path);
+    }
+    let drive = var("HOMEDRIVE").filter(|value| !value.is_empty())?;
+    let path = var("HOMEPATH").filter(|value| !value.is_empty())?;
+    let mut combined = drive;
+    combined.push(path);
+    Some(PathBuf::from(combined))
+}
+
+fn env_path_from<F>(var: &F, name: &str) -> Option<PathBuf>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    var(name)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 fn home_portable_data_dir() -> Result<PathBuf> {
-    let user_dirs = directories::UserDirs::new()
-        .ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
-    home_portable_data_dir_from_home(user_dirs.home_dir())
+    let home =
+        user_home_from_env().ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
+    home_portable_data_dir_from_home(&home)
 }
 
 fn home_portable_data_dir_from_home(home: &Path) -> Result<PathBuf> {
@@ -112,6 +170,43 @@ mod tests {
             portable_data_dir_from_value(Some("   ".to_string())).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn macos_firmlink_prefix_does_not_change_home_relative_classification() {
+        fn posix(parts: &[&str]) -> PathBuf {
+            PathBuf::from(format!("/{}", parts.join("/")))
+        }
+        assert_eq!(
+            strip_macos_data_volume(&posix(&[
+                "System", "Volumes", "Data", "profile", "fixture", "Desktop"
+            ])),
+            posix(&["profile", "fixture", "Desktop"])
+        );
+        assert_eq!(
+            strip_macos_data_volume(&posix(&["Users", "fixture", "Documents"])),
+            posix(&["Users", "fixture", "Documents"])
+        );
+        assert_eq!(
+            strip_macos_data_volume(&posix(&["System", "Volumes", "Data"])),
+            PathBuf::from("/")
+        );
+    }
+
+    #[test]
+    fn home_comes_from_environment_variables_not_user_dirs() {
+        let separator = char::from(92).to_string();
+        let home_path = ["", "Profile", "Arc"].join(&separator);
+        let home = env_home_from(|name| match name {
+            "HOMEDRIVE" => Some(OsString::from("C:")),
+            "HOMEPATH" => Some(OsString::from(&home_path)),
+            _ => None,
+        });
+        assert_eq!(
+            home,
+            Some(PathBuf::from(["C:", "Profile", "Arc"].join(&separator)))
+        );
+        assert_eq!(env_home_from(|_| None), None);
     }
 
     struct PortableDataDirOverrideGuard {

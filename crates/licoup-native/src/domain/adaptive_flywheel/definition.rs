@@ -74,6 +74,40 @@ pub struct ActorSlot {
     pub required: bool,
     #[serde(default)]
     pub session_policy: SessionPolicy,
+    #[serde(default)]
+    pub entry: bool,
+    #[serde(default)]
+    pub fallback: SlotFallbackPolicy,
+}
+
+impl ActorSlot {
+    pub fn required_actor(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            kind: BindingKind::Actor,
+            label: label.into(),
+            required: true,
+            session_policy: SessionPolicy::New,
+            entry: true,
+            fallback: SlotFallbackPolicy::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SlotFallbackPolicy {
+    pub after_transient_attempts: u8,
+    pub on_quota: bool,
+}
+
+impl Default for SlotFallbackPolicy {
+    fn default() -> Self {
+        Self {
+            after_transient_attempts: 2,
+            on_quota: true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -213,8 +247,20 @@ pub enum FailureClass {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BindingCandidate {
+    pub value_id: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BindingValue {
     pub slot_id: String,
+    #[serde(default)]
+    pub ordinal: u8,
     pub value_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub model: String,
@@ -243,6 +289,8 @@ pub struct StrategyDefinitionSummary {
     pub name: String,
     pub version: String,
     pub imported_at_unix_ms: i64,
+    #[serde(default)]
+    pub authorized: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -283,6 +331,21 @@ pub struct StrategyProjection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diagnostic: Option<StrategyDiagnostic>,
     pub history_count: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<FallbackReceipt>,
+    #[serde(default)]
+    pub needs_human_input: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FallbackReceipt {
+    pub fallback_from: String,
+    pub fallback_to: String,
+    pub reason: String,
+    pub attempts: u8,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

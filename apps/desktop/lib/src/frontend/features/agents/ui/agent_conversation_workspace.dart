@@ -846,8 +846,6 @@ class _ConversationWorkspaceBodyState
                 sourceAgentId: '',
               ),
             ),
-            onAdaptiveFlywheel: () =>
-                unawaited(showAdaptiveFlywheelDialog(context, controller)),
             onAddTarget: onAddTarget,
             onRefresh: () {
               for (final target in widget.targets) {
@@ -939,8 +937,6 @@ class _ConversationWorkspaceBodyState
               },
               onSearch: widget.onSearch,
               onOpenWelcome: () => _showWelcome(controller),
-              onAdaptiveFlywheel: () =>
-                  unawaited(showAdaptiveFlywheelDialog(context, controller)),
               showConversationList: showConversationList,
               conversationListTargets: conversationListTargets,
               selectedSessionId:
@@ -1071,6 +1067,12 @@ class _ConversationWorkspaceBodyState
                 unawaited(controller.selectConversationAgent(agentId));
               },
               framed: false,
+              flywheelGateway: controller.adaptiveFlywheelGateway,
+              onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
+                context,
+                controller,
+                initialRevision: revision ?? '',
+              ),
             )
           : target == null
           ? const SizedBox.shrink()
@@ -1097,6 +1099,12 @@ class _ConversationWorkspaceBodyState
         controller: groupController,
         targets: widget.targets,
         onCopyText: controller.clientClipboardService.writeText,
+        flywheelGateway: controller.adaptiveFlywheelGateway,
+        onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
+          context,
+          controller,
+          initialRevision: revision ?? '',
+        ),
       );
     }
 
