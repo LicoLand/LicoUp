@@ -43,6 +43,7 @@ mixin ClientLifecycleFacade
   @override
   SkillHubController get skillHubController;
   CatalogConvergenceController get catalogConvergenceController;
+  @override
   LlmGatewayLifecycleController get llmGatewayLifecycleController;
   LlmVaultAuthorization get llmVaultAuthorization;
   @override
@@ -77,10 +78,6 @@ mixin ClientLifecycleFacade
           ClientBootstrapStep(
             id: 'client_catalog',
             action: _initializeClientCatalog,
-          ),
-          ClientBootstrapStep(
-            id: 'client_preload',
-            action: _initializeClientPreload,
           ),
         ],
         backgroundSteps: mobileClientRuntimePlatform
@@ -170,13 +167,6 @@ mixin ClientLifecycleFacade
   Future<void> _initializeClientCatalog() =>
       catalogConvergenceController.bootstrap();
 
-  Future<void> _initializeClientPreload() async {
-    if (lifecycleProjection.disposed) return;
-    if (!mobileClientRuntimePlatform) {
-      sectionPreloadController.start();
-    }
-  }
-
   /// Startup auto-check: silently checks the GitHub release source once.
   /// Failures are non-blocking and never disturb the user; when an update is
   /// found the Settings card naturally shows the update-available state.
@@ -190,10 +180,11 @@ mixin ClientLifecycleFacade
   Future<void> _finalizeClientInitialization() async {
     if (lifecycleProjection.disposed) return;
     if (!mobileClientRuntimePlatform) {
-      // The landing section keeps the historical readiness contract: its data
-      // is warm before initialization settles. Remaining sections keep
-      // preloading in the background.
-      await sectionPreloadController.awaitSection(currentSection);
+      // The restored destination keeps the historical readiness contract: its
+      // entry Hook lane is warm before initialization settles, while grouped
+      // siblings finish quietly in the background.
+      interfaceEntryHookController.requestEntry(currentSection);
+      await interfaceEntryHookController.awaitEntry(currentSection);
       if (lifecycleProjection.disposed) return;
       final agentId = selectedConversationAgentId.trim();
       if (agentId.isNotEmpty) {

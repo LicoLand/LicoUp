@@ -9,6 +9,8 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_chrom
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import '../fixtures/client_controller/support/no_entry_hook_client_controller.dart';
+
 void main() {
   testWidgets('opening a conversation previews an italic temporary tab', (
     tester,
@@ -226,7 +228,7 @@ TextStyle _titleStyle(WidgetTester tester, String title) {
 }
 
 ClientController _controller() {
-  return ClientController()
+  return NoEntryHookClientController()
     ..scannedTargets = [
       TargetCandidate(
         target: 'codex',
