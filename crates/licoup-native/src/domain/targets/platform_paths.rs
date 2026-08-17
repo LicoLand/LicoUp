@@ -1,5 +1,5 @@
 use super::parameters::param_string;
-use super::scan_paths::{self, HostRoots, probe_exists_with};
+use super::scan_paths::{self, HostRoots, probe_exists_for_os_with, probe_exists_with};
 use crate::platform::paths::user_home_from_env;
 use serde_json::Value;
 use std::env;
@@ -29,19 +29,12 @@ pub(super) fn default_detection_path_with_params(target: &str, params: &Value) -
     {
         return probe_exists_with(&root, &HostRoots::from_home(&home)).then_some(root);
     }
-    let roots = HostRoots::from_home(&home);
-    default_detection_paths_for_platform(target, std::env::consts::OS, &home, &PathBuf::new())
-        .into_iter()
-        .find(|path| probe_exists_with(path, &roots))
-        .or_else(|| {
-            if target == "kilo-code" {
-                scan_paths::extension_roots("kilo-code", std::env::consts::OS, &roots)
-                    .into_iter()
-                    .find_map(existing_kilo_code_extension_dir)
-            } else {
-                None
-            }
-        })
+    default_detection_path_for_platform(
+        target,
+        std::env::consts::OS,
+        &home,
+        &default_app_data_dir(&home),
+    )
 }
 
 pub(super) fn kimi_code_home_override(params: &Value, home: &Path) -> Option<PathBuf> {
@@ -87,7 +80,6 @@ pub(super) fn default_config_path_for_platform(
     scan_paths::config_path(target, platform, &roots)
 }
 
-#[cfg(test)]
 pub(super) fn default_detection_path_for_platform(
     target: &str,
     platform: &str,
@@ -100,7 +92,7 @@ pub(super) fn default_detection_path_for_platform(
     }
     default_detection_paths_for_platform(target, platform, home, app_data)
         .into_iter()
-        .find(|path| probe_exists_with(path, &roots))
+        .find(|path| probe_exists_for_os_with(path, platform, &roots))
         .or_else(|| {
             if target == "kilo-code" {
                 scan_paths::extension_roots("kilo-code", platform, &roots)
