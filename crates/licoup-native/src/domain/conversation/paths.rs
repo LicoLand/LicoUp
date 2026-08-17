@@ -1,6 +1,6 @@
 use std::env;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub(crate) fn home_dir() -> PathBuf {
     home_dir_from_env(|name| env::var_os(name))
@@ -10,73 +10,7 @@ pub(crate) fn home_dir_from_env<F>(var: F) -> PathBuf
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    if let Some(path) = env_path_from(&var, "HOME") {
-        return path;
-    }
-    if let Some(path) = env_path_from(&var, "USERPROFILE") {
-        return path;
-    }
-    if let (Some(mut drive), Some(path)) = (var("HOMEDRIVE"), var("HOMEPATH")) {
-        if !drive.is_empty() && !path.is_empty() {
-            drive.push(path);
-            return PathBuf::from(drive);
-        }
-    }
-    directories::UserDirs::new()
-        .map(|dirs| dirs.home_dir().to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-pub(crate) fn appdata_dir() -> PathBuf {
-    env_path("APPDATA").unwrap_or_else(|| {
-        if cfg!(windows) {
-            home_dir().join("AppData").join("Roaming")
-        } else {
-            xdg_config_dir()
-        }
-    })
-}
-
-pub(crate) fn appdata_dir_from_home(home: &Path) -> PathBuf {
-    if cfg!(windows) {
-        home.join("AppData").join("Roaming")
-    } else {
-        xdg_config_dir_from_home(home)
-    }
-}
-
-pub(crate) fn local_appdata_dir() -> PathBuf {
-    env_path("LOCALAPPDATA").unwrap_or_else(|| {
-        if cfg!(windows) {
-            home_dir().join("AppData").join("Local")
-        } else {
-            xdg_data_dir()
-        }
-    })
-}
-
-pub(crate) fn local_appdata_dir_from_home(home: &Path) -> PathBuf {
-    if cfg!(windows) {
-        home.join("AppData").join("Local")
-    } else {
-        xdg_data_dir_from_home(home)
-    }
-}
-
-pub(crate) fn xdg_config_dir() -> PathBuf {
-    env_path("XDG_CONFIG_HOME").unwrap_or_else(|| home_dir().join(".config"))
-}
-
-pub(crate) fn xdg_config_dir_from_home(home: &Path) -> PathBuf {
-    home.join(".config")
-}
-
-pub(crate) fn xdg_data_dir() -> PathBuf {
-    env_path("XDG_DATA_HOME").unwrap_or_else(|| home_dir().join(".local/share"))
-}
-
-pub(crate) fn xdg_data_dir_from_home(home: &Path) -> PathBuf {
-    home.join(".local/share")
+    crate::platform::paths::env_home_from(var).unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub(crate) fn expand_home(value: &str) -> PathBuf {
@@ -97,19 +31,6 @@ where
         return home().join(rest);
     }
     PathBuf::from(value)
-}
-
-fn env_path(name: &str) -> Option<PathBuf> {
-    env_path_from(&|key| env::var_os(key), name)
-}
-
-fn env_path_from<F>(var: &F, name: &str) -> Option<PathBuf>
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    var(name)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
 }
 
 #[cfg(test)]

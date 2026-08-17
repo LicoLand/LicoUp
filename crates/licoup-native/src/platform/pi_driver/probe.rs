@@ -24,6 +24,7 @@ fn run_probe_command(executable: &str, argument: &str, timeout_ms: u64) -> Optio
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    crate::platform::configure_untrusted_agent_command(&mut command);
     let mut child = SupervisedChild::spawn(&mut command).ok()?;
     let status = child
         .finish_or_terminate_tree(Duration::from_millis(timeout_ms))

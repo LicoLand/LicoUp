@@ -17,6 +17,7 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/targets/binaries.rs",
   ])), [
+    "regression.agent-scan-paths",
     "architecture.client-boundaries",
     "rust.domain.targets.binaries",
     "rust.domain.targets.platform-integration",

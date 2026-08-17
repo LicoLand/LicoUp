@@ -3,7 +3,6 @@ import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
 
@@ -12,19 +11,14 @@ class DefaultAgentRenderAdapterJsonSource
   DefaultAgentRenderAdapterJsonSource({
     AssetBundle? assetBundle,
     Map<String, String>? environmentOverride,
-    Future<Directory> Function()? applicationSupportDirectoryResolver,
   }) : _assetBundle = assetBundle ?? rootBundle,
-       _environmentOverride = environmentOverride,
-       _applicationSupportDirectoryResolver =
-           applicationSupportDirectoryResolver ??
-           getApplicationSupportDirectory;
+       _environmentOverride = environmentOverride;
 
   static const String externalRootsEnvironmentKey =
       'LICOUP_AGENT_RENDER_ADAPTER_ROOTS';
 
   final AssetBundle _assetBundle;
   final Map<String, String>? _environmentOverride;
-  final Future<Directory> Function() _applicationSupportDirectoryResolver;
 
   @override
   Future<List<Map<String, dynamic>>> loadAdapterJson() async {
@@ -67,12 +61,10 @@ class DefaultAgentRenderAdapterJsonSource
             .map(Directory.new),
       );
     }
-    try {
-      final support = await _applicationSupportDirectoryResolver();
-      roots.add(Directory(p.join(support.path, 'agent-render-adapters')));
-    } catch (_) {
-      // Tests may not provide path_provider channels. Asset adapters and
-      // explicit external roots are still usable.
+    final home = (_environment['HOME'] ?? _environment['USERPROFILE'] ?? '')
+        .trim();
+    if (home.isNotEmpty) {
+      roots.add(Directory(p.join(home, '.lico-up', 'agent-render-adapters')));
     }
 
     final adapters = <Map<String, dynamic>>[];

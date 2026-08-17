@@ -10,7 +10,6 @@ use crate::platform::file_security::{
 };
 use crate::platform::paths;
 use anyhow::{Result, anyhow, bail, ensure};
-use directories::UserDirs;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -150,9 +149,7 @@ fn platform_supported() -> bool {
 }
 
 fn user_home() -> Result<PathBuf> {
-    UserDirs::new()
-        .map(|dirs| dirs.home_dir().to_path_buf())
-        .ok_or_else(|| anyhow!("llm_gateway_autostart_home_missing"))
+    paths::user_home_from_env().ok_or_else(|| anyhow!("llm_gateway_autostart_home_missing"))
 }
 
 #[cfg(target_os = "macos")]

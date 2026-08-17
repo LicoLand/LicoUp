@@ -195,7 +195,6 @@ mixin ClientLifecycleFacade
       // preloading in the background.
       await sectionPreloadController.awaitSection(currentSection);
       if (lifecycleProjection.disposed) return;
-      startAgentUsagePolling();
       final agentId = selectedConversationAgentId.trim();
       if (agentId.isNotEmpty) {
         unawaited(loadConversationSessions(agentId));
