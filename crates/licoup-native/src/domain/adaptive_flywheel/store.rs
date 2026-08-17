@@ -1173,6 +1173,7 @@ fn migrate_bindings_ordinal_primary_key(connection: &mut Connection) -> Result<(
            FROM strategy_bindings;
          DROP TABLE strategy_bindings;
          ALTER TABLE strategy_bindings_v2 RENAME TO strategy_bindings;
+         UPDATE strategy_authorizations SET active=0 WHERE active=1;
          UPDATE strategy_meta SET value='2' WHERE key='version';",
     )?;
     Ok(())
@@ -1596,6 +1597,71 @@ mod tests {
                 guard: None,
             }],
         }
+    }
+
+    #[test]
+    fn binding_ordinal_migration_invalidates_existing_authorizations() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO strategy_meta(key, value) VALUES ('version', '1');
+                 CREATE TABLE strategy_definitions(
+                   definition_id TEXT NOT NULL,
+                   revision_digest TEXT PRIMARY KEY,
+                   semantics_digest TEXT NOT NULL,
+                   name TEXT NOT NULL,
+                   version TEXT NOT NULL,
+                   workflow_json TEXT NOT NULL,
+                   asset_count INTEGER NOT NULL,
+                   imported_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE strategy_bindings(
+                   revision_digest TEXT NOT NULL REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE,
+                   slot_id TEXT NOT NULL,
+                   value_id TEXT NOT NULL,
+                   model TEXT NOT NULL DEFAULT '',
+                   reasoning_effort TEXT NOT NULL DEFAULT '',
+                   revision INTEGER NOT NULL,
+                   PRIMARY KEY(revision_digest, slot_id)
+                 );
+                 CREATE TABLE strategy_authorizations(
+                   revision_digest TEXT NOT NULL REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE,
+                   revision INTEGER NOT NULL,
+                   semantics_digest TEXT NOT NULL,
+                   binding_digest TEXT NOT NULL,
+                   authorization_digest TEXT NOT NULL,
+                   active INTEGER NOT NULL,
+                   created_at INTEGER NOT NULL,
+                   PRIMARY KEY(revision_digest, revision)
+                 );
+                 INSERT INTO strategy_definitions VALUES (
+                   'strategy', 'revision', 'semantics', 'Strategy', '1', '{}', 0, 1
+                 );
+                 INSERT INTO strategy_bindings VALUES (
+                   'revision', 'worker', 'agent:test', '', '', 1
+                 );
+                 INSERT INTO strategy_authorizations VALUES (
+                   'revision', 1, 'semantics', 'old-bindings', 'authorization', 1, 1
+                 );",
+            )
+            .unwrap();
+
+        initialize_schema(&mut connection).unwrap();
+
+        let (ordinal, active, version): (i64, i64, String) = connection
+            .query_row(
+                "SELECT b.ordinal, a.active, m.value
+                   FROM strategy_bindings b
+                   JOIN strategy_authorizations a USING (revision_digest)
+                   JOIN strategy_meta m ON m.key='version'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(ordinal, 0);
+        assert_eq!(active, 0);
+        assert_eq!(version, "2");
     }
 
     #[test]

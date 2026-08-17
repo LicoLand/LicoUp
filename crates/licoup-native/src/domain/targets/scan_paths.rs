@@ -375,12 +375,16 @@ pub fn allow_prefixes(os: &str, roots: &HostRoots) -> Vec<PathBuf> {
         .collect()
 }
 
+#[cfg(test)]
 pub fn admitted_scan_path_with(path: &Path, roots: &HostRoots) -> bool {
+    admitted_scan_path_for_os_with(path, std::env::consts::OS, roots)
+}
+
+fn admitted_scan_path_for_os_with(path: &Path, os: &str, roots: &HostRoots) -> bool {
     let normalized = lexical(path);
     if denied(&normalized, roots.home.as_deref()) {
         return false;
     }
-    let os = std::env::consts::OS;
     allow_prefixes(os, roots).iter().any(|prefix| {
         let prefix = lexical(prefix);
         normalized == prefix || normalized.starts_with(&prefix)
@@ -401,6 +405,10 @@ pub fn explicit_file_exists(path: &Path) -> bool {
 
 pub fn probe_exists_with(path: &Path, roots: &HostRoots) -> bool {
     automatic_probe_admitted_with(path, roots) && path.exists()
+}
+
+pub fn probe_exists_for_os_with(path: &Path, os: &str, roots: &HostRoots) -> bool {
+    automatic_probe_admitted_for_os_with(path, os, roots) && path.exists()
 }
 
 pub fn probe_is_file(path: &Path) -> bool {
@@ -437,7 +445,12 @@ pub fn probe_exists_under_home(path: &Path, home: &Path) -> bool {
 }
 
 fn catalog_home_denied(home: &Path, real_home: Option<&Path>) -> bool {
-    if denied(home, real_home) {
+    if denied(home, None) {
+        return true;
+    }
+    if real_home.is_some_and(|real_home| lexical(home) != lexical(real_home))
+        && denied(home, real_home)
+    {
         return true;
     }
     home.file_name()
@@ -469,7 +482,11 @@ fn automatic_probe_admitted(path: &Path) -> bool {
 }
 
 fn automatic_probe_admitted_with(path: &Path, roots: &HostRoots) -> bool {
-    admitted_scan_path_with(path, roots)
+    automatic_probe_admitted_for_os_with(path, std::env::consts::OS, roots)
+}
+
+fn automatic_probe_admitted_for_os_with(path: &Path, os: &str, roots: &HostRoots) -> bool {
+    admitted_scan_path_for_os_with(path, os, roots)
         && !is_other_app_container_with(path, roots)
         && !symlink_escapes_denied_location_with(path, roots)
 }
@@ -576,6 +593,9 @@ fn is_other_app_container_with(path: &Path, roots: &HostRoots) -> bool {
 }
 
 pub fn denied(path: &Path, home: Option<&Path>) -> bool {
+    if is_windows_network_path(path) {
+        return true;
+    }
     let normalized = strip_macos_data_volume(&lexical(path));
     let deny = &manifest().deny;
     if deny.network_prefixes.iter().any(|prefix| {
@@ -597,6 +617,21 @@ pub fn denied(path: &Path, home: Option<&Path>) -> bool {
         let root = home.join(name);
         normalized == root || normalized.starts_with(&root)
     })
+}
+
+fn is_windows_network_path(path: &Path) -> bool {
+    let raw = path.as_os_str().to_string_lossy();
+    let normalized = raw.replace('\\', "/");
+    let Some(root) = normalized.strip_prefix("//") else {
+        return false;
+    };
+    root.strip_prefix("?/")
+        .or_else(|| root.strip_prefix("./"))
+        .is_none_or(|verbatim| {
+            verbatim
+                .get(..4)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("UNC/"))
+        })
 }
 
 fn is_media_library(path: &Path, extensions: &[String]) -> bool {
@@ -683,6 +718,18 @@ mod tests {
         assert!(denied(
             &PathBuf::from("/profile/Desktop/tools"),
             Some(&posix_absolute(&["System", "Volumes", "Data", "profile"])),
+        ));
+        assert!(denied(
+            Path::new(r"\\server\redirected-profile\AppData"),
+            Some(&home),
+        ));
+        assert!(denied(
+            Path::new(r"\\?\UNC\server\redirected-profile\AppData"),
+            Some(&home),
+        ));
+        assert!(!denied(
+            Path::new(r"\\?\C:\Profile\lico\AppData"),
+            Some(&home),
         ));
     }
 
@@ -830,6 +877,26 @@ mod tests {
             &posix_absolute(&["Volumes", "team-share"]),
         ));
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn the_real_home_is_a_valid_named_catalog_base() {
+        let home = PathBuf::from("/profile");
+        assert!(!catalog_home_denied(&home, Some(&home)));
+        assert!(catalog_home_denied(&home.join("Desktop"), Some(&home)));
+        assert!(catalog_home_denied(
+            Path::new(r"\\server\redirected-profile"),
+            Some(&home)
+        ));
+    }
+
+    #[test]
+    fn windows_network_roots_never_enter_the_binary_probe_set() {
+        let mut roots = fixture_roots();
+        roots.appdata = Some(PathBuf::from(r"\\server\profile\AppData\Roaming"));
+        roots.local_appdata = Some(PathBuf::from(r"\\server\profile\AppData\Local"));
+        let dirs = binary_dirs("windows", &roots);
+        assert!(dirs.iter().all(|path| !is_windows_network_path(path)));
     }
 
     #[test]
