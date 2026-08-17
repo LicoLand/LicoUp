@@ -560,6 +560,28 @@ impl StrategyStore {
                 transaction.commit()?;
                 return Ok(None);
             }
+            let previous = load_run(&transaction, run_id)?;
+            if !matches!(
+                previous.status,
+                StrategyRunStatus::Running
+                    | StrategyRunStatus::Waiting
+                    | StrategyRunStatus::Retryable
+            ) {
+                transaction.commit()?;
+                return Ok(None);
+            }
+            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
+            let compiled = compile_workflow(workflow)?;
+            let run_active: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM strategy_commands
+                 WHERE run_id=?1 AND status IN ('claimed', 'running') AND lease_until>?2",
+                params![run_id, now],
+                |row| row.get(0),
+            )?;
+            if run_active >= compiled.definition.limits.max_parallelism as i64 {
+                transaction.commit()?;
+                return Ok(None);
+            }
             let value: Option<String> = transaction
                 .query_row(
                     "SELECT command_json FROM strategy_commands
@@ -574,9 +596,6 @@ impl StrategyStore {
                 return Ok(None);
             };
             let command: RunCommand = serde_json::from_str(&value)?;
-            let previous = load_run(&transaction, run_id)?;
-            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
             let event = ReducerEvent::CommandClaimed {
                 command_id: command.id.clone(),
                 attempt_token: command.attempt_token.clone(),
@@ -648,10 +667,32 @@ impl StrategyStore {
         command_id: &str,
         attempt_token: &str,
         expected_authorization_digest: &str,
+        claimant: &str,
+        lease_until_unix_ms: i64,
     ) -> Result<()> {
+        validate_opaque_id(claimant, "strategy_claimant_invalid")?;
+        let now = now_ms();
+        ensure!(lease_until_unix_ms > now, "strategy_lease_invalid");
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let lease: Option<(String, String, Option<String>, Option<i64>)> = transaction
+                .query_row(
+                    "SELECT status, attempt_token, lease_owner, lease_until
+                     FROM strategy_commands WHERE command_id=?1 AND run_id=?2",
+                    params![command_id, run_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()?;
+            ensure!(
+                lease.is_some_and(|(status, token, owner, lease_until)| {
+                    status == "running"
+                        && token == attempt_token
+                        && owner.as_deref() == Some(claimant)
+                        && lease_until.is_some_and(|value| value > now)
+                }),
+                "strategy_lease_lost"
+            );
             let snapshot = load_run(&transaction, run_id)?;
             let command = snapshot
                 .commands
@@ -677,6 +718,13 @@ impl StrategyStore {
                     && authorization.authorization_digest == expected_authorization_digest,
                 "strategy_authorization_stale"
             );
+            let renewed = transaction.execute(
+                "UPDATE strategy_commands SET lease_until=?4, updated_at=?5
+                 WHERE command_id=?1 AND run_id=?2 AND lease_owner=?3
+                   AND status='running' AND lease_until>?5",
+                params![command_id, run_id, claimant, lease_until_unix_ms, now],
+            )?;
+            ensure!(renewed == 1, "strategy_lease_lost");
             transaction.commit()?;
             Ok(())
         })
@@ -782,7 +830,7 @@ impl StrategyStore {
             transaction.execute(
                 "UPDATE strategy_commands SET lease_owner=NULL, lease_until=NULL
                  WHERE command_id=?1",
-                params![command.id],
+                params![&command.id],
             )?;
             transaction.commit()?;
             Ok(true)
@@ -923,7 +971,21 @@ impl StrategyStore {
                 .find(|slot| {
                     slot.kind == crate::domain::adaptive_flywheel::BindingKind::Actor && slot.entry
                 })
-                .and_then(|slot| snapshot.actor_sessions.get(&slot.id).cloned()),
+                .and_then(|slot| {
+                    let prefix = format!("{}\0", slot.id);
+                    snapshot
+                        .actor_sessions
+                        .iter()
+                        .filter(|(key, _)| key.starts_with(&prefix))
+                        .filter_map(|(key, session)| {
+                            snapshot
+                                .merge_sources
+                                .get(&format!("session\0{key}"))
+                                .map(|source| (source, key, session))
+                        })
+                        .max_by(|left, right| left.0.cmp(right.0).then(left.1.cmp(right.1)))
+                        .map(|(_, _, session)| session.clone())
+                }),
         })
     }
 
@@ -1544,7 +1606,7 @@ mod tests {
     use super::*;
     use crate::domain::adaptive_flywheel::{
         ActorSlot, BindingCandidate, GraphState, GraphStateKind, RetryPolicy, Transition,
-        WorkflowLimits, WorkflowMetadata,
+        TransitionEvent, WorkflowLimits, WorkflowMetadata,
     };
     use serde_json::json;
 
@@ -1588,14 +1650,34 @@ mod tests {
                     workset: None,
                     retry: RetryPolicy::default(),
                 },
+                GraphState {
+                    id: "fail".into(),
+                    kind: GraphStateKind::Fail,
+                    label: "Fail".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
             ],
-            transitions: vec![Transition {
-                id: "done".into(),
-                from: "work".into(),
-                to: "done".into(),
-                event: "success".into(),
-                guard: None,
-            }],
+            transitions: vec![
+                Transition {
+                    id: "done".into(),
+                    from: "work".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "work".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
+                    guard: None,
+                },
+            ],
         }
     }
 
@@ -1775,6 +1857,119 @@ mod tests {
     }
 
     #[test]
+    fn effect_authorization_revalidates_digest_owner_and_live_lease() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        store
+            .register_definition(revision, revision, &workflow(), 1, 1)
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        let authorization = store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "authorization-fence", None, None)
+            .unwrap();
+        let command = store
+            .claim_next_command(&run.run_id, "claimant", now_ms() + 60_000)
+            .unwrap()
+            .unwrap();
+        store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandStarted {
+                    command_id: command.id.clone(),
+                    attempt_token: command.attempt_token.clone(),
+                },
+            )
+            .unwrap();
+        store
+            .authorize_effect(
+                &run.run_id,
+                &command.id,
+                &command.attempt_token,
+                &authorization.authorization_digest,
+                "claimant",
+                now_ms() + 60_000,
+            )
+            .unwrap();
+        assert!(
+            store
+                .authorize_effect(
+                    &run.run_id,
+                    &command.id,
+                    &command.attempt_token,
+                    &authorization.authorization_digest,
+                    "other-claimant",
+                    now_ms() + 60_000,
+                )
+                .is_err()
+        );
+        store.revoke_authorization(revision).unwrap();
+        assert!(
+            store
+                .authorize_effect(
+                    &run.run_id,
+                    &command.id,
+                    &command.attempt_token,
+                    &authorization.authorization_digest,
+                    "claimant",
+                    now_ms() + 60_000,
+                )
+                .is_err()
+        );
+        let next = store.authorization_preview(revision).unwrap();
+        let next = store
+            .grant_authorization(revision, &next.authorization_digest)
+            .unwrap();
+        assert!(
+            store
+                .authorize_effect(
+                    &run.run_id,
+                    &command.id,
+                    &command.attempt_token,
+                    &authorization.authorization_digest,
+                    "claimant",
+                    now_ms() + 60_000,
+                )
+                .is_err()
+        );
+        store
+            .authorize_effect(
+                &run.run_id,
+                &command.id,
+                &command.attempt_token,
+                &next.authorization_digest,
+                "claimant",
+                now_ms() + 60_000,
+            )
+            .unwrap();
+        let connection = Connection::open(store.db_path()).unwrap();
+        connection
+            .execute(
+                "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
+                params![&command.id],
+            )
+            .unwrap();
+        assert!(
+            store
+                .authorize_effect(
+                    &run.run_id,
+                    &command.id,
+                    &command.attempt_token,
+                    &next.authorization_digest,
+                    "claimant",
+                    now_ms() + 60_000,
+                )
+                .is_err(),
+            "an expired running lease must never issue an effect permit"
+        );
+    }
+
+    #[test]
     fn expired_claim_recovery_is_atomic_and_retries_before_start() {
         let store = StrategyStore::open_in_memory().unwrap();
         let revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -1819,7 +2014,7 @@ mod tests {
         let recovered = store.run(&run.run_id).unwrap();
         assert_eq!(
             recovered.commands[&claimed.id].status,
-            super::super::CommandStatus::Retryable
+            super::super::CommandStatus::Cancelled
         );
         assert!(recovered.commands.values().any(|command| {
             command.attempt == 2 && command.status == super::super::CommandStatus::Pending
