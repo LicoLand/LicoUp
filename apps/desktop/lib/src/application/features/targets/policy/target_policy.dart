@@ -66,7 +66,7 @@ class TargetPolicy {
       'antigravity-cli',
       'antigravity-local',
       'kilo-cli',
-      'claude-cli',
+      'claude-current',
       'codex-app-server',
       'opencode-cli:models',
       'pi-cli:list-models',

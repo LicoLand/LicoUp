@@ -2267,7 +2267,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.targets.model-catalog.claude-code",
       kind: "rust-domain",
-      summary: "Claude Code backend model discovery without family aliases",
+      summary: "Claude Code configured current-model projection",
       inputs: [
         "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
       ],

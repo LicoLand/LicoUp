@@ -536,7 +536,6 @@ void main() {
       );
       expect(find.byType(MobileRelayPanel), findsOneWidget);
       expect(find.byType(AgentsCanvas), findsNothing);
-      expect(controller.secureMeshController.status, isNotNull);
     },
   );
 

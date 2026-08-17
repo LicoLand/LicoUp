@@ -61,10 +61,11 @@ Discovery probes only the Agent Scan Path Manifest: named Agent binaries,
 configuration, and history directories. It does not walk `PATH`, Desktop,
 Documents, Downloads, Pictures, Music, or network volumes, does not execute
 third-party Agent binaries at launch, and unused-agent
-scans do not open other apps' containers. Token usage is read when you open
-Monitoring, not at launch. The probes run concurrently with a
-fixed bound. Normalized paths and configuration references stay in the client
-cache so later launches do not need a full scan.
+scans do not open other apps' containers. Opening an Agent's conversation
+interface loads that Agent's model list from its CLI or named store. Token
+usage is read when you open Monitoring, not at launch. The probes run
+concurrently with a fixed bound. Normalized paths and configuration references
+stay in the client cache so later launches do not need a full scan.
 
 When continuing a conversation, LicoUp prefers the agent's native attach or
 resume operation. If an adapter cannot accept input during a running turn, the

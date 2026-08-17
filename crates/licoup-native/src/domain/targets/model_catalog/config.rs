@@ -14,11 +14,6 @@ pub(super) fn extra_model_config_paths(target: &str, params: &Value) -> Vec<Path
                 .join("antigravity-cli")
                 .join("settings.json"),
         ],
-        "claude-code" => vec![
-            home.join(".claude").join("settings.json"),
-            home.join(".claude").join("settings.local.json"),
-            home.join(".claude.json"),
-        ],
         "opencode" => vec![
             home.join(".config").join("opencode").join("opencode.jsonc"),
             home.join(".config").join("opencode").join("opencode.json"),

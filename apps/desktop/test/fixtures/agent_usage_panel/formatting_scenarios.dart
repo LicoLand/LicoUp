@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -7,13 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'usage_agent_service_fakes.dart';
 import 'usage_panel_fixtures.dart';
+import '../client_controller/support/no_entry_hook_client_controller.dart';
 
 void registerAgentUsageFormattingScenarios() {
   testWidgets('agent usage panel formats large numbers with compact units', (
     tester,
   ) async {
     final service = UsageAgentService();
-    final controller = ClientController(agentService: service);
+    final controller = NoEntryHookClientController(agentService: service);
     controller.scannedTargets = testTargets([
       'claude-code',
       'codex',

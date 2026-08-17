@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_summary_visit.dart';
@@ -187,6 +188,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.installedVersions = const {},
     this.latestVersions = const {},
     this.seedCache,
+    this.warehouseSnapshot,
     this.catalogFuture,
     Map<String, Completer<AgentHubCatalogSnapshot>>? inspectDelays,
   }) : inspectDelays = inspectDelays ?? {};
@@ -200,6 +202,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final Map<String, String> installedVersions;
   final Map<String, String> latestVersions;
   final AgentHubCatalogSnapshot? seedCache;
+  final AgentHubCatalogSnapshot? warehouseSnapshot;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
   final Map<String, Completer<AgentHubCatalogSnapshot>> inspectDelays;
   final List<AgentHubLifecycleAction> actions = [];
@@ -230,7 +233,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
       if (catalogFuture != null) {
         return catalogFuture!;
       }
-      final snapshot = _liveSnapshot;
+      final snapshot = warehouseSnapshot ?? _liveSnapshot;
       _cache = snapshot;
       return snapshot;
     }
@@ -338,39 +341,45 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   }
 }
 
-Widget _harness(
+typedef _HubHarness = (Widget, AgentHubCatalogController);
+
+_HubHarness _harness(
   AgentHubEnginePort engine, {
   Locale locale = const Locale('en'),
   AgentHubHomepageOpener? openHomepage,
   AgentHubOpenAgent? onOpenAgent,
 }) {
-  return MaterialApp(
-    locale: locale,
-    supportedLocales: LicoStrings.supportedLocales,
-    localizationsDelegates: const [
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-    theme: buildLicoTheme(platformBrightness: Brightness.dark),
-    builder: (context, child) {
-      return MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: child!,
-      );
-    },
-    home: Scaffold(
-      body: SizedBox(
-        width: 1000,
-        height: 720,
-        child: AgentHubPanel(
-          engine: engine,
-          orderRecipes: (recipes) => recipes,
-          openHomepage: openHomepage ?? (uri) async => true,
-          onOpenAgent: onOpenAgent,
+  final controller = AgentHubCatalogController(engine: engine);
+  return (
+    MaterialApp(
+      locale: locale,
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      theme: buildLicoTheme(platformBrightness: Brightness.dark),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        );
+      },
+      home: Scaffold(
+        body: SizedBox(
+          width: 1000,
+          height: 720,
+          child: AgentHubPanel(
+            controller: controller,
+            orderRecipes: (recipes) => recipes,
+            openHomepage: openHomepage ?? (uri) async => true,
+            onOpenAgent: onOpenAgent,
+          ),
         ),
       ),
     ),
+    controller,
   );
 }
 
@@ -379,7 +388,11 @@ Future<void> _openDetail(WidgetTester tester, String id) async {
   await tester.pump();
 }
 
-Future<void> _pumpHub(WidgetTester tester, Widget app) async {
+Future<void> _pumpHub(WidgetTester tester, _HubHarness harness) async {
+  final (app, controller) = harness;
+  // Explicit application-owned preload before mount: the panel itself must
+  // stay free of catalog I/O while rendering the controller projection.
+  unawaited(controller.refresh());
   await tester.binding.setSurfaceSize(const Size(1000, 720));
   tester.view.devicePixelRatio = 1;
   addTearDown(() async {
@@ -493,6 +506,66 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'interface entry refresh resolves live card state before enabling actions',
+    (tester) async {
+      final inspection = Completer<AgentHubCatalogSnapshot>();
+      final engine = _FakeHubEngine(
+        warehouseSnapshot: AgentHubCatalogSnapshot(
+          recipes: [
+            AgentHubRecipe(
+              id: 'codex',
+              displayName: 'Codex',
+              adaptation: AgentHubAdaptationDepth.deep,
+              installable: false,
+              summary: _summaries['codex']!,
+              homepage: _homepages['codex']!,
+            ),
+          ],
+        ),
+        inspectDelays: {'codex': inspection},
+      );
+      final harness = _harness(engine);
+      unawaited(harness.$2.refresh());
+      await tester.binding.setSurfaceSize(const Size(1000, 720));
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() async {
+        tester.view.resetDevicePixelRatio();
+        await tester.binding.setSurfaceSize(null);
+      });
+      await tester.pumpWidget(harness.$1);
+      await tester.pump();
+
+      expect(engine.catalogRecipeIds, ['', 'codex']);
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
+            .onTap,
+        isNull,
+      );
+
+      inspection.complete(_snapshot());
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
+            .onTap,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('intro opens the agent detail and back returns to the catalog', (
     tester,
@@ -1007,7 +1080,13 @@ void main() {
         tester.view.resetDevicePixelRatio();
         await tester.binding.setSurfaceSize(null);
       });
-      await tester.pumpWidget(_harness(engine));
+      final harness = _harness(engine);
+      await tester.pumpWidget(harness.$1);
+      await tester.pump();
+
+      // The cached projection paints immediately; the explicit refresh locks
+      // every card behind the pending catalog and per-card inspections.
+      await tester.tap(find.byKey(const Key('agent-hub-refresh')));
       await tester.pump();
 
       expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);

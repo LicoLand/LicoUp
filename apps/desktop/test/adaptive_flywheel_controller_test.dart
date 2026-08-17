@@ -10,6 +10,7 @@ import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -163,7 +164,8 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('adaptive-flywheel-entry-add')));
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(LicoMotion.medium);
+    await tester.pump();
     expect(
       find.byKey(const Key('adaptive-flywheel-entry-option-codex')),
       findsOneWidget,
@@ -274,8 +276,11 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () =>
-                  showAdaptiveFlywheelDialog(context, clientController),
+              onPressed: () => showAdaptiveFlywheelDialog(
+                context,
+                clientController,
+                initialRevision: 'revision-b',
+              ),
               child: const Text('open'),
             ),
           ),
@@ -287,22 +292,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(DropdownButton<String>), findsNothing);
-    expect(find.text('Synthetic Graph · 1.0.0'), findsOneWidget);
+    expect(find.text('Imported Other · 2.0.0'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('adaptive-flywheel-definition')));
     await tester.pumpAndSettle();
 
     expect(find.byType(DropdownButton<String>), findsNothing);
     expect(find.byType(MessagingGlassOptionCard), findsOneWidget);
-    expect(find.text('Imported Other · 2.0.0'), findsOneWidget);
+    expect(find.text('Synthetic Graph · 1.0.0'), findsOneWidget);
 
     await tester.tap(
-      find.byKey(const Key('adaptive-flywheel-option-revision-b')),
+      find.byKey(const Key('adaptive-flywheel-option-revision')),
     );
     await tester.pumpAndSettle();
 
     expect(find.byType(MessagingGlassOptionCard), findsNothing);
-    expect(find.text('Imported Other · 2.0.0'), findsOneWidget);
+    expect(find.text('Synthetic Graph · 1.0.0'), findsOneWidget);
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 

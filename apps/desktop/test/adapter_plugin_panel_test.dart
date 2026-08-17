@@ -197,6 +197,8 @@ Future<void> _pumpPanel(WidgetTester tester, {required Locale locale}) async {
     presentationPreferencesRepository: _PanelPreferencesRepository(),
   );
   addTearDown(controller.dispose);
+  // Explicit application-owned preload: panel mounting must not refresh.
+  await controller.adapterPluginController.refresh();
   await tester.pumpWidget(
     MaterialApp(
       locale: locale,
