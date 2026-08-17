@@ -758,7 +758,8 @@ mod tests {
     #[test]
     fn unused_agent_probes_skip_other_app_containers_without_denying_them() {
         let roots = fixture_roots();
-        let cursor_support = PathBuf::from("/profile/Library/Application Support/Cursor");
+        let cursor_support =
+            PathBuf::from("/profile/Library/Application Support/Cursor/User/workspaceStorage");
         let kimi_logs = PathBuf::from("/profile/Library/Logs/Kimi");
         let pnpm = PathBuf::from("/profile/Library/pnpm");
         let claude = PathBuf::from("/profile/.claude");
