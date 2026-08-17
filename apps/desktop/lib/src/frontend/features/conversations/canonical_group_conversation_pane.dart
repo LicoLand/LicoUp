@@ -355,27 +355,60 @@ class _CanonicalGroupConversationPaneState
   }
 
   Future<void> _selectStrategy(String revisionDigest) async {
-    final conversationId = widget.controller.selectedConversationId;
-    if (conversationId.isEmpty || revisionDigest.isEmpty) return;
+    final controller = widget.controller;
+    final gateway = widget.flywheelGateway;
+    final conversation = controller.selectedConversation;
+    final conversationId = conversation?.id ?? '';
+    if (conversationId.isEmpty || revisionDigest.isEmpty || gateway == null) {
+      return;
+    }
+    final strategies = List<AdaptiveFlywheelDefinition>.unmodifiable(
+      _authorizedStrategies,
+    );
+    final agentLabels = <String, String>{
+      for (final target in widget.targets)
+        if (target.target.trim().isNotEmpty)
+          target.target: agentConversationTargetDisplayName(target),
+      for (final target in widget.targets)
+        if (target.id.trim().isNotEmpty)
+          target.id: agentConversationTargetDisplayName(target),
+      for (final membership in conversation!.activeAgentMemberships)
+        if (membership.principal.agentId.trim().isNotEmpty)
+          membership.principal.agentId:
+              membership.principal.displayName.trim().isEmpty
+              ? membership.principal.agentId
+              : membership.principal.displayName,
+    };
+
+    // The user's click is the durable state transition. Persist it before
+    // inspection and membership reconciliation so navigation cannot dispose
+    // the pane and cancel the selection before it reaches the Conversation.
+    final persisted = await controller.setSelectedStrategyRevision(
+      revisionDigest,
+    );
+    if (!persisted) return;
     try {
-      final projection = await _inspectStrategy(revisionDigest);
+      final projection = await _inspectStrategy(
+        revisionDigest,
+        gatewayOverride: gateway,
+        strategiesOverride: strategies,
+      );
       if (projection == null) return;
       for (final agentId in projection.agentIds) {
-        await widget.controller.ensureSelectedAgentMembership(
+        if (controller.selectedConversationId != conversationId ||
+            controller.selectedConversation?.strategyRevision.trim() !=
+                revisionDigest) {
+          return;
+        }
+        await controller.ensureSelectedAgentMembership(
           agentId: agentId,
-          displayName: _agentDisplayName(agentId),
+          displayName: agentLabels[agentId] ?? agentId,
         );
       }
       if (!mounted ||
-          widget.controller.selectedConversationId != conversationId) {
-        return;
-      }
-      final persisted = await widget.controller.setSelectedStrategyRevision(
-        revisionDigest,
-      );
-      if (!mounted ||
-          !persisted ||
-          widget.controller.selectedConversationId != conversationId) {
+          controller.selectedConversationId != conversationId ||
+          controller.selectedConversation?.strategyRevision.trim() !=
+              revisionDigest) {
         return;
       }
       _strategyProjectionConversationId = conversationId;
@@ -427,12 +460,15 @@ class _CanonicalGroupConversationPaneState
   }
 
   Future<_GroupStrategyProjection?> _inspectStrategy(
-    String revisionDigest,
-  ) async {
-    final gateway = widget.flywheelGateway;
+    String revisionDigest, {
+    AdaptiveFlywheelGateway? gatewayOverride,
+    List<AdaptiveFlywheelDefinition>? strategiesOverride,
+  }) async {
+    final gateway = gatewayOverride ?? widget.flywheelGateway;
     if (gateway == null) return null;
+    final strategies = strategiesOverride ?? _authorizedStrategies;
     AdaptiveFlywheelDefinition? selected;
-    for (final definition in _authorizedStrategies) {
+    for (final definition in strategies) {
       if (definition.revisionDigest == revisionDigest) {
         selected = definition;
         break;

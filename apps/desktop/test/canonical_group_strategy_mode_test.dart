@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
@@ -241,6 +242,80 @@ void main() {
       expect(gateway.startCount, 1);
     },
   );
+
+  testWidgets(
+    'persists a selected strategy when navigation disposes the pane immediately',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final inspectionBarrier = Completer<void>();
+      final conversationRunner = _GroupConversationRunner();
+      final gateway = _StrategyGateway(inspectionBarrier: inspectionBarrier);
+      final controller = ClientConversationController(
+        runner: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      final targets = [
+        _target('codex', 'Codex'),
+        _target('worker-a', 'Worker A'),
+      ];
+
+      Widget groupPane() => _groupApp(
+        CanonicalGroupConversationPane(
+          controller: controller,
+          targets: targets,
+          onCopyText: (_) async {},
+          framed: false,
+          flywheelGateway: gateway,
+        ),
+      );
+
+      await tester.pumpWidget(groupPane());
+      await tester.pumpAndSettle();
+
+      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(picker));
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('canonical-group-strategy-option-rev-auth')),
+      );
+
+      // This models selecting a strategy and immediately leaving the screen,
+      // before definition inspection or membership reconciliation completes.
+      await tester.pumpWidget(const SizedBox(key: Key('other-interface')));
+      await tester.pump();
+
+      expect(conversationRunner.strategyRevision, 'rev-auth');
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.strategy.set',
+            )
+            .length,
+        1,
+      );
+
+      inspectionBarrier.complete();
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(groupPane());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        findsOneWidget,
+      );
+      expect(conversationRunner.strategyRevision, 'rev-auth');
+    },
+  );
 }
 
 Widget _groupApp(Widget child) {
@@ -286,6 +361,9 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
 );
 
 final class _StrategyGateway implements AdaptiveFlywheelGateway {
+  _StrategyGateway({this.inspectionBarrier});
+
+  final Completer<void>? inspectionBarrier;
   final List<String> actions = [];
   int startCount = 0;
 
@@ -293,26 +371,9 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
   Future<Object?> execute(Map<String, dynamic> request) async {
     final action = (request['action'] ?? '').toString();
     actions.add(action);
-    return switch (action) {
-      'strategy.definition.list' => [
-        {
-          'definitionId': 'authorized',
-          'name': 'Authorized Graph',
-          'version': '1.0.0',
-          'revisionDigest': 'rev-auth',
-          'semanticsDigest': 'sem-auth',
-          'authorized': true,
-        },
-        {
-          'definitionId': 'pending',
-          'name': 'Pending Graph',
-          'version': '1.0.0',
-          'revisionDigest': 'rev-pending',
-          'semanticsDigest': 'sem-pending',
-          'authorized': false,
-        },
-      ],
-      'strategy.definition.inspect' => {
+    if (action == 'strategy.definition.inspect') {
+      await inspectionBarrier?.future;
+      return {
         'projection': {
           'status': 'pending',
           'currentStates': <String>[],
@@ -355,7 +416,27 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
           ],
           'transitions': <Map<String, dynamic>>[],
         },
-      },
+      };
+    }
+    return switch (action) {
+      'strategy.definition.list' => [
+        {
+          'definitionId': 'authorized',
+          'name': 'Authorized Graph',
+          'version': '1.0.0',
+          'revisionDigest': 'rev-auth',
+          'semanticsDigest': 'sem-auth',
+          'authorized': true,
+        },
+        {
+          'definitionId': 'pending',
+          'name': 'Pending Graph',
+          'version': '1.0.0',
+          'revisionDigest': 'rev-pending',
+          'semanticsDigest': 'sem-pending',
+          'authorized': false,
+        },
+      ],
       'strategy.run.active' => {'runId': startCount == 0 ? null : 'run-1'},
       'strategy.run.start' => () {
         startCount += 1;
