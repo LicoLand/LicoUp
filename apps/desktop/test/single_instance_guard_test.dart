@@ -70,5 +70,30 @@ void main() {
       );
       expect(other.path, isNot(first.path));
     });
+
+    test('lock path normalizes macos data volume homes', () {
+      String posix(List<String> parts) => '/${parts.join('/')}';
+      expect(
+        PortableDataRoot.stripMacosDataVolume(
+          posix([
+            'System',
+            'Volumes',
+            'Data',
+            'Users',
+            'fixture',
+            '.lico-up',
+            'client-state',
+            'client.instance.lock',
+          ]),
+        ),
+        posix([
+          'Users',
+          'fixture',
+          '.lico-up',
+          'client-state',
+          'client.instance.lock',
+        ]),
+      );
+    });
   });
 }

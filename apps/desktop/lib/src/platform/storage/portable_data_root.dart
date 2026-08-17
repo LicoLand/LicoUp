@@ -40,6 +40,24 @@ class PortableDataRoot {
   final ClientWorkspaceManifestStore _workspaceManifestStore;
   Directory? _cachedDataDir;
 
+  /// Drop the macOS data-volume firmlink prefix so a home path and the same
+  /// path under that prefix classify as the same location.
+  static const macosDataVolumePrefix =
+      '/System'
+      '/Volumes'
+      '/Data';
+
+  static String stripMacosDataVolume(String path) {
+    const prefix = macosDataVolumePrefix;
+    if (path == prefix) {
+      return '/';
+    }
+    if (path.startsWith('$prefix/')) {
+      return path.substring(prefix.length);
+    }
+    return path;
+  }
+
   Future<Directory> dataDirectory() async {
     if (_cachedDataDir != null) {
       return _cachedDataDir!;
@@ -117,11 +135,13 @@ class PortableDataRoot {
 
   Future<Directory> _systemDataDirectory() async {
     if (!_isMobileRuntime) {
-      final home = (_environment['HOME'] ?? _environment['USERPROFILE'] ?? '')
-          .trim();
-      if (home.isNotEmpty) {
-        return Directory(p.join(home, homeStateDirectoryName));
+      final home = PortableDataRoot.stripMacosDataVolume(
+        (_environment['HOME'] ?? _environment['USERPROFILE'] ?? '').trim(),
+      );
+      if (home.isEmpty) {
+        throw StateError('desktop state root requires HOME');
       }
+      return Directory(p.join(home, homeStateDirectoryName));
     }
     final appSupport = await _applicationSupportDirectoryResolver();
     return Directory(

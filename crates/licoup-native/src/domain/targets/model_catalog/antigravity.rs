@@ -23,21 +23,15 @@ pub(super) fn collect_antigravity_cli_model_catalog(
     params: &Value,
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
     diagnostics: &mut Vec<Value>,
+    replace: bool,
 ) -> bool {
     let source = "antigravity-cli:models";
-    if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
+    if !agent_cli_model_lookup_enabled(params)
         || param_bool(params, "disableAntigravityCliModelLookup").unwrap_or(false)
     {
         diagnostics.push(json!({
             "source": source,
             "status": "disabled",
-        }));
-        return false;
-    }
-    if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
-        diagnostics.push(json!({
-            "source": source,
-            "status": "disabled-in-tests",
         }));
         return false;
     }
@@ -61,8 +55,18 @@ pub(super) fn collect_antigravity_cli_model_catalog(
             MIN_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS,
             MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS,
         );
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({
+            "source": source,
+            "status": "execution-denied",
+        }));
+        return false;
+    }
     let mut command = Command::new(program);
     command.arg("models");
+    // This lookup runs only after the user selects Antigravity. Preserve the
+    // account environment used by `agy models`; clearing it can hide every
+    // entitled model while leaving only local settings fallbacks.
     let output = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),
@@ -107,7 +111,13 @@ pub(super) fn collect_antigravity_cli_model_catalog(
         }));
         return false;
     }
-    *entries = official_entries;
+    if replace {
+        *entries = official_entries;
+    } else {
+        for (key, entry) in official_entries {
+            entries.entry(key).or_insert(entry);
+        }
+    }
     true
 }
 
@@ -157,12 +167,82 @@ pub(super) fn collect_antigravity_available_models_param(
     }
 }
 
+pub(super) fn collect_antigravity_available_models_from_disk(
+    params: &Value,
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+    diagnostics: &mut Vec<Value>,
+) -> bool {
+    let before = entries.len();
+    for path in antigravity_available_models_paths(params) {
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(parsed) = serde_json::from_str::<Value>(&raw) else {
+            diagnostics.push(json!({
+                "source": "antigravity-local:available-models",
+                "status": "not-parseable",
+            }));
+            continue;
+        };
+        let document = if parsed.get("models").is_some() {
+            parsed
+        } else {
+            json!({ "models": parsed })
+        };
+        collect_antigravity_available_models_param(
+            &json!({
+                "antigravityAvailableModelsJson": document.to_string(),
+            }),
+            entries,
+            diagnostics,
+        );
+    }
+    entries.len() > before
+}
+
+fn antigravity_available_models_paths(params: &Value) -> Vec<PathBuf> {
+    let explicit = param_paths(
+        params,
+        &[
+            "antigravityAvailableModelsPath",
+            "antigravityAvailableModelsPaths",
+        ],
+    );
+    if !explicit.is_empty() {
+        return explicit.into_iter().filter(|path| path.is_file()).collect();
+    }
+    let Some(home) = home_dir_for_model_catalog(params) else {
+        return Vec::new();
+    };
+    let gemini = home.join(".gemini");
+    [
+        gemini.join("antigravity").join("available-models.json"),
+        gemini.join("antigravity-cli").join("available-models.json"),
+        gemini.join("antigravity-ide").join("available-models.json"),
+        gemini.join("antigravity").join("models.json"),
+        gemini.join("antigravity-cli").join("models.json"),
+        gemini.join("antigravity-ide").join("models.json"),
+    ]
+    .into_iter()
+    .filter(|path| path.is_file())
+    .collect()
+}
+
 pub(super) fn collect_model_catalog_from_cli_lines(
     raw: &str,
     source: &str,
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
 ) -> usize {
     let before = entries.len();
+    let trimmed = raw.trim();
+    if (trimmed.starts_with('{') || trimmed.starts_with('['))
+        && let Ok(value) = serde_json::from_str::<Value>(trimmed)
+    {
+        collect_model_catalog_entries_from_collection_value(&value, source, entries);
+        if entries.len() > before {
+            return entries.len() - before;
+        }
+    }
     for line in raw.lines() {
         let trimmed = line
             .trim()
@@ -171,11 +251,33 @@ pub(super) fn collect_model_catalog_from_cli_lines(
         if trimmed.is_empty()
             || trimmed.starts_with("Usage")
             || trimmed.starts_with("Available")
-            || trimmed.starts_with("Model")
+            || is_antigravity_cli_header_line(trimmed)
         {
             continue;
         }
-        add_model_catalog_entry(entries, trimmed, source, BTreeSet::new());
+        let selector = trimmed
+            .split_once(" - ")
+            .map(|(id, _)| id.trim())
+            .unwrap_or(trimmed);
+        add_model_catalog_entry(entries, selector, source, BTreeSet::new());
     }
     entries.len().saturating_sub(before)
+}
+
+fn is_antigravity_cli_header_line(trimmed: &str) -> bool {
+    let lower = trimmed.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "models" | "model" | "model id" | "model id name"
+    ) {
+        return true;
+    }
+    let tokens = lower.split_whitespace().collect::<Vec<_>>();
+    !tokens.is_empty()
+        && tokens.iter().all(|token| {
+            matches!(
+                *token,
+                "model" | "models" | "id" | "ids" | "name" | "names" | "display" | "provider"
+            )
+        })
 }

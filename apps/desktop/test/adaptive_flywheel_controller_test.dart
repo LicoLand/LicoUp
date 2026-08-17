@@ -9,16 +9,27 @@ import 'package:licoup/src/application/features/agents/contracts/adaptive_flywhe
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 void main() {
+  test('starts with an empty catalog until a package is imported', () async {
+    final runner = _StrategyRunner(definitions: const []);
+    final controller = AdaptiveFlywheelController(gateway: runner);
+
+    await controller.initialize();
+    expect(controller.definitions, isEmpty);
+    expect(controller.inspection, isNull);
+    expect(runner.actions, ['strategy.definition.list']);
+  });
+
   test('loads, binds, and authorizes an immutable Graph', () async {
     final runner = _StrategyRunner();
     final controller = AdaptiveFlywheelController(gateway: runner);
 
     await controller.initialize();
-    expect(controller.definitions.single.name, 'LicoUp Basic Strategy');
+    expect(controller.definitions.single.name, 'Synthetic Graph');
     expect(controller.inspection?.states.map((state) => state.id), [
       'authorize',
       'work',
@@ -26,15 +37,18 @@ void main() {
     ]);
 
     await controller.saveActorBindings({
-      for (final slot in const ['designer', 'worker', 'reviewer'])
-        slot: AdaptiveFlywheelBinding(
-          slotId: slot,
-          valueId: 'codex',
-          model: 'gpt-5',
-          reasoningEffort: 'high',
-        ),
+      for (final slot in const ['entry', 'worker-a'])
+        slot: [
+          AdaptiveFlywheelBinding(
+            slotId: slot,
+            valueId: 'codex',
+            model: 'gpt-5',
+            reasoningEffort: 'high',
+          ),
+        ],
     });
-    expect(runner.actions, contains('strategy.binding.update'));
+    expect(runner.actions, contains('strategy.binding.replace'));
+    expect(runner.actions, isNot(contains('strategy.binding.update')));
     expect(
       runner.actions,
       containsAll([
@@ -54,8 +68,8 @@ void main() {
 
       await controller.initialize();
       await controller.saveActorBindings({
-        for (final slot in const ['designer', 'worker', 'reviewer'])
-          slot: AdaptiveFlywheelBinding(slotId: slot, valueId: 'codex'),
+        for (final slot in const ['entry', 'worker-a'])
+          slot: [AdaptiveFlywheelBinding(slotId: slot, valueId: 'codex')],
       });
 
       expect(controller.inspection?.diagnosticCode, 'binding_incomplete');
@@ -115,9 +129,18 @@ void main() {
       find.byKey(const Key('adaptive-flywheel-import-package')),
       findsOneWidget,
     );
-    expect(find.text('设计师'), findsOneWidget);
-    expect(find.text('执行者'), findsOneWidget);
-    expect(find.text('审查官'), findsOneWidget);
+    final selector = tester.getRect(
+      find.byKey(const Key('adaptive-flywheel-definition')),
+    );
+    final import = tester.getRect(
+      find.byKey(const Key('adaptive-flywheel-import-package')),
+    );
+    expect(selector.left, lessThan(import.left));
+    expect(selector.height, kAdaptiveFlywheelToolbarControlHeight);
+    expect(import.height, kAdaptiveFlywheelToolbarControlHeight);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.text('Entry'), findsOneWidget);
+    expect(find.text('Worker A'), findsOneWidget);
     expect(find.text('Focused acceptance'), findsNothing);
     expect(find.text('Python runtime'), findsNothing);
     expect(find.textContaining('new'), findsNothing);
@@ -132,29 +155,199 @@ void main() {
     expect(find.byKey(const Key('workflow-node-authorize')), findsOneWidget);
     expect(find.byKey(const Key('workflow-node-work')), findsOneWidget);
     expect(find.byKey(const Key('workflow-node-complete')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('adaptive-flywheel-workflow-close')));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('adaptive-flywheel-designer-add')));
+    await tester.tap(find.byKey(const Key('adaptive-flywheel-workflow')));
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('adaptive-flywheel-designer-option-codex')),
+      find.byKey(const Key('adaptive-flywheel-workflow-diagram')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const Key('adaptive-flywheel-entry-add')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.byKey(const Key('adaptive-flywheel-entry-option-codex')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('adaptive-flywheel-designer-option-unadapted')),
+      find.byKey(const Key('adaptive-flywheel-entry-option-unadapted')),
       findsNothing,
     );
     expect(runner.actions, isNot(contains('strategy.runtime.discover')));
     expect(runner.actions, isNot(contains('strategy.run.start')));
   });
+
+  testWidgets('empty catalog asks the user to import a package first', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final runner = _StrategyRunner(definitions: const []);
+    final agentService = AgentService(
+      processIo: runner,
+      persistentStdioRpcEnabled: false,
+    );
+    final clientController = ClientController(agentService: agentService);
+    addTearDown(clientController.dispose);
+    addTearDown(agentService.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: const [Locale('en'), Locale('zh')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () =>
+                  showAdaptiveFlywheelDialog(context, clientController),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('adaptive-flywheel-empty-catalog')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('adaptive-flywheel-definition')), findsNothing);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.textContaining('Import a ZIP package first'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('adaptive-flywheel-empty-catalog')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MessagingGlassOptionCard), findsOneWidget);
+    expect(find.byType(MessagingGlassMenuItem), findsOneWidget);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+  });
+
+  testWidgets('glass strategy selector can open and choose a definition', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final runner = _StrategyRunner(
+      definitions: [
+        _StrategyRunner.summary,
+        {
+          'definitionId': 'imported-other',
+          'name': 'Imported Other',
+          'version': '2.0.0',
+          'revisionDigest': 'revision-b',
+          'semanticsDigest': 'semantics-b',
+        },
+      ],
+    );
+    final agentService = AgentService(
+      processIo: runner,
+      persistentStdioRpcEnabled: false,
+    );
+    final clientController = ClientController(agentService: agentService);
+    addTearDown(clientController.dispose);
+    addTearDown(agentService.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: const [Locale('en'), Locale('zh')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () =>
+                  showAdaptiveFlywheelDialog(context, clientController),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.text('Synthetic Graph · 1.0.0'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('adaptive-flywheel-definition')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.byType(MessagingGlassOptionCard), findsOneWidget);
+    expect(find.text('Imported Other · 2.0.0'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('adaptive-flywheel-option-revision-b')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MessagingGlassOptionCard), findsNothing);
+    expect(find.text('Imported Other · 2.0.0'), findsOneWidget);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+  });
+
+  test('falls back when the selected revision leaves the catalog', () async {
+    final runner = _StrategyRunner(
+      definitions: [
+        _StrategyRunner.summary,
+        {
+          'definitionId': 'imported-other',
+          'name': 'Imported Other',
+          'version': '2.0.0',
+          'revisionDigest': 'revision-b',
+          'semanticsDigest': 'semantics-b',
+        },
+      ],
+    );
+    final controller = AdaptiveFlywheelController(gateway: runner);
+
+    await controller.initialize();
+    expect(controller.selectedRevision, 'revision');
+
+    runner.definitions.removeAt(0);
+    await controller.refresh();
+    expect(controller.selectedRevision, 'revision-b');
+    expect(controller.error, isEmpty);
+
+    runner.definitions.clear();
+    await controller.refresh();
+    expect(controller.selectedRevision, isEmpty);
+    expect(controller.inspection, isNull);
+    expect(controller.error, isEmpty);
+  });
 }
 
 final class _StrategyRunner
     implements AgentCommandRunner, AdaptiveFlywheelGateway {
-  _StrategyRunner({this.includeRuntime = true});
+  _StrategyRunner({
+    this.includeRuntime = true,
+    List<Map<String, dynamic>>? definitions,
+  }) : definitions = List<Map<String, dynamic>>.from(
+         definitions ?? [_StrategyRunner.summary],
+       );
 
   final bool includeRuntime;
+  final List<Map<String, dynamic>> definitions;
   final List<String> actions = [];
   final Map<String, Map<String, dynamic>> bindings = {};
   bool authorized = false;
@@ -179,10 +372,11 @@ final class _StrategyRunner
     final request = jsonDecode(stdinText) as Map<String, dynamic>;
     final action = request['action'] as String;
     actions.add(action);
-    final result = switch (action) {
-      'strategy.definition.list' => [_summary],
+    final Object result = switch (action) {
+      'strategy.definition.list' => definitions,
       'strategy.definition.inspect' => _inspection(),
       'strategy.binding.update' => _bind(request),
+      'strategy.binding.replace' => _replace(request),
       'strategy.binding.remove' => _remove(request),
       'strategy.authorization.preview' => {
         'authorizationDigest': List.filled(64, 'a').join(),
@@ -193,16 +387,41 @@ final class _StrategyRunner
     return {'ok': true, 'result': result};
   }
 
+  List<Map<String, dynamic>> _replace(Map<String, dynamic> request) {
+    authorized = false;
+    final slotId = request['slotId'] as String;
+    final candidates = (request['candidates'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .toList(growable: false);
+    bindings.removeWhere((key, _) => key.startsWith('$slotId:'));
+    final stored = <Map<String, dynamic>>[];
+    for (var ordinal = 0; ordinal < candidates.length; ordinal += 1) {
+      final candidate = candidates[ordinal];
+      final binding = <String, dynamic>{
+        'slotId': slotId,
+        'ordinal': ordinal,
+        'valueId': candidate['valueId'],
+        'model': candidate['model'] ?? '',
+        'reasoningEffort': candidate['reasoningEffort'] ?? '',
+        'revision': 1,
+      };
+      bindings['$slotId:$ordinal'] = binding;
+      stored.add(binding);
+    }
+    return stored;
+  }
+
   Map<String, dynamic> _bind(Map<String, dynamic> request) {
     authorized = false;
     final binding = <String, dynamic>{
       'slotId': request['slotId'],
+      'ordinal': 0,
       'valueId': request['valueId'],
       'model': request['model'],
       'reasoningEffort': request['reasoningEffort'],
       'revision': 1,
     };
-    bindings[request['slotId'] as String] = binding;
+    bindings['${request['slotId']}:0'] = binding;
     return binding;
   }
 
@@ -220,13 +439,13 @@ final class _StrategyRunner
   Map<String, dynamic> _inspection() => {
     'projection': {
       'schema': 'licoup.adaptive-flywheel.state.v1',
-      'definition': _summary,
+      'definition': _StrategyRunner.summary,
       'status': authorized ? 'pending' : 'authorization-required',
       'currentStates': <String>[],
       'neighborStates': <String>[],
       'allowedOperations': [
         'strategy.definition.inspect',
-        'strategy.binding.update',
+        'strategy.binding.replace',
         'strategy.binding.remove',
         if (_allBindingsComplete && !authorized) 'strategy.authorization.grant',
       ],
@@ -246,16 +465,16 @@ final class _StrategyRunner
       'initial': 'authorize',
       'actorSlots': [
         {
-          'id': 'designer',
+          'id': 'entry',
           'kind': 'actor',
-          'label': 'Designer',
+          'label': 'Entry',
           'required': true,
+          'entry': true,
         },
-        {'id': 'worker', 'kind': 'actor', 'label': 'Worker', 'required': true},
         {
-          'id': 'reviewer',
+          'id': 'worker-a',
           'kind': 'actor',
-          'label': 'Reviewer',
+          'label': 'Worker A',
           'required': true,
         },
         {
@@ -277,14 +496,16 @@ final class _StrategyRunner
     },
   };
 
-  bool get _allActorsBound =>
-      const ['designer', 'worker', 'reviewer'].every(bindings.containsKey);
+  bool get _allActorsBound => const [
+    'entry',
+    'worker-a',
+  ].every((slot) => bindings.keys.any((key) => key.startsWith('$slot:')));
 
   bool get _allBindingsComplete => _allActorsBound && includeRuntime;
 
-  static const _summary = <String, dynamic>{
-    'definitionId': 'licoup-basic',
-    'name': 'LicoUp Basic Strategy',
+  static const summary = <String, dynamic>{
+    'definitionId': 'synthetic-entry-worker',
+    'name': 'Synthetic Graph',
     'version': '1.0.0',
     'revisionDigest': 'revision',
     'semanticsDigest': 'semantics',

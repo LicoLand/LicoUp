@@ -49,7 +49,6 @@ class MessagingContactList extends StatefulWidget {
     this.onSetGroupConversationPinned,
     this.onNewGroupConversation,
     this.onOpenWelcome,
-    this.onAdaptiveFlywheel,
     this.showConversationList = false,
     this.conversationListTargets = const [],
     this.selectedSessionId = '',
@@ -85,7 +84,6 @@ class MessagingContactList extends StatefulWidget {
   onSetGroupConversationPinned;
   final VoidCallback? onNewGroupConversation;
   final VoidCallback? onOpenWelcome;
-  final VoidCallback? onAdaptiveFlywheel;
   final bool showConversationList;
   final List<TargetCandidate> conversationListTargets;
   final String selectedSessionId;
@@ -386,13 +384,6 @@ class _MessagingContactListState extends State<MessagingContactList> {
           tooltip: strings.welcome,
           onPressed: widget.onOpenWelcome!,
           icon: Icons.home_outlined,
-        ),
-      if (widget.onAdaptiveFlywheel != null)
-        _MessagingContactActionButton(
-          key: const Key('messaging-adaptive-flywheel'),
-          tooltip: 'Adaptive Flywheel',
-          onPressed: widget.onAdaptiveFlywheel!,
-          icon: Icons.account_tree_outlined,
         ),
       _MessagingContactActionButton(
         key: _createMenuAnchorKey,

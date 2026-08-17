@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { updateSigningKeyEnvironment } from "./lib/update-signing-keychain.mjs";
 
@@ -21,6 +21,7 @@ function run(program, args, {
   capture = false,
   env = process.env,
   timeout = 2 * 60 * 60 * 1000,
+  allowFailure = false,
 } = {}) {
   const result = spawnSync(program, args, {
     cwd: repoRoot,
@@ -30,8 +31,23 @@ function run(program, args, {
     ...(timeout == null ? {} : { timeout }),
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (result.error || result.status !== 0) fail();
+  if (result.error) fail();
+  if (result.status !== 0) {
+    if (allowFailure) return String(result.stdout || "").trim();
+    fail();
+  }
   return String(result.stdout || "").trim();
+}
+
+export function assertPublishableReleaseRef({
+  sourceRevision,
+  releaseRevision,
+  symbolicRef,
+}) {
+  if (sourceRevision !== releaseRevision || !/^[a-f0-9]{40,64}$/u.test(sourceRevision)) {
+    fail();
+  }
+  if (symbolicRef === "nightly" || symbolicRef === "stable") fail();
 }
 
 function main() {
@@ -45,7 +61,11 @@ function main() {
   const releaseRevision = run("git", ["rev-parse", "refs/remotes/origin/release"], {
     capture: true,
   });
-  if (sourceRevision !== releaseRevision || !/^[a-f0-9]{40,64}$/u.test(sourceRevision)) fail();
+  const symbolicRef = run("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], {
+    capture: true,
+    allowFailure: true,
+  });
+  assertPublishableReleaseRef({ sourceRevision, releaseRevision, symbolicRef });
 
   run(process.execPath, ["tools/scripts/client-macos-release-tool.mjs", "beta"], {
     timeout: null,
@@ -103,13 +123,15 @@ function main() {
   })}\n`);
 }
 
-try {
-  main();
-} catch {
-  process.stderr.write(`${JSON.stringify({
-    ok: false,
-    code: "macos_release_publication_failed",
-    privateDataIncluded: false,
-  })}\n`);
-  process.exitCode = 1;
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    main();
+  } catch {
+    process.stderr.write(`${JSON.stringify({
+      ok: false,
+      code: "macos_release_publication_failed",
+      privateDataIncluded: false,
+    })}\n`);
+    process.exitCode = 1;
+  }
 }

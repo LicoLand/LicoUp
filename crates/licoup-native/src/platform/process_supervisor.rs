@@ -1,5 +1,8 @@
 use command_group::{CommandGroup, GroupChild};
+use std::env;
+use std::ffi::OsString;
 use std::io::{self, Read, Write};
+use std::path::PathBuf;
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::thread::{self, JoinHandle};
@@ -17,6 +20,70 @@ pub(crate) struct BoundedCommandOutput {
     pub(crate) stdout: Vec<u8>,
     pub(crate) timed_out: bool,
     pub(crate) truncated: bool,
+}
+
+/// Clear inherited process state before launching a third-party Agent binary.
+///
+/// A child that is not a user-approved app identity attributes TCC prompts to
+/// LicoUp. Dropping the inherited cwd and environment shrinks that blast
+/// radius; it does not replace skipping the spawn on unused-agent discovery.
+pub(crate) fn configure_untrusted_agent_command(command: &mut Command) {
+    let inherited = minimal_untrusted_agent_env();
+    command.env_clear();
+    for (key, value) in inherited {
+        command.env(key, value);
+    }
+    let workdir = untrusted_agent_workdir();
+    let _ = std::fs::create_dir_all(&workdir);
+    command.current_dir(workdir);
+    command.stdin(std::process::Stdio::null());
+}
+
+fn minimal_untrusted_agent_env() -> Vec<(OsString, OsString)> {
+    const KEYS: &[&str] = &[
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "WINDIR",
+        "ComSpec",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+    ];
+    let mut pairs = Vec::new();
+    for key in KEYS {
+        if let Some(value) = env::var_os(key).filter(|value| !value.is_empty()) {
+            pairs.push((OsString::from(*key), value));
+        }
+    }
+    if let Some(home) = crate::platform::paths::user_home_from_env() {
+        let home = crate::platform::paths::strip_macos_data_volume(&home);
+        let home_value = home.into_os_string();
+        pairs.push((OsString::from("HOME"), home_value.clone()));
+        if cfg!(windows) {
+            pairs.push((OsString::from("USERPROFILE"), home_value));
+        }
+    }
+    pairs.push((OsString::from("TERM"), OsString::from("dumb")));
+    pairs.push((OsString::from("NO_COLOR"), OsString::from("1")));
+    pairs
+}
+
+fn untrusted_agent_workdir() -> PathBuf {
+    env::temp_dir().join("licoup-agent-probe")
+}
+
+/// Bounded output for an untrusted Agent CLI: isolated env, pinned cwd, null stdin.
+pub(crate) fn run_bounded_untrusted_agent_output(
+    command: &mut Command,
+    timeout: Duration,
+    max_output: usize,
+) -> io::Result<BoundedCommandOutput> {
+    configure_untrusted_agent_command(command);
+    run_bounded_command_output(command, timeout, max_output)
 }
 
 /// Runs a batch command with a hard deadline, bounded captured output, and
@@ -525,5 +592,17 @@ mod tests {
         thread::sleep(Duration::from_millis(50));
         let status = child.terminate_tree().unwrap().unwrap();
         assert!(status.success());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn untrusted_agent_command_pins_cwd() {
+        let mut command = Command::new("pwd");
+        configure_untrusted_agent_command(&mut command);
+        command.stdout(Stdio::piped()).stderr(Stdio::null());
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        let cwd = String::from_utf8_lossy(&output.stdout);
+        assert!(cwd.contains("licoup-agent-probe"), "{cwd}");
     }
 }

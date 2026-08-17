@@ -60,7 +60,7 @@ impl NativeDeliveryRuntime {
             return Err(Self::admission_error(ConversationAdmissionFailure::Missing));
         }
         let parent = canonical.parent().unwrap_or(&canonical);
-        let home = directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+        let home = paths::user_home_from_env();
         if agent_workspace::is_unbounded_agent_workspace(parent, home.as_deref()) {
             return Err(Self::admission_error(
                 ConversationAdmissionFailure::Unbounded,
@@ -274,9 +274,7 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
             if !cwd.is_dir()
                 || agent_workspace::is_unbounded_agent_workspace(
                     &cwd,
-                    directories::UserDirs::new()
-                        .map(|dirs| dirs.home_dir().to_path_buf())
-                        .as_deref(),
+                    paths::user_home_from_env().as_deref(),
                 )
             {
                 return Err(Self::admission_error(
@@ -312,9 +310,7 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
         if !cwd.is_dir()
             || agent_workspace::is_unbounded_agent_workspace(
                 &cwd,
-                directories::UserDirs::new()
-                    .map(|dirs| dirs.home_dir().to_path_buf())
-                    .as_deref(),
+                paths::user_home_from_env().as_deref(),
             )
         {
             return Err(Self::admission_error(

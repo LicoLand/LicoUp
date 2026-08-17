@@ -57,6 +57,15 @@ targets are reported but are not deleted automatically. After an abnormal test
 exit, a structurally valid dead lease remains protected for a grace period and
 only then becomes reclaimable; malformed or tampered records always fail closed.
 
+## Platform permissions
+
+Request an OS privacy permission only when the current user action needs that
+resource. Automatic Agent discovery probes only the Agent Scan Path Manifest
+and must not walk PATH, Desktop, Documents, Downloads, Pictures, Music, the
+photo library, the media library, network volumes, or unused Agent stores. A
+usage string, entitlement, or plugin that the current action does not use must
+not ship.
+
 When every locked dependency is already cached, the dependency audit has a
 separate offline form: `npm run client:deps:audit:offline`. It does not cause
 unaffected language or platform lanes to run.
@@ -149,54 +158,56 @@ Before a release, review every official HTTPS source, refresh the date, and
 remove rows that are no longer served. Never retain a generated or compatibility
 cost source beside the current catalog.
 
-## Parallel next-version work during a release freeze
+## Cut a version onto `release`; keep `nightly` open
 
-LicoUp uses one release train. The release window starts when a candidate is
-cut from the latest verified `nightly`. It ends only after the release passes
-the final public download, source and digest verification, public-path install,
-stable launch, and published-update checks described below, or after the
-candidate is explicitly invalidated and the release is abandoned.
+LicoUp uses one release train. `nightly` is the always-open integration line.
+Ordinary action-prefixed feature and fix pull requests continue to merge into
+`nightly` during an in-flight publication.
 
 The project must complete 100 distinct releases before promoting any build to
 the `1.0.0` line. Every pre-1.0 release keeps its own immutable version,
 candidate evidence, and artifact receipts; skipped or replaced candidates do
 not count as releases.
 
-Work for the next version may continue during this window, but it must remain
-isolated:
+Cutting a version: when a maintainer authorizes a cut, promote verified
+`nightly` → `stable` → `release` once. That snapshot is now `origin/release`.
+A later `nightly` tip is a later cut, not the in-flight version. Do not run
+`nightly` → `stable` or `stable` → `release` again until the current
+publication succeeds or is explicitly abandoned.
 
-- Keep the frozen candidate and next-version branch in separate Git worktrees.
-  Never use the candidate worktree, build output, or preflight receipt for
-  next-version development.
-- Use an ordinary action-prefixed branch such as `feature/<topic>` or
-  `fix/<topic>`. The branch may build and test the next version, but it has no
-  authority to prepare, promote, or publish the frozen release.
-- Freeze ordinary merges into `nightly`. Only the candidate promotion may
-  enter it. If a release blocker is found, invalidate the candidate first,
-  merge one approved focused fix through an ordinary pull request, and cut a
-  replacement candidate.
-- Do not merge next-version or unrelated work into `nightly`, `stable`, or
-  `release` until the window closes. After verified success or explicit
-  abandonment, unfreeze `nightly` and merge the next-version branch through a
-  normal merge-commit pull request.
+Publishing: use a clean detached worktree at the exact `origin/release`
+revision. Run `npm run client:release:macos:publish`. Public publication is
+only from `origin/release`. Never publish from `nightly` or `stable`.
 
-This keeps, for example, `0.1.1` development from changing a frozen `0.1.0`
-release. It does not create two simultaneous `stable` or `release` lanes.
+During publish and notarization:
+
+- Keep `nightly` open for ordinary merge-commit pull requests.
+- Freeze `stable` and `release`. Do not promote onto them until this version
+  is published or abandoned.
+- Keep the frozen `origin/release` publication worktree separate from
+  `nightly` feature worktrees. Never reuse publication output or receipts for
+  next-version work.
+- An in-flight cut is the current `origin/release` tip. Do not pull later
+  `nightly` commits into it.
+
+This keeps, for example, `0.1.1` development on `nightly` from changing a
+frozen `0.1.0` or an in-flight `0.1.1` on `release`. It does not create two
+simultaneous `stable` or `release` lanes.
 
 ## Pull request checklist
 
 Finish product changes, refactors, migrations, release tooling, workflows,
 Rulesets, identity policy, and Auditor policy through separate ordinary pull
-requests before starting a release. A release candidate must start from the
-latest verified `nightly` and contain only the version, build, target, and
-release-manifest changes produced by the canonical release command. Never copy
-an entire working tree into a candidate or carry a known gate failure,
-unfinished migration, stale verifier, or unexpected path. Review the complete
-`origin/nightly...HEAD` diff before running preflight.
+requests. Product work lands on `nightly` continuously. The cut is promotion
+onto `release`. Publication is from the exact `origin/release` revision.
 
-Use a clean committed branch named
-`release-candidate/v<version>-<target>` and run the one local preflight on the
-target's real platform:
+Candidate verification before a cut still uses a clean committed branch named
+`release-candidate/v<version>-<target>` from the latest verified `nightly`.
+Its diff may contain only the version, build, target, and release-manifest
+changes produced by the canonical release command. Never copy an entire
+working tree into a candidate or carry a known gate failure, unfinished
+migration, stale verifier, or unexpected path. Review the complete
+`origin/nightly...HEAD` diff before running preflight.
 
 ```bash
 npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target
@@ -208,20 +219,25 @@ pre-push hook only checks that receipt. It does not repeat the expensive work.
 Keep the candidate branch local until this receipt passes for every selected
 package target. Only then may the exact verified commit be pushed or used to
 open a remote release-candidate pull request; remote branches are never a
-packaging or signing debug loop.
+packaging or signing debug loop. This preflight is packaging verification
+before the cut, not publication. After the cut, publish from `origin/release`
+and keep `nightly` open.
 Preflight is final acceptance, not a development loop. If it finds a defect
 outside the release-only diff, invalidate the candidate. Fix the canonical
-owner through an ordinary pull request, merge it to `nightly`, and cut a new
-candidate; do not patch product code, a verifier, a workflow, or a Ruleset on
-the failed candidate.
+owner through an ordinary pull request, merge it to `nightly`, and verify a
+new candidate before any later authorized cut; do not patch product code, a
+verifier, a workflow, or a Ruleset on the failed candidate, and do not promote
+later `nightly` commits into an already cut `origin/release`.
 
-Opening the candidate pull request freezes its HEAD, required checks, Rulesets,
-branch topology, identity authorities, Auditor policy, workflow contract, and
-asset contract. Do not open or update it when the receipt is missing or stale.
-The exact required checks are `Branch flow`, `Commit identity`, `Client
-required`, and `Auditor`. The first unexplained remote failure freezes the
-release; no repair pull request, repeated publication, or frozen-authority
-change is allowed inside that release window.
+Opening the candidate pull request freezes that candidate HEAD, required
+checks, Rulesets, branch topology, identity authorities, Auditor policy,
+workflow contract, and asset contract. Do not open or update it when the
+receipt is missing or stale. The exact required checks are `Branch flow`,
+`Commit identity`, `Client required`, and `Auditor`. The first unexplained
+remote failure freezes further promotion onto `stable` and `release`; ordinary
+merges into `nightly` continue. No repair pull request that recuts the
+in-flight version, repeated publication, or frozen-authority change is allowed
+inside that release window.
 
 A remote build, promotion merge, successful workflow, or draft is not release
 success. Success requires downloading the final public assets, verifying their
