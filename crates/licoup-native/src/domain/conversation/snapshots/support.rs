@@ -190,30 +190,7 @@ pub(super) fn home_dir_from_env<F>(var: F) -> PathBuf
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    if let Some(path) = env_path_from(&var, "HOME") {
-        return path;
-    }
-    if let Some(path) = env_path_from(&var, "USERPROFILE") {
-        return path;
-    }
-    if let (Some(mut drive), Some(path)) = (var("HOMEDRIVE"), var("HOMEPATH")) {
-        if !drive.is_empty() && !path.is_empty() {
-            drive.push(path);
-            return PathBuf::from(drive);
-        }
-    }
-    directories::UserDirs::new()
-        .map(|dirs| dirs.home_dir().to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-pub(super) fn env_path_from<F>(var: &F, name: &str) -> Option<PathBuf>
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    var(name)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
+    crate::platform::paths::env_home_from(var).unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub(super) fn hash_parts(parts: &[&str]) -> String {

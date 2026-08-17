@@ -61,6 +61,8 @@ pub struct Conversation {
     pub archived: bool,
     pub pinned: bool,
     pub is_group: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy_revision: Option<String>,
     pub revision: i64,
     pub created_at_unix_ms: i64,
     pub updated_at_unix_ms: i64,

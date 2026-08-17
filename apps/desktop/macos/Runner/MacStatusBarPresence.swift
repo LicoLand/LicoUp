@@ -17,6 +17,14 @@ enum MacStatusBarPresencePolicy {
     arguments.contains("--silent-start")
   }
 
+  /// Another live process of this bundle should own the session.
+  static func existingInstancePid(
+    currentPid: pid_t,
+    otherInstancePids: [pid_t]
+  ) -> pid_t? {
+    otherInstancePids.first { $0 != currentPid }
+  }
+
   static let statusItemImageName = "MenuBarIcon"
   static let statusItemImagePointSize: CGFloat = 18
   static let statusItemImageIsTemplate = false
@@ -64,6 +72,28 @@ enum MacStatusBarPresencePolicy {
 /// separate action (status-item menu or Cmd+Q while the app is frontmost).
 final class MacStatusBarPresence: NSObject {
   static let shared = MacStatusBarPresence()
+
+  /// Activate the already-running client and report that this process should
+  /// exit before Flutter bootstrap (target scans, Agent CLI probes).
+  static func yieldToExistingInstanceIfNeeded() -> Bool {
+    guard let bundleId = Bundle.main.bundleIdentifier, !bundleId.isEmpty else {
+      return false
+    }
+    let currentPid = ProcessInfo.processInfo.processIdentifier
+    let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+      .map { $0.processIdentifier }
+    guard let pid = MacStatusBarPresencePolicy.existingInstancePid(
+      currentPid: currentPid,
+      otherInstancePids: others
+    ) else {
+      return false
+    }
+    if let existing = NSRunningApplication(processIdentifier: pid) {
+      existing.unhide()
+      existing.activate(options: [.activateIgnoringOtherApps])
+    }
+    return true
+  }
 
   private(set) var isHiddenToStatusBar = false
   private(set) var isTerminating = false

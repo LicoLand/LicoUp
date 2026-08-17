@@ -86,31 +86,31 @@
       "models": [
         {
           "name": "gpt-5.6-sol",
-          "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+          "reasoningEfforts": [],
           "source": "https://forum.cursor.com/t/155648 (staff: High and Extra High are GPT-5.4 reasoning effort levels; selector Low/Medium/High/Extra High)"
         },
         {
           "name": "gpt-5.6-terra",
-          "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+          "reasoningEfforts": [],
           "source": "https://forum.cursor.com/t/155648"
         },
         {
           "name": "gpt-5.6-luna",
-          "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+          "reasoningEfforts": [],
           "source": "https://forum.cursor.com/t/155648"
         },
         {
           "name": "gpt-5.5",
-          "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+          "reasoningEfforts": [],
           "source": "https://forum.cursor.com/t/155648"
         },
         {
           "name": "gpt-5.4",
-          "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+          "reasoningEfforts": [],
           "source": "https://forum.cursor.com/t/155648"
         }
       ],
-      "notes": "Cursor publishes no per-model effort matrix (runtime discovery via Cursor.models.list); rows are limited to the GPT family with official-forum evidence. Claude/Gemini models under Cursor pass through scanned data."
+      "notes": "Cursor Agent CLI fuses thinking intensity and context into the model selector (for example Fable 5 1M Medium). The picker has no independent reasoning-effort column."
     },
     "copilot": {
       "models": [

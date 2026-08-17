@@ -120,3 +120,161 @@ fn scan_merge_projects_automatic_vm_as_transient_send_ready_route() {
     );
     assert!(!candidate.detail.contains("test-machine"));
 }
+
+#[cfg(unix)]
+#[test]
+fn cursor_selected_catalog_uses_discovered_binary() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temp_test_dir("scan-merge-cursor-cli");
+    let executable = root.join("cursor-agent");
+    fs::write(
+        &executable,
+        r#"#!/bin/sh
+printf 'Available models\n\nauto - Auto (default)\ncomposer-2.5 - Composer 2.5\n'
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let manual = ManualTarget {
+        target: "cursor".to_string(),
+        label: "Cursor".to_string(),
+        kind: "cli".to_string(),
+        config_path: None,
+        binary_path: Some(executable.clone()),
+        history_roots: Vec::new(),
+        location: "local".to_string(),
+        runtime_connection: None,
+    };
+    let params = json!({
+        "homeDir": display_path(root.clone()),
+        "runningProcessNames": [],
+        "includeHistoryModelCatalog": false,
+        "enableAgentCliModelLookup": true,
+    });
+    let mut context = ScanContext::from_params(&params);
+    let candidate = scan_target_with_manual(
+        &target_def("cursor").unwrap(),
+        Some(&manual),
+        None,
+        &mut context,
+        &params,
+    )
+    .unwrap();
+
+    let sources = candidate.model_catalog.as_ref().unwrap()["sources"]
+        .as_array()
+        .unwrap();
+    assert!(sources.contains(&json!("cursor-cli")));
+    let names = candidate.model_catalog.as_ref().unwrap()["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|model| model["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"auto"));
+    assert!(names.contains(&"composer-2.5"));
+}
+
+#[cfg(unix)]
+#[test]
+fn cursor_unused_scan_does_not_run_cli_models() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temp_test_dir("scan-merge-cursor-unused");
+    let executable = root.join("cursor-agent");
+    fs::write(
+        &executable,
+        r#"#!/bin/sh
+printf 'Available models\n\nauto - Auto (default)\n'
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let manual = ManualTarget {
+        target: "cursor".to_string(),
+        label: "Cursor".to_string(),
+        kind: "cli".to_string(),
+        config_path: None,
+        binary_path: Some(executable.clone()),
+        history_roots: Vec::new(),
+        location: "local".to_string(),
+        runtime_connection: None,
+    };
+    let params = json!({
+        "homeDir": display_path(root.clone()),
+        "runningProcessNames": [],
+        "includeHistoryModelCatalog": false,
+    });
+    let mut context = ScanContext::from_params(&params);
+    let candidate = scan_target_with_manual(
+        &target_def("cursor").unwrap(),
+        Some(&manual),
+        None,
+        &mut context,
+        &params,
+    )
+    .unwrap();
+
+    let sources = candidate.model_catalog.as_ref().unwrap()["sources"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(!sources.contains(&json!("cursor-cli")));
+}
+
+#[cfg(unix)]
+#[test]
+fn kilo_selected_catalog_uses_bound_extension_or_manual_binary() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temp_test_dir("scan-merge-kilo-cli");
+    let executable = root.join("kilo");
+    fs::write(
+        &executable,
+        r#"#!/bin/sh
+printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\n'
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let manual = ManualTarget {
+        target: "kilo-code".to_string(),
+        label: "Kilo Code".to_string(),
+        kind: "cli".to_string(),
+        config_path: None,
+        binary_path: Some(executable),
+        history_roots: Vec::new(),
+        location: "local".to_string(),
+        runtime_connection: None,
+    };
+    let params = json!({
+        "homeDir": display_path(root),
+        "runningProcessNames": [],
+        "includeHistoryModelCatalog": false,
+        "enableAgentCliModelLookup": true,
+    });
+    let mut context = ScanContext::from_params(&params);
+    let candidate = scan_target_with_manual(
+        &target_def("kilo-code").unwrap(),
+        Some(&manual),
+        None,
+        &mut context,
+        &params,
+    )
+    .unwrap();
+
+    let catalog = candidate.model_catalog.as_ref().unwrap();
+    assert_eq!(catalog["sources"], json!(["kilo-cli"]));
+    let names = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|model| model["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"kilo/kilo-auto/free"));
+    assert!(names.contains(&"anthropic/claude-opus-4-6"));
+}

@@ -41,7 +41,8 @@ fn resolve_codex_home(params: &Value) -> Option<PathBuf> {
             return Some(PathBuf::from(trimmed));
         }
     }
-    directories::BaseDirs::new().map(|dirs| dirs.home_dir().join(".codex"))
+    crate::platform::paths::user_home_from_env()
+        .map(|home| crate::platform::paths::strip_macos_data_volume(&home).join(".codex"))
 }
 
 pub(super) fn expand_user_path(value: &str) -> PathBuf {
@@ -59,8 +60,8 @@ pub(super) fn expand_user_path(value: &str) -> PathBuf {
 }
 
 fn default_home_dir() -> PathBuf {
-    directories::BaseDirs::new()
-        .map(|dirs| dirs.home_dir().to_path_buf())
+    crate::platform::paths::user_home_from_env()
+        .map(|home| crate::platform::paths::strip_macos_data_volume(&home))
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
