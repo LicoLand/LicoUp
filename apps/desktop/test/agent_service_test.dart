@@ -291,7 +291,7 @@ exec sleep 5
             .having(
               (e) => e.toString(),
               'message',
-              contains('licoup command could not be completed'),
+              contains('licoup command failed'),
             )
             .having(
               (e) => e.toString(),
