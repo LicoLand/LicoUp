@@ -476,7 +476,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:secure-mesh-e2ee-evidence:diagnostic",
     "client:verify:secure-mesh-e2ee-evidence",
     "client:verify:product-line-security",
-    "client:verify:github-release",
     "client:verify:client-release-acceptance:self-test",
   ]) {
     requireValue(
@@ -488,9 +487,9 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     packageScripts["client:verify:secure-mesh-e2ee-evidence:diagnostic"],
     "cross-product diagnostic must remain explicitly callable",
   );
-  requireValue(packageScripts["client:verify:github-release"]?.includes(
-    "client-github-release-acceptance.mjs",
-  ), "explicit GitHub release must run the artifact-only GitHub reducer");
+  requireValue(packageScripts["client:release:macos"]?.includes(
+    "apple-release release start",
+  ), "macOS publication must be delegated to Apple Release");
   requireValue(packageScripts["client:verify:product-line-security"]?.includes(
     "client-release-acceptance.mjs",
   ), "product-line security must retain the full client evidence reducer");
@@ -499,8 +498,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
     "client:verify:android-apk-zip-facts:self-test",
-    "client:verify:android-release-toolchain:self-test",
-    "client:verify:macos-distribution:self-test",
     "client:verify:review-signoff:self-test",
     "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
