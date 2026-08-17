@@ -1,5 +1,17 @@
 import 'package:licoup/src/contracts/target_candidate.dart';
 
+final class AgentOrchestrationModelGroup {
+  const AgentOrchestrationModelGroup({
+    required this.providerId,
+    required this.providerLabel,
+    required this.models,
+  });
+
+  final String providerId;
+  final String providerLabel;
+  final List<String> models;
+}
+
 List<TargetCandidate> agentOrchestrationCommanderTargets(
   Iterable<TargetCandidate> targets,
 ) {
@@ -20,6 +32,57 @@ List<String> agentOrchestrationCommanderModels(TargetCandidate target) {
   return catalogModels.isNotEmpty
       ? catalogModels
       : _dedupe(_modelNamesFromMap(target.adapterCapabilities));
+}
+
+List<AgentOrchestrationModelGroup> agentOrchestrationCommanderModelGroups(
+  TargetCandidate target,
+) {
+  final models = agentOrchestrationCommanderModels(target);
+  if (models.isEmpty) return const [];
+
+  final catalogEntryByModel = <String, Map<String, dynamic>>{};
+  for (final entry in _modelCatalogEntries(target.modelCatalog)) {
+    for (final modelName in _modelNamesFromValue(entry)) {
+      catalogEntryByModel.putIfAbsent(modelName, () => entry);
+    }
+  }
+
+  final groups = <String, _MutableModelGroup>{};
+  for (final model in models) {
+    final entry = catalogEntryByModel[model];
+    final providerId = _firstString(entry, const [
+      'providerId',
+      'providerID',
+      'provider_id',
+    ]);
+    final providerLabel = _firstString(entry, const [
+      'provider',
+      'providerName',
+      'provider_name',
+      'providerLabel',
+      'provider_label',
+    ]);
+    final visibleLabel = providerLabel.isNotEmpty ? providerLabel : providerId;
+    final groupId = (providerId.isNotEmpty ? providerId : visibleLabel)
+        .toLowerCase();
+    final group = groups.putIfAbsent(
+      groupId,
+      () => _MutableModelGroup(
+        providerId: providerId,
+        providerLabel: visibleLabel,
+      ),
+    );
+    group.models.add(model);
+  }
+
+  return List.unmodifiable([
+    for (final group in groups.values)
+      AgentOrchestrationModelGroup(
+        providerId: group.providerId,
+        providerLabel: group.providerLabel,
+        models: List.unmodifiable(group.models),
+      ),
+  ]);
 }
 
 String agentOrchestrationModelDisplayName(
@@ -277,4 +340,21 @@ List<String> _dedupe(Iterable<String> ids) {
     if (normalized.isNotEmpty && seen.add(normalized)) result.add(normalized);
   }
   return result;
+}
+
+String _firstString(Map<String, dynamic>? source, List<String> keys) {
+  if (source == null) return '';
+  for (final key in keys) {
+    final value = source[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+final class _MutableModelGroup {
+  _MutableModelGroup({required this.providerId, required this.providerLabel});
+
+  final String providerId;
+  final String providerLabel;
+  final models = <String>[];
 }
