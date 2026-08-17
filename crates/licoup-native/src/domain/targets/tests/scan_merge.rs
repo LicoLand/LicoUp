@@ -1,8 +1,9 @@
 use super::super::catalog::target_def;
 use super::super::manual::ManualTarget;
 use super::super::processes::ScanContext;
-use super::super::scan_merge::scan_automatic_virtual_machine_target;
-use super::super::scan_merge::scan_target_with_manual;
+use super::super::scan_merge::{
+    model_catalog_params, scan_automatic_virtual_machine_target, scan_target_with_manual,
+};
 use super::super::support::display_path;
 use super::super::virtual_machine_discovery::AutomaticVmTarget;
 use super::test_support::temp_test_dir;
@@ -13,6 +14,7 @@ use serde_json::json;
 fn scan_merge_preserves_manual_projection_and_local_model_fixture() {
     let root = temp_test_dir("scan-merge-manual");
     let config_path = root.join("manual-config.json");
+    std::fs::write(&config_path, "{}").unwrap();
     let history_root = root.join("history");
     let manual = ManualTarget {
         target: "opencode".to_string(),
@@ -47,6 +49,7 @@ fn scan_merge_preserves_manual_projection_and_local_model_fixture() {
     .unwrap();
 
     assert!(candidate.manual);
+    assert!(candidate.configured);
     assert_eq!(candidate.label, "Manual OpenCode");
     assert_eq!(
         candidate.config_path.as_deref(),
@@ -61,6 +64,22 @@ fn scan_merge_preserves_manual_projection_and_local_model_fixture() {
         candidate.model_catalog.as_ref().unwrap()["models"][0]["name"],
         "GPT-5.5"
     );
+}
+
+#[test]
+fn selected_catalog_reuses_every_manually_bound_cli() {
+    let binary = std::path::Path::new("/synthetic/agent-cli");
+    for (target, parameter) in [
+        ("antigravity", "antigravityCliPath"),
+        ("claude-code", "claudeCliPath"),
+        ("cursor", "cursorCliPath"),
+        ("kilo-code", "kiloCliPath"),
+        ("opencode", "opencodeCliPath"),
+        ("pi", "piCliPath"),
+    ] {
+        let params = model_catalog_params(target, Some(binary), &json!({}));
+        assert_eq!(params[parameter], json!(display_path(binary.to_path_buf())));
+    }
 }
 
 #[test]

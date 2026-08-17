@@ -31,6 +31,7 @@ pub(crate) enum HistoryAdapter {
 pub(crate) struct HistoryRoot {
     pub(crate) path: PathBuf,
     pub(crate) source_kind: String,
+    pub(crate) explicitly_selected: bool,
 }
 
 impl HistoryAdapter {
@@ -259,6 +260,7 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             source_kind: text_param(params, &["historyRootKind", "rootKind"])
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| "override-root".to_string()),
+            explicitly_selected: true,
         }];
     }
     if adapter == HistoryAdapter::LicoAgent {
@@ -268,12 +270,16 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     let home = home_override.clone().unwrap_or_else(home_dir);
-    let host = crate::domain::targets::scan_paths::HostRoots::from_home(&home);
+    let host = home_override
+        .as_ref()
+        .map(|_| crate::domain::targets::scan_paths::HostRoots::from_home(&home))
+        .unwrap_or_else(crate::domain::targets::scan_paths::HostRoots::from_environment);
     let mut roots = crate::domain::targets::scan_paths::history_roots(adapter.id(), &host)
         .into_iter()
         .map(|root| HistoryRoot {
             path: root.path,
             source_kind: root.kind,
+            explicitly_selected: false,
         })
         .collect::<Vec<_>>();
     let allow_environment = home_override.is_none();
@@ -310,8 +316,16 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
 }
 
 fn lico_agent_history_roots(params: &Value) -> Vec<HistoryRoot> {
+    let explicitly_selected = text_param(params, &["licoAgentSessionDir", "licoAgentSessionsDir"])
+        .is_some_and(|value| !value.trim().is_empty());
     lico_agent_session_dir(params)
-        .map(|dir| roots(&[(dir, "lico-agent-session-store")]))
+        .map(|dir| {
+            vec![HistoryRoot {
+                path: dir,
+                source_kind: "lico-agent-session-store".to_string(),
+                explicitly_selected,
+            }]
+        })
         .unwrap_or_default()
 }
 
@@ -358,16 +372,6 @@ fn pi_history_session_dir(params: &Value, home: &Path, allow_environment: bool) 
     configured
         .map(|value| expand_home_from(&value, || home.to_path_buf()))
         .unwrap_or_else(|| home.join(".pi/agent/sessions"))
-}
-
-fn roots(items: &[(PathBuf, &'static str)]) -> Vec<HistoryRoot> {
-    items
-        .iter()
-        .map(|(path, source_kind)| HistoryRoot {
-            path: path.clone(),
-            source_kind: source_kind.to_string(),
-        })
-        .collect()
 }
 
 fn looks_like_history_text(raw: &str) -> bool {

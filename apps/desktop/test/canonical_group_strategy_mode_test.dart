@@ -26,8 +26,9 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.view.resetPhysicalSize);
 
-      final conversationRunner = _GroupConversationRunner();
-      final gateway = _StrategyGateway();
+      final callOrder = <String>[];
+      final conversationRunner = _GroupConversationRunner(callOrder: callOrder);
+      final gateway = _StrategyGateway(callOrder: callOrder);
       final openedRevisions = <String?>[];
       final controller = ClientConversationController(
         runner: conversationRunner,
@@ -205,11 +206,41 @@ void main() {
 
       expect(gateway.actions, contains('strategy.run.start'));
       expect(gateway.startCount, 1);
+      expect(
+        callOrder.indexOf('conversation:conversation.message.post'),
+        lessThan(callOrder.indexOf('flywheel:strategy.run.start')),
+      );
       final post = conversationRunner.requests.lastWhere(
         (request) => request['action'] == 'conversation.message.post',
       );
       expect(post['content'], 'start the graph');
       expect(post['mentionedMembershipIds'], isEmpty);
+
+      callOrder.clear();
+      gateway.needsHumanInput = true;
+      await tester.enterText(find.byType(TextField), 'continue the graph');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        callOrder,
+        containsAllInOrder([
+          'flywheel:strategy.run.active',
+          'flywheel:strategy.run.cancel',
+          'conversation:conversation.message.post',
+          'flywheel:strategy.run.start',
+        ]),
+      );
+      final continuation = conversationRunner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      );
+      expect(continuation['mentionedMembershipIds'], isEmpty);
+      expect(gateway.startCount, 2);
+      final cancelsBeforeClearingStrategy = gateway.actions
+          .where((action) => action == 'strategy.run.cancel')
+          .length;
 
       await tester.tap(
         find.byKey(const Key('canonical-group-strategy-entry-clear')),
@@ -217,7 +248,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(openedRevisions, ['rev-auth', 'rev-auth', 'rev-auth']);
-      expect(gateway.actions, isNot(contains('strategy.run.cancel')));
+      expect(
+        gateway.actions
+            .where((action) => action == 'strategy.run.cancel')
+            .length,
+        cancelsBeforeClearingStrategy,
+      );
       expect(find.text('Optional strategy'), findsOneWidget);
       expect(
         find.byKey(const Key('canonical-group-strategy-entry-capsule')),
@@ -239,7 +275,7 @@ void main() {
         find.byKey(const Key('agent-conversation-composer-send')),
       );
       await tester.pumpAndSettle();
-      expect(gateway.startCount, 1);
+      expect(gateway.startCount, 2);
     },
   );
 
@@ -361,16 +397,19 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
 );
 
 final class _StrategyGateway implements AdaptiveFlywheelGateway {
-  _StrategyGateway({this.inspectionBarrier});
+  _StrategyGateway({this.inspectionBarrier, this.callOrder});
 
   final Completer<void>? inspectionBarrier;
+  final List<String>? callOrder;
   final List<String> actions = [];
   int startCount = 0;
+  bool needsHumanInput = false;
 
   @override
   Future<Object?> execute(Map<String, dynamic> request) async {
     final action = (request['action'] ?? '').toString();
     actions.add(action);
+    callOrder?.add('flywheel:$action');
     if (action == 'strategy.definition.inspect') {
       await inspectionBarrier?.future;
       return {
@@ -437,9 +476,14 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
           'authorized': false,
         },
       ],
-      'strategy.run.active' => {'runId': startCount == 0 ? null : 'run-1'},
+      'strategy.run.active' => {
+        'runId': startCount == 0 ? null : 'run-1',
+        'needsHumanInput': needsHumanInput,
+      },
+      'strategy.run.cancel' => {'runId': 'run-1', 'status': 'cancelled'},
       'strategy.run.start' => () {
         startCount += 1;
+        needsHumanInput = false;
         return {'runId': 'run-1', 'needsHumanInput': false};
       }(),
       _ => throw StateError('unexpected action $action'),
@@ -448,6 +492,9 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
 }
 
 final class _GroupConversationRunner implements AgentCommandRunner {
+  _GroupConversationRunner({this.callOrder});
+
+  final List<String>? callOrder;
   final List<Map<String, dynamic>> requests = [];
   final Map<String, String> addedAgents = {};
   String strategyRevision = '';
@@ -461,6 +508,7 @@ final class _GroupConversationRunner implements AgentCommandRunner {
     final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
     requests.add(request);
     final action = request['action'];
+    callOrder?.add('conversation:$action');
     if (action == 'conversation.membership.add') {
       final principal = Map<String, dynamic>.from(request['principal'] as Map);
       addedAgents[(principal['agentId'] ?? '').toString()] =

@@ -40,6 +40,7 @@ String historicalConversationWorkingDirectory(
       directory,
       environment: environment,
       directoryExists: directoryExists,
+      automaticFallback: true,
     )) {
       continue;
     }
@@ -82,6 +83,7 @@ bool isUsableLocalConversationWorkingDirectory(
   String path, {
   Map<String, String>? environment,
   bool Function(String path)? directoryExists,
+  bool automaticFallback = false,
 }) {
   if (!isBoundableConversationWorkingDirectory(
     path,
@@ -89,10 +91,11 @@ bool isUsableLocalConversationWorkingDirectory(
   )) {
     return false;
   }
-  if (isAutomaticFilesystemProbeDenied(path, environment: environment)) {
+  if (automaticFallback &&
+      isAutomaticFilesystemProbeDenied(path, environment: environment)) {
     return false;
   }
-  return (directoryExists ?? localProjectDirectoryExists)(path.trim());
+  return (directoryExists ?? _localDirectoryExists)(path.trim());
 }
 
 /// Whether a recorded project directory is still present as a directory.
@@ -101,9 +104,17 @@ bool localProjectDirectoryExists(String path) {
     if (isAutomaticFilesystemProbeDenied(path)) {
       return false;
     }
-    return io.Directory(path).existsSync();
+    return _localDirectoryExists(path);
   } on Object {
     // A path the platform refuses to stat cannot be bound either.
+    return false;
+  }
+}
+
+bool _localDirectoryExists(String path) {
+  try {
+    return io.Directory(path).existsSync();
+  } on Object {
     return false;
   }
 }

@@ -416,8 +416,7 @@ class TargetController extends ChangeNotifier {
     if (!_cachedTargetIds.contains(id)) {
       return false;
     }
-    final refreshCatalog =
-        current == null || !TargetPolicy.hasSelectedAgentModelCatalog(current);
+    final refreshCatalog = !_nativeModelCatalogRefreshedIds.contains(id);
     return _revalidateConversationRuntimeBinding(
       id,
       enableAgentCliModelLookup: refreshCatalog,
@@ -458,9 +457,7 @@ class TargetController extends ChangeNotifier {
     TargetCandidate current, {
     bool forceEntry = false,
   }) {
-    if (!forceEntry &&
-        (TargetPolicy.hasSelectedAgentModelCatalog(current) ||
-            _nativeModelCatalogRefreshedIds.contains(targetId))) {
+    if (!forceEntry && _nativeModelCatalogRefreshedIds.contains(targetId)) {
       return;
     }
     if (_nativeModelCatalogInFlightIds.contains(targetId)) {

@@ -612,6 +612,36 @@ class _CanonicalGroupConversationPaneState
     return true;
   }
 
+  Future<bool> _cancelActiveStrategyRun() async {
+    final gateway = widget.flywheelGateway;
+    final runId = _strategyRunId;
+    if (gateway == null || runId == null) return false;
+    await gateway.execute({'action': 'strategy.run.cancel', 'runId': runId});
+    if (mounted) {
+      setState(() {
+        _strategyRunId = null;
+        _strategyNeedsHumanInput = false;
+      });
+    }
+    return true;
+  }
+
+  Future<bool> _postAndStartStrategyRun(String text) async {
+    final posted = await widget.controller.postMessage(
+      text,
+      suppressMentions: true,
+    );
+    if (!posted) return false;
+    // The transcript is authoritative: persist the human turn before the
+    // strategy runtime can emit its first agent event.
+    try {
+      await _startStrategyRun(text);
+    } on AdaptiveFlywheelFailure {
+      return true;
+    }
+    return true;
+  }
+
   Future<bool> _sendComposerMessage(String text) async {
     final revision = _strategyRevision;
     if (revision == null) {
@@ -619,21 +649,22 @@ class _CanonicalGroupConversationPaneState
     }
     await _refreshActiveRun();
     if (!mounted) return false;
+    var posted = false;
     try {
       if (_strategyRunId == null) {
-        final started = await _startStrategyRun(text);
-        if (!started) return false;
-        return widget.controller.postMessage(text, suppressMentions: true);
+        posted = await _postAndStartStrategyRun(text);
+        return posted;
       }
       if (_strategyNeedsHumanInput) {
-        return widget.controller.postMessage(
-          text,
-          mentionAgentId: _entryAgentId.isEmpty ? null : _entryAgentId,
-        );
+        if (!await _cancelActiveStrategyRun()) return false;
+        posted = await _postAndStartStrategyRun(text);
+        return posted;
       }
       return widget.controller.postMessage(text, suppressMentions: true);
     } on AdaptiveFlywheelFailure {
-      return false;
+      // If the chat turn was already persisted, clear the composer even when
+      // strategy startup failed so the user cannot accidentally duplicate it.
+      return posted;
     }
   }
 

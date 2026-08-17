@@ -71,7 +71,7 @@ impl CompiledWorkflow {
     }
 }
 
-pub fn compile_workflow(definition: WorkflowDefinition) -> Result<CompiledWorkflow> {
+pub fn compile_workflow(mut definition: WorkflowDefinition) -> Result<CompiledWorkflow> {
     ensure!(
         definition.has_supported_schema(),
         "workflow_schema_unsupported"
@@ -127,6 +127,20 @@ pub fn compile_workflow(definition: WorkflowDefinition) -> Result<CompiledWorkfl
         if slot.kind != BindingKind::Actor {
             ensure!(!slot.entry, "workflow_entry_slot_invalid");
         }
+    }
+    if !definition
+        .actor_slots
+        .iter()
+        .any(|slot| slot.kind == BindingKind::Actor && slot.entry)
+        && let Some(slot) = definition
+            .actor_slots
+            .iter_mut()
+            .find(|slot| slot.kind == BindingKind::Actor)
+    {
+        // Definitions created before entry-slot metadata existed used the
+        // first actor as the main agent. Normalize that legacy shape once so
+        // persisted workflows keep compiling deterministically.
+        slot.entry = true;
     }
     let actor_entries = definition
         .actor_slots
@@ -645,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn actor_graphs_require_exactly_one_entry_slot() {
+    fn actor_graphs_normalize_legacy_entry_and_reject_multiple_entries() {
         let mut definition = workflow(
             vec![
                 state("start", GraphStateKind::Pass),
@@ -669,8 +683,11 @@ mod tests {
                 slot
             },
         ];
-        compile_workflow(definition.clone()).unwrap();
+        definition.actor_slots[0].entry = false;
+        let compiled = compile_workflow(definition.clone()).unwrap();
+        assert!(compiled.definition.actor_slots[0].entry);
         definition.actor_slots[1].entry = true;
+        definition.actor_slots[0].entry = true;
         assert!(compile_workflow(definition).is_err());
     }
 

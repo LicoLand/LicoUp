@@ -171,8 +171,18 @@ void main() {
         '$home/Desktop/project',
         environment: environment,
         directoryExists: (_) => true,
+        automaticFallback: true,
       ),
       isFalse,
+    );
+    expect(
+      isUsableLocalConversationWorkingDirectory(
+        '/Volumes/team-share/repo',
+        environment: environment,
+        directoryExists: (_) => true,
+      ),
+      isTrue,
+      reason: 'an explicit composer bind may use a mounted project',
     );
     expect(
       isBoundableConversationWorkingDirectory(

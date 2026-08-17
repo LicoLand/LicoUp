@@ -98,6 +98,43 @@ void main() {
     expect(signatures.length, layout.routes.length);
   });
 
+  test('keeps sibling exception nodes from overlapping', () {
+    final layout = AdaptiveFlywheelWorkflowLayout.build(
+      states: const [
+        AdaptiveFlywheelGraphState(id: 'start', kind: 'actor', label: 'Start'),
+        AdaptiveFlywheelGraphState(id: 'failed', kind: 'fail', label: 'Failed'),
+        AdaptiveFlywheelGraphState(
+          id: 'blocked',
+          kind: 'blocked',
+          label: 'Blocked',
+        ),
+      ],
+      edges: const [
+        AdaptiveFlywheelGraphEdge(
+          from: 'start',
+          to: 'failed',
+          event: 'failure',
+        ),
+        AdaptiveFlywheelGraphEdge(
+          from: 'start',
+          to: 'blocked',
+          event: 'blocked',
+        ),
+      ],
+      initialState: 'start',
+    );
+    final first = layout.positions['failed']!;
+    final second = layout.positions['blocked']!;
+    expect(
+      second.dx,
+      greaterThanOrEqualTo(
+        first.dx +
+            AdaptiveFlywheelWorkflowLayout.nodeWidth +
+            AdaptiveFlywheelWorkflowLayout.columnGap,
+      ),
+    );
+  });
+
   test('reads a guard into the visible edge caption', () {
     final edge = AdaptiveFlywheelGraphEdge.fromJson({
       'from': 'route',
