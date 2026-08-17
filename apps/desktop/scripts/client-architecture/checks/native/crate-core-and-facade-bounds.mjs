@@ -187,6 +187,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs", "Windows child process identity"],
     ["crates/licoup-native/src/domain/agent_resource_usage/process_snapshot.rs", "platform process metrics"],
     ["crates/licoup-native/src/domain/client_update/native_runner/plan.rs", "parent process identity and Windows process enumeration"],
+    ["crates/licoup-native/src/domain/targets/model_catalog/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/bin/lico-gateway.rs", "inherited readiness file descriptor"],
     ["crates/licoup-native/src/bin/lico-llm-gateway.rs", "inherited readiness file descriptor"],
     ["crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs", "macOS Keychain FFI"],

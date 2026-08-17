@@ -134,6 +134,68 @@ void main() {
     expect(find.text('思考强度'), findsOneWidget);
   });
 
+  testWidgets('renders model groups from provider metadata', (tester) async {
+    await _pumpSection(
+      tester,
+      targets: [
+        _target(
+          id: 'kilo-code',
+          label: 'Kilo Code',
+          models: const [
+            {
+              'name': 'opaque-one/model-a',
+              'displayName': 'Model A',
+              'providerId': 'opaque-one',
+              'provider': 'Provider One',
+            },
+            {
+              'name': 'opaque-two/model-b',
+              'displayName': 'Model B',
+              'providerId': 'opaque-two',
+              'provider': 'Provider Two',
+            },
+          ],
+        ),
+      ],
+    );
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Provider One'), findsOneWidget);
+    expect(find.text('Provider Two'), findsOneWidget);
+    expect(find.text('Model A'), findsOneWidget);
+    expect(find.text('Model B'), findsOneWidget);
+  });
+
+  testWidgets('renders the provider for one configured Claude model', (
+    tester,
+  ) async {
+    await _pumpSection(
+      tester,
+      targets: [
+        _target(
+          id: 'claude-code',
+          label: 'Claude Code',
+          models: const [
+            {
+              'name': 'deepseek-v4-flash',
+              'displayName': 'DeepSeek V4 Flash',
+              'providerId': 'deepseek',
+              'provider': 'DeepSeek',
+            },
+          ],
+        ),
+      ],
+    );
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DeepSeek'), findsOneWidget);
+    expect(find.text('DeepSeek V4 Flash'), findsOneWidget);
+  });
+
   testWidgets('requests a native catalog when an agent becomes active', (
     tester,
   ) async {
