@@ -53,6 +53,46 @@ LicoUp 只持久化 Graph、绑定、run 与 locator 摘要。各 Agent 持有�
 是人机入口和成员事件投影，不是第二份 transcript 仓库。已经退役的 Conversation 序号式
 Flywheel 模型不会被读取或翻译。
 
+## Graph 契约
+
+每个工作流在导入前都会按一份类型化转换契约编译。转换只能携带 `complete`、
+`success`、`failure` 三种事件；任意字符串事件会被拒绝。效果状态（authorization、
+actor、script、workset）必须声明完整的 `success` 与 `failure` 路由，且不能混入其他
+事件族；终态没有出边。actor 与 workset 状态必须引用 required actor 绑定，每个 script
+runtime 也必须有一个 required runtime 绑定。`pass` 与 `join` 各取一条无 guard 的
+`complete` 边；`choice` 以无 guard 的兜底边
+完成 `complete` 路由；`fork` 通过至少两条指向不同目标的无 guard `complete` 边扇出。
+
+Guard 路由必须让每个有界 payload 恰好选中一条边。一个状态可以声明一个任意 guard 加
+无 guard 兜底，或声明同一 payload 路径上规范值各不相同的多个 equality guard，同样
+必须有无 guard 兜底。混合 guard 路径、`exists` guard 与 equality guard 混用、以及
+缺少兜底边，都会在导入前被拒绝。
+
+并行区域是结构化子集：每个 `fork` 恰好有一个匹配的 `join`；每条分支无环、单入口、
+单出口、节点互不相交，且不含嵌套的 fork/join 或终态；每条分支进入 `join` 前有唯一
+的前驱；不允许跨区域边。包含效果且位于结构化并行区域之外的循环仍然有效。
+结构化区域外的 join 必须只有一个必然到达的前驱；初始 join，或由互斥 choice 路径
+汇入的多前驱 join，会在导入时被拒绝。
+
+workset 访问对空工作集与非空工作集都发出 `success`，并带一个规范化聚合 payload。
+最后一个 item 失败时，run 停止准入依赖 item，等已运行的 fenced 命令结算后，只取
+一次 `failure`，载荷使用最低的稳定 item/command 标识。空 workset 不形成效果边界，
+因此 workset 的 `success` 路径不能构成自动循环；failure 回环，以及必经 actor、
+authorization 或 script 效果的回环仍然有效。
+
+限制在持久化准入时强制执行：一次 run 不会超过其声明的 `maxParallelism`，引擎级活跃
+效果上限跨 run 生效，`maxAttempts` 对同一状态访问或 workset item 的完整重试与
+fallback 候选谱系统一计数；新的一次状态访问会重置候选序位。可 fallback 的失败候选
+会留在同一次访问中，直到对应的持久化 fallback 命令写入；重启恢复会从已持久化失败
+中找到它，并且只写入一次。一次性效果 permit 发出前，store 会在同一个写事务中重新
+校验当前授权摘要、lease owner 与尚未过期的 running lease。归约是确定性的：命令持有
+稳定标识，并发结果按排序后的
+顺序消费；重叠的 `context.*`、`worksets.*` 或候选隔离的可恢复会话贡献由最大的稳定
+命令标识决定。因此，相同输入与结果集得到同一规范化快照。
+
+在合成 entry/worker fixture 中，授权、actor 与 workset 状态各声明一条 `success` 与
+一条 `failure` 边；`complete` 与 `blocked` 是没有出边的终态。
+
 ## 桌面端流程
 
 打开**智能体**，再打开 **Adaptive Flywheel**。
