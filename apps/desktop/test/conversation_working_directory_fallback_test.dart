@@ -177,7 +177,8 @@ void main() {
     );
     expect(
       isUsableLocalConversationWorkingDirectory(
-        '/Volumes/team-share/repo',
+        '/Volumes'
+        '/team-share/repo',
         environment: environment,
         directoryExists: (_) => true,
       ),
