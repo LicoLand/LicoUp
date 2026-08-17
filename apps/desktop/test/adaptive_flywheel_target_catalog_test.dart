@@ -21,19 +21,23 @@ TargetCandidate _target({
 }
 
 void main() {
-  test('Claude family aliases are not required from the catalog helper', () {
+  test('Claude Code exposes the configured current model unchanged', () {
     final target = _target(
       id: 'claude-code',
       models: const [
-        {'name': 'claude-opus-4-6', 'displayName': 'Claude Opus 4.6'},
-        {'name': 'claude-sonnet-4-6', 'displayName': 'Claude Sonnet 4.6'},
+        {
+          'name': 'deepseek-v4-flash',
+          'displayName': 'DeepSeek V4 Flash',
+          'providerId': 'deepseek',
+          'provider': 'DeepSeek',
+        },
       ],
     );
-    expect(agentOrchestrationCommanderModels(target), [
-      'claude-opus-4-6',
-      'claude-sonnet-4-6',
-    ]);
-    expect(agentOrchestrationCommanderModels(target), isNot(contains('opus')));
+    expect(agentOrchestrationCommanderModels(target), ['deepseek-v4-flash']);
+    expect(
+      agentOrchestrationModelDisplayName(target, 'deepseek-v4-flash'),
+      'DeepSeek V4 Flash',
+    );
   });
 
   test('empty effort catalogs omit the independent reasoning dimension', () {
@@ -61,19 +65,38 @@ void main() {
     );
   });
 
-  test('OpenCode provider-qualified models stay selectable', () {
+  test('models are grouped by catalog provider metadata', () {
     final target = _target(
       id: 'opencode',
       models: const [
         {
-          'name': 'anthropic/claude-sonnet-4-5',
-          'displayName': 'Claude Sonnet 4.5',
-          'providerId': 'anthropic',
+          'name': 'opaque-one/model-a',
+          'displayName': 'Model A',
+          'providerId': 'opaque-one',
+          'provider': 'Provider One',
+        },
+        {
+          'name': 'opaque-two/model-b',
+          'displayName': 'Model B',
+          'providerId': 'opaque-two',
+          'provider': 'Provider Two',
+        },
+        {
+          'name': 'opaque-one/model-c',
+          'displayName': 'Model C',
+          'providerId': 'opaque-one',
+          'provider': 'Provider One',
         },
       ],
     );
-    expect(agentOrchestrationCommanderModels(target), [
-      'anthropic/claude-sonnet-4-5',
-    ]);
+
+    final groups = agentOrchestrationCommanderModelGroups(target);
+    expect(groups, hasLength(2));
+    expect(groups[0].providerId, 'opaque-one');
+    expect(groups[0].providerLabel, 'Provider One');
+    expect(groups[0].models, ['opaque-one/model-a', 'opaque-one/model-c']);
+    expect(groups[1].providerId, 'opaque-two');
+    expect(groups[1].providerLabel, 'Provider Two');
+    expect(groups[1].models, ['opaque-two/model-b']);
   });
 }

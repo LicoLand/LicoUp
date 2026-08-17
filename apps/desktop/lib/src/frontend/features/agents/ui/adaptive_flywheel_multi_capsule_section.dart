@@ -726,7 +726,13 @@ final class _DailyConversationCascadeCardsState
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final active = _activeTarget;
-    final models = active == null ? const <String>[] : _modelsFor(active);
+    final modelGroups = active == null
+        ? const <AgentOrchestrationModelGroup>[]
+        : agentOrchestrationCommanderModelGroups(active);
+    final models = [for (final group in modelGroups) ...group.models];
+    final showProviderHeaders = modelGroups.any(
+      (group) => group.providerLabel.isNotEmpty,
+    );
     final refreshing =
         active != null &&
         widget.isRefreshingAgentCatalog?.call(active.target) == true;
@@ -849,31 +855,49 @@ final class _DailyConversationCascadeCardsState
                       ),
                     )
                   else
-                    for (final model in models)
-                      _CascadeOptionRow(
-                        key: Key(
-                          '${widget.keyPrefix}-model-${active.target}-$model',
-                        ),
-                        label: agentOrchestrationModelDisplayName(
-                          active,
-                          model,
-                        ),
-                        selected: model == draftForActive.modelName,
-                        wrapLabel: true,
-                        onEnter: () {
-                          _dismissTimer?.cancel();
-                          setState(() => _hoveredModel = model);
-                        },
-                        onTap: () {
-                          widget.onDraftChanged(
-                            draftForActive.copyWith(
-                              agentId: active.target,
-                              modelName: model,
-                              reasoningEffort: '',
+                    for (final group in modelGroups) ...[
+                      if (showProviderHeaders && group.providerLabel.isNotEmpty)
+                        Padding(
+                          key: Key(
+                            '${widget.keyPrefix}-provider-${active.target}-${group.providerId.isNotEmpty ? group.providerId : group.providerLabel}',
+                          ),
+                          padding: const EdgeInsets.fromLTRB(12, 9, 12, 3),
+                          child: Text(
+                            group.providerLabel,
+                            style: TextStyle(
+                              color: colors.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              height: 14 / 11,
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                      for (final model in group.models)
+                        _CascadeOptionRow(
+                          key: Key(
+                            '${widget.keyPrefix}-model-${active.target}-$model',
+                          ),
+                          label: agentOrchestrationModelDisplayName(
+                            active,
+                            model,
+                          ),
+                          selected: model == draftForActive.modelName,
+                          wrapLabel: true,
+                          onEnter: () {
+                            _dismissTimer?.cancel();
+                            setState(() => _hoveredModel = model);
+                          },
+                          onTap: () {
+                            widget.onDraftChanged(
+                              draftForActive.copyWith(
+                                agentId: active.target,
+                                modelName: model,
+                                reasoningEffort: '',
+                              ),
+                            );
+                          },
+                        ),
+                    ],
                 ],
               ),
               if (efforts.isNotEmpty || widget.showFast) ...[

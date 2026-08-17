@@ -412,6 +412,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
     agentWorkspaceRecordCurrentAgentView();
+    ensureConversationInterfaceModelCatalog();
   }
 
   String get selectedConversationWorkingDirectory {
@@ -620,6 +621,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged(immediateActive: false);
     agentWorkspaceRecordCurrentAgentView();
+    ensureConversationInterfaceModelCatalog(agent.target);
   }
 
   Future<void> deleteConversationSession(String sessionId) async {
@@ -844,6 +846,7 @@ mixin AgentConversationSessionController
     lastError = '';
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
+    ensureConversationInterfaceModelCatalog(normalizedAgentId);
     return true;
   }
 
@@ -870,6 +873,25 @@ mixin AgentConversationSessionController
       }
     }
     return null;
+  }
+
+  /// Conversation-interface entry: load this Agent's native model catalog.
+  /// Unused-agent discovery still omits CLI and other-app named stores.
+  void ensureConversationInterfaceModelCatalog([String? agentId]) =>
+      ensureConversationInterfaceModelCatalogEntry(agentId: agentId);
+
+  /// Conversation-interface entry with the explicit force-entry option.
+  /// [forceEntry] bypasses settled freshness after an explicit interface
+  /// entry while an in-flight lookup is joined.
+  void ensureConversationInterfaceModelCatalogEntry({
+    String? agentId,
+    bool forceEntry = false,
+  }) {
+    final id = (agentId ?? selectedConversationAgentId).trim();
+    if (id.isEmpty) {
+      return;
+    }
+    agentWorkspaceEnsureSelectedAgentModelCatalog(id, forceEntry: forceEntry);
   }
 }
 
