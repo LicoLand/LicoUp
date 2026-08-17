@@ -141,11 +141,11 @@ final class AgentHubCatalogController extends ChangeNotifier {
         _catalog = resolved;
         return resolved;
       } else {
-        _failed = _catalog == null;
+        _failed = true;
       }
       return root;
     } on Object {
-      _failed = _catalog == null;
+      _failed = true;
       return _catalog ?? const AgentHubCatalogSnapshot(recipes: [], ok: false);
     } finally {
       _busy = false;
