@@ -363,8 +363,14 @@ class AgentService
   Future<List<TargetCandidate>> scanTargets() => _commandActions.scanTargets();
 
   @override
-  Future<TargetCandidate?> scanOneTarget(String targetId) {
-    return _commandActions.scanOneTarget(targetId);
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) {
+    return _commandActions.scanOneTarget(
+      targetId,
+      enableAgentCliModelLookup: enableAgentCliModelLookup,
+    );
   }
 
   @override

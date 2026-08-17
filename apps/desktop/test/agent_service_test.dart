@@ -84,7 +84,7 @@ void main() {
     expect(targets.single.configured, isTrue);
     expect(captured.single, contains('targets scan'));
     expect(captured.single, contains('--include-accessible-environments true'));
-    expect(captured.single, contains('--include-history-model-catalog true'));
+    expect(captured.single, contains('--include-history-model-catalog false'));
   });
 
   test('sends private runtime request over stdin instead of argv', () async {
@@ -291,7 +291,7 @@ exec sleep 5
             .having(
               (e) => e.toString(),
               'message',
-              contains('licoup command could not be completed'),
+              contains('licoup command failed'),
             )
             .having(
               (e) => e.toString(),

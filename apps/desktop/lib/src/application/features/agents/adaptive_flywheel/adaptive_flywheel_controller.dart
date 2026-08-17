@@ -23,16 +23,12 @@ final class AdaptiveFlywheelController extends ChangeNotifier {
 
   Future<void> initialize() => _guard(() async {
     await _refreshCatalog();
-    if (_selectedRevision.isNotEmpty) {
-      await _inspect();
-    }
+    await _inspectSelectedOrClear();
   });
 
   Future<void> refresh() => _guard(() async {
     await _refreshCatalog();
-    if (_selectedRevision.isNotEmpty) {
-      await _inspect();
-    }
+    await _inspectSelectedOrClear();
   });
 
   Future<void> importPackage(String path) => _guard(() async {
@@ -61,37 +57,40 @@ final class AdaptiveFlywheelController extends ChangeNotifier {
   });
 
   Future<void> saveActorBindings(
-    Map<String, AdaptiveFlywheelBinding> bindings,
+    Map<String, List<AdaptiveFlywheelBinding>> bindings,
   ) => _guard(() async {
     final inspection = _inspection;
     if (inspection == null) return;
     for (final slot in inspection.slots.where((slot) => slot.kind == 'actor')) {
-      final current = inspection.bindings[slot.id];
-      final next = bindings[slot.id];
-      if (next == null || next.valueId.trim().isEmpty) {
-        if (current != null) {
+      final current = inspection.bindings[slot.id] ?? const [];
+      final next = bindings[slot.id] ?? const [];
+      if (next.isEmpty) {
+        if (current.isNotEmpty) {
           await _gateway.execute({
             'action': 'strategy.binding.remove',
             'revisionDigest': _selectedRevision,
             'slotId': slot.id,
-            'expectedRevision': current.revision,
+            if (current.first.revision > 0)
+              'expectedRevision': current.first.revision,
           });
         }
         continue;
       }
-      if (current?.valueId == next.valueId &&
-          current?.model == next.model &&
-          current?.reasoningEffort == next.reasoningEffort) {
-        continue;
-      }
+      if (_sameBindingChain(current, next)) continue;
       await _gateway.execute({
-        'action': 'strategy.binding.update',
+        'action': 'strategy.binding.replace',
         'revisionDigest': _selectedRevision,
         'slotId': slot.id,
-        'valueId': next.valueId,
-        'model': next.model,
-        'reasoningEffort': next.reasoningEffort,
-        if (current != null) 'expectedRevision': current.revision,
+        'candidates': [
+          for (final binding in next)
+            {
+              'valueId': binding.valueId,
+              'model': binding.model,
+              'reasoningEffort': binding.reasoningEffort,
+            },
+        ],
+        if (current.isNotEmpty && current.first.revision > 0)
+          'expectedRevision': current.first.revision,
       });
     }
     await _inspect();
@@ -125,6 +124,30 @@ final class AdaptiveFlywheelController extends ChangeNotifier {
     if (_selectedRevision.isEmpty && _definitions.isNotEmpty) {
       _selectedRevision = _definitions.first.revisionDigest;
     }
+    if (_definitions.every(
+      (definition) => definition.revisionDigest != _selectedRevision,
+    )) {
+      _selectedRevision = _definitions.isEmpty
+          ? ''
+          : _definitions.first.revisionDigest;
+    }
+  }
+
+  Future<void> _inspectSelectedOrClear() async {
+    if (_selectedRevision.isEmpty) {
+      _inspection = null;
+      return;
+    }
+    try {
+      await _inspect();
+    } catch (_) {
+      _inspection = null;
+      if (_definitions.isEmpty) {
+        _selectedRevision = '';
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _inspect() async {
@@ -157,4 +180,19 @@ final class AdaptiveFlywheelController extends ChangeNotifier {
       notifyListeners();
     }
   }
+}
+
+bool _sameBindingChain(
+  List<AdaptiveFlywheelBinding> current,
+  List<AdaptiveFlywheelBinding> next,
+) {
+  if (current.length != next.length) return false;
+  for (var index = 0; index < current.length; index += 1) {
+    if (current[index].valueId != next[index].valueId ||
+        current[index].model != next[index].model ||
+        current[index].reasoningEffort != next[index].reasoningEffort) {
+      return false;
+    }
+  }
+  return true;
 }

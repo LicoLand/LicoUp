@@ -726,7 +726,10 @@ class _NoopAgentService extends AgentService {
   }
 
   @override
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
     final id = targetId.trim();
     for (final target in scanTargetsResponse) {
       if (target.target == id) {

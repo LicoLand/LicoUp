@@ -209,7 +209,7 @@ fn has_uri_scheme(value: &str) -> bool {
 
 fn expand_home(value: &str) -> PathBuf {
     if value == "~" || value.starts_with("~/") {
-        if let Some(home) = directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf()) {
+        if let Some(home) = crate::platform::paths::user_home_from_env() {
             if value == "~" {
                 return home;
             }

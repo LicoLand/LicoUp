@@ -73,7 +73,9 @@ subjects or stable fingerprints, credentials, private keys, custody details,
 or private-channel infrastructure.
 
 Before a release-candidate pull request, run the single project preflight for
-the selected package target set on its real platform. It binds the clean
+the selected package target set on its real platform. This is packaging
+verification before an authorized cut onto `release`; public publication is
+only from exact `origin/release`. It binds the clean
 candidate HEAD, tree, version, ordered target set, release template and every
 final installer digest to one redacted receipt.
 The pre-push hook checks that receipt only; it never repeats build, install,
