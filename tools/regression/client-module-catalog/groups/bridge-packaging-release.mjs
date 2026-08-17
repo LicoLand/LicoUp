@@ -495,7 +495,6 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "tests/contract/client/client-promotion.test.mjs",
         "tests/contract/client/repository-identity-policy.test.mjs",
         "tools/client-release-template.json",
-        "tools/scripts/client-android-release-toolchain-self-test.mjs",
         "tools/scripts/client-gate-policy.mjs",
         "tools/scripts/client-gate.mjs",
         "tools/scripts/client-promotion.mjs",
