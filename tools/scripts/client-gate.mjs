@@ -29,7 +29,6 @@ const forbiddenSourceTokens = Object.freeze([
   "client:package:",
   "client:install:",
   "client:run:",
-  "client:verify:github-release",
   "client:verify:product-line-security",
   "gh release",
 ]);
@@ -235,8 +234,7 @@ function validateCiTopology() {
     "client:package:",
     "client:install:",
     "client:run:",
-    "client:verify:github-release",
-    "client:verify:product-line-security",
+      "client:verify:product-line-security",
     "gh release",
   ]) {
     assertExcludes(workflow, forbidden, `client CI must not perform release target work: ${forbidden}`);
@@ -383,14 +381,6 @@ function validateReadmeFastPathTopology() {
     "Auditor must reduce README fast-path scanning to content privacy");
 }
 
-function releaseInputIds(workflow) {
-  const start = workflow.indexOf("    inputs:\n");
-  const end = workflow.indexOf("\npermissions:", start);
-  if (start < 0 || end < 0) fail("release workflow input mapping is missing");
-  return [...workflow.slice(start, end).matchAll(/^\s{6}([a-z][a-z0-9_]*):\s*$/gmu)]
-    .map((match) => match[1]);
-}
-
 function workflowJobIds(workflow) {
   const start = workflow.indexOf("\njobs:\n");
   if (start < 0) fail("workflow jobs mapping is missing");
@@ -398,98 +388,28 @@ function workflowJobIds(workflow) {
     .map((match) => match[1]);
 }
 
-function validateReleaseTopology() {
-  const workflow = readText(".github/workflows/client-release.yml");
-  const publisher = readText("tools/scripts/client-github-release-publish.mjs");
-  const preflight = readText("tools/scripts/client-pr-preflight.mjs");
-  const catalog = readJson("tools/client-release-targets.json");
-  const supportedTargets = catalog.targets
-    .filter((target) => target.releaseSupported === true &&
-      CLIENT_RELEASE_TARGETS[target.id]?.localOnly !== true)
-    .map((target) => target.id)
-    .sort();
-  const policyTargets = Object.keys(CLIENT_RELEASE_TARGETS).sort();
-  const governedPolicyTargets = catalog.targets
-    .filter((target) => target.releaseSupported === true ||
-      (CLIENT_RELEASE_TARGETS[target.id]?.publicationBlocked === true &&
-        target.releaseBlockers?.includes("macos_github_release_publication_not_authorized")))
-    .map((target) => target.id)
-    .sort();
-  if (JSON.stringify(governedPolicyTargets) !== JSON.stringify(policyTargets) ||
-    supportedTargets.some((target) => CLIENT_RELEASE_TARGETS[target].publicationBlocked === true)) {
-    fail("release target policy must match publishable or explicitly local-only catalog entries");
+function validateDelegatedApplePublicationTopology() {
+  const packageJson = readJson("package.json");
+  const scripts = packageJson.scripts || {};
+  const expected = {
+    "client:release:service:install": "apple-release service install",
+    "client:release:service:configure": "apple-release service configure --config tools/apple-release/macos-direct-arm64.json",
+    "client:release:service:status": "apple-release service status",
+    "client:release:macos": "apple-release release start --config tools/apple-release/macos-direct-arm64.json",
+    "client:release:status": "apple-release release status",
+  };
+  for (const [name, command] of Object.entries(expected)) {
+    if (scripts[name] !== command) fail(`package.json must bind ${name} to Apple Release`);
   }
-  const expectedInputs = ["phase", "release_tag", "targets", "correlation",
-    "prepare_run_id", "source_revision", "artifact_digests",
-    "signed_update_manifest_base64", "publish_release"].sort();
-  if (JSON.stringify(releaseInputIds(workflow).sort()) !== JSON.stringify(expectedInputs)) {
-    fail("release workflow must accept one or more targets and bounded publication inputs");
-  }
-  const expectedJobs = ["source", "prepare", "publish"].sort();
-  if (JSON.stringify(workflowJobIds(workflow).sort()) !== JSON.stringify(expectedJobs)) {
-    fail("release workflow jobs must match the multi-package topology");
-  }
-  assertExcludes(
-    jobBlock(workflow, "source"),
-    "npm run client:gate:",
-    "remote release request binding must not repeat local gates",
-  );
-  assertIncludes(
-    workflow,
-    "client-github-release-${{ inputs.release_tag }}",
-    "release phases for one tag must serialize",
-  );
-  const source = jobBlock(workflow, "source");
-  const prepare = jobBlock(workflow, "prepare");
-  const publish = jobBlock(workflow, "publish");
-  for (const token of ["--targets", "--artifact-digests", "--mode matrix"]) {
-    assertIncludes(source, token,
-      `release request binding is missing multi-package token: ${token}`);
-  }
-  for (const token of [
-    "matrix: ${{ fromJSON(needs.source.outputs.matrix) }}",
-    "client:release:build", "client:release:verify",
-  ]) {
-    assertIncludes(prepare, token,
-      `release prepare matrix is missing token: ${token}`);
-  }
-  for (const target of supportedTargets) {
-    assertIncludes(prepare, target,
-      `release prepare matrix has no exact build path for ${target}`);
-  }
-  for (const target of policyTargets) {
-    if (CLIENT_RELEASE_TARGETS[target].artifactName !== `licoup-${target}`) {
-      fail(`release artifact name is not target-derived: ${target}`);
-    }
-  }
-  for (const token of [
-    "client-github-release-publish.mjs", "client-release-workflow-binding.mjs",
-    "--targets", "--incoming-root", "--artifact-digests",
-    "LICO_SIGNED_UPDATE_MANIFEST_BASE64",
-    '--name "licoup-$target"',
-  ]) {
-    assertIncludes(publish, token,
-      `release publisher is missing multi-package token: ${token}`);
-  }
-  for (const token of [
-    "client-consumer-verification-manifest.mjs",
-    "client-release-remote-asset-set.mjs",
-    "COPYFILE_EXCL",
-    "release.targetCommitish !== sourceSha",
-  ]) {
-    assertIncludes(
-      publisher,
-      token,
-      `canonical release publisher is missing safety token: ${token}`,
-    );
-  }
-  assertIncludes(workflow, "client:release:remote-strategy -- --expect build-success",
-    "remote release validity must use the active build-success strategy");
-  const deviceDemoStages = preflight.match(
-    /npmStage\(`device-demo-\$\{platform\}`, `client:demo:device:\$\{platform\}`/gu,
-  ) || [];
-  if (deviceDemoStages.length !== 1) {
-    fail("release preflight must run each selected platform demo exactly once");
+  const config = readJson("tools/apple-release/macos-direct-arm64.json");
+  if (config.schema !== "apple-release.config.v1" ||
+      config.source?.branch !== "release" ||
+      Object.hasOwn(config, "candidate") ||
+      Array.isArray(config.version?.prepare) ||
+      config.apple?.target !== "macos-direct-arm64" ||
+      config.github?.repository !== "LicoLand/LicoUp" ||
+      config.artifacts?.filter((entry) => entry.role === "installer").length !== 1) {
+    fail("LicoUp delegated Apple publication configuration is invalid");
   }
 }
 
@@ -498,7 +418,7 @@ export function validateClientGateTopology() {
   validateCiTopology();
   validatePromotionTopology();
   validateReadmeFastPathTopology();
-  validateReleaseTopology();
+  validateDelegatedApplePublicationTopology();
   return Object.freeze({
     ok: true,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,

@@ -14,7 +14,7 @@ Mac App Store 目标仍受沙盒、进程模型、自更新权威和提交流程
 | 站外分发的 `.app` 使用 `Developer ID Application` | 本机平台渠道协调器在打包前校验证书类型、团队、应用标识符和 Profile 授权 | 已实现；真实发行证据待执行 |
 | 所有可执行代码签名，启用 Hardened Runtime，带安全时间戳，并禁止 `get-task-allow` | 先清点并签名嵌套代码，再签外层应用；签名后逐项校验 Developer ID、Runtime、时间戳、权限和嵌套闭包 | 已实现；真实发行证据待执行 |
 | Developer ID 软件提交 Apple 公证并装订票据 | 应用与最终 DMG 均通过 `notarytool` 提交、`stapler` 装订与复验，并用 `spctl` 验收；失败时不生成就绪清单 | 已实现；真实发行证据待执行 |
-| macOS 只申请实际需要的敏感资源，并且只在当前操作需要时申请 | macOS 目标不含摄像头用途说明。自动发现只探测 Agent 扫描路径清单，启动时不执行第三方 Agent 二进制，家目录只从环境变量读取（含 firmlink 等价路径），并对个人资料库根、照片/音乐库、网络宗卷、iCloud 容器和其他 App 容器做词法分类，不去 `stat`。Token 用量在打开监测页之前不会扫描。选中某个 Agent 后仍可读取该 Agent 自己的存储 | 已实现 |
+| macOS 只申请实际需要的敏感资源，并且只在当前操作需要时申请 | macOS 目标不含摄像头用途说明。自动发现只探测 Agent 扫描路径清单，启动时不执行第三方 Agent 二进制，家目录只从环境变量读取（含 firmlink 等价路径），并对个人资料库根、照片/音乐库、网络宗卷、iCloud 容器和其他 App 容器做词法分类，不去 `stat`。Token 用量在打开监测页之前不会扫描。进入某个 Agent 的对话界面后仍可读取该 Agent 自己的存储 | 已实现 |
 | 准确披露隐私实践和第三方 SDK 行为 | `PrivacyInfo.xcprivacy` 与中英双语隐私政策只进入 macOS 应用/DMG 发行路径；当前声明无跟踪、无项目方运营的数据收集，并披露有代码证据的文件时间戳、系统启动时间与 User Defaults Required Reason API 用途 | 已实现；依赖或数据流变化时必须重审 |
 | 防止自更新被替换或降级为其他签名者 | 更新候选必须匹配当前应用的准确 Developer ID designated requirement 与团队，并通过签名、Runtime、时间戳、公证票据和 Gatekeeper；替换脚本会再次复验 | 已实现；真实更新证据待执行 |
 | 对发行代码和依赖负责 | LicoUp 不再下载、安装、更新、回滚或跨设备同步技能；只发现本机已有技能，并可把选中目录移入系统废纸篓。发行包附带 AGPL、项目 Notice、Flutter/Dart notices，以及从锁定 Rust 依赖图按目标筛选生成的依赖清单和可用许可证文本 | 技能与随包材料已实现 |
@@ -43,34 +43,37 @@ Mac App Store 兼容。
 5. 最终 DMG 完成签名、公证、装订、校验与 Gatekeeper 验收；
 6. 隐私政策、Privacy Manifest、AGPL、项目 Notice 和第三方许可证均存在于应用资源中，
    且用户可在 DMG 根目录直接阅读相应材料；
-7. 所有检查完成后，才写入不含隐私路径或凭据的就绪清单。
+7. 只有前序检查逐项通过后，才能推进摘要绑定的 Apple 会话；完成公开下载、安装与
+   稳定启动验证后，才写入公开收据。
 
-远程工作流不得发布 macOS 直发产物。上传、发布页变更与对外发布必须另行取得明确授权。
+远程工作流不得发布 macOS 直发产物。本机 Apple Release 服务只能执行单次不可变发布
+授权中逐项列明的上传与公开变更。
 
-## 本机工具
+## 本机服务
 
-首次使用时运行一次：
-
-```sh
-npm run client:release:macos:setup
-```
-
-工具会交互式选择 Developer ID Provisioning Profile，将经过验证的 Profile 副本与
-最小签名配置保存在本机私有目录，并调用 Apple `notarytool` 把公证凭据保存到系统
-钥匙串。随后会执行一次临时签名，让操作方集中完成 `codesign` 钥匙串授权。源码、
-构建报告和终端输出均不保存证书、账户标识、密钥或本机路径。
-
-日常内测只运行：
+先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI，
+再在发布工作站上安装并配置一次每用户服务：
 
 ```sh
-npm run client:release:macos:beta
+npm run client:release:service:install
+npm run client:release:service:configure
 ```
 
-该命令要求工作区干净，并且按固定顺序执行源码门禁、发行策略门禁、工具链预检、
-Developer ID 打包、应用与 DMG 公证/装订/Gatekeeper 验收、精确 DMG 安装和稳定启动。
-最后写入绑定当前提交、源码树、版本、构建号、发行模板与产物摘要的脱敏本机收据。
-命令不会推送分支、上传产物、创建 Release 或执行任何远端发布；正式发布仍需单独
-明确授权。
+配置过程选择 Developer ID Provisioning Profile，并填写现有签名身份与 `notarytool`
+钥匙串 Profile 的名称。服务把 Profile 副本保存在权限受限的权威目录；签名密钥、
+公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、账户、供应商、
+凭据、原始输出或本机路径。
+
+Agent 使用以下命令发起一次精确发布：
+
+```sh
+npm run client:release:macos -- --version <version> --build <build>
+```
+
+唯一一次授权提示之前只运行只读预检。接受后，服务独占精确接受的 release 来源、发布
+门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
+安装与稳定启动；不会再次提问。最终收据绑定不可变 release 来源、四个公开制品
+摘要、Apple 结果与公开安装证明。
 
 ## Apple 一手资料
 
