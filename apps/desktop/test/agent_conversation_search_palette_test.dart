@@ -11,6 +11,8 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fixtures/client_controller/support/no_entry_hook_client_controller.dart';
+
 void main() {
   testWidgets('palette ranks hits and groups them under their agent', (
     tester,
@@ -97,7 +99,7 @@ void main() {
   testWidgets('palette surfaces skill matches and jumps to the skill hub', (
     tester,
   ) async {
-    final controller = ClientController()
+    final controller = NoEntryHookClientController()
       ..scannedTargets = [_target('codex', 'ChatGPT Codex - CLI')]
       ..selectedConversationAgentId = ''
       ..selectedConversationSessionId = ''
