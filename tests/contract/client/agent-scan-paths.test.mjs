@@ -28,7 +28,7 @@ const lifecycleFacade = read(
 );
 
 test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
-  assert.match(manifest, /schema_version = "licoup\.agent-scan-paths\.v1"/u);
+  assert.match(manifest, /schema_version = "licoup\.agent-scan-paths\.v2"/u);
   assert.match(manifest, /network_prefixes = \["\/Volumes"\]/u);
   assert.match(manifest, /"Desktop"/u);
   assert.match(manifest, /"Documents"/u);
@@ -59,6 +59,10 @@ test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
   assert.match(scanPaths, /fn probe_exists_under_home/u);
   assert.match(scanPaths, /fn probe_exists_with/u);
   assert.match(
+    scanPaths,
+    /fn automatic_probe_admitted[\s\S]*automatic_probe_admitted_with/u,
+  );
+  assert.match(
     read("crates/licoup-native/src/domain/targets/model_catalog/config.rs"),
     /probe_exists_under_home/u,
   );
@@ -78,7 +82,14 @@ test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
   );
   const inspectOne = (agentServiceActions.split("scanOneTarget")[1] ?? "")
     .split("inspectTarget")[0] ?? "";
-  assert.doesNotMatch(inspectOne, /enable-agent-cli-model-lookup/u);
+  assert.match(
+    inspectOne,
+    /bool enableAgentCliModelLookup = false/u,
+  );
+  assert.match(
+    inspectOne,
+    /if \(enableAgentCliModelLookup\)[\s\S]*--enable-agent-cli-model-lookup/u,
+  );
   assert.match(agentServiceActions, /enable-agent-cli-model-lookup/u);
   assert.match(historyDiscovery, /denied_personal_location/u);
   assert.match(historyDiscovery, /denied_symlink_escape/u);

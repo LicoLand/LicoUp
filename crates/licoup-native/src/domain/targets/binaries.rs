@@ -58,50 +58,39 @@ pub(super) fn find_extension_bundled_binary(def: &TargetDef) -> Option<PathBuf> 
     match def.id {
         "kilo-code" => find_kilo_code_extension_cli(&scan_paths::extension_roots(
             "kilo-code",
+            std::env::consts::OS,
             &HostRoots::from_environment(),
         )),
-        "kimi" => scan_paths::app_executables("kimi", &HostRoots::from_environment())
-            .into_iter()
-            .find(|path| probe_is_file(path)),
+        "kimi" => scan_paths::app_executables(
+            "kimi",
+            std::env::consts::OS,
+            &HostRoots::from_environment(),
+        )
+        .into_iter()
+        .find(|path| probe_is_file(path)),
         _ => None,
     }
-}
-
-#[cfg(test)]
-pub(super) fn find_macos_app_executable(
-    app_bundle: &str,
-    executable: &str,
-    roots: &[PathBuf],
-) -> Option<PathBuf> {
-    let home = crate::platform::paths::user_home_from_env();
-    roots
-        .iter()
-        .map(|root| {
-            root.join(app_bundle)
-                .join("Contents")
-                .join("MacOS")
-                .join(executable)
-        })
-        .find(|candidate| !scan_paths::denied(candidate, home.as_deref()) && candidate.is_file())
-}
-
-#[cfg(test)]
-pub(super) fn find_kimi_desktop_app_executable(roots: &[PathBuf]) -> Option<PathBuf> {
-    find_macos_app_executable("Kimi.app", "Kimi", roots)
 }
 
 /// Desktop application presence for agents whose desktop product is a
 /// verified macOS bundle. Agents without a mapped desktop product never
 /// report detection.
 pub(super) fn desktop_app_executable(agent_id: &str) -> Option<PathBuf> {
-    scan_paths::app_executables(agent_id, &HostRoots::from_environment())
-        .into_iter()
-        .find(|path| probe_is_file(path))
+    scan_paths::app_executables(
+        agent_id,
+        std::env::consts::OS,
+        &HostRoots::from_environment(),
+    )
+    .into_iter()
+    .find(|path| probe_is_file(path))
 }
 
 pub(super) fn find_kilo_code_extension_cli(roots: &[PathBuf]) -> Option<PathBuf> {
     let mut best: Option<(Vec<u64>, usize, PathBuf)> = None;
     for (root_index, root) in roots.iter().enumerate() {
+        if !automatic_path_is_dir(root) {
+            continue;
+        }
         let Ok(entries) = fs::read_dir(root) else {
             continue;
         };
@@ -132,7 +121,7 @@ fn kilo_code_bundled_binary(extension_dir: &Path) -> Option<PathBuf> {
     kilo_bundled_binary_names()
         .into_iter()
         .map(|name| extension_dir.join("bin").join(name))
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| automatic_path_is_file(candidate))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -187,13 +176,21 @@ pub(super) fn find_binary_in_dirs(names: &[&str], dirs: &[PathBuf]) -> Option<Pa
                 if scan_paths::denied(&candidate, home.as_deref()) {
                     continue;
                 }
-                if candidate.is_file() {
+                if automatic_path_is_file(&candidate) {
                     return Some(candidate);
                 }
             }
         }
     }
     None
+}
+
+fn automatic_path_is_file(path: &Path) -> bool {
+    !scan_paths::symlink_escapes_denied_location(path) && path.is_file()
+}
+
+fn automatic_path_is_dir(path: &Path) -> bool {
+    !scan_paths::symlink_escapes_denied_location(path) && path.is_dir()
 }
 
 fn binary_search_dirs() -> Vec<PathBuf> {
@@ -241,14 +238,6 @@ fn windows_binary_extensions() -> Vec<String> {
         }
     }
     extensions
-}
-
-#[cfg(test)]
-fn posix_path(components: &[&str]) -> PathBuf {
-    components.iter().fold(
-        PathBuf::from(char::from(47).to_string()),
-        |path, component| path.join(component),
-    )
 }
 
 fn classify_binary_source(path: &Path) -> &'static str {
@@ -305,8 +294,38 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 #[cfg(test)]
+pub(super) fn find_macos_app_executable(
+    app_bundle: &str,
+    executable: &str,
+    roots: &[PathBuf],
+) -> Option<PathBuf> {
+    let home = crate::platform::paths::user_home_from_env();
+    roots
+        .iter()
+        .map(|root| {
+            root.join(app_bundle)
+                .join("Contents")
+                .join("MacOS")
+                .join(executable)
+        })
+        .find(|candidate| !scan_paths::denied(candidate, home.as_deref()) && candidate.is_file())
+}
+
+#[cfg(test)]
+pub(super) fn find_kimi_desktop_app_executable(roots: &[PathBuf]) -> Option<PathBuf> {
+    find_macos_app_executable("Kimi.app", "Kimi", roots)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    fn posix_path(components: &[&str]) -> PathBuf {
+        components.iter().fold(
+            PathBuf::from(char::from(47).to_string()),
+            |path, component| path.join(component),
+        )
+    }
 
     #[test]
     fn binary_candidates_preserve_priority_and_dedupe_case_insensitively() {
