@@ -46,6 +46,7 @@ final class ClientConversation {
     required this.archived,
     this.pinned = false,
     this.group = false,
+    this.strategyRevision = '',
     required this.revision,
     required this.createdAtUnixMs,
     required this.updatedAtUnixMs,
@@ -60,6 +61,7 @@ final class ClientConversation {
         archived: json['archived'] == true,
         pinned: json['pinned'] == true,
         group: json['isGroup'] == true,
+        strategyRevision: (json['strategyRevision'] ?? '').toString(),
         revision: _integer(json['revision']),
         createdAtUnixMs: _integer(json['createdAtUnixMs']),
         updatedAtUnixMs: _integer(json['updatedAtUnixMs']),
@@ -74,6 +76,7 @@ final class ClientConversation {
   final bool archived;
   final bool pinned;
   final bool group;
+  final String strategyRevision;
   final int revision;
   final int createdAtUnixMs;
   final int updatedAtUnixMs;

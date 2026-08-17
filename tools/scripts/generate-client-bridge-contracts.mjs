@@ -349,6 +349,7 @@ function readConversationSchema(family) {
     "conversation.create",
     "conversation.rename",
     "conversation.archive",
+    "conversation.strategy.set",
     "conversation.list",
     "conversation.get",
     "conversation.events.page",
@@ -1001,10 +1002,7 @@ final class ClientStateGetRequest {
 }
 
 final class ClientStateSetRequest {
-  ClientStateSetRequest({
-    required this.collection,
-    required this.document,
-  }) {
+  ClientStateSetRequest({required this.collection, required this.document}) {
     if (collection == ClientStateCollection.unknown ||
         collection != document.collection) {
       throw const FormatException('invalid_document');
@@ -1062,6 +1060,7 @@ final class ClientStateActivity {
       }
       return value;
     }
+
     final schemaVersion = requiredString('schemaVersion');
     if (schemaVersion != clientStateSchemaVersion) {
       throw const FormatException('invalid_state_response');
@@ -1118,9 +1117,7 @@ final class ClientStateFailure implements Exception {
 
   final ClientStateFailureCode code;
 
-  Map<String, Object> toJson() => <String, Object>{
-    'code': code.wireName,
-  };
+  Map<String, Object> toJson() => <String, Object>{'code': code.wireName};
 
   @override
   String toString() => 'ClientStateFailure(\${code.wireName})';
@@ -1437,7 +1434,6 @@ ${forbidden}
 
 ${dartSecureMeshActionEnum(schema.actions)}
 ${dartEnum("SecureMeshFailureCode", schema.failureCodes)}
-
 final class SecureMeshFailure implements Exception {
   const SecureMeshFailure({required this.code});
 
@@ -1532,24 +1528,32 @@ void _validateSecureMeshValue(Object? root) {
     }
     if (value is String) {
       if (utf8.encode(value).length > secureMeshMaxStringBytes) {
-        throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
+        throw const SecureMeshFailure(
+          code: SecureMeshFailureCode.invalidPayload,
+        );
       }
     } else if (value is List) {
       if (value.length > secureMeshMaxCollectionEntries) {
-        throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
+        throw const SecureMeshFailure(
+          code: SecureMeshFailureCode.invalidPayload,
+        );
       }
       for (final nested in value.reversed) {
         stack.add((nested, depth + 1));
       }
     } else if (value is Map) {
       if (value.length > secureMeshMaxCollectionEntries) {
-        throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
+        throw const SecureMeshFailure(
+          code: SecureMeshFailureCode.invalidPayload,
+        );
       }
       for (final entry in value.entries) {
         final key = entry.key;
         if (key is! String ||
             utf8.encode(key).length > secureMeshMaxStringBytes) {
-          throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
+          throw const SecureMeshFailure(
+            code: SecureMeshFailureCode.invalidPayload,
+          );
         }
         if (_secureMeshForbiddenFields.any(
           (forbidden) => forbidden.toLowerCase() == key.toLowerCase(),

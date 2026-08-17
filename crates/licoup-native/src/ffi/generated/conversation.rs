@@ -113,6 +113,8 @@ pub enum ConversationActionKind {
     ConversationRename,
     #[serde(rename = "conversation.archive")]
     ConversationArchive,
+    #[serde(rename = "conversation.strategy.set")]
+    ConversationStrategySet,
     #[serde(rename = "conversation.list")]
     ConversationList,
     #[serde(rename = "conversation.get")]

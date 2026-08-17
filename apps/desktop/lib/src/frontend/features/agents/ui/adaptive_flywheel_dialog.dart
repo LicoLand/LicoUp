@@ -32,19 +32,26 @@ const double kAdaptiveFlywheelWorkflowExpandedHeight = 360;
 
 Future<void> showAdaptiveFlywheelDialog(
   BuildContext context,
-  ClientController clientController,
-) {
+  ClientController clientController, {
+  String initialRevision = '',
+}) {
   return showDialog<void>(
     context: context,
-    builder: (context) =>
-        _AdaptiveFlywheelDialog(clientController: clientController),
+    builder: (context) => _AdaptiveFlywheelDialog(
+      clientController: clientController,
+      initialRevision: initialRevision,
+    ),
   );
 }
 
 final class _AdaptiveFlywheelDialog extends StatefulWidget {
-  const _AdaptiveFlywheelDialog({required this.clientController});
+  const _AdaptiveFlywheelDialog({
+    required this.clientController,
+    required this.initialRevision,
+  });
 
   final ClientController clientController;
+  final String initialRevision;
 
   @override
   State<_AdaptiveFlywheelDialog> createState() =>
@@ -73,7 +80,19 @@ final class _AdaptiveFlywheelDialogState
     _controller = AdaptiveFlywheelController(
       gateway: widget.clientController.adaptiveFlywheelGateway,
     )..addListener(_changed);
-    unawaited(_controller.initialize());
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    await _controller.initialize();
+    if (!mounted || widget.initialRevision.isEmpty) return;
+    final revisionExists = _controller.definitions.any(
+      (definition) => definition.revisionDigest == widget.initialRevision,
+    );
+    if (revisionExists &&
+        _controller.selectedRevision != widget.initialRevision) {
+      await _controller.selectDefinition(widget.initialRevision);
+    }
   }
 
   @override

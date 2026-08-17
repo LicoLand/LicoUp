@@ -20,6 +20,7 @@ final class AdaptiveFlywheelDefinition {
     required this.version,
     required this.revisionDigest,
     required this.semanticsDigest,
+    this.authorized = false,
   });
 
   factory AdaptiveFlywheelDefinition.fromJson(Map<String, dynamic> json) =>
@@ -29,6 +30,7 @@ final class AdaptiveFlywheelDefinition {
         version: (json['version'] ?? '').toString(),
         revisionDigest: (json['revisionDigest'] ?? '').toString(),
         semanticsDigest: (json['semanticsDigest'] ?? '').toString(),
+        authorized: json['authorized'] == true,
       );
 
   final String id;
@@ -36,6 +38,7 @@ final class AdaptiveFlywheelDefinition {
   final String version;
   final String revisionDigest;
   final String semanticsDigest;
+  final bool authorized;
 }
 
 final class AdaptiveFlywheelSlot {
@@ -44,6 +47,7 @@ final class AdaptiveFlywheelSlot {
     required this.kind,
     required this.label,
     required this.required,
+    this.entry = false,
   });
 
   factory AdaptiveFlywheelSlot.fromJson(Map<String, dynamic> json) =>
@@ -52,12 +56,14 @@ final class AdaptiveFlywheelSlot {
         kind: (json['kind'] ?? '').toString(),
         label: (json['label'] ?? '').toString(),
         required: json['required'] != false,
+        entry: json['entry'] == true,
       );
 
   final String id;
   final String kind;
   final String label;
   final bool required;
+  final bool entry;
 }
 
 final class AdaptiveFlywheelBinding {
@@ -191,6 +197,15 @@ final class AdaptiveFlywheelInspection {
   final List<AdaptiveFlywheelGraphEdge> edges;
   final String initialState;
   final String diagnosticCode;
+
+  bool get authorized => allowedOperations.contains('strategy.run.start');
+
+  AdaptiveFlywheelSlot? get entrySlot {
+    for (final slot in slots) {
+      if (slot.kind == 'actor' && slot.entry) return slot;
+    }
+    return null;
+  }
 }
 
 Map<String, List<AdaptiveFlywheelBinding>> _bindingsBySlot(
