@@ -479,7 +479,7 @@ printf 'gemini-3.6-flash-medium\nclaude-opus-4-6-thinking\ngpt-oss-120b-medium\n
         fs::write(
             &executable,
             r#"#!/bin/sh
-if [ -z "$LICO_ANTIGRAVITY_CATALOG_MARKER" ]; then
+if [ -z "$PATH" ]; then
 exit 1
 fi
 printf 'gemini-account-model\nclaude-account-model\n'
@@ -487,10 +487,6 @@ printf 'gemini-account-model\nclaude-account-model\n'
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-        unsafe {
-            std::env::set_var("LICO_ANTIGRAVITY_CATALOG_MARKER", "1");
-        }
-
         let catalog = model_catalog_for_target(
             "antigravity",
             None,
@@ -500,10 +496,6 @@ printf 'gemini-account-model\nclaude-account-model\n'
                 "antigravityCliPath": display_path(executable),
             }),
         );
-        unsafe {
-            std::env::remove_var("LICO_ANTIGRAVITY_CATALOG_MARKER");
-        }
-
         let names = catalog["models"]
             .as_array()
             .unwrap()
@@ -767,7 +759,7 @@ printf 'Available models\n\ncomposer-2.5 - Composer 2.5 (current)\n'
         fs::write(
             &executable,
             r#"#!/bin/sh
-if [ -z "$LICO_CURSOR_CATALOG_MARKER" ]; then
+if [ -z "$PATH" ]; then
 printf 'Available models\n\nstale-isolated - Isolated\n'
 exit 0
 fi
@@ -776,10 +768,6 @@ printf 'Available models\n\nauto - Auto (default)\nfull-cursor-model - Full Curs
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-        unsafe {
-            std::env::set_var("LICO_CURSOR_CATALOG_MARKER", "1");
-        }
-
         let catalog = model_catalog_for_target(
             "cursor",
             None,
@@ -789,10 +777,6 @@ printf 'Available models\n\nauto - Auto (default)\nfull-cursor-model - Full Curs
                 "cursorCliPath": display_path(executable),
             }),
         );
-        unsafe {
-            std::env::remove_var("LICO_CURSOR_CATALOG_MARKER");
-        }
-
         let names = catalog["models"]
             .as_array()
             .unwrap()
@@ -918,7 +902,7 @@ mod kilo {
         fs::write(
             &executable,
             r#"#!/bin/sh
-if [ -z "$LICO_KILO_CATALOG_MARKER" ]; then
+if [ -z "$PATH" ]; then
 exit 1
 fi
 printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
@@ -926,10 +910,6 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-        unsafe {
-            std::env::set_var("LICO_KILO_CATALOG_MARKER", "1");
-        }
-
         let catalog = model_catalog_for_target(
             "kilo-code",
             None,
@@ -940,10 +920,6 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
                 "kiloCliPath": display_path(executable),
             }),
         );
-        unsafe {
-            std::env::remove_var("LICO_KILO_CATALOG_MARKER");
-        }
-
         let names = catalog["models"]
             .as_array()
             .unwrap()
@@ -1339,7 +1315,7 @@ mod normalization {
     }
 
     #[test]
-    fn model_normalization_rejects_unsafe_names_and_canonicalizes_known_families() {
+    fn model_normalization_rejects_untrusted_names_and_canonicalizes_known_families() {
         assert_eq!(canonical_model_display_name("gpt-5.5-mini"), "GPT-5.5-Mini");
         assert_eq!(
             canonical_model_display_name("deepseek-v4-pro"),

@@ -163,7 +163,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('adaptive-flywheel-entry-add')));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(
       find.byKey(const Key('adaptive-flywheel-entry-option-codex')),
       findsOneWidget,

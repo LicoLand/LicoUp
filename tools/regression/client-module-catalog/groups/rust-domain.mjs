@@ -7,7 +7,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
       inputs: [
         "crates/licoup-native/src/domain/adaptive_flywheel/**",
-        "crates/licoup-native/resources/adaptive_flywheel/**",
         "crates/licoup-native/src/core/safe_archive.rs",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",

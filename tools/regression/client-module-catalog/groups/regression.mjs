@@ -90,7 +90,6 @@ export const REGRESSION_MODULES = Object.freeze([
       inputs: [
         "schemas/client_bridge/strategy.json",
         "crates/licoup-native/src/domain/adaptive_flywheel/**",
-        "crates/licoup-native/resources/adaptive_flywheel/**",
         "tests/contract/client/adaptive-flywheel-strategy.test.mjs",
         "tests/contract/client/unified-conversation-backend.test.mjs",
       ],
