@@ -17,8 +17,8 @@ npm ci
 开发过程中只运行与改动直接相关的最小检查。交付前运行对应模块的定向测试。所有改动
 均确认有效后，只运行一次必需的 Node 源码策略，以及真正受影响的技术通道：Flutter、
 Rust、Android 或依赖回归。各回归通道彼此独立并可并行。发布策略不是改动路径回归通道；
-它只在 `stable` → `release` 晋升边界运行，具体见[客户端分支晋升门禁](docs/releases/PROMOTION-GATES.zh-CN.md)。
-提交门禁不会构建或发布所有平台。
+它只在 `stable` → `release` 晋升边执行，具体见
+[客户端晋升权威](docs/releases/PROMOTION-GATES.zh-CN.md)。提交门禁不会构建或发布所有平台。
 
 一旦主动启动完整回归，本次验证闭环就自动扩展到它暴露的全部问题。严禁在仍有已知
 失败、陈旧快照、布局溢出、超时或偶发用例时交付。必须定位并修复权威实现，增加或收紧
@@ -123,70 +123,27 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 带版本的副本。发布前必须复核每个官方 HTTPS 来源、刷新日期，并删除已经停止提供的
 行。当前目录旁不得保留生成文件或兼容定价来源。
 
-## 把版本切到 `release`；保持 `nightly` 开放
+## 切分到 `release`，再委托公开发布
 
-LicoUp 只使用一条发布列车。`nightly` 是始终开放的集成线。正在发布期间，带动作
-前缀的普通功能与修复 Pull Request 继续合入 `nightly`。
+`nightly` 是持续开放的集成分支。产品改动通过带动作前缀的普通 Pull Request 合入，
+一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，最后晋升到
+`release`。
 
 项目必须完成 100 次独立发布后，才能把任何构建提升到 `1.0.0` 线。每一个 1.0
 之前的发布都保留自己的不可变版本、候选证据和制品收据；被跳过或被替换的候选不
 计入发布次数。
 
-切版本：维护者授权一次切分后，将已验证的 `nightly` → `stable` → `release`
-晋升一次。该快照即为 `origin/release`。之后的 `nightly` 尖端是下一次切分，不是
-正在发布的版本。在当前发布成功或被明确放弃之前，不要再次运行 `nightly` →
-`stable` 或 `stable` → `release`。
-
-发布：在精确的 `origin/release` revision 上使用干净的 detached worktree，运行
-`npm run client:release:macos:publish`。公开发布只来自 `origin/release`。严禁
-从 `nightly` 或 `stable` 发布。
-
-公证与发布期间：
-
-- 保持 `nightly` 开放，继续接受普通 merge-commit Pull Request。
-- 冻结 `stable` 和 `release`。在此版本发布成功或被放弃前，不要再向它们晋升。
-- 把冻结的 `origin/release` 发布 worktree 与 `nightly` 功能 worktree 分开。严禁
-  把本次发布的输出或收据用于下一版本开发。
-- 正在进行的切分就是当前的 `origin/release` 尖端。不要把之后的 `nightly`
-  提交吸进这次切分。
-
-例如，这可以保证 `nightly` 上的 `0.1.1` 开发不会改变 `release` 上已冻结的
-`0.1.0`，或正在发布的 `0.1.1`。它不会创建两条可以同时晋级的 `stable` 或
-`release` 通道。
+完成切分后，可以从精确的 `origin/release` revision 使用
+`npm run client:release:macos` 委托 macOS 发布后流程。服务先运行只读预检；唯一一次
+不可变授权冻结来源与公开安装包契约。委托服务不会创建源码候选、合并 Pull Request，
+也不会改动受保护晋升链。
 
 ## 合并请求检查
 
 产品改动、重构、迁移、发布工具、Workflow、Ruleset、身份策略和 Auditor 策略必须
-分别通过普通 Pull Request 完成。产品工作持续合入 `nightly`。切分是晋升到
-`release`。公开发布来自精确的 `origin/release` revision。
-
-切分前的候选验证仍使用干净、已提交且命名为
-`release-candidate/v<version>-<target>` 的分支，并从最新且已验证的 `nightly`
-创建。它只能包含规范发布命令产生的版本、构建号、目标和发布清单改动。严禁把
-整个工作树复制进候选，也不得携带已知门禁失败、未完成迁移、陈旧检查器或意外
-路径。运行预检前必须完整检查 `origin/nightly...HEAD` 差异。
-
-```bash
-npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target
-```
-
-预检会对同一候选执行构建、签名、归档、安装、更新、回滚和真实启动，然后
-写入被忽略且已脱敏的收据。pre-push Hook 只核验该收据，不会重复昂贵步骤。
-候选分支在每个选定打包目标的收据通过之前必须保持本地；只有这时才可推送该已
-验证提交，或用它打开远程发布候选 Pull Request。远程分支绝不是打包或签名的调试
-循环。该预检是切分前的打包验证，不是公开发布。切分之后从 `origin/release`
-发布，并保持 `nightly` 开放。
-预检是最终验收，不是开发循环。如果它发现发布专用差异之外的缺陷，候选立即失效。
-应在普通分支修复权威实现、合入 `nightly`，并在下一次授权切分前重新验证候选；
-严禁在失败候选上修改产品代码、检查器、Workflow 或 Ruleset，也不得把之后的
-`nightly` 提交晋升进已经切出的 `origin/release`。
-
-发布候选 Pull Request 一经创建，该候选 HEAD、Required Checks、Ruleset、分支拓扑、
-身份权威、Auditor 策略、Workflow 契约和制品契约全部冻结。收据缺失或失效时不得
-创建或更新候选。Required Checks 必须逐字为 `Branch flow`、`Commit identity`、
-`Client required` 和 `Auditor`。首个无法解释的远程失败必须冻结继续向 `stable`
-和 `release` 的晋升；进入 `nightly` 的普通合并继续进行。发布窗口内禁止用修复
-Pull Request 重切正在发布的版本、重复 publish 或修改任何冻结权威。
+分别通过普通 Pull Request 完成。产品改动进入 `nightly`，并且只通过固定的受保护
+晋升链完成切分。公开发布是独立操作，只能来自精确接受的 `origin/release` 来源，
+由 Apple Release 负责。
 
 远程构建成功、晋升合并、Workflow 成功或生成草稿都不代表发布成功。只有重新下载
 最终公开制品、验证绑定的来源和摘要、按公开路径安装、确认稳定启动并验证公开更新

@@ -20,8 +20,8 @@ effective, run the mandatory Node-only source policy once and only the affected
 technology lanes: Flutter, Rust, Android, or dependency regression. These lanes
 are independent and may run in parallel. Release policy is not a changed-path
 lane; it runs only at the `stable` → `release` promotion edge described in the
-[client promotion gate authority](docs/releases/PROMOTION-GATES.md). The commit
-gate never builds or publishes every platform.
+[client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
+never builds or publishes every platform.
 
 Starting a complete regression expands the current verification closure to
 every problem it reveals. Do not hand off with a known failure, stale golden,
@@ -158,86 +158,30 @@ Before a release, review every official HTTPS source, refresh the date, and
 remove rows that are no longer served. Never retain a generated or compatibility
 cost source beside the current catalog.
 
-## Cut a version onto `release`; keep `nightly` open
+## Cut onto `release`; delegate publication
 
-LicoUp uses one release train. `nightly` is the always-open integration line.
-Ordinary action-prefixed feature and fix pull requests continue to merge into
-`nightly` during an in-flight publication.
+`nightly` is the open integration branch. Product changes land there through
+ordinary action-prefixed pull requests, then one accepted snapshot advances by
+merge commit from `nightly` to `stable` and from `stable` to `release`.
 
 The project must complete 100 distinct releases before promoting any build to
 the `1.0.0` line. Every pre-1.0 release keeps its own immutable version,
 candidate evidence, and artifact receipts; skipped or replaced candidates do
 not count as releases.
 
-Cutting a version: when a maintainer authorizes a cut, promote verified
-`nightly` → `stable` → `release` once. That snapshot is now `origin/release`.
-A later `nightly` tip is a later cut, not the in-flight version. Do not run
-`nightly` → `stable` or `stable` → `release` again until the current
-publication succeeds or is explicitly abandoned.
-
-Publishing: use a clean detached worktree at the exact `origin/release`
-revision. Run `npm run client:release:macos:publish`. Public publication is
-only from `origin/release`. Never publish from `nightly` or `stable`.
-
-During publish and notarization:
-
-- Keep `nightly` open for ordinary merge-commit pull requests.
-- Freeze `stable` and `release`. Do not promote onto them until this version
-  is published or abandoned.
-- Keep the frozen `origin/release` publication worktree separate from
-  `nightly` feature worktrees. Never reuse publication output or receipts for
-  next-version work.
-- An in-flight cut is the current `origin/release` tip. Do not pull later
-  `nightly` commits into it.
-
-This keeps, for example, `0.1.1` development on `nightly` from changing a
-frozen `0.1.0` or an in-flight `0.1.1` on `release`. It does not create two
-simultaneous `stable` or `release` lanes.
+After the cut, post-release macOS publication may be delegated from the exact
+`origin/release` revision with `npm run client:release:macos`. Read-only
+preflight runs first. One immutable authorization freezes the source and public
+installer contract. The delegated service never creates a source candidate,
+merges a pull request, or mutates the protected release train.
 
 ## Pull request checklist
 
 Finish product changes, refactors, migrations, release tooling, workflows,
 Rulesets, identity policy, and Auditor policy through separate ordinary pull
-requests. Product work lands on `nightly` continuously. The cut is promotion
-onto `release`. Publication is from the exact `origin/release` revision.
-
-Candidate verification before a cut still uses a clean committed branch named
-`release-candidate/v<version>-<target>` from the latest verified `nightly`.
-Its diff may contain only the version, build, target, and release-manifest
-changes produced by the canonical release command. Never copy an entire
-working tree into a candidate or carry a known gate failure, unfinished
-migration, stale verifier, or unexpected path. Review the complete
-`origin/nightly...HEAD` diff before running preflight.
-
-```bash
-npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target
-```
-
-The preflight builds, signs, archives, installs, updates, rolls back, and
-launches the exact candidate, then writes an ignored redacted receipt. The
-pre-push hook only checks that receipt. It does not repeat the expensive work.
-Keep the candidate branch local until this receipt passes for every selected
-package target. Only then may the exact verified commit be pushed or used to
-open a remote release-candidate pull request; remote branches are never a
-packaging or signing debug loop. This preflight is packaging verification
-before the cut, not publication. After the cut, publish from `origin/release`
-and keep `nightly` open.
-Preflight is final acceptance, not a development loop. If it finds a defect
-outside the release-only diff, invalidate the candidate. Fix the canonical
-owner through an ordinary pull request, merge it to `nightly`, and verify a
-new candidate before any later authorized cut; do not patch product code, a
-verifier, a workflow, or a Ruleset on the failed candidate, and do not promote
-later `nightly` commits into an already cut `origin/release`.
-
-Opening the candidate pull request freezes that candidate HEAD, required
-checks, Rulesets, branch topology, identity authorities, Auditor policy,
-workflow contract, and asset contract. Do not open or update it when the
-receipt is missing or stale. The exact required checks are `Branch flow`,
-`Commit identity`, `Client required`, and `Auditor`. The first unexplained
-remote failure freezes further promotion onto `stable` and `release`; ordinary
-merges into `nightly` continue. No repair pull request that recuts the
-in-flight version, repeated publication, or frozen-authority change is allowed
-inside that release window.
+requests. Product work lands on `nightly`; the cut advances only through the
+fixed protected train. Public publication is a separate operation from the
+exact accepted `origin/release` source and is owned by Apple Release.
 
 A remote build, promotion merge, successful workflow, or draft is not release
 success. Success requires downloading the final public assets, verifying their

@@ -79,7 +79,7 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
     "apps/desktop/scripts/build-android-apk.mjs",
   ])), ["packaging.android"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    ".github/workflows/client-release.yml",
+    "tools/apple-release/macos-direct-arm64.json",
   ])), ["release.workflows"]);
 });
 

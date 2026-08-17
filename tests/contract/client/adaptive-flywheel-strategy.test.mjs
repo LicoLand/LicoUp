@@ -102,8 +102,6 @@ test("the strategy catalog stays empty until a package is imported", () => {
     ),
     false,
   );
-  const publish = read("tools/scripts/client-macos-release-publish.mjs");
-  assert.doesNotMatch(publish, /builtin-basic|licoup-basic|LicoUp Basic Strategy/u);
 });
 
 test("runtimes are detected and bound without a desktop picker", () => {
