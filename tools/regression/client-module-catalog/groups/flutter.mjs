@@ -1935,6 +1935,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/application/features/navigation/**",
         "apps/desktop/lib/src/application/features/agent_hub/**",
         "apps/desktop/lib/src/frontend/features/agent_hub/**",
+        "apps/desktop/lib/src/contracts/agent_hub.dart",
         "apps/desktop/lib/src/frontend/l10n/**",
         "apps/desktop/lib/src/frontend/shared/**",
         "apps/desktop/lib/src/frontend/shell/**",
