@@ -35,7 +35,7 @@ pub(super) fn default_detection_path_with_params(target: &str, params: &Value) -
         .find(|path| probe_exists_with(path, &roots))
         .or_else(|| {
             if target == "kilo-code" {
-                scan_paths::extension_roots("kilo-code", &roots)
+                scan_paths::extension_roots("kilo-code", std::env::consts::OS, &roots)
                     .into_iter()
                     .find_map(existing_kilo_code_extension_dir)
             } else {
@@ -103,7 +103,7 @@ pub(super) fn default_detection_path_for_platform(
         .find(|path| probe_exists_with(path, &roots))
         .or_else(|| {
             if target == "kilo-code" {
-                kilo_code_extension_roots(home)
+                scan_paths::extension_roots("kilo-code", platform, &roots)
                     .into_iter()
                     .find_map(existing_kilo_code_extension_dir)
             } else {
@@ -127,15 +127,25 @@ pub(super) fn default_detection_paths_for_platform(
 
 #[cfg(test)]
 pub(super) fn kilo_code_extension_roots(home: &Path) -> Vec<PathBuf> {
-    scan_paths::extension_roots("kilo-code", &HostRoots::from_home(home))
+    scan_paths::extension_roots(
+        "kilo-code",
+        std::env::consts::OS,
+        &HostRoots::from_home(home),
+    )
 }
 
 fn existing_kilo_code_extension_dir(root: PathBuf) -> Option<PathBuf> {
+    if scan_paths::symlink_escapes_denied_location(&root) || !root.is_dir() {
+        return None;
+    }
     let entries = fs::read_dir(root).ok()?;
     for entry in entries.filter_map(|entry| entry.ok()) {
         let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
         if name == "kilocode.kilo-code" || name.starts_with("kilocode.kilo-code-") {
-            return Some(entry.path());
+            let path = entry.path();
+            if !scan_paths::symlink_escapes_denied_location(&path) && path.is_dir() {
+                return Some(path);
+            }
         }
     }
     None

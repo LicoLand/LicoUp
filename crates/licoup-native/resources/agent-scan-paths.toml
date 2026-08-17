@@ -1,4 +1,4 @@
-schema_version = "licoup.agent-scan-paths.v1"
+schema_version = "licoup.agent-scan-paths.v2"
 
 # Automatic Agent discovery may probe only the paths listed here. The scanner
 # never walks PATH, personal library roots, photo/music libraries, or network
@@ -115,12 +115,12 @@ dirs = [
 [[agents]]
 id = "cursor"
 binaries = [
-  "/Applications/Cursor.app/Contents/Resources/app/bin",
-  "{home}/Applications/Cursor.app/Contents/Resources/app/bin",
+  { oses = ["macos"], path = "/Applications/Cursor.app/Contents/Resources/app/bin" },
+  { oses = ["macos"], path = "{home}/Applications/Cursor.app/Contents/Resources/app/bin" },
 ]
 apps = [
-  "/Applications/Cursor.app/Contents/MacOS/Cursor",
-  "{home}/Applications/Cursor.app/Contents/MacOS/Cursor",
+  { oses = ["macos"], path = "/Applications/Cursor.app/Contents/MacOS/Cursor" },
+  { oses = ["macos"], path = "{home}/Applications/Cursor.app/Contents/MacOS/Cursor" },
 ]
 config = [
   { oses = ["macos"], path = "{home}/Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" },
@@ -146,8 +146,8 @@ history = [
 [[agents]]
 id = "code"
 binaries = [
-  "/Applications/Visual Studio Code.app/Contents/Resources/app/bin",
-  "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin",
+  { oses = ["macos"], path = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin" },
+  { oses = ["macos"], path = "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin" },
 ]
 config = [
   { oses = ["macos"], path = "{home}/Library/Application Support/Code/User/settings.json" },
@@ -175,15 +175,15 @@ history = [
   { path = "{home}/.codex/memories/rollout_summaries", kind = "codex-rollout-summary" },
 ]
 apps = [
-  "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
-  "{home}/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+  { oses = ["macos"], path = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT" },
+  { oses = ["macos"], path = "{home}/Applications/ChatGPT.app/Contents/MacOS/ChatGPT" },
 ]
 
 [[agents]]
 id = "claude-code"
 binaries = [
-  "{home}/.claude/local",
-  "{home}/.claude/local/node_modules/.bin",
+  { path = "{home}/.claude/local" },
+  { path = "{home}/.claude/local/node_modules/.bin" },
 ]
 config = [{ path = "{home}/.claude/settings.json" }]
 detection = [{ path = "{home}/.claude" }]
@@ -194,7 +194,7 @@ history = [
 
 [[agents]]
 id = "opencode"
-binaries = ["{home}/.opencode/bin"]
+binaries = [{ path = "{home}/.opencode/bin" }]
 config = [
   { oses = ["windows"], path = "{appdata}/opencode/opencode.jsonc" },
   { oses = ["macos", "linux"], path = "{xdg_config}/opencode/opencode.jsonc" },
@@ -210,8 +210,8 @@ history = [
 id = "antigravity"
 config = [{ path = "{home}/.gemini/antigravity/mcp_config.json" }]
 apps = [
-  "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
-  "{home}/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+  { oses = ["macos"], path = "/Applications/Antigravity.app/Contents/MacOS/Antigravity" },
+  { oses = ["macos"], path = "{home}/Applications/Antigravity.app/Contents/MacOS/Antigravity" },
 ]
 history = [
   { path = "{home}/Library/Application Support/Antigravity IDE", kind = "antigravity-ide-state" },
@@ -242,10 +242,10 @@ config = [
   { oses = ["macos", "linux"], path = "{xdg_config}/kilo/kilo.json" },
 ]
 extension_roots = [
-  "{home}/.vscode/extensions",
-  "{home}/.vscode-insiders/extensions",
-  "{home}/.cursor/extensions",
-  "{home}/.vscodium/extensions",
+  { path = "{home}/.vscode/extensions" },
+  { path = "{home}/.vscode-insiders/extensions" },
+  { path = "{home}/.cursor/extensions" },
+  { path = "{home}/.vscodium/extensions" },
 ]
 detection = [
   { oses = ["windows"], path = "{appdata}/Code/User/globalStorage/kilocode.kilo-code" },
@@ -274,8 +274,8 @@ history = [
 [[agents]]
 id = "kimi"
 apps = [
-  "/Applications/Kimi.app/Contents/MacOS/Kimi",
-  "{home}/Applications/Kimi.app/Contents/MacOS/Kimi",
+  { oses = ["macos"], path = "/Applications/Kimi.app/Contents/MacOS/Kimi" },
+  { oses = ["macos"], path = "{home}/Applications/Kimi.app/Contents/MacOS/Kimi" },
 ]
 config = [
   { oses = ["macos"], path = "{home}/Library/Application Support/Kimi/config.json" },
@@ -327,8 +327,8 @@ history = [
 [[agents]]
 id = "openclaw"
 binaries = [
-  "{home}/.openclaw",
-  "{home}/.openclaw/bin",
+  { path = "{home}/.openclaw" },
+  { path = "{home}/.openclaw/bin" },
 ]
 history = [
   { path = "{home}/.openclaw", kind = "openclaw-home" },
@@ -340,8 +340,8 @@ history = [
 [[agents]]
 id = "hermes"
 binaries = [
-  "{home}/.hermes/hermes-agent/venv/bin",
-  "{home}/.hermes/bin",
+  { path = "{home}/.hermes/hermes-agent/venv/bin" },
+  { path = "{home}/.hermes/bin" },
 ]
 history = [
   { path = "{home}/.hermes", kind = "hermes-home" },

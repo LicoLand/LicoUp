@@ -4,13 +4,14 @@
 
 use crate::platform::paths::{portable_data_dir, strip_macos_data_volume, user_home_from_env};
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 const MANIFEST: &str = include_str!("../../../resources/agent-scan-paths.toml");
-pub const SCHEMA_VERSION: &str = "licoup.agent-scan-paths.v1";
+pub const SCHEMA_VERSION: &str = "licoup.agent-scan-paths.v2";
 
 #[derive(Clone, Debug, Default)]
 pub struct HostRoots {
@@ -116,11 +117,11 @@ struct BinaryGroup {
 struct AgentPaths {
     id: String,
     #[serde(default)]
-    binaries: Vec<String>,
+    binaries: Vec<OsPath>,
     #[serde(default)]
-    apps: Vec<String>,
+    apps: Vec<OsPath>,
     #[serde(default)]
-    extension_roots: Vec<String>,
+    extension_roots: Vec<OsPath>,
     #[serde(default)]
     config: Vec<OsPath>,
     #[serde(default)]
@@ -201,6 +202,14 @@ fn expand_all(templates: &[String], roots: &HostRoots) -> Vec<PathBuf> {
         .collect()
 }
 
+fn expand_os_paths(entries: &[OsPath], os: &str, roots: &HostRoots) -> Vec<PathBuf> {
+    entries
+        .iter()
+        .filter(|entry| os_matches(&entry.oses, os))
+        .filter_map(|entry| expand_template(&entry.path, roots))
+        .collect()
+}
+
 fn nvm_default_bin_dirs(home: &Path) -> Vec<PathBuf> {
     nvm_default_version(home)
         .map(|version| {
@@ -269,7 +278,7 @@ pub fn binary_dirs(os: &str, roots: &HostRoots) -> Vec<PathBuf> {
         dirs.extend(expand_all(&group.dirs, roots));
     }
     for agent in &manifest().agents {
-        dirs.extend(expand_all(&agent.binaries, roots));
+        dirs.extend(expand_os_paths(&agent.binaries, os, roots));
     }
     if let Some(home) = roots.home.as_deref() {
         dirs.extend(nvm_default_bin_dirs(home));
@@ -318,15 +327,15 @@ pub fn history_roots(agent_id: &str, roots: &HostRoots) -> Vec<HistoryScanRoot> 
         .collect()
 }
 
-pub fn extension_roots(agent_id: &str, roots: &HostRoots) -> Vec<PathBuf> {
+pub fn extension_roots(agent_id: &str, os: &str, roots: &HostRoots) -> Vec<PathBuf> {
     agent(agent_id)
-        .map(|agent| expand_all(&agent.extension_roots, roots))
+        .map(|agent| expand_os_paths(&agent.extension_roots, os, roots))
         .unwrap_or_default()
 }
 
-pub fn app_executables(agent_id: &str, roots: &HostRoots) -> Vec<PathBuf> {
+pub fn app_executables(agent_id: &str, os: &str, roots: &HostRoots) -> Vec<PathBuf> {
     agent(agent_id)
-        .map(|agent| expand_all(&agent.apps, roots))
+        .map(|agent| expand_os_paths(&agent.apps, os, roots))
         .unwrap_or_default()
 }
 
@@ -338,9 +347,9 @@ pub fn allow_prefixes(os: &str, roots: &HostRoots) -> Vec<PathBuf> {
         }
     }
     for agent in &manifest().agents {
-        prefixes.extend(expand_all(&agent.binaries, roots));
-        prefixes.extend(expand_all(&agent.apps, roots));
-        prefixes.extend(expand_all(&agent.extension_roots, roots));
+        prefixes.extend(expand_os_paths(&agent.binaries, os, roots));
+        prefixes.extend(expand_os_paths(&agent.apps, os, roots));
+        prefixes.extend(expand_os_paths(&agent.extension_roots, os, roots));
         for entry in agent
             .config
             .iter()
@@ -364,10 +373,6 @@ pub fn allow_prefixes(os: &str, roots: &HostRoots) -> Vec<PathBuf> {
         .into_iter()
         .filter(|path| !denied(path, roots.home.as_deref()))
         .collect()
-}
-
-pub fn admitted_scan_path(path: &Path) -> bool {
-    admitted_scan_path_with(path, &HostRoots::from_environment())
 }
 
 pub fn admitted_scan_path_with(path: &Path, roots: &HostRoots) -> bool {
@@ -420,7 +425,9 @@ pub fn probe_exists_under_home(path: &Path, home: &Path) -> bool {
     {
         return false;
     }
-    if symlink_escapes_denied_location(path) {
+    if symlink_escapes_denied_location(path)
+        || symlink_escapes_denied_location_with(path, &HostRoots::from_home(&home))
+    {
         return false;
     }
     if !(normalized == home || normalized.starts_with(&home)) {
@@ -458,39 +465,71 @@ pub fn discovered_agent_may_execute(path: &Path, execution_requested: bool) -> b
 }
 
 fn automatic_probe_admitted(path: &Path) -> bool {
-    admitted_scan_path(path) && !is_other_app_container(path)
+    automatic_probe_admitted_with(path, &HostRoots::from_environment())
 }
 
 fn automatic_probe_admitted_with(path: &Path, roots: &HostRoots) -> bool {
     admitted_scan_path_with(path, roots)
         && !is_other_app_container_with(path, roots)
-        && !symlink_escapes_denied_location(path)
+        && !symlink_escapes_denied_location_with(path, roots)
 }
 
-/// `read_link` is lexical. Following the symlink with `exists` would stat the
-/// target, including a personal library root. Skip those before the probe.
+/// Resolve links one path component at a time. Inspecting only the leaf misses
+/// a linked parent and would let the later filesystem probe follow that parent
+/// into a denied location.
 pub(crate) fn symlink_escapes_denied_location(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    if !metadata.file_type().is_symlink() {
-        return false;
+    symlink_escapes_denied_location_with(path, &HostRoots::from_environment())
+}
+
+fn symlink_escapes_denied_location_with(path: &Path, roots: &HostRoots) -> bool {
+    let mut pending = components_of(path);
+    let mut resolved = PathBuf::new();
+    let mut seen_links = BTreeSet::new();
+
+    while let Some(component) = pending.pop_front() {
+        resolved.push(component);
+        let metadata = match fs::symlink_metadata(&resolved) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
+            Err(_) => return true,
+        };
+        if !metadata.file_type().is_symlink() {
+            continue;
+        }
+        if seen_links.len() >= 40 || !seen_links.insert(lexical(&resolved)) {
+            return true;
+        }
+
+        let Ok(target) = fs::read_link(&resolved) else {
+            return true;
+        };
+        let target = if target.is_absolute() {
+            lexical(&target)
+        } else {
+            lexical(
+                &resolved
+                    .parent()
+                    .map(|parent| parent.join(&target))
+                    .unwrap_or(target),
+            )
+        };
+        if denied(&target, roots.home.as_deref()) || is_other_app_container_with(&target, roots) {
+            return true;
+        }
+
+        let mut expanded = components_of(&target);
+        expanded.extend(pending);
+        pending = expanded;
+        resolved.clear();
     }
-    let Ok(target) = fs::read_link(path) else {
-        return true;
-    };
-    let resolved = if target.is_absolute() {
-        lexical(&target)
-    } else {
-        lexical(
-            &path
-                .parent()
-                .map(|parent| parent.join(&target))
-                .unwrap_or(target),
-        )
-    };
-    let home = crate::platform::paths::user_home_from_env();
-    denied(&resolved, home.as_deref()) || is_other_app_container(&resolved)
+    false
+}
+
+fn components_of(path: &Path) -> VecDeque<OsString> {
+    lexical(path)
+        .components()
+        .map(|component| component.as_os_str().to_os_string())
+        .collect()
 }
 
 /// Other-app containers listed in the manifest. Lexical; does not stat.
@@ -691,6 +730,53 @@ mod tests {
         assert!(dirs.contains(&PathBuf::from("/local-app-data/Microsoft/WindowsApps")));
         assert!(dirs.contains(&PathBuf::from("/profile/scoop/shims")));
         assert!(dirs.contains(&PathBuf::from("/program-data/chocolatey/bin")));
+    }
+
+    #[test]
+    fn agent_specific_paths_apply_os_filters() {
+        let roots = fixture_roots();
+        assert!(
+            binary_dirs("macos", &roots)
+                .iter()
+                .any(|path| path.to_string_lossy().contains("Cursor.app"))
+        );
+        assert!(
+            !binary_dirs("linux", &roots)
+                .iter()
+                .any(|path| path.to_string_lossy().contains("Cursor.app"))
+        );
+        assert!(!app_executables("cursor", "macos", &roots).is_empty());
+        assert!(app_executables("cursor", "linux", &roots).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn automatic_probe_rejects_symlink_chain_in_a_parent_component() {
+        use std::os::unix::fs::symlink;
+
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let home = std::env::temp_dir().join(format!(
+            "lico-scan-symlink-{}-{}",
+            stamp.as_secs(),
+            stamp.subsec_nanos()
+        ));
+        let denied_target = home.join("Documents").join("claude");
+        let chained_link = home.join("catalog-link");
+        let allowlisted_link = home.join(".claude");
+        let nested_probe = allowlisted_link.join("settings.json");
+        fs::create_dir_all(&denied_target).unwrap();
+        fs::write(denied_target.join("settings.json"), "{}").unwrap();
+        symlink(&denied_target, &chained_link).unwrap();
+        symlink(&chained_link, &allowlisted_link).unwrap();
+
+        let roots = HostRoots::from_home(&home);
+        assert!(admitted_scan_path_with(&nested_probe, &roots));
+        assert!(symlink_escapes_denied_location_with(&nested_probe, &roots));
+        assert!(!probe_exists_with(&nested_probe, &roots));
+
+        let _ = fs::remove_dir_all(&home);
     }
 
     #[test]
