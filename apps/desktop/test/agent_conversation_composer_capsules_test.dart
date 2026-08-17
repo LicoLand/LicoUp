@@ -461,6 +461,57 @@ void main() {
     expect(find.text('高'), findsWidgets);
   });
 
+  testWidgets('model submenu keeps fused labels in full', (tester) async {
+    _useComposerPopoverViewport(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomLeft,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ComposerRuntimeCapsule(
+                modelOptions: const ['Fable 5 1M Medium', 'Fable 5 1M High'],
+                selectedModel: 'Fable 5 1M Medium',
+                defaultModel: '',
+                enabled: true,
+                onModelChanged: (_) {},
+                reasoningEffortOptions: const [],
+                selectedReasoningEffort: '',
+                onReasoningEffortChanged: null,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('conversation-model-button')));
+    await tester.pumpAndSettle();
+    await _tapRuntimeSelectorRow(
+      tester,
+      const Key('conversation-runtime-model-row'),
+    );
+
+    expect(find.text('Fable 5 1M Medium'), findsWidgets);
+    expect(find.text('Fable 5 1M High'), findsOneWidget);
+    expect(find.text('思考强度'), findsNothing);
+    expect(
+      tester
+          .getSize(find.byKey(const Key('conversation-runtime-submenu')))
+          .width,
+      MessagingDesktopMetrics.composerRuntimeSelectorSubmenuWidth,
+    );
+  });
+
   testWidgets('effort submenu can return the turn to the catalog default', (
     tester,
   ) async {

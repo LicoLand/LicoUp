@@ -31,4 +31,10 @@ fn fingerprints_and_source_keys_are_stable_digests_without_raw_paths() {
         expand_user_path("relative/history"),
         PathBuf::from("relative/history")
     );
+    let home = expand_user_path("~");
+    assert!(
+        !home
+            .to_string_lossy()
+            .starts_with(concat!("/", "System", "/", "Volumes", "/", "Data", "/"))
+    );
 }

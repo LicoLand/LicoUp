@@ -1086,6 +1086,7 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
         &[HistoryRoot {
             path: sessions_dir,
             source_kind: sessions_root.source_kind.clone(),
+            explicitly_selected: sessions_root.explicitly_selected,
         }],
         HistoryDiscoveryOptions::default(),
     );
@@ -1891,6 +1892,7 @@ fn cursor_cli_projects_catalog(
             std::slice::from_ref(&HistoryRoot {
                 path: transcripts_root,
                 source_kind: root.source_kind.clone(),
+                explicitly_selected: root.explicitly_selected,
             }),
             HistoryDiscoveryOptions::default(),
         );

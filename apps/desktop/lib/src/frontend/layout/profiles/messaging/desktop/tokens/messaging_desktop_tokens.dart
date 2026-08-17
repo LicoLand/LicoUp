@@ -160,9 +160,19 @@ abstract final class MessagingDesktopMetrics {
   /// current value.
   static const double composerRuntimeSelectorPrimaryWidth = 224;
 
-  /// Submenu column width for model / effort option lists. Primary + gap +
-  /// submenu stays inside the hover popover's own maximum width.
-  static const double composerRuntimeSelectorSubmenuWidth = 188;
+  /// Submenu column width for model / effort option lists. Wide enough to
+  /// keep fused Cursor-style labels readable without truncating them into
+  /// indistinguishable prefixes.
+  static const double composerRuntimeSelectorSubmenuWidth = 320;
+
+  /// Gap between the fixed primary runtime card and the detached submenu card.
+  static const double composerRuntimeSelectorSubmenuGap = 8;
+
+  /// Max width of the runtime selector hover popover (primary + gap + submenu).
+  static const double composerRuntimeSelectorPopoverMaxWidth =
+      composerRuntimeSelectorPrimaryWidth +
+      composerRuntimeSelectorSubmenuGap +
+      composerRuntimeSelectorSubmenuWidth;
 
   /// Max height of the runtime selector hover popover (primary ± submenu).
   static const double composerRuntimeSelectorPopoverMaxHeight = 260;
@@ -172,9 +182,6 @@ abstract final class MessagingDesktopMetrics {
 
   /// Max height of the bounded, scrollable runtime selector submenu.
   static const double composerRuntimeSelectorSubmenuMaxHeight = 220;
-
-  /// Gap between the fixed primary runtime card and the detached submenu card.
-  static const double composerRuntimeSelectorSubmenuGap = 8;
 
   /// Shared overlay-glass fill for header capsules and composer — same wash
   /// family as the conversation-list card (not a heavier black slab).

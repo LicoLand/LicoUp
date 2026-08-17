@@ -92,10 +92,10 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
         // projection once the streamed turn ends.
         var retainedSession = previousSelected;
         final catalogDirectory = next[matchingIndex].workingDirectory;
-        if (!isUsableLocalConversationWorkingDirectory(
+        if (!isBoundableConversationWorkingDirectory(
               retainedSession.workingDirectory,
             ) &&
-            isUsableLocalConversationWorkingDirectory(catalogDirectory)) {
+            isBoundableConversationWorkingDirectory(catalogDirectory)) {
           retainedSession = retainedSession.withWorkingDirectory(
             catalogDirectory,
           );
@@ -293,7 +293,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       final workingDirectory = session.workingDirectory.trim();
       // Never bind the client-owned fallback or a personal-tree root onto a
       // later native readback — those are not the conversation's project path.
-      if (!isUsableLocalConversationWorkingDirectory(workingDirectory)) {
+      if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
         continue;
       }
 
@@ -312,7 +312,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     final merged = incoming
         .map((session) {
           final incomingDirectory = session.workingDirectory.trim();
-          if (isUsableLocalConversationWorkingDirectory(incomingDirectory)) {
+          if (isBoundableConversationWorkingDirectory(incomingDirectory)) {
             return session;
           }
           final nativeSessionId = session.nativeSessionId.trim();
@@ -322,7 +322,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
                   : byNativeSessionId[nativeSessionId]) ??
               bySessionId[session.id.trim()] ??
               '';
-          if (!isUsableLocalConversationWorkingDirectory(workingDirectory)) {
+          if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
             return session;
           }
           changed = true;
@@ -673,7 +673,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     final bySessionId = <String, String>{};
     for (final session in authority) {
       final workingDirectory = session.workingDirectory.trim();
-      if (!isUsableLocalConversationWorkingDirectory(workingDirectory)) {
+      if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
         continue;
       }
       final nativeSessionId = session.nativeSessionId.trim();
@@ -692,7 +692,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     var changed = false;
     final recovered = sessions
         .map((session) {
-          if (isUsableLocalConversationWorkingDirectory(
+          if (isBoundableConversationWorkingDirectory(
             session.workingDirectory,
           )) {
             return session;
@@ -704,7 +704,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
                   : byNativeSessionId[nativeSessionId]) ??
               bySessionId[session.id.trim()] ??
               '';
-          if (!isUsableLocalConversationWorkingDirectory(workingDirectory)) {
+          if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
             return session;
           }
           changed = true;

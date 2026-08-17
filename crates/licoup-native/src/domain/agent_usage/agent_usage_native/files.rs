@@ -329,10 +329,12 @@ mod tests {
             HistoryRoot {
                 path: PathBuf::from("copilot/session-state"),
                 source_kind: "copilot-cli-session-store".to_owned(),
+                explicitly_selected: false,
             },
             HistoryRoot {
                 path: PathBuf::from("code/workspaceStorage"),
                 source_kind: "vscode-copilot-workspace-storage".to_owned(),
+                explicitly_selected: false,
             },
         ];
         let copilot = usage_roots(HistoryAdapter::Copilot, roots);
@@ -349,10 +351,12 @@ mod tests {
                 HistoryRoot {
                     path: PathBuf::from("cursor/workspaceStorage"),
                     source_kind: "cursor-workspace-storage".to_owned(),
+                    explicitly_selected: false,
                 },
                 HistoryRoot {
                     path: PathBuf::from("cursor/chats"),
                     source_kind: "cursor-cli-chats".to_owned(),
+                    explicitly_selected: false,
                 },
             ],
         );

@@ -26,8 +26,9 @@ class TargetPolicy {
   static List<TargetCandidate> mergeProbe(
     List<TargetCandidate> current,
     String targetId,
-    TargetCandidate? candidate,
-  ) {
+    TargetCandidate? candidate, {
+    bool replaceModelCatalog = true,
+  }) {
     final id = targetId.trim();
     if (candidate == null) {
       return List.unmodifiable(
@@ -38,12 +39,39 @@ class TargetPolicy {
     final index = next.indexWhere(
       (target) => target.target.trim() == candidate.target.trim(),
     );
+    var incoming = candidate;
+    if (!replaceModelCatalog &&
+        index >= 0 &&
+        hasSelectedAgentModelCatalog(next[index]) &&
+        !hasSelectedAgentModelCatalog(incoming)) {
+      incoming = incoming.withModelCatalog(next[index].modelCatalog);
+    }
     if (index < 0) {
-      next.add(candidate);
+      next.add(incoming);
     } else {
-      next[index] = candidate;
+      next[index] = incoming;
     }
     return List.unmodifiable(next);
+  }
+
+  /// Catalog sources that exist only after the user opens that Agent's
+  /// conversation interface: native CLI lookup or another app's named store.
+  static bool hasSelectedAgentModelCatalog(TargetCandidate target) {
+    final sources = target.modelCatalog['sources'];
+    if (sources is! List) {
+      return false;
+    }
+    const selected = {
+      'cursor-cli',
+      'antigravity-cli',
+      'antigravity-local',
+      'kilo-cli',
+      'claude-cli',
+      'codex-app-server',
+      'opencode-cli:models',
+      'pi-cli:list-models',
+    };
+    return sources.any((source) => selected.contains(source.toString()));
   }
 
   static List<TargetCandidate> mobileRelayTargets(Map<String, dynamic> status) {
