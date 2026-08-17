@@ -28,7 +28,6 @@ const managedPolicyPaths = Object.freeze([
   "tools/scripts/client-auditor-preflight.mjs",
   "tools/scripts/client-gate-policy.mjs",
   "tools/scripts/client-gate.mjs",
-  "tools/scripts/client-pr-preflight.mjs",
   "tools/scripts/repository-rulesets.mjs",
   "tools/scripts/repository-identity-policy.mjs",
   "tools/scripts/lib/repository-sensitive-file-policy.mjs",

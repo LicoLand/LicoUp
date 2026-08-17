@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licoup.client-release-template.v2",
+  "schemaVersion": "licoup.client-release-template.v3",
   "versionAuthority": {
     "path": "tools/client-version.json"
   },
@@ -7,52 +7,46 @@
     "branches": ["nightly", "stable", "release"],
     "mergeMethod": "merge",
     "rulesetMutation": "forbidden",
-    "linearHistory": false
-  },
-  "requiredPullRequestChecks": [
-    "Branch flow",
-    "Commit identity",
-    "Client required",
-    "Auditor"
-  ],
-  "pullRequestPreflight": {
-    "command": "npm run client:pr:preflight -- --base origin/nightly --targets <target[,target...]> --full-target",
-    "receiptSchema": "licoup.release-pre-pr-receipt.v3",
-    "receiptPath": "build/reports/release-pre-pr-receipt.json",
-    "remoteMutation": "forbidden",
-    "prePushMode": "receipt-only"
-  },
-  "candidatePreflight": {
-    "refPrefix": "release-candidate/",
-    "targets": {
-      "macos-direct-arm64": ["source", "flutter", "rust", "dependencies"],
-      "macos-app-store-arm64": ["source", "flutter", "rust", "dependencies"],
-      "windows-direct-x64": ["source", "flutter", "rust", "dependencies"],
-      "windows-store-x64": ["source", "flutter", "rust", "dependencies"],
-      "linux-deb-arm64": ["source", "flutter", "rust", "dependencies"],
-      "linux-deb-x64": ["source", "flutter", "rust", "dependencies"],
-      "linux-rpm-arm64": ["source", "flutter", "rust", "dependencies"],
-      "linux-rpm-x64": ["source", "flutter", "rust", "dependencies"],
-      "linux-pacman-x64": ["source", "flutter", "rust", "dependencies"],
-      "linux-pacman-arm64": ["source", "flutter", "rust", "dependencies"],
-      "linux-alpine-apk-arm64": ["source", "flutter", "rust", "dependencies"],
-      "linux-alpine-apk-x64": ["source", "flutter", "rust", "dependencies"],
-      "linux-appimage-arm64": ["source", "flutter", "rust", "dependencies"],
-      "linux-appimage-x64": ["source", "flutter", "rust", "dependencies"],
-      "android-direct-arm64-v8a": ["source", "flutter", "rust", "android", "dependencies"],
-      "android-play-arm64-v8a": ["source", "flutter", "rust", "android", "dependencies"],
-      "ios-app-store-arm64": ["source", "flutter", "rust", "dependencies"]
-    }
+    "linearHistory": false,
+    "edges": [
+      {
+        "head": "action-prefixed",
+        "base": "nightly",
+        "requiredAggregate": "Client required"
+      },
+      {
+        "head": "nightly",
+        "base": "stable",
+        "requiredAggregate": "Stable client"
+      },
+      {
+        "head": "stable",
+        "base": "release",
+        "requiredAggregate": "Release ready"
+      }
+    ],
+    "commonRequiredChecks": [
+      "Branch flow",
+      "Commit identity",
+      "Auditor"
+    ]
   },
   "publication": {
-    "workflow": ".github/workflows/client-release.yml",
-    "ref": "release",
-    "draftOnlyUntilVerified": true,
-    "exactAssetSetRequired": true,
-    "publishOnce": true,
-    "remoteValidity": {
-      "strategyGroup": "tools/client-remote-release-strategies.json",
-      "activeStrategyIds": ["build-success"]
-    }
+    "owner": "apple-release-service",
+    "config": "tools/apple-release/macos-direct-arm64.json",
+    "sourceBranch": "release",
+    "repositoryMutation": "forbidden",
+    "authorizationCount": 1,
+    "interactiveAfterAuthorization": false,
+    "assetRoles": [
+      "installer",
+      "installer-digest",
+      "update-archive",
+      "update-digest"
+    ],
+    "exactDraftAssetSetRequired": true,
+    "anonymousPublicInstallerDownloadRequired": true,
+    "publicInstallerDigestRequired": true,
+    "publicInstallAndStableLaunchRequired": true
   }
 }

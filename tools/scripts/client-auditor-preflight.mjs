@@ -45,17 +45,18 @@ export function validateGovernanceDeclarations(files) {
     release: ["Branch flow", "Commit identity", "Release ready", "Auditor"],
   }),
   "audit_required_checks_mismatch");
-  const release = files[".github/workflows/client-release.yml"];
-  requireValue(typeof release === "string" &&
-    /(?:github\.sha|GITHUB_SHA)/u.test(release) &&
-    /client-github-release-publish\.mjs/u.test(release) &&
-    /cancel-in-progress:\s*false/u.test(release),
-  "audit_workflow_binding_invalid");
-  const publisher = files["tools/scripts/client-github-release-publish.mjs"];
-  requireValue(typeof publisher === "string" &&
-    /targetCommitish/u.test(publisher) && /sourceSha/u.test(publisher) &&
-    /existing GitHub Release/u.test(publisher) && /verifyRemoteAssets/u.test(publisher),
-  "audit_draft_release_contract_invalid");
+  const config = JSON.parse(
+    files["tools/apple-release/macos-direct-arm64.json"] || "null",
+  );
+  requireValue(
+    config?.schema === "apple-release.config.v1" &&
+      config?.source?.branch === "release" &&
+      !Object.hasOwn(config, "candidate") &&
+      !Array.isArray(config?.version?.prepare) &&
+      config?.github?.repository === "LicoLand/LicoUp" &&
+      config?.apple?.target === "macos-direct-arm64",
+    "audit_release_service_contract_invalid",
+  );
   return true;
 }
 
@@ -63,15 +64,14 @@ function main() {
   requireValue(process.argv.length === 2, "audit_argument_invalid");
   const paths = [
     ...expectedChecks.map(([file]) => file),
-    ".github/workflows/client-release.yml",
-    "tools/scripts/client-github-release-publish.mjs",
+    "tools/apple-release/macos-direct-arm64.json",
   ];
   validateGovernanceDeclarations(Object.fromEntries(paths.map((file) => [
     file, readFileSync(path.join(repoRoot, file), "utf8"),
   ])));
   process.stdout.write(`${JSON.stringify({ ok: true, workflowBindingReady: true,
     statusBindingReady: true, requiredChecksReady: true,
-    draftReleaseContractReady: true, remoteMutationExecuted: false,
+    delegatedApplePublicationReady: true, remoteMutationExecuted: false,
     privateDataIncluded: false })}\n`);
 }
 

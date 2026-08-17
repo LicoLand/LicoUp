@@ -1,0 +1,87 @@
+{
+  "schema": "apple-release.config.v1",
+  "product": "LicoUp",
+  "source": {
+    "branch": "release",
+    "remote": "origin"
+  },
+  "version": {
+    "file": "tools/client-version.json",
+    "versionField": "productVersion",
+    "buildField": "buildNumber"
+  },
+  "gates": [
+    [
+      "npm",
+      "ci"
+    ],
+    [
+      "npm",
+      "run",
+      "client:gate:source"
+    ],
+    [
+      "npm",
+      "run",
+      "client:gate:release-policy"
+    ]
+  ],
+  "build": {
+    "command": [
+      "npm",
+      "run",
+      "client:build:macos"
+    ],
+    "app": "build/apps/desktop/runnable/macos/release/LicoUp.app",
+    "materials": [
+      {
+        "path": "LICENSE",
+        "publicName": "LicoUp License.txt"
+      },
+      {
+        "path": "NOTICE",
+        "publicName": "LicoUp Open Source Notice.txt"
+      },
+      {
+        "path": "apps/desktop/packaging/macos/LicoUp Privacy Policy.html",
+        "publicName": "LicoUp Privacy Policy.html"
+      }
+    ]
+  },
+  "apple": {
+    "target": "macos-direct-arm64",
+    "bundleIdentifier": "land.lico.licoup",
+    "entitlements": "apps/desktop/macos/Runner/ProductionRelease.entitlements",
+    "privacyManifest": "apps/desktop/packaging/macos/PrivacyInfo.xcprivacy",
+    "dmgName": "LicoUp-macos-arm64.dmg",
+    "authorityService": "land.lico.apple-release",
+    "stableLaunchSeconds": 30
+  },
+  "github": {
+    "repository": "LicoLand/LicoUp",
+    "tagTemplate": "v{version}",
+    "releaseNameTemplate": "LicoUp {version}"
+  },
+  "artifacts": [
+    {
+      "role": "installer",
+      "path": "build/apple-release/LicoUp-macos-arm64.dmg",
+      "publicName": "LicoUp-macos-arm64.dmg"
+    },
+    {
+      "role": "installer-digest",
+      "path": "build/apple-release/LicoUp-macos-arm64.dmg.sha256",
+      "publicName": "LicoUp-macos-arm64.dmg.sha256"
+    },
+    {
+      "role": "update-archive",
+      "path": "build/apple-release/LicoUp-macos-arm64-update.zip",
+      "publicName": "LicoUp-macos-arm64-update.zip"
+    },
+    {
+      "role": "update-digest",
+      "path": "build/apple-release/LicoUp-macos-arm64-update.zip.sha256",
+      "publicName": "LicoUp-macos-arm64-update.zip.sha256"
+    }
+  ]
+}

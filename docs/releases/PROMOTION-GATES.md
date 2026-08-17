@@ -1,60 +1,68 @@
-# Client promotion gates
+# Client promotion and delegated Apple publication
 
 [Documentation index](../README.md) · [简体中文](PROMOTION-GATES.zh-CN.md)
 
 English is normative. The GitHub default branch remains `release`; default-branch
-selection is independent from the direction in which changes are promoted.
+selection is independent from the direction in which verified source is promoted.
 
 | Pull request edge | Required aggregate | Claim established |
 | --- | --- | --- |
-| temporary branch → `nightly` | `Client required` | Source policy and only the changed Flutter, Rust, Android, or dependency regression lanes pass. Release policy is not part of this edge. |
-| `nightly` → `stable` | `Stable client` | The macOS ARM64 client is built and installed once on `macos-15`, then the exact installed app is launched and observed through its bounded survival proof. |
-| `stable` → `release` | `Release ready` | Node-only release authority and publication-readiness contracts pass without building, installing, launching, signing for publication, or publishing a client. |
+| action-prefixed branch → `nightly` | `Client required` | Source policy and only the changed Flutter, Rust, Android, or dependency lanes pass. |
+| `nightly` → `stable` | `Stable client` | The macOS arm64 client is built and installed once, then the exact installed app is launched and observed through its bounded survival proof. |
+| `stable` → `release` | `Release ready` | Node-only release policy passes without rebuilding, installing, signing for publication, or publishing a client. |
 
-`Branch flow`, `Commit identity`, and `Auditor` remain common required checks on
-all three destination branches. Each branch additionally requires only the
-aggregate owned by its incoming edge.
+`Branch flow`, `Commit identity`, and `Auditor` are common required checks
+on every edge. Each destination additionally requires only the aggregate owned
+by its incoming edge. All three edges use merge commits. Rulesets, required
+check names, and the default branch are not changed during a release cut.
 
-The stable proof uses the repository's ordinary local ad-hoc package path. It
-uses no publisher identity, repository credential, or notarization secret. The
-installed app and its local proof are not carried into publication.
-
-Promotion readiness is not publication. `client:promotion -- train` cuts one
-verified snapshot onto `release`. Later commits on `nightly` are a later cut,
-not that in-flight version. Public publication is only from exact
-`origin/release` (a clean detached worktree and
-`npm run client:release:macos:publish`, or the manually authorized workflow in
-`.github/workflows/client-release.yml`). Never publish from `nightly` or
-`stable`.
-
-During an in-flight publication, `nightly` stays open for ordinary
-action-prefixed merge-commit pull requests. Do not run `nightly` → `stable` or
-`stable` → `release` again until the current publication succeeds or is
-explicitly abandoned.
-
-## Repeatable promotion
-
-Preview the next valid edge without changing GitHub:
+Preview or advance the fixed train with:
 
 ```sh
 npm run client:promotion -- plan
-```
-
-After the current action-prefixed branch is committed and locally verified,
-one command pushes it and advances all three pull requests. The command waits
-for each destination's required checks, uses merge commits, and stops on the
-first failed check or invalid topology:
-
-```sh
-npm run client:promotion -- train
-```
-
-To resume only one edge, run `advance` with its exact source and destination:
-
-```sh
 npm run client:promotion -- advance --head nightly --base stable
+npm run client:promotion -- advance --head stable --base release
 ```
 
-The promotion command never dispatches `.github/workflows/client-release.yml`.
-Artifact preparation and publication remain separate, explicitly authorized
-actions after `release` is ready.
+The promotion command reuses the open pull request for an edge, binds checks to
+its exact head, and stops on the first invalid topology or failed check.
+`nightly` remains open for later ordinary work. Once a snapshot is cut, do not
+promote a later `nightly` tip into the same in-flight publication.
+
+## Delegated Apple publication
+
+Promotion readiness is not publication. The repository stops at a verified
+`origin/release` source cut. Post-release macOS Developer ID publication is
+delegated to the local Apple Release service through
+`tools/apple-release/macos-direct-arm64.json`.
+
+The delegated configuration is read-only with respect to repository source: it
+does not create a release-candidate branch, prepare a version commit, merge a
+pull request, or mutate `nightly`, `stable`, `release`, Rulesets, or required
+checks. It may act only on the exact authorized `origin/release` revision and
+the declared public tag, Release, and four-asset contract.
+
+Install or inspect the local service with:
+
+```sh
+npm run client:release:service:install
+npm run client:release:service:configure
+npm run client:release:service:status
+npm run client:release:status -- --job <job-id>
+```
+
+An explicitly authorized publication starts with:
+
+```sh
+npm run client:release:macos -- --version <version> --build <build>
+```
+
+Read-only preflight precedes one immutable authorization. Credentials remain in
+their owning secure stores, and retained receipts exclude credentials, account
+identity, machine paths, raw output, and runtime data. A tag, draft Release,
+notarization result, or uploaded asset alone is not success. Terminal success
+requires exact public-asset reconciliation, anonymous installer download,
+digest verification, installation, and stable launch.
+
+Branch promotion never starts this service and never creates or publishes a
+GitHub Release, tag, asset, notarization submission, or update-channel record.
