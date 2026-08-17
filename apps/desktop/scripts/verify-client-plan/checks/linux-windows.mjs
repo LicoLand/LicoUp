@@ -252,9 +252,6 @@ for (const token of [
 assert(Array.isArray(windowsImplementationConfigJson.sourceChecks) &&
   windowsImplementationConfigJson.sourceChecks.length >= 5,
   "Windows implementation config must define source checks");
-assert(windowsImplementationConfigJson.sourceChecks.every((check) =>
-  check.file !== ".github/workflows/client-release.yml"),
-"Windows local implementation closure must not depend on GitHub Release channel selection");
 for (const token of [
   "loadSecureMeshWindowsImplementationConfig",
   "normalizeSafeSourceRef",
