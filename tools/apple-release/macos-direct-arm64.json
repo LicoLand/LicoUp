@@ -5,10 +5,29 @@
     "branch": "release",
     "remote": "origin"
   },
+  "candidate": {
+    "template": "release-candidate/v{version}",
+    "mergeMethod": "merge",
+    "requiredChecks": [
+      "Branch flow",
+      "Commit identity",
+      "Client required",
+      "Auditor"
+    ]
+  },
   "version": {
     "file": "tools/client-version.json",
     "versionField": "productVersion",
-    "buildField": "buildNumber"
+    "buildField": "buildNumber",
+    "allowedPaths": [
+      "tools/client-version.json"
+    ],
+    "prepare": [
+      "node",
+      "tools/scripts/client-release-version-prepare.mjs",
+      "{version}",
+      "{build}"
+    ]
   },
   "gates": [
     [
