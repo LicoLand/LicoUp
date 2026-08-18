@@ -691,6 +691,14 @@ mod tests {
         }
     }
 
+    fn unc_path(host: &str, rest: &str) -> PathBuf {
+        PathBuf::from(format!(r"\\{host}\{rest}"))
+    }
+
+    fn extended_drive_path(segment: &str) -> PathBuf {
+        PathBuf::from(format!(r"\\?\C:{segment}"))
+    }
+
     #[test]
     fn manifest_parses_with_the_published_schema() {
         assert_eq!(manifest().schema_version, SCHEMA_VERSION);
@@ -720,7 +728,7 @@ mod tests {
             Some(&posix_absolute(&["System", "Volumes", "Data", "profile"])),
         ));
         assert!(denied(
-            Path::new(r"\\server\redirected-profile\AppData"),
+            &Path::new(&unc_path("server", r"redirected-profile\AppData")),
             Some(&home),
         ));
         assert!(denied(
@@ -728,7 +736,7 @@ mod tests {
             Some(&home),
         ));
         assert!(!denied(
-            Path::new(r"\\?\C:\Profile\lico\AppData"),
+            &Path::new(&extended_drive_path(r"\Profile\lico\AppData")),
             Some(&home),
         ));
     }
@@ -885,7 +893,7 @@ mod tests {
         assert!(!catalog_home_denied(&home, Some(&home)));
         assert!(catalog_home_denied(&home.join("Desktop"), Some(&home)));
         assert!(catalog_home_denied(
-            Path::new(r"\\server\redirected-profile"),
+            &unc_path("server", "redirected-profile"),
             Some(&home)
         ));
     }
@@ -893,8 +901,8 @@ mod tests {
     #[test]
     fn windows_network_roots_never_enter_the_binary_probe_set() {
         let mut roots = fixture_roots();
-        roots.appdata = Some(PathBuf::from(r"\\server\profile\AppData\Roaming"));
-        roots.local_appdata = Some(PathBuf::from(r"\\server\profile\AppData\Local"));
+        roots.appdata = Some(unc_path("server", r"profile\AppData\Roaming"));
+        roots.local_appdata = Some(unc_path("server", r"profile\AppData\Local"));
         let dirs = binary_dirs("windows", &roots);
         assert!(dirs.iter().all(|path| !is_windows_network_path(path)));
     }

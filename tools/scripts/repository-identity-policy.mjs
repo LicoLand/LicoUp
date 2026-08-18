@@ -76,16 +76,28 @@ function run(command, args, options = {}) {
   }
 }
 
-function runOptional(command, args) {
+function runOptionalIn(command, args, cwd) {
   try {
     return execFileSync(command, args, {
-      cwd: repoRoot,
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   } catch {
     return "";
   }
+}
+
+function runOptional(command, args) {
+  return runOptionalIn(command, args, repoRoot);
+}
+
+export function isMergeInProgress(cwd = repoRoot) {
+  return runOptionalIn("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd) !== "";
+}
+
+export function shouldRejectEmptyStagedCandidate(hasStagedPaths, mergeInProgress) {
+  return hasStagedPaths === false && mergeInProgress !== true;
 }
 
 export function canonicalGitHubEmail(identity) {
@@ -267,7 +279,7 @@ function stagedPaths() {
 
 function assertStagedCandidate() {
   const paths = stagedPaths();
-  if (paths.length === 0) {
+  if (shouldRejectEmptyStagedCandidate(paths.length > 0, isMergeInProgress())) {
     reject("EMPTY_STAGED_CANDIDATE", "There are no staged source changes to commit.");
   }
   for (const relativePath of paths) {
