@@ -48,7 +48,10 @@ pub(super) fn extra_model_collection_paths(target: &str, params: &Value) -> Vec<
             .join("Code")
             .join("User")
             .join("workspaceStorage");
-        if !crate::domain::targets::scan_paths::is_other_app_container(&root) {
+        let selected = agent_cli_model_lookup_enabled(params);
+        if crate::domain::targets::scan_paths::selected_agent_named_store_exists(
+            &root, &home, selected,
+        ) {
             collect_named_model_cache_files(&root, "GitHub.copilot-chat", &mut paths, 0);
         }
     }
