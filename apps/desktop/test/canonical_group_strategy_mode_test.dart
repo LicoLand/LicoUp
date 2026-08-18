@@ -407,6 +407,75 @@ void main() {
       expect(find.text('Authorized Graph'), findsWidgets);
     },
   );
+
+  testWidgets(
+    'skips the strategy run when the conversation changes while the post is in flight',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final postBarrier = Completer<void>();
+      final conversationRunner = _GroupConversationRunner(
+        postBarrier: postBarrier,
+      );
+      final gateway = _StrategyGateway();
+      final controller = ClientConversationController(
+        runner: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(TextField), 'race the switch');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      // The message post is suspended inside the runner while the user
+      // navigates to another group conversation.
+      await controller.selectConversation('conversation:other');
+      await tester.pump();
+      expect(controller.selectedConversationId, 'conversation:other');
+
+      postBarrier.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.message.post',
+            )
+            .length,
+        1,
+      );
+      expect(gateway.actions, isNot(contains('strategy.run.start')));
+      expect(gateway.startCount, 0);
+    },
+  );
 }
 
 Widget _groupApp(Widget child) {
@@ -558,9 +627,10 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
 }
 
 final class _GroupConversationRunner implements AgentCommandRunner {
-  _GroupConversationRunner({this.callOrder});
+  _GroupConversationRunner({this.callOrder, this.postBarrier});
 
   final List<String>? callOrder;
+  final Completer<void>? postBarrier;
   final List<Map<String, dynamic>> requests = [];
   final Map<String, String> addedAgents = {};
   String strategyRevision = '';
@@ -575,6 +645,9 @@ final class _GroupConversationRunner implements AgentCommandRunner {
     requests.add(request);
     final action = request['action'];
     callOrder?.add('conversation:$action');
+    if (action == 'conversation.message.post') {
+      await postBarrier?.future;
+    }
     if (action == 'conversation.membership.add') {
       final principal = Map<String, dynamic>.from(request['principal'] as Map);
       addedAgents[(principal['agentId'] ?? '').toString()] =
@@ -594,6 +667,8 @@ final class _GroupConversationRunner implements AgentCommandRunner {
           addedAgents,
           strategyRevision: strategyRevision,
           revision: revision,
+          conversationId: (request['conversationId'] ?? 'conversation:group')
+              .toString(),
         ),
         'conversation.events.page' => {
           'events': <Map<String, dynamic>>[],
@@ -651,8 +726,9 @@ Map<String, dynamic> _conversation(
   Map<String, String> addedAgents, {
   required String strategyRevision,
   required int revision,
+  String conversationId = 'conversation:group',
 }) => {
-  'id': 'conversation:group',
+  'id': conversationId,
   'title': 'Lico',
   'archived': false,
   'pinned': true,
@@ -669,6 +745,7 @@ Map<String, dynamic> _conversation(
       kind: 'human',
       label: 'Local User',
       access: 'owner',
+      conversationId: conversationId,
     ),
     _membership(
       id: 'membership:codex',
@@ -676,6 +753,7 @@ Map<String, dynamic> _conversation(
       kind: 'agent',
       label: 'Codex',
       agentId: 'codex',
+      conversationId: conversationId,
     ),
     _membership(
       id: 'membership:claude',
@@ -683,6 +761,7 @@ Map<String, dynamic> _conversation(
       kind: 'agent',
       label: 'Claude Code',
       agentId: 'claude-code',
+      conversationId: conversationId,
     ),
     for (final entry in addedAgents.entries)
       _membership(
@@ -691,6 +770,7 @@ Map<String, dynamic> _conversation(
         kind: 'agent',
         label: entry.value,
         agentId: entry.key,
+        conversationId: conversationId,
       ),
   ],
 };
@@ -702,9 +782,10 @@ Map<String, dynamic> _membership({
   required String label,
   String agentId = '',
   String access = 'member',
+  String conversationId = 'conversation:group',
 }) => {
   'id': id,
-  'conversationId': 'conversation:group',
+  'conversationId': conversationId,
   'principal': {
     'id': principalId,
     'kind': kind,
