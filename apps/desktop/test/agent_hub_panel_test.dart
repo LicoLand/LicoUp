@@ -348,6 +348,7 @@ _HubHarness _harness(
   Locale locale = const Locale('en'),
   AgentHubHomepageOpener? openHomepage,
   AgentHubOpenAgent? onOpenAgent,
+  AgentHubCatalogOrder? orderRecipes,
 }) {
   final controller = AgentHubCatalogController(engine: engine);
   return (
@@ -372,7 +373,7 @@ _HubHarness _harness(
           height: 720,
           child: AgentHubPanel(
             controller: controller,
-            orderRecipes: (recipes) => recipes,
+            orderRecipes: orderRecipes ?? (recipes) => recipes,
             openHomepage: openHomepage ?? (uri) async => true,
             onOpenAgent: onOpenAgent,
           ),
@@ -402,6 +403,22 @@ Future<void> _pumpHub(WidgetTester tester, _HubHarness harness) async {
   await tester.pumpWidget(app);
   await tester.pump();
   await tester.pump();
+}
+
+List<String> _cardOrder(WidgetTester tester) {
+  final positions = <String, Offset>{};
+  for (final id in _ids) {
+    final card = find.byKey(Key('agent-hub-card-$id'));
+    if (card.evaluate().isNotEmpty) {
+      positions[id] = tester.getTopLeft(card);
+    }
+  }
+  final entries = positions.entries.toList()
+    ..sort((a, b) {
+      final byY = a.value.dy.compareTo(b.value.dy);
+      return byY != 0 ? byY : a.value.dx.compareTo(b.value.dx);
+    });
+  return [for (final entry in entries) entry.key];
 }
 
 void main() {
@@ -808,6 +825,70 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'catalog order shuffles once per refresh and incremental resolution keeps it stable',
+    (tester) async {
+      final calls = <int>[];
+      List<AgentHubRecipe> rotatingOrder(List<AgentHubRecipe> recipes) {
+        calls.add(recipes.length);
+        if (recipes.isEmpty) {
+          return recipes;
+        }
+        if (calls.length.isEven) {
+          return [recipes.last, ...recipes.sublist(0, recipes.length - 1)];
+        }
+        return recipes.reversed.toList();
+      }
+
+      final inspectDelays = {
+        for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
+      };
+      await _pumpHub(
+        tester,
+        _harness(
+          _FakeHubEngine(inspectDelays: inspectDelays),
+          orderRecipes: rotatingOrder,
+        ),
+      );
+
+      expect(calls, [_ids.length]);
+      expect(_cardOrder(tester), _ids.reversed.toList());
+
+      for (final id in _ids) {
+        inspectDelays[id]!.complete(
+          AgentHubCatalogSnapshot(
+            recipes: _snapshot().recipes
+                .where((recipe) => recipe.id == id)
+                .toList(),
+            ok: true,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(calls, [_ids.length]);
+        expect(_cardOrder(tester), _ids.reversed.toList());
+      }
+
+      await tester.tap(find.byKey(const Key('agent-hub-refresh')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(calls, [_ids.length, _ids.length]);
+      expect(_cardOrder(tester), [
+        _ids.last,
+        ..._ids.sublist(0, _ids.length - 1),
+      ]);
+      await tester.pump();
+      expect(calls, [_ids.length, _ids.length]);
+      expect(_cardOrder(tester), [
+        _ids.last,
+        ..._ids.sublist(0, _ids.length - 1),
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'Agent Hub panel joins plan/confirm/install/verify/rescan through the native port',

@@ -47,7 +47,7 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 | linux-alpine-apk-x64 | linux-musl-x64 | linux | alpine-repository | apk | x64 | 可用 | 不可选入 | package-repository |
 | linux-appimage-arm64 | linux-glibc-arm64 | linux | direct | appimage | arm64 | 可用 | 不可选入 | appimage-update-information |
 | linux-appimage-x64 | linux-glibc-x64 | linux | direct | appimage | x64 | 可用 | 不可选入 | appimage-update-information |
-| android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | 可用 | 可选入 | manual-download |
+| android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | 可用 | 不可选入 | manual-download |
 | android-play-arm64-v8a | android-arm64 | android | google-play | aab | arm64-v8a | 可用 | 不可选入 | store-managed |
 | ios-app-store-arm64 | ios-arm64 | ios | app-store | ipa | arm64 | 可用 | 不可选入 | store-managed |
 

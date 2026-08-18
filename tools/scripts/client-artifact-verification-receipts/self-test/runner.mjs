@@ -4,7 +4,6 @@ import { assertReceiptPrivacy } from "../privacy.mjs";
 import { buildCanonicalReceiptReport } from "../receipt/build.mjs";
 import { requireValue } from "../util.mjs";
 import {
-  fixtureAndroid,
   fixtureDigest,
   fixtureMacos,
 } from "./fixtures.mjs";
@@ -18,14 +17,12 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   const productVersion = "1.2.3";
   const artifacts = {
     "macos-direct-arm64": fixtureDigest("2"),
-    "android-direct-arm64-v8a": fixtureDigest("3"),
   };
   const evidenceArtifacts = {
     "macos-direct-arm64": fixtureDigest("7"),
   };
   const invocationDigests = {
     "macos-direct-arm64": fixtureDigest("a"),
-    "android-direct-arm64-v8a": fixtureDigest("b"),
   };
   const inputFor = (targetId, payload) => ({
     payload: { ...payload, invocationNonceDigest: invocationDigests[targetId] },
@@ -48,11 +45,6 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
       closureChallengeDigest,
       invocationNonceDigest: invocationDigests["macos-direct-arm64"],
     })),
-    "android-direct-arm64-v8a": inputFor("android-direct-arm64-v8a", fixtureAndroid({
-      sourceDigest, artifactDigest: artifacts["android-direct-arm64-v8a"], productVersion, generatedAt,
-      closureChallengeDigest,
-      invocationNonceDigest: invocationDigests["android-direct-arm64-v8a"],
-    })),
   };
   const build = (ids, inputs = readyInputs) => buildCanonicalReceiptReport({
     config,
@@ -70,19 +62,10 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
     ],
   });
 
-  const macOnly = build(["macos-direct-arm64"]);
-  requireValue(macOnly.ok && macOnly.receipts.length === 1,
+  const selected = build(["macos-direct-arm64"]);
+  requireValue(selected.ok && selected.receipts.length === 1,
     "self_test_single_target_failed");
-  const allTargets = build(["macos-direct-arm64", "android-direct-arm64-v8a"]);
-  if (schemaFixture) return allTargets;
-  requireValue(allTargets.ok && allTargets.receipts.length === 2,
-    "self_test_multiple_targets_failed");
-  const androidOnly = build(["android-direct-arm64-v8a"], { "android-direct-arm64-v8a": readyInputs["android-direct-arm64-v8a"] });
-  requireValue(androidOnly.ok && androidOnly.selectedTargetIds.length === 1,
-    "self_test_unselected_target_blocked");
-  requireValue(androidOnly.githubReleaseReady === true &&
-    androidOnly.nonBlockingDistributionGuidance.blocking === false,
-  "self_test_distribution_guidance_blocked_github_release");
+  if (schemaFixture) return selected;
 
   const staleInputs = structuredClone(readyInputs);
   staleInputs["macos-direct-arm64"].payload.generatedAt = new Date(
@@ -91,20 +74,20 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   requireValue(!build(["macos-direct-arm64"], staleInputs).ok,
     "self_test_stale_evidence_accepted");
   const wrongArtifact = structuredClone(readyInputs);
-  wrongArtifact["android-direct-arm64-v8a"].artifactDigest = fixtureDigest("7");
-  requireValue(!build(["android-direct-arm64-v8a"], wrongArtifact).ok,
+  wrongArtifact["macos-direct-arm64"].evidenceArtifactDigest = fixtureDigest("9");
+  requireValue(!build(["macos-direct-arm64"], wrongArtifact).ok,
     "self_test_wrong_artifact_digest_accepted");
   const wrongSource = structuredClone(readyInputs);
   wrongSource["macos-direct-arm64"].payload.sourceStateDigest = fixtureDigest("8");
   requireValue(!build(["macos-direct-arm64"], wrongSource).ok,
     "self_test_wrong_source_digest_accepted");
   const wrongProducer = structuredClone(readyInputs);
-  wrongProducer["android-direct-arm64-v8a"].payload.verifier = "tools/scripts/unapproved-producer.mjs";
-  requireValue(!build(["android-direct-arm64-v8a"], wrongProducer).ok,
+  wrongProducer["macos-direct-arm64"].payload.verifier = "tools/scripts/unapproved-producer.mjs";
+  requireValue(!build(["macos-direct-arm64"], wrongProducer).ok,
     "self_test_wrong_producer_accepted");
   const wrongTarget = structuredClone(readyInputs);
-  wrongTarget["android-direct-arm64-v8a"].payload.targetId = "macos-direct-arm64";
-  requireValue(!build(["android-direct-arm64-v8a"], wrongTarget).ok,
+  wrongTarget["macos-direct-arm64"].payload.receipts[0].targetId = "windows-x64";
+  requireValue(!build(["macos-direct-arm64"], wrongTarget).ok,
     "self_test_wrong_target_accepted");
   const wrongVersion = structuredClone(readyInputs);
   wrongVersion["macos-direct-arm64"].payload.receipts[0].productVersion = "9.9.9";
@@ -115,8 +98,8 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   requireValue(!build(["macos-direct-arm64"], adhoc).ok,
     "self_test_adhoc_signature_accepted");
   const wrongChallenge = structuredClone(readyInputs);
-  wrongChallenge["android-direct-arm64-v8a"].payload.closureChallengeDigest = fixtureDigest("0");
-  requireValue(!build(["android-direct-arm64-v8a"], wrongChallenge).ok,
+  wrongChallenge["macos-direct-arm64"].payload.closureChallengeDigest = fixtureDigest("0");
+  requireValue(!build(["macos-direct-arm64"], wrongChallenge).ok,
     "self_test_wrong_closure_challenge_accepted");
   const failedInvocation = structuredClone(readyInputs);
   failedInvocation["macos-direct-arm64"].invocationExitCode = 1;
@@ -127,24 +110,12 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   requireValue(!build(["macos-direct-arm64"], changedProducer).ok,
     "self_test_changed_producer_accepted");
   const wrongInvocationNonce = structuredClone(readyInputs);
-  wrongInvocationNonce["android-direct-arm64-v8a"].payload.invocationNonceDigest = fixtureDigest("f");
-  requireValue(!build(["android-direct-arm64-v8a"], wrongInvocationNonce).ok,
+  wrongInvocationNonce["macos-direct-arm64"].payload.invocationNonceDigest = fixtureDigest("f");
+  requireValue(!build(["macos-direct-arm64"], wrongInvocationNonce).ok,
     "self_test_wrong_invocation_nonce_accepted");
-  const duplicateInvocationNonce = structuredClone(readyInputs);
-  duplicateInvocationNonce["android-direct-arm64-v8a"].expectedInvocationNonceDigest =
-    duplicateInvocationNonce["macos-direct-arm64"].expectedInvocationNonceDigest;
-  duplicateInvocationNonce["android-direct-arm64-v8a"].payload.invocationNonceDigest =
-    duplicateInvocationNonce["macos-direct-arm64"].payload.invocationNonceDigest;
-  let duplicateNonceRejected = false;
-  try {
-    build(["macos-direct-arm64", "android-direct-arm64-v8a"], duplicateInvocationNonce);
-  } catch {
-    duplicateNonceRejected = true;
-  }
-  requireValue(duplicateNonceRejected, "self_test_duplicate_invocation_nonce_accepted");
   const wrongBuild = structuredClone(readyInputs);
-  wrongBuild["android-direct-arm64-v8a"].payload.buildNumber = 8;
-  requireValue(!build(["android-direct-arm64-v8a"], wrongBuild).ok,
+  wrongBuild["macos-direct-arm64"].payload.receipts[0].buildNumber = 8;
+  requireValue(!build(["macos-direct-arm64"], wrongBuild).ok,
     "self_test_wrong_build_number_accepted");
   const wrongEntitlements = structuredClone(readyInputs);
   wrongEntitlements["macos-direct-arm64"].payload.receipts[0].entitlementsMatch = false;
@@ -154,21 +125,10 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   wrongDistributionLineage["macos-direct-arm64"].artifactLineageReady = false;
   requireValue(!build(["macos-direct-arm64"], wrongDistributionLineage).ok,
     "self_test_wrong_distribution_lineage_accepted");
-  const debugApk = structuredClone(readyInputs);
-  debugApk["android-direct-arm64-v8a"].payload.apkBinaryFacts.debuggable = true;
-  requireValue(!build(["android-direct-arm64-v8a"], debugApk).ok,
-    "self_test_debug_apk_accepted");
-  const distributionMetadataChanged = structuredClone(readyInputs);
-  distributionMetadataChanged["android-direct-arm64-v8a"].payload.nonBlockingDistributionGuidance = {
-    blocking: false,
-    storeListingStatus: "planned",
-  };
-  requireValue(build(["android-direct-arm64-v8a"], distributionMetadataChanged).ok,
-    "self_test_distribution_guidance_blocked_github_release");
   const privacyKey = ["device", "Id"].join("");
   let privacyRejected = false;
   try {
-    assertReceiptPrivacy({ ...macOnly, [privacyKey]: "fixture" });
+    assertReceiptPrivacy({ ...selected, [privacyKey]: "fixture" });
   } catch {
     privacyRejected = true;
   }
@@ -184,7 +144,7 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   const privateValue = ["", "Users", "fixture", "artifact"].join("/");
   privacyRejected = false;
   try {
-    assertReceiptPrivacy({ ...macOnly, fixture: privateValue });
+    assertReceiptPrivacy({ ...selected, fixture: privateValue });
   } catch {
     privacyRejected = true;
   }
@@ -200,11 +160,11 @@ export function runSelfTest(config, { schemaFixture = false } = {}) {
   }
   requireValue(emptyTokenRejected, "receipt_explicit_empty_target_token_accepted");
   requireValue(JSON.stringify(selectedTargetIds({
-    targets: "android-direct-arm64-v8a,macos-direct-arm64",
+    targets: "macos-direct-arm64",
     targetsSpecified: true,
   }, config)) === JSON.stringify([
-    "macos-direct-arm64", "android-direct-arm64-v8a",
+    "macos-direct-arm64",
   ]),
   "receipt_target_authority_order_not_canonical");
-  return { ok: true, caseCount: 28, privatePathsIncluded: false };
+  return { ok: true, caseCount: 20, privatePathsIncluded: false };
 }
