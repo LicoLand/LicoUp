@@ -45,8 +45,7 @@ function assertPricingAuthorityReady() {
 export function runSelfTest({ schemaFixture = false } = {}) {
   assertPricingAuthorityReady();
   const selected = [
-    { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true },
-    { id: "android-direct-arm64-v8a", platform: "android", arch: "arm64", supported: true, releaseSupported: true }
+    { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true }
   ];
   const readyIntegrity = {
     ok: true,
@@ -89,12 +88,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     artifactKind,
     artifactDigest: `sha256:${digestDigit.repeat(64)}`,
     runtimeExecutableDigest: `sha256:${digestDigit.repeat(64)}`,
-    artifactEvidenceReportDigest: targetId === "android-direct-arm64-v8a"
-      ? `sha256:${"b".repeat(64)}`
-      : `sha256:${"d".repeat(64)}`,
-    artifactEvidenceInvocationNonceDigest: targetId === "android-direct-arm64-v8a"
-      ? `sha256:${"c".repeat(64)}`
-      : `sha256:${"e".repeat(64)}`,
+    artifactEvidenceReportDigest: `sha256:${"d".repeat(64)}`,
+    artifactEvidenceInvocationNonceDigest: `sha256:${"e".repeat(64)}`,
     versionReady: true,
     targetReady: true,
     consumerIntegritySignatureReady: false,
@@ -115,7 +110,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       "macos-distribution-archive",
       "3",
     ),
-    "android-direct-arm64-v8a": readyArtifactFor("android-direct-arm64-v8a", "android-apk", "8"),
     [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]: {
       clientCandidateDigest: `sha256:${"a".repeat(64)}`,
       protocolCandidateDigest: `sha256:${"b".repeat(64)}`,
@@ -131,7 +125,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   const externalAndUnselected = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports() });
   if (schemaFixture) return externalAndUnselected;
   requireValue(externalAndUnselected.githubReleaseReady,
-    `macOS and Android selected targets must pass without iOS or external evidence: ${externalAndUnselected.blockers.join(",")}`);
+    `macOS selected target must pass without iOS or external evidence: ${externalAndUnselected.blockers.join(",")}`);
   const productTrustMissing = reduceClientReleaseAcceptance({
     ...base,
     reports: selfTestReports({ productTrustUxReady: false })
@@ -476,7 +470,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:secure-mesh-e2ee-evidence:diagnostic",
     "client:verify:secure-mesh-e2ee-evidence",
     "client:verify:product-line-security",
-    "client:verify:github-release",
     "client:verify:client-release-acceptance:self-test",
   ]) {
     requireValue(
@@ -488,9 +481,9 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     packageScripts["client:verify:secure-mesh-e2ee-evidence:diagnostic"],
     "cross-product diagnostic must remain explicitly callable",
   );
-  requireValue(packageScripts["client:verify:github-release"]?.includes(
-    "client-github-release-acceptance.mjs",
-  ), "explicit GitHub release must run the artifact-only GitHub reducer");
+  requireValue(packageScripts["client:release:macos"]?.includes(
+    "apple-release release start",
+  ), "macOS publication must be delegated to Apple Release");
   requireValue(packageScripts["client:verify:product-line-security"]?.includes(
     "client-release-acceptance.mjs",
   ), "product-line security must retain the full client evidence reducer");
@@ -499,8 +492,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
     "client:verify:android-apk-zip-facts:self-test",
-    "client:verify:android-release-toolchain:self-test",
-    "client:verify:macos-distribution:self-test",
     "client:verify:review-signoff:self-test",
     "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
@@ -597,8 +588,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       catalog: preflightCatalog,
       config: preflightConfig,
       receiptConfig: preflightReceiptConfig,
-      selectedTargetIds: [...preflightConfig.releaseTargetAuthority.selectedTargetIds]
-        .reverse(),
+      selectedTargetIds: ["macos-direct-arm64", "linux-deb-arm64"],
     });
   } catch {
     authorityOrderRejected = true;

@@ -49,6 +49,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.onPasteImage,
     this.mentionTargets = const [],
     this.mentionLabels = const {},
+    this.leading,
   });
 
   final String targetLabel;
@@ -95,6 +96,9 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// Agent id to the exact membership display name recognized by the group
   /// dispatch parser. The visible compact product name remains local UI copy.
   final Map<String, String> mentionLabels;
+
+  /// Optional capsule rendered immediately before the input field.
+  final Widget? leading;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -478,22 +482,33 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             ),
             const SizedBox(height: 8),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (widget.floatingMatteCapsule && widget.onAttach != null) ...[
-                _ComposerAttachCapsuleButton(
-                  enabled: interactive,
-                  tooltip: strings.attachments,
-                  onPressed: widget.onAttach,
-                ),
-                const SizedBox(
-                  width: MessagingDesktopMetrics
-                      .conversationHeaderCapsuleButtonGap,
-                ),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.leading != null) ...[
+                  widget.leading!,
+                  const SizedBox(
+                    width: MessagingDesktopMetrics
+                        .conversationHeaderCapsuleButtonGap,
+                  ),
+                ],
+                if (widget.floatingMatteCapsule && widget.onAttach != null) ...[
+                  Align(
+                    child: _ComposerAttachCapsuleButton(
+                      enabled: interactive,
+                      tooltip: strings.attachments,
+                      onPressed: widget.onAttach,
+                    ),
+                  ),
+                  const SizedBox(
+                    width: MessagingDesktopMetrics
+                        .conversationHeaderCapsuleButtonGap,
+                  ),
+                ],
+                Expanded(child: field),
               ],
-              Expanded(child: field),
-            ],
+            ),
           ),
         ],
       ),

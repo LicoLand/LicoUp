@@ -5,8 +5,7 @@
   "releaseTargetAuthority": {
     "schemaVersion": "licomesh.client-release-target-authority.v1",
     "selectedTargetIds": [
-      "macos-direct-arm64",
-      "android-direct-arm64-v8a"
+      "macos-direct-arm64"
     ]
   },
   "maxClockSkewMs": 5000,
@@ -77,13 +76,6 @@
       "entitlementsRef": "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements",
       "versionPolicy": "numeric-core",
       "requiredArchitecture": "arm64",
-      "consumerVerificationPolicy": "provenance-or-verifiable-signature"
-    },
-    "android-direct-arm64-v8a": {
-      "artifactKind": "android-apk",
-      "ref": "build/apps/desktop/android/release/app-release.apk",
-      "packageName": "land.lico.licoup",
-      "requiredArchitecture": "arm64-v8a",
       "consumerVerificationPolicy": "provenance-or-verifiable-signature"
     }
   }

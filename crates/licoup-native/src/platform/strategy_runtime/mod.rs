@@ -258,11 +258,15 @@ pub(crate) fn execute_actor(
     authorization_digest: &str,
     binding: &crate::domain::adaptive_flywheel::BindingValue,
     permit: &mut StrategyEffectPermit,
+    cwd: Option<&str>,
 ) -> Result<Value> {
     ensure!(
         matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem),
         "strategy_command_kind_invalid"
     );
+    if let Some(cwd) = cwd {
+        admit_strategy_cwd(cwd)?;
+    }
     let fingerprint =
         actor_fingerprint(&binding.value_id, &binding.model, &binding.reasoning_effort)?;
     permit.consume(command, authorization_digest, &fingerprint)?;
@@ -293,19 +297,32 @@ pub(crate) fn execute_actor(
                 Value::String(binding.reasoning_effort.clone()),
             );
         }
+        if let Some(cwd) = cwd {
+            object.insert("cwd".into(), Value::String(cwd.to_owned()));
+            object.insert("workingDirectory".into(), Value::String(cwd.to_owned()));
+        }
     }
-    let response = crate::platform::dispatch_lane_operation("send", &request)
-        .map_err(|_| anyhow!("strategy_actor_dispatch_failed"))?;
-    ensure!(
-        response.get("ok").and_then(Value::as_bool) == Some(true),
-        "strategy_actor_dispatch_failed"
-    );
+    let response = match crate::platform::dispatch_lane_operation("send", &request) {
+        Ok(value) => value,
+        Err(error) => return Err(anyhow!("strategy_actor_dispatch_failed:{error}")),
+    };
+    if response.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(anyhow!("{}", actor_failure_code(&response)));
+    }
     let parsed = response
         .get("output")
         .and_then(Value::as_str)
         .and_then(|value| serde_json::from_str::<Value>(value).ok());
     if let Some(Value::Object(mut output)) = parsed {
-        for key in ["nativeSessionId", "sessionId", "turnId"] {
+        for key in [
+            "nativeSessionId",
+            "sessionId",
+            "turnId",
+            "sourcePath",
+            "sourceKind",
+            "table",
+            "keyPrefixes",
+        ] {
             if let Some(value) = response.get(key).filter(|value| !value.is_null()) {
                 output.insert(key.to_owned(), value.clone());
             }
@@ -313,6 +330,92 @@ pub(crate) fn execute_actor(
         Ok(Value::Object(output))
     } else {
         Ok(response)
+    }
+}
+
+pub(crate) fn admit_strategy_cwd(cwd: &str) -> Result<()> {
+    let path = Path::new(cwd);
+    ensure!(
+        path.is_absolute()
+            && cwd == cwd.trim()
+            && !cwd.is_empty()
+            && cwd.len() <= 4096
+            && !cwd.chars().any(char::is_control),
+        "strategy_cwd_invalid"
+    );
+    let home = crate::platform::paths::user_home_from_env();
+    ensure!(
+        !crate::platform::agent_workspace::is_unbounded_agent_workspace(path, home.as_deref()),
+        "strategy_cwd_invalid"
+    );
+    Ok(())
+}
+
+pub(crate) fn predecessor_locator(facts: &Value) -> Value {
+    let native_session_id = facts
+        .get("nativeSessionId")
+        .or_else(|| facts.get("sessionId"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let source_kind = facts
+        .get("sourceKind")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let source_path = facts
+        .get("sourcePath")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let path_ok = !source_path.is_empty() && admit_strategy_cwd(source_path).is_ok();
+    let mut locator = serde_json::json!({
+        "nativeSessionId": native_session_id,
+        "sourceKind": source_kind,
+        "locatorUnavailable": !path_ok,
+    });
+    if path_ok {
+        locator["sourcePath"] = Value::String(source_path.to_owned());
+    }
+    if let Some(table) = facts
+        .get("table")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        locator["table"] = Value::String(table.to_owned());
+    }
+    if let Some(prefixes) = facts.get("keyPrefixes").cloned() {
+        locator["keyPrefixes"] = prefixes;
+    }
+    locator
+}
+
+fn actor_failure_code(response: &Value) -> String {
+    let error = response.get("error").unwrap_or(response);
+    let code = error
+        .get("code")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let message = error
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let blob = format!("{code}\n{message}");
+    if [
+        "quota",
+        "credit",
+        "rate_limit",
+        "rate-limit",
+        "capacity",
+        "exhaust",
+    ]
+    .iter()
+    .any(|marker| blob.contains(marker))
+    {
+        "strategy_actor_quota_exhausted".into()
+    } else if blob.contains("timed_out") || blob.contains("timeout") {
+        "strategy_actor_dispatch_failed".into()
+    } else {
+        "strategy_actor_dispatch_failed".into()
     }
 }
 
@@ -335,8 +438,8 @@ fn verify_runtime(kind: RuntimeKind, executable: &Path) -> Result<VerifiedRuntim
         .filter(|value| !value.contains('\\') && !value.contains('"'))
         .ok_or_else(|| anyhow!("strategy_runtime_unavailable"))?;
     let mut command = Command::new(executable);
-    command.arg("--version").env_clear();
-    let output = crate::platform::run_bounded_command_output(
+    command.arg("--version");
+    let output = crate::platform::run_bounded_untrusted_agent_output(
         &mut command,
         Duration::from_secs(3),
         4 * 1024,

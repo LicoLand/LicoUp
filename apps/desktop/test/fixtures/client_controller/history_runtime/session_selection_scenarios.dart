@@ -51,6 +51,20 @@ void registerClientHistoryRuntimeSessionSelectionScenarios() {
     'new conversation stays unselected across refresh and sends without session id',
     () async {
       final service = FakeAgentService()
+        ..scanTargetsResult = [
+          TargetCandidate(
+            target: 'codex',
+            label: 'Codex',
+            kind: 'cli',
+            status: 'detected',
+            configured: false,
+            confidence: 0.82,
+            binaryPath: '/synthetic/bin/codex',
+            adapterStatus: 'implemented',
+            adapterCapabilities: parityReadyAdapterCapabilities,
+            supportedActions: const ['runtime.message.send'],
+          ),
+        ]
         ..conversationSessions['codex'] = [
           conversationSessionJson(
             id: 'native-codex-old',
@@ -62,20 +76,7 @@ void registerClientHistoryRuntimeSessionSelectionScenarios() {
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
 
-      controller.scannedTargets = [
-        TargetCandidate(
-          target: 'codex',
-          label: 'Codex',
-          kind: 'cli',
-          status: 'detected',
-          configured: false,
-          confidence: 0.82,
-          binaryPath: '/synthetic/bin/codex',
-          adapterStatus: 'implemented',
-          adapterCapabilities: parityReadyAdapterCapabilities,
-          supportedActions: const ['runtime.message.send'],
-        ),
-      ];
+      controller.scannedTargets = service.scanTargetsResult;
       controller.selectedConversationAgentId = 'codex';
       await controller.loadConversationSessions('codex');
 

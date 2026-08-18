@@ -26,6 +26,22 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testDuplicateLaunchYieldsToTheExistingPid() {
+    XCTAssertNil(
+      MacStatusBarPresencePolicy.existingInstancePid(
+        currentPid: 10,
+        otherInstancePids: [10]
+      )
+    )
+    XCTAssertEqual(
+      MacStatusBarPresencePolicy.existingInstancePid(
+        currentPid: 10,
+        otherInstancePids: [10, 22]
+      ),
+      22
+    )
+  }
+
   func testStatusItemUsesColoredMenuBarGlyph() {
     XCTAssertEqual(MacStatusBarPresencePolicy.statusItemImageName, "MenuBarIcon")
     XCTAssertEqual(MacStatusBarPresencePolicy.statusItemImagePointSize, 18)

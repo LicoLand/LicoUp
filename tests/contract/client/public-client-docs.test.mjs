@@ -117,3 +117,21 @@ test("MCP external effects require fresh user presence and a one-shot preview cl
     assert.doesNotMatch(compact(source), /authenticated client broker|native broker|客户端授权代理|原生授权代理/u);
   }
 });
+
+test("contributing documents preserve the train and delegate post-release publication", async () => {
+  const [english, chinese] = await Promise.all([
+    read("CONTRIBUTING.md"),
+    read("CONTRIBUTING.zh-CN.md"),
+  ]);
+  const englishCompact = compact(english);
+  const chineseCompact = compact(chinese);
+
+  assert.match(englishCompact, /open integration branch/u);
+  assert.match(englishCompact, /exact accepted `origin\/release` source/u);
+  assert.match(englishCompact, /npm run client:release:macos/u);
+  assert.match(englishCompact, /never creates a source candidate/u);
+
+  assert.match(chineseCompact, /持续开放的集成分支/u);
+  assert.match(chineseCompact, /精确接受的 `origin\/release`/u);
+  assert.match(chineseCompact, /不会创建源码候选/u);
+});

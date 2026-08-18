@@ -40,6 +40,7 @@ String historicalConversationWorkingDirectory(
       directory,
       environment: environment,
       directoryExists: directoryExists,
+      automaticFallback: true,
     )) {
       continue;
     }
@@ -82,6 +83,7 @@ bool isUsableLocalConversationWorkingDirectory(
   String path, {
   Map<String, String>? environment,
   bool Function(String path)? directoryExists,
+  bool automaticFallback = false,
 }) {
   if (!isBoundableConversationWorkingDirectory(
     path,
@@ -89,17 +91,67 @@ bool isUsableLocalConversationWorkingDirectory(
   )) {
     return false;
   }
-  return (directoryExists ?? localProjectDirectoryExists)(path.trim());
+  if (automaticFallback &&
+      isAutomaticFilesystemProbeDenied(path, environment: environment)) {
+    return false;
+  }
+  return (directoryExists ?? _localDirectoryExists)(path.trim());
 }
 
 /// Whether a recorded project directory is still present as a directory.
 bool localProjectDirectoryExists(String path) {
   try {
-    return io.Directory(path).existsSync();
+    if (isAutomaticFilesystemProbeDenied(path)) {
+      return false;
+    }
+    return _localDirectoryExists(path);
   } on Object {
     // A path the platform refuses to stat cannot be bound either.
     return false;
   }
+}
+
+bool _localDirectoryExists(String path) {
+  try {
+    return io.Directory(path).existsSync();
+  } on Object {
+    return false;
+  }
+}
+
+/// Personal library trees, media bundles, and network volumes must not be
+/// stated during automatic history fallback. An explicit folder picker is the
+/// only user action that may touch them.
+bool isAutomaticFilesystemProbeDenied(
+  String path, {
+  Map<String, String>? environment,
+}) {
+  final normalized = p.normalize(path.trim());
+  if (normalized.isEmpty || !p.isAbsolute(normalized)) {
+    return true;
+  }
+  if (isUnboundedLocalAgentWorkspace(normalized, environment: environment)) {
+    return true;
+  }
+  final comparablePath = _macosComparablePath(normalized);
+  const networkVolumePrefix = '/Volumes';
+  final volumeRoot =
+      comparablePath == networkVolumePrefix ||
+      comparablePath.startsWith('$networkVolumePrefix/');
+  if (volumeRoot) {
+    return true;
+  }
+  final home = userHomeDirectory(environment: environment);
+  if (home.isEmpty) {
+    return false;
+  }
+  final comparableHome = _macosComparablePath(p.normalize(home));
+  if (!p.isWithin(comparableHome, comparablePath)) {
+    return false;
+  }
+  final parts = p.split(p.relative(comparablePath, from: comparableHome));
+  return parts.isNotEmpty &&
+      _personalLibraryRoots.contains(parts.first.toLowerCase());
 }
 
 /// Whether [path] is under the LicoUp-owned `agent-workspace` tree (or the
@@ -179,13 +231,14 @@ bool isUnboundedLocalAgentWorkspace(
   if (home.isEmpty) {
     return p.dirname(normalized) == normalized;
   }
-  final normalizedHome = p.normalize(home);
-  if (p.equals(normalized, normalizedHome) ||
-      p.isWithin(normalized, normalizedHome)) {
+  final comparablePath = _macosComparablePath(normalized);
+  final comparableHome = _macosComparablePath(p.normalize(home));
+  if (p.equals(comparablePath, comparableHome) ||
+      p.isWithin(comparablePath, comparableHome)) {
     return true;
   }
-  return p.equals(p.dirname(normalized), normalizedHome) &&
-      _personalLibraryRoots.contains(p.basename(normalized).toLowerCase());
+  return p.equals(p.dirname(comparablePath), comparableHome) &&
+      _personalLibraryRoots.contains(p.basename(comparablePath).toLowerCase());
 }
 
 const _personalLibraryRoots = <String>{
@@ -210,3 +263,16 @@ const _mediaLibraryBundleExtensions = <String>{
   '.tvlibrary',
   '.theater',
 };
+
+/// A home path and the same path under the macOS data-volume prefix are the
+/// same personal-library location. Compare without stating either path.
+String _macosComparablePath(String path) {
+  final dataPrefix = p.join(p.separator, 'System', 'Volumes', 'Data');
+  if (path == dataPrefix) {
+    return '/';
+  }
+  if (path.startsWith('$dataPrefix/')) {
+    return path.substring(dataPrefix.length);
+  }
+  return path;
+}

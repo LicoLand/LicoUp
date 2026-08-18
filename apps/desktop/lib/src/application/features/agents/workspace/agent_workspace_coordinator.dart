@@ -48,6 +48,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     bool preferDirectAgent = false,
   });
   Future<bool> agentWorkspaceEnsureConversationRuntimeBinding(String agentId);
+  void agentWorkspaceEnsureSelectedAgentModelCatalog(
+    String agentId, {
+    bool forceEntry = false,
+  });
   void agentWorkspaceSetLocalizedStatusMessage(
     String chinese,
     String english, {

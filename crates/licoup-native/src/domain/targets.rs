@@ -9,6 +9,7 @@ mod probe_pool;
 mod processes;
 mod runtime_binding;
 mod scan_merge;
+pub(crate) mod scan_paths;
 mod support;
 mod target_cache;
 mod virtual_machine_discovery;

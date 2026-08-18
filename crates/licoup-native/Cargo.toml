@@ -24,7 +24,6 @@ anyhow = "1.0"
 base64 = "0.22"
 chacha20poly1305 = { version = "0.10", features = ["std"] }
 command-group = "5.0.1"
-directories = "6.0"
 hkdf = "0.12"
 hmac = "0.12"
 jni = "0.21"

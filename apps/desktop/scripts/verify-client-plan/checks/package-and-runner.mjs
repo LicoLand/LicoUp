@@ -107,7 +107,7 @@ export async function checkPackageAndRunner({ assert, files, context }) {
     "classifyClientGatePaths",
     "validateClientGateTopology",
     "client-required",
-    "client-github-release-publish",
+    "validateDelegatedApplePublicationTopology",
   ]) {
     assert(gateRunner.includes(token), `client gate runner must enforce ${token}`);
   }
@@ -128,10 +128,8 @@ export async function checkPackageAndRunner({ assert, files, context }) {
   }
 
   assert(
-    scripts["client:verify:github-release"]?.includes(
-      "client-github-release-acceptance.mjs",
-    ),
-    "explicit GitHub release must invoke the artifact-only reducer",
+    scripts["client:release:macos"]?.includes("apple-release release start"),
+    "macOS publication must be delegated to Apple Release",
   );
   assert(
     scripts["client:verify:product-line-security"]?.includes(

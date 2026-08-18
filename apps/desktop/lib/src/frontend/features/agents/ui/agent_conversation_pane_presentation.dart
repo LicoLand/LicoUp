@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/plan_document_reader.dart';
@@ -42,6 +42,8 @@ final class AgentConversationPaneState {
     Map<String, String> participantConversationIds = const {},
     Set<String> runningRecentSessionIds = const {},
     this.recentSessionsCached = false,
+    this.composerFlywheel,
+    this.composerLeading,
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
@@ -89,6 +91,8 @@ final class AgentConversationPaneState {
   final Map<String, String> participantConversationIds;
   final Set<String> runningRecentSessionIds;
   final bool recentSessionsCached;
+  final Widget? composerFlywheel;
+  final Widget? composerLeading;
 }
 
 /// Typed commands available to the conversation body.

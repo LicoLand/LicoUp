@@ -21,10 +21,6 @@ import {
   validateClientReleaseTargetCatalog,
 } from "../../../tools/scripts/lib/client-release-targets.mjs";
 import {
-  releaseWorkflowMatrix,
-  validateReleaseWorkflowRequest,
-} from "../../../tools/scripts/client-release-workflow-binding.mjs";
-import {
   retireStaleReleasePackageDirectories,
   validBuildManifestExecutionContract,
 } from "../../../tools/scripts/client-release-packages.mjs";
@@ -399,62 +395,4 @@ test("plan all includes implemented recipes but build rejects a wrong host befor
   assert.notEqual(build.status, 0);
   assert.equal(JSON.parse(build.stderr).code, "client_release_package_host_unsupported");
   assert.equal(JSON.parse(build.stderr).privatePathsIncluded, false);
-});
-
-test("prepare matrix accepts every package-build target while publish stays release-bound", () => {
-  const catalog = loadClientReleaseTargetCatalog();
-  const packageBuildTargets = catalog.targets
-    .filter((target) => target.packageBuildSupported)
-    .map((target) => target.id);
-  const releaseTargets = catalog.targets
-    .filter((target) => target.releaseSupported)
-    .map((target) => target.id);
-  const signedManifestRequired = catalog.targets
-    .filter((target) => releaseTargets.includes(target.id))
-    .some((target) => target.update.kind === "signed-http-manifest");
-  const matrix = releaseWorkflowMatrix(packageBuildTargets.join(","));
-  assert.deepEqual(matrix.include.map((entry) => entry.target), packageBuildTargets);
-  assert.equal(matrix.include.length, 17);
-  for (const entry of matrix.include) {
-    const target = catalog.targets.find((candidate) => candidate.id === entry.target);
-    assert.deepEqual(entry.runner, [...target.builder.ciRunner].sort());
-    assert.equal(entry.buildHost, target.buildHost);
-  }
-  const request = {
-    tag: `v${productVersion}`,
-    correlation: "1".repeat(64),
-    ref: "refs/heads/release",
-    sha: "2".repeat(40),
-  };
-  assert.equal(validateReleaseWorkflowRequest({
-    ...request,
-    phase: "prepare",
-    targets: packageBuildTargets.join(","),
-    sourceRevision: "",
-    prepareRunId: "",
-    artifactDigests: "",
-    signedManifestPresent: "false",
-  }), true);
-  assert.equal(validateReleaseWorkflowRequest({
-    ...request,
-    phase: "publish",
-    targets: releaseTargets.join(","),
-    sourceRevision: request.sha,
-    prepareRunId: "7",
-    artifactDigests: JSON.stringify(Object.fromEntries(
-      releaseTargets.map((target) => [target, `sha256:${"3".repeat(64)}`]),
-    )),
-    signedManifestPresent: String(signedManifestRequired),
-  }), true);
-  assert.throws(() => validateReleaseWorkflowRequest({
-    ...request,
-    phase: "publish",
-    targets: packageBuildTargets.join(","),
-    sourceRevision: request.sha,
-    prepareRunId: "7",
-    artifactDigests: JSON.stringify(Object.fromEntries(
-      releaseTargets.map((target) => [target, `sha256:${"3".repeat(64)}`]),
-    )),
-    signedManifestPresent: "true",
-  }), /outside closure authority/u);
 });

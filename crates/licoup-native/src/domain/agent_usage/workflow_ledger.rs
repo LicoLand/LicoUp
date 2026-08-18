@@ -346,6 +346,11 @@ pub fn begin_delivery(params: &Value) -> LedgerResult<Value> {
     }))
 }
 
+/// Strategy runs record the same ledger row, keyed by run ID.
+pub fn begin_strategy_run(params: &Value) -> LedgerResult<Value> {
+    begin_delivery(params)
+}
+
 /// Bind an opaque native conversation to a workflow node and capture the
 /// numeric baseline before dispatch.  A missing baseline is a typed preflight
 /// failure; no dispatch should proceed after this function returns an error.
@@ -1216,13 +1221,13 @@ fn harden_sqlite_file(path: &Path) -> LedgerResult<()> {
 fn parse_delivery_input(params: &Value) -> LedgerResult<DeliveryInput> {
     let workflow_id = required_text(
         params,
-        &["workflowId", "deliveryId", "id"],
+        &["runId", "workflowId", "deliveryId", "id"],
         "workflow_id",
         "usage-ledger-begin",
     )?;
     let plan_code = required_text(
         params,
-        &["planCode", "plan", "plan_id"],
+        &["revisionDigest", "planCode", "plan", "plan_id"],
         "plan_code",
         "usage-ledger-begin",
     )?;

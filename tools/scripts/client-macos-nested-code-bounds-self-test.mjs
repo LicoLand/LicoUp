@@ -6,7 +6,7 @@ import path from "node:path";
 import {
   CLIENT_RELEASE_ARTIFACT_TREE_LIMITS,
 } from "./lib/client-release-artifact-digest.mjs";
-import { inspectBoundedMacosCodePolicy } from "./lib/macos-code-signature.mjs";
+import { inspectBoundedMacosCodePolicy } from "./lib/macos-bundle-integrity.mjs";
 
 function requireValue(condition, code) {
   if (!condition) throw new Error(code);

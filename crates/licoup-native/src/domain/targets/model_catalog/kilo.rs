@@ -1,28 +1,62 @@
 use super::*;
+use crate::platform::run_bounded_command_output;
+use std::time::Duration;
+
+// `kilo models` resolves the complete configured-provider catalog, including
+// the account-scoped Kilo gateway. Local editor state contains only recent or
+// favorite selections and is retained solely as a failed-lookup fallback.
+const DEFAULT_KILO_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 60_000;
+const MIN_KILO_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 100;
+const MAX_KILO_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 60_000;
+const MAX_KILO_CLI_MODEL_LOOKUP_OUTPUT_BYTES: usize = 1024 * 1024;
 
 pub(super) fn collect_kilo_code_model_catalog(
     params: &Value,
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
+    sources: &mut BTreeSet<String>,
     diagnostics: &mut Vec<Value>,
-) {
-    let Some(home) = home_dir_for_model_catalog(params) else {
+) -> bool {
+    if let Some(home) = home_dir_for_model_catalog(params) {
+        collect_kilo_local_model_catalog(params, &home, entries, sources, diagnostics);
+    } else {
         diagnostics.push(json!({
             "source": "kilo-state",
             "status": "home-unavailable",
         }));
-        return;
-    };
+    }
+
+    if collect_kilo_cli_model_catalog(params, entries, diagnostics) {
+        sources.clear();
+        sources.insert("kilo-cli".to_string());
+        true
+    } else {
+        false
+    }
+}
+
+fn collect_kilo_local_model_catalog(
+    params: &Value,
+    home: &Path,
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+    sources: &mut BTreeSet<String>,
+    diagnostics: &mut Vec<Value>,
+) {
+    let selected = agent_cli_model_lookup_enabled(params);
 
     let vscode_state_paths = {
         let explicit = param_paths(params, &["kiloVsCodeStateDbPath", "kiloVscodeStateDbPath"]);
         if explicit.is_empty() {
-            kilo_vscode_state_db_paths(&home)
+            kilo_vscode_state_db_paths(home, selected)
         } else {
             explicit
         }
     };
+    let before_vscode = entries.len();
     for path in vscode_state_paths {
         collect_kilo_models_from_vscode_state_db(&path, entries, diagnostics);
+    }
+    if entries.len() > before_vscode {
+        sources.insert("kilo-vscode-state".to_string());
     }
 
     let kilo_db_paths = {
@@ -38,12 +72,118 @@ pub(super) fn collect_kilo_code_model_catalog(
             explicit
         }
     };
+    let before_local = entries.len();
     for path in kilo_db_paths {
         collect_kilo_models_from_local_db(&path, entries, diagnostics);
     }
+    if entries.len() > before_local {
+        sources.insert("kilo-local-db".to_string());
+    }
 }
 
-pub(super) fn kilo_vscode_state_db_paths(home: &Path) -> Vec<PathBuf> {
+fn collect_kilo_cli_model_catalog(
+    params: &Value,
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+    diagnostics: &mut Vec<Value>,
+) -> bool {
+    let source = "kilo-cli:models";
+    if !agent_cli_model_lookup_enabled(params)
+        || param_bool(params, "disableKiloCliModelLookup").unwrap_or(false)
+    {
+        diagnostics.push(json!({"source": source, "status": "disabled"}));
+        return false;
+    }
+
+    let program = param_string(params, "kiloCliPath")
+        .or_else(|| param_string(params, "kiloPath"))
+        .or_else(|| param_string(params, "kiloBin"))
+        .map(PathBuf::from)
+        .or_else(|| find_binary(&["kilo", "kilocode"]));
+    let Some(program) = program else {
+        diagnostics.push(json!({"source": source, "status": "binary-unavailable"}));
+        return false;
+    };
+    if !crate::domain::targets::scan_paths::discovered_agent_may_execute(&program, true) {
+        diagnostics.push(json!({"source": source, "status": "execution-denied"}));
+        return false;
+    }
+    let timeout_ms = param_u64(params, "kiloCliModelLookupTimeoutMs")
+        .or_else(|| param_u64(params, "agentCliModelLookupTimeoutMs"))
+        .unwrap_or(DEFAULT_KILO_CLI_MODEL_LOOKUP_TIMEOUT_MS)
+        .clamp(
+            MIN_KILO_CLI_MODEL_LOOKUP_TIMEOUT_MS,
+            MAX_KILO_CLI_MODEL_LOOKUP_TIMEOUT_MS,
+        );
+    let mut command = Command::new(program);
+    command.arg("models");
+    // Provider availability may depend on account and provider environment
+    // variables, so the selected-agent lookup must inherit the user process.
+    let Ok(output) = run_bounded_command_output(
+        &mut command,
+        Duration::from_millis(timeout_ms),
+        MAX_KILO_CLI_MODEL_LOOKUP_OUTPUT_BYTES,
+    ) else {
+        diagnostics.push(json!({"source": source, "status": "command-failed"}));
+        return false;
+    };
+    if output.timed_out {
+        diagnostics.push(json!({"source": source, "status": "timeout"}));
+        return false;
+    }
+    if output.truncated {
+        diagnostics.push(json!({"source": source, "status": "output-too-large"}));
+        return false;
+    }
+    if !output.status.is_some_and(|status| status.success()) {
+        diagnostics.push(json!({
+            "source": source,
+            "status": "command-exited",
+            "code": output.status.and_then(|status| status.code()),
+        }));
+        return false;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut official_entries = BTreeMap::new();
+    if collect_kilo_model_catalog_from_cli_output(&stdout, source, &mut official_entries) == 0 {
+        diagnostics.push(json!({"source": source, "status": "empty"}));
+        return false;
+    }
+    *entries = official_entries;
+    true
+}
+
+pub(super) fn collect_kilo_model_catalog_from_cli_output(
+    raw: &str,
+    source: &str,
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+) -> usize {
+    let before = entries.len();
+    for line in raw.lines() {
+        let selector = line.trim();
+        if selector.is_empty() || selector.chars().any(char::is_whitespace) {
+            continue;
+        }
+        let Some((provider_id, model_id)) = selector.split_once('/') else {
+            continue;
+        };
+        if provider_id.is_empty() || model_id.is_empty() {
+            continue;
+        }
+        add_model_catalog_entry_with_provider(
+            entries,
+            selector,
+            None,
+            Some(provider_id),
+            None,
+            source,
+            BTreeSet::new(),
+        );
+    }
+    entries.len().saturating_sub(before)
+}
+
+pub(super) fn kilo_vscode_state_db_paths(home: &Path, selected: bool) -> Vec<PathBuf> {
     let roots = match std::env::consts::OS {
         "windows" => {
             let app_data = default_app_data_dir(home);
@@ -73,7 +213,11 @@ pub(super) fn kilo_vscode_state_db_paths(home: &Path) -> Vec<PathBuf> {
     roots
         .into_iter()
         .map(|root| root.join("User").join("globalStorage").join("state.vscdb"))
-        .filter(|path| path.exists())
+        .filter(|path| {
+            crate::domain::targets::scan_paths::selected_agent_named_store_exists(
+                path, home, selected,
+            )
+        })
         .collect()
 }
 
@@ -134,11 +278,17 @@ pub(super) fn collect_kilo_models_from_state_value(
     }
     if let Some(selections) = object.get("variantSelections").and_then(Value::as_object) {
         for (raw_key, variant) in selections {
+            if kilo_is_session_identity(raw_key) {
+                continue;
+            }
             let Some((provider_id, model_id)) =
                 kilo_provider_and_model_id_from_selection_key(raw_key)
             else {
                 continue;
             };
+            if kilo_is_session_identity(&model_id) {
+                continue;
+            }
             let efforts = variant
                 .as_str()
                 .and_then(sanitize_option_name)
@@ -168,10 +318,11 @@ pub(super) fn collect_kilo_model_ref(
     let Some(model_id) = object
         .get("modelID")
         .or_else(|| object.get("modelId"))
-        .or_else(|| object.get("id"))
         .or_else(|| object.get("model"))
+        .or_else(|| object.get("id"))
         .and_then(Value::as_str)
         .and_then(sanitize_model_name)
+        .filter(|name| !kilo_is_session_identity(name))
     else {
         return;
     };
@@ -210,7 +361,7 @@ pub(super) fn kilo_provider_and_model_id_from_selection_key(
     value: &str,
 ) -> Option<(Option<String>, String)> {
     let trimmed = value.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || kilo_is_session_identity(trimmed) {
         return None;
     }
     let parts = trimmed.split('/').collect::<Vec<_>>();
@@ -288,10 +439,31 @@ pub(super) fn collect_kilo_models_from_session_rows(
         return;
     };
     for row in rows.flatten() {
-        if let Some(name) = sanitize_model_name(&row) {
+        if let Some(name) = sanitize_model_name(&row).filter(|name| !kilo_is_session_identity(name))
+        {
             add_model_catalog_entry(entries, &name, "kilo-local-db", BTreeSet::new());
         }
     }
+}
+
+/// Kilo session store keys (`session/ses_…`) are conversation identities, not
+/// callable model ids. Keep this filter inside the Kilo adapter so other
+/// agents are not subject to a shared heuristic.
+pub(super) fn kilo_is_session_identity(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("session/") || lower.contains("/session/") {
+        return true;
+    }
+    let tail = lower.rsplit('/').next().unwrap_or(lower.as_str());
+    tail.starts_with("ses_")
+}
+
+pub(super) fn remove_kilo_session_identities(entries: &mut BTreeMap<String, ModelCatalogEntry>) {
+    entries.retain(|_, entry| !kilo_is_session_identity(&entry.name));
 }
 
 pub(super) fn open_sqlite_readonly(path: &Path) -> Option<Connection> {

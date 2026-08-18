@@ -2695,6 +2695,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("state-root", Text, false),
             value_option("include-accessible-environments", Text, false),
             value_option("include-history-model-catalog", Text, false),
+            value_option("enable-agent-cli-model-lookup", Text, false),
         ],
         "targets add" => &[
             value_option("target", Text, true),
@@ -2707,6 +2708,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         "targets inspect" => &[
             value_option("state-root", Text, false),
             value_option("include-accessible-environments", Text, false),
+            value_option("enable-agent-cli-model-lookup", Text, false),
         ],
         "mobile relay config get" => &[
             value_option("authorize", Text, false),
