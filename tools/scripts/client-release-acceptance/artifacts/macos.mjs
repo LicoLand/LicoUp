@@ -7,7 +7,7 @@ import {
   sha256Buffer,
   sha256File,
 } from "../../lib/client-release-artifact-digest.mjs";
-import { inspectBoundedMacosCodePolicy } from "../../lib/macos-code-signature.mjs";
+import { inspectBoundedMacosCodePolicy } from "../../lib/macos-bundle-integrity.mjs";
 import {
   maxJsonBytes,
   maxMacosArchiveBytes,

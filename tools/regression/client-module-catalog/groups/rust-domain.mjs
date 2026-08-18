@@ -7,7 +7,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
       inputs: [
         "crates/licoup-native/src/domain/adaptive_flywheel/**",
-        "crates/licoup-native/resources/adaptive_flywheel/**",
         "crates/licoup-native/src/core/safe_archive.rs",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
@@ -94,6 +93,55 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::secure_mesh_command_runtime::tests::"),
     }),
   defineModule({
+      id: "rust.domain.agent-hub",
+      kind: "rust-domain",
+      summary: "Agent Hub catalog, package recipes, confirmation, version checks, and ownership",
+      inputs: ["crates/licoup-native/src/domain/agent_hub/**"],
+      command: rustLayer("domain::agent_hub::"),
+    }),
+  defineModule({
+      id: "rust.domain.client-authority-registry",
+      kind: "rust-domain",
+      summary: "Canonical client authority registration and conflict policy",
+      inputs: ["crates/licoup-native/src/domain/client_authority_registry.rs"],
+      command: rustLayer("domain::client_authority_registry::tests::"),
+    }),
+  defineModule({
+      id: "rust.domain.client-runtime",
+      kind: "rust-domain",
+      summary: "Bounded client runtime ABI, arena, stream, spool, and agent IPC",
+      inputs: ["crates/licoup-native/src/domain/client_runtime/**"],
+      command: rustLayer("domain::client_runtime::"),
+    }),
+  defineModule({
+      id: "rust.domain.protocol-input-admission",
+      kind: "rust-domain",
+      summary: "Protocol input size and structure admission",
+      inputs: ["crates/licoup-native/src/domain/protocol_input_admission.rs"],
+      command: rustLayer("domain::protocol_input_admission::tests::"),
+    }),
+  defineModule({
+      id: "rust.domain.release-receipts",
+      kind: "rust-domain",
+      summary: "Typed release receipt validation and projection",
+      inputs: ["crates/licoup-native/src/domain/release_receipts/**"],
+      command: rustLayer("domain::release_receipts::"),
+    }),
+  defineModule({
+      id: "rust.domain.resource-bounds",
+      kind: "rust-domain",
+      summary: "Bounded history and search resource policy",
+      inputs: ["crates/licoup-native/src/domain/resource_bounds/**"],
+      command: rustLayer("domain::resource_bounds::"),
+    }),
+  defineModule({
+      id: "rust.domain.session-policy",
+      kind: "rust-domain",
+      summary: "Session capability, review, and admission policy",
+      inputs: ["crates/licoup-native/src/domain/session_policy/**"],
+      command: rustLayer("domain::session_policy::"),
+    }),
+  defineModule({
       id: "rust.domain.agent-usage",
       kind: "rust-domain",
       summary: "Agent-usage command composition, shared attribution, contracts, and windows",
@@ -102,6 +150,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/attribution.rs",
         "crates/licoup-native/src/domain/agent_usage/command.rs",
         "crates/licoup-native/src/domain/agent_usage/contract.rs",
+        "crates/licoup-native/src/domain/agent_usage/incremental.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
         "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
@@ -270,6 +319,18 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustIntegrationTest(
         "agent_usage_incremental_cache",
         "agent_usage_cache_cases::retained_reports::",
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.agent-usage-cache.two-phase",
+      kind: "rust-domain",
+      summary: "Bounded native usage connection reuse and unstable-source abort",
+      inputs: [
+        "crates/licoup-native/tests/agent_usage_cache_cases/two_phase.rs",
+      ],
+      command: rustIntegrationTest(
+        "agent_usage_incremental_cache",
+        "agent_usage_cache_cases::two_phase::",
       ),
     }),
   defineModule({
@@ -488,6 +549,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Agent history adapter and source-root catalog",
       inputs: [
         "crates/licoup-native/src/domain/conversation/source_catalog.rs",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::conversation::source_catalog::tests"),
     }),
@@ -2063,11 +2126,24 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::targets::tests::"),
     }),
   defineModule({
+      id: "rust.domain.targets.scan-paths",
+      kind: "rust-domain",
+      summary: "Agent Scan Path Manifest: allowlisted discovery, lexical deny, unused-agent other-app skip",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
+      ],
+      command: rustLayer("domain::targets::scan_paths::tests::"),
+    }),
+  defineModule({
       id: "rust.domain.targets.binaries",
       kind: "rust-domain",
       summary: "Bounded platform executable discovery and source classification",
       inputs: [
         "crates/licoup-native/src/domain/targets/binaries.rs",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::targets::binaries::tests::"),
     }),
@@ -2095,6 +2171,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Cross-platform target configuration and evidence paths",
       inputs: [
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
+        "crates/licoup-native/src/domain/targets/scan_paths.rs",
+        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::targets::platform_paths::tests::"),
     }),
@@ -2229,11 +2308,29 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.targets.model-catalog.kilo",
       kind: "rust-domain",
-      summary: "Read-only Kilo state and SQLite model discovery",
+      summary: "Kilo CLI catalog with local-state fallback discovery",
       inputs: [
         "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
       ],
       command: rustLayer("domain::targets::model_catalog::tests::kilo::"),
+    }),
+  defineModule({
+      id: "rust.domain.targets.model-catalog.claude-code",
+      kind: "rust-domain",
+      summary: "Claude Code configured current-model projection",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
+      ],
+      command: rustLayer("domain::targets::model_catalog::tests::claude_code::"),
+    }),
+  defineModule({
+      id: "rust.domain.targets.model-catalog.opencode",
+      kind: "rust-domain",
+      summary: "OpenCode provider-scoped model catalog discovery",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/opencode.rs",
+      ],
+      command: rustLayer("domain::targets::model_catalog::tests::opencode::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.normalization",

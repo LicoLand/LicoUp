@@ -8,6 +8,7 @@
     "conversation.create",
     "conversation.rename",
     "conversation.archive",
+    "conversation.strategy.set",
     "conversation.list",
     "conversation.get",
     "conversation.events.page",

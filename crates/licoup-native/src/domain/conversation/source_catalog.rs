@@ -1,9 +1,5 @@
 use super::parameters::text_param;
-use super::paths::{
-    appdata_dir, appdata_dir_from_home, expand_home, expand_home_from, home_dir, local_appdata_dir,
-    local_appdata_dir_from_home, xdg_config_dir, xdg_config_dir_from_home, xdg_data_dir,
-    xdg_data_dir_from_home,
-};
+use super::paths::{expand_home, expand_home_from, home_dir};
 use crate::platform::paths::portable_data_dir;
 use serde_json::Value;
 use std::env;
@@ -35,6 +31,7 @@ pub(crate) enum HistoryAdapter {
 pub(crate) struct HistoryRoot {
     pub(crate) path: PathBuf,
     pub(crate) source_kind: String,
+    pub(crate) explicitly_selected: bool,
 }
 
 impl HistoryAdapter {
@@ -263,244 +260,72 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             source_kind: text_param(params, &["historyRootKind", "rootKind"])
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| "override-root".to_string()),
+            explicitly_selected: true,
         }];
+    }
+    if adapter == HistoryAdapter::LicoAgent {
+        return lico_agent_history_roots(params);
     }
     let home_override = text_param(params, &["homeDir"])
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     let home = home_override.clone().unwrap_or_else(home_dir);
-    let appdata = home_override
+    let host = home_override
         .as_ref()
-        .map(|path| appdata_dir_from_home(path))
-        .unwrap_or_else(appdata_dir);
-    let local_appdata = home_override
-        .as_ref()
-        .map(|path| local_appdata_dir_from_home(path))
-        .unwrap_or_else(local_appdata_dir);
-    let xdg_config = home_override
-        .as_ref()
-        .map(|path| xdg_config_dir_from_home(path))
-        .unwrap_or_else(xdg_config_dir);
-    let xdg_data = home_override
-        .as_ref()
-        .map(|path| xdg_data_dir_from_home(path))
-        .unwrap_or_else(xdg_data_dir);
-    let kimi_code_home = kimi_code_history_home(params, &home, home_override.is_none());
-    let copilot_home = copilot_history_home(params, &home, home_override.is_none());
-    let pi_session_dir = pi_history_session_dir(params, &home, home_override.is_none());
+        .map(|_| crate::domain::targets::scan_paths::HostRoots::from_home(&home))
+        .unwrap_or_else(crate::domain::targets::scan_paths::HostRoots::from_environment);
+    let mut roots = crate::domain::targets::scan_paths::history_roots(adapter.id(), &host)
+        .into_iter()
+        .map(|root| HistoryRoot {
+            path: root.path,
+            source_kind: root.kind,
+            explicitly_selected: false,
+        })
+        .collect::<Vec<_>>();
+    let allow_environment = home_override.is_none();
     match adapter {
-        HistoryAdapter::Codex => roots(&[
-            (home.join(".codex/history.jsonl"), "codex-prompt-history"),
-            (
-                home.join(".codex/session_index.jsonl"),
-                "codex-session-index",
-            ),
-            (home.join(".codex/sessions"), "codex-session-store"),
-            (
-                home.join(".codex/archived_sessions"),
-                "codex-archived-session-store",
-            ),
-            (home.join(".codex/memories/MEMORY.md"), "codex-memory"),
-            (
-                home.join(".codex/memories/rollout_summaries"),
-                "codex-rollout-summary",
-            ),
-        ]),
-        HistoryAdapter::Antigravity => roots(&[
-            (
-                home.join("Library/Application Support/Antigravity IDE"),
-                "antigravity-ide-state",
-            ),
-            (appdata.join("Antigravity IDE"), "antigravity-ide-state"),
-            (
-                local_appdata.join("Antigravity IDE"),
-                "antigravity-ide-state",
-            ),
-            (xdg_config.join("Antigravity IDE"), "antigravity-ide-state"),
-            (home.join(".gemini/antigravity"), "antigravity-bridge"),
-            (home.join(".gemini/antigravity-ide"), "antigravity-bridge"),
-            (home.join(".gemini/antigravity-cli"), "antigravity-cli"),
-        ]),
-        HistoryAdapter::ClaudeCode => roots(&[
-            (home.join(".claude/projects"), "claude-project-transcripts"),
-            (home.join(".claude.json"), "claude-global-state"),
-        ]),
-        // Chats and projects carry the conversation working directory; scan them
-        // before Application Support trees so the shared catalog walk budget is
-        // not spent on agent-cli installs and checkpoint noise first.
-        HistoryAdapter::Cursor => roots(&[
-            (home.join(".cursor/chats"), "cursor-cli-chats"),
-            (home.join(".cursor/projects"), "cursor-cli-projects"),
-            (
-                home.join("Library/Application Support/Cursor/User/workspaceStorage"),
-                "cursor-workspace-storage",
-            ),
-            (
-                home.join("Library/Application Support/Cursor/User/globalStorage"),
-                "cursor-global-storage",
-            ),
-            (
-                appdata.join("Cursor/User/workspaceStorage"),
-                "cursor-workspace-storage",
-            ),
-            (
-                appdata.join("Cursor/User/globalStorage"),
-                "cursor-global-storage",
-            ),
-            (
-                xdg_config.join("Cursor/User/workspaceStorage"),
-                "cursor-workspace-storage",
-            ),
-            (
-                xdg_config.join("Cursor/User/globalStorage"),
-                "cursor-global-storage",
-            ),
-        ]),
-        HistoryAdapter::Code => roots(&[
-            (
-                home.join("Library/Application Support/Code/User/workspaceStorage"),
-                "vscode-workspace-storage",
-            ),
-            (
-                home.join("Library/Application Support/Code/User/globalStorage"),
-                "vscode-global-storage",
-            ),
-            (
-                appdata.join("Code/User/workspaceStorage"),
-                "vscode-workspace-storage",
-            ),
-            (
-                appdata.join("Code/User/globalStorage"),
-                "vscode-global-storage",
-            ),
-            (
-                xdg_config.join("Code/User/workspaceStorage"),
-                "vscode-workspace-storage",
-            ),
-            (
-                xdg_config.join("Code/User/globalStorage"),
-                "vscode-global-storage",
-            ),
-        ]),
-        HistoryAdapter::Copilot => roots(&[
-            (
-                copilot_home.join("session-state"),
-                "copilot-cli-session-store",
-            ),
-            (
-                home.join("Library/Application Support/Code/User/workspaceStorage"),
-                "vscode-copilot-workspace-storage",
-            ),
-            (
-                home.join("Library/Application Support/Code/User/globalStorage"),
-                "vscode-copilot-global-storage",
-            ),
-            (
-                appdata.join("Code/User/workspaceStorage"),
-                "vscode-copilot-workspace-storage",
-            ),
-            (
-                appdata.join("Code/User/globalStorage"),
-                "vscode-copilot-global-storage",
-            ),
-            (
-                xdg_config.join("Code/User/workspaceStorage"),
-                "vscode-copilot-workspace-storage",
-            ),
-            (
-                xdg_config.join("Code/User/globalStorage"),
-                "vscode-copilot-global-storage",
-            ),
-        ]),
-        HistoryAdapter::KiloCode => roots(&[
-            (
-                home.join(".local/share/kilo/kilo.db"),
-                "kilo-session-database",
-            ),
-            (
-                home.join(".local/share/kilo/storage/session_diff"),
-                "kilo-session-diff",
-            ),
-            (
-                home.join(".local/share/kilo/storage/session_share"),
-                "kilo-session-share",
-            ),
-            (home.join(".local/share/kilo/log"), "kilo-log"),
-            (home.join(".config/kilo"), "kilo-config"),
-            (appdata.join("kilo"), "kilo-appdata"),
-            (xdg_data.join("kilo"), "kilo-data"),
-        ]),
-        HistoryAdapter::OpenCode => roots(&[
-            (home.join(".config/opencode"), "opencode-config"),
-            (home.join(".local/share/opencode"), "opencode-data"),
-            (appdata.join("opencode"), "opencode-appdata"),
-            (xdg_data.join("opencode"), "opencode-data"),
-        ]),
-        HistoryAdapter::OpenClaw => roots(&[
-            (home.join(".openclaw"), "openclaw-home"),
-            (home.join(".config/openclaw"), "openclaw-config"),
-            (appdata.join("OpenClaw"), "openclaw-appdata"),
-            (xdg_config.join("openclaw"), "openclaw-config"),
-        ]),
-        HistoryAdapter::Hermes => roots(&[
-            (home.join(".hermes"), "hermes-home"),
-            (home.join(".config/hermes"), "hermes-config"),
-            (appdata.join("Hermes"), "hermes-appdata"),
-            (xdg_config.join("hermes"), "hermes-config"),
-        ]),
-        HistoryAdapter::Kimi => roots(&[
-            (
-                home.join("Library/Application Support/Kimi"),
-                "kimi-app-state",
-            ),
-            (
-                home.join("Library/Application Support/com.moonshot.kimi"),
-                "kimi-app-state",
-            ),
-            (home.join("Library/Logs/Kimi"), "kimi-log"),
-            (appdata.join("Kimi"), "kimi-appdata"),
-            (appdata.join("com.moonshot.kimi"), "kimi-appdata"),
-            (local_appdata.join("Kimi"), "kimi-local-appdata"),
-            (xdg_config.join("Kimi"), "kimi-config"),
-            (xdg_data.join("Kimi"), "kimi-data"),
-        ]),
         HistoryAdapter::KimiCode => {
-            roots(&[(kimi_code_home.join("sessions"), "kimi-code-session-store")])
+            let kimi_home = kimi_code_history_home(params, &home, allow_environment);
+            for root in &mut roots {
+                if let Ok(relative) = root.path.strip_prefix(home.join(".kimi-code")) {
+                    root.path = kimi_home.join(relative);
+                } else if root.path == home.join(".kimi-code") {
+                    root.path = kimi_home.clone();
+                }
+            }
         }
-        HistoryAdapter::Pi => roots(&[(pi_session_dir, "pi-session-store")]),
-        HistoryAdapter::LicoAgent => lico_agent_history_roots(params),
-        // WorkBuddy desktop keeps conversation material inside its sqlite
-        // app store; the data root itself is the browse root (associated
-        // strength — community-documented, no vendor inventory).
-        HistoryAdapter::WorkBuddy => roots(&[(home.join(".workbuddy"), "workbuddy-app-state")]),
-        // CodeBuddy CLI is transcript-primary: global resume history plus
-        // per-project session records (official codebuddy-dir doc).
-        HistoryAdapter::CodeBuddy => roots(&[
-            (
-                home.join(".codebuddy/history.jsonl"),
-                "codebuddy-global-history",
-            ),
-            (home.join(".codebuddy/sessions"), "codebuddy-session-store"),
-            (
-                home.join(".codebuddy/projects"),
-                "codebuddy-project-transcripts",
-            ),
-        ]),
-        // Trae Work session files live under the data root (associated
-        // strength — community adapter evidence, no vendor documentation).
-        HistoryAdapter::TraeWork => {
-            roots(&[(home.join(".trae/sessions"), "trae-work-session-store")])
+        HistoryAdapter::Copilot => {
+            let copilot_home = copilot_history_home(params, &home, allow_environment);
+            for root in &mut roots {
+                if let Ok(relative) = root.path.strip_prefix(home.join(".copilot")) {
+                    root.path = copilot_home.join(relative);
+                }
+            }
         }
-        // Trae Agent trajectories are working-directory relative
-        // (trajectories/ under cwd or --trajectory-file), so there is no
-        // static home root; override-root browsing still applies.
-        HistoryAdapter::TraeAgent => Vec::new(),
+        HistoryAdapter::Pi => {
+            let session_dir = pi_history_session_dir(params, &home, allow_environment);
+            for root in &mut roots {
+                if root.source_kind == "pi-session-store" {
+                    root.path = session_dir.clone();
+                }
+            }
+        }
+        _ => {}
     }
+    roots
 }
 
 fn lico_agent_history_roots(params: &Value) -> Vec<HistoryRoot> {
+    let explicitly_selected = text_param(params, &["licoAgentSessionDir", "licoAgentSessionsDir"])
+        .is_some_and(|value| !value.trim().is_empty());
     lico_agent_session_dir(params)
-        .map(|dir| roots(&[(dir, "lico-agent-session-store")]))
+        .map(|dir| {
+            vec![HistoryRoot {
+                path: dir,
+                source_kind: "lico-agent-session-store".to_string(),
+                explicitly_selected,
+            }]
+        })
         .unwrap_or_default()
 }
 
@@ -547,16 +372,6 @@ fn pi_history_session_dir(params: &Value, home: &Path, allow_environment: bool) 
     configured
         .map(|value| expand_home_from(&value, || home.to_path_buf()))
         .unwrap_or_else(|| home.join(".pi/agent/sessions"))
-}
-
-fn roots(items: &[(PathBuf, &'static str)]) -> Vec<HistoryRoot> {
-    items
-        .iter()
-        .map(|(path, source_kind)| HistoryRoot {
-            path: path.clone(),
-            source_kind: source_kind.to_string(),
-        })
-        .collect()
 }
 
 fn looks_like_history_text(raw: &str) -> bool {
