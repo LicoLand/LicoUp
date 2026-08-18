@@ -27,7 +27,7 @@ export function validateConfig(config) {
   );
   requireValue(canonicalClientSourceRootsMatch(config.sourceRoots),
     "receipt_source_roots_not_canonical");
-  const expectedTargetIds = ["macos-direct-arm64", "android-direct-arm64-v8a"];
+  const expectedTargetIds = ["macos-direct-arm64"];
   requireValue(
     JSON.stringify(Object.keys(config.targets || {})) === JSON.stringify(expectedTargetIds),
     "receipt_target_catalog_mismatch",
