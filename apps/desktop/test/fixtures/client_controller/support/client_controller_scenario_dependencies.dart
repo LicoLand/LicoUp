@@ -20,4 +20,4 @@ export 'package:licoup/src/platform/storage/portable_data_root.dart';
 export 'package:flutter_test/flutter_test.dart';
 
 export '../../secure_mesh_capability_projection.dart';
-export 'no_preload_client_controller.dart';
+export 'no_entry_hook_client_controller.dart';

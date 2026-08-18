@@ -72,39 +72,17 @@ They never expose publisher accounts, team/store identifiers, certificate
 subjects or stable fingerprints, credentials, private keys, custody details,
 or private-channel infrastructure.
 
-Before a release-candidate pull request, run the single project preflight for
-the selected package target set on its real platform. It binds the clean
-candidate HEAD, tree, version, ordered target set, release template and every
-final installer digest to one redacted receipt.
-The pre-push hook checks that receipt only; it never repeats build, install,
-update or launch work. The exact required checks are `Branch flow`, `Commit
-identity`, `Client required` and `Auditor`.
+Apple Release owns the post-release macOS publication receipt. One immutable
+authorization binds the exact accepted `origin/release` source, version, build,
+tag, Release name, and public installer name. Repository source and the
+protected promotion train are read-only to this delegated operation.
 
-The receipt proves only its bound evidence; it does not approve an arbitrary
-candidate scope. Before preflight, review the complete diff from the latest
-verified `nightly`. Product, refactor, migration, release-tooling, workflow,
-Ruleset, identity, and Auditor changes must already be merged through ordinary
-pull requests. The candidate may contain only canonical version, build, target,
-and release-manifest changes. A known gate failure, unfinished migration,
-unexpected path, or deterministic preflight defect invalidates the candidate
-and returns work to an ordinary branch; preflight is never a development loop.
-
-The manual GitHub workflow requires an explicit Release tag and one or more
-release-supported package targets per dispatch. Remote validity currently has
-one active strategy, `build-success`: every selected package must build
-successfully from the immutable release revision. The publisher creates or
-reuses one same-source draft, refuses conflicting existing assets, verifies the
-complete remote set, and publishes at most once. Repeating the same input reuses
-the same Release and asset set without overwriting it.
-
-`build-success` is only the remote reproduction claim. Overall release
-acceptance additionally requires downloading the final public assets,
-verifying their bound source and digests, installing through the public path,
-observing stable launch, and verifying the published update path. Draft assets
-may reconcile before publication. After publication, the tag, source revision,
-and asset set are immutable. A damaged public Release requires a separately
-approved corrective-release plan with a new verified source and a new build or
-version; an existing public asset is never overwritten in place.
+The long-running local service checkpoints every stage and reconciles the same
+source revision, digest-named notarization submission, tag, owned draft
+Release, and asset after restart. A provider failure reaches a typed terminal
+result without another authorization; an uncertain mutation is observed before
+any retry. Conflict, ambiguity, a changed required-check set, or a changed
+public asset blocks the job. A public Release is never modified in place.
 
 The canonical output schema is
 `tools/scripts/config/client-artifact-verification-receipts-report.schema.json`.
@@ -120,14 +98,11 @@ capture. Any replacement between checks blocks the report. The fixed canonical
 output is removed before config parsing, so a config or producer failure cannot
 leave an older green report in place.
 
-The supported macOS direct-distribution path is a separately authorized,
-local-only Developer ID platform channel. It verifies every nested executable
-and the outer app for the expected Developer ID team, Hardened Runtime, secure
-timestamp and bounded entitlements, then requires notarization, stapling and
-Gatekeeper acceptance for the final artifacts. Protected signing and
-notarization inputs are never materialized by GitHub Actions, and both macOS
-direct targets are rejected by the generic remote publication workflow. The
-legacy self-signed install/archive entry points are disabled.
+The supported path is macOS arm64 Developer ID distribution. It verifies nested
+code and the outer app, Hardened Runtime, timestamp and entitlements, then
+requires notarization, stapling and Gatekeeper acceptance for both app and DMG.
+Apple and GitHub authority remains in local secure stores and is never
+materialized in GitHub Actions.
 
 Run the side-effect-free negative suite with:
 
@@ -137,7 +112,6 @@ npm run client:verify:release-artifact-io:self-test
 npm run client:verify:source-state-digest:self-test
 npm run client:verify:linux-tar-resource-bounds:self-test
 npm run client:verify:android-apk-zip-facts:self-test
-npm run client:verify:android-release-toolchain:self-test
 npm run client:verify:release-report-schema:self-test
 npm run client:verify:macos-nested-code-bounds:self-test
 npm run client:verify:package-client:self-test
@@ -146,15 +120,7 @@ npm run client:verify:closure-producer-writer:self-test
 npm run client:verify:client-release-acceptance:self-test
 ```
 
-`client:gate:release-policy` runs these side-effect-free release tests only for
-the `stable` → `release` promotion. It is independent from the Node-only source policy
-and from all platform build lanes. The real reducer, which may install, launch,
-or start a bounded platform session for an explicitly selected target, is
-invoked through `client:verify:product-line-security` only. The GitHub artifact
-gate is `client:verify:github-release`; it consumes source/version-bound
-artifact manifests and public consumer-verification files, and it does not
-consume physical custody, device, KT/MLS, or independent-review evidence. The
-single public `LicoUp-consumer-verification.json` is rebuilt after the publisher
-has downloaded the existing same-source draft assets, merged exactly one
-explicitly selected target before publication, and rejected every unexpected
-file. It is never rebuilt to extend an already public Release.
+`client:gate:release-policy` runs these side-effect-free tests on the
+`stable` → `release` promotion edge. It is independent from the Node-only source
+policy and all platform build lanes. The real product-line evidence reducer remains explicitly
+callable through `client:verify:product-line-security`; it does not publish.

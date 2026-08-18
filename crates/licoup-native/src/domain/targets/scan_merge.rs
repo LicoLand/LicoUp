@@ -14,7 +14,7 @@ use crate::platform::runtime_adapters;
 use crate::platform::virtual_machine::SshRuntimeConnection;
 use anyhow::Result;
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(super) fn scan_target_with_manual(
     def: &TargetDef,
@@ -52,14 +52,16 @@ pub(super) fn scan_target_with_manual(
     let history_roots = manual
         .map(|item| item.history_roots.clone())
         .unwrap_or_default();
-    let config_exists = config_path
-        .as_ref()
-        .map(|path| path.exists())
-        .unwrap_or(false);
+    let config_exists = config_path.as_ref().is_some_and(|path| {
+        if manual.and_then(|item| item.config_path.as_ref()) == Some(path) {
+            crate::domain::targets::scan_paths::explicit_file_exists(path)
+        } else {
+            crate::domain::targets::scan_paths::probe_exists(path)
+        }
+    });
     let detection_exists = detection_path
         .as_ref()
-        .map(|path| path.exists())
-        .unwrap_or(false);
+        .is_some_and(|path| crate::domain::targets::scan_paths::probe_exists(path));
     let detected_without_process = config_exists || binary_path.is_some() || detection_exists;
     let should_check_process = scan_context.running_processes_injected
         || (!detected_without_process && target_uses_running_process_detection(def.id));
@@ -153,8 +155,9 @@ pub(super) fn scan_target_with_manual(
     let runtime_available =
         candidate_runtime_is_available(&mut capabilities, def.id, binary_path.as_deref());
     let adapter_status = "implemented";
+    let catalog_params = model_catalog_params(def.id, binary_path.as_deref(), params);
     let model_catalog = if detected || manual_entry {
-        model_catalog_for_target(def.id, config_path.as_deref(), params)
+        model_catalog_for_target(def.id, config_path.as_deref(), &catalog_params)
     } else {
         empty_model_catalog("unavailable", "not-detected")
     };
@@ -322,4 +325,33 @@ fn project_virtual_machine_target(
             "virtual-machine-runtime-deferred",
         )),
     }
+}
+
+/// Reuse the executable already bound for this candidate so selected-agent
+/// model lookup does not depend on a second PATH search. This is required for
+/// package-bundled CLIs such as Kilo Code's extension binary.
+pub(super) fn model_catalog_params(
+    target: &str,
+    binary_path: Option<&Path>,
+    params: &Value,
+) -> Value {
+    let mut next = params.clone();
+    let Some(binary_path) = binary_path else {
+        return next;
+    };
+    let parameter = match target {
+        "antigravity" => "antigravityCliPath",
+        "claude-code" => "claudeCliPath",
+        "cursor" => "cursorCliPath",
+        "kilo-code" => "kiloCliPath",
+        "opencode" => "opencodeCliPath",
+        "pi" => "piCliPath",
+        _ => return next,
+    };
+    if let Some(object) = next.as_object_mut() {
+        object
+            .entry(parameter)
+            .or_insert_with(|| json!(display_path(binary_path.to_path_buf())));
+    }
+    next
 }

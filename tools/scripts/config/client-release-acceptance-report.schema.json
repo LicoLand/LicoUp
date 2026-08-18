@@ -29,7 +29,7 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "enum": ["macos-direct-arm64", "android-direct-arm64-v8a"] }
+      "items": { "enum": ["macos-direct-arm64"] }
     },
     "gateResults": {
       "type": "array",
@@ -196,7 +196,7 @@
       "additionalProperties": false,
       "required": ["targetId", "productVersion", "artifactKind", "artifactDigest", "runtimeExecutableDigest", "artifactEvidenceReportDigest", "artifactEvidenceInvocationNonceDigest", "versionReady", "targetReady", "consumerIntegritySignatureReady", "publicVerificationMaterialReady", "consumerVerificationReady", "platformSecurityReady", "consumerIntegritySignatureKind", "installReceiptReady", "receiptProvenanceReady", "receiptProducer", "receiptSourceDigest", "receiptReportDigest", "ready"],
       "properties": {
-        "targetId": { "enum": ["macos-direct-arm64", "android-direct-arm64-v8a"] },
+        "targetId": { "enum": ["macos-direct-arm64"] },
         "productVersion": { "type": "string" },
         "artifactKind": { "type": "string" },
         "artifactDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
@@ -280,7 +280,7 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
-        "targetId": { "enum": ["macos-direct-arm64", "android-direct-arm64-v8a"] },
+        "targetId": { "enum": ["macos-direct-arm64"] },
         "selected": { "const": true },
         "artifactBinding": { "$ref": "#/$defs/artifactBinding" }
       },
