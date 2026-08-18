@@ -36,11 +36,13 @@ Promotion readiness is not publication. The repository stops at a verified
 delegated to the local Apple Release service through
 `tools/apple-release/macos-direct-arm64.json`.
 
-The delegated configuration is read-only with respect to repository source: it
-does not create a release-candidate branch, prepare a version commit, merge a
-pull request, or mutate `nightly`, `stable`, `release`, Rulesets, or required
-checks. It may act only on the exact authorized `origin/release` revision and
-the declared public tag, Release, and four-asset contract.
+The delegated release service cuts one `release-candidate/v{version}` branch
+from the authorized `origin/release` revision, prepares the pinned version
+commit, merges the candidate through its required checks, and publishes the
+declared tag, Release, and four-asset contract from that candidate. It never
+mutates `nightly`, `stable`, `release`, Rulesets, or required checks, and the
+only remote mutations it may perform are the frozen candidate, its merge, and
+the declared public tag, Release, and assets.
 
 Install or inspect the local service with:
 
