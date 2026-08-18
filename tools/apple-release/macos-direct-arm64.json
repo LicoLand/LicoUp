@@ -11,8 +11,8 @@
     "requiredChecks": [
       "Branch flow",
       "Commit identity",
-      "Client required",
-      "Auditor"
+      "Auditor",
+      "Release ready"
     ]
   },
   "version": {
