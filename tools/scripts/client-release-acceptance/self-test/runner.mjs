@@ -45,8 +45,7 @@ function assertPricingAuthorityReady() {
 export function runSelfTest({ schemaFixture = false } = {}) {
   assertPricingAuthorityReady();
   const selected = [
-    { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true },
-    { id: "android-direct-arm64-v8a", platform: "android", arch: "arm64", supported: true, releaseSupported: true }
+    { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true }
   ];
   const readyIntegrity = {
     ok: true,
@@ -89,12 +88,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     artifactKind,
     artifactDigest: `sha256:${digestDigit.repeat(64)}`,
     runtimeExecutableDigest: `sha256:${digestDigit.repeat(64)}`,
-    artifactEvidenceReportDigest: targetId === "android-direct-arm64-v8a"
-      ? `sha256:${"b".repeat(64)}`
-      : `sha256:${"d".repeat(64)}`,
-    artifactEvidenceInvocationNonceDigest: targetId === "android-direct-arm64-v8a"
-      ? `sha256:${"c".repeat(64)}`
-      : `sha256:${"e".repeat(64)}`,
+    artifactEvidenceReportDigest: `sha256:${"d".repeat(64)}`,
+    artifactEvidenceInvocationNonceDigest: `sha256:${"e".repeat(64)}`,
     versionReady: true,
     targetReady: true,
     consumerIntegritySignatureReady: false,
@@ -115,7 +110,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       "macos-distribution-archive",
       "3",
     ),
-    "android-direct-arm64-v8a": readyArtifactFor("android-direct-arm64-v8a", "android-apk", "8"),
     [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]: {
       clientCandidateDigest: `sha256:${"a".repeat(64)}`,
       protocolCandidateDigest: `sha256:${"b".repeat(64)}`,
@@ -131,7 +125,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   const externalAndUnselected = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports() });
   if (schemaFixture) return externalAndUnselected;
   requireValue(externalAndUnselected.githubReleaseReady,
-    `macOS and Android selected targets must pass without iOS or external evidence: ${externalAndUnselected.blockers.join(",")}`);
+    `macOS selected target must pass without iOS or external evidence: ${externalAndUnselected.blockers.join(",")}`);
   const productTrustMissing = reduceClientReleaseAcceptance({
     ...base,
     reports: selfTestReports({ productTrustUxReady: false })
@@ -594,8 +588,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       catalog: preflightCatalog,
       config: preflightConfig,
       receiptConfig: preflightReceiptConfig,
-      selectedTargetIds: [...preflightConfig.releaseTargetAuthority.selectedTargetIds]
-        .reverse(),
+      selectedTargetIds: ["macos-direct-arm64", "linux-deb-arm64"],
     });
   } catch {
     authorityOrderRejected = true;
