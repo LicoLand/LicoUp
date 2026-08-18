@@ -26,7 +26,10 @@ class SingleInstanceGuard {
   /// Resolves the lock file inside the canonical client state directory.
   static Future<File> lockFileFor(PortableDataRoot portableData) async {
     final directory = await portableData.clientDirectory();
-    return File(p.join(directory.path, 'client.instance.lock'));
+    final raw = File(p.join(directory.path, 'client.instance.lock'));
+    return File(
+      PortableDataRoot.stripMacosDataVolume(p.normalize(p.absolute(raw.path))),
+    );
   }
 
   /// Claims the instance lock. Returns null when another running client owns

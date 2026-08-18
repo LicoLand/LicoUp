@@ -11,24 +11,47 @@ import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_diagram.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+/// Shared height for the strategy selector and the import button.
+const double kAdaptiveFlywheelToolbarControlHeight = 36;
+
+/// Shared corner radius for the toolbar controls and the workflow card.
+const double kAdaptiveFlywheelToolbarControlRadius =
+    AppleControlMetrics.controlCornerRadius;
+
+/// Fixed viewport for the expanded workflow diagram inside the card.
+const double kAdaptiveFlywheelWorkflowExpandedHeight = 360;
 
 Future<void> showAdaptiveFlywheelDialog(
   BuildContext context,
-  ClientController clientController,
-) {
+  ClientController clientController, {
+  String initialRevision = '',
+}) {
   return showDialog<void>(
     context: context,
-    builder: (context) =>
-        _AdaptiveFlywheelDialog(clientController: clientController),
+    builder: (context) => _AdaptiveFlywheelDialog(
+      clientController: clientController,
+      initialRevision: initialRevision,
+    ),
   );
 }
 
 final class _AdaptiveFlywheelDialog extends StatefulWidget {
-  const _AdaptiveFlywheelDialog({required this.clientController});
+  const _AdaptiveFlywheelDialog({
+    required this.clientController,
+    required this.initialRevision,
+  });
 
   final ClientController clientController;
+  final String initialRevision;
 
   @override
   State<_AdaptiveFlywheelDialog> createState() =>
@@ -53,17 +76,36 @@ final class _AdaptiveFlywheelDialogState
   @override
   void initState() {
     super.initState();
+    widget.clientController.addListener(_onClientChanged);
     _controller = AdaptiveFlywheelController(
       gateway: widget.clientController.adaptiveFlywheelGateway,
     )..addListener(_changed);
-    unawaited(_controller.initialize());
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    await _controller.initialize();
+    if (!mounted || widget.initialRevision.isEmpty) return;
+    final revisionExists = _controller.definitions.any(
+      (definition) => definition.revisionDigest == widget.initialRevision,
+    );
+    if (revisionExists &&
+        _controller.selectedRevision != widget.initialRevision) {
+      await _controller.selectDefinition(widget.initialRevision);
+    }
   }
 
   @override
   void dispose() {
+    widget.clientController.removeListener(_onClientChanged);
     _controller.removeListener(_changed);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onClientChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _changed() {
@@ -94,27 +136,29 @@ final class _AdaptiveFlywheelDialogState
     AdaptiveFlywheelSlot slot,
     List<TargetCandidate> targets,
   ) {
-    final binding = _controller.inspection!.bindings[slot.id];
-    final boundTarget = binding == null
-        ? null
-        : _targetById(targets, binding.valueId);
-    final target = boundTarget ?? (targets.isEmpty ? null : targets.first);
-    if (target == null) return const [];
-    final models = agentOrchestrationCommanderModels(target);
-    final model = binding?.model.trim().isNotEmpty == true
-        ? binding!.model.trim()
-        : (models.isEmpty ? '' : models.first);
-    final effort = binding?.reasoningEffort.trim().isNotEmpty == true
-        ? binding!.reasoningEffort.trim()
-        : agentOrchestrationDefaultReasoningEffortForModel(target, model);
-    return [
-      DailyConversationAgentAssignment(
-        id: 'strategy-${slot.id}-${target.target}',
-        agentId: target.target,
-        modelName: model,
-        reasoningEffort: effort,
-      ),
-    ];
+    final bindings = _controller.inspection!.bindings[slot.id] ?? const [];
+    final assignments = <DailyConversationAgentAssignment>[];
+    for (var index = 0; index < bindings.length; index += 1) {
+      final binding = bindings[index];
+      final target = _targetById(targets, binding.valueId);
+      if (target == null) continue;
+      final models = agentOrchestrationCommanderModels(target);
+      final model = binding.model.trim().isNotEmpty
+          ? binding.model.trim()
+          : (models.isEmpty ? '' : models.first);
+      final effort = binding.reasoningEffort.trim().isNotEmpty
+          ? binding.reasoningEffort.trim()
+          : agentOrchestrationDefaultReasoningEffortForModel(target, model);
+      assignments.add(
+        DailyConversationAgentAssignment(
+          id: 'strategy-${slot.id}-$index-${target.target}',
+          agentId: target.target,
+          modelName: model,
+          reasoningEffort: effort,
+        ),
+      );
+    }
+    return assignments;
   }
 
   TargetCandidate? _targetById(Iterable<TargetCandidate> targets, String id) {
@@ -147,7 +191,9 @@ final class _AdaptiveFlywheelDialogState
     setState(() {
       _draftDirty = true;
       _validationError = '';
-      _assignments[slotId] = values.isEmpty ? const [] : [values.last];
+      _assignments[slotId] = List<DailyConversationAgentAssignment>.from(
+        values,
+      );
     });
   }
 
@@ -169,13 +215,20 @@ final class _AdaptiveFlywheelDialogState
     }
     await _controller.saveActorBindings({
       for (final slot in inspection.slots.where((slot) => slot.kind == 'actor'))
-        if (_assignments[slot.id]?.isNotEmpty == true)
-          slot.id: AdaptiveFlywheelBinding(
-            slotId: slot.id,
-            valueId: _assignments[slot.id]!.single.agentId,
-            model: _assignments[slot.id]!.single.modelName,
-            reasoningEffort: _assignments[slot.id]!.single.reasoningEffort,
-          ),
+        slot.id: [
+          for (
+            var index = 0;
+            index < (_assignments[slot.id]?.length ?? 0);
+            index += 1
+          )
+            AdaptiveFlywheelBinding(
+              slotId: slot.id,
+              ordinal: index,
+              valueId: _assignments[slot.id]![index].agentId,
+              model: _assignments[slot.id]![index].modelName,
+              reasoningEffort: _assignments[slot.id]![index].reasoningEffort,
+            ),
+        ],
     });
     if (!mounted || _controller.error.isNotEmpty) return;
     if (_controller.inspection?.diagnosticCode == 'binding_incomplete') {
@@ -190,13 +243,10 @@ final class _AdaptiveFlywheelDialogState
     Navigator.of(context).pop();
   }
 
-  String _slotTitle(AdaptiveFlywheelSlot slot, LicoStrings strings) {
-    return switch (slot.id) {
-      'designer' => strings.codeEngineeringDesigner,
-      'worker' => strings.codeEngineeringWorker,
-      'reviewer' => strings.codeEngineeringReviewer,
-      _ => slot.label,
-    };
+  String _slotTitle(AdaptiveFlywheelSlot slot) {
+    final label = slot.label.trim();
+    if (label.isNotEmpty) return label;
+    return slot.id;
   }
 
   @override
@@ -247,57 +297,27 @@ final class _AdaptiveFlywheelDialogState
                 padding: const EdgeInsets.all(16),
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      OutlinedButton.icon(
-                        key: const Key('adaptive-flywheel-import-package'),
-                        onPressed: _controller.busy ? null : _importPackage,
-                        icon: const Icon(Icons.inventory_2_outlined),
-                        label: Text(_copy('导入策略', 'Import strategy')),
-                      ),
+                      Expanded(child: _strategySelector(colors)),
                       const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: const Key('adaptive-flywheel-definition'),
-                          initialValue: _controller.selectedRevision.isEmpty
-                              ? null
-                              : _controller.selectedRevision,
-                          decoration: InputDecoration(
-                            labelText: _copy('策略', 'Strategy'),
+                      SizedBox(
+                        height: kAdaptiveFlywheelToolbarControlHeight,
+                        child: OutlinedButton.icon(
+                          key: const Key('adaptive-flywheel-import-package'),
+                          onPressed: _controller.busy ? null : _importPackage,
+                          style: _toolbarButtonStyle(colors),
+                          icon: const Icon(
+                            Icons.inventory_2_outlined,
+                            size: 18,
                           ),
-                          items: _controller.definitions
-                              .map(
-                                (definition) => DropdownMenuItem(
-                                  value: definition.revisionDigest,
-                                  child: Text(
-                                    '${definition.name} · ${definition.version}',
-                                  ),
-                                ),
-                              )
-                              .toList(growable: false),
-                          onChanged: _controller.busy
-                              ? null
-                              : (revision) {
-                                  if (revision != null) {
-                                    _selectDefinition(revision);
-                                  }
-                                },
+                          label: Text(_copy('导入策略', 'Import strategy')),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        key: const Key('adaptive-flywheel-workflow'),
-                        tooltip: _copy('工作流程', 'Workflow'),
-                        onPressed: inspection == null
-                            ? null
-                            : () => showAdaptiveFlywheelWorkflowDiagram(
-                                context,
-                                inspection,
-                              ),
-                        icon: const Icon(Icons.account_tree_outlined),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  _AdaptiveFlywheelWorkflowCard(inspection: inspection),
                   if (_controller.busy) ...[
                     const SizedBox(height: 10),
                     const LinearProgressIndicator(),
@@ -314,7 +334,15 @@ final class _AdaptiveFlywheelDialogState
                     ),
                   ],
                   const SizedBox(height: 22),
-                  if (actorSlots == null || actorSlots.isEmpty)
+                  if (_controller.definitions.isEmpty)
+                    Text(
+                      _copy(
+                        '尚未导入策略。请先导入 ZIP 配置包。',
+                        'No strategies yet. Import a ZIP package first.',
+                      ),
+                      style: TextStyle(color: colors.textMuted),
+                    )
+                  else if (actorSlots == null || actorSlots.isEmpty)
                     Text(
                       _copy(
                         '当前策略没有需要配置的 Agent 角色。',
@@ -325,7 +353,7 @@ final class _AdaptiveFlywheelDialogState
                   else
                     for (var index = 0; index < actorSlots.length; index++) ...[
                       AdaptiveFlywheelMultiCapsuleSection(
-                        title: _slotTitle(actorSlots[index], strings),
+                        title: _slotTitle(actorSlots[index]),
                         keyPrefix: 'adaptive-flywheel-${actorSlots[index].id}',
                         idPrefix: 'strategy-${actorSlots[index].id}',
                         assignments:
@@ -333,6 +361,12 @@ final class _AdaptiveFlywheelDialogState
                         targets: _targets,
                         onChanged: (values) =>
                             _setAssignments(actorSlots[index].id, values),
+                        isRefreshingAgentCatalog: widget
+                            .clientController
+                            .isRefreshingNativeModelCatalog,
+                        onAgentCatalogRequested: widget
+                            .clientController
+                            .ensureSelectedAgentModelCatalog,
                       ),
                       if (index != actorSlots.length - 1)
                         const SizedBox(height: 16),
@@ -361,6 +395,232 @@ final class _AdaptiveFlywheelDialogState
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _strategySelector(LicoThemeColors colors) {
+    final empty = _controller.definitions.isEmpty;
+    final selected = _selectedDefinition();
+    final emptyLabel = _copy(
+      '尚未导入策略。请先导入 ZIP 配置包。',
+      'No strategies yet. Import a ZIP package first.',
+    );
+    final label = empty
+        ? emptyLabel
+        : (selected == null
+              ? _copy('策略', 'Strategy')
+              : '${selected.name} · ${selected.version}');
+    final radius = BorderRadius.circular(kAdaptiveFlywheelToolbarControlRadius);
+    final menuRadius = BorderRadius.circular(
+      AppleControlMetrics.menuCornerRadius,
+    );
+    return SizedBox(
+      key: empty ? null : const Key('adaptive-flywheel-definition'),
+      height: kAdaptiveFlywheelToolbarControlHeight,
+      child: MessagingHoverPopover(
+        wrapInGlass: false,
+        targetAnchor: Alignment.bottomLeft,
+        followerAnchor: Alignment.topLeft,
+        offset: const Offset(0, 4),
+        maxHeight: MessagingDesktopMetrics.composerOptionPopoverMaxHeight,
+        borderRadius: menuRadius,
+        cardBuilder: (context, close) {
+          return MessagingGlassOptionCard(
+            borderRadius: menuRadius,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (empty)
+                  MessagingGlassMenuItem(label: emptyLabel, enabled: false)
+                else
+                  for (final definition in _controller.definitions)
+                    MessagingGlassMenuItem(
+                      key: Key(
+                        'adaptive-flywheel-option-${definition.revisionDigest}',
+                      ),
+                      label: '${definition.name} · ${definition.version}',
+                      selected:
+                          definition.revisionDigest ==
+                          _controller.selectedRevision,
+                      onTap: _controller.busy
+                          ? null
+                          : () {
+                              close();
+                              _selectDefinition(definition.revisionDigest);
+                            },
+                    ),
+              ],
+            ),
+          );
+        },
+        triggerBuilder:
+            (context, {required open, required toggle, required close}) {
+              return SizedBox.expand(
+                child: AppleGlassSurface(
+                  borderRadius: radius,
+                  focused: open,
+                  child: InkWell(
+                    onTap: toggle,
+                    borderRadius: radius,
+                    mouseCursor: SystemMouseCursors.click,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                label,
+                                key: empty
+                                    ? const Key(
+                                        'adaptive-flywheel-empty-catalog',
+                                      )
+                                    : null,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: empty || selected == null
+                                      ? colors.textMuted
+                                      : colors.text,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.expand_more,
+                            size: 18,
+                            color: colors.textMuted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+      ),
+    );
+  }
+
+  AdaptiveFlywheelDefinition? _selectedDefinition() {
+    for (final definition in _controller.definitions) {
+      if (definition.revisionDigest == _controller.selectedRevision) {
+        return definition;
+      }
+    }
+    return null;
+  }
+}
+
+ButtonStyle _toolbarButtonStyle(LicoThemeColors colors) {
+  return OutlinedButton.styleFrom(
+    foregroundColor: colors.text,
+    minimumSize: const Size(0, kAdaptiveFlywheelToolbarControlHeight),
+    maximumSize: const Size(
+      double.infinity,
+      kAdaptiveFlywheelToolbarControlHeight,
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    visualDensity: VisualDensity.compact,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    side: BorderSide(color: colors.line),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(
+        kAdaptiveFlywheelToolbarControlRadius,
+      ),
+    ),
+  );
+}
+
+final class _AdaptiveFlywheelWorkflowCard extends StatefulWidget {
+  const _AdaptiveFlywheelWorkflowCard({required this.inspection});
+
+  final AdaptiveFlywheelInspection? inspection;
+
+  @override
+  State<_AdaptiveFlywheelWorkflowCard> createState() =>
+      _AdaptiveFlywheelWorkflowCardState();
+}
+
+final class _AdaptiveFlywheelWorkflowCardState
+    extends State<_AdaptiveFlywheelWorkflowCard> {
+  var _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final zh = Localizations.localeOf(context).languageCode == 'zh';
+    final enabled = widget.inspection != null;
+    final radius = BorderRadius.circular(kAdaptiveFlywheelToolbarControlRadius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceLow,
+        borderRadius: radius,
+        border: Border.all(color: colors.line),
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              key: const Key('adaptive-flywheel-workflow'),
+              onTap: enabled
+                  ? () => setState(() => _expanded = !_expanded)
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_tree_outlined,
+                      size: 16,
+                      color: enabled ? colors.text : colors.textMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        zh ? '工作流程' : 'Workflow',
+                        style: TextStyle(
+                          color: enabled ? colors.text : colors.textMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      _expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 18,
+                      color: colors.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedSize(
+              duration: LicoMotion.medium,
+              curve: LicoMotion.decelerate,
+              alignment: Alignment.topCenter,
+              child: _expanded && widget.inspection != null
+                  ? SizedBox(
+                      height: kAdaptiveFlywheelWorkflowExpandedHeight,
+                      child: AdaptiveFlywheelWorkflowDiagram(
+                        inspection: widget.inspection!,
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
             ),
           ],
         ),

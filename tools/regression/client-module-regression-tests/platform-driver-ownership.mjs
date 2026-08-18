@@ -17,6 +17,7 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/targets/binaries.rs",
   ])), [
+    "regression.agent-scan-paths",
     "architecture.client-boundaries",
     "rust.domain.targets.binaries",
     "rust.domain.targets.platform-integration",
@@ -78,8 +79,8 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
     "apps/desktop/scripts/build-android-apk.mjs",
   ])), ["packaging.android"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    ".github/workflows/client-release.yml",
-  ])), ["release.workflows"]);
+    "tools/apple-release/macos-direct-arm64.json",
+  ])), ["release.contracts", "release.workflows"]);
 });
 
 test("Android Secure Mesh leaves select boundary tests and Kotlin compile independently", () => {

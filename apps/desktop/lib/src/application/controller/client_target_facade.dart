@@ -51,6 +51,23 @@ mixin ClientTargetFacade on AgentWorkspaceCoordinator {
   Future<bool> agentWorkspaceEnsureConversationRuntimeBinding(String agentId) =>
       targetController.ensureConversationRuntimeBinding(agentId);
 
+  void ensureSelectedAgentModelCatalog(
+    String targetId, {
+    bool forceEntry = false,
+  }) => targetController.ensureSelectedAgentModelCatalog(
+    targetId,
+    forceEntry: forceEntry,
+  );
+
+  @override
+  void agentWorkspaceEnsureSelectedAgentModelCatalog(
+    String agentId, {
+    bool forceEntry = false,
+  }) => ensureSelectedAgentModelCatalog(agentId, forceEntry: forceEntry);
+
+  bool isRefreshingNativeModelCatalog(String targetId) =>
+      targetController.isRefreshingNativeModelCatalog(targetId);
+
   Future<void> addManualTarget({
     required String target,
     String configPath = '',

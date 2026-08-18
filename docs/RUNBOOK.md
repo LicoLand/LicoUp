@@ -60,9 +60,9 @@ The same selector is accepted by `client:release:build`,
 `client:release:stage`, and `client:release:verify`. Canonical package leaves
 are written under `build/releases/<version>/<package-target>/`; no universal
 outer archive is created. A local build is not a formal release artifact.
-Formal artifacts come from an exact Git candidate in the controlled release
-workflow and bind source, package target, immutable digest, and generation
-metadata.
+Formal artifacts come from the exact accepted `origin/release` source through
+an explicitly authorized publication owner and bind source, package target,
+immutable digest, and generation metadata.
 
 ## Run focused verification
 
@@ -95,8 +95,8 @@ Common focused checks are:
 Run `npm run client:gate:source` once after all focused checks pass. Then run
 only the affected `client:gate:flutter`, `client:gate:rust`,
 `client:gate:android`, or `client:gate:dependencies` lane. These regression
-lanes are independent and may run in parallel. Release policy belongs only to
-the `stable` → `release` promotion gate described in
+lanes are independent and may run in parallel. Release policy runs only on the
+`stable` → `release` promotion edge described in
 [`releases/PROMOTION-GATES.md`](releases/PROMOTION-GATES.md). Source policy is
 Node-only; it does not install platform toolchains
 and is not authorization for live services, runtime-data capture, device
@@ -166,12 +166,9 @@ contact a live service, create release assets, or publish through a channel are
 separate operator-authorized actions. Their success cannot be inferred from a
 source or package build.
 
-The manual GitHub Release workflow accepts one or more comma-separated exact
-package `targets` per dispatch. The prepare phase builds each selected package
-in an independent matrix job. The publish phase downloads the complete package
-set from the same source-bound prepare run, validates every package directory
-and installer digest, reconciles the draft once, generates the merged consumer
-manifest, verifies the exact remote asset set, and publishes once. See
+The repository branch train does not publish. Post-release macOS publication is
+delegated to Apple Release from the exact accepted `origin/release` source and
+cannot mutate repository source or protected branches. See
 [Release packages](RELEASE-PACKAGES.md) for the canonical target and output
 model. A same-source draft may be resumed; an already public Release may not be
 extended or altered. A damaged public asset requires a corrective build or
@@ -228,15 +225,6 @@ not inspect README wording, language, links, formatting, claims, or product
 correctness. Agent behavior is governed by the `lico-client-development`
 skill, not by repository gates, tests, or Rulesets.
 
-Start `docs/readme-refresh` from the latest `nightly`, change only the manifest
-and old/new members, commit the corresponding additions or removals together,
-then run the normal promotion command:
-
-```bash
-npm run client:promotion -- train
-```
-
-This creates the three merge-commit PRs `docs/readme-refresh` → `nightly` →
-`stable` → `release`. Record total and per-PR elapsed time. More than five
-minutes is an efficiency warning only: report it without stopping, rolling
-back, adding retries, adding gates, or changing Rulesets.
+Start `docs/readme-refresh` from `nightly`, change only the manifest and old/new
+members, and merge it through an ordinary action-prefixed pull request. The
+change then follows the same protected promotion train as other accepted work.

@@ -40,7 +40,8 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
          CREATE TABLE IF NOT EXISTS conversations (
            id TEXT PRIMARY KEY, title TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
            pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-           is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)), revision INTEGER NOT NULL DEFAULT 0,
+           is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)), strategy_revision TEXT,
+           revision INTEGER NOT NULL DEFAULT 0,
            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
          );
          CREATE INDEX IF NOT EXISTS conversations_updated_idx ON conversations(updated_at DESC, id DESC);
@@ -1288,6 +1289,43 @@ impl ConversationStore {
         })
     }
 
+    pub fn set_conversation_strategy_revision(
+        &self,
+        id: &str,
+        strategy_revision: Option<&str>,
+    ) -> StoreResult<()> {
+        validate_identifier(id, "conversation_id")?;
+        let strategy_revision = strategy_revision
+            .map(str::trim)
+            .filter(|revision| !revision.is_empty());
+        if let Some(revision) = strategy_revision {
+            validate_identifier(revision, "strategy_revision")?;
+        }
+        self.with_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE conversations
+                 SET revision=revision + CASE WHEN strategy_revision IS ?2 THEN 0 ELSE 1 END,
+                     updated_at=CASE WHEN strategy_revision IS ?2 THEN updated_at ELSE ?3 END,
+                     strategy_revision=?2
+                 WHERE id=?1 AND is_group=1",
+                params![id, strategy_revision, now_ms()],
+            )?;
+            if changed == 0 {
+                let exists: bool = connection.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM conversations WHERE id=?1)",
+                    params![id],
+                    |row| row.get(0),
+                )?;
+                return Err(anyhow!(if exists {
+                    "invalid_request"
+                } else {
+                    "conversation_not_found"
+                }));
+            }
+            Ok(())
+        })
+    }
+
     pub fn add_member(
         &self,
         conversation_id: &str,
@@ -2343,8 +2381,8 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     match prior_schema_version.as_deref() {
         None => {
             connection.execute_batch(
-                "INSERT INTO schema_meta(key, value) VALUES ('version', '4')
-                 ON CONFLICT(key) DO UPDATE SET value='4';",
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '6')
+                 ON CONFLICT(key) DO UPDATE SET value='6';",
             )?;
         }
         Some("1") => {
@@ -2382,7 +2420,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5") => {}
+        Some("4" | "5" | "6") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -2394,6 +2432,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if current_schema_version == "4" {
         migrate_runtime_replay_v5(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "5" {
+        migrate_strategy_selection_v6(connection)?;
     }
     ensure_column(connection, "runtime_bindings", "runtime_session_id", "TEXT")?;
     ensure_column(
@@ -2496,6 +2542,32 @@ fn migrate_runtime_replay_v5(connection: &mut Connection) -> StoreResult<()> {
     Ok(())
 }
 
+/// One-time schema transition to version 6: persist the strategy explicitly
+/// selected for each group Conversation. A nullable column preserves the
+/// existing no-strategy state for all prior conversations.
+fn migrate_strategy_selection_v6(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let has_strategy_revision = {
+        let mut statement = transaction.prepare("PRAGMA table_info(conversations)")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .iter()
+            .any(|column| column == "strategy_revision")
+    };
+    if !has_strategy_revision {
+        transaction
+            .execute_batch("ALTER TABLE conversations ADD COLUMN strategy_revision TEXT;")?;
+    }
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '6')
+         ON CONFLICT(key) DO UPDATE SET value='6'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn normalize_reserved_group_after_legacy_import(connection: &mut Connection) -> StoreResult<()> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     normalize_reserved_group(&transaction)?;
@@ -2518,8 +2590,10 @@ fn ensure_default_local_group_inner(
         if let Some(existing_id) = reserved_group_conversation_id(&transaction)? {
             transaction.execute(
                 "INSERT INTO conversations(
-                   id, title, archived, pinned, is_group, revision, created_at, updated_at
-                 ) SELECT ?2, title, archived, pinned, 1, revision, created_at, updated_at
+                   id, title, archived, pinned, is_group, strategy_revision,
+                   revision, created_at, updated_at
+                 ) SELECT ?2, title, archived, pinned, 1, strategy_revision,
+                          revision, created_at, updated_at
                    FROM conversations WHERE id=?1",
                 params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
             )?;
@@ -2872,7 +2946,8 @@ fn list_inner(
 fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversation> {
     let base = connection
         .query_row(
-            "SELECT id, title, archived, pinned, is_group, revision, created_at, updated_at,
+            "SELECT id, title, archived, pinned, is_group, strategy_revision,
+             revision, created_at, updated_at,
              (SELECT COUNT(*) FROM events WHERE conversation_id=c.id)
              FROM conversations c WHERE id=?1",
             params![id],
@@ -2883,16 +2958,27 @@ fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversat
                     row.get::<_, i64>(2)? != 0,
                     row.get::<_, i64>(3)? != 0,
                     row.get::<_, i64>(4)? != 0,
-                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<String>>(5)?,
                     row.get::<_, i64>(6)?,
                     row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
+                    row.get::<_, i64>(9)?,
                 ))
             },
         )
         .optional()?;
-    let Some((id, title, archived, pinned, is_group, revision, created, updated, event_count)) =
-        base
+    let Some((
+        id,
+        title,
+        archived,
+        pinned,
+        is_group,
+        strategy_revision,
+        revision,
+        created,
+        updated,
+        event_count,
+    )) = base
     else {
         return Err(anyhow!("conversation_not_found"));
     };
@@ -2903,6 +2989,7 @@ fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversat
         archived,
         pinned,
         is_group,
+        strategy_revision,
         revision,
         created_at_unix_ms: created,
         updated_at_unix_ms: updated,
@@ -3323,14 +3410,16 @@ fn insert_import_entry(
     }
     connection.execute(
         "INSERT INTO conversations(
-           id, title, archived, pinned, is_group, revision, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+           id, title, archived, pinned, is_group, strategy_revision,
+           revision, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             conversation.id,
             conversation.title,
             conversation.archived as i64,
             conversation.pinned as i64,
             conversation.is_group as i64,
+            conversation.strategy_revision,
             conversation.revision,
             conversation.created_at_unix_ms,
             conversation.updated_at_unix_ms,
@@ -4862,7 +4951,7 @@ mod tests {
 
         let custom_before = snapshot_group(&root, "custom-group");
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "5");
+        assert_eq!(schema_version(&root), "6");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -5008,13 +5097,52 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "5");
+        assert_eq!(schema_version(&root), "6");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
             assert_eq!(membership.status, MembershipStatus::Active);
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn migrates_v5_conversations_to_durable_strategy_selection() {
+        let root = std::env::temp_dir().join(format!("lico-conv-v5-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
+        let fixture = open_fixture_connection(&root);
+        fixture
+            .execute_batch(
+                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO schema_meta(key, value) VALUES ('version', '5');
+                 CREATE TABLE conversations (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
+                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
+                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
+                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
+                   revision INTEGER NOT NULL DEFAULT 0,
+                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+        fixture.close().unwrap();
+
+        let store = ConversationStore::open(&root).unwrap();
+        assert_eq!(schema_version(&root), "6");
+        let has_strategy_revision = store
+            .with_connection(|connection| {
+                let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
+                Ok(statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+                    .iter()
+                    .any(|column| column == "strategy_revision"))
+            })
+            .unwrap();
+        assert!(has_strategy_revision);
+
+        drop(store);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -5028,7 +5156,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "5");
+        assert_eq!(schema_version(&root), "6");
         let _ = std::fs::remove_dir_all(&root);
     }
 

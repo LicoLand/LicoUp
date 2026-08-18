@@ -162,6 +162,7 @@ enum ConversationActionKind {
   conversationCreate("conversation.create"),
   conversationRename("conversation.rename"),
   conversationArchive("conversation.archive"),
+  conversationStrategySet("conversation.strategy.set"),
   conversationList("conversation.list"),
   conversationGet("conversation.get"),
   conversationEventsPage("conversation.events.page"),

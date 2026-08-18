@@ -797,6 +797,77 @@ void registerClientConversationDispatchScenarios() {
   );
 
   test(
+    're-selecting an agent refreshes history when the cached project moved',
+    () async {
+      final projectDirectory = Directory.systemTemp
+          .createTempSync('licoup-moved-project-')
+          .path;
+      final replacementDirectory = Directory.systemTemp
+          .createTempSync('licoup-replacement-project-')
+          .path;
+      addTearDown(() {
+        for (final directory in [projectDirectory, replacementDirectory]) {
+          final entry = Directory(directory);
+          if (entry.existsSync()) {
+            entry.deleteSync(recursive: true);
+          }
+        }
+      });
+      final service = FakeAgentService()
+        ..conversationSessions = {
+          'codex': [
+            conversationSessionJson(
+              id: 'moved-project-session',
+              agentId: 'codex',
+              text: 'Moved project turn',
+              workingDirectory: projectDirectory,
+            ),
+          ],
+        };
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      final loadsAfterFirstSelect = service.conversationStreamCalls;
+
+      // The cached project directory is still present, so re-selecting the
+      // loaded agent keeps the catalog instead of walking the host store.
+      await controller.selectConversationAgent('codex');
+      expect(service.conversationStreamCalls, loadsAfterFirstSelect);
+      expect(
+        controller.conversationSessionsByAgent['codex']!.single.id,
+        'moved-project-session',
+      );
+
+      // The recorded project moved away; the stale cache must be refreshed
+      // from native history so the current project path can be recovered.
+      Directory(projectDirectory).deleteSync(recursive: true);
+      service.conversationSessions = {
+        'codex': [
+          conversationSessionJson(
+            id: 'replacement-project-session',
+            agentId: 'codex',
+            text: 'Replacement project turn',
+            workingDirectory: replacementDirectory,
+          ),
+        ],
+      };
+      await controller.selectConversationAgent('codex');
+      expect(
+        service.conversationStreamCalls,
+        greaterThan(loadsAfterFirstSelect),
+      );
+      expect(
+        controller.conversationSessionsByAgent['codex']!.map(
+          (session) => session.id,
+        ),
+        contains('replacement-project-session'),
+      );
+    },
+  );
+
+  test(
     'a session stuck on agent-workspace recovers a historical project path',
     () async {
       final historicalDirectory = Directory.systemTemp

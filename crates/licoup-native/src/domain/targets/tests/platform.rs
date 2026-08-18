@@ -56,6 +56,19 @@ fn windows_default_config_paths_use_appdata_not_macos_application_support() {
 }
 
 #[test]
+fn windows_directory_detection_preserves_the_resolved_appdata_root() {
+    let home = temp_test_dir("windows-appdata-detection");
+    let app_data = home.join("AppData").join("Roaming");
+    let cursor_state = app_data.join("Cursor");
+    fs::create_dir_all(&cursor_state).unwrap();
+
+    assert_eq!(
+        default_detection_path_for_platform("cursor", "windows", &home, &app_data),
+        Some(cursor_state)
+    );
+}
+
+#[test]
 fn kimi_default_paths_use_expected_platform_locations() {
     let home = PathBuf::from("<user-home>");
     let app_data = home.join("Library").join("Application Support");
@@ -104,9 +117,13 @@ fn cursor_detection_keeps_desktop_state_and_acp_cli_candidates_separate() {
     let cursor_state = app_data.join("Cursor");
     fs::create_dir_all(&cursor_state).unwrap();
 
+    assert!(
+        default_detection_paths_for_platform("cursor", "macos", &home, &app_data)
+            .contains(&cursor_state)
+    );
     assert_eq!(
         default_detection_path_for_platform("cursor", "macos", &home, &app_data),
-        Some(cursor_state)
+        None
     );
     let cursor = target_def("cursor").unwrap();
     assert_eq!(cursor.label, "Cursor - IDE");
@@ -192,10 +209,14 @@ fn kilo_code_detection_path_uses_global_storage_when_present() {
         .join("kilocode.kilo-code");
     fs::create_dir_all(&storage).unwrap();
 
-    let detected =
-        default_detection_path_for_platform("kilo-code", "macos", &home, &app_data).unwrap();
-
-    assert_eq!(detected, storage);
+    assert!(
+        default_detection_paths_for_platform("kilo-code", "macos", &home, &app_data)
+            .contains(&storage)
+    );
+    assert_eq!(
+        default_detection_path_for_platform("kilo-code", "macos", &home, &app_data),
+        None
+    );
 }
 
 #[test]
@@ -254,8 +275,13 @@ fn kimi_desktop_detection_pairs_app_support_evidence_with_bundle_executable() {
         .join("Kimi");
     fs::create_dir_all(&evidence).unwrap();
 
-    let detected = default_detection_path_for_platform("kimi", "macos", &home, &app_data).unwrap();
-    assert_eq!(detected, evidence);
+    assert!(
+        default_detection_paths_for_platform("kimi", "macos", &home, &app_data).contains(&evidence)
+    );
+    assert_eq!(
+        default_detection_path_for_platform("kimi", "macos", &home, &app_data),
+        None
+    );
 
     let install_root = home.join("Applications");
     let executable = install_root
