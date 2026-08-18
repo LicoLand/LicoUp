@@ -412,6 +412,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
     agentWorkspaceRecordCurrentAgentView();
+    ensureConversationInterfaceModelCatalog();
   }
 
   String get selectedConversationWorkingDirectory {
@@ -620,6 +621,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged(immediateActive: false);
     agentWorkspaceRecordCurrentAgentView();
+    ensureConversationInterfaceModelCatalog(agent.target);
   }
 
   Future<void> deleteConversationSession(String sessionId) async {
@@ -643,23 +645,27 @@ mixin AgentConversationSessionController
     }
     if (normalizedAgentId == selectedConversationAgentId &&
         selectedConversationSessions.isNotEmpty) {
+      var runtimeBound = true;
       if (!agentWorkspaceMobileRuntime) {
-        await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
+        runtimeBound = await agentWorkspaceEnsureConversationRuntimeBinding(
+          normalizedAgentId,
+        );
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {
           return;
         }
       }
-      // Cached/durable sessions often lack a real project cwd (or still carry
-      // the retired agent-workspace fallback). Refresh native history so the
-      // composer can bind the trusted workspace path from Cursor projects.
+      // Cached sessions often lack a project cwd, and recorded paths may have
+      // been moved or deleted. Refresh native history only after the Agent
+      // executable is bound; a failed rebind must keep the cached list instead
+      // of walking the host store.
       final hasUsableWorkingDirectory =
           (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
             (session) => isUsableLocalConversationWorkingDirectory(
               session.workingDirectory,
             ),
           );
-      if (!hasUsableWorkingDirectory) {
+      if (runtimeBound && !hasUsableWorkingDirectory) {
         await loadConversationSessions(normalizedAgentId);
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {
@@ -841,6 +847,7 @@ mixin AgentConversationSessionController
     lastError = '';
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
+    ensureConversationInterfaceModelCatalog(normalizedAgentId);
     return true;
   }
 
@@ -867,6 +874,25 @@ mixin AgentConversationSessionController
       }
     }
     return null;
+  }
+
+  /// Conversation-interface entry: load this Agent's native model catalog.
+  /// Unused-agent discovery still omits CLI and other-app named stores.
+  void ensureConversationInterfaceModelCatalog([String? agentId]) =>
+      ensureConversationInterfaceModelCatalogEntry(agentId: agentId);
+
+  /// Conversation-interface entry with the explicit force-entry option.
+  /// [forceEntry] bypasses settled freshness after an explicit interface
+  /// entry while an in-flight lookup is joined.
+  void ensureConversationInterfaceModelCatalogEntry({
+    String? agentId,
+    bool forceEntry = false,
+  }) {
+    final id = (agentId ?? selectedConversationAgentId).trim();
+    if (id.isEmpty) {
+      return;
+    }
+    agentWorkspaceEnsureSelectedAgentModelCatalog(id, forceEntry: forceEntry);
   }
 }
 

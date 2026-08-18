@@ -20,6 +20,7 @@ final class AdaptiveFlywheelDefinition {
     required this.version,
     required this.revisionDigest,
     required this.semanticsDigest,
+    this.authorized = false,
   });
 
   factory AdaptiveFlywheelDefinition.fromJson(Map<String, dynamic> json) =>
@@ -29,6 +30,7 @@ final class AdaptiveFlywheelDefinition {
         version: (json['version'] ?? '').toString(),
         revisionDigest: (json['revisionDigest'] ?? '').toString(),
         semanticsDigest: (json['semanticsDigest'] ?? '').toString(),
+        authorized: json['authorized'] == true,
       );
 
   final String id;
@@ -36,6 +38,7 @@ final class AdaptiveFlywheelDefinition {
   final String version;
   final String revisionDigest;
   final String semanticsDigest;
+  final bool authorized;
 }
 
 final class AdaptiveFlywheelSlot {
@@ -44,6 +47,7 @@ final class AdaptiveFlywheelSlot {
     required this.kind,
     required this.label,
     required this.required,
+    this.entry = false,
   });
 
   factory AdaptiveFlywheelSlot.fromJson(Map<String, dynamic> json) =>
@@ -52,18 +56,21 @@ final class AdaptiveFlywheelSlot {
         kind: (json['kind'] ?? '').toString(),
         label: (json['label'] ?? '').toString(),
         required: json['required'] != false,
+        entry: json['entry'] == true,
       );
 
   final String id;
   final String kind;
   final String label;
   final bool required;
+  final bool entry;
 }
 
 final class AdaptiveFlywheelBinding {
   const AdaptiveFlywheelBinding({
     required this.slotId,
     required this.valueId,
+    this.ordinal = 0,
     this.model = '',
     this.reasoningEffort = '',
     this.revision = 0,
@@ -72,6 +79,7 @@ final class AdaptiveFlywheelBinding {
   factory AdaptiveFlywheelBinding.fromJson(Map<String, dynamic> json) =>
       AdaptiveFlywheelBinding(
         slotId: (json['slotId'] ?? '').toString(),
+        ordinal: (json['ordinal'] as num?)?.toInt() ?? 0,
         valueId: (json['valueId'] ?? '').toString(),
         model: (json['model'] ?? '').toString(),
         reasoningEffort: (json['reasoningEffort'] ?? '').toString(),
@@ -79,6 +87,7 @@ final class AdaptiveFlywheelBinding {
       );
 
   final String slotId;
+  final int ordinal;
   final String valueId;
   final String model;
   final String reasoningEffort;
@@ -109,6 +118,7 @@ final class AdaptiveFlywheelGraphEdge {
     required this.from,
     required this.to,
     required this.event,
+    this.guardLabel = '',
   });
 
   factory AdaptiveFlywheelGraphEdge.fromJson(Map<String, dynamic> json) =>
@@ -116,11 +126,27 @@ final class AdaptiveFlywheelGraphEdge {
         from: (json['from'] ?? '').toString(),
         to: (json['to'] ?? '').toString(),
         event: (json['event'] ?? '').toString(),
+        guardLabel: _guardLabel(json['guard']),
       );
 
   final String from;
   final String to;
   final String event;
+  final String guardLabel;
+}
+
+String _guardLabel(Object? guard) {
+  if (guard is! Map) return '';
+  final path = (guard['path'] ?? '').toString().trim();
+  if (path.isEmpty) return '';
+  final segments = path.split('.').where((part) => part.isNotEmpty);
+  final name = segments.isEmpty ? '' : segments.last;
+  if (name.isEmpty) return '';
+  final equals = guard['equals'];
+  if (equals != null && equals.toString().isNotEmpty) {
+    return '$name=$equals';
+  }
+  return name;
 }
 
 final class AdaptiveFlywheelInspection {
@@ -145,12 +171,7 @@ final class AdaptiveFlywheelInspection {
       currentStates: _strings(projection['currentStates']),
       neighborStates: _strings(projection['neighborStates']),
       allowedOperations: _strings(projection['allowedOperations']),
-      bindings: {
-        for (final binding in _maps(projection['bindings']))
-          if ((binding['slotId'] ?? '').toString().isNotEmpty)
-            (binding['slotId'] ?? '').toString():
-                AdaptiveFlywheelBinding.fromJson(binding),
-      },
+      bindings: _bindingsBySlot(_maps(projection['bindings'])),
       slots: _maps(
         workflow['actorSlots'],
       ).map(AdaptiveFlywheelSlot.fromJson).toList(growable: false),
@@ -170,12 +191,38 @@ final class AdaptiveFlywheelInspection {
   final List<String> currentStates;
   final List<String> neighborStates;
   final List<String> allowedOperations;
-  final Map<String, AdaptiveFlywheelBinding> bindings;
+  final Map<String, List<AdaptiveFlywheelBinding>> bindings;
   final List<AdaptiveFlywheelSlot> slots;
   final List<AdaptiveFlywheelGraphState> states;
   final List<AdaptiveFlywheelGraphEdge> edges;
   final String initialState;
   final String diagnosticCode;
+
+  bool get authorized => allowedOperations.contains('strategy.run.start');
+
+  AdaptiveFlywheelSlot? get entrySlot {
+    for (final slot in slots) {
+      if (slot.kind == 'actor' && slot.entry) return slot;
+    }
+    return null;
+  }
+}
+
+Map<String, List<AdaptiveFlywheelBinding>> _bindingsBySlot(
+  List<Map<String, dynamic>> rows,
+) {
+  final grouped = <String, List<AdaptiveFlywheelBinding>>{};
+  for (final row in rows) {
+    final binding = AdaptiveFlywheelBinding.fromJson(row);
+    if (binding.slotId.isEmpty) continue;
+    grouped
+        .putIfAbsent(binding.slotId, () => <AdaptiveFlywheelBinding>[])
+        .add(binding);
+  }
+  for (final chain in grouped.values) {
+    chain.sort((a, b) => a.ordinal.compareTo(b.ordinal));
+  }
+  return grouped;
 }
 
 Map<String, dynamic> adaptiveFlywheelStringMap(Object? value) =>

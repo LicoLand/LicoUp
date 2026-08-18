@@ -53,9 +53,9 @@ pub(super) fn print_usage() {
   licoup skill delete plan|apply --skill SKILL --path PATH [--confirmation PLAN_VALUE]
   licoup skill visibility set <skill-id> --agent AGENT --hidden true|false
   licoup skill usage report [--agent AGENT] [--skill SKILL] [--days 1..365|--from YYYY-MM-DD] [--to YYYY-MM-DD]
-  licoup targets scan [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false]
+  licoup targets scan [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false] [--enable-agent-cli-model-lookup true|false]
   licoup targets add --target <target> [--config-path PATH] [--binary-path PATH] [--history-root PATH] [--state-root PATH]
-  licoup targets inspect <target> [--state-root PATH]
+  licoup targets inspect <target> [--state-root PATH] [--enable-agent-cli-model-lookup true|false]
   licoup mobile relay config get|set [--use-custom-gateway true|false] [--custom-gateway-url URL] [--relay-enabled true|false]
   licoup mobile relay pairing create|status|claim|revoke [--pairing-code CODE] [--pairing-id ID] [--mobile-token TOKEN]
   licoup mobile relay pc check-in

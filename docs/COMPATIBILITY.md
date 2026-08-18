@@ -47,7 +47,7 @@ Runtime targets and release packages are intentionally different authorities. Ea
 | linux-alpine-apk-x64 | linux-musl-x64 | linux | alpine-repository | apk | x64 | available | not eligible | package-repository |
 | linux-appimage-arm64 | linux-glibc-arm64 | linux | direct | appimage | arm64 | available | not eligible | appimage-update-information |
 | linux-appimage-x64 | linux-glibc-x64 | linux | direct | appimage | x64 | available | not eligible | appimage-update-information |
-| android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | available | eligible | manual-download |
+| android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | available | not eligible | manual-download |
 | android-play-arm64-v8a | android-arm64 | android | google-play | aab | arm64-v8a | available | not eligible | store-managed |
 | ios-app-store-arm64 | ios-arm64 | ios | app-store | ipa | arm64 | available | not eligible | store-managed |
 

@@ -11,7 +11,6 @@ export const releaseBoundarySelfTestScripts = [
   "client:verify:source-state-digest:self-test",
   "client:verify:linux-tar-resource-bounds:self-test",
   "client:verify:android-apk-zip-facts:self-test",
-  "client:verify:android-release-toolchain:self-test",
   "client:verify:review-signoff:self-test",
   "client:verify:release-target-evidence:self-test",
 ];

@@ -131,7 +131,7 @@ function verifyRunnable(appPath) {
     "--include-accessible-environments",
     "true",
     "--include-history-model-catalog",
-    "true"
+    "false"
   ], {
     timeout: sidecarScanTimeoutMillis,
     killSignal: "SIGTERM"

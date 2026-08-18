@@ -226,4 +226,24 @@ void main() {
     );
     expect(await Directory(envDirectory.path).list().isEmpty, isTrue);
   });
+
+  test('macos firmlink home prefix collapses to the same state root', () {
+    String posix(List<String> parts) => '/${parts.join('/')}';
+    expect(
+      PortableDataRoot.stripMacosDataVolume(
+        posix(['System', 'Volumes', 'Data', 'Users', 'fixture']),
+      ),
+      posix(['Users', 'fixture']),
+    );
+    expect(
+      PortableDataRoot.stripMacosDataVolume(posix(['Users', 'fixture'])),
+      posix(['Users', 'fixture']),
+    );
+    expect(
+      PortableDataRoot.stripMacosDataVolume(
+        PortableDataRoot.macosDataVolumePrefix,
+      ),
+      '/',
+    );
+  });
 }

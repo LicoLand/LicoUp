@@ -295,8 +295,9 @@ void main() {
     );
     addTearDown(controller.dispose);
     controller.scannedTargets = [_groupTarget];
-    controller.conversationSessionsByAgent = const {
-      'codex': [_groupAgentSession],
+    final now = DateTime.now().toUtc().toIso8601String();
+    controller.conversationSessionsByAgent = {
+      'codex': [_groupAgentSession(now)],
     };
     await controller.clientConversationController.initialize();
     await controller.clientConversationController.selectConversation(
@@ -397,21 +398,23 @@ final _groupTarget = TargetCandidate(
   supportedActions: ['runtime.message.send'],
 );
 
-const _groupAgentSession = AgentConversationSession(
-  id: 'session:codex',
-  agentId: 'codex',
-  title: 'Agent detail',
-  createdAt: '2026-08-13T00:00:00Z',
-  updatedAt: '2026-08-13T00:01:00Z',
-  messages: [
-    AgentConversationMessage(
-      id: 'message:codex',
-      role: 'assistant',
-      text: 'Opened Agent detail',
-      createdAt: '2026-08-13T00:01:00Z',
-    ),
-  ],
-);
+AgentConversationSession _groupAgentSession(String at) {
+  return AgentConversationSession(
+    id: 'session:codex',
+    agentId: 'codex',
+    title: 'Agent detail',
+    createdAt: at,
+    updatedAt: at,
+    messages: [
+      AgentConversationMessage(
+        id: 'message:codex',
+        role: 'assistant',
+        text: 'Opened Agent detail',
+        createdAt: at,
+      ),
+    ],
+  );
+}
 
 final class _GroupNavigationAgentService extends AgentService {
   @override

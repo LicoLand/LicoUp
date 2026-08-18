@@ -7,8 +7,7 @@
 //! requested directory is one of those unbounded roots.
 
 use crate::platform::file_security::ensure_private_dir;
-use crate::platform::paths::portable_data_dir;
-use directories::UserDirs;
+use crate::platform::paths::{portable_data_dir, strip_macos_data_volume, user_home_from_env};
 use std::path::{Component, Path, PathBuf};
 
 /// Single client-owned fallback workspace under the LicoUp state root. Not
@@ -53,7 +52,7 @@ pub(crate) fn resolve_local_agent_workspace(
 ) -> Option<PathBuf> {
     let home = user_home();
     if let Some(requested) = requested
-        .filter(|path| path.is_dir() && !is_unbounded_agent_workspace(path, home.as_deref()))
+        .filter(|path| !is_unbounded_agent_workspace(path, home.as_deref()) && path.is_dir())
     {
         return Some(requested.to_path_buf());
     }
@@ -70,11 +69,11 @@ pub(crate) fn default_local_agent_workspace(_agent_id: &str) -> Option<PathBuf> 
 }
 
 fn user_home() -> Option<PathBuf> {
-    UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf())
+    user_home_from_env()
 }
 
 pub(crate) fn is_unbounded_agent_workspace(path: &Path, home: Option<&Path>) -> bool {
-    let path = lexical_path(path);
+    let path = strip_macos_data_volume(&lexical_path(path));
     if !path.is_absolute() {
         return true;
     }
@@ -84,7 +83,7 @@ pub(crate) fn is_unbounded_agent_workspace(path: &Path, home: Option<&Path>) -> 
     if is_media_library_bundle(&path) {
         return true;
     }
-    let Some(home) = home.map(lexical_path) else {
+    let Some(home) = home.map(|home| strip_macos_data_volume(&lexical_path(home))) else {
         return false;
     };
     // The home directory and every ancestor of it hold the user's whole
@@ -132,6 +131,7 @@ fn lexical_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::paths::posix_absolute;
 
     fn synthetic_home() -> PathBuf {
         std::env::temp_dir().join("licoup-agent-workspace-home-fixture")
@@ -157,12 +157,21 @@ mod tests {
             home.join("Applications"),
             home.join("Pictures/Personal.photoslibrary"),
             PathBuf::from("relative/project"),
+            posix_absolute(&["System", "Volumes", "Data"])
+                .join(home.strip_prefix("/").unwrap_or(&home).join("Desktop")),
         ] {
             assert!(
                 is_unbounded_agent_workspace(&unbounded, Some(&home)),
                 "expected an unbounded workspace"
             );
         }
+        assert!(is_unbounded_agent_workspace(
+            &home.join("Desktop"),
+            Some(
+                &posix_absolute(&["System", "Volumes", "Data"])
+                    .join(home.strip_prefix("/").unwrap_or(&home))
+            )
+        ));
     }
 
     #[test]

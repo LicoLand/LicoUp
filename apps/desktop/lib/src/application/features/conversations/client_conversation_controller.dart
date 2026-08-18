@@ -214,7 +214,35 @@ final class ClientConversationController extends ChangeNotifier {
     });
   }
 
-  Future<bool> postMessage(String text) async {
+  /// Persists the explicitly selected strategy on the owning group
+  /// Conversation. Passing null clears it; navigation never calls this path.
+  Future<bool> setSelectedStrategyRevision(String? strategyRevision) async {
+    final conversation = _selectedConversation;
+    if (conversation == null || !conversation.group) return false;
+    final normalized = strategyRevision?.trim() ?? '';
+    if (conversation.strategyRevision == normalized) return true;
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null || !selected.group || selected.id != conversation.id) {
+      return false;
+    }
+    if (selected.strategyRevision == normalized) return true;
+    return _guard('strategy-set', () async {
+      await _service.execute(_runner, {
+        'action': 'conversation.strategy.set',
+        'conversationId': selected.id,
+        'strategyRevision': normalized.isEmpty ? null : normalized,
+      });
+      await _refreshCatalogWithoutGuard();
+      await _loadSelected();
+    });
+  }
+
+  Future<bool> postMessage(
+    String text, {
+    bool suppressMentions = false,
+    String? mentionAgentId,
+  }) async {
     final conversation = _selectedConversation;
     final content = text.trim();
     final author = conversation?.localOwnerMembership;
@@ -226,7 +254,17 @@ final class ClientConversationController extends ChangeNotifier {
     _failureCode = '';
     _notifyListeners();
     try {
-      final mentioned = _mentionedMembershipIds(content, conversation);
+      final mentioned = suppressMentions
+          ? const <String>[]
+          : mentionAgentId == null
+          ? _mentionedMembershipIds(content, conversation)
+          : conversation.activeAgentMemberships
+                .where(
+                  (membership) =>
+                      membership.principal.agentId == mentionAgentId,
+                )
+                .map((membership) => membership.id)
+                .toList(growable: false);
       await _service.execute(_runner, {
         'action': 'conversation.message.post',
         'conversationId': conversation.id,

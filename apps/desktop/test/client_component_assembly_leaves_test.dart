@@ -33,6 +33,10 @@ void main() {
       owner: 'AgentUsageController(',
       forbidden: 'SkillHubController(',
     ),
+    'client_agent_hub_component_assembly.dart': (
+      owner: 'AgentHubCatalogController(',
+      forbidden: 'TargetController(',
+    ),
     'client_navigation_component_assembly.dart': (
       owner: 'ClientNavigationController(',
       forbidden: 'MobileRelayController(',
@@ -75,6 +79,7 @@ void main() {
         'ClientSettingsComponentAssembly(',
         'ClientMobileComponentAssembly(',
         'ClientUsageComponentAssembly(',
+        'ClientAgentHubComponentAssembly(',
         'ClientNavigationComponentAssembly(',
         'ClientPresentationComponentAssembly(',
       ]) {

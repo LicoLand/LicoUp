@@ -141,6 +141,8 @@ pub enum StrategyActionKind {
     StrategyRuntimeList,
     #[serde(rename = "strategy.binding.update")]
     StrategyBindingUpdate,
+    #[serde(rename = "strategy.binding.replace")]
+    StrategyBindingReplace,
     #[serde(rename = "strategy.binding.remove")]
     StrategyBindingRemove,
     #[serde(rename = "strategy.authorization.preview")]
@@ -153,6 +155,8 @@ pub enum StrategyActionKind {
     StrategyRunStart,
     #[serde(rename = "strategy.run.inspect")]
     StrategyRunInspect,
+    #[serde(rename = "strategy.run.active")]
+    StrategyRunActive,
     #[serde(rename = "strategy.run.resume")]
     StrategyRunResume,
     #[serde(rename = "strategy.run.cancel")]

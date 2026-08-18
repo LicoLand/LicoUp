@@ -73,6 +73,8 @@ class TargetController extends ChangeNotifier {
   Completer<void>? _refreshCompletion;
   Future<void>? _queuedForcedScan;
   final Map<String, Future<TargetCandidate?>> _targetProbeFlights = {};
+  final Set<String> _nativeModelCatalogRefreshedIds = {};
+  final Set<String> _nativeModelCatalogInFlightIds = {};
   final Set<String> _cachedTargetIds = {};
   bool _cachedTargetsNeedRefresh = false;
   int _scanGeneration = 0;
@@ -308,6 +310,7 @@ class TargetController extends ChangeNotifier {
           nextTargets,
           probe.targetId,
           probe.candidate,
+          replaceModelCatalog: false,
         );
       }
       if (!_sameTargets(_targets, nextTargets)) {
@@ -389,31 +392,112 @@ class TargetController extends ChangeNotifier {
   /// Revalidates only the selected conversation target. Cached discovery
   /// metadata intentionally carries no executable authority, so reopening an
   /// agent restores its current binding before the selection flow returns.
-  Future<bool> ensureConversationRuntimeBinding(String targetId) {
+  /// Opening that Agent's conversation interface also refreshes its native
+  /// model catalog (CLI list or named store) without running that lookup for
+  /// unused agents.
+  Future<bool> ensureConversationRuntimeBinding(String targetId) async {
     final id = targetId.trim();
     if (_disposed || id.isEmpty || _isMobileRuntime()) {
-      return Future<bool>.value(
-        _targets.any((target) => target.target == id && target.canRelayRuntime),
+      return _targets.any(
+        (target) => target.target == id && target.canRelayRuntime,
       );
     }
+    TargetCandidate? current;
     for (final target in _targets) {
-      if (target.target == id && target.canRelayRuntime) {
-        return Future<bool>.value(true);
+      if (target.target == id) {
+        current = target;
+        break;
       }
     }
-    if (!_cachedTargetIds.contains(id)) {
-      return Future<bool>.value(false);
+    if (current != null && current.canRelayRuntime) {
+      ensureSelectedAgentModelCatalog(id);
+      return true;
     }
-    return _revalidateConversationRuntimeBinding(id);
+    if (!_cachedTargetIds.contains(id)) {
+      return false;
+    }
+    final refreshCatalog = !_nativeModelCatalogRefreshedIds.contains(id);
+    return _revalidateConversationRuntimeBinding(
+      id,
+      enableAgentCliModelLookup: refreshCatalog,
+    );
   }
 
-  Future<bool> _revalidateConversationRuntimeBinding(String targetId) async {
+  /// Loads the native model catalog for an Agent whose conversation interface
+  /// the user just opened. Unused-agent discovery still omits this lookup.
+  /// [forceEntry] bypasses an already settled refresh (conversation re-entry)
+  /// while an in-flight lookup is always joined.
+  void ensureSelectedAgentModelCatalog(
+    String targetId, {
+    bool forceEntry = false,
+  }) {
+    final id = targetId.trim();
+    if (_disposed || id.isEmpty || _isMobileRuntime()) {
+      return;
+    }
+    TargetCandidate? current;
+    for (final target in _targets) {
+      if (target.target == id) {
+        current = target;
+        break;
+      }
+    }
+    if (current == null) {
+      return;
+    }
+    _scheduleNativeModelCatalogRefresh(id, current, forceEntry: forceEntry);
+  }
+
+  bool isRefreshingNativeModelCatalog(String targetId) {
+    return _nativeModelCatalogInFlightIds.contains(targetId.trim());
+  }
+
+  void _scheduleNativeModelCatalogRefresh(
+    String targetId,
+    TargetCandidate current, {
+    bool forceEntry = false,
+  }) {
+    if (!forceEntry && _nativeModelCatalogRefreshedIds.contains(targetId)) {
+      return;
+    }
+    if (_nativeModelCatalogInFlightIds.contains(targetId)) {
+      return;
+    }
+    _nativeModelCatalogInFlightIds.add(targetId);
+    notifyListeners();
+    unawaited(
+      _revalidateConversationRuntimeBinding(
+        targetId,
+        enableAgentCliModelLookup: true,
+      ).whenComplete(() {
+        _nativeModelCatalogInFlightIds.remove(targetId);
+        if (!_disposed) notifyListeners();
+      }),
+    );
+  }
+
+  Future<bool> _revalidateConversationRuntimeBinding(
+    String targetId, {
+    required bool enableAgentCliModelLookup,
+  }) async {
     try {
-      final candidate = await _probeTarget(targetId);
+      final candidate = await _probeTarget(
+        targetId,
+        enableAgentCliModelLookup: enableAgentCliModelLookup,
+      );
       if (_disposed) return false;
       _markCachedTargetVerified(targetId);
       if (candidate == null) return false;
-      final next = TargetPolicy.mergeProbe(_targets, targetId, candidate);
+      final next = TargetPolicy.mergeProbe(
+        _targets,
+        targetId,
+        candidate,
+        replaceModelCatalog: enableAgentCliModelLookup,
+      );
+      if (enableAgentCliModelLookup &&
+          TargetPolicy.hasSelectedAgentModelCatalog(candidate)) {
+        _nativeModelCatalogRefreshedIds.add(targetId);
+      }
       if (!_sameTargets(_targets, next)) {
         _targets = next;
         _onTargetsSettled();
@@ -437,16 +521,27 @@ class TargetController extends ChangeNotifier {
     }
   }
 
-  Future<TargetCandidate?> _probeTarget(String targetId) {
-    final existing = _targetProbeFlights[targetId];
+  Future<TargetCandidate?> _probeTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  }) {
+    final flightKey = enableAgentCliModelLookup
+        ? '$targetId:native-catalog'
+        : targetId;
+    final existing = _targetProbeFlights[flightKey];
     if (existing != null) return existing;
     late final Future<TargetCandidate?> probe;
-    probe = _gateway.scanOneTarget(targetId).whenComplete(() {
-      if (identical(_targetProbeFlights[targetId], probe)) {
-        _targetProbeFlights.remove(targetId);
-      }
-    });
-    _targetProbeFlights[targetId] = probe;
+    probe = _gateway
+        .scanOneTarget(
+          targetId,
+          enableAgentCliModelLookup: enableAgentCliModelLookup,
+        )
+        .whenComplete(() {
+          if (identical(_targetProbeFlights[flightKey], probe)) {
+            _targetProbeFlights.remove(flightKey);
+          }
+        });
+    _targetProbeFlights[flightKey] = probe;
     return probe;
   }
 

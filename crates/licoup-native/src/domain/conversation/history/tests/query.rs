@@ -102,6 +102,18 @@ fn history_roots_follow_home_override_for_xdg_backed_targets() {
 }
 
 #[test]
+fn explicit_history_root_keeps_user_selection_authority() {
+    let root = temp_dir("explicit-history-root");
+    let roots = history_roots(
+        HistoryAdapter::Codex,
+        &json!({"historyRoot": display_path(&root)}),
+    );
+
+    assert_eq!(roots.len(), 1);
+    assert!(roots[0].explicitly_selected);
+}
+
+#[test]
 fn history_roots_cover_kimi_app_data_locations() {
     let home = temp_dir("history-kimi-roots");
 

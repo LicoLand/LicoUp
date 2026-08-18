@@ -2,7 +2,10 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Narrow native boundary used by target discovery and configuration.
 abstract interface class TargetManagementGateway {
-  Future<TargetCandidate?> scanOneTarget(String targetId);
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
+    bool enableAgentCliModelLookup = false,
+  });
 
   Future<Map<String, dynamic>> addTarget({
     required String target,
