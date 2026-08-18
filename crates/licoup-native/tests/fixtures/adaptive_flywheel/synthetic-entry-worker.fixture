@@ -91,10 +91,22 @@
       "event": "success"
     },
     {
+      "id": "plan-failed",
+      "from": "plan",
+      "to": "blocked",
+      "event": "failure"
+    },
+    {
       "id": "tasks-complete",
       "from": "task-frontier",
       "to": "complete",
       "event": "success"
+    },
+    {
+      "id": "tasks-failed",
+      "from": "task-frontier",
+      "to": "blocked",
+      "event": "failure"
     }
   ]
 }
