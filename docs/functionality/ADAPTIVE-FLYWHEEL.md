@@ -74,6 +74,60 @@ its native conversation. A group Conversation is the human entry and
 membership-event projection, not a second transcript store. The retired
 ordinal Conversation Flywheel model is not read or translated.
 
+## Graph contract
+
+Every workflow is compiled before import against one typed transition
+contract. Transitions may carry only `complete`, `success`, or `failure`
+events; arbitrary event identifiers are rejected. Effect states
+(authorization, actor, script, workset) must declare total `success` and
+`failure` routing and may declare no other event family; terminal states have
+no outgoing edges. Actor and workset states reference required actor bindings,
+and every script runtime has one required runtime binding. `pass` and `join`
+states take one unguarded `complete` edge, a `choice` routes `complete` with an
+unguarded fallback, and a `fork` fans out through at least two unguarded
+`complete` edges to distinct targets.
+
+Guard routing must select exactly one edge for every bounded payload. A state
+may declare one arbitrary guard with an unguarded fallback, or multiple
+equality guards on the same payload path whose canonical values are distinct,
+again with an unguarded fallback. Mixed guard paths, `exists` guards combined
+with equality guards, and missing fallbacks are rejected before import.
+
+Parallel regions are a structured subset: each `fork` has exactly one matching
+`join`; every branch is acyclic, single-entry, single-exit, node-disjoint, and
+free of nested fork/join and terminal states; each branch has one distinct
+final predecessor into the join; and no edge crosses region boundaries. Loops
+containing effects outside a structured parallel region remain valid. A join
+outside such a region must have exactly one guaranteed predecessor; an initial
+join or a multi-predecessor merge fed by exclusive choice paths is rejected.
+
+A workset visit emits `success` for both empty and non-empty worksets with one
+canonical aggregate payload. On the final item failure, the run stops admitting
+dependent items, lets already-running fenced commands settle, then takes
+`failure` exactly once using the lowest stable item/command identity. Because
+an empty workset has no effect boundary, a workset `success` path may not form
+an automatic cycle; failure loops and loops that pass through an actor,
+authorization, or script effect remain valid.
+
+Limits are enforced on durable admission: a run never exceeds its declared
+`maxParallelism`, the engine-wide active-effect ceiling applies across runs,
+and `maxAttempts` counts the full lineage across retries and fallback
+candidates for one state visit or workset item. Candidate ordinals reset on a
+new visit. An eligible failed candidate remains in that visit until its durable
+fallback command is recorded; restart recovery finds the persisted failure and
+records that command once. Immediately before a one-shot effect permit is
+issued, the store revalidates the current authorization digest, lease owner,
+and unexpired running lease in one write transaction. Reduction is
+deterministic: commands carry stable
+identities, concurrent outcomes are consumed in sorted order, and overlapping
+`context.*`, `worksets.*`, or candidate-scoped resumable-session contributions
+are resolved by the greatest stable command identity. Equal inputs and outcome
+sets therefore reach the same canonical snapshot.
+
+In the synthetic entry/worker fixture, the authorization, actor, and workset
+states each declare one `success` and one `failure` edge; `complete` and
+`blocked` are terminal states with no outgoing edges.
+
 ## Desktop flow
 
 Open **Agents**, then open **Adaptive Flywheel**.

@@ -202,9 +202,27 @@ pub struct Transition {
     pub id: String,
     pub from: String,
     pub to: String,
-    pub event: String,
+    pub event: TransitionEvent,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guard: Option<GuardExpression>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransitionEvent {
+    Complete,
+    Success,
+    Failure,
+}
+
+impl TransitionEvent {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Success => "success",
+            Self::Failure => "failure",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
