@@ -1,7 +1,7 @@
 //! Digest-confirmed registration of Subagent MCP into Antigravity mcp_config.
 
 use crate::domain::integration_state::IntegrationState;
-use directories::UserDirs;
+use crate::platform::paths::user_home_from_env;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -185,7 +185,7 @@ pub fn install(
 
 /// Official Antigravity CLI/IDE global MCP config, with legacy bridge fallback.
 pub fn antigravity_mcp_config_path() -> Option<PathBuf> {
-    let home = UserDirs::new()?.home_dir().to_path_buf();
+    let home = user_home_from_env()?;
     let official = home.join(".gemini").join("config").join("mcp_config.json");
     let legacy = home
         .join(".gemini")

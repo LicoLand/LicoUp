@@ -12,9 +12,12 @@ import 'package:licoup/src/application/features/agents/workspace/agent_workspace
 import 'package:licoup/src/application/features/agents/conversation/conversation_refresh_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
+import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
-import 'package:licoup/src/application/features/navigation/controller/client_section_preload_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
@@ -36,7 +39,10 @@ mixin ClientNavigationFacade
   bool _applyingCurrentConversationViewRestore = false;
 
   ClientNavigationController get navigationController;
-  ClientSectionPreloadController get sectionPreloadController;
+  ClientInterfaceEntryHookController get interfaceEntryHookController;
+  LlmGatewayLifecycleController get llmGatewayLifecycleController;
+  AdapterPluginController get adapterPluginController;
+  AgentHubCatalogController get agentHubCatalogController;
   ClientCurrentViewTracker get currentViewTracker;
   ClientCurrentViewStore get currentViewStore;
   bool get mobileClientRuntimePlatform;
@@ -48,7 +54,9 @@ mixin ClientNavigationFacade
 
   void selectSection(ClientSection section) {
     navigationController.select(section);
-    sectionPreloadController.prioritizeSection(section);
+    if (!mobileClientRuntimePlatform) {
+      interfaceEntryHookController.requestEntry(section);
+    }
     conversationAttentionContextChanged();
     if (section == ClientSection.agents) {
       if (_currentConversationViewRestoreApplied) {
@@ -76,21 +84,61 @@ mixin ClientNavigationFacade
     }
   }
 
-  /// Default per-section background preload work, resolved at bootstrap.
-  /// Quiet variants keep background loading off the visible status line.
-  Map<ClientSection, Future<void> Function()> resolveSectionPreloadTasks() => {
-    ClientSection.agents: () async {
-      await Future.wait<void>([
-        scanTargets(showProgress: false, surfaceErrors: true),
-        clientConversationController.initialize(),
-      ]);
-      await applyCurrentConversationViewRestore();
-    },
-    ClientSection.monitoring: () => ensureAgentUsageLoadedAndFresh(limit: 20),
-    ClientSection.skillHub: () =>
-        refreshSkillHub(selectedConversationAgentId, showProgress: false),
-    ClientSection.mobileRelay: () =>
-        refreshSecureMeshStatus(authorize: false, showProgress: false),
+  /// Default per-section interface-entry Hook lanes, resolved at bootstrap.
+  /// The scheduler groups these by destination and owns ordering, RPC
+  /// priority, coalescing, failure isolation, and disposal; each action stays
+  /// a narrow owner of its own operation gate.
+  Map<ClientSection, ClientInterfaceEntryHookTask>
+  resolveInterfaceEntryHookTasks() => {
+    ClientSection.agents: ClientInterfaceEntryHookTask(
+      section: ClientSection.agents,
+      action: () async {
+        await Future.wait<void>([
+          scanTargets(showProgress: false, surfaceErrors: true),
+          clientConversationController.initialize(),
+        ]);
+        selectDefaultConversationAgent();
+        await applyCurrentConversationViewRestore();
+        ensureConversationInterfaceModelCatalogEntry(forceEntry: true);
+      },
+    ),
+    ClientSection.models: ClientInterfaceEntryHookTask(
+      section: ClientSection.models,
+      action: llmGatewayLifecycleController.pollNow,
+    ),
+    ClientSection.mobileRelay: ClientInterfaceEntryHookTask(
+      section: ClientSection.mobileRelay,
+      action: () async {
+        await refreshSecureMeshStatus(authorize: false, showProgress: false);
+        await Future.wait<void>([
+          refreshMobilePairingStatus(),
+          scanTargets(showProgress: false, surfaceErrors: true),
+        ]);
+      },
+    ),
+    ClientSection.agentHub: ClientInterfaceEntryHookTask(
+      section: ClientSection.agentHub,
+      action: () async {
+        await agentHubCatalogController.refresh();
+      },
+    ),
+    ClientSection.skillHub: ClientInterfaceEntryHookTask(
+      section: ClientSection.skillHub,
+      action: () async {
+        unawaited(loadSkillUsageCounts());
+        await refreshSkillHub(
+          selectedConversationAgentId,
+          forceRefresh: true,
+          showProgress: false,
+        );
+      },
+    ),
+    ClientSection.pluginManagement: ClientInterfaceEntryHookTask(
+      section: ClientSection.pluginManagement,
+      action: () async {
+        await adapterPluginController.refresh();
+      },
+    ),
   };
 
   void clientEnterAgentsSection() {
@@ -104,6 +152,7 @@ mixin ClientNavigationFacade
     if (selectionChanged) notifyConversationStructureChanged();
     unawaited(applyCurrentConversationViewRestore());
     if (scannedTargets.isEmpty) unawaited(scanTargets());
+    ensureConversationInterfaceModelCatalog();
   }
 
   /// Shows Welcome and makes it the globally tracked current interface.
@@ -127,6 +176,7 @@ mixin ClientNavigationFacade
   void clientEnterMonitoringSection() {
     if (!mobileClientRuntimePlatform) {
       agentUsageController.acquirePollingOwner(_navigationUsagePollingOwner);
+      unawaited(agentUsageController.ensureLoadedAndFresh(limit: 20));
     }
   }
 

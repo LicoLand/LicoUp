@@ -15,7 +15,7 @@ and submission model is a different product boundary.
 | Use `Developer ID Application` for an app distributed outside the Mac App Store | The local platform-channel coordinator verifies the certificate type, team, application identifier, and profile authorization before packaging | Implemented; real release proof pending |
 | Sign every executable, enable Hardened Runtime, include a secure timestamp, and omit `get-task-allow` | Nested code is inventoried and signed before the outer app; post-sign checks require Developer ID, runtime, timestamp, bounded entitlements, and exact nested-code closure | Implemented; real release proof pending |
 | Submit Developer ID software to Apple notarization and staple the ticket | The app and final DMG are submitted with `notarytool`, stapled, revalidated, and assessed with `spctl`; a failure prevents the ready manifest | Implemented; real release proof pending |
-| Request only resources the macOS app actually needs | The macOS target has no camera purpose string, camera entitlement, or camera plugin registration. QR capture is instantiated only on Android/iOS, while macOS displays the pairing QR; the final macOS nested-code inventory rejects camera/scanner plugins before signing | Implemented |
+| Request only resources the macOS app actually needs, and only when the current user action needs them | Camera purpose strings stay out of the macOS target. Automatic discovery probes only the Agent Scan Path Manifest, does not execute third-party Agent binaries at launch, resolves home from the environment (including firmlink-equivalent home paths), and classifies personal library roots, photo/music libraries, network volumes, iCloud containers, and other-app containers lexically without stating them. Token usage waits until Monitoring is opened. Opening an Agent's conversation interface may still read that Agent's own store | Implemented |
 | Accurately disclose privacy behavior and bundled SDK practices | `PrivacyInfo.xcprivacy` and the bilingual privacy policy are inserted only into the macOS app/DMG release path. The manifest declares no tracking or project-operated collection and records the evidenced File Timestamp, System Boot Time, and User Defaults required-reason API uses | Implemented; must be re-audited when dependencies or data flows change |
 | Protect users from changed or substituted update code | A macOS update must match the installed app's exact Developer ID designated requirement and team and pass code-signing, Hardened Runtime, timestamp, stapled-ticket, and Gatekeeper checks before replacement; the replacement script repeats the checks | Implemented; real update proof pending |
 | Take responsibility for distributed code and dependencies | LicoUp no longer downloads, installs, updates, rolls back, or synchronizes skills. It only discovers local skills and can move a selected local directory to the system Trash. The release bundles the AGPL license, project notice, Flutter/Dart notices, and a target-filtered inventory plus available license texts from the locked Rust dependency graph | Implemented for skills and bundled notices |
@@ -52,40 +52,44 @@ following in a single local release run:
    Gatekeeper.
 6. Privacy, license, open-source notice, and third-party notices exist in the
    app resources and readable DMG root.
-7. The redacted ready manifest is written only after every preceding check.
+7. The digest-bound Apple session advances only after each preceding check;
+   the public receipt is written only after public download, install, and
+   stable-launch verification.
 
-No remote workflow may publish a macOS direct artifact. Publication, upload,
-and release-page mutation require separate explicit authorization.
+No remote workflow may publish a macOS direct artifact. The local Apple Release
+service may upload and publish only the exact mutations in its one immutable
+per-release authorization.
 
-## Local tool
+## Local service
 
-Run this once on a release workstation:
-
-```sh
-npm run client:release:macos:setup
-```
-
-The tool interactively selects the Developer ID provisioning profile, stores a
-validated copy and minimal signing configuration in a private local directory,
-and asks Apple `notarytool` to store notarization credentials in the system
-Keychain. It then performs one disposable signing probe so the operator can
-complete the `codesign` Keychain authorization in one place. Source, build
-reports, and terminal output do not retain certificate, account, key, or local
-path values.
-
-The ordinary internal-test workflow is one command:
+Install the private `apple-release` CLI from its standalone checkout first
+(`npm install --global .` there), then install and configure the per-user
+service once on a release workstation:
 
 ```sh
-npm run client:release:macos:beta
+npm run client:release:service:install
+npm run client:release:service:configure
 ```
 
-It requires a clean worktree and runs the source gate, release-policy gate,
-toolchain preflight, Developer ID package, app and DMG notarization/stapling/
-Gatekeeper acceptance, exact-DMG installation, and stable launch in a fixed
-order. The final redacted local receipt binds the current revision, source
-tree, version, build number, release template, and artifact digest. The command
-does not push a branch, upload an artifact, create a Release, or perform any
-remote publication; formal publication remains a separately authorized action.
+Configuration selects the Developer ID provisioning profile and the names of
+the existing signing identity and `notarytool` Keychain profile. The service
+keeps the profile copy in its permission-bounded authority directory; signing
+keys, notarization credentials, and GitHub authentication stay in their owning
+secure stores. Public output retains no certificate, account, provider,
+credential, raw-output, or local-path value.
+
+An Agent starts one exact release with:
+
+```sh
+npm run client:release:macos -- --version <version> --build <build>
+```
+
+Read-only preflight runs before the only authorization prompt. After acceptance,
+the service owns the exact accepted release source, publication gates,
+Developer ID package, app and DMG notarization/stapling/Gatekeeper checks, exact asset reconciliation,
+publication, anonymous public download, install, and stable launch. It asks no
+second question. The final receipt binds the immutable release source,
+the four public artifact digests, Apple results, and public installation proof.
 
 ## Primary Apple references
 

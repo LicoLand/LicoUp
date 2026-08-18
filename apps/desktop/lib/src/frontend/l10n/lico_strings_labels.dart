@@ -481,6 +481,10 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '@ $agent' : 'Mention $agent';
   String openAgentConversations(String agent) =>
       isChinese ? '打开 $agent 的对话' : 'Open $agent conversations';
+  String get optionalStrategy => isChinese ? '可选策略' : 'Optional strategy';
+  String get noAuthorizedStrategies =>
+      isChinese ? '没有已授权的策略' : 'No authorized strategies';
+  String get exitStrategyMode => isChinese ? '退出策略模式' : 'Exit strategy mode';
   String get groupConversation => isChinese ? '群聊' : 'Group';
   String get groupConversationName => isChinese ? '群聊名称' : 'Group name';
   String get createGroupConversation => isChinese ? '创建' : 'Create';
@@ -635,6 +639,7 @@ extension LicoStringsLabels on LicoStrings {
   String get confirmDailyConversationSelection =>
       isChinese ? '确认添加' : 'Confirm';
   String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
+  String get discoveringModels => isChinese ? '正在发现模型…' : 'Discovering models…';
   String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';

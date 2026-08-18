@@ -4,6 +4,8 @@
 //! immutable, reducers are pure, and every external effect is represented by
 //! a durable command before an adapter is allowed to run it.
 
+#[cfg(test)]
+mod conformance;
 mod definition;
 mod graph;
 mod package;
@@ -12,15 +14,15 @@ mod service;
 mod store;
 
 pub use definition::{
-    ActorSlot, BindingKind, BindingValue, FailureClass, GraphState, GraphStateKind,
-    GuardExpression, RetryPolicy, RuntimeKind, RuntimeRequirement, SessionPolicy,
-    StrategyAuthorization, StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic,
-    StrategyError, StrategyErrorCode, StrategyProjection, StrategyRunStatus, Transition,
-    WorkflowDefinition, WorkflowLimits, WorkflowMetadata, WorksetTemplate,
+    ActorSlot, BindingCandidate, BindingKind, BindingValue, FailureClass, FallbackReceipt,
+    GraphState, GraphStateKind, GuardExpression, RetryPolicy, RuntimeKind, RuntimeRequirement,
+    SessionPolicy, SlotFallbackPolicy, StrategyAuthorization, StrategyDefinition,
+    StrategyDefinitionSummary, StrategyDiagnostic, StrategyError, StrategyErrorCode,
+    StrategyProjection, StrategyRunStatus, Transition, TransitionEvent, WorkflowDefinition,
+    WorkflowLimits, WorkflowMetadata, WorksetTemplate,
 };
 pub use graph::{CompiledWorkflow, compile_workflow};
-pub(crate) use package::builtin_strategy_identity;
-pub use package::{PreparedPackage, StrategyPackageImporter, builtin_strategy_package_bytes};
+pub use package::{PreparedPackage, StrategyPackageImporter, synthetic_fixture_package_bytes};
 pub use reducer::{
     CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
 };
