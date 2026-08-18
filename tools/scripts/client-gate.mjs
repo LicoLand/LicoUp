@@ -402,10 +402,15 @@ function validateDelegatedApplePublicationTopology() {
     if (scripts[name] !== command) fail(`package.json must bind ${name} to Apple Release`);
   }
   const config = readJson("tools/apple-release/macos-direct-arm64.json");
+  const candidate = config.candidate;
   if (config.schema !== "apple-release.config.v1" ||
       config.source?.branch !== "release" ||
-      Object.hasOwn(config, "candidate") ||
-      Array.isArray(config.version?.prepare) ||
+      !candidate || candidate.template !== "release-candidate/v{version}" ||
+      candidate.mergeMethod !== "merge" ||
+      !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
+      !Array.isArray(config.version?.prepare) || config.version.prepare.length === 0 ||
+      !Array.isArray(config.version?.allowedPaths) ||
+      !config.version.allowedPaths.includes("tools/client-version.json") ||
       config.apple?.target !== "macos-direct-arm64" ||
       config.github?.repository !== "LicoLand/LicoUp" ||
       config.artifacts?.filter((entry) => entry.role === "installer").length !== 1) {
