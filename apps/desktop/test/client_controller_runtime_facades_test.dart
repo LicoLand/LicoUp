@@ -32,7 +32,16 @@ void main() {
     expect(controller, contains('ClientComponentAssembly('));
     expect(routing, contains('AgentService get agentService'));
     expect(routing, contains('agentWorkspaceReadSettingsState'));
-    expect(controller, contains('onEnterAgents: clientEnterAgentsSection'));
+    expect(
+      controller,
+      contains('entryHookTasks: resolveInterfaceEntryHookTasks()'),
+    );
+    expect(
+      controller,
+      contains(
+        'ClientInterfaceEntryHookController get interfaceEntryHookController',
+      ),
+    );
     expect(
       controller,
       contains('notifyStateChanged: notifyClientStateChanged'),

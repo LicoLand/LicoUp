@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
 
 import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/composition/adaptive_flywheel_gateway_adapter.dart';
+import 'package:licoup/src/application/controller/assembly/client_agent_hub_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_conversation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_lifecycle_component_assembly.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/application/controller/assembly/client_target_compone
 import 'package:licoup/src/application/controller/assembly/client_usage_component_assembly.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
@@ -89,12 +91,10 @@ final class ClientComponentAssembly {
     discoverMobileTargets,
     required VoidCallback onTargetsSettled,
     required VoidCallback selectDefaultConversationAgent,
-    required VoidCallback onEnterAgents,
     required VoidCallback onEnterMonitoring,
     required VoidCallback onExitMonitoring,
-    required VoidCallback onEnterMobileRelay,
     required VoidCallback notifyStateChanged,
-    required ClientSectionPreloadTaskMap sectionPreloadTasks,
+    required ClientInterfaceEntryHookTaskMap entryHookTasks,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
     SkillDeleteGateway? skillDeleteGateway,
@@ -190,14 +190,15 @@ final class ClientComponentAssembly {
       selectedAgentId: selectedAgentId,
       reportStatus: _reportStatus,
     );
+    agentHub = ClientAgentHubComponentAssembly(
+      invoke: (arguments) => agentService.runCli(arguments),
+    );
     navigation = ClientNavigationComponentAssembly(
       isMobileRuntime: isMobileRuntime,
-      onEnterAgents: onEnterAgents,
       onEnterMonitoring: onEnterMonitoring,
       onExitMonitoring: onExitMonitoring,
-      onEnterMobileRelay: onEnterMobileRelay,
-      sectionPreloadTasks: sectionPreloadTasks,
-      onPreloadReport: (report) =>
+      entryHookTasks: entryHookTasks,
+      onEntryHookReport: (report) =>
           shellController.replaceLastError(report.code),
     );
     for (final component in _listenedComponents) {
@@ -217,6 +218,7 @@ final class ClientComponentAssembly {
   late final ClientPluginManagementComponentAssembly pluginManagement;
   late final ClientMobileComponentAssembly mobile;
   late final ClientUsageComponentAssembly usage;
+  late final ClientAgentHubComponentAssembly agentHub;
   late final ClientNavigationComponentAssembly navigation;
 
   ClientShellController get shellController => presentation.shellController;
@@ -251,9 +253,11 @@ final class ClientComponentAssembly {
       presentation.layoutComposition;
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
+  AgentHubCatalogController get agentHubCatalogController =>
+      agentHub.controller;
   ClientNavigationController get navigationController => navigation.controller;
-  ClientSectionPreloadController get sectionPreloadController =>
-      navigation.preloadController;
+  ClientInterfaceEntryHookController get interfaceEntryHookController =>
+      navigation.entryHookController;
 
   List<ChangeNotifier> get _listenedComponents => [
     ...presentation.listenables,
@@ -265,6 +269,7 @@ final class ClientComponentAssembly {
     ...pluginManagement.listenables,
     ...mobile.listenables,
     ...usage.listenables,
+    ...agentHub.listenables,
     ...navigation.listenables,
   ];
 
@@ -290,6 +295,7 @@ final class ClientComponentAssembly {
       component.removeListener(_notifyStateChanged);
     }
     navigation.dispose();
+    agentHub.dispose();
     usage.dispose();
     mobile.dispose();
     pluginManagement.dispose();

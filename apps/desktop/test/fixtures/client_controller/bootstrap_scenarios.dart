@@ -443,7 +443,7 @@ void registerClientBootstrapScenarios() {
   );
 
   test(
-    'selecting same section keeps state, selecting agents auto scans only once',
+    'selecting same section keeps state and re-entry scans only unresolved targets',
     () async {
       final directory = await Directory.systemTemp.createTemp(
         'lico-section-target-scan-',
@@ -473,9 +473,16 @@ void registerClientBootstrapScenarios() {
       await Future<void>.delayed(Duration.zero);
 
       expect(controller.currentSection, ClientSection.agents);
+      // Conversation re-entry starts a fresh Hook cycle, but the target scan
+      // stays incremental: the already-known adapter is never probed twice.
+      expect(
+        service.scannedOneTargetIds.where((id) => id == 'codex').length,
+        1,
+      );
+      expect(service.scanOneTargetCalls, greaterThanOrEqualTo(14));
       expect(
         service.scanOneTargetCalls,
-        AgentService.packagedScanTargetIds.length,
+        lessThan(AgentService.packagedScanTargetIds.length * 2),
       );
     },
   );

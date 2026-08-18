@@ -74,4 +74,7 @@ pub use turn_event_emit::{
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
 
-pub(crate) use process_supervisor::{run_bounded_command_input, run_bounded_command_output};
+pub(crate) use process_supervisor::{
+    configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
+    run_bounded_untrusted_agent_output,
+};

@@ -871,9 +871,11 @@
       "buildHost": "darwin-arm64",
       "runtimeTargetId": "android-arm64",
       "packageBuildSupported": true,
-      "releaseSupported": true,
+      "releaseSupported": false,
       "packageBlockers": [],
-      "releaseBlockers": [],
+      "releaseBlockers": [
+        "android_direct_release_delegated_to_macos_only"
+      ],
       "artifacts": [
         {
           "role": "installer",

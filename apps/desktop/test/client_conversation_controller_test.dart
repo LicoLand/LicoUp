@@ -37,6 +37,39 @@ void main() {
     },
   );
 
+  test('suppresses mentions and can target one Agent membership', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(runner: runner);
+
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(
+      await controller.postMessage('plain group note', suppressMentions: true),
+      isTrue,
+    );
+    expect(
+      runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      )['mentionedMembershipIds'],
+      isEmpty,
+    );
+
+    expect(
+      await controller.postMessage(
+        'continue the entry slot',
+        mentionAgentId: 'codex',
+      ),
+      isTrue,
+    );
+    expect(
+      runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      )['mentionedMembershipIds'],
+      ['membership:codex'],
+    );
+  });
+
   test(
     'creates a group from one person and one Agent in one native action',
     () async {

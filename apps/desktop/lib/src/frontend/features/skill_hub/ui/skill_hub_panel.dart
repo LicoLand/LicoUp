@@ -30,11 +30,6 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
   void initState() {
     super.initState();
     widget.controller.addListener(_handleControllerChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !widget.controller.isSkillHubBusy) {
-        _refresh();
-      }
-    });
   }
 
   @override

@@ -2,17 +2,23 @@ use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 use serde_json::{Map, Value};
 
-fn hub_params(command: &AdmittedCommand) -> Value {
+fn hub_params(
+    agent_id: Option<&str>,
+    operation: Option<&str>,
+    confirmation: Option<&str>,
+    cancel: bool,
+    private: Option<&Value>,
+) -> Value {
     let mut params = admitted_params(
         &[
-            ("agentId", command.option_text("agent-id")),
-            ("operation", command.option_text("operation")),
-            ("confirmation", command.option_text("confirmation")),
+            ("agentId", agent_id),
+            ("operation", operation),
+            ("confirmation", confirmation),
         ],
         &[],
-        &[("cancel", command.option_flag("cancel"))],
+        &[("cancel", cancel)],
     );
-    if let Some(private) = command.option_json("stdin-json") {
+    if let Some(private) = private {
         if let (Some(base), Some(extra)) = (params.as_object_mut(), private.as_object()) {
             for (key, value) in extra {
                 if key == "agentId" && base.contains_key("agentId") {
@@ -36,19 +42,37 @@ fn hub_params(command: &AdmittedCommand) -> Value {
 
 pub(super) fn handle_catalog(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(crate::domain::agent_hub::catalog(
-        &hub_params(&command),
+        &hub_params(
+            command.option_text("agent-id"),
+            None,
+            None,
+            false,
+            command.option_json("stdin-json"),
+        ),
     )?))
 }
 
 pub(super) fn handle_plan(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(crate::domain::agent_hub::install_plan(
-        &hub_params(&command),
+        &hub_params(
+            command.option_text("agent-id"),
+            command.option_text("operation"),
+            None,
+            false,
+            command.option_json("stdin-json"),
+        ),
     )?))
 }
 
 pub(super) fn handle_apply(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(crate::domain::agent_hub::install_apply(
-        &hub_params(&command),
+        &hub_params(
+            command.option_text("agent-id"),
+            command.option_text("operation"),
+            command.option_text("confirmation"),
+            command.option_flag("cancel"),
+            command.option_json("stdin-json"),
+        ),
     )?))
 }
 

@@ -1,7 +1,8 @@
 use super::binaries::find_binary;
-use super::parameters::{param_bool, param_paths, param_string, param_u64};
+use super::parameters::{
+    agent_cli_model_lookup_enabled, param_bool, param_paths, param_string, param_u64,
+};
 use super::platform_paths::default_app_data_dir;
-use directories::UserDirs;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,28 +13,32 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod antigravity;
 mod builtin;
+mod claude;
 mod config;
 mod cursor;
 mod history;
 mod kilo;
 mod merge;
 mod normalization;
+mod opencode;
 mod pi;
 mod provider;
 mod reasoning;
 
 use antigravity::{
-    collect_antigravity_available_models_param, collect_antigravity_cli_model_catalog,
-    remove_unsupported_antigravity_reasoning_efforts,
+    collect_antigravity_available_models_from_disk, collect_antigravity_available_models_param,
+    collect_antigravity_cli_model_catalog, remove_unsupported_antigravity_reasoning_efforts,
 };
 use builtin::apply_builtin_model_catalog_overlay;
+use claude::claude_code_current_model_catalog;
 use config::{
     collect_model_catalog_from_config_path, collect_model_catalog_from_model_collection_path,
     extra_model_collection_paths, extra_model_config_paths, home_dir_for_model_catalog,
+    parse_model_config_document,
 };
-use cursor::collect_cursor_cli_model_catalog;
+use cursor::{collect_cursor_cli_model_catalog, remove_cursor_independent_reasoning_efforts};
 use history::collect_model_catalog_from_history;
-use kilo::collect_kilo_code_model_catalog;
+use kilo::{collect_kilo_code_model_catalog, remove_kilo_session_identities};
 use merge::{
     add_model_catalog_entry, add_model_catalog_entry_with_provider, build_model_catalog,
     collapse_kimi_code_qualified_duplicates, merge_model_catalog_value_into,
@@ -46,6 +51,7 @@ use normalization::{
     model_name_from_value, normalize_model_catalog_key, prefer_model_display_name,
     sanitize_model_name, sanitize_option_name,
 };
+use opencode::collect_opencode_model_catalog;
 use pi::collect_pi_cli_model_catalog;
 use provider::{
     provider_id_from_model_object, provider_id_from_model_value, provider_label_from_provider_id,
@@ -81,6 +87,10 @@ pub(super) fn model_catalog_for_target(
     config_path: Option<&Path>,
     params: &Value,
 ) -> Value {
+    if target == "claude-code" {
+        return claude_code_current_model_catalog(config_path, params);
+    }
+
     let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
     let mut global_efforts = BTreeSet::<String>::new();
     let mut sources = BTreeSet::<String>::new();
@@ -106,7 +116,7 @@ pub(super) fn model_catalog_for_target(
     // providers (for example DeepSeek) and cache-only rows stay selectable.
     if target == "codex"
         && model_catalog_fixture_for_target(target, params).is_none()
-        && (!cfg!(test) || param_bool(params, "enableAgentCliModelLookup").unwrap_or(false))
+        && agent_cli_model_lookup_enabled(params)
         && let Some(binary) = find_binary(&["codex"])
         && let Ok(catalog) = crate::platform::codex_app_server_model_catalog(&binary)
     {
@@ -126,16 +136,23 @@ pub(super) fn model_catalog_for_target(
     }
 
     if let Some(path) = config_path {
-        sources.insert("config".to_string());
-        let configured_default = collect_model_catalog_from_config_path(
-            path,
-            "config",
-            &mut entries,
-            &mut global_efforts,
-            &mut diagnostics,
-        );
-        if default_model.is_none() {
-            default_model = configured_default;
+        let other_app = home_dir_for_model_catalog(params)
+            .map(|home| {
+                crate::domain::targets::scan_paths::is_other_app_container_under_home(path, &home)
+            })
+            .unwrap_or_else(|| crate::domain::targets::scan_paths::is_other_app_container(path));
+        if agent_cli_model_lookup_enabled(params) || !other_app {
+            sources.insert("config".to_string());
+            let configured_default = collect_model_catalog_from_config_path(
+                path,
+                "config",
+                &mut entries,
+                &mut global_efforts,
+                &mut diagnostics,
+            );
+            if default_model.is_none() {
+                default_model = configured_default;
+            }
         }
     }
     for path in extra_model_config_paths(target, params) {
@@ -161,15 +178,35 @@ pub(super) fn model_catalog_for_target(
         );
     }
     if target == "kilo-code" {
-        sources.insert("kilo-state".to_string());
-        collect_kilo_code_model_catalog(params, &mut entries, &mut diagnostics);
+        authoritative_native_catalog =
+            collect_kilo_code_model_catalog(params, &mut entries, &mut sources, &mut diagnostics);
+    }
+
+    if target == "opencode" {
+        sources.insert("opencode-config".to_string());
+        if collect_opencode_model_catalog(config_path, params, &mut entries, &mut diagnostics) {
+            sources.insert("opencode-cli:models".to_string());
+        }
     }
 
     if target == "antigravity" {
+        let before_available = entries.len();
         collect_antigravity_available_models_param(params, &mut entries, &mut diagnostics);
-        authoritative_native_catalog =
-            collect_antigravity_cli_model_catalog(params, &mut entries, &mut diagnostics);
-        if authoritative_native_catalog {
+        if collect_antigravity_available_models_from_disk(params, &mut entries, &mut diagnostics) {
+            sources.insert("antigravity-local".to_string());
+        }
+        let had_available_models = entries.len() > before_available;
+        let cli_ok = collect_antigravity_cli_model_catalog(
+            params,
+            &mut entries,
+            &mut diagnostics,
+            !had_available_models,
+        );
+        authoritative_native_catalog = cli_ok || had_available_models;
+        if cli_ok {
+            sources.insert("antigravity-cli".to_string());
+        }
+        if authoritative_native_catalog && !had_available_models {
             sources.clear();
             sources.insert("antigravity-cli".to_string());
         }
@@ -186,8 +223,9 @@ pub(super) fn model_catalog_for_target(
     }
 
     if target == "pi" {
-        sources.insert("pi-cli:list-models".to_string());
-        collect_pi_cli_model_catalog(params, &mut entries, &mut diagnostics);
+        if collect_pi_cli_model_catalog(params, &mut entries, &mut diagnostics) {
+            sources.insert("pi-cli:list-models".to_string());
+        }
     }
 
     if !authoritative_native_catalog
@@ -197,6 +235,9 @@ pub(super) fn model_catalog_for_target(
         collect_model_catalog_from_history(target, params, &mut entries, &mut diagnostics);
     }
 
+    if target == "kilo-code" {
+        remove_kilo_session_identities(&mut entries);
+    }
     if !global_efforts.is_empty() {
         for entry in entries.values_mut() {
             entry.extend_reasoning_efforts(global_efforts.iter().cloned());
@@ -228,6 +269,9 @@ pub(super) fn model_catalog_for_target(
     }
     if target == "antigravity" {
         remove_unsupported_antigravity_reasoning_efforts(&mut entries);
+    }
+    if target == "cursor" {
+        remove_cursor_independent_reasoning_efforts(&mut entries);
     }
 
     build_model_catalog(entries, sources, diagnostics, default_model)

@@ -12,10 +12,12 @@ import {
   boundedIdentityRead,
   canonicalGitHubEmail,
   isAgentIdentity,
+  isMergeInProgress,
   outgoingCommits,
   outgoingObjectChecks,
   parseRawDiffEntries,
   parseGitHubIdentity,
+  shouldRejectEmptyStagedCandidate,
   stagedObjectChecks,
 } from "../../../tools/scripts/repository-identity-policy.mjs";
 import {
@@ -454,6 +456,26 @@ test("staged gate inspects index objects, not worktree files", () => {
       fixture.git(["diff", "--cached", "--raw", "-z", "--abbrev=40", "--diff-filter=ACMRTUXB"])));
     assert.equal(pathCheck.status, "reject");
     assert.equal(pathCheck.code, "SENSITIVE_PATH_STAGED");
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("empty staged candidate is rejected only outside an in-progress merge commit", () => {
+  assert.equal(shouldRejectEmptyStagedCandidate(false, false), true);
+  assert.equal(shouldRejectEmptyStagedCandidate(false, true), false);
+  assert.equal(shouldRejectEmptyStagedCandidate(true, false), false);
+  assert.equal(shouldRejectEmptyStagedCandidate(true, true), false);
+  const fixture = initFixtureRepo();
+  try {
+    fixture.git(["commit", "-q", "--allow-empty", "-m", "base"]);
+    fixture.git(["checkout", "-q", "-b", "side"]);
+    fixture.git(["commit", "-q", "--allow-empty", "-m", "side"]);
+    fixture.git(["checkout", "-q", "-"]);
+    fixture.git(["merge", "--no-commit", "--no-ff", "-s", "ours", "side"]);
+    assert.equal(isMergeInProgress(fixture.dir), true);
+    fixture.git(["merge", "--abort"]);
+    assert.equal(isMergeInProgress(fixture.dir), false);
   } finally {
     fixture.cleanup();
   }

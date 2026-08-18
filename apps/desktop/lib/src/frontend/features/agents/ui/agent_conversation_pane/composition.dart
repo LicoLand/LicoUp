@@ -80,6 +80,7 @@ class AgentConversationActivePane extends StatelessWidget {
           )
           .toList(growable: false),
       mentionLabels: state.composerMentionLabels,
+      leading: state.composerLeading,
     );
     final sendUnavailable = state.composerEnabled
         ? null
@@ -128,12 +129,13 @@ class AgentConversationActivePane extends StatelessWidget {
           )
         : null;
     final showComposerCapsuleRow =
-        messagingFlow &&
-        ((state.showWorkingDirectory &&
-                state.workingDirectory.trim().isNotEmpty) ||
-            state.modelOptions.isNotEmpty ||
-            state.reasoningEffortOptions.isNotEmpty ||
-            licoProfileCapsule != null);
+        (messagingFlow &&
+            ((state.showWorkingDirectory &&
+                    state.workingDirectory.trim().isNotEmpty) ||
+                state.modelOptions.isNotEmpty ||
+                state.reasoningEffortOptions.isNotEmpty ||
+                licoProfileCapsule != null)) ||
+        state.composerFlywheel != null;
     final headerOverlayInset = !mobileClient && messagingFlow
         ? MessagingDesktopMetrics.conversationHeaderOverlayExtent
         : 0.0;
@@ -210,7 +212,7 @@ class AgentConversationActivePane extends StatelessWidget {
           ?sendUnavailable,
           ?sendFailure,
           ?permissionRetry,
-          if (messagingFlow && showComposerCapsuleRow)
+          if (showComposerCapsuleRow)
             ComposerCapsuleRow(
               modelOptions: state.modelOptions,
               selectedModel: state.selectedModel,
@@ -222,6 +224,7 @@ class AgentConversationActivePane extends StatelessWidget {
               defaultReasoningEffort: state.defaultReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
               licoProfileCapsule: licoProfileCapsule,
+              flywheel: state.composerFlywheel,
             ),
           MobileComposerSurface(child: composer),
         ],
@@ -253,6 +256,7 @@ class AgentConversationActivePane extends StatelessWidget {
             defaultReasoningEffort: state.defaultReasoningEffort,
             onReasoningEffortChanged: actions.onReasoningEffortChanged,
             licoProfileCapsule: licoProfileCapsule,
+            flywheel: state.composerFlywheel,
           ),
         composer,
       ],
@@ -339,6 +343,7 @@ class AgentConversationActivePane extends StatelessWidget {
               defaultReasoningEffort: state.defaultReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
               licoProfileCapsule: licoProfileCapsule,
+              flywheel: state.composerFlywheel,
             ),
           composer,
         ],

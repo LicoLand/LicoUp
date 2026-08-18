@@ -14,6 +14,10 @@ pub(super) fn handle_targets_scan(command: AdmittedCommand) -> Result<CliExecuti
                 "includeHistoryModelCatalog",
                 command.option_text("include-history-model-catalog"),
             ),
+            (
+                "enableAgentCliModelLookup",
+                command.option_text("enable-agent-cli-model-lookup"),
+            ),
         ],
         &[],
         &[],
@@ -71,6 +75,10 @@ pub(super) fn handle_targets_inspect(command: AdmittedCommand) -> Result<CliExec
             (
                 "includeAccessibleEnvironments",
                 command.option_text("include-accessible-environments"),
+            ),
+            (
+                "enableAgentCliModelLookup",
+                command.option_text("enable-agent-cli-model-lookup"),
             ),
         ],
         &[],

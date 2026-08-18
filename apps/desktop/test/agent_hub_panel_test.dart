@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_summary_visit.dart';
@@ -187,6 +188,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.installedVersions = const {},
     this.latestVersions = const {},
     this.seedCache,
+    this.warehouseSnapshot,
     this.catalogFuture,
     Map<String, Completer<AgentHubCatalogSnapshot>>? inspectDelays,
   }) : inspectDelays = inspectDelays ?? {};
@@ -200,6 +202,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final Map<String, String> installedVersions;
   final Map<String, String> latestVersions;
   final AgentHubCatalogSnapshot? seedCache;
+  final AgentHubCatalogSnapshot? warehouseSnapshot;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
   final Map<String, Completer<AgentHubCatalogSnapshot>> inspectDelays;
   final List<AgentHubLifecycleAction> actions = [];
@@ -230,7 +233,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
       if (catalogFuture != null) {
         return catalogFuture!;
       }
-      final snapshot = _liveSnapshot;
+      final snapshot = warehouseSnapshot ?? _liveSnapshot;
       _cache = snapshot;
       return snapshot;
     }
@@ -338,39 +341,46 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   }
 }
 
-Widget _harness(
+typedef _HubHarness = (Widget, AgentHubCatalogController);
+
+_HubHarness _harness(
   AgentHubEnginePort engine, {
   Locale locale = const Locale('en'),
   AgentHubHomepageOpener? openHomepage,
   AgentHubOpenAgent? onOpenAgent,
+  AgentHubCatalogOrder? orderRecipes,
 }) {
-  return MaterialApp(
-    locale: locale,
-    supportedLocales: LicoStrings.supportedLocales,
-    localizationsDelegates: const [
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-    theme: buildLicoTheme(platformBrightness: Brightness.dark),
-    builder: (context, child) {
-      return MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: child!,
-      );
-    },
-    home: Scaffold(
-      body: SizedBox(
-        width: 1000,
-        height: 720,
-        child: AgentHubPanel(
-          engine: engine,
-          orderRecipes: (recipes) => recipes,
-          openHomepage: openHomepage ?? (uri) async => true,
-          onOpenAgent: onOpenAgent,
+  final controller = AgentHubCatalogController(engine: engine);
+  return (
+    MaterialApp(
+      locale: locale,
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      theme: buildLicoTheme(platformBrightness: Brightness.dark),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        );
+      },
+      home: Scaffold(
+        body: SizedBox(
+          width: 1000,
+          height: 720,
+          child: AgentHubPanel(
+            controller: controller,
+            orderRecipes: orderRecipes ?? (recipes) => recipes,
+            openHomepage: openHomepage ?? (uri) async => true,
+            onOpenAgent: onOpenAgent,
+          ),
         ),
       ),
     ),
+    controller,
   );
 }
 
@@ -379,7 +389,11 @@ Future<void> _openDetail(WidgetTester tester, String id) async {
   await tester.pump();
 }
 
-Future<void> _pumpHub(WidgetTester tester, Widget app) async {
+Future<void> _pumpHub(WidgetTester tester, _HubHarness harness) async {
+  final (app, controller) = harness;
+  // Explicit application-owned preload before mount: the panel itself must
+  // stay free of catalog I/O while rendering the controller projection.
+  unawaited(controller.refresh());
   await tester.binding.setSurfaceSize(const Size(1000, 720));
   tester.view.devicePixelRatio = 1;
   addTearDown(() async {
@@ -391,11 +405,44 @@ Future<void> _pumpHub(WidgetTester tester, Widget app) async {
   await tester.pump();
 }
 
+List<String> _cardOrder(WidgetTester tester) {
+  final positions = <String, Offset>{};
+  for (final id in _ids) {
+    final card = find.byKey(Key('agent-hub-card-$id'));
+    if (card.evaluate().isNotEmpty) {
+      positions[id] = tester.getTopLeft(card);
+    }
+  }
+  final entries = positions.entries.toList()
+    ..sort((a, b) {
+      final byY = a.value.dy.compareTo(b.value.dy);
+      return byY != 0 ? byY : a.value.dx.compareTo(b.value.dx);
+    });
+  return [for (final entry in entries) entry.key];
+}
+
 void main() {
   test('shuffleAgentHubRecipes keeps every supported agent exactly once', () {
     final recipes = _recipes();
     final shuffled = shuffleAgentHubRecipes(recipes);
     expect(shuffled.map((recipe) => recipe.id), unorderedEquals(_ids));
+  });
+
+  test('cached catalog remains visible and marks a failed refresh', () async {
+    final cached = _snapshot(ownedIds: const {'codex'});
+    final pending = Completer<AgentHubCatalogSnapshot>();
+    final controller = AgentHubCatalogController(
+      engine: _FakeHubEngine(seedCache: cached, catalogFuture: pending.future),
+    );
+
+    final refresh = controller.refresh();
+    pending.completeError(StateError('catalog unavailable'));
+    final result = await refresh;
+
+    expect(result, same(cached));
+    expect(controller.catalog, same(cached));
+    expect(controller.failed, isTrue);
+    expect(controller.busy, isFalse);
   });
 
   testWidgets('Agent Hub renders native portrait recipe cards', (tester) async {
@@ -493,6 +540,66 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'interface entry refresh resolves live card state before enabling actions',
+    (tester) async {
+      final inspection = Completer<AgentHubCatalogSnapshot>();
+      final engine = _FakeHubEngine(
+        warehouseSnapshot: AgentHubCatalogSnapshot(
+          recipes: [
+            AgentHubRecipe(
+              id: 'codex',
+              displayName: 'Codex',
+              adaptation: AgentHubAdaptationDepth.deep,
+              installable: false,
+              summary: _summaries['codex']!,
+              homepage: _homepages['codex']!,
+            ),
+          ],
+        ),
+        inspectDelays: {'codex': inspection},
+      );
+      final harness = _harness(engine);
+      unawaited(harness.$2.refresh());
+      await tester.binding.setSurfaceSize(const Size(1000, 720));
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() async {
+        tester.view.resetDevicePixelRatio();
+        await tester.binding.setSurfaceSize(null);
+      });
+      await tester.pumpWidget(harness.$1);
+      await tester.pump();
+
+      expect(engine.catalogRecipeIds, ['', 'codex']);
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
+            .onTap,
+        isNull,
+      );
+
+      inspection.complete(_snapshot());
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
+            .onTap,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('intro opens the agent detail and back returns to the catalog', (
     tester,
@@ -718,6 +825,70 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'catalog order shuffles once per refresh and incremental resolution keeps it stable',
+    (tester) async {
+      final calls = <int>[];
+      List<AgentHubRecipe> rotatingOrder(List<AgentHubRecipe> recipes) {
+        calls.add(recipes.length);
+        if (recipes.isEmpty) {
+          return recipes;
+        }
+        if (calls.length.isEven) {
+          return [recipes.last, ...recipes.sublist(0, recipes.length - 1)];
+        }
+        return recipes.reversed.toList();
+      }
+
+      final inspectDelays = {
+        for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
+      };
+      await _pumpHub(
+        tester,
+        _harness(
+          _FakeHubEngine(inspectDelays: inspectDelays),
+          orderRecipes: rotatingOrder,
+        ),
+      );
+
+      expect(calls, [_ids.length]);
+      expect(_cardOrder(tester), _ids.reversed.toList());
+
+      for (final id in _ids) {
+        inspectDelays[id]!.complete(
+          AgentHubCatalogSnapshot(
+            recipes: _snapshot().recipes
+                .where((recipe) => recipe.id == id)
+                .toList(),
+            ok: true,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(calls, [_ids.length]);
+        expect(_cardOrder(tester), _ids.reversed.toList());
+      }
+
+      await tester.tap(find.byKey(const Key('agent-hub-refresh')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(calls, [_ids.length, _ids.length]);
+      expect(_cardOrder(tester), [
+        _ids.last,
+        ..._ids.sublist(0, _ids.length - 1),
+      ]);
+      await tester.pump();
+      expect(calls, [_ids.length, _ids.length]);
+      expect(_cardOrder(tester), [
+        _ids.last,
+        ..._ids.sublist(0, _ids.length - 1),
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'Agent Hub panel joins plan/confirm/install/verify/rescan through the native port',
@@ -1007,7 +1178,13 @@ void main() {
         tester.view.resetDevicePixelRatio();
         await tester.binding.setSurfaceSize(null);
       });
-      await tester.pumpWidget(_harness(engine));
+      final harness = _harness(engine);
+      await tester.pumpWidget(harness.$1);
+      await tester.pump();
+
+      // The cached projection paints immediately; the explicit refresh locks
+      // every card behind the pending catalog and per-card inspections.
+      await tester.tap(find.byKey(const Key('agent-hub-refresh')));
       await tester.pump();
 
       expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);

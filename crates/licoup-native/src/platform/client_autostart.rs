@@ -8,7 +8,6 @@ use crate::platform::file_security::{
 };
 use crate::platform::paths;
 use anyhow::{Result, anyhow, bail, ensure};
-use directories::UserDirs;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -47,9 +46,7 @@ fn mcp_marker_path() -> Result<PathBuf> {
 }
 
 fn user_home() -> Result<PathBuf> {
-    UserDirs::new()
-        .map(|dirs| dirs.home_dir().to_path_buf())
-        .ok_or_else(|| anyhow!("client_autostart_home_missing"))
+    paths::user_home_from_env().ok_or_else(|| anyhow!("client_autostart_home_missing"))
 }
 
 fn cli_program_path() -> Result<PathBuf> {

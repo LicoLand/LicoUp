@@ -23,16 +23,6 @@ final class AdapterPluginPanel extends StatefulWidget {
 
 final class _AdapterPluginPanelState extends State<AdapterPluginPanel> {
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        unawaited(widget.controller.adapterPluginController.refresh());
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final controller = widget.controller.adapterPluginController;

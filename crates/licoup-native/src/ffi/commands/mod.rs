@@ -4538,6 +4538,13 @@ fn build_command_table() -> CommandTable {
                 value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
+            OptionSpec {
+                name: "enable-agent-cli-model-lookup",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
         ],
         constraints: &[],
         cardinality: CommandCardinality::Options,
@@ -4616,6 +4623,13 @@ fn build_command_table() -> CommandTable {
             },
             OptionSpec {
                 name: "include-accessible-environments",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "enable-agent-cli-model-lookup",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
