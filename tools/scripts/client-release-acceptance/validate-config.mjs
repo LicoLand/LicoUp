@@ -20,7 +20,6 @@ export function validateConfig(config) {
       "licomesh.client-release-target-authority.v1" &&
       JSON.stringify(authorityIds) === JSON.stringify([
         "macos-direct-arm64",
-        "android-direct-arm64-v8a",
       ]),
     "client release target authority is invalid",
   );
