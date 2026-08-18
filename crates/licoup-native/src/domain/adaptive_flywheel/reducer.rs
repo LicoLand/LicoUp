@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
     CompiledWorkflow, FailureClass, FallbackReceipt, GraphStateKind, MAX_WORKSET_ITEMS,
-    SessionPolicy, StrategyRunStatus,
+    SessionPolicy, StrategyRunStatus, TransitionEvent,
 };
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -87,6 +87,10 @@ pub struct RunSnapshot {
     pub slot_ordinals: BTreeMap<String, u8>,
     #[serde(default)]
     pub slot_candidate_counts: BTreeMap<String, u8>,
+    #[serde(default)]
+    pub attempt_lineage: BTreeMap<String, u8>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub merge_sources: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallbacks: Vec<FallbackReceipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -118,6 +122,8 @@ impl RunSnapshot {
             actor_sessions: BTreeMap::new(),
             slot_ordinals: BTreeMap::new(),
             slot_candidate_counts: BTreeMap::new(),
+            attempt_lineage: BTreeMap::new(),
+            merge_sources: BTreeMap::new(),
             fallbacks: Vec::new(),
             conversation_id: None,
             cwd: None,
@@ -343,7 +349,7 @@ struct Machine<'a> {
     workflow: &'a CompiledWorkflow,
     snapshot: RunSnapshot,
     emitted: Vec<RunCommand>,
-    automatic: VecDeque<(String, Value)>,
+    automatic: VecDeque<(String, TransitionEvent, Value)>,
     applied: bool,
 }
 
@@ -381,8 +387,11 @@ impl Machine<'_> {
         self.snapshot.diagnostic_code = None;
         match state.kind {
             GraphStateKind::Pass | GraphStateKind::Choice | GraphStateKind::Join => {
-                self.automatic
-                    .push_back((state.id, self.snapshot.input.clone()));
+                self.automatic.push_back((
+                    state.id,
+                    TransitionEvent::Complete,
+                    self.snapshot.input.clone(),
+                ));
             }
             GraphStateKind::Fork => self.complete_fork(&state.id)?,
             GraphStateKind::Authorization => {
@@ -403,7 +412,11 @@ impl Machine<'_> {
             }
             GraphStateKind::Workset => {
                 if self.schedule_workset(&state.id)? {
-                    self.automatic.push_back((state.id, json!({"empty": true})));
+                    self.automatic.push_back((
+                        state.id,
+                        TransitionEvent::Success,
+                        self.snapshot.input.clone(),
+                    ));
                 }
             }
             GraphStateKind::Succeed => {
@@ -431,10 +444,10 @@ impl Machine<'_> {
             .len()
             .saturating_mul(4)
             .max(16);
-        while let Some((state_id, payload)) = self.automatic.pop_front() {
+        while let Some((state_id, event, payload)) = self.automatic.pop_front() {
             ensure!(remaining > 0, "strategy_automatic_transition_limit");
             remaining -= 1;
-            self.complete_state(&state_id, "complete", &payload)?;
+            self.complete_state(&state_id, event, &payload)?;
         }
         Ok(())
     }
@@ -444,7 +457,7 @@ impl Machine<'_> {
         self.snapshot.completed_states.insert(state_id.to_owned());
         let targets = self
             .workflow
-            .transitions(state_id, "complete")
+            .transitions(state_id, TransitionEvent::Complete)
             .map(|transition| transition.to.clone())
             .collect::<Vec<_>>();
         ensure!(targets.len() >= 2, "strategy_fork_invalid");
@@ -454,7 +467,12 @@ impl Machine<'_> {
         Ok(())
     }
 
-    fn complete_state(&mut self, state_id: &str, event: &str, payload: &Value) -> Result<()> {
+    fn complete_state(
+        &mut self,
+        state_id: &str,
+        event: TransitionEvent,
+        payload: &Value,
+    ) -> Result<()> {
         self.snapshot.active_states.remove(state_id);
         self.snapshot.completed_states.insert(state_id.to_owned());
         let transition = self
@@ -617,7 +635,7 @@ impl Machine<'_> {
         let ordinal = state
             .binding
             .as_deref()
-            .map(|slot| self.current_ordinal(slot, item_id.as_deref()))
+            .map(|slot| self.current_ordinal(state_id, visit, slot, item_id.as_deref()))
             .unwrap_or(0);
         let input_bytes = serde_json::to_vec(&input)?;
         let input_digest = sha256_hex(&input_bytes);
@@ -635,6 +653,12 @@ impl Machine<'_> {
             "attempt:{}",
             sha256_hex(format!("{}\0{}", id, 1).as_bytes())
         );
+        self.bump_attempt_lineage(
+            state_id,
+            visit,
+            state.binding.as_deref(),
+            item_id.as_deref(),
+        )?;
         let command = RunCommand {
             id: id.clone(),
             state_id: state_id.to_owned(),
@@ -659,10 +683,12 @@ impl Machine<'_> {
                 })
                 .map_or(SessionPolicy::New, |slot| slot.session_policy),
             binding_ordinal: ordinal,
-            resume_session_id: state
-                .binding
-                .as_ref()
-                .and_then(|binding| self.snapshot.actor_sessions.get(binding).cloned()),
+            resume_session_id: state.binding.as_ref().and_then(|binding| {
+                self.snapshot
+                    .actor_sessions
+                    .get(&binding_session_key(binding, ordinal))
+                    .cloned()
+            }),
             input_digest,
             input,
             output_digest: None,
@@ -677,12 +703,193 @@ impl Machine<'_> {
         Ok(())
     }
 
-    fn current_ordinal(&self, slot_id: &str, item_id: Option<&str>) -> u8 {
+    fn current_ordinal(
+        &self,
+        state_id: &str,
+        visit: u64,
+        slot_id: &str,
+        item_id: Option<&str>,
+    ) -> u8 {
         self.snapshot
             .slot_ordinals
-            .get(&ordinal_key(slot_id, item_id))
+            .get(&ordinal_key(state_id, visit, slot_id, item_id))
             .copied()
             .unwrap_or(0)
+    }
+
+    fn bump_attempt_lineage(
+        &mut self,
+        state_id: &str,
+        visit: u64,
+        slot_id: Option<&str>,
+        item_id: Option<&str>,
+    ) -> Result<()> {
+        let key = lineage_key(state_id, visit, slot_id, item_id);
+        let used = self
+            .snapshot
+            .attempt_lineage
+            .get(&key)
+            .copied()
+            .unwrap_or(0);
+        ensure!(
+            u32::from(used.saturating_add(1))
+                <= self.workflow.definition.limits.max_attempts as u32,
+            "strategy_attempt_budget_exhausted"
+        );
+        self.snapshot.attempt_lineage.insert(key, used + 1);
+        Ok(())
+    }
+
+    fn visit_commands<'s>(
+        &'s self,
+        state_id: &str,
+        visit: u64,
+    ) -> impl Iterator<Item = &'s RunCommand> + 's {
+        let state_id = state_id.to_owned();
+        self.snapshot
+            .commands
+            .values()
+            .filter(move |command| command.state_id == state_id && command.state_visit == visit)
+    }
+
+    fn workset_failure_pending(&self, state_id: &str) -> bool {
+        let visit = self
+            .snapshot
+            .state_visits
+            .get(state_id)
+            .copied()
+            .unwrap_or(0);
+        self.visit_commands(state_id, visit).any(|command| {
+            command.status == CommandStatus::Failed
+                && fallback_reason_base(self.workflow, &self.snapshot, command).is_none()
+        })
+    }
+
+    fn visit_unsettled(&self, state_id: &str, visit: u64) -> bool {
+        self.visit_commands(state_id, visit).any(|command| {
+            matches!(
+                command.status,
+                CommandStatus::Pending
+                    | CommandStatus::Claimed
+                    | CommandStatus::Running
+                    | CommandStatus::Retryable
+                    | CommandStatus::CancelRequested
+                    | CommandStatus::InDoubt
+            ) || (command.status == CommandStatus::Failed
+                && fallback_reason_base(self.workflow, &self.snapshot, command).is_some())
+        })
+    }
+
+    fn refresh_workset_status(&mut self, state_id: &str) {
+        let visit = self
+            .snapshot
+            .state_visits
+            .get(state_id)
+            .copied()
+            .unwrap_or(0);
+        let commands = self.visit_commands(state_id, visit).collect::<Vec<_>>();
+        let status = if commands
+            .iter()
+            .any(|command| command.status == CommandStatus::InDoubt)
+        {
+            StrategyRunStatus::CancelInDoubt
+        } else if commands.iter().any(|command| {
+            command.status == CommandStatus::Retryable
+                && command.failure_class == Some(FailureClass::Authority)
+        }) {
+            StrategyRunStatus::AuthorizationRequired
+        } else if commands.iter().any(|command| {
+            command.status == CommandStatus::Retryable
+                && matches!(
+                    command.failure_class,
+                    Some(FailureClass::Runtime | FailureClass::Sandbox)
+                )
+        }) {
+            StrategyRunStatus::RuntimeMissing
+        } else if commands
+            .iter()
+            .any(|command| command.status == CommandStatus::Retryable)
+        {
+            StrategyRunStatus::Retryable
+        } else {
+            StrategyRunStatus::Running
+        };
+        let diagnostic_code = commands
+            .iter()
+            .filter(|command| {
+                matches!(
+                    command.status,
+                    CommandStatus::Failed | CommandStatus::Retryable | CommandStatus::InDoubt
+                )
+            })
+            .min_by_key(|command| command.id.as_str())
+            .and_then(|command| command.failure_code.clone());
+        self.snapshot.status = status;
+        self.snapshot.diagnostic_code = diagnostic_code;
+    }
+
+    fn workset_failure_ready(&mut self, state_id: &str) -> Result<bool> {
+        let visit = self
+            .snapshot
+            .state_visits
+            .get(state_id)
+            .copied()
+            .unwrap_or(0);
+        let cancel = self
+            .visit_commands(state_id, visit)
+            .filter(|command| {
+                matches!(
+                    command.status,
+                    CommandStatus::Pending | CommandStatus::Claimed | CommandStatus::Retryable
+                ) || (command.status == CommandStatus::Failed
+                    && fallback_reason_base(self.workflow, &self.snapshot, command).is_some())
+            })
+            .map(|command| command.id.clone())
+            .collect::<BTreeSet<_>>();
+        for command in self.snapshot.commands.values_mut() {
+            if command.state_id == state_id
+                && command.state_visit == visit
+                && cancel.contains(&command.id)
+            {
+                command.status = CommandStatus::Cancelled;
+            }
+        }
+        if self.visit_unsettled(state_id, visit) {
+            self.refresh_workset_status(state_id);
+            return Ok(false);
+        }
+        let primary = self
+            .visit_commands(state_id, visit)
+            .filter(|command| command.status == CommandStatus::Failed)
+            .min_by_key(|command| {
+                (
+                    command
+                        .item_id
+                        .clone()
+                        .unwrap_or_else(|| command.id.clone()),
+                    command.id.clone(),
+                )
+            });
+        let Some(primary) = primary else {
+            return Ok(false);
+        };
+        let item = primary
+            .item_id
+            .clone()
+            .unwrap_or_else(|| primary.id.clone());
+        let code = primary
+            .failure_code
+            .clone()
+            .unwrap_or_else(|| "effect_failed".to_owned());
+        let payload = json!({"code": code, "itemId": item});
+        let transition = self
+            .workflow
+            .select_transition(state_id, TransitionEvent::Failure, &payload)?
+            .ok_or_else(|| anyhow!("strategy_transition_missing"))?;
+        let target = transition.to.clone();
+        self.snapshot.active_states.remove(state_id);
+        self.enter(&target, Some(state_id))?;
+        Ok(true)
     }
 
     fn issue_fallback(
@@ -702,8 +909,25 @@ impl Machine<'_> {
             .cloned()
             .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
         ensure!(
-            matches!(old.status, CommandStatus::Failed | CommandStatus::Retryable),
+            old.status == CommandStatus::Failed,
             "strategy_callback_conflict"
+        );
+        ensure!(
+            lineage_within_budget(
+                &self.snapshot,
+                &old.state_id,
+                old.state_visit,
+                old.binding_id.as_deref(),
+                old.item_id.as_deref(),
+                self.workflow.definition.limits.max_attempts,
+            ),
+            "strategy_attempt_budget_exhausted"
+        );
+        let expected_reason = fallback_reason(self.workflow, &self.snapshot, &old)
+            .ok_or_else(|| anyhow!("strategy_fallback_not_admissible"))?;
+        ensure!(
+            reason == expected_reason,
+            "strategy_fallback_reason_invalid"
         );
         let slot_id = old
             .binding_id
@@ -713,6 +937,10 @@ impl Machine<'_> {
             next_ordinal == old.binding_ordinal.saturating_add(1),
             "strategy_fallback_ordinal_invalid"
         );
+        ensure!(
+            attempts == old.attempt,
+            "strategy_fallback_attempts_invalid"
+        );
         let count = self
             .snapshot
             .slot_candidate_counts
@@ -720,9 +948,21 @@ impl Machine<'_> {
             .copied()
             .unwrap_or(1);
         ensure!(next_ordinal < count, "strategy_fallback_exhausted");
-        self.snapshot
-            .slot_ordinals
-            .insert(ordinal_key(&slot_id, old.item_id.as_deref()), next_ordinal);
+        self.bump_attempt_lineage(
+            &old.state_id,
+            old.state_visit,
+            old.binding_id.as_deref(),
+            old.item_id.as_deref(),
+        )?;
+        self.snapshot.slot_ordinals.insert(
+            ordinal_key(
+                &old.state_id,
+                old.state_visit,
+                &slot_id,
+                old.item_id.as_deref(),
+            ),
+            next_ordinal,
+        );
         let mut input = old.input.clone();
         if let Value::Object(ref mut object) = input {
             object.insert("predecessorLocator".into(), locator);
@@ -741,9 +981,25 @@ impl Machine<'_> {
             reason,
             attempts,
         });
+        self.snapshot.fallbacks.sort_by(|left, right| {
+            left.fallback_from
+                .cmp(&right.fallback_from)
+                .then(left.fallback_to.cmp(&right.fallback_to))
+                .then(left.reason.cmp(&right.reason))
+                .then(left.attempts.cmp(&right.attempts))
+        });
+        self.snapshot
+            .commands
+            .get_mut(failed_command_id)
+            .expect("fallback source command exists")
+            .status = CommandStatus::Cancelled;
         self.emit_fallback_command(&state_id, kind, item_id, next_ordinal, input)?;
-        self.snapshot.status = StrategyRunStatus::Running;
-        self.snapshot.diagnostic_code = None;
+        if kind == CommandKind::WorksetItem {
+            self.refresh_workset_status(&state_id);
+        } else {
+            self.snapshot.status = StrategyRunStatus::Running;
+            self.snapshot.diagnostic_code = None;
+        }
         Ok(())
     }
 
@@ -840,7 +1096,7 @@ impl Machine<'_> {
         output: Value,
     ) -> Result<()> {
         let output_digest = sha256_hex(&serde_json::to_vec(&output)?);
-        let (state_id, binding_id, session_policy, duplicate) = {
+        let (state_id, binding_id, binding_ordinal, session_policy, duplicate) = {
             let command = self
                 .snapshot
                 .commands
@@ -860,6 +1116,7 @@ impl Machine<'_> {
                 (
                     command.state_id.clone(),
                     command.binding_id.clone(),
+                    command.binding_ordinal,
                     command.session_policy,
                     true,
                 )
@@ -876,6 +1133,7 @@ impl Machine<'_> {
                 (
                     command.state_id.clone(),
                     command.binding_id.clone(),
+                    command.binding_ordinal,
                     command.session_policy,
                     false,
                 )
@@ -885,7 +1143,12 @@ impl Machine<'_> {
             self.applied = false;
             return Ok(());
         }
-        merge_run_context(&mut self.snapshot.input, &output)?;
+        merge_run_context(
+            &mut self.snapshot.input,
+            &output,
+            command_id,
+            &mut self.snapshot.merge_sources,
+        )?;
         if session_policy != SessionPolicy::New
             && let (Some(binding_id), Some(session_id)) = (
                 binding_id,
@@ -898,17 +1161,41 @@ impl Machine<'_> {
             && session_id.len() <= 160
             && !session_id.chars().any(char::is_control)
         {
-            self.snapshot
-                .actor_sessions
-                .insert(binding_id, session_id.to_owned());
+            let binding_key = binding_session_key(&binding_id, binding_ordinal);
+            let source_key = format!("session\0{binding_key}");
+            if self
+                .snapshot
+                .merge_sources
+                .get(&source_key)
+                .is_none_or(|source| command_id > source.as_str())
+            {
+                self.snapshot
+                    .actor_sessions
+                    .insert(binding_key, session_id.to_owned());
+                self.snapshot
+                    .merge_sources
+                    .insert(source_key, command_id.to_owned());
+            }
         }
-        let satisfied = if self.workflow.state(&state_id).unwrap().kind == GraphStateKind::Workset {
+        let is_workset = self.workflow.state(&state_id).unwrap().kind == GraphStateKind::Workset;
+        if is_workset && self.workset_failure_pending(&state_id) {
+            self.workset_failure_ready(&state_id)?;
+            return Ok(());
+        }
+        let satisfied = if is_workset {
             self.schedule_workset(&state_id)?
         } else {
             true
         };
         if satisfied {
-            self.complete_state(&state_id, "success", &output)?;
+            let payload = if is_workset {
+                self.snapshot.input.clone()
+            } else {
+                output
+            };
+            self.complete_state(&state_id, TransitionEvent::Success, &payload)?;
+        } else if is_workset {
+            self.refresh_workset_status(&state_id);
         }
         Ok(())
     }
@@ -930,91 +1217,66 @@ impl Machine<'_> {
                 }),
             "strategy_failure_code_invalid"
         );
-        let (state_id, command_kind, retryable, duplicate) = {
-            let command = self
-                .snapshot
-                .commands
-                .get_mut(command_id)
-                .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
-            if let Some(attempt_token) = attempt_token {
-                ensure!(
-                    command.attempt_token == attempt_token,
-                    "strategy_callback_stale"
-                );
-            }
-            if matches!(
-                command.status,
-                CommandStatus::Failed | CommandStatus::Retryable
-            ) {
-                ensure!(
-                    command.failure_class == Some(class)
-                        && command.failure_code.as_deref() == Some(code),
-                    "strategy_callback_conflict"
-                );
-                (
-                    command.state_id.clone(),
-                    command.kind,
-                    command.status == CommandStatus::Retryable,
-                    true,
-                )
-            } else {
-                ensure!(
-                    matches!(
-                        command.status,
-                        CommandStatus::Pending | CommandStatus::Claimed | CommandStatus::Running
-                    ),
-                    "strategy_callback_conflict"
-                );
-                command.failure_class = Some(class);
-                command.failure_code = Some(code.to_owned());
-                let state = self.workflow.state(&command.state_id).unwrap();
-                let slot = state.binding.as_deref().and_then(|binding| {
-                    self.workflow
-                        .definition
-                        .actor_slots
-                        .iter()
-                        .find(|slot| slot.id == binding)
-                });
-                let retryable = command.kind != CommandKind::Authorization
-                    && match command.kind {
-                        CommandKind::Actor | CommandKind::WorksetItem => {
-                            class == FailureClass::Transient
-                                && slot.is_some_and(|slot| {
-                                    command.attempt < slot.fallback.after_transient_attempts
-                                })
-                        }
-                        _ => {
-                            command.attempt < state.retry.max_attempts
-                                && match class {
-                                    FailureClass::Transient
-                                    | FailureClass::Authority
-                                    | FailureClass::Runtime
-                                    | FailureClass::Sandbox => true,
-                                    FailureClass::Permanent => !state.retry.transient_only,
-                                    FailureClass::InDoubt => false,
-                                }
-                        }
-                    };
-                command.status = if retryable {
-                    CommandStatus::Retryable
-                } else if class == FailureClass::InDoubt {
-                    CommandStatus::InDoubt
-                } else {
-                    CommandStatus::Failed
-                };
-                (command.state_id.clone(), command.kind, retryable, false)
-            }
-        };
-        if duplicate {
+        let current = self
+            .snapshot
+            .commands
+            .get(command_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+        if let Some(attempt_token) = attempt_token {
+            ensure!(
+                current.attempt_token == attempt_token,
+                "strategy_callback_stale"
+            );
+        }
+        if matches!(
+            current.status,
+            CommandStatus::Failed | CommandStatus::Retryable | CommandStatus::Cancelled
+        ) && current.failure_class == Some(class)
+            && current.failure_code.as_deref() == Some(code)
+        {
             self.applied = false;
             return Ok(());
         }
+        ensure!(
+            matches!(
+                current.status,
+                CommandStatus::Pending | CommandStatus::Claimed | CommandStatus::Running
+            ),
+            "strategy_callback_conflict"
+        );
+        let retryable = retry_policy_allows(self.workflow, &current, class, code)
+            && lineage_within_budget(
+                &self.snapshot,
+                &current.state_id,
+                current.state_visit,
+                current.binding_id.as_deref(),
+                current.item_id.as_deref(),
+                self.workflow.definition.limits.max_attempts,
+            );
+        let command = self
+            .snapshot
+            .commands
+            .get_mut(command_id)
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+        command.status = if retryable {
+            CommandStatus::Retryable
+        } else if class == FailureClass::InDoubt {
+            CommandStatus::InDoubt
+        } else {
+            CommandStatus::Failed
+        };
+        command.failure_class = Some(class);
+        command.failure_code = Some(code.to_owned());
+        let state_id = current.state_id;
+        let command_kind = current.kind;
         self.snapshot.diagnostic_code = Some(code.to_owned());
         if command_kind == CommandKind::Authorization {
-            if let Some(transition) =
-                self.workflow
-                    .select_transition(&state_id, "failure", &json!({"code": code}))?
-            {
+            if let Some(transition) = self.workflow.select_transition(
+                &state_id,
+                TransitionEvent::Failure,
+                &json!({"code": code}),
+            )? {
                 let target = transition.to.clone();
                 self.snapshot.active_states.remove(&state_id);
                 self.enter(&target, Some(&state_id))?;
@@ -1023,29 +1285,62 @@ impl Machine<'_> {
             }
             return Ok(());
         }
-        match class {
-            FailureClass::Transient | FailureClass::Permanent if retryable => {
-                self.snapshot.status = StrategyRunStatus::Retryable;
+        if retryable {
+            if command_kind == CommandKind::WorksetItem {
+                self.refresh_workset_status(&state_id);
+            } else {
+                self.snapshot.status = match class {
+                    FailureClass::Authority => StrategyRunStatus::AuthorizationRequired,
+                    FailureClass::Runtime | FailureClass::Sandbox => {
+                        StrategyRunStatus::RuntimeMissing
+                    }
+                    _ => StrategyRunStatus::Retryable,
+                };
             }
-            FailureClass::Authority => {
-                self.snapshot.status = StrategyRunStatus::AuthorizationRequired;
+            return Ok(());
+        }
+        let has_other_final_workset_failure = command_kind == CommandKind::WorksetItem
+            && self
+                .visit_commands(&state_id, current.state_visit)
+                .filter(|candidate| candidate.id != command_id)
+                .any(|candidate| {
+                    candidate.status == CommandStatus::Failed
+                        && fallback_reason_base(self.workflow, &self.snapshot, candidate).is_none()
+                });
+        if !has_other_final_workset_failure
+            && self
+                .snapshot
+                .commands
+                .get(command_id)
+                .is_some_and(|command| {
+                    fallback_reason_base(self.workflow, &self.snapshot, command).is_some()
+                })
+        {
+            if command_kind == CommandKind::WorksetItem {
+                self.refresh_workset_status(&state_id);
+            } else {
+                self.snapshot.status = StrategyRunStatus::Running;
             }
-            FailureClass::Runtime | FailureClass::Sandbox => {
-                self.snapshot.status = StrategyRunStatus::RuntimeMissing
+            return Ok(());
+        }
+        if class == FailureClass::InDoubt {
+            if command_kind == CommandKind::WorksetItem {
+                self.refresh_workset_status(&state_id);
+            } else {
+                self.snapshot.status = StrategyRunStatus::CancelInDoubt;
             }
-            FailureClass::InDoubt => self.snapshot.status = StrategyRunStatus::CancelInDoubt,
-            _ => {
-                if let Some(transition) =
-                    self.workflow
-                        .select_transition(&state_id, "failure", &json!({"code": code}))?
-                {
-                    let target = transition.to.clone();
-                    self.snapshot.active_states.remove(&state_id);
-                    self.enter(&target, Some(&state_id))?;
-                } else {
-                    self.snapshot.status = StrategyRunStatus::Failed;
-                }
-            }
+        } else if command_kind == CommandKind::WorksetItem {
+            self.workset_failure_ready(&state_id)?;
+        } else if let Some(transition) = self.workflow.select_transition(
+            &state_id,
+            TransitionEvent::Failure,
+            &json!({"code": code}),
+        )? {
+            let target = transition.to.clone();
+            self.snapshot.active_states.remove(&state_id);
+            self.enter(&target, Some(&state_id))?;
+        } else {
+            self.snapshot.status = StrategyRunStatus::Failed;
         }
         Ok(())
     }
@@ -1061,29 +1356,34 @@ impl Machine<'_> {
             old.status == CommandStatus::Retryable,
             "strategy_run_not_retryable"
         );
-        let state = self.workflow.state(&old.state_id).unwrap();
-        let max_attempts = match old.kind {
-            CommandKind::Actor | CommandKind::WorksetItem => state
-                .binding
-                .as_deref()
-                .and_then(|binding| {
-                    self.workflow
-                        .definition
-                        .actor_slots
-                        .iter()
-                        .find(|slot| slot.id == binding)
-                })
-                .map(|slot| slot.fallback.after_transient_attempts)
-                .unwrap_or(state.retry.max_attempts),
-            _ => state.retry.max_attempts,
-        };
-        ensure!(old.attempt < max_attempts, "strategy_run_not_retryable");
+        ensure!(
+            lineage_within_budget(
+                &self.snapshot,
+                &old.state_id,
+                old.state_visit,
+                old.binding_id.as_deref(),
+                old.item_id.as_deref(),
+                self.workflow.definition.limits.max_attempts,
+            ),
+            "strategy_attempt_budget_exhausted"
+        );
+        let failure_class = old
+            .failure_class
+            .ok_or_else(|| anyhow!("strategy_run_not_retryable"))?;
+        let failure_code = old
+            .failure_code
+            .as_deref()
+            .ok_or_else(|| anyhow!("strategy_run_not_retryable"))?;
+        ensure!(
+            retry_policy_allows(self.workflow, &old, failure_class, failure_code),
+            "strategy_run_not_retryable"
+        );
         let next_attempt = old.attempt + 1;
         let new_id = format!(
             "command:{}",
             sha256_hex(format!("{}\0{}", old.id, next_attempt).as_bytes())
         );
-        let mut command = old;
+        let mut command = old.clone();
         command.id = new_id.clone();
         command.status = CommandStatus::Pending;
         command.attempt = next_attempt;
@@ -1094,9 +1394,28 @@ impl Machine<'_> {
         command.output_digest = None;
         command.failure_class = None;
         command.failure_code = None;
+        ensure!(
+            !self.snapshot.commands.contains_key(&new_id),
+            "strategy_command_identity_conflict"
+        );
+        self.bump_attempt_lineage(
+            &old.state_id,
+            old.state_visit,
+            old.binding_id.as_deref(),
+            old.item_id.as_deref(),
+        )?;
+        self.snapshot
+            .commands
+            .get_mut(command_id)
+            .expect("retry source command exists")
+            .status = CommandStatus::Cancelled;
         self.snapshot.commands.insert(new_id, command.clone());
-        self.snapshot.status = StrategyRunStatus::Running;
-        self.snapshot.diagnostic_code = None;
+        if old.kind == CommandKind::WorksetItem {
+            self.refresh_workset_status(&old.state_id);
+        } else {
+            self.snapshot.status = StrategyRunStatus::Running;
+            self.snapshot.diagnostic_code = None;
+        }
         self.emitted.push(command);
         Ok(())
     }
@@ -1177,14 +1496,166 @@ fn sha256_hex(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn ordinal_key(slot_id: &str, item_id: Option<&str>) -> String {
-    match item_id {
-        Some(item) if !item.is_empty() => format!("{slot_id}\0{item}"),
-        _ => slot_id.to_owned(),
+fn ordinal_key(state_id: &str, visit: u64, slot_id: &str, item_id: Option<&str>) -> String {
+    lineage_key(state_id, visit, Some(slot_id), item_id)
+}
+
+pub(crate) fn binding_session_key(slot_id: &str, ordinal: u8) -> String {
+    format!("{slot_id}\0{ordinal}")
+}
+
+fn lineage_key(state_id: &str, visit: u64, slot_id: Option<&str>, item_id: Option<&str>) -> String {
+    match (slot_id, item_id) {
+        (Some(slot), Some(item)) => format!("{state_id}\0{visit}\0{slot}\0{item}"),
+        (Some(slot), None) => format!("{state_id}\0{visit}\0{slot}"),
+        (None, Some(item)) => format!("{state_id}\0{visit}\0{item}"),
+        (None, None) => format!("{state_id}\0{visit}"),
     }
 }
 
-fn merge_run_context(input: &mut Value, output: &Value) -> Result<()> {
+pub(crate) fn lineage_within_budget(
+    snapshot: &RunSnapshot,
+    state_id: &str,
+    visit: u64,
+    slot_id: Option<&str>,
+    item_id: Option<&str>,
+    max_attempts: u8,
+) -> bool {
+    let used = snapshot
+        .attempt_lineage
+        .get(&lineage_key(state_id, visit, slot_id, item_id))
+        .copied()
+        .unwrap_or(0);
+    u32::from(used.saturating_add(1)) <= max_attempts as u32
+}
+
+fn retry_policy_allows(
+    workflow: &CompiledWorkflow,
+    command: &RunCommand,
+    class: FailureClass,
+    code: &str,
+) -> bool {
+    if command.kind == CommandKind::Authorization || class == FailureClass::InDoubt {
+        return false;
+    }
+    let Some(state) = workflow.state(&command.state_id) else {
+        return false;
+    };
+    if class == FailureClass::Permanent && code == "quota_exhausted" {
+        return false;
+    }
+    let class_allowed = match class {
+        FailureClass::Transient
+        | FailureClass::Authority
+        | FailureClass::Runtime
+        | FailureClass::Sandbox => true,
+        FailureClass::Permanent => !state.retry.transient_only,
+        FailureClass::InDoubt => false,
+    };
+    if !class_allowed {
+        return false;
+    }
+    let limit = if matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+        && class == FailureClass::Transient
+    {
+        state
+            .binding
+            .as_deref()
+            .and_then(|binding| {
+                workflow
+                    .definition
+                    .actor_slots
+                    .iter()
+                    .find(|slot| slot.id == binding)
+            })
+            .map_or(state.retry.max_attempts, |slot| {
+                state
+                    .retry
+                    .max_attempts
+                    .min(slot.fallback.after_transient_attempts)
+            })
+    } else {
+        state.retry.max_attempts
+    };
+    command.attempt < limit
+}
+
+pub(crate) fn fallback_reason(
+    workflow: &CompiledWorkflow,
+    snapshot: &RunSnapshot,
+    command: &RunCommand,
+) -> Option<&'static str> {
+    let reason = fallback_reason_base(workflow, snapshot, command)?;
+    if command.kind == CommandKind::WorksetItem
+        && snapshot.commands.values().any(|other| {
+            other.id != command.id
+                && other.state_id == command.state_id
+                && other.state_visit == command.state_visit
+                && (matches!(
+                    other.status,
+                    CommandStatus::Pending
+                        | CommandStatus::Claimed
+                        | CommandStatus::Running
+                        | CommandStatus::Retryable
+                        | CommandStatus::CancelRequested
+                        | CommandStatus::InDoubt
+                ) || (other.status == CommandStatus::Failed
+                    && fallback_reason_base(workflow, snapshot, other).is_none()))
+        })
+    {
+        return None;
+    }
+    Some(reason)
+}
+
+fn fallback_reason_base(
+    workflow: &CompiledWorkflow,
+    snapshot: &RunSnapshot,
+    command: &RunCommand,
+) -> Option<&'static str> {
+    if command.status != CommandStatus::Failed
+        || !matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+        || !snapshot.active_states.contains(&command.state_id)
+    {
+        return None;
+    }
+    let slot_id = command.binding_id.as_deref()?;
+    let slot = workflow
+        .definition
+        .actor_slots
+        .iter()
+        .find(|slot| slot.id == slot_id)?;
+    let reason = match (command.failure_class?, command.failure_code.as_deref()) {
+        (FailureClass::Transient, _) => "transient-exhausted",
+        (FailureClass::Permanent, Some("quota_exhausted")) if slot.fallback.on_quota => "quota",
+        _ => return None,
+    };
+    let count = snapshot
+        .slot_candidate_counts
+        .get(slot_id)
+        .copied()
+        .unwrap_or(0);
+    if command.binding_ordinal.saturating_add(1) >= count
+        || !lineage_within_budget(
+            snapshot,
+            &command.state_id,
+            command.state_visit,
+            command.binding_id.as_deref(),
+            command.item_id.as_deref(),
+            workflow.definition.limits.max_attempts,
+        )
+    {
+        return None;
+    }
+    Some(reason)
+}
+
+fn merge_run_context(
+    input: &mut Value,
+    output: &Value,
+    command_id: &str,
+    merge_sources: &mut BTreeMap<String, String>,
+) -> Result<()> {
     let Some(output) = output.as_object() else {
         return Ok(());
     };
@@ -1198,25 +1669,44 @@ fn merge_run_context(input: &mut Value, output: &Value) -> Result<()> {
         let destination = target
             .entry("worksets".to_owned())
             .or_insert_with(|| Value::Object(Default::default()));
+        if !destination.is_object() {
+            *destination = Value::Object(Default::default());
+        }
         if let Some(destination) = destination.as_object_mut() {
-            for (key, value) in worksets {
-                destination.insert(key.clone(), value.clone());
-            }
+            stable_merge_object(destination, worksets, "worksets", command_id, merge_sources);
         }
     }
-    if let Some(context) = output.get("context") {
-        match (target.get_mut("context"), context) {
-            (Some(Value::Object(existing)), Value::Object(incoming)) => {
-                for (key, value) in incoming {
-                    existing.insert(key.clone(), value.clone());
-                }
-            }
-            _ => {
-                target.insert("context".into(), context.clone());
-            }
+    if let Some(context) = output.get("context").and_then(Value::as_object) {
+        let destination = target
+            .entry("context".to_owned())
+            .or_insert_with(|| Value::Object(Default::default()));
+        if !destination.is_object() {
+            *destination = Value::Object(Default::default());
+        }
+        if let Some(destination) = destination.as_object_mut() {
+            stable_merge_object(destination, context, "context", command_id, merge_sources);
         }
     }
     Ok(())
+}
+
+fn stable_merge_object(
+    target: &mut serde_json::Map<String, Value>,
+    incoming: &serde_json::Map<String, Value>,
+    namespace: &str,
+    command_id: &str,
+    merge_sources: &mut BTreeMap<String, String>,
+) {
+    for (key, value) in incoming {
+        let source_key = format!("{namespace}\0{key}");
+        if merge_sources
+            .get(&source_key)
+            .is_none_or(|source| command_id > source.as_str())
+        {
+            target.insert(key.clone(), value.clone());
+            merge_sources.insert(source_key, command_id.to_owned());
+        }
+    }
 }
 
 const fn default_state_visit() -> u64 {
@@ -1289,13 +1779,14 @@ mod tests {
                     workset: None,
                     retry: RetryPolicy::default(),
                 },
+                state("fail", GraphStateKind::Fail),
             ],
             transitions: vec![
                 Transition {
                     id: "loop-again".into(),
                     from: "work".into(),
                     to: "work".into(),
-                    event: "success".into(),
+                    event: TransitionEvent::Success,
                     guard: Some(super::super::GuardExpression {
                         path: "again".into(),
                         equals: Some(true.into()),
@@ -1306,7 +1797,14 @@ mod tests {
                     id: "finish".into(),
                     from: "work".into(),
                     to: "done".into(),
-                    event: "success".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "work".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
                     guard: None,
                 },
             ],
@@ -1405,14 +1903,24 @@ mod tests {
                     workset: None,
                     retry: RetryPolicy::default(),
                 },
+                state("fail", GraphStateKind::Fail),
             ],
-            transitions: vec![Transition {
-                id: "done".into(),
-                from: "tasks".into(),
-                to: "done".into(),
-                event: "success".into(),
-                guard: None,
-            }],
+            transitions: vec![
+                Transition {
+                    id: "done".into(),
+                    from: "tasks".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "tasks".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
+                    guard: None,
+                },
+            ],
         })
         .unwrap();
         let empty = RunSnapshot::empty("run-1", "revision", "semantics");
@@ -1488,14 +1996,14 @@ mod tests {
                     id: "granted".into(),
                     from: "authorize".into(),
                     to: "done".into(),
-                    event: "success".into(),
+                    event: TransitionEvent::Success,
                     guard: None,
                 },
                 Transition {
                     id: "denied".into(),
                     from: "authorize".into(),
                     to: "blocked".into(),
-                    event: "failure".into(),
+                    event: TransitionEvent::Failure,
                     guard: None,
                 },
             ],
@@ -1548,16 +2056,28 @@ mod tests {
                     workset: Some("tasks".into()),
                     retry: RetryPolicy::default(),
                 },
+                GraphState {
+                    id: "repeat".into(),
+                    kind: GraphStateKind::Actor,
+                    label: "Repeat".into(),
+                    instruction: "Continue the next visit.".into(),
+                    binding: Some("worker".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
                 state("done", GraphStateKind::Succeed),
+                state("fail", GraphStateKind::Fail),
             ],
             transitions: vec![
                 Transition {
                     id: "again".into(),
                     from: "tasks".into(),
-                    to: "tasks".into(),
-                    event: "success".into(),
+                    to: "repeat".into(),
+                    event: TransitionEvent::Success,
                     guard: Some(super::super::GuardExpression {
-                        path: "again".into(),
+                        path: "context.again".into(),
                         equals: Some(true.into()),
                         exists: false,
                     }),
@@ -1566,7 +2086,28 @@ mod tests {
                     id: "done".into(),
                     from: "tasks".into(),
                     to: "done".into(),
-                    event: "success".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "tasks".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
+                    guard: None,
+                },
+                Transition {
+                    id: "repeat-success".into(),
+                    from: "repeat".into(),
+                    to: "tasks".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "repeat-failure".into(),
+                    from: "repeat".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
                     guard: None,
                 },
             ],
@@ -1587,13 +2128,27 @@ mod tests {
             ReducerEvent::CommandSucceeded {
                 command_id: first.id.clone(),
                 attempt_token: first.attempt_token.clone(),
-                output: json!({"again": true}),
+                output: json!({"context": {"again": true}}),
             },
         )
         .unwrap();
-        assert_eq!(looped.emitted_commands.len(), 1);
-        assert_eq!(looped.emitted_commands[0].item_id.as_deref(), Some("same"));
-        assert_eq!(looped.emitted_commands[0].state_visit, 2);
+        let repeat = &looped.emitted_commands[0];
+        let revisited = reduce(
+            &workflow,
+            &looped.snapshot,
+            ReducerEvent::CommandSucceeded {
+                command_id: repeat.id.clone(),
+                attempt_token: repeat.attempt_token.clone(),
+                output: json!({}),
+            },
+        )
+        .unwrap();
+        assert_eq!(revisited.emitted_commands.len(), 1);
+        assert_eq!(
+            revisited.emitted_commands[0].item_id.as_deref(),
+            Some("same")
+        );
+        assert_eq!(revisited.emitted_commands[0].state_visit, 2);
     }
 
     #[test]
@@ -1639,20 +2194,35 @@ mod tests {
                     retry: RetryPolicy::default(),
                 },
                 state("done", GraphStateKind::Succeed),
+                state("fail", GraphStateKind::Fail),
             ],
             transitions: vec![
                 Transition {
                     id: "planned".into(),
                     from: "plan".into(),
                     to: "tasks".into(),
-                    event: "success".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "plan-failed".into(),
+                    from: "plan".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
                     guard: None,
                 },
                 Transition {
                     id: "finished".into(),
                     from: "tasks".into(),
                     to: "done".into(),
-                    event: "success".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "tasks-failed".into(),
+                    from: "tasks".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
                     guard: None,
                 },
             ],
@@ -1708,11 +2278,14 @@ mod tests {
             },
         )
         .unwrap();
+        assert_eq!(failed.snapshot.status, StrategyRunStatus::Running);
+        assert!(failed.snapshot.active_states.contains("work"));
+        assert!(!failed.snapshot.state_visits.contains_key("fail"));
         let next = reduce(
             &workflow,
             &failed.snapshot,
             ReducerEvent::FallbackIssued {
-                failed_command_id: command.id,
+                failed_command_id: command.id.clone(),
                 next_ordinal: 1,
                 locator: json!({
                     "sourcePath": "/synthetic/store",
@@ -1728,6 +2301,10 @@ mod tests {
         .unwrap();
         assert_eq!(next.emitted_commands.len(), 1);
         assert_eq!(next.emitted_commands[0].binding_ordinal, 1);
+        assert_eq!(
+            next.snapshot.commands[&command.id].status,
+            CommandStatus::Cancelled
+        );
         assert_eq!(next.emitted_commands[0].resume_session_id, None);
         assert_eq!(
             next.emitted_commands[0].input["predecessorLocator"]["sourcePath"],
@@ -1786,6 +2363,8 @@ mod tests {
             exhausted.snapshot.commands[&retry_command.id].status,
             CommandStatus::Failed
         );
+        assert_eq!(exhausted.snapshot.status, StrategyRunStatus::Running);
+        assert!(!exhausted.snapshot.state_visits.contains_key("fail"));
         let next = reduce(
             &workflow,
             &exhausted.snapshot,
