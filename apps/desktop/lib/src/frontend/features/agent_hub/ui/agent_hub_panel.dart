@@ -109,6 +109,7 @@ final class AgentHubPanel extends StatefulWidget {
 
 final class _AgentHubPanelState extends State<AgentHubPanel> {
   List<AgentHubRecipe> _recipes = const [];
+  final Set<String> _orderedIds = {};
   bool _loading = true;
   bool _catalogFailed = false;
   String _busyRecipeId = '';
@@ -172,11 +173,37 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     }
   }
 
+  /// Shuffles once per new root snapshot; incremental recipe updates merge
+  /// into the established order instead of reordering existing cards.
+  List<AgentHubRecipe> _orderCatalog(List<AgentHubRecipe> incoming) {
+    final sameIds =
+        _orderedIds.length == incoming.length &&
+        incoming.every((recipe) => _orderedIds.contains(recipe.id));
+    var replaced = 0;
+    if (sameIds) {
+      final currentById = {for (final recipe in _recipes) recipe.id: recipe};
+      for (final recipe in incoming) {
+        if (!identical(currentById[recipe.id], recipe)) {
+          replaced++;
+        }
+      }
+    }
+    if (!sameIds || replaced > 1) {
+      final ordered = List<AgentHubRecipe>.from(widget.orderRecipes(incoming));
+      _orderedIds
+        ..clear()
+        ..addAll(incoming.map((recipe) => recipe.id));
+      return ordered;
+    }
+    final byId = {for (final recipe in incoming) recipe.id: recipe};
+    return [for (final recipe in _recipes) byId[recipe.id] ?? recipe];
+  }
+
   void _applyCache(AgentHubCatalogSnapshot? snapshot) {
     if (snapshot == null || snapshot.recipes.isEmpty) {
       return;
     }
-    _recipes = List<AgentHubRecipe>.from(widget.orderRecipes(snapshot.recipes));
+    _recipes = _orderCatalog(snapshot.recipes);
     _loading = false;
     _catalogFailed = false;
   }
@@ -190,9 +217,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         return;
       }
       if (snapshot.ok || snapshot.recipes.isNotEmpty) {
-        final ordered = List<AgentHubRecipe>.from(
-          widget.orderRecipes(snapshot.recipes),
-        );
+        final ordered = _orderCatalog(snapshot.recipes);
         setState(() {
           _recipes = ordered;
           _catalogFailed = false;
