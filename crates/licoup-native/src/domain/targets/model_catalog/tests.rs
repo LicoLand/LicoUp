@@ -307,6 +307,86 @@ model = "gpt-5.4-mini"
     }
 }
 
+mod config_copilot {
+    use super::*;
+
+    fn write_workspace_storage_models(home: &Path) {
+        let models_path = home
+            .join("Library")
+            .join("Application Support")
+            .join("Code")
+            .join("User")
+            .join("workspaceStorage")
+            .join("workspace-hash")
+            .join("GitHub.copilot-chat")
+            .join("models.json");
+        fs::create_dir_all(models_path.parent().unwrap()).unwrap();
+        fs::write(
+            &models_path,
+            json!([
+                {"model": "copilot-custom-flash", "name": "Copilot Custom Flash"},
+                {"model": "copilot-custom-opus"}
+            ])
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn copilot_selected_catalog_reads_workspace_storage_models() {
+        let home = temp_test_dir("copilot-selected-model-cache");
+        write_workspace_storage_models(&home);
+        let catalog = model_catalog_for_target(
+            "copilot",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"copilot-custom-flash"));
+        assert!(names.contains(&"copilot-custom-opus"));
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("model-cache"))
+        );
+    }
+
+    #[test]
+    fn copilot_unused_catalog_skips_other_app_workspace_storage() {
+        let home = temp_test_dir("copilot-unused-model-cache");
+        write_workspace_storage_models(&home);
+        let catalog = model_catalog_for_target(
+            "copilot",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            !names.contains(&"copilot-custom-flash"),
+            "unused Copilot catalog must not read VS Code workspaceStorage"
+        );
+        assert!(!names.contains(&"copilot-custom-opus"));
+    }
+}
+
 mod antigravity {
     use super::super::antigravity::collect_model_catalog_from_cli_lines;
     use super::*;
