@@ -33,10 +33,12 @@ npm run client:promotion -- advance --head stable --base release
 macOS Developer ID 的发布后流程通过
 `tools/apple-release/macos-direct-arm64.json` 委托给本机 Apple Release 服务。
 
-委托配置对仓库源码只读：它不会创建发布候选分支、准备版本提交、合并 Pull Request，
-也不会改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks。
-它只能处理已明确授权的精确 `origin/release` revision，以及配置声明的公开 tag、
-Release 与四项制品契约。
+委托发布服务从已授权的精确 `origin/release` revision 切出一个
+`release-candidate/v{version}` 分支，准备锁定的版本提交，通过其 Required
+Checks 后合并该候选分支，并从该候选发布声明的公开 tag、Release 与四项制品
+契约。它永不改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks；
+其允许执行的远端变更仅限已冻结的候选分支、其合并，以及声明的公开 tag、
+Release 与制品。
 
 安装或检查本机服务：
 
