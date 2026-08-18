@@ -4,17 +4,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::platform::strategy_runtime::{
-    RuntimeCatalog, StrategyEffectPermit, actor_fingerprint, execute_actor, execute_script,
+    RuntimeCatalog, StrategyEffectPermit, actor_fingerprint, admit_strategy_cwd, execute_actor,
+    execute_script, predecessor_locator,
 };
 
+use super::reducer::fallback_reason;
 use super::{
-    BindingKind, CommandKind, CommandStatus, FailureClass, ReducerEvent, StrategyPackageImporter,
-    StrategyRunStatus, StrategyStore, builtin_strategy_identity, builtin_strategy_package_bytes,
+    BindingCandidate, BindingKind, CommandKind, CommandStatus, FailureClass, ReducerEvent,
+    StrategyPackageImporter, StrategyRunStatus, StrategyStore, compile_workflow,
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_DRIVE_EFFECTS_PER_CALL: usize = 512;
-const BUILTIN_STRATEGY_ID: &str = "licoup-basic";
+const EFFECT_LEASE_DURATION_MS: i64 = 5 * 60 * 1000;
 
 #[derive(Clone, Debug)]
 pub struct StrategyService {
@@ -30,7 +32,6 @@ impl StrategyService {
             importer: StrategyPackageImporter::open(portable_root)?,
             portable_root: portable_root.to_path_buf(),
         };
-        service.ensure_builtin_strategy()?;
         service.refresh_runtime_bindings()?;
         Ok(service)
     }
@@ -107,20 +108,7 @@ impl StrategyService {
                     &definition.summary.revision_digest,
                 )?)?)
             }
-            "strategy.definition.list" => {
-                let identity = builtin_strategy_identity()?;
-                let definitions = self
-                    .store
-                    .list_definitions()?
-                    .into_iter()
-                    .filter(|definition| {
-                        (definition.definition_id != identity.definition_id
-                            && definition.name != identity.name)
-                            || definition.revision_digest == identity.revision_digest
-                    })
-                    .collect::<Vec<_>>();
-                Ok(serde_json::to_value(definitions)?)
-            }
+            "strategy.definition.list" => Ok(serde_json::to_value(self.store.list_definitions()?)?),
             "strategy.definition.inspect" => {
                 let revision = required_string(object, "revisionDigest")?;
                 self.admit_revision_identity(revision)?;
@@ -146,6 +134,21 @@ impl StrategyService {
                     value,
                     optional_string(object, "model")?,
                     optional_string(object, "reasoningEffort")?,
+                    object.get("expectedRevision").and_then(Value::as_u64),
+                )?)?)
+            }
+            "strategy.binding.replace" => {
+                let revision = required_string(object, "revisionDigest")?;
+                self.admit_revision_identity(revision)?;
+                let slot = required_string(object, "slotId")?;
+                let candidates = parse_binding_candidates(object)?;
+                for candidate in &candidates {
+                    self.validate_binding(revision, slot, &candidate.value_id)?;
+                }
+                Ok(serde_json::to_value(self.store.replace_slot_bindings(
+                    revision,
+                    slot,
+                    &candidates,
                     object.get("expectedRevision").and_then(Value::as_u64),
                 )?)?)
             }
@@ -197,11 +200,25 @@ impl StrategyService {
             "strategy.run.start" => {
                 let revision = required_string(object, "revisionDigest")?;
                 self.admit_revision_identity(revision)?;
+                let conversation_id = optional_string(object, "conversationId")?;
+                let cwd = optional_cwd(object)?;
                 let snapshot = self.store.start_run(
                     revision,
                     object.get("input").cloned().unwrap_or_else(|| json!({})),
                     required_string(object, "idempotencyKey")?,
+                    if conversation_id.is_empty() {
+                        None
+                    } else {
+                        Some(conversation_id)
+                    },
+                    cwd,
                 )?;
+                let _ = crate::domain::agent_usage::workflow_ledger::begin_strategy_run(&json!({
+                    "stateRoot": self.portable_root,
+                    "runId": snapshot.run_id,
+                    "revisionDigest": revision,
+                    "planRevision": 1,
+                }));
                 self.drive_run(&snapshot.run_id)?;
                 Ok(serde_json::to_value(
                     self.store.projection_for_run(&snapshot.run_id)?,
@@ -213,6 +230,20 @@ impl StrategyService {
                 Ok(serde_json::to_value(
                     self.store.projection_for_run(run_id)?,
                 )?)
+            }
+            "strategy.run.active" => {
+                let revision = required_string(object, "revisionDigest")?;
+                self.admit_revision_identity(revision)?;
+                let conversation_id = required_string(object, "conversationId")?;
+                match self
+                    .store
+                    .active_run_for_conversation(revision, conversation_id)?
+                {
+                    Some(snapshot) => Ok(serde_json::to_value(
+                        self.store.projection_for_run(&snapshot.run_id)?,
+                    )?),
+                    None => Ok(json!({"runId": null})),
+                }
             }
             "strategy.run.resume" => {
                 let run_id = required_string(object, "runId")?;
@@ -322,60 +353,8 @@ impl StrategyService {
         }
     }
 
-    fn ensure_builtin_strategy(&self) -> Result<()> {
-        let identity = builtin_strategy_identity()?;
-        ensure!(
-            identity.definition_id == BUILTIN_STRATEGY_ID,
-            "builtin_strategy_identity_invalid"
-        );
-        if self
-            .store
-            .definition_by_revision(&identity.revision_digest)
-            .is_ok_and(|definition| {
-                definition.summary.definition_id == identity.definition_id
-                    && definition.summary.name == identity.name
-                    && definition.summary.version == identity.version
-                    && definition.summary.semantics_digest == identity.semantics_digest
-            })
-        {
-            return Ok(());
-        }
-        let bytes = builtin_strategy_package_bytes()?;
-        let prepared = self.importer.prepare_bytes(&bytes)?;
-        ensure!(
-            prepared.definition_id == identity.definition_id
-                && prepared.name == identity.name
-                && prepared.version == identity.version
-                && prepared.revision_digest == identity.revision_digest
-                && prepared.semantics_digest == identity.semantics_digest,
-            "builtin_strategy_identity_invalid"
-        );
-        let committed = self
-            .importer
-            .commit(&prepared.preparation_id, &prepared.revision_digest)?;
-        self.store.register_definition(
-            &committed.prepared.revision_digest,
-            &committed.prepared.semantics_digest,
-            &committed.workflow,
-            committed.prepared.asset_count,
-            committed.prepared.prepared_at_unix_ms,
-        )?;
-        Ok(())
-    }
-
     fn validate_import_identity(&self, prepared: &super::PreparedPackage) -> Result<()> {
-        let identity = builtin_strategy_identity()?;
-        if prepared.definition_id == identity.definition_id || prepared.name == identity.name {
-            ensure!(
-                prepared.definition_id == identity.definition_id
-                    && prepared.name == identity.name
-                    && prepared.version == identity.version
-                    && prepared.revision_digest == identity.revision_digest
-                    && prepared.semantics_digest == identity.semantics_digest,
-                "workflow_builtin_identity_reserved"
-            );
-        }
-        Ok(())
+        super::store::validate_import_identity(&prepared.definition_id, &prepared.name)
     }
 
     fn refresh_runtime_bindings(&self) -> Result<()> {
@@ -426,20 +405,7 @@ impl StrategyService {
     }
 
     fn admit_revision_identity(&self, revision: &str) -> Result<()> {
-        let definition = self.store.definition_by_revision(revision)?;
-        let identity = builtin_strategy_identity()?;
-        if definition.summary.definition_id == identity.definition_id
-            || definition.summary.name == identity.name
-        {
-            ensure!(
-                definition.summary.definition_id == identity.definition_id
-                    && definition.summary.name == identity.name
-                    && definition.summary.version == identity.version
-                    && definition.summary.revision_digest == identity.revision_digest
-                    && definition.summary.semantics_digest == identity.semantics_digest,
-                "workflow_builtin_identity_reserved"
-            );
-        }
+        self.store.definition_by_revision(revision)?;
         Ok(())
     }
 
@@ -493,6 +459,7 @@ impl StrategyService {
         self.recover_expired_commands(run_id)?;
         let mut executed = 0usize;
         while executed < MAX_DRIVE_EFFECTS_PER_CALL {
+            self.recover_persisted_effects(run_id)?;
             let snapshot = self.store.run(run_id)?;
             if snapshot.status == StrategyRunStatus::AuthorizationRequired {
                 let definition = self
@@ -527,6 +494,7 @@ impl StrategyService {
                 } else {
                     break;
                 }
+                executed = executed.saturating_add(1);
                 continue;
             }
             let mut commands = Vec::new();
@@ -540,7 +508,7 @@ impl StrategyService {
                 let Some(command) = self.store.claim_next_command(
                     run_id,
                     &claimant,
-                    now_ms().saturating_add(5 * 60 * 1000),
+                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
                 )?
                 else {
                     break;
@@ -557,18 +525,18 @@ impl StrategyService {
             if commands.is_empty() {
                 break;
             }
-            let outcomes = std::thread::scope(|scope| -> Result<Vec<_>> {
+            let mut outcomes = std::thread::scope(|scope| -> Result<Vec<_>> {
                 let (sender, receiver) = std::sync::mpsc::channel();
                 let leases = commands
                     .iter()
                     .map(|(command, claimant)| (command.id.clone(), claimant.clone()))
                     .collect::<Vec<_>>();
-                for (command, _) in commands {
+                for (command, claimant) in commands {
                     let service = self.clone();
                     let run_id = run_id.to_owned();
                     let sender = sender.clone();
                     scope.spawn(move || {
-                        let result = service.execute_command(&run_id, &command);
+                        let result = service.execute_command(&run_id, &command, &claimant);
                         let _ = sender.send((command, result));
                     });
                 }
@@ -578,7 +546,7 @@ impl StrategyService {
                     match receiver.recv_timeout(std::time::Duration::from_secs(30)) {
                         Ok(outcome) => outcomes.push(outcome),
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            let lease_until = now_ms().saturating_add(5 * 60 * 1000);
+                            let lease_until = now_ms().saturating_add(EFFECT_LEASE_DURATION_MS);
                             for (command_id, claimant) in &leases {
                                 self.store.renew_command_lease(
                                     command_id,
@@ -595,29 +563,32 @@ impl StrategyService {
                 Ok(outcomes)
             })?;
             executed = executed.saturating_add(outcomes.len());
+            outcomes.sort_by(|left, right| left.0.id.cmp(&right.0.id));
             for (command, result) in outcomes {
                 match result {
                     Ok(output) => {
                         self.store.apply_event(
                             run_id,
                             ReducerEvent::CommandSucceeded {
-                                command_id: command.id,
-                                attempt_token: command.attempt_token,
-                                output,
+                                command_id: command.id.clone(),
+                                attempt_token: command.attempt_token.clone(),
+                                output: output.clone(),
                             },
                         )?;
+                        let _ = self.project_membership_event(run_id, &command, &output);
                     }
                     Err(error) => {
                         let (class, code) = classify_effect_error(&error.to_string());
                         self.store.apply_event(
                             run_id,
                             ReducerEvent::CommandFailed {
-                                command_id: command.id,
-                                attempt_token: command.attempt_token,
+                                command_id: command.id.clone(),
+                                attempt_token: command.attempt_token.clone(),
                                 class,
                                 code: code.into(),
                             },
                         )?;
+                        self.recover_failed_effect(run_id, &command.id)?;
                     }
                 }
             }
@@ -630,7 +601,35 @@ impl StrategyService {
         Ok(())
     }
 
-    fn execute_command(&self, run_id: &str, command: &super::RunCommand) -> Result<Value> {
+    fn recover_persisted_effects(&self, run_id: &str) -> Result<()> {
+        loop {
+            let snapshot = self.store.run(run_id)?;
+            let definition = self
+                .store
+                .definition_by_revision(&snapshot.definition_digest)?;
+            let workflow = compile_workflow(definition.workflow.clone())?;
+            let candidate = snapshot.commands.values().find(|command| {
+                matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+                    && ((command.status == CommandStatus::Retryable
+                        && command.failure_class == Some(FailureClass::Transient))
+                        || fallback_reason(&workflow, &snapshot, command).is_some())
+            });
+            let Some(command_id) = candidate.map(|command| command.id.clone()) else {
+                return Ok(());
+            };
+            ensure!(
+                self.recover_failed_effect(run_id, &command_id)?,
+                "strategy_recovery_state_conflict"
+            );
+        }
+    }
+
+    fn execute_command(
+        &self,
+        run_id: &str,
+        command: &super::RunCommand,
+        claimant: &str,
+    ) -> Result<Value> {
         let snapshot = self.store.run(run_id)?;
         let definition = self
             .store
@@ -648,6 +647,7 @@ impl StrategyService {
                         .binding_id
                         .as_deref()
                         .ok_or_else(|| anyhow!("binding_incomplete"))?,
+                    command.binding_ordinal,
                 )?;
                 let fingerprint = actor_fingerprint(
                     &binding.value_id,
@@ -659,6 +659,8 @@ impl StrategyService {
                     &command.id,
                     &command.attempt_token,
                     &authorization.authorization_digest,
+                    claimant,
+                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
                 )?;
                 let mut permit = StrategyEffectPermit::issue(
                     &command.id,
@@ -670,6 +672,7 @@ impl StrategyService {
                     &authorization.authorization_digest,
                     binding,
                     &mut permit,
+                    snapshot.cwd.as_deref(),
                 )
             }
             CommandKind::Script => {
@@ -683,7 +686,7 @@ impl StrategyService {
                     .iter()
                     .find(|requirement| requirement.id == requirement_id)
                     .ok_or_else(|| anyhow!("runtime_unavailable"))?;
-                let runtime_id = &binding_for(&definition, requirement_id)?.value_id;
+                let runtime_id = &binding_for(&definition, requirement_id, 0)?.value_id;
                 let runtime = RuntimeCatalog::discover().resolve(
                     runtime_id,
                     requirement.kind,
@@ -698,6 +701,8 @@ impl StrategyService {
                     &command.id,
                     &command.attempt_token,
                     &authorization.authorization_digest,
+                    claimant,
+                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
                 )?;
                 let mut permit = StrategyEffectPermit::issue(
                     &command.id,
@@ -722,16 +727,141 @@ impl StrategyService {
             CommandKind::Authorization => Err(anyhow!("authorization_required")),
         }
     }
+
+    fn recover_failed_effect(&self, run_id: &str, command_id: &str) -> Result<bool> {
+        let snapshot = self.store.run(run_id)?;
+        let current = snapshot
+            .commands
+            .get(command_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+        if !matches!(current.kind, CommandKind::Actor | CommandKind::WorksetItem) {
+            return Ok(false);
+        }
+        if current.status == CommandStatus::Retryable
+            && current.failure_class == Some(FailureClass::Transient)
+        {
+            self.store.apply_event(
+                run_id,
+                ReducerEvent::RetryRequested {
+                    command_id: current.id,
+                },
+            )?;
+            return Ok(true);
+        }
+        let Some(slot_id) = current.binding_id.as_deref() else {
+            return Ok(false);
+        };
+        let definition = self
+            .store
+            .definition_by_revision(&snapshot.definition_digest)?;
+        let workflow = compile_workflow(definition.workflow.clone())?;
+        let Some(reason) = fallback_reason(&workflow, &snapshot, &current) else {
+            return Ok(false);
+        };
+        let next_ordinal = current.binding_ordinal.saturating_add(1);
+        let next = definition
+            .bindings
+            .iter()
+            .find(|binding| binding.slot_id == slot_id && binding.ordinal == next_ordinal)
+            .ok_or_else(|| anyhow!("binding_incomplete"))?;
+        let previous = definition
+            .bindings
+            .iter()
+            .find(|binding| {
+                binding.slot_id == slot_id && binding.ordinal == current.binding_ordinal
+            })
+            .ok_or_else(|| anyhow!("binding_incomplete"))?;
+        let mut facts = current.input.clone();
+        if let Some(session) = current.resume_session_id.as_deref() {
+            if let Value::Object(ref mut object) = facts {
+                object
+                    .entry("nativeSessionId")
+                    .or_insert_with(|| Value::String(session.to_owned()));
+            }
+        }
+        self.store.apply_event(
+            run_id,
+            ReducerEvent::FallbackIssued {
+                failed_command_id: current.id,
+                next_ordinal,
+                locator: predecessor_locator(&facts),
+                from_value_id: previous.value_id.clone(),
+                to_value_id: next.value_id.clone(),
+                reason: reason.into(),
+                attempts: current.attempt,
+            },
+        )?;
+        Ok(true)
+    }
+
+    fn project_membership_event(
+        &self,
+        run_id: &str,
+        command: &super::RunCommand,
+        output: &Value,
+    ) -> Result<()> {
+        if !matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem) {
+            return Ok(());
+        }
+        let snapshot = self.store.run(run_id)?;
+        let Some(conversation_id) = snapshot.conversation_id.as_deref() else {
+            return Ok(());
+        };
+        let definition = self
+            .store
+            .definition_by_revision(&snapshot.definition_digest)?;
+        let Some(slot_id) = command.binding_id.as_deref() else {
+            return Ok(());
+        };
+        let Some(binding) = definition.bindings.iter().find(|binding| {
+            binding.slot_id == slot_id && binding.ordinal == command.binding_ordinal
+        }) else {
+            return Ok(());
+        };
+        let store =
+            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+        let conversation = store.get(conversation_id)?;
+        let Some(membership) = conversation.memberships.iter().find(|membership| {
+            membership.principal.agent_id.as_deref() == Some(binding.value_id.as_str())
+                && membership.status == crate::domain::client_conversation::MembershipStatus::Active
+        }) else {
+            return Ok(());
+        };
+        let content = output
+            .get("output")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| serde_json::to_string(output).unwrap_or_default());
+        if content.trim().is_empty() {
+            return Ok(());
+        }
+        store.append_event(
+            conversation_id,
+            Some(&membership.id),
+            crate::domain::client_conversation::EventKind::Message,
+            &[crate::domain::client_conversation::NewEventPart {
+                id: String::new(),
+                kind: crate::domain::client_conversation::EventPartKind::Text,
+                content,
+            }],
+            None,
+            Some(run_id),
+            true,
+        )?;
+        Ok(())
+    }
 }
 
 fn binding_for<'a>(
     definition: &'a super::StrategyDefinition,
     slot: &str,
+    ordinal: u8,
 ) -> Result<&'a super::BindingValue> {
     definition
         .bindings
         .iter()
-        .find(|binding| binding.slot_id == slot)
+        .find(|binding| binding.slot_id == slot && binding.ordinal == ordinal)
         .ok_or_else(|| anyhow!("binding_incomplete"))
 }
 
@@ -754,6 +884,13 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
             "reasoningEffort",
             "expectedRevision",
         ],
+        "strategy.binding.replace" => &[
+            "action",
+            "revisionDigest",
+            "slotId",
+            "candidates",
+            "expectedRevision",
+        ],
         "strategy.binding.remove" => &["action", "revisionDigest", "slotId", "expectedRevision"],
         "strategy.authorization.grant" => &[
             "action",
@@ -761,7 +898,15 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
             "authorizationDigest",
             "confirmed",
         ],
-        "strategy.run.start" => &["action", "revisionDigest", "input", "idempotencyKey"],
+        "strategy.run.start" => &[
+            "action",
+            "revisionDigest",
+            "input",
+            "idempotencyKey",
+            "conversationId",
+            "cwd",
+        ],
+        "strategy.run.active" => &["action", "revisionDigest", "conversationId"],
         "strategy.run.inspect"
         | "strategy.run.resume"
         | "strategy.run.cancel"
@@ -797,6 +942,39 @@ fn optional_string<'a>(object: &'a Map<String, Value>, key: &str) -> Result<&'a 
     }
 }
 
+fn optional_cwd(object: &Map<String, Value>) -> Result<Option<String>> {
+    match object.get("cwd") {
+        None => Ok(None),
+        Some(Value::String(value)) if value.trim().is_empty() => Ok(None),
+        Some(Value::String(value)) => {
+            admit_strategy_cwd(value)?;
+            Ok(Some(value.clone()))
+        }
+        _ => Err(anyhow!("invalid_request")),
+    }
+}
+
+fn parse_binding_candidates(object: &Map<String, Value>) -> Result<Vec<BindingCandidate>> {
+    let values = object
+        .get("candidates")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("invalid_request"))?;
+    ensure!(values.len() <= 16, "strategy_binding_limit");
+    values
+        .iter()
+        .map(|value| {
+            let candidate = value
+                .as_object()
+                .ok_or_else(|| anyhow!("invalid_request"))?;
+            Ok(BindingCandidate {
+                value_id: required_string(candidate, "valueId")?.to_owned(),
+                model: optional_string(candidate, "model")?.to_owned(),
+                reasoning_effort: optional_string(candidate, "reasoningEffort")?.to_owned(),
+            })
+        })
+        .collect()
+}
+
 fn validate_selection_token(value: &str) -> Result<()> {
     ensure!(
         value.len() <= 96
@@ -815,7 +993,14 @@ fn classify_effect_error(message: &str) -> (FailureClass, &'static str) {
         (FailureClass::Sandbox, "sandbox_unavailable")
     } else if message.contains("authorization") || message.contains("permit") {
         (FailureClass::Authority, "authorization_required")
-    } else if message.contains("timed_out") || message.contains("dispatch_failed") {
+    } else if message.contains("quota_exhausted")
+        || message.contains("strategy_actor_quota_exhausted")
+    {
+        (FailureClass::Permanent, "quota_exhausted")
+    } else if message.contains("timed_out")
+        || message.contains("timeout")
+        || message.contains("dispatch_failed")
+    {
         (FailureClass::Transient, "effect_temporarily_unavailable")
     } else if message.contains("outcome_unknown") {
         (FailureClass::InDoubt, "effect_outcome_unknown")
@@ -1035,37 +1220,191 @@ mod tests {
     }
 
     #[test]
-    fn basic_strategy_is_available_when_the_service_opens() {
+    fn catalog_starts_empty_until_a_package_is_imported() {
         let root = root();
         let service = StrategyService::open(&root).unwrap();
         let listed = service
             .execute(json!({"action": "strategy.definition.list"}))
             .unwrap();
-        let definitions = listed["result"].as_array().unwrap();
-        assert_eq!(definitions.len(), 1);
-        assert_eq!(definitions[0]["definitionId"], "licoup-basic");
+        assert_eq!(listed["result"].as_array().unwrap().len(), 0);
+
+        let zip_path = root.join("fixture.zip");
+        fs::write(
+            &zip_path,
+            crate::domain::adaptive_flywheel::synthetic_fixture_package_bytes().unwrap(),
+        )
+        .unwrap();
+        let prepared = service
+            .execute(json!({
+                "action": "strategy.package.prepare-import",
+                "sourcePath": zip_path.to_string_lossy(),
+                "selectionToken": "selection-test"
+            }))
+            .unwrap();
+        assert_eq!(prepared["ok"], true);
+        let commit = service
+            .execute(json!({
+                "action": "strategy.package.commit-import",
+                "preparationId": prepared["result"]["preparationId"],
+                "expectedRevisionDigest": prepared["result"]["revisionDigest"]
+            }))
+            .unwrap();
+        assert_eq!(commit["ok"], true);
+        assert_eq!(commit["result"]["definitionId"], "fixture-entry-worker");
 
         let reopened = StrategyService::open(&root).unwrap();
         let relisted = reopened
             .execute(json!({"action": "strategy.definition.list"}))
             .unwrap();
         assert_eq!(relisted["result"].as_array().unwrap().len(), 1);
+        remove_root(root);
+    }
 
-        let identity = builtin_strategy_identity().unwrap();
-        let forged = super::super::PreparedPackage {
-            preparation_id: "preparation-forged".into(),
-            definition_id: identity.definition_id,
-            revision_digest: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-                .into(),
-            semantics_digest: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-                .into(),
-            name: identity.name,
-            version: identity.version,
-            asset_count: 1,
-            prepared_at_unix_ms: 1,
+    #[test]
+    fn persisted_fallback_recovery_is_resumable_and_idempotent() {
+        use crate::domain::adaptive_flywheel::{
+            ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
+            WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
         };
-        assert!(reopened.validate_import_identity(&forged).is_err());
 
+        let root = root();
+        let store = StrategyStore::open(&root).unwrap();
+        let mut slot = ActorSlot::required_actor("worker", "Worker");
+        slot.fallback.after_transient_attempts = 1;
+        let workflow = WorkflowDefinition {
+            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "fallback-recovery".into(),
+                name: "Fallback recovery".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: WorkflowLimits {
+                max_parallelism: 1,
+                max_workset_items: 1,
+                max_attempts: 2,
+            },
+            actor_slots: vec![slot],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "work".into(),
+            states: vec![
+                GraphState {
+                    id: "work".into(),
+                    kind: GraphStateKind::Actor,
+                    label: "Work".into(),
+                    instruction: String::new(),
+                    binding: Some("worker".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy {
+                        max_attempts: 1,
+                        transient_only: true,
+                    },
+                },
+                GraphState {
+                    id: "done".into(),
+                    kind: GraphStateKind::Succeed,
+                    label: "Done".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+                GraphState {
+                    id: "failed".into(),
+                    kind: GraphStateKind::Fail,
+                    label: "Failed".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+            ],
+            transitions: vec![
+                Transition {
+                    id: "succeeded".into(),
+                    from: "work".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "work".into(),
+                    to: "failed".into(),
+                    event: TransitionEvent::Failure,
+                    guard: None,
+                },
+            ],
+        };
+        let revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        store
+            .register_definition(revision, revision, &workflow, 1, 1)
+            .unwrap();
+        store
+            .replace_slot_bindings(
+                revision,
+                "worker",
+                &[
+                    BindingCandidate {
+                        value_id: "agent:primary".into(),
+                        model: String::new(),
+                        reasoning_effort: String::new(),
+                    },
+                    BindingCandidate {
+                        value_id: "agent:fallback".into(),
+                        model: String::new(),
+                        reasoning_effort: String::new(),
+                    },
+                ],
+                None,
+            )
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "fallback-recovery-run", None, None)
+            .unwrap();
+        let command = run.commands.values().next().unwrap().clone();
+        let failed = store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandFailed {
+                    command_id: command.id.clone(),
+                    attempt_token: command.attempt_token,
+                    class: FailureClass::Transient,
+                    code: "effect_temporarily_unavailable".into(),
+                },
+            )
+            .unwrap();
+        assert_eq!(failed.status, StrategyRunStatus::Running);
+        assert_eq!(failed.commands[&command.id].status, CommandStatus::Failed);
+
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        );
+        service.recover_persisted_effects(&run.run_id).unwrap();
+        let recovered = store.run(&run.run_id).unwrap();
+        assert_eq!(
+            recovered.commands[&command.id].status,
+            CommandStatus::Cancelled
+        );
+        assert_eq!(recovered.fallbacks.len(), 1);
+        assert!(recovered.commands.values().any(|candidate| {
+            candidate.binding_ordinal == 1 && candidate.status == CommandStatus::Pending
+        }));
+        service.recover_persisted_effects(&run.run_id).unwrap();
+        assert_eq!(store.run(&run.run_id).unwrap(), recovered);
         remove_root(root);
     }
 }

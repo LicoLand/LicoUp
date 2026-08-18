@@ -30,7 +30,7 @@ void registerClientSecureMeshScenarios() {
           createdAt: '2026-06-12T00:00:00.000Z',
         ),
       ];
-    final controller = NoPreloadClientController(
+    final controller = NoEntryHookClientController(
       portableData: PortableDataRoot(dataDirectoryOverride: directory),
       agentService: agentService,
       mobileRelayService: relayService,
@@ -160,7 +160,7 @@ void registerClientSecureMeshScenarios() {
     );
     addTearDown(() => directory.delete(recursive: true));
     final relayService = FakeMobileRelayService();
-    final controller = NoPreloadClientController(
+    final controller = NoEntryHookClientController(
       portableData: PortableDataRoot(dataDirectoryOverride: directory),
       agentService: FakeAgentService(),
       mobileRelayService: relayService,

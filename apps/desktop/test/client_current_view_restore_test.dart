@@ -106,6 +106,7 @@ void main() {
     final second = relaunchController(agentService: secondService);
     addTearDown(second.dispose);
     await second.initialize();
+    await awaitNativeModelCatalogSettled(second);
 
     expect(second.currentSection, ClientSection.agents);
     expect(second.selectedConversationAgentId, 'codex');
@@ -258,9 +259,27 @@ void main() {
       expect(second.selectedConversationAgentId, isEmpty);
 
       await second.initialize();
+      await awaitNativeModelCatalogSettled(second);
       expect(second.selectedConversationAgentId, 'codex');
     },
   );
+}
+
+/// The conversation entry Hook refreshes the selected Agent's native model
+/// catalog as a bounded background lane; wait for it so the shared temporary
+/// directory teardown never races that final cache write.
+Future<void> awaitNativeModelCatalogSettled(ClientController controller) async {
+  for (var attempt = 0; attempt < 200; attempt += 1) {
+    var refreshing = false;
+    for (final target in controller.scannedTargets) {
+      if (controller.isRefreshingNativeModelCatalog(target.target)) {
+        refreshing = true;
+        break;
+      }
+    }
+    if (!refreshing) return;
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
 }
 
 final class _CurrentViewAgentService extends FakeAgentService {

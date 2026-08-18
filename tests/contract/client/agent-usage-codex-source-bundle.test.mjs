@@ -49,6 +49,7 @@ const integrationLeaves = Object.freeze([
   "reconciliation.rs",
   "retained_reports.rs",
   "support.rs",
+  "two_phase.rs",
   "windows.rs",
 ]);
 
@@ -63,6 +64,7 @@ const preciseScenarioModules = Object.freeze({
   "native_rollup.rs": "rust.domain.agent-usage-cache.native-rollup",
   "reconciliation.rs": "rust.domain.agent-usage-cache.reconciliation",
   "retained_reports.rs": "rust.domain.agent-usage-cache.retained-reports",
+  "two_phase.rs": "rust.domain.agent-usage-cache.two-phase",
   "windows.rs": "rust.domain.agent-usage-cache.windows",
 });
 
@@ -299,7 +301,7 @@ test("Codex usage architecture registry owns the complete integration leaf set e
 
 test("Codex usage regression catalog gives every scenario one precise owner and support one composition owner", () => {
   const expectedScenarioLeaves = Object.keys(preciseScenarioModules).sort();
-  assert.equal(expectedScenarioLeaves.length, 11);
+  assert.equal(expectedScenarioLeaves.length, 12);
   assert.deepEqual(
     integrationLeaves
       .filter((leaf) => leaf !== "support.rs")

@@ -307,6 +307,18 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "rust.domain.targets.model-catalog.kilo",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.targets.model-catalog.claude-code",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/targets/model_catalog/opencode.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.targets.model-catalog.opencode",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/mobile_relay/pairing.rs",
   ])), [
     "architecture.client-boundaries",
@@ -494,6 +506,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
       "agent_usage_cache_cases::reconciliation::"],
     ["rust.domain.agent-usage-cache.retained-reports",
       "agent_usage_cache_cases::retained_reports::"],
+    ["rust.domain.agent-usage-cache.two-phase",
+      "agent_usage_cache_cases::two_phase::"],
     ["rust.domain.agent-usage-cache.windows",
       "agent_usage_cache_cases::windows::"],
   ]);
@@ -744,6 +758,7 @@ test("skill hub modules retain leaf-owned inputs and exact command filters", () 
 
 test("target modules retain leaf-owned inputs and exact command filters", () => {
   const filters = new Map([
+    ["rust.domain.targets.scan-paths", "domain::targets::scan_paths::tests::"],
     ["rust.domain.targets.binaries", "domain::targets::binaries::tests::"],
     ["rust.domain.targets.catalog", "domain::targets::catalog::tests::"],
     ["rust.domain.targets.parameters", "domain::targets::parameters::tests::"],
@@ -766,6 +781,10 @@ test("target modules retain leaf-owned inputs and exact command filters", () => 
       "domain::targets::model_catalog::tests::history::"],
     ["rust.domain.targets.model-catalog.kilo",
       "domain::targets::model_catalog::tests::kilo::"],
+    ["rust.domain.targets.model-catalog.claude-code",
+      "domain::targets::model_catalog::tests::claude_code::"],
+    ["rust.domain.targets.model-catalog.opencode",
+      "domain::targets::model_catalog::tests::opencode::"],
     ["rust.domain.targets.model-catalog.normalization",
       "domain::targets::model_catalog::tests::normalization::"],
     ["rust.domain.targets.model-catalog.provider",
