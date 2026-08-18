@@ -655,16 +655,17 @@ mixin AgentConversationSessionController
           return;
         }
       }
-      // Cached sessions often lack a project cwd. Refresh native history only
-      // after the Agent executable is bound; a failed rebind must keep the
-      // cached list instead of walking the host store.
-      final hasBoundableWorkingDirectory =
+      // Cached sessions often lack a project cwd, and recorded paths may have
+      // been moved or deleted. Refresh native history only after the Agent
+      // executable is bound; a failed rebind must keep the cached list instead
+      // of walking the host store.
+      final hasUsableWorkingDirectory =
           (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
-            (session) => isBoundableConversationWorkingDirectory(
+            (session) => isUsableLocalConversationWorkingDirectory(
               session.workingDirectory,
             ),
           );
-      if (runtimeBound && !hasBoundableWorkingDirectory) {
+      if (runtimeBound && !hasUsableWorkingDirectory) {
         await loadConversationSessions(normalizedAgentId);
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {
