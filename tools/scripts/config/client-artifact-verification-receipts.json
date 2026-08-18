@@ -37,24 +37,6 @@
         "args": [],
         "timeoutMs": 180000
       }
-    },
-    "android-direct-arm64-v8a": {
-      "evidenceTargetId": "android-arm64",
-      "platform": "android",
-      "artifactKind": "android-apk",
-      "artifactRef": "build/apps/desktop/android/release/app-release.apk",
-      "artifactDigestKind": "file",
-      "evidenceRef": "build/reports/android-physical-install-launch.json",
-      "evidenceSchemaVersion": "licomesh.secure-mesh.android-physical-install-launch-report.v3",
-      "evidenceProducer": "tools/scripts/client-android-physical-install-launch.mjs",
-      "evidenceProducerField": "verifier",
-      "freshnessKind": "generated-at",
-      "consumerVerificationPolicy": "provenance-or-verifiable-signature",
-      "evidenceInvocation": {
-        "script": "tools/scripts/client-android-physical-install-launch.mjs",
-        "args": ["--install", "--launch", "--apk", "build/apps/desktop/android/release/app-release.apk"],
-        "timeoutMs": 600000
-      }
     }
   }
 }
