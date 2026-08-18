@@ -387,6 +387,13 @@ class _CanonicalGroupConversationPaneState
       revisionDigest,
     );
     if (!persisted) return;
+    if (!mounted ||
+        controller.selectedConversationId != conversationId ||
+        controller.selectedConversation?.strategyRevision.trim() !=
+            revisionDigest) {
+      return;
+    }
+    _applyPersistedStrategySelection(revisionDigest, strategies);
     try {
       final projection = await _inspectStrategy(
         revisionDigest,
@@ -439,6 +446,7 @@ class _CanonicalGroupConversationPaneState
       setState(_clearStrategyFields);
       return;
     }
+    _applyPersistedStrategySelection(revision, _authorizedStrategies);
     try {
       final projection = await _inspectStrategy(revision);
       if (!mounted ||
@@ -451,7 +459,6 @@ class _CanonicalGroupConversationPaneState
       _strategyProjectionConversationId = conversationId;
       _strategyProjectionRevision = revision;
       if (projection == null) {
-        setState(_clearStrategyFields);
         return;
       }
       _applyStrategyProjection(projection);
@@ -459,6 +466,35 @@ class _CanonicalGroupConversationPaneState
     } on AdaptiveFlywheelFailure {
       return;
     }
+  }
+
+  void _applyPersistedStrategySelection(
+    String revision,
+    List<AdaptiveFlywheelDefinition> strategies,
+  ) {
+    AdaptiveFlywheelDefinition? selected;
+    for (final definition in strategies) {
+      if (definition.revisionDigest == revision) {
+        selected = definition;
+        break;
+      }
+    }
+    final selectedName = selected?.name.trim() ?? '';
+    final fallbackName = selectedName.isNotEmpty
+        ? selectedName
+        : (selected?.id.trim().isNotEmpty == true
+              ? selected!.id.trim()
+              : revision);
+    setState(() {
+      if (_strategyRevision != revision) {
+        _entrySlotLabel = '';
+        _entryAgentId = '';
+        _strategyRunId = null;
+        _strategyNeedsHumanInput = false;
+      }
+      _strategyRevision = revision;
+      _strategyName = fallbackName;
+    });
   }
 
   Future<_GroupStrategyProjection?> _inspectStrategy(
