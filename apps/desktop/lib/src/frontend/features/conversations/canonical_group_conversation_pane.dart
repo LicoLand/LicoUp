@@ -665,11 +665,18 @@ class _CanonicalGroupConversationPaneState
   }
 
   Future<bool> _postAndStartStrategyRun(String text) async {
+    final conversationId = widget.controller.selectedConversationId;
+    final revision = _strategyRevision;
     final posted = await widget.controller.postMessage(
       text,
       suppressMentions: true,
     );
     if (!posted) return false;
+    if (!mounted ||
+        widget.controller.selectedConversationId != conversationId ||
+        _strategyRevision != revision) {
+      return true;
+    }
     // The transcript is authoritative: persist the human turn before the
     // strategy runtime can emit its first agent event.
     try {
