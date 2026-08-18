@@ -355,7 +355,7 @@ void main() {
   );
 
   testWidgets(
-    'controller notification retries strategy inspection after a transient failure',
+    'keeps the persisted strategy visible while retrying transient inspection failure',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -391,8 +391,10 @@ void main() {
       expect(gateway.inspectionCount, 1);
       expect(
         find.byKey(const Key('canonical-group-strategy-entry-capsule')),
-        findsNothing,
+        findsOneWidget,
       );
+      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(conversationRunner.strategyRevision, 'rev-auth');
 
       controller.updateDraft('notify projection retry');
       await tester.pumpAndSettle();
