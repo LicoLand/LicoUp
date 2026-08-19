@@ -46,21 +46,20 @@ Mac App Store 兼容。
 7. 只有前序检查逐项通过后，才能推进摘要绑定的 Apple 会话；完成公开下载、安装与
    稳定启动验证后，才写入公开收据。
 
-远程工作流不得发布 macOS 直发产物。本机 Apple Release 服务只能执行单次不可变发布
+远程工作流不得发布 macOS 直发产物。本机 Apple Release 引擎只能执行单次不可变发布
 授权中逐项列明的上传与公开变更。
 
-## 本机服务
+## 本机授权
 
 先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI，
-再在发布工作站上安装并配置一次每用户服务：
+再在发布工作站上配置一次发布授权：
 
 ```sh
-npm run client:release:service:install
-npm run client:release:service:configure
+npm run client:release:authority:configure
 ```
 
 配置过程选择 Developer ID Provisioning Profile，并填写现有签名身份与 `notarytool`
-钥匙串 Profile 的名称。服务把 Profile 副本保存在权限受限的权威目录；签名密钥、
+钥匙串 Profile 的名称。CLI 把 Profile 副本保存在权限受限的权威目录；签名密钥、
 公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、账户、供应商、
 凭据、原始输出或本机路径。
 
@@ -73,8 +72,8 @@ npm run client:release:macos:publish
 该命令从冻结 `release` 修订的版本文档推导版本号与构建号，一次授权后跟随发布
 直到终态收据。`npm run client:release:macos` 仍是交互变体。
 
-唯一一次授权提示之前只运行只读预检。接受后，服务独占精确接受的 release 来源、发布
-门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
+唯一一次授权提示之前只运行只读预检。接受后，CLI 拉起 detached runner 独占精确接受的
+release 来源、发布门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
 安装与稳定启动；不会再次提问。最终收据绑定不可变 release 来源、四个公开制品
 摘要、Apple 结果与公开安装证明。
 

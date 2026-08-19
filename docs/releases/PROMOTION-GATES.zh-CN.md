@@ -31,21 +31,18 @@ npm run client:promotion -- advance --head stable --base release
 
 晋升就绪不等于公开发布。仓库流程终止于已验证的 `origin/release` 源码切分。
 macOS Developer ID 的发布后流程通过
-`tools/apple-release/macos-direct-arm64.json` 委托给本机 Apple Release 服务。
+`tools/apple-release/macos-direct-arm64.json` 委托给本机 Apple Release 引擎。
 
-委托发布服务从已授权的精确 `origin/release` revision 切出一个
-`release-candidate/v{version}` 分支，准备锁定的版本提交，通过其 Required
-Checks 后合并该候选分支，并从该候选发布声明的公开 tag、Release 与四项制品
-契约。它永不改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks；
-其允许执行的远端变更仅限已冻结的候选分支、其合并，以及声明的公开 tag、
-Release 与制品。
+委托发布运行从已授权的精确 `origin/release` revision 切出一个
+`release-candidate/v{version}` 分支，等待其 Required Checks 通过，并从该候选
+发布声明的公开 tag、Release 与四项制品契约。它永不改动 `nightly`、`stable`、
+`release`、Rulesets 或 Required Checks；其允许执行的远端变更仅限已冻结的候选
+分支，以及声明的公开 tag、Release 与制品。
 
-安装或检查本机服务：
+配置本机发布授权并检查发布运行：
 
 ```sh
-npm run client:release:service:install
-npm run client:release:service:configure
-npm run client:release:service:status
+npm run client:release:authority:configure
 npm run client:release:status -- --job <job-id>
 ```
 
@@ -59,10 +56,11 @@ npm run client:release:macos:publish
 `npm run client:release:macos -- --version <version> --build <build>` 仍是交互变体，
 授权前会询问一次；显式传入的值必须与该文档完全一致。
 
-唯一一次不可变授权之前只运行只读预检。凭据始终留在各自安全存储中，保留的收据不得
+唯一一次不可变授权之前只运行只读预检。授权后由 CLI 拉起 detached runner 执行发布，
+无需安装任何服务。凭据始终留在各自安全存储中，保留的收据不得
 包含凭据、账户身份、本机路径、原始输出或运行数据。tag、Release 草稿、公证结果或
 已上传制品本身都不代表成功；终态还必须完成精确公开制品对账、匿名下载安装包、摘要
 校验、安装与稳定启动。
 
-分支晋升绝不会启动该服务，也不会创建或公开 GitHub Release、tag、资产、公证提交或
+分支晋升绝不会启动发布运行，也不会创建或公开 GitHub Release、tag、资产、公证提交或
 更新通道记录。
