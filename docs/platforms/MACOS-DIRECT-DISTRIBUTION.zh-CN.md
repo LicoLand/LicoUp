@@ -39,7 +39,8 @@ Mac App Store 兼容。
 1. 元数据、隐私清单、entitlements、证书、Profile 与工具链预检通过；
 2. 所有嵌套可执行代码和外层应用均具备 Developer ID、Hardened Runtime 与安全时间戳；
 3. 应用完成公证、票据装订并通过 Gatekeeper；
-4. 仅在应用验收后生成更新 ZIP；
+4. 仅在应用验收后生成更新 ZIP；随后由配置的 update 命令生成并签名更新清单，
+   成为第五个发行资产；
 5. 最终 DMG 完成签名、公证、装订、校验与 Gatekeeper 验收；
 6. 隐私政策、Privacy Manifest、AGPL、项目 Notice 和第三方许可证均存在于应用资源中，
    且用户可在 DMG 根目录直接阅读相应材料；
@@ -63,6 +64,18 @@ npm run client:release:authority:configure
 公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、账户、供应商、
 凭据、原始输出或本机路径。
 
+更新清单签名增加一条授权前置条件：配置前先把两把 Ed25519 PEM 私钥导出到环境
+变量，CLI 会把它们登记进 Keychain，随后可取消导出：
+
+```sh
+export LICO_UPDATE_OFFLINE_ROOT_KEY=<offline-root-ed25519-pem>
+export LICO_UPDATE_ONLINE_CHANNEL_KEY=<online-channel-ed25519-pem>
+npm run client:release:authority:configure
+unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_CHANNEL_KEY
+```
+
+缺少任意一把密钥的发布运行会在预检阶段被拦截。
+
 Agent 使用一条命令发起一次精确发布：
 
 ```sh
@@ -74,8 +87,9 @@ npm run client:release:macos:publish
 
 唯一一次授权提示之前只运行只读预检。接受后，CLI 拉起 detached runner 独占精确接受的
 release 来源、发布门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
-安装与稳定启动；不会再次提问。最终收据绑定不可变 release 来源、四个公开制品
-摘要、Apple 结果与公开安装证明。
+安装与稳定启动；不会再次提问。最终收据绑定不可变 release 来源、五个公开制品
+摘要、Apple 结果与公开安装证明。签名更新清单随其余资产一并上传，并通过同样的
+匿名公开下载核验。
 
 ## Apple 一手资料
 
