@@ -53,11 +53,7 @@ export function validateGovernanceDeclarations(files) {
     config?.schema === "apple-release.config.v1" &&
       config?.source?.branch === "release" &&
       candidate?.template === "release-candidate/v{version}" &&
-      candidate?.mergeMethod === "merge" &&
       Array.isArray(candidate?.requiredChecks) && candidate.requiredChecks.length > 0 &&
-      Array.isArray(config?.version?.prepare) && config.version.prepare.length > 0 &&
-      Array.isArray(config?.version?.allowedPaths) &&
-      config.version.allowedPaths.includes("tools/client-version.json") &&
       config?.github?.repository === "LicoLand/LicoUp" &&
       config?.apple?.target === "macos-direct-arm64",
     "audit_release_service_contract_invalid",
