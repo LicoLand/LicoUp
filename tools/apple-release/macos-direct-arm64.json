@@ -71,6 +71,22 @@
     "tagTemplate": "v{version}",
     "releaseNameTemplate": "LicoUp {version}"
   },
+  "update": {
+    "command": [
+      "node",
+      "tools/scripts/client-update-manifest.mjs",
+      "--assets",
+      "build/apple-release",
+      "--tag",
+      "{tag}",
+      "--repo",
+      "{repository}",
+      "--targets",
+      "macos-direct-arm64",
+      "--minimum-supported-version",
+      "0.0.0"
+    ]
+  },
   "artifacts": [
     {
       "role": "installer",
@@ -91,6 +107,11 @@
       "role": "update-digest",
       "path": "build/apple-release/LicoUp-macos-arm64-update.zip.sha256",
       "publicName": "LicoUp-macos-arm64-update.zip.sha256"
+    },
+    {
+      "role": "update-manifest",
+      "path": "build/apple-release/LicoUp-update-manifest.json",
+      "publicName": "LicoUp-update-manifest.json"
     }
   ]
 }

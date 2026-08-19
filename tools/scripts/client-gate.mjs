@@ -402,13 +402,19 @@ function validateDelegatedApplePublicationTopology() {
   }
   const config = readJson("tools/apple-release/macos-direct-arm64.json");
   const candidate = config.candidate;
+  const artifacts = Array.isArray(config.artifacts) ? config.artifacts : [];
+  const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest"];
   if (config.schema !== "apple-release.config.v1" ||
       config.source?.branch !== "release" ||
       !candidate || candidate.template !== "release-candidate/v{version}" ||
       !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
       config.apple?.target !== "macos-direct-arm64" ||
       config.github?.repository !== "LicoLand/LicoUp" ||
-      config.artifacts?.filter((entry) => entry.role === "installer").length !== 1) {
+      !Array.isArray(config.update?.command) || config.update.command.length === 0 ||
+      artifacts.length !== 5 ||
+      roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
+      artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
+        "LicoUp-update-manifest.json") {
     fail("LicoUp delegated Apple publication configuration is invalid");
   }
 }
