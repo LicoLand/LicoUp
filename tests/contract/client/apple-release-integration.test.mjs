@@ -18,11 +18,26 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(config.apple.target, "macos-direct-arm64");
   assert.equal(config.github.repository, "LicoLand/LicoUp");
   assert.deepEqual(config.gates[0], ["npm", "ci"]);
+  assert.deepEqual(config.update?.command, [
+    "node",
+    "tools/scripts/client-update-manifest.mjs",
+    "--assets",
+    "build/apple-release",
+    "--tag",
+    "{tag}",
+    "--repo",
+    "{repository}",
+    "--targets",
+    "macos-direct-arm64",
+    "--minimum-supported-version",
+    "0.0.0",
+  ]);
   assert.deepEqual(config.artifacts.map(({ role, publicName }) => ({ role, publicName })), [
     { role: "installer", publicName: "LicoUp-macos-arm64.dmg" },
     { role: "installer-digest", publicName: "LicoUp-macos-arm64.dmg.sha256" },
     { role: "update-archive", publicName: "LicoUp-macos-arm64-update.zip" },
     { role: "update-digest", publicName: "LicoUp-macos-arm64-update.zip.sha256" },
+    { role: "update-manifest", publicName: "LicoUp-update-manifest.json" },
   ]);
   assert.equal(JSON.stringify(config).includes("Apple-Release"), false);
   assert.equal(JSON.stringify(config).includes("../"), false);
