@@ -396,6 +396,7 @@ function validateDelegatedApplePublicationTopology() {
     "client:release:service:configure": "apple-release service configure --config tools/apple-release/macos-direct-arm64.json",
     "client:release:service:status": "apple-release service status",
     "client:release:macos": "apple-release release start --config tools/apple-release/macos-direct-arm64.json",
+    "client:release:macos:publish": "apple-release release start --config tools/apple-release/macos-direct-arm64.json --authorize",
     "client:release:status": "apple-release release status",
   };
   for (const [name, command] of Object.entries(expected)) {
