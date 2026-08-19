@@ -52,8 +52,12 @@ npm run client:release:status -- --job <job-id>
 只有得到明确授权后才使用以下命令发起公开发布：
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:macos:publish
 ```
+
+版本号与构建号取自冻结 `release` 修订上的版本文档。
+`npm run client:release:macos -- --version <version> --build <build>` 仍是交互变体，
+授权前会询问一次；显式传入的值必须与该文档完全一致。
 
 唯一一次不可变授权之前只运行只读预检。凭据始终留在各自安全存储中，保留的收据不得
 包含凭据、账户身份、本机路径、原始输出或运行数据。tag、Release 草稿、公证结果或

@@ -64,11 +64,14 @@ npm run client:release:service:configure
 公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、账户、供应商、
 凭据、原始输出或本机路径。
 
-Agent 使用以下命令发起一次精确发布：
+Agent 使用一条命令发起一次精确发布：
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:macos:publish
 ```
+
+该命令从冻结 `release` 修订的版本文档推导版本号与构建号，一次授权后跟随发布
+直到终态收据。`npm run client:release:macos` 仍是交互变体。
 
 唯一一次授权提示之前只运行只读预检。接受后，服务独占精确接受的 release 来源、发布
 门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
