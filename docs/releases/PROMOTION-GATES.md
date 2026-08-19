@@ -38,8 +38,11 @@ delegated to the local Apple Release engine through
 
 The delegated release run cuts one `release-candidate/v{version}` branch from
 the authorized `origin/release` revision, waits for its required checks, and
-publishes the declared tag, Release, and four-asset contract from that
-candidate. It never mutates `nightly`, `stable`, `release`, Rulesets, or
+publishes the declared tag, Release, and five-asset contract from that
+candidate. The fifth asset is the signed update manifest: the configured update
+command generates it during the build, the engine uploads it with the other
+assets, and it is verified by the same unauthenticated public download. The
+engine never mutates `nightly`, `stable`, `release`, Rulesets, or
 required checks, and the only remote mutations it may perform are the frozen
 candidate and the declared public tag, Release, and assets.
 
@@ -49,6 +52,11 @@ Configure the local release authority and inspect release runs with:
 npm run client:release:authority:configure
 npm run client:release:status -- --job <job-id>
 ```
+
+One authorization precondition applies: export the two update signing keys
+(`LICO_UPDATE_OFFLINE_ROOT_KEY` and `LICO_UPDATE_ONLINE_CHANNEL_KEY`, Ed25519
+PEM) before configuration so they are registered into the Keychain; they may be
+unset afterwards. A run with either key missing is blocked at preflight.
 
 An explicitly authorized publication starts with one command:
 
