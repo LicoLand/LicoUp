@@ -57,24 +57,23 @@ following in a single local release run:
    stable-launch verification.
 
 No remote workflow may publish a macOS direct artifact. The local Apple Release
-service may upload and publish only the exact mutations in its one immutable
+engine may upload and publish only the exact mutations in its one immutable
 per-release authorization.
 
-## Local service
+## Local authority
 
 Install the private `apple-release` CLI from its standalone checkout first
-(`npm install --global .` there), then install and configure the per-user
-service once on a release workstation:
+(`npm install --global .` there), then configure the release authority once on
+a release workstation:
 
 ```sh
-npm run client:release:service:install
-npm run client:release:service:configure
+npm run client:release:authority:configure
 ```
 
 Configuration selects the Developer ID provisioning profile and the names of
-the existing signing identity and `notarytool` Keychain profile. The service
-keeps the profile copy in its permission-bounded authority directory; signing
-keys, notarization credentials, and GitHub authentication stay in their owning
+the existing signing identity and `notarytool` Keychain profile. The CLI keeps
+the profile copy in its permission-bounded authority directory; signing keys,
+notarization credentials, and GitHub authentication stay in their owning
 secure stores. Public output retains no certificate, account, provider,
 credential, raw-output, or local-path value.
 
@@ -90,7 +89,7 @@ terminal receipt. `npm run client:release:macos` remains the interactive
 variant.
 
 Read-only preflight runs before the only authorization prompt. After acceptance,
-the service owns the exact accepted release source, publication gates,
+the CLI launches a detached runner that owns the exact accepted release source, publication gates,
 Developer ID package, app and DMG notarization/stapling/Gatekeeper checks, exact asset reconciliation,
 publication, anonymous public download, install, and stable launch. It asks no
 second question. The final receipt binds the immutable release source,
