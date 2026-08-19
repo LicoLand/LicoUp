@@ -33,23 +33,20 @@ promote a later `nightly` tip into the same in-flight publication.
 
 Promotion readiness is not publication. The repository stops at a verified
 `origin/release` source cut. Post-release macOS Developer ID publication is
-delegated to the local Apple Release service through
+delegated to the local Apple Release engine through
 `tools/apple-release/macos-direct-arm64.json`.
 
-The delegated release service cuts one `release-candidate/v{version}` branch
-from the authorized `origin/release` revision, prepares the pinned version
-commit, merges the candidate through its required checks, and publishes the
-declared tag, Release, and four-asset contract from that candidate. It never
-mutates `nightly`, `stable`, `release`, Rulesets, or required checks, and the
-only remote mutations it may perform are the frozen candidate, its merge, and
-the declared public tag, Release, and assets.
+The delegated release run cuts one `release-candidate/v{version}` branch from
+the authorized `origin/release` revision, waits for its required checks, and
+publishes the declared tag, Release, and four-asset contract from that
+candidate. It never mutates `nightly`, `stable`, `release`, Rulesets, or
+required checks, and the only remote mutations it may perform are the frozen
+candidate and the declared public tag, Release, and assets.
 
-Install or inspect the local service with:
+Configure the local release authority and inspect release runs with:
 
 ```sh
-npm run client:release:service:install
-npm run client:release:service:configure
-npm run client:release:service:status
+npm run client:release:authority:configure
 npm run client:release:status -- --job <job-id>
 ```
 
@@ -64,12 +61,14 @@ revision. `npm run client:release:macos -- --version <version> --build <build>`
 remains the interactive variant and asks once before authorizing; explicit
 values must match that document exactly.
 
-Read-only preflight precedes one immutable authorization. Credentials remain in
-their owning secure stores, and retained receipts exclude credentials, account
+Read-only preflight precedes one immutable authorization. Once authorized, the
+CLI launches a detached runner that executes the release; no service
+installation is involved. Credentials remain in their owning secure stores,
+and retained receipts exclude credentials, account
 identity, machine paths, raw output, and runtime data. A tag, draft Release,
 notarization result, or uploaded asset alone is not success. Terminal success
 requires exact public-asset reconciliation, anonymous installer download,
 digest verification, installation, and stable launch.
 
-Branch promotion never starts this service and never creates or publishes a
+Branch promotion never starts a release run and never creates or publishes a
 GitHub Release, tag, asset, notarization submission, or update-channel record.

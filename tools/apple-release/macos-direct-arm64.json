@@ -7,7 +7,6 @@
   },
   "candidate": {
     "template": "release-candidate/v{version}",
-    "mergeMethod": "merge",
     "requiredChecks": [
       "Branch flow",
       "Commit identity",
@@ -18,27 +17,7 @@
   "version": {
     "file": "tools/client-version.json",
     "versionField": "productVersion",
-    "buildField": "buildNumber",
-    "allowedPaths": [
-      "tools/client-version.json",
-      "package.json",
-      "package-lock.json",
-      "Cargo.toml",
-      "Cargo.lock",
-      "crates/licoup-native/Cargo.toml",
-      "apps/desktop/pubspec.yaml",
-      "apps/desktop/ios/Runner.xcodeproj/project.pbxproj",
-      "apps/desktop/macos/Runner.xcodeproj/project.pbxproj"
-    ],
-    "prepare": [
-      "node",
-      "tools/scripts/client-version.mjs",
-      "set",
-      "--version",
-      "{version}",
-      "--build-number",
-      "{build}"
-    ]
+    "buildField": "buildNumber"
   },
   "gates": [
     [
