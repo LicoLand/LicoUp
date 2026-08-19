@@ -35,9 +35,10 @@ macOS Developer ID 的发布后流程通过
 
 委托发布运行从已授权的精确 `origin/release` revision 切出一个
 `release-candidate/v{version}` 分支，等待其 Required Checks 通过，并从该候选
-发布声明的公开 tag、Release 与四项制品契约。它永不改动 `nightly`、`stable`、
-`release`、Rulesets 或 Required Checks；其允许执行的远端变更仅限已冻结的候选
-分支，以及声明的公开 tag、Release 与制品。
+发布声明的公开 tag、Release 与五项制品契约。第五项资产是签名更新清单：由配置的
+update 命令在构建期生成，随其余资产一并上传，并通过同样的公网未鉴权下载核验。
+引擎永不改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks；其允许
+执行的远端变更仅限已冻结的候选分支，以及声明的公开 tag、Release 与制品。
 
 配置本机发布授权并检查发布运行：
 
@@ -45,6 +46,11 @@ macOS Developer ID 的发布后流程通过
 npm run client:release:authority:configure
 npm run client:release:status -- --job <job-id>
 ```
+
+另有一条授权前置条件：配置前先把两把更新签名钥
+（`LICO_UPDATE_OFFLINE_ROOT_KEY` 与 `LICO_UPDATE_ONLINE_CHANNEL_KEY`，Ed25519
+PEM）导出到环境变量，以便登记进 Keychain；之后可取消导出。缺少任意一把密钥的
+运行会在预检阶段被拦截。
 
 只有得到明确授权后才使用以下命令发起公开发布：
 
