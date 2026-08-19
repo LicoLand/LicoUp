@@ -53,11 +53,16 @@ npm run client:release:service:status
 npm run client:release:status -- --job <job-id>
 ```
 
-An explicitly authorized publication starts with:
+An explicitly authorized publication starts with one command:
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:macos:publish
 ```
+
+The version and build come from the version document at the frozen `release`
+revision. `npm run client:release:macos -- --version <version> --build <build>`
+remains the interactive variant and asks once before authorizing; explicit
+values must match that document exactly.
 
 Read-only preflight precedes one immutable authorization. Credentials remain in
 their owning secure stores, and retained receipts exclude credentials, account

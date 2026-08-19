@@ -78,11 +78,16 @@ keys, notarization credentials, and GitHub authentication stay in their owning
 secure stores. Public output retains no certificate, account, provider,
 credential, raw-output, or local-path value.
 
-An Agent starts one exact release with:
+An Agent starts one exact release with a single command:
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:macos:publish
 ```
+
+The command derives the version and build from the version document at the
+frozen `release` revision, authorizes once, and follows the release to its
+terminal receipt. `npm run client:release:macos` remains the interactive
+variant.
 
 Read-only preflight runs before the only authorization prompt. After acceptance,
 the service owns the exact accepted release source, publication gates,
