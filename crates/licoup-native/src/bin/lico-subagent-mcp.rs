@@ -1,21 +1,23 @@
+use interprocess::local_socket::{Stream, traits::Stream as _};
 use licoup_native::{
     domain::{
-        agent_intelligence_catalog::{AgentIntelligenceCatalog, coding_harness_id},
         client_conversation::{
-            ConversationService, DispatchSessionMode, DispatchState, EventKind, EventPartKind,
-            MembershipStatus, NewEventPart, PrincipalKind,
+            ConversationService, DispatchSessionMode, MembershipStatus,
+            PERSISTENT_TRANSPORT_REQUIRED, PrincipalKind,
         },
         conversations,
-        delivery_scheduler::{self, DeliveryError, DeliveryExecutor, SchedulerConfig},
+        delivery_scheduler::{
+            self, DeliveryError, DeliveryExecutor, DeliveryResult, SchedulerConfig,
+        },
         delivery_state::{self, DeliveryControlRecord, DeliveryFailureRecord, DeliveryRunnerState},
-        provider_model_pricing, targets,
+        targets,
     },
-    platform::{client_state, conversation_runtime, dispatch_lane_operation, paths},
+    platform::{client_state, conversation_host_transport, conversation_runtime, paths},
 };
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
-    io::{self, BufRead, Write},
+    io::{self, BufRead, Read, Write},
     path::{Path, PathBuf},
     process::ExitCode,
     sync::{
@@ -29,7 +31,7 @@ use std::{
 
 const MCP_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "lico-up-subagents";
-const SERVER_VERSION: &str = "0.10.0";
+const SERVER_VERSION: &str = "0.11.0";
 const MAX_MCP_FRAME_BYTES: usize = 64 * 1024;
 const MAX_PENDING_TOOL_CALLS: usize = 32;
 const MAX_TOOL_WORKERS: usize = 8;
@@ -43,19 +45,24 @@ const MIN_SUBAGENT_STDOUT_BYTES: u64 = 64 * 1024;
 const MAX_SUBAGENT_STDOUT_BYTES: u64 = 64 * 1024 * 1024;
 const MIN_SUBAGENT_STDERR_BYTES: u64 = 16 * 1024;
 const MAX_SUBAGENT_STDERR_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_QUOTA_COOLDOWNS: usize = 64;
-const QUOTA_COOLDOWN: Duration = Duration::from_secs(15 * 60);
-const CONVERSATION_PATH_POLL_ATTEMPTS: usize = 100;
-const DIAGNOSTIC_PROBE_PROMPT_PREFIX: &str = "LicoUp diagnostic probe";
-const DIAGNOSTIC_PROBE_RESPONSE: &str = "READY";
-const DIAGNOSTIC_PROBE_SESSION_LIMIT: u64 = 500;
 
-static QUOTA_COOLDOWNS: LazyLock<Mutex<HashMap<String, Instant>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
 static RUNNING_DELIVERIES: LazyLock<Mutex<HashSet<String>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
 struct RunningDeliveryGuard(String);
+
+impl RunningDeliveryGuard {
+    fn claim(key: String) -> Option<Self> {
+        let mut running = RUNNING_DELIVERIES
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if running.insert(key.clone()) {
+            Some(Self(key))
+        } else {
+            None
+        }
+    }
+}
 
 impl Drop for RunningDeliveryGuard {
     fn drop(&mut self) {
@@ -80,26 +87,7 @@ struct ConversationDispatchContext {
     candidate: DispatchCandidate,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct DispatchOutcome {
-    agent_id: String,
-    conversation_path: String,
-    output: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct ProbeSelection {
-    runtime_model: String,
-    reasoning_effort: Option<String>,
-    routing_cost: Option<f64>,
-    cost_unit: Option<String>,
-    included: bool,
-    pricing_provider: Option<String>,
-    selection_mode: &'static str,
-}
-
 fn main() -> ExitCode {
-    let _ = provider_model_pricing::refresh_official_sources();
     if targets::scan_targets().is_err() {
         return ExitCode::FAILURE;
     }
@@ -502,17 +490,14 @@ fn shared_conversation_service(
     }
 }
 
+/// Read-only readiness observation for one admitted local Agent integration.
+/// The receipt is derived only from target facts, host reachability, and the
+/// host turn snapshot: no Agent input is sent, no third-party Agent binary is
+/// started, and no Conversation is created or mutated on this path.
 fn probe_subagent(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
     ensure_manager_bound(manager_agent_id)?;
-    let agent_id = required_text(arguments, "agentId", MAX_ID_BYTES)?;
-    let working_directory = optional_working_directory(arguments)?
-        .ok_or(ToolFailure::new("invalid_working_directory", false))?;
-    let exact_model = optional_text(arguments, "exactModel", MAX_ID_BYTES)?;
-    let exact_effort = optional_text(arguments, "exactReasoningEffort", 32)?;
-    if exact_effort.is_some() && exact_model.is_none() {
-        return Err(ToolFailure::new("invalid_request", false));
-    }
-    let inspected = targets::inspect_target(&agent_id)
+    let requested_agent_id = required_text(arguments, "agentId", MAX_ID_BYTES)?;
+    let inspected = targets::inspect_target_read_only(&requested_agent_id)
         .map_err(|_| ToolFailure::new("subagent_unavailable", false))?;
     let target = inspected
         .get("target")
@@ -520,515 +505,101 @@ fn probe_subagent(manager_agent_id: &str, arguments: &Value) -> Result<Value, To
     if !subordinate_is_available(target) {
         return Err(ToolFailure::new("subagent_unavailable", false));
     }
-    let selection = select_probe_model(
-        target,
-        &agent_id,
-        exact_model.as_deref(),
-        exact_effort.as_deref(),
+    let agent_id = exact_readiness_agent_id(&requested_agent_id, target)?;
+    let snapshot = execute_read_only_persistent_conversation_method(
+        "agent.conversation.active",
+        &readiness_observation_request(agent_id),
     )?;
-    let timeout_ms = optional_timeout_ms(arguments)?.unwrap_or(120_000);
-    let before = if probe_has_native_cleanup(&agent_id) {
-        HashSet::new()
-    } else {
-        probe_conversation_paths(&agent_id)?
-    };
-    let canary = format!("{DIAGNOSTIC_PROBE_PROMPT_PREFIX} {}", uuid::Uuid::new_v4());
-    let prompt = format!("{canary}. Reply with exactly {DIAGNOSTIC_PROBE_RESPONSE}.");
-    let mut params = json!({
-        "agentId": agent_id,
-        "text": prompt,
-        "model": selection.runtime_model,
-        "workingDirectory": working_directory,
-        "streamEvents": false,
-        "timeoutMs": timeout_ms,
-    });
-    if let Some(reasoning_effort) = &selection.reasoning_effort {
-        params["reasoningEffort"] = json!(reasoning_effort);
-    }
-    let execution = dispatch_lane_operation("send", &params);
-    let session_id = execution
-        .as_ref()
-        .ok()
-        .and_then(|value| {
-            value
-                .get("nativeSessionId")
-                .or_else(|| value.get("sessionId"))
-        })
+    let active_turns = snapshot
+        .get("turns")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .ok_or(ToolFailure::new("subagent_transport_failed", true))?;
+    Ok(readiness_receipt(agent_id, target, active_turns))
+}
+
+fn exact_readiness_agent_id<'a>(
+    requested_agent_id: &str,
+    target: &'a Value,
+) -> Result<&'a str, ToolFailure> {
+    let agent_id = target
+        .get("target")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .map(str::to_owned);
-    let successful_execution = execution
-        .as_ref()
-        .ok()
-        .and_then(|value| value.get("ok"))
-        .and_then(Value::as_bool)
-        == Some(true);
-    let native_cleanup_state = session_id
-        .as_deref()
-        .map(|session_id| cleanup_probe_native_session(&agent_id, session_id))
-        .transpose()?
-        .flatten();
-    let cleanup_state = if let Some(native_cleanup_state) = native_cleanup_state {
-        native_cleanup_state
-    } else {
-        cleanup_probe_conversations(
-            &agent_id,
-            &before,
-            &canary,
-            session_id.as_deref(),
-            (session_id.is_some() || successful_execution)
-                && !probe_history_may_be_ephemeral(&agent_id),
-            false,
-        )?
-    };
-    let execution =
-        execution.map_err(|_| ToolFailure::new("diagnostic_probe_transport_failed", true))?;
-    if execution.get("ok").and_then(Value::as_bool) != Some(true) {
-        return Err(ToolFailure::new("diagnostic_probe_execution_failed", false));
+        .ok_or(ToolFailure::new("subagent_unavailable", false))?;
+    if agent_id != requested_agent_id {
+        return Err(ToolFailure::new("invalid_request", false));
     }
-    if !probe_response_is_ready(&execution) {
-        return Err(ToolFailure::new("diagnostic_probe_response_invalid", false));
-    }
-    Ok(json!({
-        "schemaVersion": "licoup.subagent.probe-receipt.v1",
-        "operation": "subagent.probe",
-        "agentId": agent_id,
-        "state": "ready",
-        "model": selection.runtime_model,
-        "reasoningEffort": selection.reasoning_effort,
-        "selectionMode": selection.selection_mode,
-        "estimatedProbeCost": selection.routing_cost,
-        "costUnit": selection.cost_unit,
-        "includedByHarness": selection.included,
-        "pricingProvider": selection.pricing_provider,
-        "cleanupState": cleanup_state
-    }))
+    Ok(agent_id)
 }
 
-fn probe_response_is_ready(execution: &Value) -> bool {
-    execution
-        .get("output")
-        .and_then(Value::as_str)
-        .is_some_and(|output| !output.trim().is_empty())
-}
-
-fn select_probe_model(
-    target: &Value,
-    agent_id: &str,
-    exact_model: Option<&str>,
-    exact_effort: Option<&str>,
-) -> Result<ProbeSelection, ToolFailure> {
-    let models = target
-        .pointer("/modelCatalog/models")
-        .and_then(Value::as_array)
-        .ok_or(ToolFailure::new(
-            "diagnostic_probe_model_catalog_unavailable",
-            false,
-        ))?;
-    if let Some(exact_model) = exact_model {
-        let model = models
-            .iter()
-            .find(|model| model.get("name").and_then(Value::as_str) == Some(exact_model))
-            .ok_or(ToolFailure::new(
-                "diagnostic_probe_exact_model_unavailable",
-                false,
-            ))?;
-        if let Some(exact_effort) = exact_effort
-            && !model
-                .get("reasoningEfforts")
-                .and_then(Value::as_array)
-                .is_some_and(|efforts| {
-                    efforts
-                        .iter()
-                        .any(|effort| effort.as_str() == Some(exact_effort))
-                })
-        {
-            return Err(ToolFailure::new(
-                "diagnostic_probe_exact_effort_unavailable",
-                false,
-            ));
-        }
-        let quote = probe_model_quote(agent_id, exact_model, exact_effort);
-        return Ok(ProbeSelection {
-            runtime_model: exact_model.to_owned(),
-            reasoning_effort: exact_effort.map(str::to_owned),
-            routing_cost: quote.as_ref().map(|quote| quote.amount),
-            cost_unit: quote.as_ref().map(|quote| quote.unit.clone()),
-            included: quote.as_ref().is_some_and(|quote| quote.included),
-            pricing_provider: quote.map(|quote| quote.provider),
-            selection_mode: "exact-model",
-        });
-    }
-    let mut candidates = Vec::new();
-    for model in models {
-        let Some(runtime_model) = model.get("name").and_then(Value::as_str) else {
-            continue;
-        };
-        let mut efforts = vec![None];
-        efforts.extend(
-            model
-                .get("reasoningEfforts")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(Some),
-        );
-        for effort in efforts {
-            let Some(quote) = probe_model_quote(agent_id, runtime_model, effort) else {
-                continue;
-            };
-            candidates.push(ProbeSelection {
-                runtime_model: runtime_model.to_owned(),
-                reasoning_effort: effort.map(str::to_owned),
-                routing_cost: Some(quote.amount),
-                cost_unit: Some(quote.unit),
-                included: quote.included,
-                pricing_provider: Some(quote.provider),
-                selection_mode: "lowest-measured-cost",
-            });
-        }
-    }
-    candidates.sort_by(|left, right| {
-        left.routing_cost
-            .unwrap_or(f64::INFINITY)
-            .total_cmp(&right.routing_cost.unwrap_or(f64::INFINITY))
-            .then_with(|| left.runtime_model.cmp(&right.runtime_model))
-    });
-    candidates.into_iter().next().ok_or(ToolFailure::new(
-        "diagnostic_probe_price_unavailable",
-        false,
-    ))
-}
-
-struct ModelCostQuote {
-    amount: f64,
-    unit: String,
-    included: bool,
-    provider: String,
-}
-
-fn probe_model_quote(
-    agent_id: &str,
-    runtime_model: &str,
-    effort: Option<&str>,
-) -> Option<ModelCostQuote> {
-    let price_keys = probe_price_keys(agent_id, runtime_model, effort);
-    if let Some(quote) = provider_model_pricing::quote_probe(agent_id, &price_keys) {
-        return Some(ModelCostQuote {
-            amount: quote.amount,
-            unit: quote.unit,
-            included: quote.included,
-            provider: quote.provider,
-        });
-    }
-    let catalog = AgentIntelligenceCatalog::embedded().ok()?;
-    let harness = coding_harness_id(agent_id);
-    if let Some(cost) = price_keys.iter().find_map(|key| {
-        catalog
-            .coding_variants()
-            .iter()
-            .find(|variant| {
-                variant.harness == harness
-                    && variant.model == *key
-                    && (effort.is_none()
-                        || variant.reasoning_effort == effort.unwrap_or_default()
-                        || variant.reasoning_effort == "none")
-            })
-            .map(|variant| variant.cost_per_task_usd)
-    }) {
-        return Some(ModelCostQuote {
-            amount: cost,
-            unit: "usd_per_benchmark_task".into(),
-            included: false,
-            provider: "artificial-analysis".into(),
-        });
-    }
-    price_keys.into_iter().find_map(|key| {
-        catalog
-            .intelligence_models()
-            .iter()
-            .find(|model| model.model_id == key)
-            .and_then(|model| model.cost_per_task_usd)
-            .map(|amount| ModelCostQuote {
-                amount,
-                unit: "usd_per_benchmark_task".into(),
-                included: false,
-                provider: "artificial-analysis".into(),
-            })
+/// Build the single bounded read-only host observation for one Agent: the
+/// active-turn snapshot filtered by that Agent with zero change-wait. The
+/// request carries only the Agent filter and the change-wait bound; it never
+/// dispatches a turn.
+fn readiness_observation_request(agent_id: &str) -> Value {
+    json!({
+        "agent": agent_id,
+        "waitForChangeMs": 0,
     })
 }
 
-fn probe_price_keys(agent_id: &str, runtime_model: &str, effort: Option<&str>) -> Vec<String> {
-    let mut normalized = runtime_model.trim().to_ascii_lowercase();
-    if agent_id == "kilo-code"
-        && (normalized == "kilo-auto/free"
-            || normalized.ends_with("/kilo-auto/free")
-            || normalized.ends_with(":free"))
-    {
-        return vec!["free".into()];
-    }
-    if let Some((_, suffix)) = normalized.rsplit_once('/') {
-        normalized = suffix.to_owned();
-    }
-    normalized = normalized
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    while normalized.contains("--") {
-        normalized = normalized.replace("--", "-");
-    }
-    normalized = normalized.trim_matches('-').to_owned();
-    if agent_id == "kimi-code" {
-        return vec![match normalized.as_str() {
-            "kimi-for-coding" | "kimi-for-coding-highspeed" => "kimi-k2-7-code".into(),
-            "k3" | "k3-256k" if effort == Some("low") => "kimi-k3-low".into(),
-            "k3" | "k3-256k" => "kimi-k3".into(),
-            value if value.starts_with("kimi-") => value.into(),
-            value => format!("kimi-{value}"),
-        }];
-    }
-    let display_base = ["-xhigh", "-max", "-high", "-medium", "-low"]
-        .into_iter()
-        .find_map(|suffix| normalized.strip_suffix(suffix))
-        .unwrap_or(&normalized)
-        .to_owned();
-    let suffix = effort.map(|value| match value {
-        "max" => "xhigh",
-        value => value,
-    });
-    let mut keys = Vec::new();
-    if let Some(suffix) = suffix {
-        keys.push(format!("{display_base}-{suffix}"));
-    }
-    keys.push(normalized);
-    keys.push(display_base);
-    let mut unique = HashSet::new();
-    keys.retain(|key| unique.insert(key.clone()));
-    keys
+/// An occupied Agent is a successful observation, never a failure: one or
+/// more non-terminal host turns classify as busy, an empty snapshot as ready.
+fn readiness_state(active_turns: usize) -> &'static str {
+    if active_turns == 0 { "ready" } else { "busy" }
 }
 
-fn probe_conversation_paths(agent_id: &str) -> Result<HashSet<String>, ToolFailure> {
-    let response = conversations::conversation_list(&json!({
-        "agent": agent_id,
-        "limit": DIAGNOSTIC_PROBE_SESSION_LIMIT
-    }))
-    .map_err(|_| ToolFailure::new("diagnostic_probe_history_unavailable", true))?;
-    Ok(response
-        .get("sessions")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|session| session.get("sourcePath").and_then(Value::as_str))
-        .map(str::to_owned)
-        .collect())
-}
-
-fn cleanup_probe_conversations(
-    agent_id: &str,
-    before: &HashSet<String>,
-    canary: &str,
-    session_id: Option<&str>,
-    require_persisted_history: bool,
-    native_cleanup_verified: bool,
-) -> Result<&'static str, ToolFailure> {
-    let mut targets = Vec::new();
-    let mut canary_seen = false;
-    let poll_attempts = if native_cleanup_verified {
-        1
-    } else {
-        CONVERSATION_PATH_POLL_ATTEMPTS
-    };
-    for attempt in 0..poll_attempts {
-        let mut query = json!({
-            "agent": agent_id,
-            "limit": DIAGNOSTIC_PROBE_SESSION_LIMIT
-        });
-        if let Some(session_id) = session_id {
-            query["sessionId"] = json!(session_id);
-        }
-        let response = conversations::conversation_list(&query)
-            .map_err(|_| ToolFailure::new("diagnostic_probe_cleanup_failed", false))?;
-        canary_seen |= response.to_string().contains(canary);
-        for session in response
-            .get("sessions")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let Some(source_path) = session.get("sourcePath").and_then(Value::as_str) else {
-                continue;
-            };
-            let matches_id = session_id.is_some_and(|expected| {
-                session
-                    .get("nativeSessionId")
-                    .or_else(|| session.get("sessionId"))
-                    .and_then(Value::as_str)
-                    == Some(expected)
-            });
-            if !before.contains(source_path) && (matches_id || session.to_string().contains(canary))
-            {
-                targets.push(probe_cleanup_target(agent_id, source_path)?);
-            }
-        }
-        if !targets.is_empty() {
-            break;
-        }
-        if attempt + 1 < poll_attempts {
-            thread::sleep(Duration::from_millis(50));
-        }
-    }
-    targets.sort();
-    targets.dedup();
-    if targets.is_empty() {
-        if native_cleanup_verified {
-            return if canary_seen {
-                Err(ToolFailure::new(
-                    "diagnostic_probe_cleanup_unverified",
-                    false,
-                ))
-            } else {
-                Ok("not-persisted-and-verified")
-            };
-        }
-        return if require_persisted_history {
-            Err(ToolFailure::new(
-                "diagnostic_probe_cleanup_unverified",
-                false,
-            ))
-        } else {
-            let remaining = conversations::conversation_list(&json!({
-                "agent": agent_id,
-                "limit": DIAGNOSTIC_PROBE_SESSION_LIMIT
-            }))
-            .map_err(|_| ToolFailure::new("diagnostic_probe_cleanup_unverified", false))?;
-            if remaining.to_string().contains(canary) {
-                Err(ToolFailure::new(
-                    "diagnostic_probe_cleanup_unverified",
-                    false,
-                ))
-            } else {
-                Ok("not-persisted-and-verified")
-            }
-        };
-    }
-    for target in &targets {
-        trash::delete(target)
-            .map_err(|_| ToolFailure::new("diagnostic_probe_cleanup_failed", false))?;
-    }
-    if targets.iter().any(|target| target.exists()) {
-        return Err(ToolFailure::new(
-            "diagnostic_probe_cleanup_unverified",
-            false,
-        ));
-    }
-    let remaining = conversations::conversation_list(&json!({
-        "agent": agent_id,
-        "limit": DIAGNOSTIC_PROBE_SESSION_LIMIT
-    }))
-    .map_err(|_| ToolFailure::new("diagnostic_probe_cleanup_unverified", false))?;
-    if remaining.to_string().contains(canary) {
-        return Err(ToolFailure::new(
-            "diagnostic_probe_cleanup_unverified",
-            false,
-        ));
-    }
-    Ok("moved-to-trash-and-verified")
-}
-
-fn probe_has_native_cleanup(agent_id: &str) -> bool {
-    matches!(agent_id, "cursor" | "antigravity")
-}
-
-fn probe_history_may_be_ephemeral(agent_id: &str) -> bool {
-    matches!(agent_id, "claude-code" | "cursor" | "antigravity")
-}
-
-fn cleanup_probe_native_session(
-    agent_id: &str,
-    session_id: &str,
-) -> Result<Option<&'static str>, ToolFailure> {
-    match agent_id {
-        "cursor" | "antigravity" => {}
-        _ => return Ok(None),
-    }
-    let response = dispatch_lane_operation(
-        "cleanup",
-        &json!({"agentId": agent_id, "sessionId": session_id}),
-    )
-    .map_err(|_| ToolFailure::new("diagnostic_probe_cleanup_failed", false))?;
-    if response.get("ok").and_then(Value::as_bool) != Some(true) {
-        return Err(ToolFailure::new("diagnostic_probe_cleanup_failed", false));
-    }
-    match response.get("status").and_then(Value::as_str) {
-        Some("cleaned") => Ok(Some("moved-to-trash-and-verified")),
-        Some("not_persisted") => Ok(Some("not-persisted-and-verified")),
-        _ => Err(ToolFailure::new("diagnostic_probe_cleanup_failed", false)),
-    }
-}
-
-fn probe_cleanup_target(
-    agent_id: &str,
-    source_path: &str,
-) -> Result<std::path::PathBuf, ToolFailure> {
-    let path = std::fs::canonicalize(source_path)
-        .map_err(|_| ToolFailure::new("diagnostic_probe_cleanup_target_invalid", false))?;
-    if agent_id == "kimi-code" {
-        let root = path
-            .parent()
-            .and_then(std::path::Path::parent)
-            .and_then(std::path::Path::parent)
-            .ok_or(ToolFailure::new(
-                "diagnostic_probe_cleanup_target_invalid",
-                false,
-            ))?;
-        if path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
-            || root
-                .file_name()
-                .and_then(|value| value.to_str())
-                .is_none_or(|name| !name.starts_with("session_"))
-            || !root.join("state.json").is_file()
-        {
-            return Err(ToolFailure::new(
-                "diagnostic_probe_cleanup_target_invalid",
-                false,
-            ));
-        }
-        return Ok(root.to_path_buf());
-    }
-    if path.is_file()
-        && matches!(
-            path.extension().and_then(|value| value.to_str()),
-            Some("json" | "jsonl")
-        )
-    {
-        return Ok(path);
-    }
-    Err(ToolFailure::new(
-        "diagnostic_probe_cleanup_unsupported",
-        false,
-    ))
+/// Project the readiness receipt from already-read target facts and the host
+/// turn count. The receipt carries no path, session identifier, turn handle,
+/// process identifier, port, model, price, or cleanup verdict. The host
+/// snapshot covers only LicoUp-owned turns, so `ready` means admitted,
+/// reachable, and idle inside LicoUp; it makes no claim about the Agent's own
+/// external activity.
+fn readiness_receipt(agent_id: &str, target: &Value, active_turns: usize) -> Value {
+    json!({
+        "schemaVersion": "licoup.subagent.readiness.v1",
+        "operation": "subagent.readiness",
+        "agentId": agent_id,
+        "state": readiness_state(active_turns),
+        "integrationStatus": target
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown"),
+        "conversationDriver": target
+            .pointer("/adapterCapabilities/conversationDriver")
+            .and_then(Value::as_str)
+            .unwrap_or("unsupported"),
+        "conversationReadiness": target
+            .pointer("/adapterCapabilities/conversationReadiness")
+            .and_then(Value::as_str)
+            .unwrap_or("unverified"),
+        "blockerCode": target
+            .pointer("/adapterCapabilities/conversationBlocker")
+            .and_then(Value::as_str),
+        "hostTransport": conversation_host_transport::STDIO_RPC_PROTOCOL,
+        "hostActiveTurns": active_turns,
+    })
 }
 
 fn delivery_start(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
     let (bound, portable) = bind_delivery_state(arguments)?;
+    // Compose the required host before the Plan opens a role dispatch. Host
+    // absence therefore returns the typed transport rejection without
+    // advancing a dispatch checkpoint or trying another execution lane.
+    let runtime = compose_delivery_runtime(&portable)?;
     let value = delivery_scheduler::start(&bound).map_err(ToolFailure::from_delivery)?;
     update_delivery_identity_from_response(&portable, &bound, &value)?;
-    spawn_delivery_run(manager_agent_id, &bound, portable)?;
+    spawn_delivery_run(manager_agent_id, &bound, portable, runtime)?;
     Ok(value)
 }
 
 fn delivery_authorize(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
     let (bound, portable) = bind_delivery_state(arguments)?;
+    let runtime = compose_delivery_runtime(&portable)?;
     let value = delivery_scheduler::authorize(&bound).map_err(ToolFailure::from_delivery)?;
     update_delivery_identity_from_response(&portable, &bound, &value)?;
-    spawn_delivery_run(manager_agent_id, &bound, portable)?;
+    spawn_delivery_run(manager_agent_id, &bound, portable, runtime)?;
     Ok(value)
 }
 
@@ -1081,7 +652,12 @@ fn delivery_cancel(arguments: &Value) -> Result<Value, ToolFailure> {
             return Err(ToolFailure::from_delivery(error));
         }
     };
-    let runtime = conversation_runtime::NativeDeliveryRuntime;
+    // Explicit cancellation reaches the same composed host door as the
+    // runner: each live dispatch receives exactly one control-plane cancel
+    // for its recorded identity and Conversation scope, and an
+    // already-settled or never-opened dispatch is an idempotent no-op. No
+    // native admission lookup is needed on this path anymore.
+    let runtime = compose_delivery_runtime(&portable)?;
     let records = delivery_state::list_delivery_dispatches(&portable)
         .map_err(|_| ToolFailure::new("delivery_dispatch_store_unavailable", true))?;
     for record in records {
@@ -1095,14 +671,9 @@ fn delivery_cancel(arguments: &Value) -> Result<Value, ToolFailure> {
         {
             continue;
         }
-        if let Some(path) = record.conversation_path.as_deref() {
-            let conversation = runtime
-                .prepare_conversation(&record.agent_id, "", Some(path))
-                .map_err(ToolFailure::from_delivery)?;
-            runtime
-                .cancel(&conversation)
-                .map_err(ToolFailure::from_delivery)?;
-        }
+        runtime
+            .cancel(&record.dispatch_id)
+            .map_err(ToolFailure::from_delivery)?;
     }
     set_delivery_runner(
         &portable,
@@ -1111,6 +682,42 @@ fn delivery_cancel(arguments: &Value) -> Result<Value, ToolFailure> {
         None,
     )?;
     Ok(value)
+}
+
+/// The one composed Delivery host door: a single bounded persistent-host
+/// request port plus the canonical Conversation store. Both Delivery entry
+/// points — the background runner pass and explicit Delivery cancellation —
+/// share this composition, so no Delivery path can exist without the host
+/// door. Host failures keep their typed codes unchanged; host absence is
+/// the typed `persistent_conversation_transport_required` rejection produced
+/// by the transport helper, never a one-shot lane fallback.
+fn delivery_host_request(method: &str, params: &Value) -> DeliveryResult<Value> {
+    execute_persistent_conversation_method(method, params).map_err(|failure| {
+        DeliveryError::new(
+            failure.code,
+            "native-dispatch",
+            "persistent-host",
+            failure.retryable,
+            failure.recovery,
+        )
+    })
+}
+
+fn compose_delivery_runtime(
+    portable: &Path,
+) -> Result<conversation_runtime::NativeDeliveryRuntime, ToolFailure> {
+    require_delivery_host_with(|| conversation_host_transport::connect_existing().map(drop))?;
+    let service = ConversationService::open(portable)
+        .map_err(|_| ToolFailure::new("conversation_state_unavailable", true))?;
+    let port: conversation_runtime::DeliveryHostRequest = Arc::new(delivery_host_request);
+    Ok(conversation_runtime::NativeDeliveryRuntime::new(
+        port,
+        service.store().clone(),
+    ))
+}
+
+fn require_delivery_host_with(connect: impl FnOnce() -> io::Result<()>) -> Result<(), ToolFailure> {
+    connect().map_err(|_| ToolFailure::new(PERSISTENT_TRANSPORT_REQUIRED, true))
 }
 
 fn bind_delivery_state(arguments: &Value) -> Result<(Value, PathBuf), ToolFailure> {
@@ -1188,6 +795,11 @@ fn update_delivery_identity(
     let mut record = delivery_state::load_delivery_control(portable, workflow_id)
         .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?
         .ok_or(ToolFailure::new("delivery_control_not_found", false))?;
+    if record.plan_code.as_deref() == Some(plan_code) && record.plan_revision == revision {
+        // An unchanged runner record is never rewritten, so a pass that only
+        // waits on live turns performs no store write.
+        return Ok(());
+    }
     record.plan_code = Some(plan_code.to_owned());
     record.plan_revision = revision;
     record.updated_at_unix_ms = delivery_state::unix_ms_now();
@@ -1204,6 +816,11 @@ fn set_delivery_runner(
     let mut record = delivery_state::load_delivery_control(portable, workflow_id)
         .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?
         .ok_or(ToolFailure::new("delivery_control_not_found", false))?;
+    if record.runner_state == state && record.failure == failure {
+        // An unchanged runner record is never rewritten, so a pass that only
+        // waits on live turns performs no store write.
+        return Ok(());
+    }
     record.runner_state = state;
     record.failure = failure;
     record.updated_at_unix_ms = delivery_state::unix_ms_now();
@@ -1261,6 +878,7 @@ fn spawn_delivery_run(
     manager_agent_id: &str,
     arguments: &Value,
     portable: PathBuf,
+    runtime: conversation_runtime::NativeDeliveryRuntime,
 ) -> Result<(), ToolFailure> {
     let root = arguments
         .get("planRoot")
@@ -1269,14 +887,9 @@ fn spawn_delivery_run(
         .to_owned();
     let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
     let run_key = delivery_run_key(&workflow_id, arguments)?;
-    {
-        let mut running = RUNNING_DELIVERIES
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if !running.insert(run_key.clone()) {
-            return Ok(());
-        }
-    }
+    let Some(running_guard) = RunningDeliveryGuard::claim(run_key) else {
+        return Ok(());
+    };
     let mut config = SchedulerConfig {
         state_root: PathBuf::from(
             arguments
@@ -1300,8 +913,13 @@ fn spawn_delivery_run(
     );
     persist_runner_failure(&portable, &workflow_id, &pass_in_doubt)?;
     thread::spawn(move || {
-        let _guard = RunningDeliveryGuard(run_key);
-        for _ in 0..28_800_u32 {
+        // Moving the already-claimed guard into the runner makes every setup
+        // error release the process-local claim instead of poisoning retries.
+        let _guard = running_guard;
+        // The bounded progress budget only prices passes that move work;
+        // waiting on live turns is not progress and never spends it.
+        let mut budget = 28_800_u32;
+        loop {
             persist_runner_failure_until_durable(&portable, &workflow_id, &pass_in_doubt);
             let engine = match licoup_native::domain::delivery_plan::DeliveryPlanEngine::load(&root)
             {
@@ -1322,8 +940,12 @@ fn spawn_delivery_run(
                     .as_ref()
                     .and_then(|session| session.conversation_location.clone());
             }
-            let report = match conversation_runtime::run_once(&workflow_id, engine, config.clone())
-            {
+            let report = match conversation_runtime::run_once(
+                &workflow_id,
+                engine,
+                config.clone(),
+                &runtime,
+            ) {
                 Ok(report) => report,
                 Err(error) => {
                     persist_runner_failure_until_durable(&portable, &workflow_id, &error);
@@ -1372,17 +994,37 @@ fn spawn_delivery_run(
                 set_runner_state_until_durable(&portable, &workflow_id, state);
                 return;
             }
-            if report.pending > 0 {
-                thread::sleep(Duration::from_millis(250));
-            } else if report.dispatched == 0 && report.completed == 0 && report.failed == 0 {
-                set_runner_state_until_durable(&portable, &workflow_id, DeliveryRunnerState::Ready);
-                return;
-            } else {
-                set_runner_state_until_durable(
-                    &portable,
-                    &workflow_id,
-                    DeliveryRunnerState::Running,
-                );
+            match delivery_pass_outcome(&report) {
+                DeliveryPassOutcome::WaitPending => {
+                    // A pass that only observes live turns sleeps without
+                    // consuming the bounded progress budget, and the runner
+                    // record above was already left unchanged. Nothing here
+                    // may fail or cancel a turn that is still running.
+                    thread::sleep(Duration::from_millis(250));
+                }
+                DeliveryPassOutcome::Unproductive => {
+                    set_runner_state_until_durable(
+                        &portable,
+                        &workflow_id,
+                        DeliveryRunnerState::Ready,
+                    );
+                    return;
+                }
+                DeliveryPassOutcome::Progress => {
+                    budget = budget.saturating_sub(1);
+                    if budget == 0 {
+                        break;
+                    }
+                    if report.pending > 0 {
+                        thread::sleep(Duration::from_millis(250));
+                    } else {
+                        set_runner_state_until_durable(
+                            &portable,
+                            &workflow_id,
+                            DeliveryRunnerState::Running,
+                        );
+                    }
+                }
             }
         }
         persist_runner_failure_until_durable(
@@ -1398,6 +1040,32 @@ fn spawn_delivery_run(
         );
     });
     Ok(())
+}
+
+/// Budget decision for one runner pass. A pass that only observes pending
+/// turns waits on live work: it sleeps without consuming the bounded
+/// progress budget and without rewriting an unchanged runner record. An
+/// unproductive pass ends the run as ready exactly as before, and any other
+/// pass consumes exactly one bounded budget unit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DeliveryPassOutcome {
+    WaitPending,
+    Unproductive,
+    Progress,
+}
+
+fn delivery_pass_outcome(report: &delivery_scheduler::ScheduleReport) -> DeliveryPassOutcome {
+    if report.pending > 0 {
+        if report.dispatched == 0 && report.completed == 0 && report.failed == 0 {
+            DeliveryPassOutcome::WaitPending
+        } else {
+            DeliveryPassOutcome::Progress
+        }
+    } else if report.dispatched == 0 && report.completed == 0 && report.failed == 0 {
+        DeliveryPassOutcome::Unproductive
+    } else {
+        DeliveryPassOutcome::Progress
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1462,7 +1130,7 @@ fn dispatch_subagent(
     ensure_manager_bound(manager_agent_id)?;
     let prompt = required_text(arguments, "prompt", MAX_PROMPT_BYTES)?;
     let context = conversation_dispatch_context(service, arguments)?;
-    let candidates = vec![context.candidate.clone()];
+    let candidates = [context.candidate.clone()];
     let mut working_directory = optional_working_directory(arguments)?;
     let timeout_ms = optional_timeout_ms(arguments)?;
     let max_stdout_bytes = optional_bounded_u64(
@@ -1511,222 +1179,227 @@ fn dispatch_subagent(
     } else {
         "subagent.delegate"
     };
-    let dispatch = service
-        .store()
-        .create_dispatch(
-            &context.conversation_id,
-            &context.membership_id,
-            operation,
-            session_mode,
-        )
-        .map_err(|_| ToolFailure::new("conversation_state_unavailable", true))?;
-    let dispatch_id = dispatch.id.clone();
+    let mut params = json!({
+        "agent": first.agent_id.clone(),
+        "agentId": first.agent_id.clone(),
+        "text": prompt,
+        "streamEvents": true,
+        "timeoutMs": timeout_ms.unwrap_or(0),
+        "conversationId": context.conversation_id.clone(),
+        "membershipId": context.membership_id.clone(),
+        "causationId": operation,
+    });
+    if let Some(model) = &first.model {
+        params["model"] = json!(model);
+    }
+    if let Some(reasoning) = &first.reasoning_effort {
+        params["reasoningEffort"] = json!(reasoning);
+    }
+    if let Some(working_directory) = &working_directory {
+        params["workingDirectory"] = json!(working_directory);
+    }
+    if let Some(max_stdout_bytes) = max_stdout_bytes {
+        params["maxStdoutBytes"] = json!(max_stdout_bytes);
+    }
+    if let Some(max_stderr_bytes) = max_stderr_bytes {
+        params["maxStderrBytes"] = json!(max_stderr_bytes);
+    }
+    if let Some(allow_all) = allow_all {
+        params["allowAll"] = json!(allow_all);
+    }
+    if let Some(permission_mode) = &permission_mode {
+        params["permissionMode"] = json!(permission_mode);
+    }
+    if let Some((session_id, source_path)) = &continuation {
+        params["sessionId"] = json!(session_id);
+        params["sourcePath"] = json!(source_path);
+    }
+
+    // The persistent host opens the dispatch and records acceptance before
+    // this ACK is returned, then remains the sole execution and completion
+    // owner. The MCP process never creates a parallel turn registry or
+    // terminal writer.
+    let accepted = execute_persistent_conversation_method("agent.conversation.dispatch", &params)?;
+    let dispatch_id = accepted
+        .get("turnHandle")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or(ToolFailure::new("conversation_state_unavailable", true))?
+        .to_owned();
+    if accepted.get("accepted").and_then(Value::as_bool) != Some(true)
+        || accepted.get("conversationId").and_then(Value::as_str)
+            != Some(context.conversation_id.as_str())
+        || accepted.get("membershipId").and_then(Value::as_str)
+            != Some(context.membership_id.as_str())
+    {
+        return Err(ToolFailure::new("conversation_state_unavailable", true));
+    }
     let receipt = json!({
         "schemaVersion": "licoup.subagent.receipt.v2",
         "operation": operation,
         "agentId": first.agent_id,
         "conversationId": context.conversation_id,
         "membershipId": context.membership_id,
-        "state": dispatch.state.as_str(),
-        "dispatchId": dispatch.id,
-        "sessionMode": dispatch.session_mode.as_str(),
+        "state": "accepted",
+        "dispatchId": dispatch_id,
+        "sessionMode": session_mode.as_str(),
         "accepted": true,
     });
-
-    let service_for_worker = service.clone();
-    thread::spawn(move || {
-        run_accepted_dispatch(
-            service_for_worker,
-            dispatch_id,
-            operation.to_owned(),
-            candidates,
-            prompt,
-            working_directory,
-            timeout_ms,
-            max_stdout_bytes,
-            max_stderr_bytes,
-            allow_all,
-            permission_mode,
-            continuation,
-            context.conversation_id,
-            context.membership_id,
-        );
-    });
-
     Ok(receipt)
 }
 
-fn run_accepted_dispatch(
-    service: ConversationService,
-    dispatch_id: String,
-    operation: String,
-    candidates: Vec<DispatchCandidate>,
-    prompt: String,
-    working_directory: Option<String>,
-    timeout_ms: Option<u64>,
-    max_stdout_bytes: Option<u64>,
-    max_stderr_bytes: Option<u64>,
-    allow_all: Option<bool>,
-    permission_mode: Option<String>,
-    continuation: Option<(String, String)>,
-    conversation_id: String,
-    membership_id: String,
-) {
-    if service
-        .store()
-        .update_dispatch(&dispatch_id, DispatchState::Running, None, None)
-        .is_err()
-    {
-        return;
-    }
+/// Execute one bounded read-only request against an already-published
+/// Conversation host endpoint. A missing endpoint is observed as unavailable;
+/// this path never creates its identity.
+fn execute_read_only_persistent_conversation_method(
+    method: &str,
+    params: &Value,
+) -> Result<Value, ToolFailure> {
+    execute_persistent_conversation_method_with_connector(
+        method,
+        params,
+        conversation_host_transport::connect_existing,
+    )
+    .map_err(project_readiness_transport_failure)
+}
 
-    match execute_subagent_send(
-        &candidates,
-        &prompt,
-        working_directory.as_deref(),
-        timeout_ms,
-        max_stdout_bytes,
-        max_stderr_bytes,
-        allow_all,
-        permission_mode.as_deref(),
-        continuation.as_ref(),
-    ) {
-        Ok(outcome) => {
-            let _ = service.store().update_dispatch(
-                &dispatch_id,
-                DispatchState::Completed,
-                Some(&outcome.conversation_path),
-                None,
-            );
-            let part = NewEventPart {
-                id: String::new(),
-                kind: outcome
-                    .output
-                    .as_ref()
-                    .map(|_| EventPartKind::Text)
-                    .unwrap_or(EventPartKind::Diagnostic),
-                content: outcome
-                    .output
-                    .unwrap_or_else(|| "subagent_completed".to_owned()),
-            };
-            let _ = service.store().append_event(
-                &conversation_id,
-                Some(&membership_id),
-                EventKind::Message,
-                &[part],
-                Some(&dispatch_id),
-                Some(&operation),
-                true,
-            );
-        }
-        Err(code) => {
-            let _ = service.store().update_dispatch(
-                &dispatch_id,
-                DispatchState::Failed,
-                None,
-                Some(&code),
-            );
-            let _ = service.store().append_event(
-                &conversation_id,
-                None,
-                EventKind::Message,
-                &[NewEventPart {
-                    id: String::new(),
-                    kind: EventPartKind::Diagnostic,
-                    content: code,
-                }],
-                Some(&dispatch_id),
-                Some(&operation),
-                true,
-            );
-        }
+fn project_readiness_transport_failure(error: ToolFailure) -> ToolFailure {
+    match error.code.as_str() {
+        "invalid_request" | PERSISTENT_TRANSPORT_REQUIRED | "subagent_transport_failed" => error,
+        _ => ToolFailure::new("subagent_transport_failed", true),
     }
 }
 
-fn execute_subagent_send(
-    candidates: &[DispatchCandidate],
-    prompt: &str,
-    working_directory: Option<&str>,
-    timeout_ms: Option<u64>,
-    max_stdout_bytes: Option<u64>,
-    max_stderr_bytes: Option<u64>,
-    allow_all: Option<bool>,
-    permission_mode: Option<&str>,
-    continuation: Option<&(String, String)>,
-) -> Result<DispatchOutcome, String> {
-    for (index, candidate) in candidates.iter().enumerate() {
-        let inspected = ensure_subordinate_available(&candidate.agent_id)
-            .map_err(|failure| failure.code.to_owned())?;
-        validate_dispatch_selection(candidate, &inspected)
-            .map_err(|failure| failure.code.to_owned())?;
-        let quota_key = quota_key(candidate);
-        if quota_is_cooling_down(&quota_key) {
-            if index + 1 < candidates.len() {
-                continue;
-            }
-            return Err("subagent_quota_exhausted".to_owned());
-        }
-        let mut params = json!({
-            "agentId": candidate.agent_id,
-            "text": prompt,
-            "streamEvents": false,
-        });
-        if let Some(model) = &candidate.model {
-            params["model"] = json!(model);
-        }
-        if let Some(reasoning) = &candidate.reasoning_effort {
-            params["reasoningEffort"] = json!(reasoning);
-        }
-        if let Some(working_directory) = working_directory {
-            params["workingDirectory"] = json!(working_directory);
-        }
-        if let Some(timeout_ms) = timeout_ms {
-            params["timeoutMs"] = json!(timeout_ms);
-        }
-        if let Some(max_stdout_bytes) = max_stdout_bytes {
-            params["maxStdoutBytes"] = json!(max_stdout_bytes);
-        }
-        if let Some(max_stderr_bytes) = max_stderr_bytes {
-            params["maxStderrBytes"] = json!(max_stderr_bytes);
-        }
-        if let Some(allow_all) = allow_all {
-            params["allowAll"] = json!(allow_all);
-        }
-        if let Some(permission_mode) = permission_mode {
-            params["permissionMode"] = json!(permission_mode);
-        }
-        if let Some((session_id, source_path)) = continuation {
-            params["sessionId"] = json!(session_id);
-            params["sourcePath"] = json!(source_path);
-        }
-        let value = dispatch_lane_operation("send", &params)
-            .map_err(|_| "subagent_transport_failed".to_owned())?;
-        if value.get("ok").and_then(Value::as_bool) == Some(true) {
-            clear_quota_cooldown(&quota_key);
-            let conversation_path = dispatch_conversation_path(&candidate.agent_id, &value)
-                .map_err(|failure| failure.code.to_owned())?;
-            return Ok(DispatchOutcome {
-                agent_id: candidate.agent_id.clone(),
-                conversation_path,
-                output: value
-                    .get("output")
-                    .and_then(Value::as_str)
-                    .filter(|output| !output.is_empty())
-                    .map(str::to_owned),
-            });
-        }
-        if quota_or_capacity_failure(&value) {
-            record_quota_cooldown(quota_key);
-            if index + 1 < candidates.len() {
-                continue;
-            }
-            return Err("subagent_quota_exhausted".to_owned());
-        }
-        return Err(project_dispatch_failure(&candidate.agent_id, &value)
-            .code
-            .to_owned());
+fn execute_persistent_conversation_method(
+    method: &str,
+    params: &Value,
+) -> Result<Value, ToolFailure> {
+    execute_persistent_conversation_method_with_connector(
+        method,
+        params,
+        conversation_host_transport::connect,
+    )
+}
+
+fn execute_persistent_conversation_method_with_connector(
+    method: &str,
+    params: &Value,
+    connect: fn() -> io::Result<Stream>,
+) -> Result<Value, ToolFailure> {
+    const RESPONSE_LIMIT: usize = 64 * 1024;
+    const IO_WAIT: Duration = Duration::from_secs(3);
+
+    let mut stream =
+        connect().map_err(|_| ToolFailure::new(PERSISTENT_TRANSPORT_REQUIRED, true))?;
+    stream
+        .set_nonblocking(true)
+        .map_err(|_| ToolFailure::new("subagent_transport_failed", true))?;
+    let request_id = format!("subagent-{}", uuid::Uuid::new_v4().simple());
+    let workflow_id = request_id.clone();
+    let mut encoded = serde_json::to_vec(&json!({
+        "protocol": conversation_host_transport::STDIO_RPC_PROTOCOL,
+        "id": request_id.clone(),
+        "workflowId": workflow_id.clone(),
+        "method": method,
+        "params": params,
+    }))
+    .map_err(|_| ToolFailure::new("subagent_transport_failed", true))?;
+    encoded.push(b'\n');
+    if encoded.len() > RESPONSE_LIMIT {
+        return Err(ToolFailure::new("invalid_request", false));
     }
-    Err("subagent_quota_exhausted".to_owned())
+
+    let deadline = Instant::now() + IO_WAIT;
+    let mut written = 0;
+    while written < encoded.len() {
+        if Instant::now() >= deadline {
+            return Err(ToolFailure::new("subagent_transport_failed", true));
+        }
+        match stream.write(&encoded[written..]) {
+            Ok(0) => return Err(ToolFailure::new("subagent_transport_failed", true)),
+            Ok(count) => written += count,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => return Err(ToolFailure::new("subagent_transport_failed", true)),
+        }
+    }
+    stream
+        .flush()
+        .map_err(|_| ToolFailure::new("subagent_transport_failed", true))?;
+
+    let mut response = Vec::with_capacity(1024);
+    let mut buffer = [0_u8; 4096];
+    loop {
+        if Instant::now() >= deadline || response.len() >= RESPONSE_LIMIT {
+            return Err(ToolFailure::new("subagent_transport_failed", true));
+        }
+        match stream.read(&mut buffer) {
+            Ok(0) => return Err(ToolFailure::new("subagent_transport_failed", true)),
+            Ok(count) => {
+                response.extend_from_slice(&buffer[..count]);
+                if let Some(end) = response.iter().position(|byte| *byte == b'\n') {
+                    response.truncate(end);
+                    break;
+                }
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => return Err(ToolFailure::new("subagent_transport_failed", true)),
+        }
+    }
+
+    let frame: Value = serde_json::from_slice(&response)
+        .map_err(|_| ToolFailure::new("subagent_transport_failed", true))?;
+    if frame.get("protocol").and_then(Value::as_str)
+        != Some(conversation_host_transport::STDIO_RPC_PROTOCOL)
+        || frame.get("id").and_then(Value::as_str) != Some(request_id.as_str())
+        || frame.get("workflowId").and_then(Value::as_str) != Some(workflow_id.as_str())
+    {
+        return Err(ToolFailure::new("subagent_transport_failed", true));
+    }
+    if frame.get("ok").and_then(Value::as_bool) != Some(true) {
+        let error = frame.get("error").unwrap_or(&frame);
+        let code = error
+            .get("code")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("subagent_transport_failed");
+        let retryable = error
+            .get("retryable")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        return Err(ToolFailure::new(code, retryable));
+    }
+    let result = frame
+        .get("result")
+        .cloned()
+        .ok_or(ToolFailure::new("subagent_transport_failed", true))?;
+    if result.get("ok").and_then(Value::as_bool) == Some(false) {
+        let error = result.get("error").unwrap_or(&result);
+        let code = error
+            .get("code")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("subagent_transport_failed");
+        return Err(ToolFailure::new(code, true));
+    }
+    Ok(result)
 }
 
 fn conversation_dispatch_context(
@@ -1764,66 +1437,6 @@ fn conversation_dispatch_context(
     })
 }
 
-fn quota_key(candidate: &DispatchCandidate) -> String {
-    format!(
-        "{}\0{}",
-        candidate.agent_id,
-        candidate.model.as_deref().unwrap_or_default()
-    )
-}
-
-fn quota_is_cooling_down(key: &str) -> bool {
-    let now = Instant::now();
-    let mut state = QUOTA_COOLDOWNS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    state.retain(|_, until| *until > now);
-    state.get(key).is_some_and(|until| *until > now)
-}
-
-fn record_quota_cooldown(key: String) {
-    let now = Instant::now();
-    let mut state = QUOTA_COOLDOWNS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    state.retain(|_, until| *until > now);
-    if state.len() >= MAX_QUOTA_COOLDOWNS
-        && !state.contains_key(&key)
-        && let Some(oldest) = state
-            .iter()
-            .min_by_key(|(_, until)| **until)
-            .map(|(candidate, _)| candidate.clone())
-    {
-        state.remove(&oldest);
-    }
-    state.insert(key, now + QUOTA_COOLDOWN);
-}
-
-fn clear_quota_cooldown(key: &str) {
-    QUOTA_COOLDOWNS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .remove(key);
-}
-
-fn quota_or_capacity_failure(source: &Value) -> bool {
-    let code = source
-        .pointer("/error/code")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    [
-        "quota",
-        "credit",
-        "rate_limit",
-        "rate-limit",
-        "capacity",
-        "exhaust",
-    ]
-    .iter()
-    .any(|marker| code.contains(marker))
-}
-
 fn cancel_subagent(
     service: &ConversationService,
     manager_agent_id: &str,
@@ -1838,23 +1451,17 @@ fn cancel_subagent(
         .latest_resumable_dispatch(&context.conversation_id, &context.membership_id)
         .map_err(|_| ToolFailure::new("conversation_state_unavailable", true))?
         .ok_or(ToolFailure::new("subagent_cancel_unavailable", false))?;
-    let conversation_path = dispatch
-        .runtime_conversation_path
-        .as_deref()
-        .ok_or(ToolFailure::new("subagent_cancel_unavailable", false))?;
-    let session_id = session_id_for_path(&agent_id, &conversation_path)?;
-    let value = dispatch_lane_operation(
-        "cancel",
-        &json!({"agentId": agent_id, "sessionId": session_id}),
-    )
-    .map_err(|_| ToolFailure::new("subagent_transport_failed", true))?;
+    let value = execute_persistent_conversation_method(
+        "agent.conversation.cancel",
+        &json!({
+            "turnHandle": dispatch.id.clone(),
+            "conversationId": context.conversation_id.clone(),
+            "agentId": agent_id.clone(),
+        }),
+    )?;
     if value.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(project_dispatch_failure(&agent_id, &value));
     }
-    service
-        .store()
-        .update_dispatch(&dispatch.id, DispatchState::CancelRequested, None, None)
-        .map_err(|_| ToolFailure::new("conversation_state_unavailable", true))?;
     Ok(json!({
         "schemaVersion": "licoup.subagent.receipt.v2",
         "operation": "subagent.cancel",
@@ -1980,52 +1587,13 @@ fn project_subagent(candidate: &Value, manager_agent_id: &str) -> Value {
     })
 }
 
-fn dispatch_conversation_path(agent_id: &str, source: &Value) -> Result<String, ToolFailure> {
-    let session_id = source
-        .get("nativeSessionId")
-        .or_else(|| source.get("sessionId"))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or(ToolFailure::new("conversation_location_unavailable", true))?;
-    conversation_path_for_session(agent_id, session_id)
-}
-
-fn conversation_path_for_session(agent_id: &str, session_id: &str) -> Result<String, ToolFailure> {
-    for attempt in 0..CONVERSATION_PATH_POLL_ATTEMPTS {
-        let response = conversations::conversation_list(&json!({
-            "agent": agent_id,
-            "sessionId": session_id,
-            "limit": 2
-        }))
-        .map_err(|_| ToolFailure::new("conversation_location_unavailable", true))?;
-        let sessions = response
-            .get("sessions")
-            .and_then(Value::as_array)
-            .ok_or(ToolFailure::new("conversation_location_unavailable", true))?;
-        if sessions.len() > 1 {
-            return Err(ToolFailure::new("conversation_location_ambiguous", false));
-        }
-        if let Some(path) = sessions
-            .first()
-            .and_then(|session| session.get("sourcePath"))
-            .and_then(Value::as_str)
-            .filter(|path| std::path::Path::new(path).is_absolute())
-        {
-            return Ok(path.to_owned());
-        }
-        if attempt + 1 < CONVERSATION_PATH_POLL_ATTEMPTS {
-            thread::sleep(std::time::Duration::from_millis(50));
-        }
-    }
-    Err(ToolFailure::new("conversation_location_unavailable", true))
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ConversationResumeTarget {
     session_id: String,
     working_directory: Option<String>,
 }
 
+#[cfg(test)]
 fn session_id_for_path(agent_id: &str, path: &str) -> Result<String, ToolFailure> {
     resume_target_for_path(agent_id, path).map(|target| target.session_id)
 }
@@ -2373,15 +1941,11 @@ fn tool_catalog() -> Vec<Value> {
         }),
         json!({
             "name": "lico_subagent_probe",
-            "description": "LicoUp-owned disposable readiness probe. Main agents must not use this to drive subordinates; LicoUp runs readiness before dispatch acceptance. By default LicoUp selects the cheapest locally available model using the provider-owned billing table, including harness-included routes; an exact model may be requested only when that route is itself under acceptance. Any created probe conversation is moved to Trash and its disappearance is verified before success is returned.",
+            "description": "Read-only readiness observation for one admitted local Agent integration. It never sends Agent input, starts no third-party Agent binary, and creates or mutates no Conversation: the receipt is derived only from target facts, host reachability, and the private Conversation host's active-turn snapshot. busy is a successful observed state, not a failure. The snapshot covers only LicoUp-owned turns, so ready means admitted, reachable, and idle inside LicoUp.",
             "inputSchema": closed_object(
-                &["agentId", "workingDirectory"],
+                &["agentId"],
                 json!({
-                    "agentId": bounded_string(MAX_ID_BYTES),
-                    "workingDirectory": bounded_string(MAX_WORKING_DIRECTORY_BYTES),
-                    "exactModel": bounded_string(MAX_ID_BYTES),
-                    "exactReasoningEffort": bounded_string(32),
-                    "timeoutMs": bounded_integer(0, MAX_SUBAGENT_TIMEOUT_MS)
+                    "agentId": bounded_string(MAX_ID_BYTES)
                 })
             )
         }),
@@ -2508,13 +2072,7 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         "lico_delivery_status" => &["workflowId", "planRoot"],
         "lico_delivery_cancel" => &["workflowId", "planRoot", "stateRoot"],
         "lico_subagents_list" => &[],
-        "lico_subagent_probe" => &[
-            "agentId",
-            "workingDirectory",
-            "exactModel",
-            "exactReasoningEffort",
-            "timeoutMs",
-        ],
+        "lico_subagent_probe" => &["agentId"],
         "lico_subagent_delegate" => &[
             "conversationId",
             "membershipId",
@@ -2581,15 +2139,7 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
                 && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
         }
         "lico_subagents_list" => object.is_empty(),
-        "lico_subagent_probe" => {
-            valid_required(object, "agentId", MAX_ID_BYTES)
-                && valid_required(object, "workingDirectory", MAX_WORKING_DIRECTORY_BYTES)
-                && valid_optional(object, "exactModel", MAX_ID_BYTES)
-                && valid_optional(object, "exactReasoningEffort", 32)
-                && (!object.contains_key("exactReasoningEffort")
-                    || object.contains_key("exactModel"))
-                && valid_optional_timeout(object, "timeoutMs")
-        }
+        "lico_subagent_probe" => valid_required(object, "agentId", MAX_ID_BYTES),
         "lico_subagent_delegate" => {
             valid_required(object, "conversationId", MAX_ID_BYTES)
                 && valid_required(object, "membershipId", MAX_ID_BYTES)
@@ -2824,15 +2374,28 @@ mod tests {
         ));
         assert!(validate_tool_arguments(
             "lico_subagent_probe",
+            &json!({"agentId": "worker"})
+        ));
+        assert!(!validate_tool_arguments("lico_subagent_probe", &json!({})));
+        assert!(!validate_tool_arguments(
+            "lico_subagent_probe",
             &json!({"agentId": "worker", "workingDirectory": "/fixture-root/project"})
+        ));
+        assert!(!validate_tool_arguments(
+            "lico_subagent_probe",
+            &json!({"agentId": "worker", "exactModel": "kimi-code/k3"})
         ));
         assert!(!validate_tool_arguments(
             "lico_subagent_probe",
             &json!({
                 "agentId": "worker",
-                "workingDirectory": "/fixture-root/project",
+                "exactModel": "kimi-code/k3",
                 "exactReasoningEffort": "low"
             })
+        ));
+        assert!(!validate_tool_arguments(
+            "lico_subagent_probe",
+            &json!({"agentId": "worker", "timeoutMs": 120_000})
         ));
         assert!(validate_tool_arguments(
             "lico_subagent_delegate",
@@ -2863,99 +2426,129 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_probe_prefers_free_harness_models_before_paid_models() {
-        let target = json!({
-            "modelCatalog": {
-                "models": [
-                    {"name": "kimi-code/k3", "reasoningEfforts": ["low", "high", "max"]},
-                    {"name": "kimi-code/kimi-for-coding"},
-                    {"name": "unpriced-local-model"}
-                ]
-            }
-        });
-        let selected = select_probe_model(&target, "kimi-code", None, None).unwrap();
-        assert_eq!(selected.runtime_model, "kimi-code/kimi-for-coding");
-        assert_eq!(selected.reasoning_effort, None);
-        assert!(selected.routing_cost.is_some_and(|cost| cost > 0.0));
-        assert!(!selected.included);
-        assert_eq!(selected.selection_mode, "lowest-measured-cost");
-
-        let exact =
-            select_probe_model(&target, "kimi-code", Some("kimi-code/k3"), Some("max")).unwrap();
-        assert_eq!(exact.runtime_model, "kimi-code/k3");
-        assert_eq!(exact.reasoning_effort.as_deref(), Some("max"));
-        assert_eq!(exact.selection_mode, "exact-model");
-
-        let cursor = select_probe_model(
-            &json!({"modelCatalog": {"models": [
-                {"name": "gpt-5.6-luna-low"},
-                {"name": "composer-2.5-fast"},
-                {"name": "composer-2.5"},
-                {"name": "grok-4.5"}
-            ]}}),
-            "cursor",
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(cursor.runtime_model, "composer-2.5");
-        assert_eq!(cursor.routing_cost, Some(0.0));
-        assert!(cursor.included);
-        assert_eq!(cursor.pricing_provider.as_deref(), Some("cursor"));
-
-        let kilo = select_probe_model(
-            &json!({"modelCatalog": {"models": [
-                {"name": "anthropic/claude-opus-4.7"},
-                {"name": "nvidia/nemotron-3-super-120b-a12b:free"},
-                {"name": "kilo-auto/free"}
-            ]}}),
-            "kilo-code",
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(kilo.runtime_model, "kilo-auto/free");
-        assert_eq!(kilo.routing_cost, Some(0.0));
-        assert!(kilo.included);
-        assert_eq!(kilo.pricing_provider.as_deref(), Some("kilo"));
-
-        let antigravity = select_probe_model(
-            &json!({"modelCatalog": {"models": [
-                {"name": "Gemini 3.5 Flash (High)"},
-                {"name": "gemini-3.1-pro-preview"}
-            ]}}),
-            "antigravity",
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(antigravity.runtime_model, "gemini-3.1-pro-preview");
-        assert!(antigravity.routing_cost.is_some());
-        assert_eq!(antigravity.pricing_provider.as_deref(), Some("google"));
-
-        let claude = select_probe_model(
-            &json!({"modelCatalog": {"models": [
-                {"name": "deepseek-v4-flash"},
-                {"name": "deepseek-v4-pro"}
-            ]}}),
-            "claude-code",
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(claude.runtime_model, "deepseek-v4-flash");
-        assert!(claude.routing_cost.is_some());
-        assert_eq!(claude.pricing_provider.as_deref(), Some("deepseek"));
+    fn readiness_observation_request_is_agent_scoped_and_input_free() {
+        let request = readiness_observation_request("kimi-code");
+        let object = request.as_object().unwrap();
+        assert_eq!(request["agent"], json!("kimi-code"));
+        assert_eq!(request["waitForChangeMs"], json!(0));
+        assert_eq!(object.len(), 2);
+        for retired in [
+            "prompt",
+            "text",
+            "model",
+            "reasoningEffort",
+            "workingDirectory",
+            "timeoutMs",
+            "streamEvents",
+        ] {
+            assert!(!object.contains_key(retired), "{retired}");
+        }
     }
 
     #[test]
-    fn diagnostic_probe_accepts_any_non_empty_assistant_response() {
-        assert!(probe_response_is_ready(&json!({"output": "READY"})));
-        assert!(probe_response_is_ready(&json!({
-            "output": "Ready to accept work."
-        })));
-        assert!(!probe_response_is_ready(&json!({"output": "  \n"})));
-        assert!(!probe_response_is_ready(&json!({})));
+    fn readiness_classification_treats_busy_as_a_successful_state() {
+        assert_eq!(readiness_state(0), "ready");
+        assert_eq!(readiness_state(1), "busy");
+        assert_eq!(readiness_state(7), "busy");
+    }
+
+    #[test]
+    fn readiness_requires_the_exact_admitted_agent_identifier() {
+        let target = json!({"target": "kilo-code"});
+        assert_eq!(
+            exact_readiness_agent_id("kilo-code", &target).unwrap(),
+            "kilo-code"
+        );
+        assert_eq!(
+            exact_readiness_agent_id("kilo", &target).unwrap_err().code,
+            "invalid_request"
+        );
+    }
+
+    #[test]
+    fn readiness_transport_errors_never_project_private_host_codes() {
+        const PRIVATE_HOST_CODE: &str = "private-runtime-identifier";
+        let projected =
+            project_readiness_transport_failure(ToolFailure::new(PRIVATE_HOST_CODE, false));
+        assert_eq!(projected.code, "subagent_transport_failed");
+        assert!(projected.retryable);
+        assert!(
+            !tool_error(&projected)
+                .to_string()
+                .contains(PRIVATE_HOST_CODE)
+        );
+
+        let unavailable = project_readiness_transport_failure(ToolFailure::new(
+            PERSISTENT_TRANSPORT_REQUIRED,
+            true,
+        ));
+        assert_eq!(unavailable.code, PERSISTENT_TRANSPORT_REQUIRED);
+    }
+
+    #[test]
+    fn readiness_receipt_projects_no_private_runtime_identifiers() {
+        let target = json!({
+            "target": "kimi-code",
+            "status": "detected",
+            "binaryPath": "<local-path>",
+            "adapterCapabilities": {
+                "conversationDriver": "native",
+                "conversationReadiness": "ready"
+            }
+        });
+        let receipt = readiness_receipt("kimi-code", &target, 2);
+        assert_eq!(
+            receipt["schemaVersion"],
+            json!("licoup.subagent.readiness.v1")
+        );
+        assert_eq!(receipt["operation"], json!("subagent.readiness"));
+        assert_eq!(receipt["agentId"], json!("kimi-code"));
+        assert_eq!(receipt["state"], json!("busy"));
+        assert_eq!(receipt["integrationStatus"], json!("detected"));
+        assert_eq!(receipt["conversationDriver"], json!("native"));
+        assert_eq!(receipt["conversationReadiness"], json!("ready"));
+        assert_eq!(receipt["blockerCode"], Value::Null);
+        assert_eq!(
+            receipt["hostTransport"],
+            json!(conversation_host_transport::STDIO_RPC_PROTOCOL)
+        );
+        assert_eq!(receipt["hostActiveTurns"], json!(2));
+        let object = receipt.as_object().unwrap();
+        assert_eq!(object.len(), 10);
+        for forbidden in [
+            "sessionId",
+            "nativeSessionId",
+            "turnHandle",
+            "dispatchId",
+            "sourcePath",
+            "workingDirectory",
+            "binaryPath",
+            "pid",
+            "port",
+            "model",
+            "reasoningEffort",
+            "cleanupState",
+        ] {
+            assert!(!object.contains_key(forbidden), "{forbidden}");
+        }
+        assert!(!receipt.to_string().contains("<local-path>"));
+        let idle = readiness_receipt("kimi-code", &target, 0);
+        assert_eq!(idle["state"], json!("ready"));
+        let blocked = readiness_receipt(
+            "cursor",
+            &json!({
+                "target": "cursor",
+                "status": "detected",
+                "adapterCapabilities": {
+                    "conversationDriver": "native",
+                    "conversationReadiness": "unverified",
+                    "conversationBlocker": "parity-evidence-stale"
+                }
+            }),
+            0,
+        );
+        assert_eq!(blocked["blockerCode"], json!("parity-evidence-stale"));
+        assert_eq!(blocked["state"], json!("ready"));
     }
 
     #[test]
@@ -2982,20 +2575,6 @@ mod tests {
                 .code,
             "subagent_reasoning_effort_unavailable"
         );
-    }
-
-    #[test]
-    fn diagnostic_probe_cleanup_targets_the_complete_kimi_session() {
-        let session_root = std::env::temp_dir().join(format!("session_{}", uuid::Uuid::new_v4()));
-        let wire = session_root.join("agents/main/wire.jsonl");
-        std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
-        std::fs::write(&wire, b"{}\n").unwrap();
-        std::fs::write(session_root.join("state.json"), b"{}").unwrap();
-        assert_eq!(
-            probe_cleanup_target("kimi-code", wire.to_str().unwrap()).unwrap(),
-            std::fs::canonicalize(&session_root).unwrap()
-        );
-        std::fs::remove_dir_all(session_root).unwrap();
     }
 
     #[test]
@@ -3266,24 +2845,132 @@ mod tests {
     }
 
     #[test]
-    fn only_quota_rate_limit_and_capacity_codes_trigger_cooldown() {
-        for code in [
-            "quota_exhausted",
-            "insufficient_credits",
-            "rate_limited",
-            "provider_capacity_exhausted",
-        ] {
-            assert!(quota_or_capacity_failure(&json!({"error": {"code": code}})));
-        }
-        for code in [
-            "authorization_denied",
-            "invalid_config",
-            "model_not_found",
-            "ordinary_failure",
-        ] {
-            assert!(!quota_or_capacity_failure(
-                &json!({"error": {"code": code}})
-            ));
-        }
+    fn delivery_pending_only_pass_sleeps_without_consuming_the_progress_budget() {
+        let pending_only = delivery_scheduler::ScheduleReport {
+            dispatched: 0,
+            completed: 0,
+            failed: 0,
+            pending: 3,
+        };
+        assert_eq!(
+            delivery_pass_outcome(&pending_only),
+            DeliveryPassOutcome::WaitPending
+        );
+        let mixed = delivery_scheduler::ScheduleReport {
+            dispatched: 1,
+            ..pending_only
+        };
+        assert_eq!(delivery_pass_outcome(&mixed), DeliveryPassOutcome::Progress);
+        let settled = delivery_scheduler::ScheduleReport {
+            dispatched: 0,
+            completed: 1,
+            failed: 0,
+            pending: 0,
+        };
+        assert_eq!(
+            delivery_pass_outcome(&settled),
+            DeliveryPassOutcome::Progress
+        );
+        let unproductive = delivery_scheduler::ScheduleReport::default();
+        assert_eq!(
+            delivery_pass_outcome(&unproductive),
+            DeliveryPassOutcome::Unproductive
+        );
+    }
+
+    #[test]
+    fn delivery_runner_record_is_not_rewritten_when_unchanged() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-delivery-runner-record-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let workflow_id = "workflow-delivery-pass";
+        let record = delivery_state::DeliveryControlRecord::new(workflow_id, "/fixture-state");
+        delivery_state::persist_delivery_control(&root, &record).unwrap();
+        let failure = DeliveryFailureRecord {
+            code: "delivery_runner_pass_uncommitted".to_owned(),
+            stage: "scheduler".to_owned(),
+            component: "delivery-runner".to_owned(),
+            retryable: true,
+            recovery: "resume_native_runner".to_owned(),
+        };
+        set_delivery_runner(
+            &root,
+            workflow_id,
+            DeliveryRunnerState::InDoubt,
+            Some(failure.clone()),
+        )
+        .unwrap();
+        let first = delivery_state::load_delivery_control(&root, workflow_id)
+            .unwrap()
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        set_delivery_runner(
+            &root,
+            workflow_id,
+            DeliveryRunnerState::InDoubt,
+            Some(failure),
+        )
+        .unwrap();
+        let second = delivery_state::load_delivery_control(&root, workflow_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.runner_state, DeliveryRunnerState::InDoubt);
+        assert_eq!(first.updated_at_unix_ms, second.updated_at_unix_ms);
+        update_delivery_identity(&root, workflow_id, "PLAN-DELIVERY", 7).unwrap();
+        let third = delivery_state::load_delivery_control(&root, workflow_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(third.plan_code.as_deref(), Some("PLAN-DELIVERY"));
+        std::thread::sleep(Duration::from_millis(2));
+        update_delivery_identity(&root, workflow_id, "PLAN-DELIVERY", 7).unwrap();
+        let fourth = delivery_state::load_delivery_control(&root, workflow_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(third.updated_at_unix_ms, fourth.updated_at_unix_ms);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_host_absence_is_the_typed_persistent_transport_rejection() {
+        let error = require_delivery_host_with(|| {
+            Err(io::Error::new(io::ErrorKind::NotFound, "synthetic absence"))
+        })
+        .unwrap_err();
+        assert_eq!(error.code, PERSISTENT_TRANSPORT_REQUIRED);
+        assert!(error.retryable);
+    }
+
+    #[test]
+    fn delivery_host_absence_does_not_open_a_plan_checkpoint() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-delivery-host-absence-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let plan_root = root.join("plan");
+        std::fs::create_dir_all(&plan_root).unwrap();
+        let previous = paths::set_portable_data_dir_override(Some(root.clone()));
+        let error = delivery_start(
+            "manager-agent",
+            &json!({
+                "workflowId": "workflow-host-absence",
+                "planRoot": plan_root.to_string_lossy(),
+            }),
+        )
+        .unwrap_err();
+        paths::set_portable_data_dir_override(previous);
+        assert_eq!(error.code, PERSISTENT_TRANSPORT_REQUIRED);
+        assert!(!plan_root.join("Checkpoints.json").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_runner_setup_failure_releases_the_process_local_claim() {
+        let key = format!("delivery-claim-fixture-{}", uuid::Uuid::new_v4());
+        let first = RunningDeliveryGuard::claim(key.clone()).unwrap();
+        assert!(RunningDeliveryGuard::claim(key.clone()).is_none());
+        drop(first);
+        assert!(RunningDeliveryGuard::claim(key).is_some());
     }
 }

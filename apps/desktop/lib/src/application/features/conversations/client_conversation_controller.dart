@@ -6,6 +6,7 @@ import 'package:licoup/src/backend/features/conversations/services/client_conver
 import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/problem_codes/problem_codes.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
 final class ClientConversationController extends ChangeNotifier {
@@ -31,6 +32,12 @@ final class ClientConversationController extends ChangeNotifier {
   String _draft = '';
   String _failureStage = '';
   String _failureCode = '';
+  String _failureRef = '';
+  String _failureOccurredAt = '';
+  String _failureStrategyCode = '';
+  var _failureSeq = 0;
+  List<Map<String, dynamic>> _liveTurns = const [];
+  bool _dispatchPending = false;
   List<ClientConversationSummary> _summaries = const [];
   List<ClientConversationSummary> _archivedSummaries = const [];
   ClientConversation? _selectedConversation;
@@ -46,11 +53,64 @@ final class ClientConversationController extends ChangeNotifier {
   String get draft => _draft;
   String get failureStage => _failureStage;
   String get failureCode => _failureCode;
+  String get failureRef => _failureRef;
+  String get failureProblemCode => ProblemCodeCopy.problemCode(_failureCode);
+  String get failureCopyBlob => ProblemCodeCopy.copyableDetail(
+    legacyCode: _failureCode,
+    stage: _failureStage,
+    occurrenceId: _failureRef,
+    occurredAt: _failureOccurredAt,
+    strategyCode: _failureStrategyCode,
+  );
+
+  List<Map<String, dynamic>> get liveTurns => _liveTurns;
+  bool get dispatchPending => _dispatchPending;
+
+  /// Drops the composer busy latch once no Membership turn is live.
+  ///
+  /// `after-post` sets [dispatchPending] when it returns a handle. Completing
+  /// that turn does not go back through send, so the pane must settle it.
+  void settleLiveDispatch() {
+    if (_disposed || (!_dispatchPending && _liveTurns.isEmpty)) return;
+    _liveTurns = const [];
+    _dispatchPending = false;
+    _notifyListeners();
+  }
+
   ClientConversation? get selectedConversation => _selectedConversation;
   List<ClientConversationEvent> get events => _events;
   List<String> get recentParticipantAgentIds => _recentParticipants.agentIds;
   List<ClientConversationSummary> get archivedConversations =>
       _archivedSummaries;
+
+  /// Surfaces a group-operation failure on the conversation banner.
+  void surfaceFailure(String stage, String code) {
+    if (_disposed) return;
+    final nextStage = stage.trim();
+    final nextCode = code.trim();
+    if (nextStage.isEmpty || nextCode.isEmpty) return;
+    _recordFailure(nextStage, nextCode);
+    _notifyListeners();
+  }
+
+  void _clearFailure() {
+    _failureStage = '';
+    _failureCode = '';
+    _failureRef = '';
+    _failureOccurredAt = '';
+    _failureStrategyCode = '';
+  }
+
+  void _recordFailure(String stage, String code, {String strategyCode = ''}) {
+    _failureStage = stage;
+    _failureCode = code;
+    _failureStrategyCode = strategyCode;
+    _failureOccurredAt = DateTime.now().toUtc().toIso8601String();
+    _failureSeq = (_failureSeq + 1) & 0xFFFF;
+    final mixed =
+        (DateTime.now().microsecondsSinceEpoch ^ (_failureSeq << 8)) & 0xFFFF;
+    _failureRef = '#L-${mixed.toRadixString(16).toUpperCase().padLeft(4, '0')}';
+  }
 
   List<ClientConversationSummary> get groupConversations => _summaries
       .where((conversation) => conversation.isGroup)
@@ -109,6 +169,10 @@ final class ClientConversationController extends ChangeNotifier {
       return;
     }
     final changed = _selectedConversationId != normalized;
+    if (changed) {
+      _liveTurns = const [];
+      _dispatchPending = false;
+    }
     _selectedConversationId = normalized;
     _draft = '';
     final cached = _conversationCache[normalized];
@@ -238,11 +302,7 @@ final class ClientConversationController extends ChangeNotifier {
     });
   }
 
-  Future<bool> postMessage(
-    String text, {
-    bool suppressMentions = false,
-    String? mentionAgentId,
-  }) async {
+  Future<bool> postMessage(String text) async {
     final conversation = _selectedConversation;
     final content = text.trim();
     final author = conversation?.localOwnerMembership;
@@ -250,39 +310,65 @@ final class ClientConversationController extends ChangeNotifier {
       return false;
     }
     _sending = true;
-    _failureStage = '';
-    _failureCode = '';
+    _clearFailure();
     _notifyListeners();
     try {
-      final mentioned = suppressMentions
-          ? const <String>[]
-          : mentionAgentId == null
-          ? _mentionedMembershipIds(content, conversation)
-          : conversation.activeAgentMemberships
-                .where(
-                  (membership) =>
-                      membership.principal.agentId == mentionAgentId,
-                )
-                .map((membership) => membership.id)
-                .toList(growable: false);
-      await _service.execute(_runner, {
+      final posted = await _service.execute(_runner, {
         'action': 'conversation.message.post',
         'conversationId': conversation.id,
         'authorMembershipId': author.id,
         'content': content,
-        'mentionedMembershipIds': mentioned,
       });
+      final eventId = _postedEventId(posted);
+      if (eventId == null || eventId.isEmpty) {
+        throw const ClientConversationServiceFailure('invalid_response');
+      }
       _draft = '';
+      _notifyListeners();
+      try {
+        final dispatched = await _service.execute(_runner, {
+          'action': 'conversation.dispatch.after-post',
+          'conversationId': conversation.id,
+          'eventId': eventId,
+        });
+        _liveTurns = _postedLiveTurns(dispatched);
+        _dispatchPending = _liveTurns.isNotEmpty;
+        if (dispatched is Map) {
+          final strategyError = dispatched['strategyError'];
+          if (strategyError is Map) {
+            final code = (strategyError['code'] ?? '').toString().trim();
+            if (code.isNotEmpty) {
+              final stage = (strategyError['stage'] ?? 'strategy/start')
+                  .toString()
+                  .trim();
+              _recordFailure(
+                stage.isEmpty ? 'strategy/start' : stage,
+                code,
+                strategyCode: code,
+              );
+              _dispatchPending = false;
+            }
+          }
+        }
+      } on ClientConversationServiceFailure catch (failure) {
+        _recordFailure('send', failure.code);
+        _liveTurns = const [];
+        _dispatchPending = false;
+      } catch (_) {
+        _liveTurns = const [];
+        _dispatchPending = false;
+      }
       await _refreshCatalogWithoutGuard();
       await _loadSelected();
       return true;
     } on ClientConversationServiceFailure catch (failure) {
-      _failureStage = 'send';
-      _failureCode = failure.code;
+      _recordFailure('send', failure.code);
+      _liveTurns = const [];
+      _dispatchPending = false;
       return false;
     } catch (_) {
-      _failureStage = 'send';
-      _failureCode = 'conversation_operation_failed';
+      _liveTurns = const [];
+      _dispatchPending = false;
       return false;
     } finally {
       _sending = false;
@@ -429,6 +515,16 @@ final class ClientConversationController extends ChangeNotifier {
     ).where((conversation) => conversation.archived).toList(growable: false);
   }
 
+  /// Reloads the selected transcript so streamed group events can appear
+  /// while a strategy actor is still running.
+  Future<void> reloadSelected() async {
+    if (_disposed || _selectedConversationId.isEmpty) return;
+    try {
+      await _loadSelected();
+      if (!_disposed) _notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> _loadSelected() async {
     final id = _selectedConversationId;
     if (id.isEmpty) return;
@@ -477,28 +573,6 @@ final class ClientConversationController extends ChangeNotifier {
     );
   }
 
-  List<String> _mentionedMembershipIds(
-    String content,
-    ClientConversation conversation,
-  ) {
-    final result = <String>[];
-    for (final membership in conversation.activeAgentMemberships) {
-      final aliases = {
-        membership.principal.displayName.trim(),
-        membership.principal.agentId.trim(),
-      }.where((alias) => alias.isNotEmpty);
-      final mentioned = aliases.any((alias) {
-        final escaped = RegExp.escape(alias);
-        return RegExp(
-          '(^|\\s)@$escaped(?=\\s|[,.!?;:，。！？；：]|\$)',
-          caseSensitive: false,
-        ).hasMatch(content);
-      });
-      if (mentioned) result.add(membership.id);
-    }
-    return List<String>.unmodifiable(result);
-  }
-
   Future<void> _waitUntilIdle() async {
     while (_loading) {
       final completion = _loadingCompletion;
@@ -512,19 +586,15 @@ final class ClientConversationController extends ChangeNotifier {
     _loading = true;
     final loadingCompletion = Completer<void>();
     _loadingCompletion = loadingCompletion;
-    _failureStage = '';
-    _failureCode = '';
+    _clearFailure();
     _notifyListeners();
     try {
       await operation();
       return true;
     } on ClientConversationServiceFailure catch (failure) {
-      _failureStage = stage;
-      _failureCode = failure.code;
+      _recordFailure(stage, failure.code);
       return false;
     } catch (_) {
-      _failureStage = stage;
-      _failureCode = 'conversation_operation_failed';
       return false;
     } finally {
       _loading = false;
@@ -543,6 +613,8 @@ final class ClientConversationController extends ChangeNotifier {
     _events = const [];
     _recentParticipants.clear();
     _draft = '';
+    _liveTurns = const [];
+    _dispatchPending = false;
     if (changed) _onSelectionChanged?.call('');
   }
 
@@ -588,4 +660,24 @@ bool _sameStringList(List<String> left, List<String> right) {
     if (left[index] != right[index]) return false;
   }
   return true;
+}
+
+String? _postedEventId(Object? posted) {
+  if (posted is! Map) return null;
+  final event = posted['event'];
+  if (event is Map) {
+    final id = (event['id'] ?? '').toString().trim();
+    if (id.isNotEmpty) return id;
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> _postedLiveTurns(Object? posted) {
+  if (posted is! Map) return const [];
+  final turns = posted['turns'];
+  if (turns is! List) return const [];
+  return [
+    for (final turn in turns)
+      if (turn is Map) Map<String, dynamic>.from(turn),
+  ];
 }

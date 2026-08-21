@@ -169,6 +169,7 @@ enum ConversationActionKind {
   conversationEventsSearch("conversation.events.search"),
   conversationEventAppend("conversation.event.append"),
   conversationMessagePost("conversation.message.post"),
+  conversationDispatchAfterPost("conversation.dispatch.after-post"),
   conversationEventPartAppend("conversation.event.part.append"),
   conversationEventFinalize("conversation.event.finalize"),
   conversationMembershipAdd("conversation.membership.add"),

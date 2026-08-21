@@ -1,4 +1,5 @@
 use super::super::catalog::normalize_target;
+use super::super::discovery::inspect_target_read_only_with_params;
 use super::super::manual::manual_targets;
 use super::super::parameters::target_param;
 use super::super::platform_paths::default_config_path;
@@ -133,6 +134,114 @@ fn targets_add_projects_supported_virtual_machine_connection_without_local_paths
 fn targets_public_inspect_entrypoint_uses_default_scan_path() {
     let inspected = inspect_target("opencode").unwrap();
     assert_eq!(inspected["target"]["target"], "opencode");
+}
+
+#[test]
+fn read_only_target_inspection_skips_model_stores_and_discovery_cache_writes() {
+    let dir = temp_test_dir("read-only-target");
+    let state_root = dir.join("client-state");
+    let config_path = dir.join("openclaw-runtime.json");
+    fs::write(&config_path, "{}\n").unwrap();
+    add_target(&json!({
+        "target": "openclaw",
+        "stateRoot": display_path(state_root.clone()),
+        "configPath": display_path(config_path)
+    }))
+    .unwrap();
+
+    let store = crate::platform::client_state::ClientStateStore::new(state_root.clone()).unwrap();
+    assert!(store.read_target_routes().unwrap().is_empty());
+    let inspected = inspect_target_read_only_with_params(&json!({
+        "target": "openclaw",
+        "stateRoot": display_path(state_root),
+        "enableAgentCliModelLookup": true,
+        "probeConversationRuntime": true,
+        "includeHistoryModelCatalog": true,
+        "includeAccessibleEnvironments": true,
+        "modelCatalogFixture": {
+            "openclaw": {"models": [{"name": "must-not-be-read"}]}
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(inspected["target"]["target"], "openclaw");
+    assert_eq!(inspected["target"].as_object().unwrap().len(), 4);
+    assert_eq!(
+        inspected["target"]["adapterCapabilities"]
+            .as_object()
+            .unwrap()
+            .len(),
+        3
+    );
+    for private in [
+        "binaryPath",
+        "configPath",
+        "detail",
+        "historyRoots",
+        "modelCatalog",
+        "runtimeConnection",
+    ] {
+        assert!(inspected["target"].get(private).is_none(), "{private}");
+    }
+    assert!(store.read_target_routes().unwrap().is_empty());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn read_only_target_inspection_does_not_initialize_missing_client_state() {
+    let dir = temp_test_dir("read-only-target-missing-state");
+    let state_root = dir.join("missing-client-state");
+
+    let inspected = inspect_target_read_only_with_params(&json!({
+        "target": "opencode",
+        "stateRoot": display_path(state_root.clone())
+    }))
+    .unwrap();
+
+    assert_eq!(inspected["target"]["target"], "opencode");
+    assert!(!state_root.exists());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn read_only_target_inspection_never_executes_the_agent_binary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_test_dir("read-only-target-execution");
+    let state_root = dir.join("client-state");
+    let binary = dir.join("cursor-agent");
+    let execution_marker = dir.join("cursor-agent.ran");
+    fs::write(
+        &binary,
+        "#!/bin/sh\n: > \"$0.ran\"\nprintf 'auto - Auto (default)\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+    add_target(&json!({
+        "target": "cursor",
+        "stateRoot": display_path(state_root.clone()),
+        "binaryPath": display_path(binary),
+    }))
+    .unwrap();
+
+    let inspected = inspect_target_read_only_with_params(&json!({
+        "target": "cursor",
+        "stateRoot": display_path(state_root),
+        "workingDirectory": display_path(dir.clone()),
+        "enableAgentCliModelLookup": true,
+        "probeConversationRuntime": true,
+    }))
+    .unwrap();
+
+    assert!(!execution_marker.exists());
+    assert!(inspected["target"].get("modelCatalog").is_none());
+    assert!(
+        inspected["target"]["supportedActions"]
+            .as_array()
+            .is_some_and(|actions| !actions.is_empty())
+    );
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

@@ -10,7 +10,8 @@ use uuid::Uuid;
 use super::{
     BindingCandidate, BindingValue, ReducerEvent, RunCommand, RunSnapshot, STRATEGY_SCHEMA_VERSION,
     StrategyAuthorization, StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic,
-    StrategyProjection, StrategyRunStatus, WorkflowDefinition, compile_workflow, reduce,
+    StrategyProjection, StrategyRunStatus, WorkflowDefinition, compile_persisted_workflow,
+    compile_workflow, reduce,
 };
 
 const DATABASE_FILE: &str = "strategies.sqlite3";
@@ -23,6 +24,12 @@ pub(crate) fn validate_import_identity(definition_id: &str, name: &str) -> Resul
         "strategy_definition_identity_reserved"
     );
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LeaseRecovery {
+    Standard,
+    AbandonedHost,
 }
 
 #[derive(Clone, Debug)]
@@ -460,7 +467,7 @@ impl StrategyStore {
             );
             let slot_candidate_counts = slot_candidate_counts(&definition.bindings);
             let semantics_digest = definition.summary.semantics_digest.clone();
-            let compiled = compile_workflow(definition.workflow)?;
+            let compiled = compile_persisted_workflow(definition.workflow)?;
             let run_id = format!("run-{}", Uuid::new_v4());
             let empty = RunSnapshot::empty(&run_id, revision_digest, &semantics_digest);
             let event = ReducerEvent::Start { input };
@@ -510,7 +517,7 @@ impl StrategyStore {
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             let previous = load_run(&transaction, run_id)?;
             let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
+            let compiled = compile_persisted_workflow(workflow)?;
             let output = reduce(&compiled, &previous, event.clone())?;
             if output.applied {
                 let now = now_ms();
@@ -571,7 +578,7 @@ impl StrategyStore {
                 return Ok(None);
             }
             let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
+            let compiled = compile_persisted_workflow(workflow)?;
             let run_active: i64 = transaction.query_row(
                 "SELECT COUNT(*) FROM strategy_commands
                  WHERE run_id=?1 AND status IN ('claimed', 'running') AND lease_until>?2",
@@ -738,22 +745,87 @@ impl StrategyStore {
     /// is retried in the same transaction, while expired running work is
     /// retained as in-doubt and is never blindly retried.
     pub(crate) fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
+        let Some(command_id) = self.next_expired_leased_command_id(run_id)? else {
+            return Ok(false);
+        };
+        self.recover_leased_command(run_id, &command_id, LeaseRecovery::Standard)?;
+        Ok(true)
+    }
+
+    /// Drop still-valid leases left by a previous host process and retry the
+    /// commands. Expired-running recovery stays InDoubt; only this path treats
+    /// a running effect as Transient `host_runtime_lost`.
+    pub(crate) fn reclaim_abandoned_host_commands(&self, run_id: &str) -> Result<()> {
+        let command_ids = self.release_live_host_leases(run_id)?;
+        for command_id in command_ids {
+            self.recover_leased_command(run_id, &command_id, LeaseRecovery::AbandonedHost)?;
+        }
+        Ok(())
+    }
+
+    fn next_expired_leased_command_id(&self, run_id: &str) -> Result<Option<String>> {
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT command_id FROM strategy_commands
+                     WHERE run_id=?1 AND status IN ('claimed', 'running')
+                       AND lease_until IS NOT NULL AND lease_until<=?2
+                     ORDER BY command_id ASC LIMIT 1",
+                    params![run_id, now_ms()],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
+    fn release_live_host_leases(&self, run_id: &str) -> Result<Vec<String>> {
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let command_ids = {
+                let mut statement = transaction.prepare(
+                    "SELECT command_id FROM strategy_commands
+                     WHERE run_id=?1 AND status IN ('claimed', 'running')
+                       AND lease_until IS NOT NULL AND lease_until>?2
+                     ORDER BY command_id ASC",
+                )?;
+                let command_ids = statement
+                    .query_map(params![run_id, now_ms()], |row| row.get(0))?
+                    .collect::<rusqlite::Result<Vec<String>>>()?;
+                command_ids
+            };
+            for command_id in &command_ids {
+                transaction.execute(
+                    "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
+                    params![command_id],
+                )?;
+            }
+            transaction.commit()?;
+            Ok(command_ids)
+        })
+    }
+
+    fn recover_leased_command(
+        &self,
+        run_id: &str,
+        command_id: &str,
+        recovery: LeaseRecovery,
+    ) -> Result<()> {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             let value: Option<(String, String)> = transaction
                 .query_row(
                     "SELECT command_json, status FROM strategy_commands
-                 WHERE run_id=?1 AND status IN ('claimed', 'running')
-                   AND lease_until IS NOT NULL AND lease_until<=?2
-                 ORDER BY command_id ASC LIMIT 1",
-                    params![run_id, now_ms()],
+                     WHERE run_id=?1 AND command_id=?2 AND status IN ('claimed', 'running')",
+                    params![run_id, command_id],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?;
             let Some((command_json, persisted_status)) = value else {
                 transaction.commit()?;
-                return Ok(false);
+                return Ok(());
             };
             let command: RunCommand = serde_json::from_str(&command_json)?;
             let expected_status = enum_wire(command.status)?;
@@ -774,11 +846,15 @@ impl StrategyStore {
                 "strategy_recovery_state_conflict"
             );
             let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
-            let (class, code) = if command.status == super::CommandStatus::Claimed {
-                (super::FailureClass::Transient, "lease_expired_before_start")
-            } else {
-                (super::FailureClass::InDoubt, "effect_outcome_unknown")
+            let compiled = compile_persisted_workflow(workflow)?;
+            let (class, code) = match (command.status, recovery) {
+                (super::CommandStatus::Claimed, _) => {
+                    (super::FailureClass::Transient, "lease_expired_before_start")
+                }
+                (super::CommandStatus::Running, LeaseRecovery::AbandonedHost) => {
+                    (super::FailureClass::Transient, "host_runtime_lost")
+                }
+                _ => (super::FailureClass::InDoubt, "effect_outcome_unknown"),
             };
             let failure_event = ReducerEvent::CommandFailed {
                 command_id: command.id.clone(),
@@ -833,7 +909,7 @@ impl StrategyStore {
                 params![&command.id],
             )?;
             transaction.commit()?;
-            Ok(true)
+            Ok(())
         })
     }
 
@@ -894,7 +970,7 @@ impl StrategyStore {
     pub fn projection_for_run(&self, run_id: &str) -> Result<StrategyProjection> {
         let snapshot = self.run(run_id)?;
         let definition = self.definition_by_revision(&snapshot.definition_digest)?;
-        let compiled = compile_workflow(definition.workflow.clone())?;
+        let compiled = compile_persisted_workflow(definition.workflow.clone())?;
         let neighbors = snapshot
             .active_states
             .iter()
@@ -1007,6 +1083,40 @@ impl StrategyStore {
                 .optional()?
                 .map(|snapshot_json| serde_json::from_str(&snapshot_json).map_err(Into::into))
                 .transpose()
+        })
+    }
+
+    pub(crate) fn bind_conversation_if_absent(
+        &self,
+        run_id: &str,
+        conversation_id: &str,
+    ) -> Result<()> {
+        validate_opaque_id(conversation_id, "strategy_conversation_id_invalid")?;
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut snapshot = load_run(&transaction, run_id)?;
+            if snapshot
+                .conversation_id
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+            {
+                transaction.commit()?;
+                return Ok(());
+            }
+            snapshot.conversation_id = Some(conversation_id.to_owned());
+            transaction.execute(
+                "UPDATE strategy_runs SET snapshot_json=?2, conversation_id=?3, updated_at=?4
+                 WHERE run_id=?1",
+                params![
+                    run_id,
+                    serde_json::to_string(&snapshot)?,
+                    snapshot.conversation_id,
+                    now_ms()
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(())
         })
     }
 
@@ -2078,6 +2188,97 @@ mod tests {
                 .values()
                 .any(|command| command.attempt == 2)
         );
+    }
+
+    #[test]
+    fn abandoned_running_effect_is_retried_when_this_host_becomes_driver() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        store
+            .register_definition(
+                revision,
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "abandoned-host-recovery", None, None)
+            .unwrap();
+        let claimed = store
+            .claim_next_command(&run.run_id, "claimant", now_ms() + 60_000)
+            .unwrap()
+            .unwrap();
+        store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandStarted {
+                    command_id: claimed.id.clone(),
+                    attempt_token: claimed.attempt_token.clone(),
+                },
+            )
+            .unwrap();
+
+        store.reclaim_abandoned_host_commands(&run.run_id).unwrap();
+        let recovered = store.run(&run.run_id).unwrap();
+        assert_eq!(
+            recovered.commands[&claimed.id].status,
+            super::super::CommandStatus::Cancelled
+        );
+        assert_eq!(
+            recovered.commands[&claimed.id].failure_code.as_deref(),
+            Some("host_runtime_lost")
+        );
+        assert!(
+            recovered
+                .commands
+                .values()
+                .any(|command| command.attempt == 2
+                    && command.status == super::super::CommandStatus::Pending)
+        );
+        assert_eq!(recovered.status, StrategyRunStatus::Running);
+    }
+
+    #[test]
+    fn bind_conversation_if_absent_fills_an_unbound_run() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "1111111111111111111111111111111111111111111111111111111111111111";
+        store
+            .register_definition(
+                revision,
+                "2222222222222222222222222222222222222222222222222222222222222222",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "bind-conversation", None, None)
+            .unwrap();
+        assert!(run.conversation_id.is_none());
+        store
+            .bind_conversation_if_absent(&run.run_id, "conversation:group")
+            .unwrap();
+        store
+            .bind_conversation_if_absent(&run.run_id, "conversation:other")
+            .unwrap();
+        let bound = store.run(&run.run_id).unwrap();
+        assert_eq!(bound.conversation_id.as_deref(), Some("conversation:group"));
     }
 
     fn named_workflow(id: &str, name: &str) -> WorkflowDefinition {

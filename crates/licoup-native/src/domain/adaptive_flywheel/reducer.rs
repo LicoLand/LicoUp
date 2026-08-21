@@ -193,6 +193,31 @@ pub struct ReducerOutput {
     pub applied: bool,
 }
 
+/// One deterministic actor-command input for a state: the run input wrapped
+/// with the state instruction when one exists. Registration and drive share
+/// this builder so a pre-registered entry turn sends exactly the prompt the
+/// emitted command would carry.
+pub(crate) fn effect_input_for(
+    workflow: &CompiledWorkflow,
+    state_id: &str,
+    input: Value,
+) -> Result<Value> {
+    let state = workflow
+        .state(state_id)
+        .ok_or_else(|| anyhow!("strategy_state_unknown"))?;
+    if state.instruction.trim().is_empty() {
+        return Ok(input);
+    }
+    let context = serde_json::to_string(&input)?;
+    Ok(json!({
+        "prompt": format!(
+            "{}\n\nState: {}\nInput JSON:\n{}",
+            state.instruction, state.id, context
+        ),
+        "context": input,
+    }))
+}
+
 pub fn reduce(
     workflow: &CompiledWorkflow,
     previous: &RunSnapshot,
@@ -609,18 +634,7 @@ impl Machine<'_> {
     }
 
     fn effect_input(&self, state_id: &str, input: Value) -> Result<Value> {
-        let state = self.workflow.state(state_id).unwrap();
-        if state.instruction.trim().is_empty() {
-            return Ok(input);
-        }
-        let context = serde_json::to_string(&input)?;
-        Ok(json!({
-            "prompt": format!(
-                "{}\n\nState: {}\nInput JSON:\n{}",
-                state.instruction, state.id, context
-            ),
-            "context": input,
-        }))
+        effect_input_for(self.workflow, state_id, input)
     }
 
     fn emit_command(

@@ -115,6 +115,113 @@ void main() {
     },
   );
 
+  test('canonical group merges streamed text parts on one event', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:stream',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': false,
+        'parts': [
+          _part('part:a', 0, 'text', 'Hel'),
+          _part('part:b', 1, 'text', 'lo'),
+          _part('part:life', 2, 'metadata', '{"lifecycle":"accepted"}'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+    expect(session.messages, hasLength(2));
+    expect(session.messages[0].id, 'event:stream');
+    expect(session.messages[0].role, 'assistant');
+    expect(session.messages[0].text, 'Hello');
+    expect(session.messages[1].cardType, 'lifecycle');
+    expect(session.messages[1].cardTitle, 'lifecycle.accepted');
+  });
+
+  test('canonical group keeps accepted and failed lifecycle parts', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:agent',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:accepted', 0, 'metadata', '{"lifecycle":"accepted"}'),
+          _part(
+            'part:diag',
+            1,
+            'diagnostic',
+            '{"code":"codex_turn_not_completed","stage":"turn/completed","turnStatus":"failed/Unauthorized"}',
+          ),
+          _part('part:failed', 2, 'metadata', '{"lifecycle":"failed"}'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+    expect(session.messages.map((message) => message.cardTitle), [
+      'lifecycle.accepted',
+      '',
+      'lifecycle.failed',
+    ]);
+    expect(session.messages[1].text, contains('failed/Unauthorized'));
+  });
+
   test('canonical group history explains every non-message event', () {
     final conversation = ClientConversation.fromJson({
       'id': 'conversation:group',

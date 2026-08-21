@@ -1,6 +1,6 @@
 //! Native execution adapter for the current delivery scheduler.
 
-use crate::domain::client_conversation::{ConversationService, DispatchState};
+use crate::domain::client_conversation::{ConversationDispatch, ConversationStore, DispatchState};
 use crate::domain::conversations;
 use crate::domain::delivery_scheduler::{
     AdmittedConversation, DeliveryError, DeliveryExecutor, DeliveryResult, DispatchRequest,
@@ -9,8 +9,20 @@ use crate::domain::delivery_scheduler::{
 use crate::platform::{agent_workspace, dispatch_lane_operation, paths};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const MAX_MATCHES: u64 = 2;
+
+/// One bounded request against the process-owned persistent Conversation
+/// host: `agent.conversation.dispatch` opens, runs, and abandons one
+/// Membership-scoped PersistentTurn internally and answers with an
+/// attachable turn handle, and `agent.conversation.cancel` reaches the same
+/// control plane. The port is injected so the adapter stays deterministic in
+/// process; production composes the stdio-RPC transport where that helper
+/// already exists. Host absence surfaces through the port as the typed
+/// `persistent_conversation_transport_required` rejection, never as a
+/// one-shot lane fallback.
+pub type DeliveryHostRequest = Arc<dyn Fn(&str, &Value) -> DeliveryResult<Value> + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConversationAdmissionFailure {
@@ -33,10 +45,24 @@ impl ConversationAdmissionFailure {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NativeDeliveryRuntime;
+/// Delivery execution adapter bound to the persistent host. The adapter
+/// holds the canonical Conversation store so terminal evidence is one read
+/// of the canonical dispatch record under the durable Delivery dispatch
+/// identity; the persistent host remains the sole turn owner and frame
+/// publisher, and no Delivery-side mirror of turn state exists.
+#[derive(Clone)]
+pub struct NativeDeliveryRuntime {
+    host: DeliveryHostRequest,
+    store: ConversationStore,
+}
 
 impl NativeDeliveryRuntime {
+    /// The host door is required at construction: no Delivery path can exist
+    /// that would fall back to a one-shot lane.
+    pub fn new(host: DeliveryHostRequest, store: ConversationStore) -> Self {
+        Self { host, store }
+    }
+
     fn admission_error(failure: ConversationAdmissionFailure) -> DeliveryError {
         DeliveryError::new(
             failure.code(),
@@ -168,54 +194,41 @@ impl NativeDeliveryRuntime {
         format!("native:{}:{}", agent_id, session_id)
     }
 
-    fn conversation_service() -> DeliveryResult<ConversationService> {
-        let root = paths::portable_data_dir()
+    /// Read the canonical dispatch record for one durable Delivery dispatch
+    /// identity. This is the single dispatch bookkeeping read: the record is
+    /// the terminal evidence source for dispatch replay, reconciliation, and
+    /// cancellation.
+    fn canonical_record(&self, dispatch_id: &str) -> DeliveryResult<Option<ConversationDispatch>> {
+        let record = self
+            .store
+            .dispatch_record(dispatch_id)
             .map_err(|_| Self::public_runtime_error("conversation_state_unavailable", true))?;
-        ConversationService::open(&root)
-            .map_err(|_| Self::public_runtime_error("conversation_state_unavailable", true))
-    }
-
-    fn canonical_scope(
-        agent_id: &str,
-        session_id: &str,
-        dispatch_id: Option<&str>,
-    ) -> DeliveryResult<(String, String)> {
-        let service = Self::conversation_service()?;
-        let scope = service
-            .store()
-            .prepare_runtime_dispatch(
-                agent_id,
-                session_id,
-                "delivery-conversation-admission",
-                None,
-                None,
-                None,
-                dispatch_id,
-            )
-            .map_err(|_| Self::public_runtime_error("conversation_state_unavailable", true))?;
-        Ok((scope.conversation_id, scope.membership_id))
-    }
-
-    fn terminal(value: &Value) -> TerminalState {
-        let status = value
-            .get("turnStatus")
-            .or_else(|| value.get("status"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if matches!(
-            status.as_str(),
-            "running" | "in-progress" | "pending" | "awaiting"
-        ) {
-            TerminalState::Pending
-        } else if matches!(status.as_str(), "cancelled" | "canceled") {
-            TerminalState::Cancelled
-        } else if value.get("ok").and_then(Value::as_bool) == Some(false)
-            || matches!(status.as_str(), "failed" | "error")
+        if record
+            .as_ref()
+            .is_some_and(|record| record.operation != "send")
         {
-            TerminalState::Failed
-        } else {
-            TerminalState::Completed
+            // A caller-selected identity that belongs to another canonical
+            // operation is not replay evidence for this Delivery attempt.
+            return Err(Self::native_effect_in_doubt());
+        }
+        Ok(record)
+    }
+
+    /// Project the canonical dispatch record as Delivery terminal evidence. A
+    /// live turn (running, or cancel requested but not yet arbitrated) stays
+    /// pending; a terminal record projects its terminal state; a
+    /// persisted-but-uncommitted record — absent, or still merely accepted
+    /// after a host or process restart — settles as a retryable failure with
+    /// the existing typed terminal code instead of opening a second turn.
+    fn canonical_terminal(record: Option<ConversationDispatch>) -> TerminalState {
+        match record {
+            None => TerminalState::Failed,
+            Some(record) => match record.state {
+                DispatchState::Running | DispatchState::CancelRequested => TerminalState::Pending,
+                DispatchState::Completed => TerminalState::Completed,
+                DispatchState::Cancelled => TerminalState::Cancelled,
+                DispatchState::Accepted | DispatchState::Failed => TerminalState::Failed,
+            },
         }
     }
 
@@ -223,13 +236,23 @@ impl NativeDeliveryRuntime {
         DeliveryError::new(
             code,
             "native-dispatch",
-            "native-lane",
+            "persistent-host",
             retryable,
             if retryable {
                 "retry_after_native_lane_recovers"
             } else {
                 "inspect_typed_terminal_failure"
             },
+        )
+    }
+
+    fn native_effect_in_doubt() -> DeliveryError {
+        DeliveryError::new(
+            "native_effect_in_doubt",
+            "native-dispatch",
+            "persistent-host",
+            true,
+            "reconcile_exact_conversation_before_retry",
         )
     }
 }
@@ -288,16 +311,12 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
                     ConversationAdmissionFailure::Unbounded,
                 ));
             }
-            let (conversation_id, membership_id) =
-                Self::canonical_scope(agent_id, session_id, None)?;
             return Ok(AdmittedConversation {
                 agent_id: agent_id.to_owned(),
                 session_id: session_id.to_owned(),
                 source_path: source.to_string_lossy().into_owned(),
                 working_directory: cwd.to_string_lossy().into_owned(),
                 binding: Self::binding(agent_id, session_id),
-                conversation_id,
-                membership_id,
             });
         }
         if working_directory.is_empty() || !Path::new(working_directory).is_absolute() {
@@ -338,7 +357,7 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
                 DeliveryError::new(
                     "native_effect_in_doubt",
                     "conversation-admission",
-                    "native-lane",
+                    "persistent-host",
                     true,
                     "reconcile_exact_conversation_before_retry",
                 )
@@ -349,19 +368,29 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
             .and_then(Value::as_str)
             .ok_or_else(|| Self::admission_error(ConversationAdmissionFailure::OutsideCatalog))?;
         let source = Self::canonical_location(source_path)?;
-        let (conversation_id, membership_id) = Self::canonical_scope(agent_id, session_id, None)?;
         Ok(AdmittedConversation {
             agent_id: agent_id.to_owned(),
             session_id: session_id.to_owned(),
             source_path: source.to_string_lossy().into_owned(),
             working_directory: cwd.to_string_lossy().into_owned(),
             binding: Self::binding(agent_id, session_id),
-            conversation_id,
-            membership_id,
         })
     }
 
     fn dispatch(&self, request: &DispatchRequest) -> DeliveryResult<DispatchResult> {
+        // Structural idempotency: the durable Delivery dispatch identity is
+        // the requested canonical dispatch identity, so the identity exists
+        // before any turn opens and a duplicate open is impossible. An
+        // existing canonical record projects its state instead of opening a
+        // second turn.
+        let existing = self.canonical_record(&request.dispatch_id)?;
+        if existing.is_some() {
+            return Ok(DispatchResult {
+                conversation: request.conversation.clone(),
+                terminal: Self::canonical_terminal(existing),
+                usage: json!({}),
+            });
+        }
         let text = serde_json::to_string(&json!({
             "brief": request.brief,
             "nativeConversationLocation": request.conversation.source_path.clone()
@@ -373,7 +402,9 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
             "text": text,
             "sessionId": request.conversation.session_id,
             "workingDirectory": request.conversation.working_directory,
-            "streamEvents": false
+            "streamEvents": true,
+            "dispatchId": request.dispatch_id,
+            "causationId": "delivery.dispatch",
         });
         if let Some(model) = &request.route.model {
             params["model"] = json!(model);
@@ -381,112 +412,73 @@ impl DeliveryExecutor for NativeDeliveryRuntime {
         if let Some(effort) = &request.route.reasoning_effort {
             params["reasoningEffort"] = json!(effort);
         }
-        let service = Self::conversation_service()?;
-        let dispatch = service
-            .store()
-            .create_dispatch(
-                &request.conversation.conversation_id,
-                &request.conversation.membership_id,
-                "delivery.dispatch",
-                crate::domain::client_conversation::DispatchSessionMode::Resume,
-            )
-            .map_err(|_| Self::public_runtime_error("conversation_state_unavailable", true))?;
-        service
-            .store()
-            .update_dispatch(&dispatch.id, DispatchState::Running, None, None)
-            .map_err(|_| Self::public_runtime_error("conversation_state_unavailable", true))?;
-        let response = dispatch_lane_operation("send", &params).map_err(|_| {
-            DeliveryError::new(
-                "native_effect_in_doubt",
-                "native-dispatch",
-                "native-lane",
-                true,
-                "reconcile_exact_conversation_before_retry",
-            )
-        });
-        let response = match response {
-            Ok(response) => response,
-            Err(error) => {
-                let _ = service.store().update_dispatch(
-                    &dispatch.id,
-                    DispatchState::Failed,
-                    None,
-                    Some(&error.code),
-                );
-                return Err(error);
-            }
-        };
-        let session_id = response
-            .get("nativeSessionId")
-            .or_else(|| response.get("sessionId"))
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                DeliveryError::new(
-                    "native_effect_in_doubt",
-                    "native-dispatch",
-                    "native-lane",
-                    true,
-                    "reconcile_exact_conversation_before_retry",
-                )
-            })?;
-        if session_id != request.conversation.session_id {
-            return Err(DeliveryError::new(
-                "native_effect_in_doubt",
-                "native-dispatch",
-                "native-lane",
-                true,
-                "reconcile_exact_conversation_before_retry",
-            ));
+        // The persistent host opens one Membership-scoped PersistentTurn
+        // under the requested identity with streaming enabled, records
+        // acceptance, and keeps executing in the background; the ACK carries
+        // the attachable turn handle. Host absence is the typed
+        // persistent-transport rejection propagated by the port.
+        let accepted = (self.host)("agent.conversation.dispatch", &params)?;
+        let receipt_conversation_id = accepted.get("conversationId").and_then(Value::as_str);
+        let receipt_membership_id = accepted.get("membershipId").and_then(Value::as_str);
+        if accepted.get("accepted").and_then(Value::as_bool) != Some(true)
+            || accepted.get("turnHandle").and_then(Value::as_str)
+                != Some(request.dispatch_id.as_str())
+            || receipt_conversation_id.is_none_or(str::is_empty)
+            || receipt_membership_id.is_none_or(str::is_empty)
+        {
+            return Err(Self::native_effect_in_doubt());
         }
-        let terminal = Self::terminal(&response);
-        let state = match terminal {
-            TerminalState::Pending => DispatchState::Running,
-            TerminalState::Completed => DispatchState::Completed,
-            TerminalState::Failed => DispatchState::Failed,
-            TerminalState::Cancelled => DispatchState::Cancelled,
-        };
-        service
-            .store()
-            .update_dispatch(
-                &dispatch.id,
-                state,
-                Some(&request.conversation.source_path),
-                (state == DispatchState::Failed).then_some("native_terminal_failed"),
-            )
-            .map_err(|_| Self::public_runtime_error("conversation_state_unavailable", true))?;
+        // An ACK is not acceptance evidence by itself. Verify that the host
+        // committed the requested identity and the exact Conversation scope
+        // carried by the receipt before Delivery reports the turn as pending.
+        let record = self
+            .canonical_record(&request.dispatch_id)?
+            .ok_or_else(Self::native_effect_in_doubt)?;
+        if record.conversation_id != receipt_conversation_id.unwrap_or_default()
+            || record.membership_id != receipt_membership_id.unwrap_or_default()
+            || record.state == DispatchState::Accepted
+        {
+            return Err(Self::native_effect_in_doubt());
+        }
         Ok(DispatchResult {
             conversation: request.conversation.clone(),
-            terminal,
-            usage: response.get("usage").cloned().unwrap_or_else(|| json!({})),
+            terminal: Self::canonical_terminal(Some(record)),
+            usage: json!({}),
         })
     }
 
-    fn reconcile(&self, conversation: &AdmittedConversation) -> DeliveryResult<TerminalState> {
-        let entry = Self::exact_catalog_entry(&conversation.agent_id, &conversation.source_path)?;
-        if entry.get("failed").and_then(Value::as_bool) == Some(true) {
-            return Ok(TerminalState::Failed);
-        }
-        if entry.get("cancelled").and_then(Value::as_bool) == Some(true) {
-            return Ok(TerminalState::Cancelled);
-        }
-        // Historical assistant messages may predate the scheduled turn, so
-        // their mere presence cannot prove this turn completed. Only the
-        // native terminal status is authoritative during reconciliation.
-        let status = entry
-            .get("turnStatus")
-            .or_else(|| entry.get("status"))
-            .and_then(Value::as_str)
-            .filter(|status| !status.trim().is_empty());
-        Ok(status.map_or(TerminalState::Pending, |_| Self::terminal(&entry)))
+    fn reconcile(
+        &self,
+        dispatch_id: &str,
+        _conversation: &AdmittedConversation,
+    ) -> DeliveryResult<TerminalState> {
+        Ok(Self::canonical_terminal(
+            self.canonical_record(dispatch_id)?,
+        ))
     }
 
-    fn cancel(&self, conversation: &AdmittedConversation) -> DeliveryResult<()> {
-        let result = dispatch_lane_operation(
-            "cancel",
-            &json!({"agent": conversation.agent_id, "sessionId": conversation.session_id}),
-        )
-        .map_err(|_| Self::public_runtime_error("native_cancel_failed", true))?;
+    fn cancel(&self, dispatch_id: &str) -> DeliveryResult<()> {
+        let Some(record) = self.canonical_record(dispatch_id)? else {
+            // A never-opened dispatch needs no host call and is no failure.
+            return Ok(());
+        };
+        if matches!(
+            record.state,
+            DispatchState::Completed | DispatchState::Failed | DispatchState::Cancelled
+        ) {
+            // An already-settled dispatch is an idempotent no-op.
+            return Ok(());
+        }
+        // Each live dispatch receives exactly one control-plane cancel for
+        // its recorded identity and Conversation scope; the host owns the
+        // durable cancellation and terminal arbitration order.
+        let result = (self.host)(
+            "agent.conversation.cancel",
+            &json!({
+                "turnHandle": record.id,
+                "conversationId": record.conversation_id,
+            }),
+        )?;
         if result.get("ok").and_then(Value::as_bool) == Some(true) {
             Ok(())
         } else {
@@ -548,16 +540,381 @@ pub fn run_once(
     workflow_id: &str,
     engine: crate::domain::delivery_plan::DeliveryPlanEngine,
     config: crate::domain::delivery_scheduler::SchedulerConfig,
+    runtime: &NativeDeliveryRuntime,
 ) -> DeliveryResult<crate::domain::delivery_scheduler::ScheduleReport> {
     let selector =
         crate::domain::delivery_scheduler::AdaptiveFlywheelRouteSelector::from_client_state()?;
-    let runtime = NativeDeliveryRuntime;
     let mut scheduler = crate::domain::delivery_scheduler::DeliveryScheduler::new(
         workflow_id,
         engine,
         &selector,
-        &runtime,
+        runtime,
         config,
     );
     scheduler.drive()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED;
+    use crate::domain::delivery_plan::{ExecutionPolicy, Role, RoleBrief};
+    use crate::domain::delivery_scheduler::{Difficulty, ROUTE_SELECTION_AUTHORITY, RouteReceipt};
+    use std::sync::Mutex;
+
+    fn test_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "licoup-delivery-runtime-{label}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    fn open_store(root: &Path) -> ConversationStore {
+        crate::platform::file_security::ensure_private_dir(root).unwrap();
+        ConversationStore::open(root).unwrap()
+    }
+
+    fn insert_canonical_dispatch(database: &Path, dispatch_id: &str, state: &str, operation: &str) {
+        let connection = rusqlite::Connection::open(database).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "OFF")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO conversation_dispatches(
+                   id, conversation_id, membership_id, operation, state, session_mode,
+                   runtime_conversation_path, error_code, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 'new', NULL, NULL, 1, 1)",
+                rusqlite::params![
+                    dispatch_id,
+                    "conversation:delivery-seed",
+                    "membership:delivery-seed",
+                    operation,
+                    state,
+                ],
+            )
+            .unwrap();
+    }
+
+    /// Seed one canonical dispatch row exactly where the persistent host
+    /// would commit it, without going through the host itself.
+    fn seed_canonical_dispatch(root: &Path, dispatch_id: &str, state: &str) {
+        let database = root
+            .join("client-state")
+            .join("conversations")
+            .join("conversations.sqlite3");
+        insert_canonical_dispatch(&database, dispatch_id, state, "send");
+    }
+
+    struct FakeHost {
+        calls: Mutex<Vec<(String, Value)>>,
+    }
+
+    impl FakeHost {
+        fn calls(&self) -> Vec<(String, Value)> {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone()
+        }
+    }
+
+    fn fake_host_with(
+        respond: impl Fn(&str, &Value) -> DeliveryResult<Value> + Send + Sync + 'static,
+    ) -> (DeliveryHostRequest, Arc<FakeHost>) {
+        let fake = Arc::new(FakeHost {
+            calls: Mutex::new(Vec::new()),
+        });
+        let probe = Arc::clone(&fake);
+        let port: DeliveryHostRequest = Arc::new(move |method, params| {
+            probe
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push((method.to_owned(), params.clone()));
+            respond(method, params)
+        });
+        (port, fake)
+    }
+
+    fn fake_host(respond: DeliveryResult<Value>) -> (DeliveryHostRequest, Arc<FakeHost>) {
+        fake_host_with(move |_, _| respond.clone())
+    }
+
+    fn committing_fake_host(store: ConversationStore) -> (DeliveryHostRequest, Arc<FakeHost>) {
+        fake_host_with(move |method, params| {
+            assert_eq!(method, "agent.conversation.dispatch");
+            let dispatch_id = params["dispatchId"].as_str().unwrap();
+            insert_canonical_dispatch(store.db_path(), dispatch_id, "running", "send");
+            Ok(json!({
+                "ok": true,
+                "accepted": true,
+                "turnHandle": dispatch_id,
+                "conversationId": "conversation:delivery-seed",
+                "membershipId": "membership:delivery-seed",
+            }))
+        })
+    }
+
+    fn delivery_request(dispatch_id: &str) -> DispatchRequest {
+        DispatchRequest {
+            workflow_id: "workflow-delivery".to_owned(),
+            dispatch_id: dispatch_id.to_owned(),
+            role: Role::Worker,
+            task_code: Some("TASK-001".to_owned()),
+            attempt: 1,
+            route: RouteReceipt {
+                role: Role::Worker,
+                difficulty: Difficulty::Standard,
+                agent_id: "worker-agent".to_owned(),
+                model: None,
+                reasoning_effort: None,
+                authority: ROUTE_SELECTION_AUTHORITY.to_owned(),
+            },
+            brief: RoleBrief {
+                role: Role::Worker,
+                authority: "delivery-plan.worker".to_owned(),
+                selected_decisions: Vec::new(),
+                direct_inputs: Vec::new(),
+                task: None,
+                review: None,
+                execution_policy: ExecutionPolicy::default(),
+                repository_references: Vec::new(),
+                native_conversation_location: None,
+            },
+            parent_conversation: None,
+            conversation: AdmittedConversation {
+                agent_id: "worker-agent".to_owned(),
+                session_id: "native-session-1".to_owned(),
+                source_path: "/fixture-root/conversations/worker.jsonl".to_owned(),
+                working_directory: "/fixture-root/project".to_owned(),
+                binding: "native:worker-agent:native-session-1".to_owned(),
+            },
+            working_directory: "/fixture-root/project".to_owned(),
+        }
+    }
+
+    #[test]
+    fn delivery_dispatch_opens_one_persistent_turn_with_the_shared_identity() {
+        let root = test_root("open");
+        let store = open_store(&root);
+        let dispatch_id = "workflow-delivery:task:TASK-001:1";
+        let (port, fake) = committing_fake_host(store.clone());
+        let runtime = NativeDeliveryRuntime::new(port, store.clone());
+        let result = runtime.dispatch(&delivery_request(dispatch_id)).unwrap();
+        assert_eq!(result.terminal, TerminalState::Pending);
+        let record = store.dispatch_record(dispatch_id).unwrap().unwrap();
+        assert_eq!(record.id, dispatch_id);
+        assert_eq!(record.operation, "send");
+        assert_eq!(record.state, DispatchState::Running);
+        let calls = fake.calls();
+        assert_eq!(calls.len(), 1);
+        let (method, params) = &calls[0];
+        assert_eq!(method, "agent.conversation.dispatch");
+        assert_eq!(params["dispatchId"], json!(dispatch_id));
+        assert_eq!(params["streamEvents"], json!(true));
+        assert_eq!(params["agent"], json!("worker-agent"));
+        assert_eq!(params["sessionId"], json!("native-session-1"));
+        assert_eq!(params["causationId"], json!("delivery.dispatch"));
+        // The canonical Conversation scope is committed by the host, never
+        // by a Delivery-side admission scope or duplicate bookkeeping row.
+        assert!(params.get("conversationId").is_none());
+        assert!(params.get("membershipId").is_none());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_dispatch_rejects_a_receipt_that_mismatches_the_requested_identity() {
+        let root = test_root("receipt-mismatch");
+        let store = open_store(&root);
+        let accepted = json!({
+            "ok": true,
+            "accepted": true,
+            "turnHandle": "dispatch:someone-else",
+            "conversationId": "conversation:canonical",
+            "membershipId": "membership:canonical",
+        });
+        let (port, _fake) = fake_host(Ok(accepted));
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        let error = runtime
+            .dispatch(&delivery_request("workflow-delivery:task:TASK-001:1"))
+            .unwrap_err();
+        assert_eq!(error.code, "native_effect_in_doubt");
+        assert!(error.retryable);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_dispatch_rejects_a_receipt_scope_not_committed_by_the_host() {
+        let root = test_root("receipt-scope-mismatch");
+        let store = open_store(&root);
+        let committed_store = store.clone();
+        let (port, _fake) = fake_host_with(move |_, params| {
+            let dispatch_id = params["dispatchId"].as_str().unwrap();
+            insert_canonical_dispatch(committed_store.db_path(), dispatch_id, "running", "send");
+            Ok(json!({
+                "ok": true,
+                "accepted": true,
+                "turnHandle": dispatch_id,
+                "conversationId": "conversation:wrong",
+                "membershipId": "membership:delivery-seed",
+            }))
+        });
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        let error = runtime
+            .dispatch(&delivery_request("workflow-delivery:task:TASK-009:1"))
+            .unwrap_err();
+        assert_eq!(error.code, "native_effect_in_doubt");
+        assert!(error.retryable);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_dispatch_replays_an_existing_canonical_record_without_a_second_turn() {
+        for (state, expected) in [
+            ("running", TerminalState::Pending),
+            ("cancel-requested", TerminalState::Pending),
+            ("completed", TerminalState::Completed),
+            ("failed", TerminalState::Failed),
+            ("cancelled", TerminalState::Cancelled),
+            ("accepted", TerminalState::Failed),
+        ] {
+            let root = test_root("replay");
+            let store = open_store(&root);
+            let dispatch_id = "workflow-delivery:task:TASK-002:1";
+            seed_canonical_dispatch(&root, dispatch_id, state);
+            let (port, fake) = fake_host(Ok(json!({"ok": true})));
+            let runtime = NativeDeliveryRuntime::new(port, store);
+            let result = runtime.dispatch(&delivery_request(dispatch_id)).unwrap();
+            assert_eq!(result.terminal, expected, "{state}");
+            assert!(fake.calls().is_empty(), "{state}");
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn delivery_dispatch_rejects_an_identity_owned_by_another_canonical_operation() {
+        let root = test_root("identity-conflict");
+        let store = open_store(&root);
+        let dispatch_id = "workflow-delivery:task:TASK-010:1";
+        insert_canonical_dispatch(store.db_path(), dispatch_id, "running", "subagent.delegate");
+        let (port, fake) = fake_host(Ok(json!({"ok": true})));
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        let error = runtime
+            .dispatch(&delivery_request(dispatch_id))
+            .unwrap_err();
+        assert_eq!(error.code, "native_effect_in_doubt");
+        assert!(error.retryable);
+        assert!(fake.calls().is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_reconcile_projects_each_canonical_state_with_zero_port_calls() {
+        for (state, expected) in [
+            ("running", TerminalState::Pending),
+            ("cancel-requested", TerminalState::Pending),
+            ("completed", TerminalState::Completed),
+            ("failed", TerminalState::Failed),
+            ("cancelled", TerminalState::Cancelled),
+            ("accepted", TerminalState::Failed),
+        ] {
+            let root = test_root("reconcile");
+            let store = open_store(&root);
+            let dispatch_id = "workflow-delivery:task:TASK-003:1";
+            seed_canonical_dispatch(&root, dispatch_id, state);
+            let (port, fake) = fake_host(Ok(json!({"ok": true})));
+            let runtime = NativeDeliveryRuntime::new(port, store);
+            let request = delivery_request(dispatch_id);
+            let terminal = runtime
+                .reconcile(dispatch_id, &request.conversation)
+                .unwrap();
+            assert_eq!(terminal, expected, "{state}");
+            assert!(fake.calls().is_empty(), "{state}");
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn delivery_reconcile_settles_a_persisted_but_uncommitted_dispatch_as_failed() {
+        let root = test_root("uncommitted");
+        let store = open_store(&root);
+        let dispatch_id = "workflow-delivery:task:TASK-004:1";
+        let (port, fake) = fake_host(Ok(json!({"ok": true})));
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        let request = delivery_request(dispatch_id);
+        let terminal = runtime
+            .reconcile(dispatch_id, &request.conversation)
+            .unwrap();
+        assert_eq!(terminal, TerminalState::Failed);
+        assert!(fake.calls().is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_dispatch_maps_host_absence_to_the_typed_persistent_transport_rejection() {
+        let root = test_root("host-absent");
+        let store = open_store(&root);
+        let failure = DeliveryError::new(
+            PERSISTENT_TRANSPORT_REQUIRED,
+            "native-dispatch",
+            "persistent-host",
+            true,
+            "retry_after_recovery",
+        );
+        let (port, fake) = fake_host(Err(failure));
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        let error = runtime
+            .dispatch(&delivery_request("workflow-delivery:task:TASK-005:1"))
+            .unwrap_err();
+        assert_eq!(error.code, PERSISTENT_TRANSPORT_REQUIRED);
+        assert!(error.retryable);
+        // The dispatch attempted only the persistent door: no other lane ran.
+        assert_eq!(fake.calls().len(), 1);
+        assert_eq!(fake.calls()[0].0, "agent.conversation.dispatch");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_cancel_reaches_the_control_plane_once_for_a_live_turn() {
+        let root = test_root("cancel-live");
+        let store = open_store(&root);
+        let dispatch_id = "workflow-delivery:task:TASK-006:1";
+        seed_canonical_dispatch(&root, dispatch_id, "running");
+        let (port, fake) = fake_host(Ok(json!({"ok": true})));
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        runtime.cancel(dispatch_id).unwrap();
+        let calls = fake.calls();
+        assert_eq!(calls.len(), 1);
+        let (method, params) = &calls[0];
+        assert_eq!(method, "agent.conversation.cancel");
+        assert_eq!(params["turnHandle"], json!(dispatch_id));
+        assert_eq!(
+            params["conversationId"],
+            json!("conversation:delivery-seed")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_cancel_is_an_idempotent_noop_for_settled_or_unopened_dispatches() {
+        for state in ["completed", "failed", "cancelled"] {
+            let root = test_root("cancel-settled");
+            let store = open_store(&root);
+            let dispatch_id = "workflow-delivery:task:TASK-007:1";
+            seed_canonical_dispatch(&root, dispatch_id, state);
+            let (port, fake) = fake_host(Ok(json!({"ok": true})));
+            let runtime = NativeDeliveryRuntime::new(port, store);
+            runtime.cancel(dispatch_id).unwrap();
+            assert!(fake.calls().is_empty(), "{state}");
+            let _ = std::fs::remove_dir_all(root);
+        }
+        let root = test_root("cancel-unopened");
+        let store = open_store(&root);
+        let (port, fake) = fake_host(Ok(json!({"ok": true})));
+        let runtime = NativeDeliveryRuntime::new(port, store);
+        runtime.cancel("workflow-delivery:task:TASK-008:1").unwrap();
+        assert!(fake.calls().is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

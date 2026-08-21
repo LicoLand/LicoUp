@@ -44,6 +44,7 @@ final class AgentConversationPaneState {
     this.recentSessionsCached = false,
     this.composerFlywheel,
     this.composerLeading,
+    bool? composerBusy,
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
@@ -53,7 +54,8 @@ final class AgentConversationPaneState {
        participantConversationIds = Map.unmodifiable(
          participantConversationIds,
        ),
-       runningRecentSessionIds = Set.unmodifiable(runningRecentSessionIds);
+       runningRecentSessionIds = Set.unmodifiable(runningRecentSessionIds),
+       composerBusy = composerBusy ?? turnActive;
 
   final TargetCandidate target;
   final AgentConversationSession? session;
@@ -93,6 +95,7 @@ final class AgentConversationPaneState {
   final bool recentSessionsCached;
   final Widget? composerFlywheel;
   final Widget? composerLeading;
+  final bool composerBusy;
 }
 
 /// Typed commands available to the conversation body.

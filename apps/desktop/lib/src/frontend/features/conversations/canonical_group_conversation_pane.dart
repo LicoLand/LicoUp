@@ -5,9 +5,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
+import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -229,6 +233,7 @@ class CanonicalGroupConversationPane extends StatefulWidget {
     this.onOpenAgentConversations,
     this.framed = true,
     this.flywheelGateway,
+    this.persistentGateway,
     this.onOpenAdaptiveFlywheel,
   });
 
@@ -238,6 +243,7 @@ class CanonicalGroupConversationPane extends StatefulWidget {
   final ValueChanged<String>? onOpenAgentConversations;
   final bool framed;
   final AdaptiveFlywheelGateway? flywheelGateway;
+  final PersistentAgentConversationGateway? persistentGateway;
   final Future<void> Function(String? revisionDigest)? onOpenAdaptiveFlywheel;
 
   @override
@@ -254,17 +260,24 @@ class _CanonicalGroupConversationPaneState
   String _strategyName = '';
   String _entrySlotLabel = '';
   String _entryAgentId = '';
-  String? _strategyRunId;
-  bool _strategyNeedsHumanInput = false;
   String _strategyProjectionConversationId = '';
   String _strategyProjectionRevision = '';
   int _strategyProjectionGeneration = 0;
+  final Map<String, StreamSubscription<AgentDispatchEvent>> _turnSubscriptions =
+      {};
+  final Map<String, ConversationTurnProcessState> _processByHandle = {};
+  final Set<String> _finishingHandles = {};
+  String _attachedConversationId = '';
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onConversationChanged);
     unawaited(_loadAuthorizedStrategies());
+    if (widget.controller.selectedConversation != null) {
+      unawaited(_ensureConversationHost());
+      unawaited(_attachLiveTurns());
+    }
   }
 
   @override
@@ -278,11 +291,18 @@ class _CanonicalGroupConversationPaneState
     if (oldWidget.flywheelGateway != widget.flywheelGateway) {
       unawaited(_loadAuthorizedStrategies());
     }
+    if ((oldWidget.persistentGateway != widget.persistentGateway ||
+            oldWidget.controller != widget.controller) &&
+        widget.controller.selectedConversation != null) {
+      unawaited(_ensureConversationHost());
+      unawaited(_attachLiveTurns());
+    }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onConversationChanged);
+    _detachLiveTurns();
     _messageScrollController.dispose();
     super.dispose();
   }
@@ -291,6 +311,14 @@ class _CanonicalGroupConversationPaneState
     if (!mounted) return;
     setState(() {});
     unawaited(_syncStrategyFromConversation());
+    final conversationId = widget.controller.selectedConversationId;
+    if (widget.controller.selectedConversation == null) {
+      return;
+    }
+    if (conversationId != _attachedConversationId) {
+      unawaited(_ensureConversationHost());
+      unawaited(_attachLiveTurns());
+    }
   }
 
   Future<void> _loadAuthorizedStrategies() async {
@@ -328,8 +356,6 @@ class _CanonicalGroupConversationPaneState
     _strategyName = '';
     _entrySlotLabel = '';
     _entryAgentId = '';
-    _strategyRunId = null;
-    _strategyNeedsHumanInput = false;
   }
 
   Future<void> _exitStrategyMode() async {
@@ -422,7 +448,6 @@ class _CanonicalGroupConversationPaneState
       _strategyProjectionRevision = revisionDigest;
       _strategyProjectionGeneration += 1;
       _applyStrategyProjection(projection);
-      await _refreshActiveRun();
     } on AdaptiveFlywheelFailure {
       return;
     }
@@ -435,7 +460,6 @@ class _CanonicalGroupConversationPaneState
     if (!force &&
         conversationId == _strategyProjectionConversationId &&
         revision == _strategyProjectionRevision) {
-      await _refreshActiveRun();
       return;
     }
     final generation = ++_strategyProjectionGeneration;
@@ -462,7 +486,6 @@ class _CanonicalGroupConversationPaneState
         return;
       }
       _applyStrategyProjection(projection);
-      await _refreshActiveRun();
     } on AdaptiveFlywheelFailure {
       return;
     }
@@ -489,8 +512,6 @@ class _CanonicalGroupConversationPaneState
       if (_strategyRevision != revision) {
         _entrySlotLabel = '';
         _entryAgentId = '';
-        _strategyRunId = null;
-        _strategyNeedsHumanInput = false;
       }
       _strategyRevision = revision;
       _strategyName = fallbackName;
@@ -575,142 +596,302 @@ class _CanonicalGroupConversationPaneState
   }
 
   String get _entryCapsuleLabel {
-    if (_entryAgentId.isNotEmpty) {
-      return _agentDisplayName(_entryAgentId);
+    final agent = _entryAgentId.isNotEmpty
+        ? _agentDisplayName(_entryAgentId)
+        : '';
+    final slot = _entrySlotLabel.trim();
+    if (slot.isNotEmpty && agent.isNotEmpty && slot != agent) {
+      return '$slot · $agent';
     }
-    return _entrySlotLabel.isEmpty ? 'entry' : _entrySlotLabel;
+    if (agent.isNotEmpty) return agent;
+    return slot.isEmpty ? 'entry' : slot;
   }
 
-  Future<void> _refreshActiveRun() async {
-    final gateway = widget.flywheelGateway;
-    final revision = _strategyRevision;
+  List<AgentConversationMessage> get _liveMessages =>
+      List<AgentConversationMessage>.unmodifiable([
+        for (final state in _processByHandle.values)
+          ...state.projectedMessages(includeUser: false),
+      ]);
+
+  Widget _groupFailureCapsule(ClientConversationController controller) {
+    return _CanonicalGroupFailureCapsule(
+      code: controller.failureCode,
+      failureRef: controller.failureRef,
+      copyBlob: controller.failureCopyBlob,
+      onCopy: widget.onCopyText,
+    );
+  }
+
+  bool get _turnActive =>
+      _turnSubscriptions.isNotEmpty ||
+      _processByHandle.isNotEmpty ||
+      widget.controller.dispatchPending;
+
+  Future<void> _ensureConversationHost() async {
+    final gateway = widget.persistentGateway;
     final conversationId = widget.controller.selectedConversationId;
-    if (gateway == null || revision == null || conversationId.isEmpty) {
-      if (!mounted) return;
-      if (_strategyRunId != null || _strategyNeedsHumanInput) {
-        setState(() {
-          _strategyRunId = null;
-          _strategyNeedsHumanInput = false;
-        });
-      }
+    if (gateway == null || conversationId.isEmpty) {
       return;
     }
     try {
-      final projection = adaptiveFlywheelStringMap(
-        await gateway.execute({
-          'action': 'strategy.run.active',
-          'revisionDigest': revision,
-          'conversationId': conversationId,
-        }),
-      );
-      if (!mounted ||
-          widget.controller.selectedConversationId != conversationId ||
-          _strategyRevision != revision) {
-        return;
-      }
-      final runId = (projection['runId'] ?? '').toString();
-      setState(() {
-        _strategyRunId = runId.isEmpty ? null : runId;
-        _strategyNeedsHumanInput = projection['needsHumanInput'] == true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _strategyRunId = null;
-        _strategyNeedsHumanInput = false;
-      });
+      await gateway.ensureRuntime(conversationId: conversationId);
+    } on Object {
+      // Persist does not depend on the host; dispatch will surface a code.
     }
   }
 
-  Future<bool> _startStrategyRun(String text) async {
-    final gateway = widget.flywheelGateway;
-    final revision = _strategyRevision;
-    final conversation = widget.controller.selectedConversation;
-    if (gateway == null || revision == null || conversation == null) {
-      return false;
+  void _detachLiveTurns() {
+    for (final subscription in _turnSubscriptions.values) {
+      unawaited(subscription.cancel());
     }
-    final projection = adaptiveFlywheelStringMap(
-      await gateway.execute({
-        'action': 'strategy.run.start',
-        'revisionDigest': revision,
-        'input': {'message': text},
-        'idempotencyKey':
-            'strategy-run-${conversation.id}-${DateTime.now().microsecondsSinceEpoch}',
-        'conversationId': conversation.id,
-      }),
-    );
-    final runId = (projection['runId'] ?? '').toString();
-    if (runId.isEmpty) return false;
-    if (mounted) {
-      setState(() {
-        _strategyRunId = runId;
-        _strategyNeedsHumanInput = projection['needsHumanInput'] == true;
-      });
-    }
-    return true;
+    _turnSubscriptions.clear();
+    _processByHandle.clear();
+    _finishingHandles.clear();
+    _attachedConversationId = '';
   }
 
-  Future<bool> _cancelActiveStrategyRun() async {
-    final gateway = widget.flywheelGateway;
-    final runId = _strategyRunId;
-    if (gateway == null || runId == null) return false;
-    await gateway.execute({'action': 'strategy.run.cancel', 'runId': runId});
-    if (mounted) {
-      setState(() {
-        _strategyRunId = null;
-        _strategyNeedsHumanInput = false;
-      });
-    }
-    return true;
-  }
-
-  Future<bool> _postAndStartStrategyRun(String text) async {
+  Future<void> _attachLiveTurns({
+    bool waitForChange = false,
+    List<Map<String, dynamic>> postedTurns = const [],
+  }) async {
+    final gateway = widget.persistentGateway;
     final conversationId = widget.controller.selectedConversationId;
-    final revision = _strategyRevision;
-    final posted = await widget.controller.postMessage(
-      text,
-      suppressMentions: true,
+    if (gateway == null || conversationId.isEmpty) {
+      _detachLiveTurns();
+      if (mounted) setState(() {});
+      return;
+    }
+    if (_attachedConversationId != conversationId) {
+      _detachLiveTurns();
+      _attachedConversationId = conversationId;
+    }
+    List<Map<String, dynamic>> turns = List<Map<String, dynamic>>.from(
+      postedTurns,
     );
-    if (!posted) return false;
-    if (!mounted ||
-        widget.controller.selectedConversationId != conversationId ||
-        _strategyRevision != revision) {
-      return true;
-    }
-    // The transcript is authoritative: persist the human turn before the
-    // strategy runtime can emit its first agent event.
+    var authoritativeSnapshot = false;
     try {
-      await _startStrategyRun(text);
-    } on AdaptiveFlywheelFailure {
-      return true;
+      final discovered = await gateway.activeTurns(
+        agentId: '',
+        conversationId: conversationId,
+        waitForChange: waitForChange && turns.isEmpty
+            ? const Duration(seconds: 2)
+            : Duration.zero,
+      );
+      authoritativeSnapshot = true;
+      if (discovered.isNotEmpty) {
+        turns = _mergeLiveTurns(turns, discovered);
+      }
+    } on Object {
+      // Keep returned handles and existing observers when discovery is down.
     }
-    return true;
+    if (!mounted ||
+        widget.controller.selectedConversationId != conversationId) {
+      return;
+    }
+    final liveHandles = <String>{};
+    for (final turn in turns) {
+      final handle = (turn['turnHandle'] ?? '').toString().trim();
+      if (handle.isEmpty) continue;
+      liveHandles.add(handle);
+      if (_turnSubscriptions.containsKey(handle)) continue;
+      _ensureLiveProcess(
+        handle: handle,
+        agentId: (turn['agent'] ?? turn['agentId'] ?? '').toString().trim(),
+        userText: '',
+      );
+      _listenTurn(
+        gateway,
+        handle: handle,
+        conversationId: (turn['conversationId'] ?? conversationId)
+            .toString()
+            .trim(),
+        agentId: (turn['agent'] ?? turn['agentId'] ?? '').toString().trim(),
+        // `highWater` is the host's cursor, not this observer's cursor. A new
+        // pane has seen no process frames and must rebuild from canonical
+        // cursor zero; the transport owns cursor-safe reconnects thereafter.
+        afterCursor: 0,
+      );
+    }
+    if (authoritativeSnapshot) {
+      final stale = _turnSubscriptions.keys
+          .where((handle) => !liveHandles.contains(handle))
+          .toList(growable: false);
+      for (final handle in stale) {
+        unawaited(_turnSubscriptions.remove(handle)?.cancel());
+        _processByHandle.remove(handle);
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _ensureLiveProcess({
+    required String handle,
+    required String agentId,
+    required String userText,
+  }) {
+    final existing = _processByHandle[handle];
+    if (existing != null) {
+      existing.recordParticipant(
+        participantAgentId: agentId,
+        participantLabel: _agentDisplayName(agentId),
+        participantRole: 'member',
+      );
+      return;
+    }
+    final state = ConversationTurnProcessState(
+      turnId: 'live-$handle',
+      userText: userText,
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    state.recordParticipant(
+      participantAgentId: agentId,
+      participantLabel: _agentDisplayName(agentId),
+      participantRole: 'member',
+    );
+    _processByHandle[handle] = state;
+  }
+
+  void _listenTurn(
+    PersistentAgentConversationGateway gateway, {
+    required String handle,
+    required String conversationId,
+    required String agentId,
+    required int afterCursor,
+  }) {
+    _ensureLiveProcess(handle: handle, agentId: agentId, userText: '');
+    _turnSubscriptions[handle] = gateway
+        .attachActiveTurn(
+          turnHandle: handle,
+          conversationId: conversationId,
+          afterCursor: afterCursor,
+        )
+        .listen(
+          (event) {
+            if (!mounted ||
+                widget.controller.selectedConversationId != conversationId) {
+              return;
+            }
+            final state = _processByHandle[handle];
+            if (state == null) return;
+            final terminal = applyPersistentTurnProcessEvent(
+              state: state,
+              event: event,
+              agentId: agentId,
+              participantLabel: _agentDisplayName(agentId),
+              participantRole: 'member',
+            );
+            if (mounted) setState(() {});
+            if (terminal) {
+              unawaited(
+                _finishTurn(
+                  handle,
+                  allowNextActor: persistentTurnAllowsNextActor(state),
+                ),
+              );
+            }
+          },
+          onDone: () => unawaited(_finishTurn(handle)),
+          onError: (Object error) => unawaited(
+            _handleTurnObserverFailure(
+              handle,
+              error is AgentDispatchStreamException
+                  ? error.failureCode
+                  : 'transport_failed',
+            ),
+          ),
+          cancelOnError: false,
+        );
+  }
+
+  Future<void> _handleTurnObserverFailure(String handle, String code) async {
+    if (!_finishingHandles.add(handle)) return;
+    final subscription = _turnSubscriptions.remove(handle);
+    if (subscription != null) unawaited(subscription.cancel());
+    _processByHandle.remove(handle);
+    if (mounted) setState(() {});
+    try {
+      await widget.controller.reloadSelected();
+      if (!mounted) return;
+      widget.controller.surfaceFailure(
+        'conversation/observe',
+        code.trim().isEmpty ? 'transport_failed' : code.trim(),
+      );
+      if (_turnSubscriptions.isEmpty) {
+        widget.controller.settleLiveDispatch();
+      }
+      if (mounted) setState(() {});
+    } finally {
+      _finishingHandles.remove(handle);
+    }
+  }
+
+  Future<void> _finishTurn(String handle, {bool allowNextActor = false}) async {
+    if (!_finishingHandles.add(handle)) return;
+    unawaited(_turnSubscriptions.remove(handle)?.cancel());
+    final state = _processByHandle.remove(handle);
+    if (state != null && !allowNextActor) {
+      failPersistentTurnIfOpen(state);
+    }
+    if (mounted) setState(() {});
+    try {
+      await widget.controller.reloadSelected();
+      if (!mounted) return;
+      if (allowNextActor && widget.controller.dispatchPending) {
+        await _attachLiveTurns(waitForChange: true);
+        if (!mounted) return;
+        if (_turnSubscriptions.isNotEmpty || _processByHandle.isNotEmpty) {
+          return;
+        }
+      }
+      _surfacePersistedDispatchFailure();
+      widget.controller.settleLiveDispatch();
+      if (mounted) setState(() {});
+    } finally {
+      _finishingHandles.remove(handle);
+    }
+  }
+
+  void _surfacePersistedDispatchFailure() {
+    if (widget.controller.failureCode.isNotEmpty) return;
+    if (widget.controller.events.isEmpty) return;
+    final event = widget.controller.events.last;
+    for (final part in event.parts.reversed) {
+      if (part.kind != ConversationEventPartKind.diagnostic) continue;
+      final code = persistentTurnDiagnosticFailureCode(part.content);
+      if (code == null) continue;
+      widget.controller.surfaceFailure('turn', code);
+      return;
+    }
   }
 
   Future<bool> _sendComposerMessage(String text) async {
-    final revision = _strategyRevision;
-    if (revision == null) {
-      return widget.controller.postMessage(text);
+    final posted = await widget.controller.postMessage(text);
+    if (!posted) return false;
+    for (final turn in widget.controller.liveTurns) {
+      final handle = (turn['turnHandle'] ?? '').toString().trim();
+      if (handle.isEmpty) continue;
+      _ensureLiveProcess(
+        handle: handle,
+        agentId: (turn['agent'] ?? turn['agentId'] ?? '').toString().trim(),
+        userText: text,
+      );
     }
-    await _refreshActiveRun();
-    if (!mounted) return false;
-    var posted = false;
-    try {
-      if (_strategyRunId == null) {
-        posted = await _postAndStartStrategyRun(text);
-        return posted;
-      }
-      if (_strategyNeedsHumanInput) {
-        if (!await _cancelActiveStrategyRun()) return false;
-        posted = await _postAndStartStrategyRun(text);
-        return posted;
-      }
-      return widget.controller.postMessage(text, suppressMentions: true);
-    } on AdaptiveFlywheelFailure {
-      // If the chat turn was already persisted, clear the composer even when
-      // strategy startup failed so the user cannot accidentally duplicate it.
-      return posted;
+    if (mounted) setState(() {});
+    unawaited(_attachLiveTurns(postedTurns: widget.controller.liveTurns));
+    return true;
+  }
+
+  List<Map<String, dynamic>> _mergeLiveTurns(
+    List<Map<String, dynamic>> posted,
+    List<Map<String, dynamic>> discovered,
+  ) {
+    final merged = <String, Map<String, dynamic>>{};
+    for (final turn in [...posted, ...discovered]) {
+      final handle = (turn['turnHandle'] ?? '').toString().trim();
+      if (handle.isEmpty) continue;
+      merged[handle] = turn;
     }
+    return merged.values.toList(growable: false);
   }
 
   void _continueConversationScroll(double overscroll) {
@@ -756,7 +937,20 @@ class _CanonicalGroupConversationPaneState
     final controller = widget.controller;
     final conversation = controller.selectedConversation;
     if (conversation == null) {
-      return _CanonicalGroupLoadingOrEmpty(loading: controller.loading);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          _CanonicalGroupLoadingOrEmpty(loading: controller.loading),
+          if (controller.failureCode.isNotEmpty)
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 32, 16, 0),
+                child: _groupFailureCapsule(controller),
+              ),
+            ),
+        ],
+      );
     }
     final participantTargets = resolveCanonicalGroupParticipantTargets(
       conversation,
@@ -779,10 +973,11 @@ class _CanonicalGroupConversationPaneState
     final state = AgentConversationPaneState(
       target: primaryTarget,
       session: session,
-      liveMessages: const [],
+      liveMessages: _liveMessages,
       recentSessions: const [],
       loading: controller.loading,
-      turnActive: controller.sending,
+      turnActive: _turnActive,
+      composerBusy: controller.sending || _turnActive,
       preparingNewConversation: false,
       composerEnabled: conversation.localOwnerMembership != null,
       sendGateReasonCode: '',
@@ -935,14 +1130,24 @@ class _CanonicalGroupConversationPaneState
                 ),
             ],
           );
-    final body = Column(
+    final body = Stack(
+      fit: StackFit.expand,
       children: [
+        conversationBody,
         if (controller.failureCode.isNotEmpty)
-          _CanonicalGroupFailureBanner(
-            stage: controller.failureStage,
-            code: controller.failureCode,
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                top:
+                    MessagingDesktopMetrics.conversationHeaderOverlayExtent +
+                    MessagingDesktopMetrics.conversationFailureAlertGap,
+                left: MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
+                right: MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
+              ),
+              child: _groupFailureCapsule(controller),
+            ),
           ),
-        Expanded(child: conversationBody),
       ],
     );
     return widget.framed ? PanelFrame(child: body) : body;
@@ -1740,38 +1945,58 @@ AgentConversationSession canonicalGroupConversationSession(
       );
       continue;
     }
+    final user = author?.principal.kind == ConversationPrincipalKind.human;
+    final textChunks = <String>[];
+    var textCreatedAt = event.createdAtUnixMs;
+    var textFlush = 0;
+    void flushText() {
+      if (textChunks.isEmpty) return;
+      messages.add(
+        AgentConversationMessage(
+          id: textFlush == 0 ? event.id : '${event.id}:text:$textFlush',
+          role: user ? 'user' : 'assistant',
+          text: textChunks.join(),
+          createdAt: _iso(textCreatedAt),
+          layer: AgentConversationSemanticLayer.thread,
+          stableIdentity: event.id,
+          participantAgentId: user
+              ? ''
+              : author?.principal.agentId.trim() ?? '',
+          participantLabel: user
+              ? ''
+              : author?.principal.displayName.trim() ?? '',
+          participantRole: user ? '' : 'member',
+        ),
+      );
+      textChunks.clear();
+      textFlush += 1;
+    }
+
     for (final eventPart in event.parts) {
-      final user = author?.principal.kind == ConversationPrincipalKind.human;
-      final cardType = switch (eventPart.kind) {
-        ConversationEventPartKind.text => '',
-        ConversationEventPartKind.reasoning => 'reasoning',
-        ConversationEventPartKind.toolCall => 'tool-call',
-        ConversationEventPartKind.toolResult => 'tool-result',
-        ConversationEventPartKind.artifact => 'artifact',
-        ConversationEventPartKind.diagnostic => 'diagnostic',
-        ConversationEventPartKind.metadata => 'metadata',
-        ConversationEventPartKind.unknown => 'event',
-      };
+      if (eventPart.kind == ConversationEventPartKind.text) {
+        if (textChunks.isEmpty && eventPart.createdAtUnixMs != 0) {
+          textCreatedAt = eventPart.createdAtUnixMs;
+        }
+        textChunks.add(eventPart.content);
+        continue;
+      }
+      flushText();
+      final presentation = _canonicalGroupPartPresentation(eventPart);
       messages.add(
         AgentConversationMessage(
           id: eventPart.id.isEmpty
               ? '${event.id}:${eventPart.ordinal}'
               : eventPart.id,
-          role: user
-              ? 'user'
-              : cardType.isEmpty
-              ? 'assistant'
-              : cardType,
-          text: eventPart.content,
+          role: user ? 'user' : presentation.cardType,
+          text: presentation.text,
           createdAt: _iso(
             eventPart.createdAtUnixMs == 0
                 ? event.createdAtUnixMs
                 : eventPart.createdAtUnixMs,
           ),
-          layer: cardType.isEmpty
-              ? AgentConversationSemanticLayer.thread
-              : AgentConversationSemanticLayer.execution,
-          cardType: cardType,
+          layer: AgentConversationSemanticLayer.execution,
+          cardType: presentation.cardType,
+          cardTitle: presentation.cardTitle,
           stableIdentity: event.id,
           participantAgentId: user
               ? ''
@@ -1783,6 +2008,7 @@ AgentConversationSession canonicalGroupConversationSession(
         ),
       );
     }
+    flushText();
   }
   return AgentConversationSession(
     id: conversation.id,
@@ -1804,6 +2030,39 @@ AgentConversationSession canonicalGroupConversationSession(
     sourceMessageCount: conversation.eventCount,
     historyTruncated: conversation.eventCount > events.length,
   );
+}
+
+({String cardType, String cardTitle, String text})
+_canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
+  if (eventPart.kind == ConversationEventPartKind.metadata) {
+    try {
+      final decoded = jsonDecode(eventPart.content);
+      if (decoded is Map && decoded['lifecycle'] != null) {
+        final stage = decoded['lifecycle'].toString();
+        final mapped = switch (stage) {
+          'running' => 'processing',
+          'cancelled' => 'failed',
+          _ => stage,
+        };
+        return (
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.$mapped',
+          text: mapped,
+        );
+      }
+    } catch (_) {}
+  }
+  final cardType = switch (eventPart.kind) {
+    ConversationEventPartKind.text => '',
+    ConversationEventPartKind.reasoning => 'reasoning',
+    ConversationEventPartKind.toolCall => 'tool-call',
+    ConversationEventPartKind.toolResult => 'tool-result',
+    ConversationEventPartKind.artifact => 'artifact',
+    ConversationEventPartKind.diagnostic => 'diagnostic',
+    ConversationEventPartKind.metadata => 'metadata',
+    ConversationEventPartKind.unknown => 'event',
+  };
+  return (cardType: cardType, cardTitle: '', text: eventPart.content);
 }
 
 ({String title, String detail}) _canonicalGroupEventPresentation(
@@ -1900,24 +2159,66 @@ String _canonicalGroupEventMemberLabel(
   return strings.groupConversationUnknownMember;
 }
 
-class _CanonicalGroupFailureBanner extends StatelessWidget {
-  const _CanonicalGroupFailureBanner({required this.stage, required this.code});
+class _CanonicalGroupFailureCapsule extends StatelessWidget {
+  const _CanonicalGroupFailureCapsule({
+    required this.code,
+    required this.failureRef,
+    required this.copyBlob,
+    required this.onCopy,
+  });
 
-  final String stage;
   final String code;
+  final String failureRef;
+  final String copyBlob;
+  final Future<void> Function(String) onCopy;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    return Container(
-      key: const Key('canonical-group-failure'),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      color: colors.error.withAlpha(colors.isDark ? 42 : 24),
-      child: Text(
-        strings.groupConversationFailure(stage, code),
-        style: TextStyle(color: colors.error, fontSize: 12),
+    const radius =
+        MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: DecoratedBox(
+        key: const Key('canonical-group-failure'),
+        decoration: BoxDecoration(
+          color: colors.surfaceRaised,
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: colors.error, width: 1.25),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  strings.groupConversationFailureCapsule(
+                    failureRef.isEmpty ? code : failureRef,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.error,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              LicoIconButton(
+                key: const Key('canonical-group-failure-copy'),
+                icon: Icon(Icons.copy_outlined, color: colors.error),
+                tooltip: strings.copyFailureReport,
+                size: LicoIconButtonSize.small,
+                shape: LicoIconButtonShape.concentric,
+                radius: LicoRadius.nested(radius, 6),
+                onPressed: () => unawaited(onCopy(copyBlob)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2243,7 +2544,7 @@ final class _GroupStrategyEntryCapsule extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '@$label',
+                  label,
                   key: const Key('canonical-group-strategy-entry-capsule'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

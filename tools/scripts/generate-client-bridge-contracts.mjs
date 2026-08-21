@@ -356,6 +356,7 @@ function readConversationSchema(family) {
     "conversation.events.search",
     "conversation.event.append",
     "conversation.message.post",
+    "conversation.dispatch.after-post",
     "conversation.event.part.append",
     "conversation.event.finalize",
     "conversation.membership.add",

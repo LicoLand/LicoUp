@@ -1,4 +1,6 @@
-use super::support::{completed_outcome, config, initialize, open_thread, start_turn};
+use super::support::{
+    completed_outcome, config, failed_effect, initialize, open_thread, start_turn,
+};
 use crate::platform::codex_app_server::protocol::CodexProtocol;
 use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
 use serde_json::json;
@@ -87,4 +89,70 @@ fn native_item_started_emits_redacted_processing_receipt() {
     let encoded = serde_json::to_string(&events).unwrap();
     assert!(!encoded.contains("private-item-id"));
     assert!(!encoded.contains("private chain of thought"));
+}
+
+#[test]
+fn failed_turn_classifies_closed_codex_error_without_leaking_details() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+
+    let failure = failed_effect(protocol.handle_message(json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turn": {
+                "id": "turn-1",
+                "status": "failed",
+                "items": [],
+                "error": {
+                    "message": "turn-fixture/secret.txt is unreadable",
+                    "codexErrorInfo": "Unauthorized",
+                    "additionalDetails": "turn-fixture/secret.txt"
+                }
+            }
+        }
+    })));
+    assert_eq!(failure.code, "codex_turn_not_completed");
+    assert_eq!(failure.turn_status.as_deref(), Some("failed/Unauthorized"));
+    assert_eq!(failure.message, "Codex rejected the turn as unauthorized.");
+    let encoded = format!("{failure:?}");
+    assert!(!encoded.contains("secret.txt"));
+    assert!(!encoded.contains("turn-fixture"));
+    let events = captured.lock().unwrap().clone();
+    let failed = events
+        .iter()
+        .find(|event| event["event"] == "dispatch.turn.failed")
+        .expect("failed turn emits dispatch.turn.failed");
+    assert_eq!(failed["payload"]["turnStatus"], "failed/Unauthorized");
+    assert_eq!(failed["payload"]["code"], "codex_turn_not_completed");
+    let payload = serde_json::to_string(&failed["payload"]).unwrap();
+    assert!(!payload.contains("secret.txt"));
+    assert!(!payload.contains("turn-fixture"));
+}
+
+#[test]
+fn interrupted_turn_is_not_completed() {
+    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+
+    let failure = failed_effect(protocol.handle_message(json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": "interrupted", "items": []}
+        }
+    })));
+    assert_eq!(failure.code, "codex_turn_not_completed");
+    assert_eq!(failure.turn_status.as_deref(), Some("interrupted"));
+    assert_eq!(failure.message, "Codex interrupted the requested turn.");
 }

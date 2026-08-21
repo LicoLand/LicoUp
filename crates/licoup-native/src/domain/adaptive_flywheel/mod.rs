@@ -21,12 +21,12 @@ pub use definition::{
     StrategyProjection, StrategyRunStatus, Transition, TransitionEvent, WorkflowDefinition,
     WorkflowLimits, WorkflowMetadata, WorksetTemplate,
 };
-pub use graph::{CompiledWorkflow, compile_workflow};
+pub use graph::{CompiledWorkflow, compile_persisted_workflow, compile_workflow};
 pub use package::{PreparedPackage, StrategyPackageImporter, synthetic_fixture_package_bytes};
 pub use reducer::{
     CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
 };
-pub use service::StrategyService;
+pub use service::{ActorTurnPort, StrategyService};
 pub use store::StrategyStore;
 
 pub const WORKFLOW_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.workflow.v1";

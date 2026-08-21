@@ -37,7 +37,7 @@ flowchart LR
 | `lico_delivery_status` | Read persisted Plan state and its next action |
 | `lico_delivery_cancel` | Explicitly cancel the delivery and forward cancellation to active Conversation dispatches |
 | `lico_subagents_list` | List scanned runnable local Agent integrations; it does not assign collaboration roles |
-| `lico_subagent_probe` | Run a LicoUp-owned disposable readiness check and verify cleanup before success |
+| `lico_subagent_probe` | Observe one admitted Agent's readiness read-only from target facts and the Conversation host's active-turn snapshot; `busy` is a successful state |
 | `lico_subagent_delegate` | Start one non-delivery dispatch for an exact active `conversationId + membershipId` |
 | `lico_subagent_continue` | Resume the latest resumable dispatch for that same Conversation Membership |
 | `lico_subagent_cancel` | Request cancellation through the selected adapter's native control surface |
@@ -50,10 +50,21 @@ bind native sessions, accept a Reviewer, or replace Plan and Checkpoint state.
 
 The persisted Plan and Checkpoints are the sole delivery-lifecycle authority.
 The Plan engine computes the complete eligible frontier. The Conversation
-runtime claims it in stable order, uses bounded native lanes, and dispatches
-each Agent through its exact Conversation Membership. Independent deliveries
-may run concurrently; one delivery, Task attempt, and native session remain
-ordered. Waiting for a terminal event never occupies a message-delivery lane.
+runtime claims it in stable order and dispatches each Agent through its exact
+Conversation Membership. Every dispatch is one Membership-scoped PersistentTurn
+opened through the process-owned persistent Conversation host
+(`agent.conversation.dispatch`) under the durable Delivery dispatch identity
+with streaming enabled; the host answers with an attachable turn handle and
+remains the sole execution and completion owner. The same identity keys the
+canonical dispatch record that serves as terminal evidence, and explicit
+cancellation reaches the same control plane (`agent.conversation.cancel`) for
+the recorded identity and Conversation scope. If the persistent host is
+unavailable, dispatch fails with the typed
+`persistent_conversation_transport_required` rejection and performs no Agent
+work through any other lane. Independent deliveries may run concurrently; one
+delivery, Task attempt, and native session remain ordered. Waiting for a
+terminal event never occupies a message-delivery lane, and a runner pass that
+only observes live turns sleeps without spending the bounded progress budget.
 
 Adaptive Flywheel is the sole Agent, model, and reasoning-effort route selector.
 LicoUp freezes that route decision in the dispatch receipt before sending the
@@ -64,8 +75,10 @@ Each accepted dispatch records its intent, Conversation binding, and Token
 baseline before native send. Only a definite terminal Conversation Event settles
 numeric usage and advances a Checkpoint; silence and elapsed time remain
 pending. Terminal settlement and callbacks are idempotent. Restart recovery
-reconciles the exact pending Conversation dispatch instead of creating another
-one.
+reads the canonical dispatch record under the durable Delivery dispatch
+identity instead of opening another turn: a live record reports pending, a
+terminal record projects its terminal state, and a persisted-but-uncommitted
+dispatch settles as a retryable failure.
 
 The Token ledger retains numeric prompt, cached-input, completion, total,
 exact-or-estimated counts, coverage, and Plan/Task/dispatch hierarchy. It does
@@ -87,11 +100,24 @@ represents an Agent, and matches the requested runnable integration. Native
 session identifiers and continuation locations are resolved internally from
 the Membership binding; callers cannot choose or retrieve them.
 
-`lico_subagent_probe` is an infrastructure readiness check rather than an
-Agent-driving primitive. It selects a price-backed available route by default,
-or validates an explicitly requested route. Any persistent probe history is
-moved to the operating-system Trash and a fresh scan must prove disappearance
-before the probe can succeed.
+`lico_subagent_probe` is a read-only readiness observation rather than an
+Agent-driving primitive. Its `agentId` is the exact identifier returned by
+`lico_subagents_list`; aliases are rejected. It sends no Agent input, starts no
+third-party Agent binary, and creates or mutates no Conversation: one bounded
+request reads the private Conversation host's active-turn snapshot filtered by
+the admitted Agent. Target inspection opens no model or history store and
+refreshes no persisted discovery state; host observation connects only to an
+endpoint the running host already published. Its receipt
+(`licoup.subagent.readiness.v1`)
+reports `agentId`, `state`, `integrationStatus`, `conversationDriver`,
+`conversationReadiness`, `blockerCode`, `hostTransport`, and
+`hostActiveTurns` — no path, session identifier, turn handle, process
+identifier, port, model, or price. `state` is `ready` when the integration is
+runnable, the host is reachable, and the host holds no non-terminal turn for
+that Agent, and `busy` when it holds at least one; both are successful
+observations, never failures. The snapshot covers only LicoUp-owned turns, so
+`ready` means admitted, reachable, and idle inside LicoUp — it makes no claim
+about the Agent's own external activity.
 
 ## Bounded execution
 

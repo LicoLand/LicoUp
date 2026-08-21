@@ -24,6 +24,13 @@ const workflowLedger = read(
 const conversationRuntime = read(
   "crates/licoup-native/src/platform/conversation_runtime.rs",
 );
+const conversationRuntimeProduction = conversationRuntime.slice(
+  0,
+  conversationRuntime.indexOf("#[cfg(test)]"),
+);
+const conversationHost = read(
+  "crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation.rs",
+);
 const providerPricing = read("crates/licoup-native/src/domain/provider_model_pricing.rs");
 const pricingCatalog = JSON.parse(
   read("crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json"),
@@ -75,10 +82,10 @@ test("delivery uses the Plan and numeric ledger through the Conversation runtime
   assert.match(workflowLedger, /pub fn bind_conversation_baseline/u);
   assert.match(workflowLedger, /pub fn settle_turn/u);
   assert.match(workflowLedger, /pub fn mark_terminal/u);
-  assert.match(conversationRuntime, /DeliveryPlanEngine/u);
-  assert.match(conversationRuntime, /workflow_ledger/u);
-  assert.match(conversationRuntime, /ConversationService/u);
-  assert.match(conversationRuntime, /ConversationAdmissionFailure/u);
+  assert.match(conversationRuntimeProduction, /DeliveryPlanEngine/u);
+  assert.match(conversationRuntimeProduction, /workflow_ledger/u);
+  assert.match(source, /ConversationService::open/u);
+  assert.match(conversationRuntimeProduction, /ConversationAdmissionFailure/u);
   for (const code of [
     "conversation_location_relative",
     "conversation_location_missing",
@@ -86,10 +93,32 @@ test("delivery uses the Plan and numeric ledger through the Conversation runtime
     "conversation_location_ambiguous",
     "conversation_location_unbounded",
   ]) {
-    assert.match(conversationRuntime, new RegExp(code, "u"));
+    assert.match(conversationRuntimeProduction, new RegExp(code, "u"));
   }
-  assert.match(conversationRuntime, /dispatch_lane_operation\("send"/u);
-  assert.match(conversationRuntime, /dispatch_lane_operation\(\s*"cancel"/u);
+  assert.match(conversationRuntimeProduction, /dispatch_lane_operation\(\s*"open"/u);
+  // Delivery dispatch, reconciliation, and cancellation run through the
+  // process-owned persistent host door under the durable Delivery dispatch
+  // identity; the canonical dispatch record is the terminal evidence source.
+  // The retired one-shot lane send, the duplicate dispatch bookkeeping, and
+  // the admission-cause scope are gone from the Delivery path.
+  assert.match(conversationRuntimeProduction, /agent\.conversation\.dispatch/u);
+  assert.match(conversationRuntimeProduction, /agent\.conversation\.cancel/u);
+  assert.match(conversationRuntimeProduction, /request\.dispatch_id/u);
+  assert.match(conversationRuntimeProduction, /dispatch_record/u);
+  assert.match(conversationRuntimeProduction, /persistent_conversation_transport_required/u);
+  assert.match(conversationRuntimeProduction, /DeliveryHostRequest/u);
+  assert.doesNotMatch(conversationRuntimeProduction, /dispatch_lane_operation\("send"/u);
+  assert.doesNotMatch(conversationRuntimeProduction, /dispatch_lane_operation\(\s*"cancel"/u);
+  assert.doesNotMatch(conversationRuntimeProduction, /create_dispatch\(/u);
+  assert.doesNotMatch(conversationRuntimeProduction, /update_dispatch\(/u);
+  assert.doesNotMatch(conversationRuntimeProduction, /prepare_runtime_dispatch/u);
+  assert.doesNotMatch(conversationRuntimeProduction, /delivery-conversation-admission/u);
+  assert.match(deliveryScheduler, /reconcile\(\s*&dispatch\.dispatch_id/u);
+  assert.doesNotMatch(deliveryScheduler, /dispatch_lane_operation/u);
+  assert.doesNotMatch(deliveryScheduler, /create_dispatch\(/u);
+  assert.doesNotMatch(deliveryScheduler, /update_dispatch\(/u);
+  assert.doesNotMatch(deliveryScheduler, /prepare_runtime_dispatch/u);
+  assert.doesNotMatch(deliveryScheduler, /delivery-conversation-admission/u);
 });
 
 test("accepted delivery failures and cancellation roots stay durable and typed", () => {
@@ -114,22 +143,45 @@ test("accepted delivery failures and cancellation roots stay durable and typed",
   assert.match(deliveryState, /public_projection/u);
   assert.match(source, /set_delivery_runner/u);
   assert.match(source, /delivery_state::persist_delivery_control/u);
-  assert.match(source, /dispatch_lane_operation\("send"/u);
-  assert.match(source, /dispatch_lane_operation\(\s*"cancel"/u);
+  assert.match(source, /agent\.conversation\.cancel/u);
+  // The runner and explicit Delivery cancellation share one composed
+  // persistent host door, drive cancellation by the durable dispatch
+  // identity, and never spend the runner's progress budget on live turns.
+  assert.match(source, /compose_delivery_runtime/u);
+  assert.match(source, /delivery_host_request/u);
+  assert.match(source, /conversation_host_transport::connect_existing/u);
+  assert.match(source, /PERSISTENT_TRANSPORT_REQUIRED/u);
+  assert.match(source, /delivery_pass_outcome/u);
+  assert.match(source, /DeliveryPassOutcome::WaitPending/u);
+  assert.match(source, /cancel\(&record\.dispatch_id\)/u);
+  assert.match(source, /RunningDeliveryGuard::claim/u);
   assert.match(source, /"accepted": true/u);
-  assert.match(source, /DispatchState::Running/u);
   assert.match(source, /DispatchSessionMode::Resume/u);
+  // Delegation and cancellation enter the persistent host's one turn registry;
+  // the MCP process owns no parallel frame stream or terminal writer.
+  const dispatchDoor = source.slice(
+    source.indexOf("fn dispatch_subagent("),
+    source.indexOf("fn conversation_dispatch_context("),
+  );
+  assert.match(dispatchDoor, /agent\.conversation\.dispatch/u);
+  assert.match(dispatchDoor, /execute_persistent_conversation_method/u);
+  assert.match(dispatchDoor, /streamEvents": true/u);
+  assert.match(dispatchDoor, /validate_dispatch_selection/u);
+  assert.match(dispatchDoor, /params\["model"\]/u);
+  assert.match(dispatchDoor, /params\["reasoningEffort"\]/u);
+  assert.doesNotMatch(dispatchDoor, /dispatch_lane_operation\("send"/u);
+  assert.doesNotMatch(dispatchDoor, /prepare_runtime_dispatch/u);
+  assert.doesNotMatch(dispatchDoor, /append_runtime_frame/u);
+  assert.doesNotMatch(dispatchDoor, /finish_runtime_dispatch/u);
+  assert.doesNotMatch(source, /create_dispatch/u);
   assert.match(conversationStore, /CREATE TABLE IF NOT EXISTS conversation_dispatches/u);
   assert.match(conversationStore, /latest_resumable_dispatch/u);
-  assert.match(source, /thread::spawn/u);
+  assert.match(conversationStore, /requested_dispatch_id/u);
   assert.match(source, /ConversationService::open/u);
   assert.match(source, /conversation_dispatch_context/u);
   assert.match(source, /"conversationId"/u);
   assert.match(source, /"membershipId"/u);
   assert.match(source, /"licoup\.subagent\.receipt\.v2"/u);
-  assert.match(source, /AgentIntelligenceCatalog::embedded\(\)/u);
-  assert.match(source, /provider_model_pricing::refresh_official_sources\(\)/u);
-  assert.match(source, /provider_model_pricing::quote_probe/u);
   assert.match(providerPricing, /Refresh every pricing table concurrently/u);
   assert.deepEqual(
     [...pricingCatalog.providers, ...pricingCatalog.agents].map((table) => table.id),
@@ -160,12 +212,57 @@ test("accepted delivery failures and cancellation roots stay durable and typed",
       .included_by_harness,
     true,
   );
-  assert.match(source, /trash::delete\(target\)/u);
-  assert.match(source, /moved-to-trash-and-verified/u);
-  assert.match(source, /not-persisted-and-verified/u);
 });
 
-test("diagnostic probe cleanup remains framework-specific without role policy", () => {
+test("subagent readiness observation never sends Agent input", () => {
+  assert.match(source, /"lico_subagent_probe"/u);
+  assert.match(source, /licoup\.subagent\.readiness\.v1/u);
+  assert.match(source, /"subagent\.readiness"/u);
+  // The readiness door is one bounded read-only host request filtered by the
+  // admitted Agent with zero change-wait; the receipt projects target facts
+  // plus the turn count and no private runtime identifier.
+  const readinessDoor = source.slice(
+    source.indexOf("fn probe_subagent("),
+    source.indexOf("fn delivery_start("),
+  );
+  assert.match(readinessDoor, /targets::inspect_target_read_only/u);
+  assert.match(readinessDoor, /agent\.conversation\.active/u);
+  assert.match(
+    readinessDoor,
+    /execute_read_only_persistent_conversation_method/u,
+  );
+  assert.doesNotMatch(readinessDoor, /targets::inspect_target\(/u);
+  assert.match(readinessDoor, /"waitForChangeMs": 0/u);
+  assert.match(readinessDoor, /"hostTransport"/u);
+  assert.match(readinessDoor, /"hostActiveTurns"/u);
+  assert.match(readinessDoor, /"integrationStatus"/u);
+  assert.match(readinessDoor, /"conversationDriver"/u);
+  assert.match(readinessDoor, /"conversationReadiness"/u);
+  assert.match(readinessDoor, /"blockerCode"/u);
+  assert.doesNotMatch(readinessDoor, /dispatch_lane_operation/u);
+  assert.doesNotMatch(readinessDoor, /agent\.conversation\.dispatch/u);
+  assert.doesNotMatch(readinessDoor, /"prompt"/u);
+  assert.doesNotMatch(readinessDoor, /"text"/u);
+  assert.doesNotMatch(readinessDoor, /"model"/u);
+  assert.doesNotMatch(readinessDoor, /"reasoningEffort"/u);
+  assert.doesNotMatch(readinessDoor, /"workingDirectory"/u);
+  assert.doesNotMatch(readinessDoor, /"timeoutMs"/u);
+  assert.doesNotMatch(readinessDoor, /conversation_list/u);
+  assert.doesNotMatch(readinessDoor, /trash::/u);
+
+  const activeObservationDoor = conversationHost.slice(
+    conversationHost.indexOf("pub(super) fn active("),
+    conversationHost.indexOf("fn record_event("),
+  );
+  assert.match(activeObservationDoor, /turn\.agent_id != agent/u);
+  assert.match(activeObservationDoor, /terminal\.is_some\(\)/u);
+  assert.doesNotMatch(activeObservationDoor, /dispatch_lane_operation/u);
+  assert.doesNotMatch(activeObservationDoor, /append_runtime_frame/u);
+  assert.doesNotMatch(activeObservationDoor, /bind_runtime_session/u);
+  assert.doesNotMatch(activeObservationDoor, /turn\.store/u);
+});
+
+test("driver-owned conversation cleanup remains framework-specific without role policy", () => {
   assert.doesNotMatch(source, /required_workflow_role/u);
   assert.doesNotMatch(source, /subordinate_role_prompt/u);
   assert.match(cursorControl, /trash::delete\(&leaf\)/u);
@@ -234,14 +331,14 @@ test("MCP bounds prompts, local directories, private runtime state, and concurre
   assert.match(source, /MAX_SUBAGENT_TIMEOUT_MS: u64 = 30 \* 60 \* 1_000/u);
   assert.match(source, /MAX_SUBAGENT_STDOUT_BYTES: u64 = 64 \* 1024 \* 1024/u);
   assert.match(source, /MAX_SUBAGENT_STDERR_BYTES: u64 = 4 \* 1024 \* 1024/u);
-  assert.match(source, /params\["timeoutMs"\]/u);
+  assert.match(source, /"timeoutMs": timeout_ms\.unwrap_or\(0\)/u);
   assert.match(source, /params\["allowAll"\]/u);
   assert.match(source, /params\["permissionMode"\]/u);
   assert.match(source, /params\["maxStdoutBytes"\]/u);
   assert.match(source, /params\["maxStderrBytes"\]/u);
-  assert.match(source, /MAX_QUOTA_COOLDOWNS: usize = 64/u);
-  assert.match(source, /quota_or_capacity_failure/u);
-  assert.match(source, /output:\s*value/u);
+  assert.match(source, /agent\.conversation\.dispatch/u);
+  assert.match(source, /agent\.conversation\.cancel/u);
+  assert.doesNotMatch(source, /fn execute_subagent_send/u);
   assert.doesNotMatch(source, /"output":\s*output/u);
   assert.doesNotMatch(source, /"sessionId": source\.get/u);
 });

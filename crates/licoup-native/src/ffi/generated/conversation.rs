@@ -127,6 +127,8 @@ pub enum ConversationActionKind {
     ConversationEventAppend,
     #[serde(rename = "conversation.message.post")]
     ConversationMessagePost,
+    #[serde(rename = "conversation.dispatch.after-post")]
+    ConversationDispatchAfterPost,
     #[serde(rename = "conversation.event.part.append")]
     ConversationEventPartAppend,
     #[serde(rename = "conversation.event.finalize")]

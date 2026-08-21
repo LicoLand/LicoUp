@@ -5,12 +5,15 @@ use licoup_native::domain::client_conversation::{
 };
 use licoup_native::ffi::generated::client_error::ClientError;
 use licoup_native::platform::runtime_adapters::RuntimeAdapterError;
-#[cfg(test)]
-use std::time::Instant;
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Condvar, atomic::AtomicUsize},
-    time::Duration,
+    panic::{AssertUnwindSafe, catch_unwind},
+    path::PathBuf,
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 pub(super) const MAX_CONCURRENT_SENDS: usize = 16;
@@ -26,6 +29,7 @@ pub(crate) struct PersistentConversationRuntime {
 
 struct PersistentConversationRuntimeInner {
     turns: Mutex<HashMap<String, Arc<PersistentTurn>>>,
+    turns_changed: Condvar,
     clients: AtomicUsize,
     store: ConversationStore,
     cache_budget: usize,
@@ -72,6 +76,7 @@ impl PersistentConversationRuntime {
         Self {
             inner: Arc::new(PersistentConversationRuntimeInner {
                 turns: Mutex::new(HashMap::new()),
+                turns_changed: Condvar::new(),
                 clients: AtomicUsize::new(0),
                 store,
                 cache_budget,
@@ -154,6 +159,7 @@ impl PersistentConversationRuntime {
             cache_budget: self.inner.cache_budget,
         });
         turns.insert(scope.dispatch_id.clone(), Arc::clone(&turn));
+        self.inner.turns_changed.notify_all();
         Ok(turn)
     }
 
@@ -214,15 +220,110 @@ impl PersistentConversationRuntime {
         Ok(resolved)
     }
 
-    /// Execute a group/direct Conversation turn through the same host-owned
-    /// registry used by desktop streaming sends. The Conversation service
-    /// remains the canonical projector for the final reply; this coordinator
-    /// owns lifecycle, replay, reattachment, and same-turn control.
-    pub(crate) fn dispatch_sync(
+    /// Open one Membership-scoped dispatch: register the PersistentTurn and
+    /// commit its Conversation facts before any native work starts. The
+    /// returned handle is the dispatch identity the caller attaches or runs.
+    pub(crate) fn open_turn(
+        &self,
+        params: &Value,
+    ) -> std::result::Result<String, RuntimeAdapterError> {
+        let turn = self.begin_accepted(params)?;
+        Ok(turn.scope.dispatch_id.clone())
+    }
+
+    /// Run one previously opened turn to its terminal state. Registration is
+    /// never repeated here; an unknown handle fails closed.
+    pub(crate) fn run_open_turn(
+        &self,
+        handle: &str,
+        params: &Value,
+        portable_data_dir: Option<PathBuf>,
+    ) -> std::result::Result<Value, RuntimeAdapterError> {
+        let Some(turn) = self.turn(handle) else {
+            return Err(RuntimeAdapterError::ConversationDispatchFailed);
+        };
+        self.run_started_turn(turn, params, portable_data_dir)
+    }
+
+    /// Settle one opened turn that will never run. The dispatch completion
+    /// authority writes the terminal state with a typed abandonment code so a
+    /// registered entry turn can never linger as active.
+    pub(crate) fn abandon_turn(&self, handle: &str) {
+        let Some(turn) = self.turn(handle) else {
+            return;
+        };
+        let settled = turn
+            .state
+            .lock()
+            .map(|state| state.terminal.is_some())
+            .unwrap_or(true);
+        if settled {
+            return;
+        }
+        let terminal = PersistentTerminal {
+            ok: false,
+            payload: json!({
+                "ok": false,
+                "error": {
+                    "code": "conversation_dispatch_failed",
+                    "stage": "conversation/dispatch",
+                }
+            }),
+        };
+        if Self::finish(&turn, terminal.clone()).is_err() {
+            Self::force_terminal(&turn, terminal);
+        }
+    }
+
+    /// Begin a Membership-scoped PersistentTurn and return immediately so the
+    /// caller can attach. Drive continues on a host thread with the same sink
+    /// as a blocking open-plus-run turn.
+    pub(crate) fn start_background(
         &self,
         params: &Value,
         portable_data_dir: Option<PathBuf>,
     ) -> std::result::Result<Value, RuntimeAdapterError> {
+        let handle = self.open_turn(params)?;
+        let Some(turn) = self.turn(&handle) else {
+            self.abandon_turn(&handle);
+            return Err(RuntimeAdapterError::ConversationDispatchFailed);
+        };
+        let receipt = json!({
+            "ok": true,
+            "accepted": true,
+            "turnHandle": turn.scope.dispatch_id,
+            "conversationId": turn.scope.conversation_id,
+            "membershipId": turn.scope.membership_id,
+        });
+        let runtime = self.clone();
+        let params = params.clone();
+        if std::thread::Builder::new()
+            .name("conversation-dispatch".to_owned())
+            .spawn(move || {
+                let _ = runtime.run_started_turn(turn, &params, portable_data_dir);
+            })
+            .is_err()
+        {
+            self.abandon_turn(&handle);
+            return Err(RuntimeAdapterError::ConversationDispatchFailed);
+        }
+        Ok(receipt)
+    }
+
+    pub(crate) fn steer_sync(
+        &self,
+        params: &Value,
+    ) -> std::result::Result<Value, RuntimeAdapterError> {
+        let params = self
+            .scoped_control_params(params)
+            .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
+        licoup_native::platform::dispatch_lane_operation("steer", &params)
+    }
+
+    fn begin_accepted(
+        &self,
+        params: &Value,
+    ) -> std::result::Result<Arc<PersistentTurn>, RuntimeAdapterError> {
         let turn = self
             .begin(params)
             .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
@@ -243,7 +344,15 @@ impl PersistentConversationRuntime {
             );
             return Err(RuntimeAdapterError::ConversationDispatchFailed);
         }
+        Ok(turn)
+    }
 
+    fn run_started_turn(
+        &self,
+        turn: Arc<PersistentTurn>,
+        params: &Value,
+        portable_data_dir: Option<PathBuf>,
+    ) -> std::result::Result<Value, RuntimeAdapterError> {
         let persistence_failed = Arc::new(AtomicBool::new(false));
         let sink_failed = Arc::clone(&persistence_failed);
         let sink_turn = Arc::clone(&turn);
@@ -298,6 +407,8 @@ impl PersistentConversationRuntime {
     }
 
     pub(super) fn active(&self, params: &Value) -> Value {
+        const MAX_CHANGE_WAIT: Duration = Duration::from_secs(2);
+
         let agent = params
             .get("agent")
             .and_then(Value::as_str)
@@ -313,33 +424,56 @@ impl PersistentConversationRuntime {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .trim();
-        let turns = self.inner.turns.lock().expect("turn registry lock");
-        let active = turns
-            .values()
-            .filter_map(|turn| {
-                let state = turn.state.lock().ok()?;
-                if state.terminal.is_some()
-                    || (!agent.is_empty() && turn.agent_id != agent)
-                    || (!conversation_id.is_empty()
-                        && turn.scope.conversation_id != conversation_id)
-                {
-                    return None;
-                }
-                let turn_session = turn.session_id.lock().ok()?.clone();
-                if !session.is_empty() && turn_session != session {
-                    return None;
-                }
-                Some(json!({
-                    "turnHandle": turn.scope.dispatch_id,
-                    "conversationId": turn.scope.conversation_id,
-                    "agent": turn.agent_id,
-                    "sessionId": turn_session,
-                    "turnId": turn.turn_id.lock().ok()?.clone(),
-                    "highWater": state.high_water,
-                }))
-            })
-            .collect::<Vec<_>>();
-        json!({"turns": active})
+        let wait = Duration::from_millis(
+            params
+                .get("waitForChangeMs")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+                .min(MAX_CHANGE_WAIT.as_millis() as u64),
+        );
+        let deadline = Instant::now() + wait;
+        let mut turns = self.inner.turns.lock().expect("turn registry lock");
+        loop {
+            let active = turns
+                .values()
+                .filter_map(|turn| {
+                    let state = turn.state.lock().ok()?;
+                    if state.terminal.is_some()
+                        || (!agent.is_empty() && turn.agent_id != agent)
+                        || (!conversation_id.is_empty()
+                            && turn.scope.conversation_id != conversation_id)
+                    {
+                        return None;
+                    }
+                    let turn_session = turn.session_id.lock().ok()?.clone();
+                    if !session.is_empty() && turn_session != session {
+                        return None;
+                    }
+                    Some(json!({
+                        "turnHandle": turn.scope.dispatch_id,
+                        "conversationId": turn.scope.conversation_id,
+                        "membershipId": turn.scope.membership_id,
+                        "agent": turn.agent_id,
+                        "sessionId": turn_session,
+                        "turnId": turn.turn_id.lock().ok()?.clone(),
+                        "highWater": state.high_water,
+                    }))
+                })
+                .collect::<Vec<_>>();
+            if !active.is_empty() || wait.is_zero() || Instant::now() >= deadline {
+                return json!({"turns": active});
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let (next, timed_out) = self
+                .inner
+                .turns_changed
+                .wait_timeout(turns, remaining)
+                .expect("turn registry lock");
+            turns = next;
+            if timed_out.timed_out() {
+                return json!({"turns": []});
+            }
+        }
     }
 
     fn record_event(
@@ -356,7 +490,12 @@ impl PersistentConversationRuntime {
                 *turn.turn_id.lock().expect("turn id lock") = turn_id.trim().to_owned();
             }
         }
-        let cursor = turn.state.lock().expect("turn state lock").high_water + 1;
+        // Serialize cursor allocation through canonical persistence and the
+        // disposable cache update. Computing the cursor under a short lock and
+        // releasing it before the store write lets concurrent adapter emitters
+        // persist the same cursor before either detects the race.
+        let mut state = turn.state.lock().expect("turn state lock");
+        let cursor = state.high_water + 1;
         if let Some(object) = event.as_object_mut() {
             object.insert(
                 "turnHandle".to_owned(),
@@ -374,10 +513,6 @@ impl PersistentConversationRuntime {
         turn.store
             .bind_runtime_session(&turn.scope, &turn.agent_id, &session_id, None, None)?;
         let encoded_bytes = serde_json::to_vec(&event)?.len();
-        let mut state = turn.state.lock().expect("turn state lock");
-        if cursor != state.high_water + 1 {
-            return Err(anyhow!("runtime_cursor_race"));
-        }
         state.high_water = cursor;
         state.cache_bytes = state.cache_bytes.saturating_add(encoded_bytes);
         state.cache.push_back(CachedFrame {
@@ -480,18 +615,25 @@ where
     W: Write + Send + 'static,
 {
     let turn = runtime.begin(&params)?;
-    Ok(std::thread::spawn(move || {
-        let _ = execute(
-            &writer,
-            &request_id,
-            &workflow_id,
-            "send",
-            params,
-            portable_data_dir,
-            true,
-            Some(turn),
-        );
-    }))
+    let handle = turn.scope.dispatch_id.clone();
+    std::thread::Builder::new()
+        .name("conversation-send".to_owned())
+        .spawn(move || {
+            let _ = execute(
+                &writer,
+                &request_id,
+                &workflow_id,
+                "send",
+                params,
+                portable_data_dir,
+                true,
+                Some(turn),
+            );
+        })
+        .map_err(|_| {
+            runtime.abandon_turn(&handle);
+            stdio_rpc_client_error("agent_conversation_dispatch_failed")
+        })
 }
 
 pub(super) fn spawn_attach<W>(
@@ -532,9 +674,12 @@ where
     if after_cursor > high_water {
         return Err(stdio_rpc_client_error("cursor_ahead"));
     }
-    Ok(std::thread::spawn(move || {
-        let _ = replay_turn(&writer, &request_id, &workflow_id, &turn, after_cursor);
-    }))
+    std::thread::Builder::new()
+        .name("conversation-attach".to_owned())
+        .spawn(move || {
+            let _ = replay_turn(&writer, &request_id, &workflow_id, &turn, after_cursor);
+        })
+        .map_err(|_| stdio_rpc_client_error("agent_conversation_dispatch_failed"))
 }
 
 fn replay_turn<W: Write>(
@@ -856,6 +1001,26 @@ pub(super) fn has_capacity(workers: &[std::thread::JoinHandle<()>]) -> bool {
     workers.len() < MAX_CONCURRENT_SENDS
 }
 
+/// The strategy drive's Conversation-dispatch port, composed once where the
+/// persistent host runtime already exists. Open registers a turn, run executes
+/// an opened turn, and abandon settles one that will never run; an absent
+/// runtime keeps the strategy service fail closed.
+pub(super) fn strategy_turn_port(
+    runtime: PersistentConversationRuntime,
+    portable_data_dir: Option<PathBuf>,
+) -> licoup_native::domain::adaptive_flywheel::ActorTurnPort {
+    let open_runtime = runtime.clone();
+    let run_runtime = runtime.clone();
+    let run_dir = portable_data_dir;
+    licoup_native::domain::adaptive_flywheel::ActorTurnPort {
+        open: Arc::new(move |params| open_runtime.open_turn(params)),
+        run: Arc::new(move |handle, params| {
+            run_runtime.run_open_turn(handle, params, run_dir.clone())
+        }),
+        abandon: Arc::new(move |handle| runtime.abandon_turn(handle)),
+    }
+}
+
 pub(super) fn join_until_completion(workers: &mut Vec<std::thread::JoinHandle<()>>) {
     while !workers.is_empty() {
         reap_finished(workers);
@@ -987,6 +1152,51 @@ mod tests {
     }
 
     #[test]
+    fn persistent_runtime_serializes_concurrent_cursor_persistence() {
+        const EMITTERS: usize = 8;
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let turn = runtime
+            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
+            .unwrap();
+        let barrier = Arc::new(std::sync::Barrier::new(EMITTERS));
+        let mut emitters = Vec::with_capacity(EMITTERS);
+        for ordinal in 0..EMITTERS {
+            let turn = Arc::clone(&turn);
+            let barrier = Arc::clone(&barrier);
+            emitters.push(std::thread::spawn(move || {
+                barrier.wait();
+                PersistentConversationRuntime::record_event(
+                    &turn,
+                    json!({
+                        "event": "agent.message.chunk",
+                        "payload": {"ordinal": ordinal}
+                    }),
+                )
+                .unwrap();
+            }));
+        }
+        for emitter in emitters {
+            emitter.join().unwrap();
+        }
+
+        let state = turn.state.lock().unwrap();
+        assert_eq!(state.high_water, EMITTERS as u64);
+        drop(state);
+        let frames = turn
+            .store
+            .runtime_frames_after(&turn.scope, 0, EMITTERS as u64, EMITTERS)
+            .unwrap();
+        assert_eq!(frames.len(), EMITTERS);
+        assert_eq!(
+            frames
+                .iter()
+                .filter_map(|frame| frame.get("cursor").and_then(Value::as_u64))
+                .collect::<Vec<_>>(),
+            (1..=EMITTERS as u64).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn persistent_runtime_active_discovery_is_scoped_without_content() {
         let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
         let turn = runtime
@@ -1016,6 +1226,28 @@ mod tests {
             active["turns"][0]["conversationId"],
             turn.scope.conversation_id
         );
+    }
+
+    #[test]
+    fn persistent_runtime_active_discovery_waits_for_registration_signal() {
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let waiter = runtime.clone();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let wait_barrier = Arc::clone(&barrier);
+        let waiting = std::thread::spawn(move || {
+            wait_barrier.wait();
+            waiter.active(&json!({
+                "agent": "synthetic",
+                "waitForChangeMs": 1000
+            }))
+        });
+        barrier.wait();
+        let turn = runtime
+            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
+            .unwrap();
+
+        let active = waiting.join().unwrap();
+        assert_eq!(active["turns"][0]["turnHandle"], turn.scope.dispatch_id);
     }
 
     #[test]

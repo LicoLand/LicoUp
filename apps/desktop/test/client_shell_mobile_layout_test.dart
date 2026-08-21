@@ -174,7 +174,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       final pairedDeviceKey = Key(
         'mobile-paired-device-${controller.mobileRelayConfig.deviceTabs.single.id}',

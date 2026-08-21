@@ -154,15 +154,16 @@ authorized revision shows the strategy name and places an `@` capsule for the
 entry-slot candidate in front of the input. Selection admits every bound Agent
 as a group Membership. It does not start a run.
 
-The first send hands the message to the entry slot and starts
-`strategy.run.start` with the group workspace as working directory. Later
-sends go to the sticky entry session only while the run needs human input;
-otherwise they are ordinary group messages. Clearing the `@` capsule exits
+The first send is still a Conversation Event. Native addressing starts
+`strategy.run.start` on the persistent conversation sidecar (the Graph does not
+own a send process). Later sends stay Events: an in-flight Membership
+PersistentTurn is steered; a Waiting run is resumed. Clearing the capsule exits
 strategy mode and does not cancel a run that is already executing.
 
-An `@mention` outside strategy mode remains a DirectTurn and does not start a
-Graph. Graph actor and workset effects land as structured Events on the
-matching Membership through the shared conversation display.
+An `@mention` only selects Memberships. It uses the same PersistentTurn stream
+as strategy, delivery, and subagent effects — not a second I/O stack. Graph actor
+and workset effects land as structured Events on the matching Membership through
+the shared conversation display.
 
 Imported package contents, bindings, authorizations, and native run state
 remain in local client state. Do not publish raw strategy inputs, local paths,

@@ -25,7 +25,7 @@ LicoUp 是一个本地优先的客户端。Flutter 负责界面，Rust 负责原
 flowchart TB
     UI["Flutter 界面"] --> APP["应用层"]
     APP --> CORE["Rust 原生客户端核心"]
-    CORE --> CONVERSATIONS["统一 Conversation 领域<br/>Membership · Event · Role"]
+    CORE --> CONVERSATIONS["统一 Conversation 领域<br/>Membership · Event · Dispatch"]
     CORE --> STRATEGIES["Adaptive Flywheel 策略领域<br/>不可变 Graph · 持久化运行"]
     CONVERSATIONS --> STORE["带索引的 SQLite/WAL 客户端状态"]
     CORE --> AGENTS["智能体适配器<br/>ACP · app-server · RPC · CLI"]
@@ -43,13 +43,68 @@ flowchart TB
 | Flutter 界面 | 导航、视图、用户选择和安全摘要 |
 | 应用层 | 客户端流程和与适配器无关的规则 |
 | Rust 原生核心 | 本地任务、协议、校验和加密 |
-| Conversation 领域 | 单聊/群聊、Human/Agent Membership、结构化 Event 与角色的唯一持久化权威；原生运行时位置保持私有 |
+| Conversation 领域 | 单聊/群聊、Human/Agent Membership、结构化 Event 与按 Membership 派发的唯一持久化权威；原生运行时位置保持私有 |
 | Adaptive Flywheel 策略领域 | 独立于 Conversation 历史的不可变包版本、JSON Graph 校验、绑定、准确授权、持久化运行归约与有界效果调度 |
 | 智能体适配器 | 转换受支持的本机接口及自动发现或明确配置的 OpenClaw/Hermes 虚拟机协议连接 |
 | 平台桥接 | 安全存储、用户确认和平台启动 |
 | 端点保护预览 | 当前 LicoUp 执行器、本地密钥/Provider 保管、对端信任、审批和正在退役的端点实现；它不是稳定协议权威 |
 | Lico Arc Protocol Line | 拥有线上可观测的 Pairwise Protection、Generic Message、Reliable Exchange、协商与 Transport Profile 语义 |
 | Lico Arc adapter | 严格候选外层信封 codec 与四项有界通讯站运输操作 |
+
+## Conversation 权威分层
+
+长期「一个 Conversation」目标由[产品定义](../../PRODUCT.zh-CN.md)负责。已实现的
+单聊/群聊事实由
+`crates/licoup-native/src/domain/client_conversation/` 中的统一 Conversation
+存储负责。原生智能体历史、Adaptive Flywheel Graph 和 Delivery Plan 是相邻权威，
+不是该 Conversation 的副本；本节也不取代它们各自的归属文档。
+
+```mermaid
+flowchart TB
+    Conv["统一 Conversation"]
+    Conv --> Principals["Principal：Human 或 Agent"]
+    Conv --> Memberships["Membership：权限与 active/left"]
+    Conv --> Events["Event 与 Part"]
+    Conv --> StrategyRef["strategyRevision：可选 Graph 绑定"]
+    Conv --> Dispatches["私有 ConversationDispatch"]
+    Conv --> Bindings["私有 RuntimeBinding"]
+```
+
+| 权威 | 负责 | 关系 |
+| --- | --- | --- |
+| 统一 Conversation | 人机入口、Membership、有序 Event | 唯一持久化聊天存储。单聊与群聊是同一类型，差别只有 `isGroup` 和 Membership 数量 |
+| [原生历史目录](../protocols/semantic-conversation.md) | 只读适配器会话，汇编为 semantic conversation | 一对一 Agent 工作区的列表/回放，不是统一 `conversation.list`。原生位置只作为 Membership 上的私有 RuntimeBinding |
+| [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | 不可变 Graph 版本、绑定、授权、持久化运行归约 | 独立于 Conversation 历史。群可以绑定 `strategyRevision`；actor 效果作为 Membership Event 投影回来。Graph/run 不是第二份 transcript |
+| [Delivery Plan](../protocols/subagent-mcp.zh-CN.md) | Plan 与 Checkpoint 生命周期 | 通过 Conversation Membership 派发。Adaptive Flywheel 仍是 Agent/model 路由选择权威 |
+
+| 记录 | 含义 |
+| --- | --- |
+| Principal | 对等身份。`kind` 为人或智能体；智能体另有 `agentId` |
+| Membership | 该 Principal 在本 Conversation 中的席位。派发键是 `conversationId` + `membershipId` |
+| Event / EventPart | 唯一可见历史。Message、membership-changed、availability Event 携带正文、推理、工具、产物、诊断和元数据 Part。流式写入是向未 finalize 的 Event 追加 Part |
+| `strategyRevision` | Conversation 上可选的已授权 Flywheel Graph，不是 transcript |
+| ConversationDispatch | 按 Membership 作用域的私有智能体执行。原生路径不进入公开契约 |
+| RuntimeBinding | 绑在 Membership 上的私有适配器会话。对 UI、MCP 和导出不可见 |
+
+寻址只选出 Membership，不是第二套协议。正文里的 `@mention`、策略 actor 槽、
+Delivery 路由，以及下属智能体的 `conversationId + membershipId`，都只点名已有的
+Agent Membership。在该模型里，DirectTurn 是 ConversationDispatch 的 mention
+派发成因，不是第二套发送、执行或展示栈。
+
+派发只有一扇门。人类 Event 持久化之后，派发只需 Conversation 与 Event 身份：
+native 从已存储的 Event 正文解析被 mention 的 Membership，绑定的策略是同一扇门
+按绑定而非按正文寻址。派发完成权威是唯一写入终态 Event、派发状态与 mention turn
+状态的写入方；策略 run start 或 resume 在驱动线程启动之前注册入口 Membership
+turn，并在同一响应中返回该句柄，未曾运行的入口以带类型代码废弃。下属智能体委派把
+帧流写入同一 Conversation 派发作用域，并经同一权威完成结算。在未接入常驻宿主
+运行时构造的服务上，派发类与 run 类动作以带类型的传输拒绝立即失败，不会打开无人
+照管的 turn。
+
+已删除的 `conversation_roles` 表不是当前存储。Adaptive Flywheel 是用户导入的
+Graph，不是 MCP Role 池，也不是 round-robin Role 飞轮。
+
+群面板渲染统一 Conversation Event。一对一 Agent 面板渲染原生目录加上实时
+PersistentTurn。共用气泡组件并不合并这两套权威。
 
 ## 内置能力边界
 
@@ -63,11 +118,11 @@ flowchart TB
 | MCP 适配 | 有界 MCP/JSON-RPC 校验、请求 ID 保持、响应转发，以及外部动作的一次性审批 |
 | 智能体发现 | 只并发探测 Agent 扫描路径清单中的命名二进制、配置和历史目录。不遍历 PATH、个人资料库根、照片/音乐库或网络宗卷。未使用智能体的发现和冷启动不会执行第三方 Agent 二进制。进入某个 Agent 的对话界面后会从它的 CLI 或命名存储刷新该 Agent 的原生模型目录。家目录只从环境变量读取；macOS firmlink 等价路径按同一规则分类。未使用智能体的探测对其他 App 容器只做词法分类，不去 stat。Token 用量在打开监测页之前不会扫描 |
 | 适配插件管理 | 用一个原生目录管理随附原生通道、随附 ACP 通道和明确可安装的 LicoUp 桥接；生命周期操作需要确认且只能修改 LicoUp 自有状态 |
-| 智能体对话 | 单聊与群聊共用统一 Conversation 模型；Human 与 Agent Principal 通过显式 Membership 参与。每个客户端数据根只有一个通过私有本机 IPC 服务的 CLI 宿主，它独立于 GUI 生命周期拥有所有打包适配器已接受的轮次。新建与原生续接会话在该宿主中保留进程内、可唤醒的进度；活动轮次在支持时使用原生 steer，否则在准确会话的安全边界继续。可替换观察者使用 Conversation 作用域句柄和进程内游标重新附着；低于每个活动轮次 16 MiB 可丢弃缓存下界的内容从已提交 Conversation Event 准确重放。观察者断开不等于取消或 steer。原生会话是适配器拥有、私下绑定到 Membership 的执行细节。本地[下属智能体 MCP](../protocols/subagent-mcp.zh-CN.md)只按 `conversationId + membershipId` 调度，不暴露原生续接路径 |
+| 智能体对话 | 单聊与群聊共用统一 Conversation 模型；Human 与 Agent Principal 通过显式 Membership 参与。每个客户端数据根与所属 LicoUp 进程只有一个通过私有本机 IPC 服务的 CLI 宿主，它拥有所有打包适配器已接受的轮次，可跨越可替换观察者与 stdio 代理的生命周期，并在所属 LicoUp 进程退出时结束。新建与原生续接会话在该宿主中保留进程内、可唤醒的进度；活动轮次在支持时使用原生 steer，否则在准确会话的安全边界继续。可替换观察者使用 Conversation 作用域句柄和进程内游标重新附着；低于每个活动轮次 16 MiB 可丢弃缓存下界的内容从已提交 Conversation Event 准确重放。观察者断开不等于取消或 steer。原生会话是适配器拥有、私下绑定到 Membership 的执行细节。本地[下属智能体 MCP](../protocols/subagent-mcp.zh-CN.md)只按 `conversationId + membershipId` 调度，不暴露原生续接路径 |
 | 适应性飞轮 | 目录在 ZIP 导入之前保持为空。导入 ZIP 在根目录包含 `workflow.json`，并可带 `scripts/`；Graph 决定流水线或 Agent Loop。不可变版本拥有绑定与准确授权，持久化运行提供有界就绪前沿调度以及明确终态和恢复状态。不存在 Better Plan 安装动作，也不存在序号式 Conversation 兼容路径 |
 | 技能管理 | 只读发现本机已有技能、可恢复地移入系统废纸篓，并按时间窗口统计真实调用次数；不提供下载、安装、更新或同步通道 |
 | 对话管理 | 带索引的列表、精确读取、Event 分页与检索，以及有界的统一导入/导出；绝不改写第三方原生历史 |
-| Delivery Plan | 持久化 Plan 与 Checkpoints 是交付资格和推进的权威。Conversation runtime 以稳定顺序领取完整 eligible frontier，通过有界原生通道派发，并且只在终态结算后推进 checkpoint。Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
+| Delivery Plan | 持久化 Plan 与 Checkpoints 是交付资格和推进的权威。Conversation runtime 以稳定顺序领取完整 eligible frontier，经由进程自有 Conversation 主进程把每个 Agent 效果开启为 Membership 作用域 PersistentTurn，并且只在终态结算后推进 checkpoint。Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
 | 用量统计 | 依据本机记录按智能体或模型聚合 Token；包含不可变历史日/模型汇总、当日事件明细、无路径 Plan/Task/dispatch 汇总和精确覆盖率，使用 90 天扫描缓存，默认展示 30 天并支持 7/30/90 天窗口 |
 | 端点保护预览 | 当前配对、信任、对端消息/文件加密、防重放、端点认证结果与 Lico Arc 候选承载；该退役中实现不承诺未来兼容 |
 

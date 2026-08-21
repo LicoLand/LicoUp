@@ -537,6 +537,12 @@ extension LicoStringsLabels on LicoStrings {
   String groupConversationFailure(String stage, String code) => isChinese
       ? '群聊操作失败（$stage：$code）'
       : 'Group conversation failed ($stage: $code)';
+  String groupConversationFailureCapsule(String failureRef) => isChinese
+      ? '群聊操作失败 · $failureRef'
+      : 'Group conversation failed · $failureRef';
+  String groupConversationFailureDetail(String stage, String code) =>
+      '$stage · $code';
+  String get copyFailureReport => isChinese ? '复制报错' : 'Copy error';
   String get attachments => isChinese ? '附件' : 'Attachments';
   String get imageAttachment => isChinese ? '图片' : 'Image';
   String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';

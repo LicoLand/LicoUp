@@ -44,6 +44,7 @@ pub mod catalog_cache_store;
 pub mod client_autostart;
 pub mod client_state;
 pub mod codex_plugin_manager;
+pub mod conversation_host_transport;
 pub mod file_security;
 pub mod gateway_runtime;
 pub mod llm_api_key_vault;

@@ -53,7 +53,7 @@ class AgentConversationActivePane extends StatelessWidget {
           : agentConversationTargetDisplayName(state.target),
       initialDraft: state.composerDraft,
       hasAttachments: state.hasAttachments,
-      busy: state.turnActive,
+      busy: state.composerBusy,
       enabled: state.composerEnabled,
       modelOptions: state.modelOptions,
       selectedModel: state.selectedModel,
@@ -270,19 +270,25 @@ class AgentConversationActivePane extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            messages,
-                            Align(
-                              alignment: Alignment.topCenter,
-                              child: messagingHeader,
-                            ),
-                            Align(
-                              alignment: Alignment.bottomCenter,
-                              child: bottomDock,
-                            ),
-                          ],
+                        child: LicoTopEdgePulse(
+                          key: const Key('conversation-header-running-edge'),
+                          enabled: state.turnActive || state.loading,
+                          borderRadius: BorderRadius.zero,
+                          color: colors.primaryStrong,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              messages,
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: messagingHeader,
+                              ),
+                              Align(
+                                alignment: Alignment.bottomCenter,
+                                child: bottomDock,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       SizedBox(
@@ -297,19 +303,25 @@ class AgentConversationActivePane extends StatelessWidget {
                       ),
                     ],
                   )
-                : Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      messages,
-                      Align(
-                        alignment: Alignment.topCenter,
-                        child: messagingHeader,
-                      ),
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: bottomDock,
-                      ),
-                    ],
+                : LicoTopEdgePulse(
+                    key: const Key('conversation-header-running-edge'),
+                    enabled: state.turnActive || state.loading,
+                    borderRadius: BorderRadius.zero,
+                    color: colors.primaryStrong,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        messages,
+                        Align(
+                          alignment: Alignment.topCenter,
+                          child: messagingHeader,
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: bottomDock,
+                        ),
+                      ],
+                    ),
                   ),
           )
         else ...[

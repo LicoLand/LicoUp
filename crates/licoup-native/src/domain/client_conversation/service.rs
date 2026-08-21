@@ -1,6 +1,6 @@
 use super::{
-    ConversationStore, DirectTurn, MembershipAccess, NewEventPart, Principal, PrincipalKind,
-    migrate_legacy_state,
+    ConversationStore, DirectTurn, MembershipAccess, MembershipStatus, NewEventPart, Principal,
+    PrincipalKind, migrate_legacy_state,
 };
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
@@ -16,11 +16,28 @@ use std::{
 type NativeTurnSender = dyn Fn(&Value) -> std::result::Result<Value, crate::platform::runtime_adapters::RuntimeAdapterError>
     + Send
     + Sync;
+type ActiveTurnsLookup = dyn Fn(&str) -> Value + Send + Sync;
+type TurnSteer = dyn Fn(&Value) -> std::result::Result<Value, crate::platform::runtime_adapters::RuntimeAdapterError>
+    + Send
+    + Sync;
+type StrategyExecute = dyn Fn(Value) -> Result<Value> + Send + Sync;
 
 /// Upper bound on direct turns dispatched to native runtimes in parallel.
 /// Each worker is an independent runtime call; state leases are held only
 /// around short local transactions, never across the runtime call itself.
 pub const DEFAULT_DIRECT_TURN_WORKERS: usize = 4;
+
+/// The persistent host runtime seams one dispatch can use. Every field is
+/// absent on a default-constructed service, so dispatch-type work fails
+/// closed with a typed transport rejection instead of running through a
+/// one-shot lane no observer can attach.
+#[derive(Clone, Default)]
+struct HostRuntimePorts {
+    native_turn_sender: Option<Arc<NativeTurnSender>>,
+    active_turns: Option<Arc<ActiveTurnsLookup>>,
+    steer_turn: Option<Arc<TurnSteer>>,
+    strategy_execute: Option<Arc<StrategyExecute>>,
+}
 
 /// One application service for CLI, FFI, Conversation MCP, and Subagent MCP.
 /// Transport adapters pass JSON envelopes here; domain validation remains in
@@ -28,7 +45,7 @@ pub const DEFAULT_DIRECT_TURN_WORKERS: usize = 4;
 #[derive(Clone)]
 pub struct ConversationService {
     store: ConversationStore,
-    native_turn_sender: Arc<NativeTurnSender>,
+    host: HostRuntimePorts,
 }
 
 impl fmt::Debug for ConversationService {
@@ -47,15 +64,16 @@ impl ConversationService {
         // to the transport and never falls back to the retired JSON readers.
         migrate_legacy_state(&store, portable_root)?;
         store.ensure_default_local_group()?;
-        Ok(Self::from_store(store))
+        Ok(Self {
+            store,
+            host: HostRuntimePorts::default(),
+        })
     }
 
     pub fn from_store(store: ConversationStore) -> Self {
         Self {
             store,
-            native_turn_sender: Arc::new(|params| {
-                crate::platform::dispatch_lane_operation("send", params)
-            }),
+            host: HostRuntimePorts::default(),
         }
     }
 
@@ -72,7 +90,38 @@ impl ConversationService {
         + Sync
         + 'static,
     ) -> Self {
-        self.native_turn_sender = Arc::new(native_turn_sender);
+        self.host.native_turn_sender = Some(Arc::new(native_turn_sender));
+        self
+    }
+
+    pub fn with_active_turns(
+        mut self,
+        active_turns: impl Fn(&str) -> Value + Send + Sync + 'static,
+    ) -> Self {
+        self.host.active_turns = Some(Arc::new(active_turns));
+        self
+    }
+
+    pub fn with_steer_turn(
+        mut self,
+        steer_turn: impl Fn(
+            &Value,
+        ) -> std::result::Result<
+            Value,
+            crate::platform::runtime_adapters::RuntimeAdapterError,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.host.steer_turn = Some(Arc::new(steer_turn));
+        self
+    }
+
+    pub fn with_strategy_execute(
+        mut self,
+        strategy_execute: impl Fn(Value) -> Result<Value> + Send + Sync + 'static,
+    ) -> Self {
+        self.host.strategy_execute = Some(Arc::new(strategy_execute));
         self
     }
 
@@ -236,33 +285,17 @@ impl ConversationService {
                 let conversation_id = required_string(object, "conversationId")?;
                 let author = object.get("authorMembershipId").and_then(Value::as_str);
                 let content = required_string(object, "content")?;
-                let mention_ids = object
-                    .get("mentionedMembershipIds")
-                    .and_then(Value::as_array)
-                    .map(|values| {
-                        values
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                let (event, pending_turns) = self.store.post_message_with_mentions(
+                self.persist_posted_message(
                     conversation_id,
                     author,
                     content,
                     object.get("correlationId").and_then(Value::as_str),
-                    &mention_ids,
-                )?;
-                let direct_turns = self.execute_direct_turns(pending_turns)?;
-                let turn_receipts = direct_turns
-                    .into_iter()
-                    .map(|turn| json!({"id": turn.id, "state": turn.state}))
-                    .collect::<Vec<_>>();
-                Ok(json!({
-                    "event": {"id": event.id, "state": "finalized"},
-                    "directTurns": turn_receipts,
-                }))
+                )
+            }
+            "conversation.dispatch.after-post" => {
+                let conversation_id = required_string(object, "conversationId")?;
+                let event_id = required_string(object, "eventId")?;
+                self.dispatch_posted_message(conversation_id, event_id)
             }
             "conversation.event.part.append" => {
                 let part: NewEventPart = serde_json::from_value(
@@ -341,7 +374,318 @@ impl ConversationService {
         }
     }
 
-    fn execute_direct_turns(&self, pending_turns: Vec<DirectTurn>) -> Result<Vec<DirectTurn>> {
+    fn persist_posted_message(
+        &self,
+        conversation_id: &str,
+        author: Option<&str>,
+        content: &str,
+        correlation_id: Option<&str>,
+    ) -> Result<Value> {
+        let (event, _) = self.store.post_message_with_mentions(
+            conversation_id,
+            author,
+            content,
+            correlation_id,
+            &[],
+        )?;
+        Ok(json!({
+            "event": {"id": event.id, "state": "finalized"},
+            "directTurns": [],
+            "turns": [],
+            "dispatchPending": false,
+        }))
+    }
+
+    /// The single dispatch door. Addressing runs natively from the stored
+    /// Event text, registration happens before this response, a non-empty
+    /// turn list means an attachable turn, and the error field is reserved
+    /// for a start, resume, or dispatch call that actually failed.
+    fn dispatch_posted_message(&self, conversation_id: &str, event_id: &str) -> Result<Value> {
+        let Some(sender) = self.host.native_turn_sender.as_ref() else {
+            return Err(anyhow!(super::PERSISTENT_TRANSPORT_REQUIRED));
+        };
+        let content = self.store.posted_event_text(conversation_id, event_id)?;
+        let mention_ids = self.resolve_mentions(conversation_id, &content)?;
+        let active = self.active_turns_for(conversation_id);
+        let start_ids = mention_ids
+            .iter()
+            .filter(|membership_id| {
+                !active
+                    .iter()
+                    .any(|turn| turn.membership_id == **membership_id)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let pending_turns = if start_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.store
+                .enqueue_mention_turns(conversation_id, event_id, &start_ids)?
+        };
+        let mut live_turns = Vec::new();
+        let mut direct_receipts = Vec::new();
+        let mut dispatch_error = None;
+        if !mention_ids.is_empty() {
+            for membership_id in &mention_ids {
+                if let Some(turn) = active
+                    .iter()
+                    .find(|candidate| candidate.membership_id == *membership_id)
+                {
+                    if self.steer_active_turn(turn, &content).is_err() {
+                        dispatch_error.get_or_insert_with(|| {
+                            json!({
+                                "code": "conversation_dispatch_failed",
+                                "stage": "conversation/steer",
+                            })
+                        });
+                    }
+                    merge_live_turn(&mut live_turns, turn.to_json());
+                }
+            }
+            let dispatched = self.execute_direct_turns(sender, pending_turns)?;
+            for outcome in dispatched {
+                direct_receipts.push(json!({
+                    "id": outcome.turn.id,
+                    "state": outcome.turn.state,
+                }));
+                if let Some(live) = outcome.live {
+                    merge_live_turn(&mut live_turns, live);
+                }
+            }
+            for turn in self.active_turns_for(conversation_id) {
+                merge_live_turn(&mut live_turns, turn.to_json());
+            }
+        } else if !active.is_empty() {
+            for turn in &active {
+                if self.steer_active_turn(turn, &content).is_err() {
+                    dispatch_error.get_or_insert_with(|| {
+                        json!({
+                            "code": "conversation_dispatch_failed",
+                            "stage": "conversation/steer",
+                        })
+                    });
+                }
+                merge_live_turn(&mut live_turns, turn.to_json());
+            }
+        }
+        let strategy_address = if mention_ids.is_empty() && active.is_empty() {
+            self.address_strategy(conversation_id, &content, event_id)?
+        } else {
+            StrategyAddress::default()
+        };
+        if let Some(entry_turn) = strategy_address.entry_turn {
+            merge_live_turn(&mut live_turns, entry_turn);
+        }
+        if dispatch_error.is_none() {
+            dispatch_error = strategy_address.error;
+        }
+        if dispatch_error.is_none()
+            && direct_receipts
+                .iter()
+                .any(|receipt| receipt.get("state").and_then(Value::as_str) == Some("failed"))
+        {
+            dispatch_error = Some(json!({
+                "code": "conversation_dispatch_failed",
+                "stage": "conversation/dispatch",
+            }));
+        }
+        let dispatch_pending = !live_turns.is_empty();
+        let mut payload = json!({
+            "event": {"id": event_id, "state": "finalized"},
+            "directTurns": direct_receipts,
+            "turns": live_turns,
+            "dispatchPending": dispatch_pending,
+        });
+        if let Some(error) = dispatch_error {
+            payload["strategyError"] = error;
+        }
+        Ok(payload)
+    }
+
+    /// Resolve mentioned Agent Memberships from the stored Event text. Each
+    /// active Agent Membership is addressed by its display name and its Agent
+    /// identifier; an alias matches when it follows a start or whitespace
+    /// after the mention marker and is followed by whitespace, a sentence
+    /// terminator, or the end of the text. Matching is case-insensitive.
+    fn resolve_mentions(&self, conversation_id: &str, text: &str) -> Result<Vec<String>> {
+        let conversation = self.store.get(conversation_id)?;
+        let mut mentioned = Vec::new();
+        for membership in &conversation.memberships {
+            if membership.status != MembershipStatus::Active
+                || membership.principal.kind != PrincipalKind::Agent
+            {
+                continue;
+            }
+            let display_name = membership.principal.display_name.trim();
+            let agent_id = membership
+                .principal
+                .agent_id
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default();
+            let matched = [display_name, agent_id]
+                .into_iter()
+                .filter(|alias| !alias.is_empty())
+                .any(|alias| mention_alias_matches(text, alias));
+            if matched {
+                mentioned.push(membership.id.clone());
+            }
+        }
+        Ok(mentioned)
+    }
+
+    fn active_turns_for(&self, conversation_id: &str) -> Vec<ActiveTurnRef> {
+        let Some(active_turns) = self.host.active_turns.as_ref() else {
+            return Vec::new();
+        };
+        active_turns(conversation_id)
+            .get("turns")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|turn| {
+                let handle = turn.get("turnHandle").and_then(Value::as_str)?;
+                if handle.trim().is_empty() {
+                    return None;
+                }
+                Some(ActiveTurnRef {
+                    turn_handle: handle.to_owned(),
+                    conversation_id: turn
+                        .get("conversationId")
+                        .and_then(Value::as_str)
+                        .unwrap_or(conversation_id)
+                        .to_owned(),
+                    membership_id: turn
+                        .get("membershipId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    agent: turn
+                        .get("agent")
+                        .or_else(|| turn.get("agentId"))
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                })
+            })
+            .collect()
+    }
+
+    fn steer_active_turn(&self, turn: &ActiveTurnRef, text: &str) -> Result<Value> {
+        let Some(steer_turn) = self.host.steer_turn.as_ref() else {
+            return Err(anyhow!("conversation_steer_failed"));
+        };
+        steer_turn(&json!({
+            "turnHandle": turn.turn_handle,
+            "conversationId": turn.conversation_id,
+            "text": text,
+            "agent": turn.agent,
+        }))
+        .map_err(|_| anyhow!("conversation_steer_failed"))
+    }
+
+    fn address_strategy(
+        &self,
+        conversation_id: &str,
+        content: &str,
+        event_id: &str,
+    ) -> Result<StrategyAddress> {
+        let conversation = self.store.get(conversation_id)?;
+        let Some(revision) = conversation
+            .strategy_revision
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(StrategyAddress::default());
+        };
+        let Some(execute) = self.host.strategy_execute.as_ref() else {
+            return Err(anyhow!(super::PERSISTENT_TRANSPORT_REQUIRED));
+        };
+        let active = match execute(json!({
+            "action": "strategy.run.active",
+            "revisionDigest": revision,
+            "conversationId": conversation_id,
+        })) {
+            Ok(value) => match unwrap_strategy_execute(value) {
+                Ok(value) => value,
+                Err(error) => {
+                    return Ok(StrategyAddress {
+                        entry_turn: None,
+                        error: Some(error),
+                    });
+                }
+            },
+            Err(_) => {
+                return Ok(StrategyAddress {
+                    entry_turn: None,
+                    error: Some(
+                        json!({"code": "strategy_run_start_failed", "stage": "strategy/start"}),
+                    ),
+                });
+            }
+        };
+        let run_id = active
+            .get("runId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+        let status = active
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let terminal = matches!(
+            status,
+            "completed"
+                | "failed"
+                | "cancelled"
+                | "blocked"
+                | "cancel-requested"
+                | "cancel-in-doubt"
+        );
+        let request = if run_id.is_empty() || terminal {
+            json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": content},
+                "idempotencyKey": format!("conversation-post-{event_id}"),
+                "conversationId": conversation_id,
+            })
+        } else {
+            json!({
+                "action": "strategy.run.resume",
+                "runId": run_id,
+                "conversationId": conversation_id,
+            })
+        };
+        match execute(request) {
+            Ok(value) => match unwrap_strategy_execute(value) {
+                Ok(result) => Ok(StrategyAddress {
+                    entry_turn: entry_turn_projection(&result, conversation_id),
+                    error: None,
+                }),
+                Err(error) => Ok(StrategyAddress {
+                    entry_turn: None,
+                    error: Some(error),
+                }),
+            },
+            Err(_) => Ok(StrategyAddress {
+                entry_turn: None,
+                error: Some(
+                    json!({"code": "strategy_run_start_failed", "stage": "strategy/start"}),
+                ),
+            }),
+        }
+    }
+
+    fn execute_direct_turns(
+        &self,
+        sender: &Arc<NativeTurnSender>,
+        pending_turns: Vec<DirectTurn>,
+    ) -> Result<Vec<DirectTurnOutcome>> {
+        if pending_turns.is_empty() {
+            return Ok(Vec::new());
+        }
         // Phase one claims every turn and marks it running. Each step is one
         // short local lease; no lease is held across the runtime dispatch.
         let mut claimed = Vec::with_capacity(pending_turns.len());
@@ -358,7 +702,7 @@ impl ConversationService {
         // Phase two dispatches the claimed turns with a bounded worker set.
         // Results are collected by input ordinal, so receipts keep the
         // original order regardless of completion timing.
-        let results = self.dispatch_direct_turns(&claimed);
+        let results = self.dispatch_direct_turns(sender, &claimed);
         if let Some(error) = phase_one_error {
             return Err(error);
         }
@@ -386,13 +730,18 @@ impl ConversationService {
         })
     }
 
-    fn dispatch_direct_turns(&self, claimed: &[ClaimedTurn]) -> Vec<Result<DirectTurn>> {
-        let results: Mutex<Vec<Option<Result<DirectTurn>>>> =
+    fn dispatch_direct_turns(
+        &self,
+        sender: &Arc<NativeTurnSender>,
+        claimed: &[ClaimedTurn],
+    ) -> Vec<Result<DirectTurnOutcome>> {
+        let results: Mutex<Vec<Option<Result<DirectTurnOutcome>>>> =
             Mutex::new((0..claimed.len()).map(|_| None).collect());
         let next = AtomicUsize::new(0);
         std::thread::scope(|scope| {
             for _ in 0..DEFAULT_DIRECT_TURN_WORKERS.min(claimed.len()) {
                 let service = self.clone();
+                let sender = Arc::clone(sender);
                 let results = &results;
                 let next = &next;
                 scope.spawn(move || {
@@ -401,7 +750,7 @@ impl ConversationService {
                         if index >= claimed.len() {
                             break;
                         }
-                        let result = service.run_direct_turn(&claimed[index]);
+                        let result = service.run_direct_turn(&sender, &claimed[index]);
                         results.lock().unwrap_or_else(|poison| poison.into_inner())[index] =
                             Some(result);
                     }
@@ -416,14 +765,22 @@ impl ConversationService {
             .collect()
     }
 
-    fn run_direct_turn(&self, claimed: &ClaimedTurn) -> Result<DirectTurn> {
+    fn run_direct_turn(
+        &self,
+        sender: &Arc<NativeTurnSender>,
+        claimed: &ClaimedTurn,
+    ) -> Result<DirectTurnOutcome> {
         let Some(context) = claimed.context.as_ref() else {
-            return self.store.direct_turn(&claimed.turn_id);
+            return Ok(DirectTurnOutcome {
+                turn: self.store.direct_turn(&claimed.turn_id)?,
+                live: None,
+            });
         };
         let mut params = json!({
             "agentId": context.agent_id,
+            "agent": context.agent_id,
             "text": context.source_content,
-            "streamEvents": false,
+            "streamEvents": true,
             "timeoutMs": 0,
             "conversationId": context.turn.conversation_id,
             "membershipId": context.turn.membership_id,
@@ -441,52 +798,44 @@ impl ConversationService {
         }
         #[cfg(test)]
         self.store.counters().begin_turn();
-        let dispatched = (self.native_turn_sender)(&params);
+        let dispatched = sender(&params);
         #[cfg(test)]
         self.store.counters().end_turn();
+        let mut live = None;
         match dispatched {
-            Ok(value) if value.get("ok").and_then(Value::as_bool) == Some(true) => {
-                if let Some(output) = value.get("output").and_then(Value::as_str) {
-                    self.store.complete_direct_turn(
-                        &claimed.turn_id,
-                        output,
-                        first_non_empty_text(&value, &["nativeSessionId", "sessionId"]),
-                        first_non_empty_text(&value, &["sourcePath", "conversationPath"]),
-                        first_non_empty_text(&value, &["workingDirectory"]),
-                    )?;
-                } else {
-                    self.persist_direct_turn_failure(
-                        &claimed.turn_id,
-                        "terminal_result_invalid",
-                        "conversation/terminal_result",
-                    )?;
-                }
-            }
             Ok(value) => {
-                let error = value.get("error").unwrap_or(&value);
-                self.persist_direct_turn_failure(
-                    &claimed.turn_id,
-                    safe_failure_field(error, "code", "agent_conversation_dispatch_failed"),
-                    safe_failure_field(error, "stage", "conversation/dispatch"),
-                )?;
+                // An accepted receipt carries the attachable handle. Once the
+                // dispatch is open, the dispatch completion authority alone
+                // writes its terminal Event, dispatch state, and turn state.
+                live = live_turn_from_accepted(&value, context);
             }
             Err(error) => {
+                // Pre-dispatch rejection: settle the turn only when its
+                // dispatch was never opened. An opened dispatch already
+                // belongs to the completion authority.
                 let projected = serde_json::to_value(error.client_error())?;
-                self.persist_direct_turn_failure(
-                    &claimed.turn_id,
-                    safe_failure_field(&projected, "code", "agent_conversation_dispatch_failed"),
-                    safe_failure_field(&projected, "stage", "conversation/dispatch"),
-                )?;
+                let diagnostic = serde_json::to_string(&json!({
+                    "code": safe_failure_field(
+                        &projected,
+                        "code",
+                        "agent_conversation_dispatch_failed",
+                    ),
+                    "stage": safe_failure_field(&projected, "stage", "conversation/dispatch"),
+                }))?;
+                self.store
+                    .fail_direct_turn_unless_dispatched(&claimed.turn_id, &diagnostic)?;
             }
         }
-        self.store.direct_turn(&claimed.turn_id)
+        Ok(DirectTurnOutcome {
+            turn: self.store.direct_turn(&claimed.turn_id)?,
+            live,
+        })
     }
+}
 
-    fn persist_direct_turn_failure(&self, turn_id: &str, code: &str, stage: &str) -> Result<()> {
-        let diagnostic = serde_json::to_string(&json!({"code": code, "stage": stage}))?;
-        self.store.fail_direct_turn(turn_id, &diagnostic)?;
-        Ok(())
-    }
+struct DirectTurnOutcome {
+    turn: DirectTurn,
+    live: Option<Value>,
 }
 
 /// A turn claimed for this fan-out: either with private execution context, or
@@ -497,13 +846,112 @@ struct ClaimedTurn {
     context: Option<crate::domain::client_conversation::store::DirectTurnExecutionContext>,
 }
 
-fn first_non_empty_text<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
-    keys.iter().find_map(|key| {
-        value
-            .get(*key)
-            .and_then(Value::as_str)
-            .filter(|text| !text.trim().is_empty())
-    })
+#[derive(Default)]
+struct StrategyAddress {
+    entry_turn: Option<Value>,
+    error: Option<Value>,
+}
+
+struct ActiveTurnRef {
+    turn_handle: String,
+    conversation_id: String,
+    membership_id: String,
+    agent: String,
+}
+
+impl ActiveTurnRef {
+    fn to_json(&self) -> Value {
+        json!({
+            "turnHandle": self.turn_handle,
+            "conversationId": self.conversation_id,
+            "membershipId": self.membership_id,
+            "agent": self.agent,
+        })
+    }
+}
+
+fn unwrap_strategy_execute(value: Value) -> std::result::Result<Value, Value> {
+    if value.get("ok").and_then(Value::as_bool) == Some(true) {
+        return Ok(value.get("result").cloned().unwrap_or_else(|| json!({})));
+    }
+    let error = value
+        .get("error")
+        .cloned()
+        .unwrap_or_else(|| json!({"code": "strategy_run_start_failed"}));
+    let code = error
+        .get("code")
+        .and_then(Value::as_str)
+        .filter(|code| !code.is_empty())
+        .unwrap_or("strategy_run_start_failed");
+    Err(json!({"code": code, "stage": "strategy/start"}))
+}
+
+fn merge_live_turn(live_turns: &mut Vec<Value>, turn: Value) {
+    let Some(handle) = turn
+        .get("turnHandle")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|handle| !handle.is_empty())
+    else {
+        return;
+    };
+    if live_turns
+        .iter()
+        .any(|existing| existing.get("turnHandle").and_then(Value::as_str) == Some(handle))
+    {
+        return;
+    }
+    live_turns.push(turn);
+}
+
+/// The attachable entry handle from a strategy run start/resume response, in
+/// the same shape as a live turn entry.
+fn entry_turn_projection(result: &Value, conversation_id: &str) -> Option<Value> {
+    let entry = result.get("entryTurn")?;
+    let handle = entry
+        .get("turnHandle")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|handle| !handle.is_empty())?;
+    Some(json!({
+        "turnHandle": handle,
+        "conversationId": conversation_id,
+        "membershipId": entry.get("membershipId").and_then(Value::as_str).unwrap_or_default(),
+        "agent": entry.get("agent").and_then(Value::as_str).unwrap_or_default(),
+    }))
+}
+
+/// One mention alias match: the alias follows a start or whitespace after the
+/// `@` marker and is followed by whitespace, a sentence terminator, or the
+/// end of the text. Matching is case-insensitive.
+fn mention_alias_matches(text: &str, alias: &str) -> bool {
+    let pattern = format!(
+        r"(?i)(?:^|\s)@{}(?:\s|[,.!?;:，。！？；：]|$)",
+        regex::escape(alias)
+    );
+    regex::Regex::new(&pattern)
+        .map(|pattern| pattern.is_match(text))
+        .unwrap_or(false)
+}
+
+fn live_turn_from_accepted(
+    value: &Value,
+    context: &crate::domain::client_conversation::store::DirectTurnExecutionContext,
+) -> Option<Value> {
+    if value.get("accepted").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let handle = value
+        .get("turnHandle")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|handle| !handle.is_empty())?;
+    Some(json!({
+        "turnHandle": handle,
+        "conversationId": context.turn.conversation_id,
+        "membershipId": context.turn.membership_id,
+        "agent": context.agent_id,
+    }))
 }
 
 fn safe_failure_field<'a>(value: &'a Value, key: &str, fallback: &'a str) -> &'a str {
@@ -551,6 +999,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
             "correlationId",
             "mentionedMembershipIds",
         ],
+        "conversation.dispatch.after-post" => &["action", "conversationId", "eventId"],
         "conversation.event.part.append" => &["action", "eventId", "part"],
         "conversation.event.finalize" => &["action", "eventId"],
         "conversation.membership.add" => &["action", "conversationId", "principal", "access"],
@@ -663,6 +1112,177 @@ mod tests {
             .unwrap()
             .to_owned();
         (group["id"].as_str().unwrap().to_owned(), owner, agent)
+    }
+
+    fn accepted_receipt(params: &Value) -> Value {
+        json!({
+            "ok": true,
+            "accepted": true,
+            "turnHandle": params["dispatchId"],
+            "conversationId": params["conversationId"],
+            "membershipId": params["membershipId"],
+        })
+    }
+
+    /// Persist one human message, then dispatch it by identity alone. The
+    /// dispatch request carries no content and no client-computed mentions.
+    fn persist_then_dispatch(service: &ConversationService, request: Value) -> Value {
+        let persisted = service
+            .execute(request.clone())
+            .expect("persist posted message");
+        let event_id = persisted
+            .get("event")
+            .and_then(|event| event.get("id"))
+            .cloned()
+            .expect("persisted event id");
+        let conversation_id = request["conversationId"].clone();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": event_id,
+            }))
+            .expect("dispatch after post")
+    }
+
+    #[test]
+    fn posted_message_persists_without_a_runtime() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "hello without a host"
+            }))
+            .unwrap();
+        assert_eq!(posted["event"]["state"], "finalized");
+        assert!(posted["directTurns"].as_array().unwrap().is_empty());
+        assert!(posted["turns"].as_array().unwrap().is_empty());
+        assert_eq!(posted["dispatchPending"], false);
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        assert!(events.iter().any(|event| event.id == posted["event"]["id"]));
+        assert_eq!(
+            events.last().unwrap().parts[0].content,
+            "hello without a host"
+        );
+    }
+
+    #[test]
+    fn dispatch_after_post_without_the_host_runtime_is_fail_closed() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One hello"
+            }))
+            .unwrap();
+        let before = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events
+            .len();
+        let error = service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .expect_err("dispatch without the host runtime must reject");
+        assert_eq!(
+            error.to_string(),
+            super::super::PERSISTENT_TRANSPORT_REQUIRED
+        );
+        let after = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events
+            .len();
+        assert_eq!(
+            before, after,
+            "no Agent work and no settlement happened without the host"
+        );
+    }
+
+    #[test]
+    fn dispatch_after_post_admits_only_conversation_and_event_identity() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(|_| {
+            panic!("event validation must run before any runtime dispatch")
+        });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One hello"
+            }))
+            .unwrap();
+        for extra in [
+            json!({"content": "@One hello"}),
+            json!({"mentionedMembershipIds": [agent_id]}),
+        ] {
+            let mut request = json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            });
+            request
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let error = service
+                .execute(request)
+                .expect_err("extra field must reject");
+            assert_eq!(error.to_string(), "invalid_request");
+        }
+        let missing = service.execute(json!({
+            "action": "conversation.dispatch.after-post",
+            "conversationId": conversation_id,
+            "eventId": "event:missing",
+        }));
+        assert_eq!(
+            missing.unwrap_err().to_string(),
+            "conversation_event_not_found"
+        );
+    }
+
+    #[test]
+    fn mention_aliases_follow_the_client_boundary_rule() {
+        assert!(mention_alias_matches("@One hello", "One"));
+        assert!(mention_alias_matches("hello @one", "One"));
+        assert!(mention_alias_matches("hello @one.", "One"));
+        assert!(mention_alias_matches("hello @one,", "one"));
+        assert!(mention_alias_matches("hello @one，", "one"));
+        assert!(mention_alias_matches("hello @one。", "one"));
+        assert!(mention_alias_matches("hello @ONE?", "one"));
+        assert!(mention_alias_matches("ask @one two", "one"));
+        assert!(!mention_alias_matches("hello@one", "one"));
+        assert!(!mention_alias_matches("@onex", "one"));
+        assert!(!mention_alias_matches("@one-two", "one"));
+        assert!(!mention_alias_matches(
+            "email one@example.com",
+            "example.com"
+        ));
+        assert!(mention_alias_matches("ping @a.b now", "a.b"));
+        assert!(!mention_alias_matches("ping @a.bx now", "a.b"));
     }
 
     #[test]
@@ -804,13 +1424,7 @@ mod tests {
                     flag = cvar.wait(flag).unwrap_or_else(|poison| poison.into_inner());
                 }
                 drop(flag);
-                Ok(json!({
-                    "ok": true,
-                    "output": "agent answer",
-                    "nativeSessionId": "session-fixture",
-                    "sourcePath": "/fixture/session.jsonl",
-                    "workingDirectory": "/fixture/project"
-                }))
+                Ok(accepted_receipt(params))
             },
         );
         let conversation = service
@@ -835,23 +1449,24 @@ mod tests {
             .as_str()
             .unwrap()
             .to_owned();
-        let agent_ids = memberships
-            .iter()
-            .filter(|membership| membership["principal"]["kind"] == "agent")
-            .map(|membership| membership["id"].as_str().unwrap().to_owned())
-            .collect::<Vec<_>>();
-        assert_eq!(agent_ids.len(), 5);
 
-        let service_for_post = service.clone();
         let conversation_id = conversation["id"].as_str().unwrap().to_owned();
+        let persist_request = json!({
+            "action": "conversation.message.post",
+            "conversationId": conversation_id,
+            "authorMembershipId": owner_id,
+            "content": "@One @Two @Three @Four @Five run all"
+        });
+        let persisted = service.execute(persist_request).unwrap();
+        let event_id = persisted["event"]["id"].clone();
+        let service_for_post = service.clone();
+        let dispatch_conversation_id = conversation_id.clone();
         let post = std::thread::spawn(move || {
             service_for_post
                 .execute(json!({
-                    "action": "conversation.message.post",
-                    "conversationId": conversation_id,
-                    "authorMembershipId": owner_id,
-                    "content": "run all",
-                    "mentionedMembershipIds": agent_ids
+                    "action": "conversation.dispatch.after-post",
+                    "conversationId": dispatch_conversation_id,
+                    "eventId": event_id,
                 }))
                 .unwrap()
         });
@@ -888,11 +1503,14 @@ mod tests {
         let receipts = posted["directTurns"].as_array().unwrap();
         assert_eq!(receipts.len(), 5);
         for (index, receipt) in receipts.iter().enumerate() {
-            assert_eq!(receipt["state"], "succeeded");
+            assert_eq!(receipt["state"], "running");
             let turn_id = receipt["id"].as_str().unwrap();
             let turn = service.store().direct_turn(turn_id).unwrap();
             assert_eq!(turn.ordinal, index as i64, "receipt {index} out of order");
         }
+        assert_eq!(posted["turns"].as_array().unwrap().len(), 5);
+        assert_eq!(posted["dispatchPending"], true);
+        assert!(posted.get("strategyError").is_none());
         assert_eq!(calls.lock().unwrap().len(), 5);
         assert_eq!(
             service.store().counters().peak_in_flight_turns(),
@@ -931,46 +1549,44 @@ mod tests {
     }
 
     #[test]
-    fn structured_mention_executes_once_and_persists_complete_agent_output() {
+    fn structured_mention_dispatches_once_and_returns_the_attachable_handle() {
         let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
         let captured_calls = Arc::clone(&calls);
-        let output = format!("{}\0tail", "response-block-".repeat(100_000));
-        assert!(output.len() > 1_048_576);
-        let runtime_output = output.clone();
         let service = ConversationService::from_store_with_runtime(
             ConversationStore::open_in_memory().unwrap(),
             move |params| {
                 captured_calls.lock().unwrap().push(params.clone());
-                Ok(json!({
-                    "ok": true,
-                    "output": runtime_output,
-                    "nativeSessionId": "session-fixture",
-                    "sourcePath": "/fixture/session.jsonl",
-                    "workingDirectory": "/fixture/project"
-                }))
+                Ok(accepted_receipt(params))
             },
         );
         let (conversation_id, owner_id, agent_id) = group_fixture(&service);
 
-        let posted = service
-            .execute(json!({
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner_id,
-                "content": "Please answer",
-                "mentionedMembershipIds": [agent_id]
-            }))
-            .unwrap();
+                "content": "@One Please answer"
+            }),
+        );
 
-        assert_eq!(posted["directTurns"][0]["state"], "succeeded");
+        assert_eq!(posted["directTurns"][0]["state"], "running");
         assert_eq!(posted["event"]["state"], "finalized");
         assert!(posted["event"].get("parts").is_none());
         assert!(posted.to_string().len() < 1024);
+        assert_eq!(posted["dispatchPending"], true);
+        assert_eq!(
+            posted["turns"][0]["turnHandle"],
+            posted["directTurns"][0]["id"]
+        );
+        assert_eq!(posted["turns"][0]["membershipId"], agent_id);
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["agentId"], "one");
-        assert_eq!(calls[0]["text"], "Please answer");
+        assert_eq!(calls[0]["text"], "@One Please answer");
         assert_eq!(calls[0]["timeoutMs"], 0);
+        assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["conversationId"], conversation_id);
         assert_eq!(calls[0]["membershipId"], agent_id);
         assert_eq!(calls[0]["causationId"], posted["event"]["id"]);
@@ -982,16 +1598,12 @@ mod tests {
             .page_events(&conversation_id, None, 50)
             .unwrap()
             .events;
-        let reply = events
-            .iter()
-            .find(|event| event.author_membership_id.as_deref() == Some(agent_id.as_str()))
-            .unwrap();
-        assert_eq!(reply.parts[0].content, output);
-        assert_eq!(
-            reply.causation_id,
-            posted["event"]["id"].as_str().map(str::to_owned)
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.author_membership_id.as_deref() == Some(agent_id.as_str())),
+            "the service never writes the agent reply; the completion authority owns it"
         );
-        assert!(events.iter().any(|event| event.id == posted["event"]["id"]));
     }
 
     #[test]
@@ -1033,21 +1645,22 @@ mod tests {
                     .unwrap();
                 Ok(json!({
                     "ok": true,
-                    "output": "agent answer",
+                    "accepted": true,
+                    "turnHandle": params["dispatchId"],
                     "nativeSessionId": "session-fixture"
                 }))
             });
-        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let (conversation_id, owner_id, _) = group_fixture(&service);
 
-        let posted = service
-            .execute(json!({
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner_id,
-                "content": "one answer",
-                "mentionedMembershipIds": [agent_id]
-            }))
-            .unwrap();
+                "content": "@One one answer"
+            }),
+        );
 
         assert_eq!(posted["directTurns"][0]["state"], "succeeded");
         let turn_id = posted["directTurns"][0]["id"].as_str().unwrap();
@@ -1075,35 +1688,72 @@ mod tests {
 
     #[test]
     fn private_continuation_is_membership_scoped_and_non_pending_turns_never_replay() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime_store = store.clone();
         let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
         let captured_calls = Arc::clone(&calls);
-        let service = ConversationService::from_store_with_runtime(
-            ConversationStore::open_in_memory().unwrap(),
-            move |params| {
+        let service =
+            ConversationService::from_store(store).with_native_turn_sender(move |params| {
                 captured_calls.lock().unwrap().push(params.clone());
+                let scope = runtime_store
+                    .prepare_runtime_dispatch(
+                        params["agentId"].as_str().unwrap(),
+                        params
+                            .get("sessionId")
+                            .and_then(Value::as_str)
+                            .unwrap_or(""),
+                        params["text"].as_str().unwrap(),
+                        params["conversationId"].as_str(),
+                        params["membershipId"].as_str(),
+                        params["causationId"].as_str(),
+                        params["dispatchId"].as_str(),
+                    )
+                    .unwrap();
+                runtime_store
+                    .bind_runtime_session(
+                        &scope,
+                        params["agentId"].as_str().unwrap(),
+                        "session-fixture",
+                        Some("/fixture/session.jsonl"),
+                        Some("/fixture/project"),
+                    )
+                    .unwrap();
+                runtime_store
+                    .finish_runtime_dispatch(
+                        &scope,
+                        &json!({
+                            "ok": true,
+                            "output": "done",
+                            "nativeSessionId": "session-fixture",
+                            "sourcePath": "/fixture/session.jsonl",
+                            "workingDirectory": "/fixture/project"
+                        }),
+                        crate::domain::client_conversation::DispatchState::Completed,
+                        None,
+                    )
+                    .unwrap();
                 Ok(json!({
                     "ok": true,
-                    "output": "done",
-                    "nativeSessionId": "session-fixture",
-                    "sourcePath": "/fixture/session.jsonl",
-                    "workingDirectory": "/fixture/project"
+                    "accepted": true,
+                    "turnHandle": params["dispatchId"],
+                    "nativeSessionId": "session-fixture"
                 }))
-            },
-        );
-        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+            });
+        let service = service;
+        let (conversation_id, owner_id, _) = group_fixture(&service);
         let post = |content: &str| {
-            service
-                .execute(json!({
+            persist_then_dispatch(
+                &service,
+                json!({
                     "action": "conversation.message.post",
                     "conversationId": conversation_id,
                     "authorMembershipId": owner_id,
-                    "content": content,
-                    "mentionedMembershipIds": [agent_id]
-                }))
-                .unwrap()
+                    "content": content
+                }),
+            )
         };
-        let first = post("first");
-        let _ = post("second");
+        let first = post("@One first");
+        let _ = post("@One second");
 
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
@@ -1136,57 +1786,73 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_message_does_not_dispatch_and_runtime_failure_is_inline_and_redacted() {
+    fn ordinary_message_does_not_dispatch() {
         let calls = Arc::new(Mutex::new(0usize));
         let captured_calls = Arc::clone(&calls);
         let service = ConversationService::from_store_with_runtime(
             ConversationStore::open_in_memory().unwrap(),
             move |_| {
                 *captured_calls.lock().unwrap() += 1;
-                Ok(json!({
-                    "ok": false,
-                    "error": {
-                        "code": "native_agent_executable_unavailable",
-                        "stage": "process/launch",
-                        "message": "private runtime detail must not persist",
-                        "stderr": "secret backend output"
-                    }
-                }))
+                Ok(json!({"ok": true, "accepted": true, "turnHandle": "dispatch:unexpected"}))
+            },
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let ordinary = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "ordinary"
+            }),
+        );
+        assert!(ordinary["directTurns"].as_array().unwrap().is_empty());
+        assert_eq!(ordinary["dispatchPending"], false);
+        assert!(ordinary["turns"].as_array().unwrap().is_empty());
+        assert_eq!(*calls.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn pre_dispatch_rejection_settles_the_unopened_turn_with_a_typed_code() {
+        let calls = Arc::new(Mutex::new(0usize));
+        let captured_calls = Arc::clone(&calls);
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            move |_| {
+                *captured_calls.lock().unwrap() += 1;
+                Err(crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable)
             },
         );
         let (conversation_id, owner_id, agent_id) = group_fixture(&service);
-        let ordinary = service
-            .execute(json!({
+        let failed = persist_then_dispatch(
+            &service,
+            json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner_id,
-                "content": "ordinary",
-                "mentionedMembershipIds": []
-            }))
-            .unwrap();
-        assert!(ordinary["directTurns"].as_array().unwrap().is_empty());
-        assert_eq!(*calls.lock().unwrap(), 0);
-
-        let failed = service
-            .execute(json!({
-                "action": "conversation.message.post",
-                "conversationId": conversation_id,
-                "authorMembershipId": owner_id,
-                "content": "run",
-                "mentionedMembershipIds": [agent_id]
-            }))
-            .unwrap();
+                "content": "@One run"
+            }),
+        );
         assert_eq!(failed["directTurns"][0]["state"], "failed");
+        assert_eq!(failed["dispatchPending"], false);
+        assert_eq!(
+            failed["strategyError"]["code"],
+            "conversation_dispatch_failed"
+        );
         assert_eq!(*calls.lock().unwrap(), 1);
         let events = service
             .store()
             .page_events(&conversation_id, None, 50)
             .unwrap()
             .events;
-        assert!(events.iter().any(|event| event.id == failed["event"]["id"]));
-        let diagnostic = events
+        let replies = events
             .iter()
-            .flat_map(|event| &event.parts)
+            .filter(|event| event.author_membership_id.as_deref() == Some(agent_id.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(replies.len(), 1, "one settlement event for the rejection");
+        let diagnostic = replies[0]
+            .parts
+            .iter()
             .find(|part| part.kind == super::super::EventPartKind::Diagnostic)
             .unwrap();
         assert!(
@@ -1195,7 +1861,481 @@ mod tests {
                 .contains("native_agent_executable_unavailable")
         );
         assert!(diagnostic.content.contains("process/launch"));
-        assert!(!diagnostic.content.contains("private runtime detail"));
-        assert!(!diagnostic.content.contains("secret backend output"));
+    }
+
+    #[test]
+    fn opened_dispatch_rejection_defers_to_the_completion_authority() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime_store = store.clone();
+        let service =
+            ConversationService::from_store(store).with_native_turn_sender(move |params| {
+                let scope = runtime_store
+                    .prepare_runtime_dispatch(
+                        params["agentId"].as_str().unwrap(),
+                        "",
+                        params["text"].as_str().unwrap(),
+                        params["conversationId"].as_str(),
+                        params["membershipId"].as_str(),
+                        params["causationId"].as_str(),
+                        params["dispatchId"].as_str(),
+                    )
+                    .unwrap();
+                runtime_store
+                    .finish_runtime_dispatch(
+                        &scope,
+                        &json!({
+                            "ok": false,
+                            "error": {
+                                "code": "native_agent_executable_unavailable",
+                                "stage": "process/launch"
+                            }
+                        }),
+                        crate::domain::client_conversation::DispatchState::Failed,
+                        Some("native_agent_executable_unavailable"),
+                    )
+                    .unwrap();
+                Err(crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable)
+            });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let failed = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One run"
+            }),
+        );
+        assert_eq!(failed["directTurns"][0]["state"], "failed");
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 50)
+            .unwrap()
+            .events;
+        let replies = events
+            .iter()
+            .filter(|event| event.author_membership_id.as_deref() == Some(agent_id.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            replies.len(),
+            1,
+            "the completion authority wrote the only terminal event"
+        );
+        assert!(replies[0].finalized);
+        assert!(
+            replies[0]
+                .parts
+                .iter()
+                .any(|part| part.kind == super::super::EventPartKind::Diagnostic
+                    && part.content.contains("native_agent_executable_unavailable"))
+        );
+    }
+
+    #[test]
+    fn accepted_receipt_keeps_mention_turn_running_for_attach() {
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_calls = Arc::clone(&calls);
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            move |params| {
+                captured_calls.lock().unwrap().push(params.clone());
+                Ok(json!({
+                    "ok": true,
+                    "accepted": true,
+                    "turnHandle": "dispatch:live",
+                    "conversationId": params["conversationId"],
+                    "membershipId": params["membershipId"],
+                }))
+            },
+        );
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One Please answer"
+            }),
+        );
+        assert_eq!(posted["directTurns"][0]["state"], "running");
+        assert_eq!(posted["dispatchPending"], true);
+        assert_eq!(posted["turns"][0]["turnHandle"], "dispatch:live");
+        assert_eq!(posted["turns"][0]["membershipId"], agent_id);
+        assert_eq!(calls.lock().unwrap()[0]["streamEvents"], true);
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 50)
+            .unwrap()
+            .events;
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.author_membership_id.as_deref() == Some(agent_id.as_str()))
+        );
+    }
+
+    #[test]
+    fn strategy_bound_plain_post_starts_the_graph_without_mention_turns() {
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured = Arc::clone(&calls);
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| {
+                panic!("plain strategy post must not start a mention turn")
+            })
+            .with_active_turns(|_| json!({"turns": []}))
+            .with_strategy_execute(move |request| {
+                captured.lock().unwrap().push(request.clone());
+                let action = request.get("action").and_then(Value::as_str).unwrap_or("");
+                if action == "strategy.run.active" {
+                    Ok(json!({"ok": true, "result": {"runId": null}}))
+                } else {
+                    Ok(json!({
+                        "ok": true,
+                        "result": {
+                            "runId": "run-1",
+                            "status": "running",
+                            "entryTurn": {
+                                "turnHandle": "dispatch:entry",
+                                "membershipId": "membership:entry",
+                                "agent": "one"
+                            }
+                        }
+                    }))
+                }
+            });
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "start the graph"
+            }),
+        );
+        assert!(posted["directTurns"].as_array().unwrap().is_empty());
+        assert!(posted.get("strategyError").is_none());
+        assert_eq!(posted["turns"][0]["turnHandle"], "dispatch:entry");
+        assert_eq!(posted["turns"][0]["membershipId"], "membership:entry");
+        assert_eq!(posted["turns"][0]["agent"], "one");
+        assert_eq!(posted["dispatchPending"], true);
+        let actions = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request["action"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actions,
+            vec![
+                "strategy.run.active".to_owned(),
+                "strategy.run.start".to_owned()
+            ]
+        );
+        assert_eq!(
+            calls.lock().unwrap()[1]["input"]["message"],
+            "start the graph"
+        );
+        assert_eq!(calls.lock().unwrap()[1]["conversationId"], conversation_id);
+    }
+
+    #[test]
+    fn in_flight_follow_up_steers_instead_of_starting_a_mention_turn() {
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured = Arc::clone(&steers);
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| panic!("in-flight follow-up must steer"))
+            .with_active_turns(|conversation_id| {
+                json!({
+                    "turns": [{
+                        "turnHandle": "dispatch:live",
+                        "conversationId": conversation_id,
+                        "membershipId": "membership:ignored",
+                        "agent": "one"
+                    }]
+                })
+            })
+            .with_steer_turn(move |params| {
+                captured.lock().unwrap().push(params.clone());
+                Ok(json!({"ok": true}))
+            });
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "steer please"
+            }),
+        );
+        assert_eq!(posted["turns"][0]["turnHandle"], "dispatch:live");
+        assert_eq!(posted["dispatchPending"], true);
+        assert!(posted.get("strategyError").is_none());
+        assert_eq!(steers.lock().unwrap()[0]["text"], "steer please");
+        assert_eq!(steers.lock().unwrap()[0]["turnHandle"], "dispatch:live");
+    }
+
+    #[test]
+    fn in_flight_steer_failure_is_reported_without_restarting_the_turn() {
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| panic!("a failed steer must not restart"))
+            .with_active_turns(|conversation_id| {
+                json!({
+                    "turns": [{
+                        "turnHandle": "dispatch:live",
+                        "conversationId": conversation_id,
+                        "membershipId": "membership:agent",
+                        "agent": "one"
+                    }]
+                })
+            })
+            .with_steer_turn(|_| {
+                Err(crate::platform::runtime_adapters::RuntimeAdapterError::ConversationDispatchFailed)
+            });
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "follow up"
+            }),
+        );
+        assert_eq!(posted["turns"][0]["turnHandle"], "dispatch:live");
+        assert_eq!(posted["dispatchPending"], true);
+        assert_eq!(
+            posted["strategyError"],
+            json!({
+                "code": "conversation_dispatch_failed",
+                "stage": "conversation/steer"
+            })
+        );
+    }
+
+    #[test]
+    fn waiting_follow_up_resumes_the_run_without_a_new_handle() {
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured = Arc::clone(&calls);
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| panic!("waiting follow-up must resume"))
+            .with_active_turns(|_| json!({"turns": []}))
+            .with_strategy_execute(move |request| {
+                captured.lock().unwrap().push(request.clone());
+                let action = request.get("action").and_then(Value::as_str).unwrap_or("");
+                if action == "strategy.run.active" {
+                    Ok(json!({"ok": true, "result": {"runId": "run-1", "status": "waiting"}}))
+                } else {
+                    assert_eq!(action, "strategy.run.resume");
+                    Ok(json!({"ok": true, "result": {"runId": "run-1", "status": "running"}}))
+                }
+            });
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "continue"
+            }),
+        );
+        assert!(posted["turns"].as_array().unwrap().is_empty());
+        assert_eq!(posted["dispatchPending"], false);
+        assert!(posted.get("strategyError").is_none());
+        let actions = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request["action"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actions,
+            vec![
+                "strategy.run.active".to_owned(),
+                "strategy.run.resume".to_owned()
+            ]
+        );
+        assert_eq!(calls.lock().unwrap()[1]["runId"], "run-1");
+        assert_eq!(calls.lock().unwrap()[1]["conversationId"], conversation_id);
+    }
+
+    #[test]
+    fn running_graph_follow_up_resumes_without_synthesizing_a_start_failure() {
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured = Arc::clone(&calls);
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| panic!("running graph must not start a mention turn"))
+            .with_active_turns(|_| json!({"turns": []}))
+            .with_strategy_execute(move |request| {
+                captured.lock().unwrap().push(request.clone());
+                let action = request.get("action").and_then(Value::as_str).unwrap_or("");
+                if action == "strategy.run.active" {
+                    Ok(json!({"ok": true, "result": {"runId": "run-1", "status": "running"}}))
+                } else {
+                    assert_eq!(action, "strategy.run.resume");
+                    Ok(json!({"ok": true, "result": {"runId": "run-1", "status": "running"}}))
+                }
+            });
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "still running"
+            }),
+        );
+        assert!(posted["turns"].as_array().unwrap().is_empty());
+        assert_eq!(posted["dispatchPending"], false);
+        assert!(
+            posted.get("strategyError").is_none(),
+            "a resume without a fresh entry handle is not a failure"
+        );
+        let actions = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request["action"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actions,
+            vec![
+                "strategy.run.active".to_owned(),
+                "strategy.run.resume".to_owned()
+            ]
+        );
+        assert_eq!(calls.lock().unwrap()[1]["conversationId"], conversation_id);
+    }
+
+    #[test]
+    fn strategy_start_failure_returns_an_inline_banner_error() {
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| panic!("failed start must not dispatch a mention turn"))
+            .with_active_turns(|_| json!({"turns": []}))
+            .with_strategy_execute(|request| {
+                let action = request.get("action").and_then(Value::as_str).unwrap_or("");
+                if action == "strategy.run.active" {
+                    Ok(json!({"ok": true, "result": {"runId": null}}))
+                } else {
+                    Ok(json!({
+                        "ok": false,
+                        "error": {"code": "strategy_actor_quota_exhausted"}
+                    }))
+                }
+            });
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "start"
+            }),
+        );
+        assert_eq!(
+            posted["strategyError"]["code"],
+            "strategy_actor_quota_exhausted"
+        );
+        assert_eq!(posted["strategyError"]["stage"], "strategy/start");
+        assert_eq!(posted["dispatchPending"], false);
+    }
+
+    #[test]
+    fn strategy_bound_dispatch_without_the_strategy_port_is_fail_closed() {
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(|_| panic!("fail-closed dispatch must not reach the runtime"))
+            .with_active_turns(|_| json!({"turns": []}));
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        let error = persist_then_dispatch_error(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "start"
+            }),
+        );
+        assert_eq!(
+            error,
+            super::super::PERSISTENT_TRANSPORT_REQUIRED.to_owned()
+        );
+    }
+
+    fn persist_then_dispatch_error(service: &ConversationService, request: Value) -> String {
+        let persisted = service
+            .execute(request.clone())
+            .expect("persist posted message");
+        let event_id = persisted["event"]["id"].clone();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": request["conversationId"].clone(),
+                "eventId": event_id,
+            }))
+            .expect_err("dispatch must reject")
+            .to_string()
+    }
+
+    #[test]
+    fn clearing_strategy_does_not_cancel_or_execute_a_run() {
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_strategy_execute(|_| panic!("clearing the capsule must not touch the run"));
+        let (conversation_id, _, _) = group_fixture(&service);
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": "revision-one"
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.strategy.set",
+                "conversationId": conversation_id,
+                "strategyRevision": null
+            }))
+            .unwrap();
+        let conversation = service.store().get(&conversation_id).unwrap();
+        assert!(conversation.strategy_revision.is_none());
     }
 }

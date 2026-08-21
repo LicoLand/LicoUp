@@ -150,18 +150,47 @@ where
             } => {
                 let persistent_operation = matches!(
                     operation.as_str(),
-                    "send" | "stream" | "steer" | "cancel" | "active" | "attach"
+                    "send" | "dispatch" | "stream" | "steer" | "cancel" | "active" | "attach"
                 );
                 if persistent_operation && conversation_runtime.is_none() {
-                    write_stdio_rpc_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        "persistent_conversation_transport_required",
-                    )?;
+                    let rejection = persistent_runtime_rejection();
+                    if matches!(operation.as_str(), "send" | "stream" | "attach") {
+                        write_stdio_rpc_terminal_success(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            1,
+                            rejection,
+                        )?;
+                    } else {
+                        write_stdio_rpc_success_shared(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            rejection,
+                        )?;
+                    }
                     continue;
                 }
-                if operation == "send" {
+                if operation == "dispatch" {
+                    let runtime = conversation_runtime
+                        .as_ref()
+                        .expect("persistent operation validated");
+                    match runtime.start_background(&params, portable_data_dir) {
+                        Ok(value) => write_stdio_rpc_success_shared(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            value,
+                        )?,
+                        Err(error) => write_stdio_rpc_client_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            &error.client_error(),
+                        )?,
+                    }
+                } else if operation == "send" {
                     let runtime = conversation_runtime
                         .as_ref()
                         .expect("persistent operation validated");
@@ -260,11 +289,11 @@ where
                 portable_data_dir,
             } => {
                 if client_conversation::requires_worker(&params) && conversation_runtime.is_none() {
-                    write_stdio_rpc_error_shared(
+                    write_stdio_rpc_success_shared(
                         &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        "persistent_conversation_transport_required",
+                        &request.id,
+                        &request.workflow_id,
+                        persistent_runtime_rejection(),
                     )?;
                     continue;
                 }
@@ -294,14 +323,28 @@ where
                         )?;
                         continue;
                     }
-                    conversation_workers.push(client_conversation::spawn_execute(
+                    match client_conversation::spawn_execute(
                         Arc::clone(&writer),
-                        request.id,
-                        request.workflow_id,
+                        request.id.clone(),
+                        request.workflow_id.clone(),
                         params,
                         service,
                         portable_data_dir,
-                    ));
+                    ) {
+                        Ok(worker) => conversation_workers.push(worker),
+                        Err(_) => write_stdio_rpc_success_shared(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            json!({
+                                "ok": false,
+                                "error": {
+                                    "code": "conversation_dispatch_failed",
+                                    "stage": "conversation/dispatch",
+                                }
+                            }),
+                        )?,
+                    }
                 } else {
                     client_conversation::execute(
                         &writer,
@@ -311,6 +354,56 @@ where
                         service,
                         portable_data_dir,
                     )?;
+                }
+            }
+            StdioRpcMethod::StrategyExecute {
+                params,
+                portable_data_dir,
+            } => {
+                if strategy_requires_persistent_runtime(&params) && conversation_runtime.is_none() {
+                    write_stdio_rpc_success_shared(
+                        &writer,
+                        &request.id,
+                        &request.workflow_id,
+                        persistent_runtime_rejection(),
+                    )?;
+                    continue;
+                }
+                let runtime = conversation_runtime.clone();
+                let execution = catch_unwind(AssertUnwindSafe(|| {
+                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
+                    let root = licoup_native::platform::paths::portable_data_dir()?;
+                    let service =
+                        licoup_native::domain::adaptive_flywheel::StrategyService::open(&root)?;
+                    let service = if let Some(runtime) = runtime {
+                        service.with_actor_turn_port(conversation::strategy_turn_port(
+                            runtime,
+                            portable_data_dir.clone(),
+                        ))
+                    } else {
+                        service
+                    };
+                    service.execute(params)
+                }));
+                match execution {
+                    Ok(Ok(value)) => write_stdio_rpc_success_shared(
+                        &writer,
+                        &request.id,
+                        &request.workflow_id,
+                        value,
+                    )?,
+                    Ok(Err(error)) => write_stdio_rpc_client_error_shared(
+                        &writer,
+                        Some(&request.id),
+                        Some(&request.workflow_id),
+                        &stdio_rpc_command_error(&error),
+                    )?,
+                    Err(_) => write_stdio_rpc_error_shared(
+                        &writer,
+                        Some(&request.id),
+                        Some(&request.workflow_id),
+                        "command_panicked",
+                    )?,
                 }
             }
             StdioRpcMethod::Catalog {
@@ -351,28 +444,19 @@ where
                 portable_data_dir,
             } => {
                 if rpc_args_dispatch_conversation(&args) {
-                    if conversation_runtime.is_some() {
-                        match licoup_native::ffi::commands::admit_cli_command(args) {
-                            Ok(_) => write_stdio_rpc_error_shared(
-                                &writer,
-                                Some(&request.id),
-                                Some(&request.workflow_id),
-                                "persistent_conversation_transport_required",
-                            )?,
-                            Err(error) => write_stdio_rpc_client_error_shared(
-                                &writer,
-                                Some(&request.id),
-                                Some(&request.workflow_id),
-                                &stdio_rpc_command_error(&error),
-                            )?,
-                        }
-                    } else {
-                        write_stdio_rpc_error_shared(
+                    match licoup_native::ffi::commands::admit_cli_command(args) {
+                        Ok(_) => write_stdio_rpc_success_shared(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            persistent_runtime_rejection(),
+                        )?,
+                        Err(error) => write_stdio_rpc_client_error_shared(
                             &writer,
                             Some(&request.id),
                             Some(&request.workflow_id),
-                            "persistent_conversation_transport_required",
-                        )?;
+                            &stdio_rpc_command_error(&error),
+                        )?,
                     }
                     continue;
                 }
@@ -442,6 +526,16 @@ where
     }
 }
 
+fn persistent_runtime_rejection() -> Value {
+    json!({
+        "ok": false,
+        "error": {
+            "code": licoup_native::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED,
+            "stage": "conversation/dispatch",
+        }
+    })
+}
+
 fn rpc_args_dispatch_conversation(args: &[String]) -> bool {
     matches!(
         args,
@@ -453,7 +547,22 @@ fn rpc_args_dispatch_conversation(args: &[String]) -> bool {
         args,
         [conversation, execute, ..]
             if conversation == "conversation" && execute == "execute"
+    ) || matches!(
+        args,
+        [strategy, execute, ..] if strategy == "strategy" && execute == "execute"
     )
+}
+
+pub(crate) fn strategy_requires_persistent_runtime(params: &Value) -> bool {
+    params
+        .get("action")
+        .and_then(Value::as_str)
+        .is_some_and(|action| {
+            matches!(
+                action,
+                "strategy.run.start" | "strategy.run.resume" | "strategy.run.retry"
+            )
+        })
 }
 
 /// Open (once per portable data dir) the process-owned Conversation service.
@@ -483,11 +592,28 @@ fn conversation_service(
     let root = licoup_native::platform::paths::portable_data_dir()?;
     let mut service = ConversationService::open(&root)?;
     if let Some(runtime) = runtime {
-        let runtime = runtime.clone();
-        let runtime_portable_data_dir = portable_data_dir.clone();
-        service = service.with_native_turn_sender(move |params| {
-            runtime.dispatch_sync(params, runtime_portable_data_dir.clone())
-        });
+        let send_runtime = runtime.clone();
+        let send_dir = portable_data_dir.clone();
+        let active_runtime = runtime.clone();
+        let steer_runtime = runtime.clone();
+        let actor_runtime = runtime.clone();
+        let actor_dir = portable_data_dir.clone();
+        let strategy_root = root.clone();
+        service = service
+            .with_native_turn_sender(move |params| {
+                send_runtime.start_background(params, send_dir.clone())
+            })
+            .with_active_turns(move |conversation_id| {
+                active_runtime.active(&json!({ "conversationId": conversation_id }))
+            })
+            .with_steer_turn(move |params| steer_runtime.steer_sync(params))
+            .with_strategy_execute(move |request| {
+                let port =
+                    conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
+                licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
+                    .with_actor_turn_port(port)
+                    .execute(request)
+            });
     }
     if services.entries.len() == MAX_CONVERSATION_SERVICE_ROOTS {
         services.entries.pop_front();

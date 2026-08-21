@@ -508,6 +508,16 @@ impl ConversationStore {
         Ok(store)
     }
 
+    /// Flush WAL into the main file and fsync before resetting the log.
+    /// `synchronous=FULL` makes this checkpoint durable; TRUNCATE then drops
+    /// the WAL so a later SIGKILL cannot replay a torn main file.
+    pub fn checkpoint(&self) -> StoreResult<()> {
+        self.with_connection(|connection| {
+            connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+            Ok(())
+        })
+    }
+
     /// Reuse the idempotent reserved-default-group normalization after a
     /// legacy import may have adopted the historical default group, before
     /// the legacy completion marker is written. Naturally idempotent: events
@@ -935,6 +945,12 @@ impl ConversationStore {
             return Err(anyhow!("runtime_terminal_state_invalid"));
         }
         let now = now_ms();
+        let runtime_conversation_path = terminal
+            .get("sourcePath")
+            .or_else(|| terminal.get("conversationPath"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -956,9 +972,16 @@ impl ConversationStore {
                 return Err(anyhow!("runtime_dispatch_not_active"));
             }
             let changed = transaction.execute(
-                "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4
+                "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4,
+                   runtime_conversation_path=COALESCE(?5, runtime_conversation_path)
                  WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
-                params![scope.dispatch_id, enum_wire(state)?, error_code, now],
+                params![
+                    scope.dispatch_id,
+                    enum_wire(state)?,
+                    error_code,
+                    now,
+                    runtime_conversation_path,
+                ],
             )?;
             if changed != 1 {
                 return Err(anyhow!("runtime_dispatch_not_active"));
@@ -1602,6 +1625,34 @@ impl ConversationStore {
         })
     }
 
+    /// The stored text of one posted message Event, validated to belong to
+    /// the Conversation. Dispatch addressing reads this instead of trusting
+    /// caller-supplied content.
+    pub fn posted_event_text(&self, conversation_id: &str, event_id: &str) -> StoreResult<String> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(event_id, "event_id")?;
+        self.with_connection(|connection| {
+            let row: Option<(String, Option<String>)> = connection
+                .query_row(
+                    "SELECT e.conversation_id,
+                            (SELECT ep.content FROM event_parts ep
+                              WHERE ep.event_id=e.id AND ep.kind='text'
+                                AND ep.runtime_cursor IS NULL
+                              ORDER BY ep.ordinal ASC LIMIT 1)
+                     FROM events e WHERE e.id=?1",
+                    params![event_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let (owner, text) = row.ok_or_else(|| anyhow!("conversation_event_not_found"))?;
+            if owner != conversation_id {
+                return Err(anyhow!("mention_event_mismatch"));
+            }
+            text.filter(|content| !content.trim().is_empty())
+                .ok_or_else(|| anyhow!("conversation_event_not_found"))
+        })
+    }
+
     pub fn append_event_part(&self, event_id: &str, part: NewEventPart) -> StoreResult<EventPart> {
         validate_identifier(event_id, "event_id")?;
         validate_text(&part.content, "event_part_content")?;
@@ -1729,24 +1780,31 @@ impl ConversationStore {
         })
     }
 
-    pub(super) fn complete_direct_turn(
+    /// Settle a mention turn whose dispatch was never opened. When a dispatch
+    /// row with the turn's identity exists, the dispatch completion authority
+    /// already owns the terminal write and this call is a no-op.
+    pub(super) fn fail_direct_turn_unless_dispatched(
         &self,
         turn_id: &str,
-        output: &str,
-        runtime_session_id: Option<&str>,
-        runtime_conversation_path: Option<&str>,
-        working_directory: Option<&str>,
-    ) -> StoreResult<ConversationEvent> {
+        diagnostic: &str,
+    ) -> StoreResult<bool> {
         validate_identifier(turn_id, "direct_turn_id")?;
-        self.finish_direct_turn(
-            turn_id,
-            TurnState::Succeeded,
-            EventPartKind::Text,
-            output,
-            runtime_session_id,
-            runtime_conversation_path,
-            working_directory,
-        )
+        validate_required_text(diagnostic, "direct_turn_diagnostic")?;
+        let opened = self.with_connection(|connection| {
+            Ok(connection
+                .query_row(
+                    "SELECT 1 FROM conversation_dispatches WHERE id=?1",
+                    params![turn_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+                .is_some())
+        })?;
+        if opened {
+            return Ok(false);
+        }
+        self.fail_direct_turn(turn_id, diagnostic)?;
+        Ok(true)
     }
 
     pub(super) fn fail_direct_turn(
@@ -1756,27 +1814,6 @@ impl ConversationStore {
     ) -> StoreResult<ConversationEvent> {
         validate_identifier(turn_id, "direct_turn_id")?;
         validate_required_text(diagnostic, "direct_turn_diagnostic")?;
-        self.finish_direct_turn(
-            turn_id,
-            TurnState::Failed,
-            EventPartKind::Diagnostic,
-            diagnostic,
-            None,
-            None,
-            None,
-        )
-    }
-
-    fn finish_direct_turn(
-        &self,
-        turn_id: &str,
-        terminal_state: TurnState,
-        part_kind: EventPartKind,
-        content: &str,
-        runtime_session_id: Option<&str>,
-        runtime_conversation_path: Option<&str>,
-        working_directory: Option<&str>,
-    ) -> StoreResult<ConversationEvent> {
         let event_id = new_id("event");
         let now = now_ms();
         self.with_connection(|connection| {
@@ -1793,16 +1830,15 @@ impl ConversationStore {
                 params![turn_id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )?;
-            let terminal_state_wire = enum_wire(terminal_state)?;
             if current_state == "running" {
                 let changed = transaction.execute(
-                    "UPDATE direct_turns SET state=?2 WHERE id=?1 AND state='running'",
-                    params![turn_id, terminal_state_wire],
+                    "UPDATE direct_turns SET state='failed' WHERE id=?1 AND state='running'",
+                    params![turn_id],
                 )?;
                 if changed != 1 {
                     return Err(anyhow!("direct_turn_not_running"));
                 }
-            } else if current_state != terminal_state_wire {
+            } else if current_state != "failed" {
                 return Err(anyhow!("direct_turn_not_running"));
             }
             let runtime_event_id: Option<String> = transaction
@@ -1827,8 +1863,8 @@ impl ConversationStore {
                     EventKind::Message,
                     &[NewEventPart {
                         id: String::new(),
-                        kind: part_kind,
-                        content: content.to_owned(),
+                        kind: EventPartKind::Diagnostic,
+                        content: diagnostic.to_owned(),
                     }],
                     Some(&source_event_id),
                     Some(turn_id),
@@ -1837,31 +1873,6 @@ impl ConversationStore {
                     now,
                 )?
             };
-            if terminal_state == TurnState::Succeeded
-                && (runtime_session_id.is_some()
-                    || runtime_conversation_path.is_some()
-                    || working_directory.is_some())
-            {
-                transaction.execute(
-                    "INSERT INTO runtime_bindings(
-                       id, conversation_id, membership_id, lane, availability, safe_reason,
-                       runtime_session_id, runtime_conversation_path, working_directory
-                     ) VALUES (?1, ?2, ?3, 'conversation', 'available', NULL, ?4, ?5, ?6)
-                     ON CONFLICT(conversation_id, membership_id, lane) DO UPDATE SET
-                       availability='available', safe_reason=NULL,
-                       runtime_session_id=COALESCE(excluded.runtime_session_id, runtime_bindings.runtime_session_id),
-                       runtime_conversation_path=COALESCE(excluded.runtime_conversation_path, runtime_bindings.runtime_conversation_path),
-                       working_directory=COALESCE(excluded.working_directory, runtime_bindings.working_directory)",
-                    params![
-                        new_id("runtime"),
-                        conversation_id,
-                        membership_id,
-                        runtime_session_id,
-                        runtime_conversation_path,
-                        working_directory,
-                    ],
-                )?;
-            }
             transaction.commit()?;
             Ok(event)
         })
@@ -2073,6 +2084,26 @@ impl ConversationStore {
                        AND runtime_conversation_path IS NOT NULL
                      ORDER BY updated_at DESC, id DESC LIMIT 1",
                     params![conversation_id, membership_id],
+                    dispatch_from_row,
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
+    /// Read one canonical dispatch record by its durable identity. An unknown
+    /// identity returns an absent record rather than an error, so restart
+    /// recovery distinguishes a never-opened dispatch from any recorded
+    /// state without adding a second bookkeeping row.
+    pub fn dispatch_record(&self, dispatch_id: &str) -> StoreResult<Option<ConversationDispatch>> {
+        validate_identifier(dispatch_id, "dispatch_id")?;
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT id, conversation_id, membership_id, operation, state, session_mode,
+                       runtime_conversation_path, error_code, created_at, updated_at
+                     FROM conversation_dispatches WHERE id=?1",
+                    params![dispatch_id],
                     dispatch_from_row,
                 )
                 .optional()
@@ -2355,11 +2386,18 @@ pub struct NewEventPart {
     pub content: String,
 }
 fn configure_connection(connection: &Connection) -> StoreResult<()> {
+    // WAL + NORMAL skips fsync of the main file during checkpoint. A SIGKILL
+    // in that window can leave a torn database and an empty WAL, which SQLite
+    // reports as malformed. FULL fsyncs the main file before the WAL is reset.
+    // On macOS, fullfsync is required because ordinary fsync does not flush
+    // the drive cache.
     connection.execute_batch(
         "PRAGMA foreign_keys=ON;
          PRAGMA journal_mode=WAL;
-         PRAGMA synchronous=NORMAL;
-         PRAGMA busy_timeout=5000;
+         PRAGMA synchronous=FULL;
+         PRAGMA fullfsync=ON;
+         PRAGMA checkpoint_fullfsync=ON;
+         PRAGMA busy_timeout=8000;
          PRAGMA trusted_schema=OFF;",
     )?;
     Ok(())
@@ -2478,6 +2516,54 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "TEXT",
     )?;
     ensure_column(connection, "runtime_bindings", "working_directory", "TEXT")?;
+    ensure_search_index(connection)?;
+    Ok(())
+}
+
+/// `event_search` is a derived FTS index. Rebuild it from `event_parts` only
+/// when the index is corrupt or empty while searchable parts still exist.
+fn ensure_search_index(connection: &Connection) -> StoreResult<()> {
+    if search_index_is_corrupt(connection) || search_index_is_empty_with_source(connection)? {
+        rebuild_search_index(connection)?;
+    }
+    Ok(())
+}
+
+fn search_index_is_corrupt(connection: &Connection) -> bool {
+    connection
+        .execute(
+            "INSERT INTO event_search(event_search) VALUES('integrity-check')",
+            [],
+        )
+        .is_err()
+}
+
+fn search_index_is_empty_with_source(connection: &Connection) -> StoreResult<bool> {
+    let indexed: i64 =
+        connection.query_row("SELECT COUNT(*) FROM event_search", [], |row| row.get(0))?;
+    if indexed > 0 {
+        return Ok(false);
+    }
+    let source: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM event_parts WHERE kind IN ('text', 'reasoning')",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(source > 0)
+}
+
+fn rebuild_search_index(connection: &Connection) -> StoreResult<()> {
+    connection.execute_batch(
+        "DROP TABLE IF EXISTS event_search;
+         CREATE VIRTUAL TABLE event_search USING fts5(
+           event_id UNINDEXED, conversation_id UNINDEXED, content
+         );
+         INSERT INTO event_search(event_id, conversation_id, content)
+         SELECT p.event_id, e.conversation_id, p.content
+           FROM event_parts p
+           JOIN events e ON e.id = p.event_id
+          WHERE p.kind IN ('text', 'reasoning');",
+    )?;
     Ok(())
 }
 
@@ -3585,7 +3671,9 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
             EventPartKind::Metadata,
             serde_json::json!({"lifecycle": "accepted"}).to_string(),
         )),
-        "agent.message.completed" => text.map(|value| (EventPartKind::Text, value.to_owned())),
+        "agent.message.chunk" | "agent.message.completed" => {
+            text.map(|value| (EventPartKind::Text, value.to_owned()))
+        }
         "agent.turn.processing" => {
             let evidence = payload
                 .get("evidenceKind")
@@ -3616,6 +3704,7 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
                 )),
             }
         }
+        "dispatch.turn.failed" | "agent.turn.failed" => None,
         "permission.denied" => Some((
             EventPartKind::Diagnostic,
             text.unwrap_or("permission denied").to_owned(),
@@ -3706,7 +3795,22 @@ fn runtime_terminal_diagnostic(terminal: &Value, error_code: Option<&str>) -> St
         .get("stage")
         .and_then(Value::as_str)
         .unwrap_or("conversation/dispatch");
-    serde_json::json!({"code": code, "stage": stage}).to_string()
+    let turn_status = nested
+        .get("turnStatus")
+        .or_else(|| terminal.get("turnStatus"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let mut diagnostic = serde_json::Map::new();
+    diagnostic.insert("code".into(), serde_json::Value::String(code.to_owned()));
+    diagnostic.insert("stage".into(), serde_json::Value::String(stage.to_owned()));
+    if let Some(turn_status) = turn_status {
+        diagnostic.insert(
+            "turnStatus".into(),
+            serde_json::Value::String(turn_status.to_owned()),
+        );
+    }
+    serde_json::Value::Object(diagnostic).to_string()
 }
 
 fn now_ms() -> i64 {
@@ -3881,6 +3985,101 @@ mod tests {
             agent_id: None,
             created_at_unix_ms: 1,
         }
+    }
+
+    #[test]
+    fn checkpoint_flushes_an_open_store() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        store.ensure_default_local_group().unwrap();
+        store.checkpoint().unwrap();
+        assert!(
+            store
+                .list(false)
+                .unwrap()
+                .iter()
+                .any(|conversation| conversation.is_group)
+        );
+    }
+
+    #[test]
+    fn conversation_store_commits_with_full_sync() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        store
+            .with_connection(|connection| {
+                let synchronous: i64 =
+                    connection.query_row("PRAGMA synchronous", [], |row| row.get(0))?;
+                assert_eq!(synchronous, 2);
+                let journal: String =
+                    connection.query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
+                assert_eq!(journal.to_ascii_lowercase(), "wal");
+                #[cfg(target_os = "macos")]
+                {
+                    let fullfsync: i64 =
+                        connection.query_row("PRAGMA fullfsync", [], |row| row.get(0))?;
+                    assert_eq!(fullfsync, 1);
+                    let checkpoint_fullfsync: i64 =
+                        connection
+                            .query_row("PRAGMA checkpoint_fullfsync", [], |row| row.get(0))?;
+                    assert_eq!(checkpoint_fullfsync, 1);
+                }
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn reopening_rebuilds_a_missing_search_index_from_event_parts() {
+        let root = std::env::temp_dir().join(format!("lico-search-rebuild-{}", Uuid::new_v4()));
+        crate::platform::file_security::ensure_private_dir(&root).unwrap();
+        let store = ConversationStore::open(&root).unwrap();
+        let conversation = store.create_conversation("Search", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:search".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Search Agent".into(),
+                    agent_id: Some("search".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        store
+            .append_event(
+                &conversation.id,
+                Some(&agent.id),
+                EventKind::Message,
+                &[NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "durable search token".into(),
+                }],
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+        store
+            .with_connection(|connection| {
+                connection.execute_batch(
+                    "DROP TABLE event_search;
+                     CREATE VIRTUAL TABLE event_search USING fts5(
+                       event_id UNINDEXED, conversation_id UNINDEXED, content
+                     );",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        drop(store);
+
+        let reopened = ConversationStore::open(&root).unwrap();
+        assert_eq!(
+            reopened.search("durable search token", 10).unwrap().len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -4481,6 +4680,89 @@ mod tests {
                 .contains(private_location)
         );
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delivery_dispatch_record_reads_one_identity_and_reports_absent_unknowns() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Delivery", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:delivery-read".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Delivery Agent".into(),
+                    agent_id: Some("delivery-read".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        assert!(
+            store
+                .dispatch_record("dispatch:delivery-missing")
+                .unwrap()
+                .is_none()
+        );
+        let dispatch = store
+            .create_dispatch(
+                &conversation.id,
+                &agent.id,
+                "delivery.dispatch",
+                DispatchSessionMode::New,
+            )
+            .unwrap();
+        assert_eq!(
+            store.dispatch_record(&dispatch.id).unwrap(),
+            Some(dispatch.clone())
+        );
+        store
+            .update_dispatch(&dispatch.id, DispatchState::Completed, None, None)
+            .unwrap();
+        assert_eq!(
+            store
+                .dispatch_record(&dispatch.id)
+                .unwrap()
+                .map(|record| record.state),
+            Some(DispatchState::Completed)
+        );
+    }
+
+    #[test]
+    fn delivery_requested_dispatch_identity_is_canonical_and_rejects_a_duplicate_open() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let dispatch_id = "workflow-delivery:task:TASK-001:1";
+        let scope = store
+            .prepare_runtime_dispatch(
+                "delivery-agent",
+                "native-session-delivery",
+                "synthetic delivery brief",
+                None,
+                None,
+                Some("delivery.dispatch"),
+                Some(dispatch_id),
+            )
+            .unwrap();
+        assert_eq!(scope.dispatch_id, dispatch_id);
+        let record = store.dispatch_record(dispatch_id).unwrap().unwrap();
+        assert_eq!(record.id, dispatch_id);
+        assert_eq!(record.operation, "send");
+        assert_eq!(record.state, DispatchState::Accepted);
+        assert!(
+            store
+                .prepare_runtime_dispatch(
+                    "delivery-agent",
+                    "native-session-delivery",
+                    "synthetic delivery brief",
+                    None,
+                    None,
+                    Some("delivery.dispatch"),
+                    Some(dispatch_id),
+                )
+                .is_err()
+        );
+        assert_eq!(store.dispatch_record(dispatch_id).unwrap(), Some(record));
     }
 
     // ---- durable reserved-group cutover (schema v2 -> v3) ----
@@ -5203,5 +5485,173 @@ mod tests {
                 .content,
             "kept"
         );
+    }
+
+    #[test]
+    fn runtime_message_chunks_become_visible_text_parts() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:one".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "One".into(),
+                    agent_id: Some("one".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                "one",
+                "",
+                "hello",
+                Some(&conversation.id),
+                Some(&agent.id),
+                Some("event:user"),
+                None,
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "agent.message.chunk",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"text": "Hel"}
+                }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                2,
+                &serde_json::json!({
+                    "event": "agent.message.chunk",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"text": "lo"}
+                }),
+            )
+            .unwrap();
+        let event = store
+            .page_events(&conversation.id, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|candidate| candidate.id == scope.event_id)
+            .unwrap();
+        let text = event
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Text)
+            .map(|part| part.content.as_str())
+            .collect::<String>();
+        assert_eq!(text, "Hello");
+    }
+
+    #[test]
+    fn failed_runtime_terminal_keeps_turn_status_and_skips_generic_failed_frame() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:one".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "One".into(),
+                    agent_id: Some("one".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                "one",
+                "",
+                "hello",
+                Some(&conversation.id),
+                Some(&agent.id),
+                Some("event:user"),
+                None,
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "agent.turn.accepted",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {}
+                }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                2,
+                &serde_json::json!({
+                    "event": "dispatch.turn.failed",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {
+                        "turnStatus": "failed/Unauthorized",
+                        "code": "codex_turn_not_completed"
+                    }
+                }),
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({
+                    "ok": false,
+                    "turnStatus": "failed/Unauthorized",
+                    "error": {
+                        "code": "codex_turn_not_completed",
+                        "stage": "turn/completed",
+                        "turnStatus": "failed/Unauthorized",
+                        "message": "turn-fixture/secret.txt is unreadable"
+                    }
+                }),
+                DispatchState::Failed,
+                Some("codex_turn_not_completed"),
+            )
+            .unwrap();
+        let event = store
+            .page_events(&conversation.id, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|candidate| candidate.id == scope.event_id)
+            .unwrap();
+        let diagnostics: Vec<_> = event
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Diagnostic)
+            .map(|part| part.content.as_str())
+            .collect();
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].contains("codex_turn_not_completed"));
+        assert!(diagnostics[0].contains("turn/completed"));
+        assert!(diagnostics[0].contains("failed/Unauthorized"));
+        assert!(!diagnostics[0].contains("secret.txt"));
+        assert!(!diagnostics[0].contains("turn-fixture"));
+        assert!(!diagnostics.contains(&"runtime diagnostic"));
+        assert!(event.parts.iter().any(|part| {
+            part.kind == EventPartKind::Metadata && part.content.contains("failed")
+        }));
+        assert!(event.parts.iter().any(|part| {
+            part.kind == EventPartKind::Metadata && part.content.contains("accepted")
+        }));
     }
 }

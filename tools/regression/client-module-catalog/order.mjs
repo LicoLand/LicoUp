@@ -23,6 +23,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.feature.mcp-transfer",
   "flutter.feature.catalog-convergence",
   "flutter.contract.typed-error-chain",
+  "flutter.contract.problem-codes",
   "flutter.contract.client-state",
   "flutter.contract.secure-mesh",
   "rust.composition",

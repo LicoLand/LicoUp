@@ -21,6 +21,11 @@ pub const CONVERSATION_SCHEMA_VERSION: &str = "lico.conversation.v1";
 pub const DEFAULT_LOCAL_AGENT_GROUP_ID: &str = "lico-group-default";
 pub const DEFAULT_LOCAL_AGENT_GROUP_TITLE: &str = "Local";
 
+/// Typed rejection for dispatch-type work on a service constructed without
+/// the persistent host runtime. One-shot transports route through the
+/// conversation host instead of opening unattached turns or orphaning runs.
+pub const PERSISTENT_TRANSPORT_REQUIRED: &str = "persistent_conversation_transport_required";
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PrincipalKind {
@@ -229,8 +234,9 @@ impl DispatchSessionMode {
     }
 }
 
-/// One exact structured mention dispatch. It is deliberately independent of
-/// a strategy run: posting an ordinary message never starts Adaptive Flywheel.
+/// One structured mention dispatch record. Addressing still selects a
+/// Membership; execution is the same Membership-scoped PersistentTurn used
+/// by strategy, delivery, and subagent effects.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectTurn {

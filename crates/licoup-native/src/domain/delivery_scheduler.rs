@@ -315,8 +315,6 @@ pub struct AdmittedConversation {
     pub source_path: String,
     pub working_directory: String,
     pub binding: String,
-    pub conversation_id: String,
-    pub membership_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -367,8 +365,18 @@ pub trait DeliveryExecutor: Send + Sync {
         existing: Option<&str>,
     ) -> DeliveryResult<AdmittedConversation>;
     fn dispatch(&self, request: &DispatchRequest) -> DeliveryResult<DispatchResult>;
-    fn reconcile(&self, conversation: &AdmittedConversation) -> DeliveryResult<TerminalState>;
-    fn cancel(&self, conversation: &AdmittedConversation) -> DeliveryResult<()>;
+    /// Reconcile one dispatch by the durable dispatch identity the Delivery
+    /// ledger already persists. The canonical dispatch record for that
+    /// identity is the terminal evidence source.
+    fn reconcile(
+        &self,
+        dispatch_id: &str,
+        conversation: &AdmittedConversation,
+    ) -> DeliveryResult<TerminalState>;
+    /// Cancel one live dispatch by its durable dispatch identity through the
+    /// control plane. An already-settled or never-opened identity is an
+    /// idempotent no-op, never a failure.
+    fn cancel(&self, dispatch_id: &str) -> DeliveryResult<()>;
     fn usage_snapshot(&self, conversation: &AdmittedConversation) -> DeliveryResult<Value>;
 }
 
@@ -1123,7 +1131,9 @@ where
             let conversation =
                 self.executor
                     .prepare_conversation(&dispatch.agent_id, "", Some(&path))?;
-            let terminal = self.executor.reconcile(&conversation)?;
+            let terminal = self
+                .executor
+                .reconcile(&dispatch.dispatch_id, &conversation)?;
             if terminal == TerminalState::Pending {
                 report.pending += 1;
             } else {
@@ -1448,7 +1458,11 @@ mod tests {
             ))
         }
 
-        fn reconcile(&self, _conversation: &AdmittedConversation) -> DeliveryResult<TerminalState> {
+        fn reconcile(
+            &self,
+            _dispatch_id: &str,
+            _conversation: &AdmittedConversation,
+        ) -> DeliveryResult<TerminalState> {
             self.native_calls.fetch_add(1, Ordering::Relaxed);
             Err(DeliveryError::invalid(
                 "cancelled_runner_reconciled",
@@ -1456,7 +1470,7 @@ mod tests {
             ))
         }
 
-        fn cancel(&self, _conversation: &AdmittedConversation) -> DeliveryResult<()> {
+        fn cancel(&self, _dispatch_id: &str) -> DeliveryResult<()> {
             self.native_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }

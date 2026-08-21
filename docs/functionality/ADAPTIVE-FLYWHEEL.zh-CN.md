@@ -115,11 +115,13 @@ Python 与 Node 运行时由后台自动检测和绑定，不提供用户选择�
 入口槽当前候选的 `@` 胶囊。选策略会把所有已绑定 Agent（含 Fallback 列表）加入该群
 Membership，但不会启动 run。
 
-第一条发送把文本交给入口槽并执行 `strategy.run.start`，工作目录为群工作区。之后仅在
-run 需要人输入时把发送交给入口槽的 sticky 会话；否则只发普通群消息。叉掉 `@` 胶囊
-只退出策略模式，不取消已经在跑的 run。
+第一条发送仍是 Conversation Event。原生寻址在持久 conversation sidecar 上启动
+`strategy.run.start`（Graph 不拥有发送进程）。之后的发送仍是 Event：若 Membership
+上有进行中的 PersistentTurn 则 steer；若 run 处于 Waiting 则 resume。叉掉胶囊只退出
+策略模式，不取消已经在跑的 run。
 
-未进策略模式的 `@mention` 仍走 DirectTurn，不启动 Graph。Graph 的 actor 与 workset
+`@mention` 只负责选出 Membership，与策略、Delivery、Subagent 共用同一套
+PersistentTurn 流式 I/O，而不是第二套发送协议。Graph 的 actor 与 workset
 效果作为对应 Membership 上的结构化 Event，走共享 conversation display。
 
 导入包内容、绑定、授权与原生运行状态都保留在本地客户端状态。不要把原始策略输入、

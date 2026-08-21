@@ -53,6 +53,7 @@ void main() {
     final turns = await persistent.activeTurns(
       agentId: 'synthetic',
       sessionId: 'session-1',
+      waitForChange: const Duration(milliseconds: 125),
     );
     final events = await persistent
         .attachActiveTurn(
@@ -71,6 +72,7 @@ void main() {
     );
 
     expect(turns.single['highWater'], 1);
+    expect(runner.activeRequest['waitForChangeMs'], 125);
     expect(events.map((event) => event.kind), [
       'agent.message.chunk',
       'dispatch.turn.completed',
@@ -91,6 +93,7 @@ class _RuntimeRunner implements AgentCommandRunner {
   String attachedHandle = '';
   String attachedConversationId = '';
   final controls = <String>[];
+  Map<String, dynamic> activeRequest = const {};
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async => const {};
@@ -112,6 +115,7 @@ class _RuntimeRunner implements AgentCommandRunner {
       };
     }
     expect(operation, 'active');
+    activeRequest = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
     return {
       'turns': [
         {
