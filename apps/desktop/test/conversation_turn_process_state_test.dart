@@ -83,6 +83,26 @@ void main() {
     s.setReplyText('', createdAt: '2026-08-07T00:00:03Z');
     expect(s.replyText, '');
   });
+
+  test('projected messages omit the user Event for group observers', () {
+    final s = state();
+    s.advanceStage('accepted');
+    s.recordParticipant(
+      participantAgentId: 'codex',
+      participantLabel: 'Codex',
+      participantRole: 'member',
+    );
+    s.setReplyText('hi', createdAt: '2026-08-07T00:00:01Z');
+    final group = s.projectedMessages(includeUser: false);
+    expect(group.any((message) => message.role == 'user'), isFalse);
+    expect(group.first.cardType, 'lifecycle');
+    expect(group.first.cardSubtitle, 'submitted,accepted');
+    expect(group.last.role, 'assistant');
+    expect(group.last.text, 'hi');
+    final oneToOne = s.projectedMessages();
+    expect(oneToOne.first.role, 'user');
+    expect(oneToOne.first.text, 'build it');
+  });
 }
 
 AgentConversationMessage _evidence(String id, String cardType, String text) =>

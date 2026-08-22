@@ -15,20 +15,55 @@
     "conversation.events.search",
     "conversation.event.append",
     "conversation.message.post",
+    "conversation.dispatch.after-post",
     "conversation.event.part.append",
     "conversation.event.finalize",
     "conversation.membership.add",
     "conversation.membership.access.set",
     "conversation.membership.leave",
     "conversation.export",
-    "conversation.import"
+    "conversation.import",
+    "conversation.assistant.set",
+    "conversation.profile.update",
+    "conversation.profile.get",
+    "conversation.profile.candidates"
   ],
-  "principalKinds": ["human", "agent"],
-  "membershipAccess": ["owner", "member"],
-  "membershipStatuses": ["active", "left"],
-  "turnStates": ["pending", "claimed", "running", "waiting-for-human", "succeeded", "failed", "interrupted", "cancelled"],
-  "eventKinds": ["message", "membership-changed", "availability"],
-  "eventPartKinds": ["text", "reasoning", "tool-call", "tool-result", "artifact", "diagnostic", "metadata"],
+  "principalKinds": [
+    "human",
+    "agent"
+  ],
+  "membershipAccess": [
+    "owner",
+    "member"
+  ],
+  "membershipStatuses": [
+    "active",
+    "left"
+  ],
+  "turnStates": [
+    "pending",
+    "claimed",
+    "running",
+    "waiting-for-human",
+    "succeeded",
+    "failed",
+    "interrupted",
+    "cancelled"
+  ],
+  "eventKinds": [
+    "message",
+    "membership-changed",
+    "availability"
+  ],
+  "eventPartKinds": [
+    "text",
+    "reasoning",
+    "tool-call",
+    "tool-result",
+    "artifact",
+    "diagnostic",
+    "metadata"
+  ],
   "failureCodes": [
     "invalid_request",
     "conversation_not_found",
@@ -38,6 +73,12 @@
     "migration_required",
     "migration_failed",
     "runtime_unavailable",
-    "unsupported_action"
+    "unsupported_action",
+    "profile_intent_invalid",
+    "profile_intent_limit",
+    "profile_revision_stale",
+    "profile_candidate_rejected",
+    "conversation_revision_stale",
+    "local_owner_required"
   ]
 }

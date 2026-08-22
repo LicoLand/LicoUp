@@ -8,6 +8,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
 
 void main() {
   group('buildMessagingFlowEntries', () {
@@ -78,6 +80,47 @@ void main() {
       final groups = entries.whereType<MessagingFlowMessageGroup>().toList();
       expect(groups.first.participantLabel, 'Designer');
       expect(groups.last.participantLabel, 'Backend Worker');
+    });
+
+    test('keeps Assistant and Subagent bubbles in canonical message order', () {
+      final entries = buildMessagingFlowEntries([
+        _participantMessageItem(
+          'assistant-1',
+          'codex',
+          'Assistant',
+          'plan',
+          _at(10, 0),
+          participantRole: 'assistant',
+        ),
+        _participantMessageItem(
+          'worker-1',
+          'worker-a',
+          'Worker A',
+          'implementation',
+          _at(10, 1),
+          participantRole: 'member',
+        ),
+        _participantMessageItem(
+          'assistant-2',
+          'codex',
+          'Assistant',
+          'review',
+          _at(10, 2),
+          participantRole: 'assistant',
+        ),
+      ]);
+
+      final groups = entries.whereType<MessagingFlowMessageGroup>().toList();
+      expect(groups.map((group) => group.participantRole), [
+        'assistant',
+        'member',
+        'assistant',
+      ]);
+      expect(groups.map((group) => group.messages.single.text), [
+        'plan',
+        'implementation',
+        'review',
+      ]);
     });
 
     test('marks the active process entry from its storage key', () {
@@ -192,6 +235,73 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'Assistant bubble is distinct while Subagent shows model and reasoning effort',
+    (tester) async {
+      final chronological = [
+        _participantMessageItem(
+          'assistant',
+          'codex',
+          'Assistant',
+          'assistant answer',
+          _at(10, 0),
+          participantRole: 'assistant',
+        ),
+        _participantMessageItem(
+          'worker',
+          'worker-a',
+          'Worker A',
+          'subagent answer',
+          _at(10, 1),
+          participantRole: 'member',
+        ),
+      ];
+      await _pumpFlow(
+        tester,
+        chronological.reversed.toList(),
+        participantTargets: [
+          _flowTarget('codex', 'Codex'),
+          _flowTarget('worker-a', 'Worker A'),
+        ],
+        participantRuntimeProfiles: const {
+          'worker-a': AgentParticipantRuntimeProfile(
+            model: 'worker-model',
+            reasoningEffort: 'high',
+          ),
+        },
+      );
+
+      expect(find.text('ASSISTANT'), findsOneWidget);
+      expect(find.text('SUBAGENT'), findsOneWidget);
+      expect(
+        find.byKey(const Key('messaging-assistant-avatar')),
+        findsOneWidget,
+      );
+      expect(find.text('worker-model · High'), findsOneWidget);
+
+      final assistantSurface = tester.widget<LicoSurface>(
+        find
+            .ancestor(
+              of: find.text('assistant answer', findRichText: true),
+              matching: find.byType(LicoSurface),
+            )
+            .first,
+      );
+      final subagentSurface = tester.widget<LicoSurface>(
+        find
+            .ancestor(
+              of: find.text('subagent answer', findRichText: true),
+              matching: find.byType(LicoSurface),
+            )
+            .first,
+      );
+      expect(assistantSurface.tone, LicoSurfaceTone.accent);
+      expect(assistantSurface.bordered, isTrue);
+      expect(subagentSurface.tone, LicoSurfaceTone.neutral);
+      expect(subagentSurface.bordered, isFalse);
+    },
+  );
 
   testWidgets(
     'hover reveals per-message timestamp outside bubble bottom-right',
@@ -695,8 +805,9 @@ ConversationMessageTimelineItem _participantMessageItem(
   String participantAgentId,
   String participantLabel,
   String text,
-  String createdAt,
-) {
+  String createdAt, {
+  String? participantRole,
+}) {
   return ConversationMessageTimelineItem(
     key,
     AgentConversationMessage(
@@ -706,7 +817,7 @@ ConversationMessageTimelineItem _participantMessageItem(
       createdAt: createdAt,
       participantAgentId: participantAgentId,
       participantLabel: participantLabel,
-      participantRole: participantAgentId,
+      participantRole: participantRole ?? participantAgentId,
     ),
   );
 }
@@ -754,6 +865,9 @@ Future<void> _pumpFlow(
   WidgetTester tester,
   List<ConversationTimelineItem> newestFirst, {
   ScrollController? scrollController,
+  List<TargetCandidate> participantTargets = const [],
+  Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
+      const {},
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -781,6 +895,8 @@ Future<void> _pumpFlow(
               confidence: 1,
               adapterStatus: 'implemented',
             ),
+            participantTargets: participantTargets,
+            participantRuntimeProfiles: participantRuntimeProfiles,
             scrollController: scrollController,
           ),
         ),
@@ -789,3 +905,13 @@ Future<void> _pumpFlow(
   );
   await tester.pump();
 }
+
+TargetCandidate _flowTarget(String id, String label) => TargetCandidate(
+  target: id,
+  label: label,
+  kind: 'cli',
+  status: 'detected',
+  configured: true,
+  confidence: 1,
+  adapterStatus: 'implemented',
+);

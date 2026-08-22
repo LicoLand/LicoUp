@@ -14,6 +14,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
   required String workflowId,
   required StdioRpcSessionManager sessionManager,
 }) async* {
+  const maxReconnects = 1;
   final wireParams = Map<String, dynamic>.from(params);
   final initialOperation = (wireParams.remove('_rpcOperation') ?? 'send')
       .toString();
@@ -114,12 +115,13 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     } on Object catch (error) {
       session?.abandonExpectedFrame(activeRequestId);
       await sessionManager.invalidateAndDiscard();
-      if (turnHandle.isEmpty || conversationId.isEmpty || reconnects >= 8) {
+      if (turnHandle.isEmpty ||
+          conversationId.isEmpty ||
+          reconnects >= maxReconnects) {
         if (error is LicoClientRpcException) rethrow;
         throw const LicoClientRpcException('transport_failed');
       }
       reconnects += 1;
-      await Future<void>.delayed(Duration(milliseconds: 25 * reconnects));
     }
   }
 }

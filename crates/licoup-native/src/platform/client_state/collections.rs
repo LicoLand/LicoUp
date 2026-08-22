@@ -68,6 +68,19 @@ impl ClientStateStore {
         Self::new(paths::portable_state_root()?)
     }
 
+    pub(crate) fn portable_read_only() -> Result<Self> {
+        Ok(Self::open_read_only(paths::portable_state_root_read_only()?))
+    }
+
+    /// Open a read-only projection without creating directories, collection
+    /// files, snapshots, or activity state. Missing collections read empty.
+    pub(crate) fn open_read_only(root: PathBuf) -> Self {
+        Self {
+            root,
+            target_index: Arc::new(TargetCollectionIndex::default()),
+        }
+    }
+
     pub fn new(root: PathBuf) -> Result<Self> {
         ensure_private_dir(&root)?;
         ensure_private_dir(&paths::snapshot_root(&root))?;
@@ -94,6 +107,15 @@ impl ClientStateStore {
         serialization::read_json_or_default(&path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
             empty_collection(collection)
         })
+    }
+
+    pub(crate) fn read_collection_read_only(&self, collection: &str) -> Result<Value> {
+        let path = self.collection_path(collection)?;
+        serialization::read_json_or_default_read_only(
+            &path,
+            policy::MAX_COLLECTION_DOCUMENT_BYTES,
+            || empty_collection(collection),
+        )
     }
 
     pub fn write_collection(&self, collection: &str, value: Value) -> Result<Value> {

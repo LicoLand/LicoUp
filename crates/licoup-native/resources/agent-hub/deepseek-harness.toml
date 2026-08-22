@@ -1,5 +1,11 @@
 id = "deepseek-harness"
-binary_names = ["dsh"]
+binary_names = [
+  "dsh-jsonrpc-agent",
+  "dsh-jsonrpc-agent-pkg-linux-x64",
+  "dsh-jsonrpc-agent-pkg-linux-arm64",
+  "dsh-jsonrpc-agent-pkg-macos-arm64",
+  "dsh",
+]
 official_docs = "https://github.com/deepseek-ai/deepseek-harness"
 
 [[channels]]

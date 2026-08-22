@@ -157,18 +157,21 @@ impl CodexProtocol {
 
         self.phase = ProtocolPhase::Finished;
         if status != "completed" {
+            let class = closed_codex_error_class(turn);
+            let (code, message) = turn_failure(status.as_str(), class);
+            let turn_status = turn_status_token(status.as_str(), class);
             crate::platform::turn_event_emit::emit_turn_event(
                 "dispatch.turn.failed",
                 self.thread_id.as_deref().unwrap_or_default(),
                 self.turn_id.as_deref().unwrap_or_default(),
-                serde_json::json!({ "turnStatus": status }),
+                serde_json::json!({
+                    "turnStatus": turn_status,
+                    "code": code,
+                }),
             );
-            let mut failure = self.contextualize(ProtocolFailure::new(
-                "codex_turn_not_completed",
-                "Codex did not complete the requested turn.",
-                "turn/completed",
-            ));
-            failure.turn_status = Some(status);
+            let mut failure =
+                self.contextualize(ProtocolFailure::new(code, message, "turn/completed"));
+            failure.turn_status = Some(turn_status);
             return vec![ProtocolEffect::Fail(failure)];
         }
         crate::platform::turn_event_emit::emit_turn_event(
@@ -207,5 +210,57 @@ impl CodexProtocol {
             turn_status: status,
             effective: self.effective.clone(),
         }))]
+    }
+}
+
+const CLOSED_CODEX_ERROR_CLASSES: &[&str] = &[
+    "Unauthorized",
+    "UsageLimitExceeded",
+    "UsageNotIncluded",
+    "ContextWindowExceeded",
+    "BadRequest",
+    "SandboxError",
+    "InternalServerError",
+    "ResponseStreamConnectionError",
+    "ResponseTooManyFailedAttempts",
+    "ResponseStreamInterrupted",
+];
+
+fn closed_codex_error_class(turn: &Value) -> Option<&'static str> {
+    let info = turn.get("error")?.get("codexErrorInfo")?;
+    let raw = info
+        .as_str()
+        .or_else(|| info.get("type").and_then(Value::as_str))
+        .unwrap_or("");
+    CLOSED_CODEX_ERROR_CLASSES
+        .iter()
+        .copied()
+        .find(|class| *class == raw)
+}
+
+fn turn_failure(status: &str, class: Option<&str>) -> (&'static str, &'static str) {
+    let message = match (status, class) {
+        ("interrupted", _) => "Codex interrupted the requested turn.",
+        (_, Some("Unauthorized")) => "Codex rejected the turn as unauthorized.",
+        (_, Some("UsageLimitExceeded")) => "Codex usage limit exceeded.",
+        (_, Some("UsageNotIncluded")) => "Codex usage is not included for this account.",
+        (_, Some("ContextWindowExceeded")) => "Codex context window was exceeded.",
+        (_, Some("BadRequest")) => "Codex rejected the turn as a bad request.",
+        (_, Some("SandboxError")) => "Codex sandbox rejected the turn.",
+        (_, Some("InternalServerError")) => "Codex reported an internal server error.",
+        (_, Some("ResponseStreamConnectionError")) => "Codex lost the response stream.",
+        (_, Some("ResponseTooManyFailedAttempts")) => {
+            "Codex stopped after too many failed attempts."
+        }
+        (_, Some("ResponseStreamInterrupted")) => "Codex response stream was interrupted.",
+        _ => "Codex did not complete the requested turn.",
+    };
+    ("codex_turn_not_completed", message)
+}
+
+fn turn_status_token(status: &str, class: Option<&str>) -> String {
+    match class {
+        Some(class) if status == "failed" => format!("{status}/{class}"),
+        _ => status.to_string(),
     }
 }

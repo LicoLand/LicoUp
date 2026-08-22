@@ -158,6 +158,26 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
                 "errorCode": probe.error_code
             })
         }
+        RuntimeAdapter::DeepSeekHarness => {
+            let available = !executable.as_ref().is_empty();
+            let ready = super::registry::runtime_driver_profile(adapter.id())
+                .is_some_and(|profile| profile.readiness == "ready");
+            json!({
+                "available": available,
+                "supported": available && ready,
+                "newSession": available && ready,
+                "resumeSession": available && ready,
+                "structuredStream": available && ready,
+                "cancel": false,
+                "interruptSteer": false,
+                "history": false,
+                "errorCode": if available && ready {
+                    Value::Null
+                } else {
+                    json!("deepseek_harness_jsonrpc_carrier_unverified")
+                }
+            })
+        }
     }
 }
 

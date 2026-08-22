@@ -9,29 +9,35 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'fixtures/agent_usage_panel/usage_panel_fixtures.dart';
 
 void main() {
-  test('current workflow envelope exposes one immutable 52-token tree', () {
-    final report = syntheticWorkflowUsageReport();
-    expect(report.workflows, hasLength(1));
-    final workflow = report.workflows.single;
-    expect(workflow.totalTokens, 52);
-    expect(workflow.promptTokens, 41);
-    expect(workflow.cachedInputTokens, 8);
-    expect(workflow.completionTokens, 11);
-    expect(workflow.exactCount, 4);
-    expect(workflow.estimatedCount, 0);
-    expect(workflow.exactCoverage, 1);
-    expect(workflow.roots, hasLength(1));
-    expect(workflow.roots.single.children, hasLength(3));
-    expect(() => report.workflows.add(workflow), throwsUnsupportedError);
+  test(
+    'current workflow envelope exposes one immutable 52-token Graph run',
+    () {
+      final report = syntheticWorkflowUsageReport();
+      expect(report.workflows, hasLength(1));
+      final workflow = report.workflows.single;
+      expect(workflow.totalTokens, 52);
+      expect(workflow.promptTokens, 41);
+      expect(workflow.cachedInputTokens, 8);
+      expect(workflow.completionTokens, 11);
+      expect(workflow.exactCount, 4);
+      expect(workflow.estimatedCount, 0);
+      expect(workflow.exactCoverage, 1);
+      expect(workflow.commands, hasLength(4));
+      expect(() => report.workflows.add(workflow), throwsUnsupportedError);
+      expect(
+        () => workflow.commands.add(workflow.commands.first),
+        throwsUnsupportedError,
+      );
 
-    final serialized = workflow.toJson().toString();
-    expect(serialized, isNot(contains('path-canary')));
-    expect(serialized, isNot(contains('prompt-canary')));
-    expect(serialized, isNot(contains('reply-canary')));
-    expect(serialized, isNot(contains('tool-canary')));
-  });
+      final serialized = workflow.toJson().toString();
+      expect(serialized, isNot(contains('path-canary')));
+      expect(serialized, isNot(contains('prompt-canary')));
+      expect(serialized, isNot(contains('reply-canary')));
+      expect(serialized, isNot(contains('tool-canary')));
+    },
+  );
 
-  test('old and malformed workflow generations fail closed', () {
+  test('unsupported and malformed workflow generations fail closed', () {
     expect(
       () => syntheticWorkflowUsageReport(workflowSchema: 'v0'),
       throwsA(isA<FormatException>()),
@@ -47,46 +53,36 @@ void main() {
     expect(oldReport.workflows, isEmpty);
   });
 
-  testWidgets(
-    'English workflow view progressively discloses Plan, Task, dispatch',
-    (tester) async {
-      final report = syntheticWorkflowUsageReport();
-      await tester.pumpWidget(_app(report));
-      await tester.tap(find.byKey(const Key('agent-usage-grouping-workflow')));
-      await tester.pumpAndSettle();
+  testWidgets('English workflow view progressively discloses Graph commands', (
+    tester,
+  ) async {
+    final report = syntheticWorkflowUsageReport();
+    await tester.pumpWidget(_app(report));
+    await tester.tap(find.byKey(const Key('agent-usage-grouping-workflow')));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Workflow Usage'), findsOneWidget);
-      expect(find.text('52'), findsAtLeastNWidgets(1));
-      expect(find.text('8'), findsAtLeastNWidgets(1));
-      expect(find.text('Exact 4/4 (100%)'), findsOneWidget);
-      expect(find.text('Main'), findsAtLeastNWidgets(1));
-      expect(find.text('Subordinate'), findsAtLeastNWidgets(1));
-      expect(find.text('Main conversation'), findsNothing);
-      expect(find.text('Task · DESIGN'), findsNothing);
+    expect(find.text('Workflow Usage'), findsOneWidget);
+    expect(find.text('52'), findsAtLeastNWidgets(1));
+    expect(find.text('8'), findsAtLeastNWidgets(1));
+    expect(find.text('Exact 4/4 (100%)'), findsOneWidget);
+    expect(find.text('Graph runs'), findsOneWidget);
+    expect(find.text('Graph commands'), findsOneWidget);
+    expect(find.text('Graph run 1'), findsOneWidget);
+    expect(find.text('Command 1'), findsNothing);
 
-      final planRow = find.byKey(
-        const ValueKey('agent-usage-workflow-plan-row'),
-      );
-      await tester.ensureVisible(planRow);
-      await tester.tap(planRow);
-      await tester.pumpAndSettle();
-      expect(find.text('Main conversation'), findsOneWidget);
-      expect(find.text('Task · DESIGN'), findsOneWidget);
-      expect(find.text('Task · IMPLEMENT'), findsOneWidget);
-      expect(find.text('Task · REVIEW'), findsOneWidget);
-
-      final designTask = find.text('Task · DESIGN');
-      await tester.ensureVisible(designTask);
-      await tester.tap(designTask);
-      await tester.pumpAndSettle();
-      expect(find.text('Dispatch 1'), findsOneWidget);
-      expect(find.text('Designer'), findsOneWidget);
-      expect(find.text('Agent Designer'), findsOneWidget);
-      expect(find.text('Model Designer'), findsOneWidget);
-      expect(find.text('Completed'), findsAtLeastNWidgets(1));
-      expect(find.textContaining('private-'), findsNothing);
-    },
-  );
+    final runRow = find.byKey(const ValueKey('agent-usage-workflow-run-row'));
+    await tester.ensureVisible(runRow);
+    await tester.tap(runRow);
+    await tester.pumpAndSettle();
+    expect(find.text('Command 1'), findsOneWidget);
+    expect(find.text('Command 4'), findsOneWidget);
+    expect(find.text('Actor'), findsNWidgets(2));
+    expect(find.text('Membership · Membership:actor Alpha'), findsOneWidget);
+    expect(find.text('Agent · Agent Alpha'), findsOneWidget);
+    expect(find.text('Model · Model Alpha'), findsOneWidget);
+    expect(find.text('Completed'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('private-'), findsNothing);
+  });
 
   testWidgets(
     'Simplified Chinese labels remain localized and Agent view survives empty workflow',
@@ -118,33 +114,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Simplified Chinese workflow components and dispatch are localized',
-    (tester) async {
-      await tester.pumpWidget(
-        _app(syntheticWorkflowUsageReport(), locale: const Locale('zh')),
-      );
-      await tester.tap(find.byKey(const Key('agent-usage-grouping-workflow')));
-      await tester.pumpAndSettle();
-      expect(find.text('工作流用量'), findsOneWidget);
-      expect(find.textContaining('提示词'), findsOneWidget);
-      expect(find.textContaining('补全'), findsOneWidget);
-      expect(find.textContaining('Prompt'), findsNothing);
-      expect(find.textContaining('Completion'), findsNothing);
+  testWidgets('Simplified Chinese Graph run and command labels are localized', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(syntheticWorkflowUsageReport(), locale: const Locale('zh')),
+    );
+    await tester.tap(find.byKey(const Key('agent-usage-grouping-workflow')));
+    await tester.pumpAndSettle();
+    expect(find.text('工作流用量'), findsOneWidget);
+    expect(find.textContaining('提示词'), findsOneWidget);
+    expect(find.textContaining('补全'), findsOneWidget);
+    expect(find.textContaining('Prompt'), findsNothing);
+    expect(find.textContaining('Completion'), findsNothing);
 
-      await tester.tap(
-        find.byKey(const ValueKey('agent-usage-workflow-plan-row')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('任务 · DESIGN'));
-      await tester.pumpAndSettle();
-      expect(find.text('派发 1'), findsOneWidget);
-      expect(find.text('设计者'), findsOneWidget);
-      expect(find.text('Agent Designer'), findsOneWidget);
-      expect(find.text('Model Designer'), findsOneWidget);
-      expect(find.text('已完成'), findsAtLeastNWidgets(1));
-    },
-  );
+    expect(find.text('图运行 1'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('agent-usage-workflow-run-row')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('命令 1'), findsOneWidget);
+    expect(find.text('参与者'), findsNWidgets(2));
+    expect(find.text('成员资格 · Membership:actor Alpha'), findsOneWidget);
+    expect(find.text('智能体 · Agent Alpha'), findsOneWidget);
+    expect(find.text('模型 · Model Alpha'), findsOneWidget);
+    expect(find.text('已完成'), findsAtLeastNWidgets(1));
+  });
 }
 
 Widget _app(AgentUsageReport report, {Locale? locale}) {
