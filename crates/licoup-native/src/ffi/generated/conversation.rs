@@ -93,6 +93,18 @@ pub enum ConversationFailureCode {
     RuntimeUnavailable,
     #[serde(rename = "unsupported_action")]
     UnsupportedAction,
+    #[serde(rename = "profile_intent_invalid")]
+    ProfileIntentInvalid,
+    #[serde(rename = "profile_intent_limit")]
+    ProfileIntentLimit,
+    #[serde(rename = "profile_revision_stale")]
+    ProfileRevisionStale,
+    #[serde(rename = "profile_candidate_rejected")]
+    ProfileCandidateRejected,
+    #[serde(rename = "conversation_revision_stale")]
+    ConversationRevisionStale,
+    #[serde(rename = "local_owner_required")]
+    LocalOwnerRequired,
 }
 
 pub const CONVERSATION_BRIDGE_SCHEMA_VERSION: &str = "lico.conversation.v1";
@@ -127,6 +139,8 @@ pub enum ConversationActionKind {
     ConversationEventAppend,
     #[serde(rename = "conversation.message.post")]
     ConversationMessagePost,
+    #[serde(rename = "conversation.dispatch.after-post")]
+    ConversationDispatchAfterPost,
     #[serde(rename = "conversation.event.part.append")]
     ConversationEventPartAppend,
     #[serde(rename = "conversation.event.finalize")]
@@ -141,4 +155,12 @@ pub enum ConversationActionKind {
     ConversationExport,
     #[serde(rename = "conversation.import")]
     ConversationImport,
+    #[serde(rename = "conversation.assistant.set")]
+    ConversationAssistantSet,
+    #[serde(rename = "conversation.profile.update")]
+    ConversationProfileUpdate,
+    #[serde(rename = "conversation.profile.get")]
+    ConversationProfileGet,
+    #[serde(rename = "conversation.profile.candidates")]
+    ConversationProfileCandidates,
 }

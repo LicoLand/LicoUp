@@ -96,7 +96,11 @@ abstract interface class PersistentAgentConversationGateway {
   Future<List<Map<String, dynamic>>> activeTurns({
     required String agentId,
     String sessionId = '',
+    String conversationId = '',
+    Duration waitForChange = Duration.zero,
   });
+
+  Future<void> ensureRuntime({String conversationId = ''});
 
   Stream<AgentDispatchEvent> attachActiveTurn({
     required String turnHandle,

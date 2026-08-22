@@ -142,6 +142,7 @@ internal class SecureMeshAndroidMobileRelaySecretBridge(
             identity.challenge,
             identity.file,
         )
+        SecureMeshAndroidSecretContract.decodeStoredSecret(bytes)
         return bytes
     }
 

@@ -96,6 +96,10 @@ pub struct RunSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assistant_membership_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_receipt: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     pub commands: BTreeMap<String, RunCommand>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -126,6 +130,8 @@ impl RunSnapshot {
             merge_sources: BTreeMap::new(),
             fallbacks: Vec::new(),
             conversation_id: None,
+            assistant_membership_id: None,
+            route_receipt: None,
             cwd: None,
             commands: BTreeMap::new(),
             diagnostic_code: None,
@@ -163,6 +169,20 @@ pub enum ReducerEvent {
         class: FailureClass,
         code: String,
     },
+    /// Assistant-owned Graph effects never enter the generic implicit retry,
+    /// fallback, or failure-transition path. The originating Assistant turn
+    /// receives this durable terminal outcome and may choose what to do next.
+    AssistantEffectFailed {
+        command_id: String,
+        attempt_token: String,
+        class: FailureClass,
+        code: String,
+    },
+    /// A drive-level failure has unknown effect position, so the Assistant
+    /// Graph settles in-doubt without duplicating or guessing an effect.
+    AssistantDriveFailed {
+        code: String,
+    },
     RetryRequested {
         command_id: String,
     },
@@ -191,6 +211,31 @@ pub struct ReducerOutput {
     pub snapshot: RunSnapshot,
     pub emitted_commands: Vec<RunCommand>,
     pub applied: bool,
+}
+
+/// One deterministic actor-command input for a state: the run input wrapped
+/// with the state instruction when one exists. Registration and drive share
+/// this builder so a pre-registered entry turn sends exactly the prompt the
+/// emitted command would carry.
+pub(crate) fn effect_input_for(
+    workflow: &CompiledWorkflow,
+    state_id: &str,
+    input: Value,
+) -> Result<Value> {
+    let state = workflow
+        .state(state_id)
+        .ok_or_else(|| anyhow!("strategy_state_unknown"))?;
+    if state.instruction.trim().is_empty() {
+        return Ok(input);
+    }
+    let context = serde_json::to_string(&input)?;
+    Ok(json!({
+        "prompt": format!(
+            "{}\n\nState: {}\nInput JSON:\n{}",
+            state.instruction, state.id, context
+        ),
+        "context": input,
+    }))
 }
 
 pub fn reduce(
@@ -306,6 +351,15 @@ pub fn reduce(
             class,
             code,
         } => machine.settle_failure(&command_id, Some(&attempt_token), class, &code)?,
+        ReducerEvent::AssistantEffectFailed {
+            command_id,
+            attempt_token,
+            class,
+            code,
+        } => machine.settle_assistant_effect_failure(&command_id, &attempt_token, class, &code)?,
+        ReducerEvent::AssistantDriveFailed { code } => {
+            machine.settle_assistant_drive_failure(&code)?
+        }
         ReducerEvent::RetryRequested { command_id } => machine.retry(&command_id)?,
         ReducerEvent::CancelRequested => machine.cancel()?,
         ReducerEvent::CancellationAcknowledged {
@@ -609,18 +663,7 @@ impl Machine<'_> {
     }
 
     fn effect_input(&self, state_id: &str, input: Value) -> Result<Value> {
-        let state = self.workflow.state(state_id).unwrap();
-        if state.instruction.trim().is_empty() {
-            return Ok(input);
-        }
-        let context = serde_json::to_string(&input)?;
-        Ok(json!({
-            "prompt": format!(
-                "{}\n\nState: {}\nInput JSON:\n{}",
-                state.instruction, state.id, context
-            ),
-            "context": input,
-        }))
+        effect_input_for(self.workflow, state_id, input)
     }
 
     fn emit_command(
@@ -1207,16 +1250,7 @@ impl Machine<'_> {
         class: FailureClass,
         code: &str,
     ) -> Result<()> {
-        ensure!(
-            !code.is_empty()
-                && code.len() <= 96
-                && code.chars().all(|character| {
-                    character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || matches!(character, '-' | '_')
-                }),
-            "strategy_failure_code_invalid"
-        );
+        validate_failure_code(code)?;
         let current = self
             .snapshot
             .commands
@@ -1343,6 +1377,102 @@ impl Machine<'_> {
             self.snapshot.status = StrategyRunStatus::Failed;
         }
         Ok(())
+    }
+
+    fn settle_assistant_effect_failure(
+        &mut self,
+        command_id: &str,
+        attempt_token: &str,
+        class: FailureClass,
+        code: &str,
+    ) -> Result<()> {
+        validate_failure_code(code)?;
+        let current = self
+            .snapshot
+            .commands
+            .get(command_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+        ensure!(
+            current.attempt_token == attempt_token,
+            "strategy_callback_stale"
+        );
+        if matches!(
+            current.status,
+            CommandStatus::Failed | CommandStatus::InDoubt
+        ) && current.failure_class == Some(class)
+            && current.failure_code.as_deref() == Some(code)
+        {
+            self.applied = false;
+            return Ok(());
+        }
+        ensure!(
+            matches!(
+                current.status,
+                CommandStatus::Pending | CommandStatus::Claimed | CommandStatus::Running
+            ),
+            "strategy_callback_conflict"
+        );
+        let command = self
+            .snapshot
+            .commands
+            .get_mut(command_id)
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+        command.status = if class == FailureClass::InDoubt {
+            CommandStatus::InDoubt
+        } else {
+            CommandStatus::Failed
+        };
+        command.failure_class = Some(class);
+        command.failure_code = Some(code.to_owned());
+        self.cancel_unstarted_assistant_commands();
+        self.snapshot.status = if class == FailureClass::InDoubt {
+            StrategyRunStatus::CancelInDoubt
+        } else {
+            StrategyRunStatus::Failed
+        };
+        self.snapshot.diagnostic_code = Some(code.to_owned());
+        Ok(())
+    }
+
+    fn settle_assistant_drive_failure(&mut self, code: &str) -> Result<()> {
+        validate_failure_code(code)?;
+        if matches!(
+            self.snapshot.status,
+            StrategyRunStatus::Completed
+                | StrategyRunStatus::Failed
+                | StrategyRunStatus::Cancelled
+                | StrategyRunStatus::Blocked
+                | StrategyRunStatus::CancelInDoubt
+        ) {
+            self.applied = false;
+            return Ok(());
+        }
+        self.cancel_unstarted_assistant_commands();
+        for command in self.snapshot.commands.values_mut().filter(|command| {
+            matches!(
+                command.status,
+                CommandStatus::Claimed | CommandStatus::Running
+            )
+        }) {
+            command.status = CommandStatus::InDoubt;
+            command.failure_class = Some(FailureClass::InDoubt);
+            command.failure_code = Some(code.to_owned());
+        }
+        self.snapshot.status = StrategyRunStatus::CancelInDoubt;
+        self.snapshot.diagnostic_code = Some(code.to_owned());
+        Ok(())
+    }
+
+    fn cancel_unstarted_assistant_commands(&mut self) {
+        for command in self.snapshot.commands.values_mut().filter(|command| {
+            matches!(
+                command.status,
+                CommandStatus::Pending | CommandStatus::Retryable | CommandStatus::CancelRequested
+            )
+        }) {
+            command.status = CommandStatus::Cancelled;
+        }
     }
 
     fn retry(&mut self, command_id: &str) -> Result<()> {
@@ -1578,6 +1708,20 @@ fn retry_policy_allows(
         state.retry.max_attempts
     };
     command.attempt < limit
+}
+
+fn validate_failure_code(code: &str) -> Result<()> {
+    ensure!(
+        !code.is_empty()
+            && code.len() <= 96
+            && code.chars().all(|character| {
+                character.is_ascii_lowercase()
+                    || character.is_ascii_digit()
+                    || matches!(character, '-' | '_')
+            }),
+        "strategy_failure_code_invalid"
+    );
+    Ok(())
 }
 
 pub(crate) fn fallback_reason(
@@ -2418,5 +2562,100 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn assistant_effect_failure_is_terminal_without_retry_fallback_or_failure_edge() {
+        let workflow = actor_loop();
+        let mut empty = RunSnapshot::empty("run-assistant", "revision", "semantics");
+        empty.assistant_membership_id = Some("membership:assistant".to_owned());
+        empty.slot_candidate_counts.insert("worker".into(), 2);
+        let started = reduce(&workflow, &empty, ReducerEvent::Start { input: json!({}) }).unwrap();
+        let command = started.emitted_commands[0].clone();
+        let failed = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::AssistantEffectFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class: FailureClass::Transient,
+                code: "effect_temporarily_unavailable".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(failed.snapshot.status, StrategyRunStatus::Failed);
+        assert_eq!(
+            failed.snapshot.commands[&command.id].status,
+            CommandStatus::Failed
+        );
+        assert!(failed.emitted_commands.is_empty());
+        assert!(failed.snapshot.fallbacks.is_empty());
+        assert!(failed.snapshot.active_states.contains("work"));
+        assert!(!failed.snapshot.state_visits.contains_key("fail"));
+        assert!(
+            reduce(
+                &workflow,
+                &failed.snapshot,
+                ReducerEvent::RetryRequested {
+                    command_id: command.id.clone(),
+                },
+            )
+            .is_err()
+        );
+        let duplicate = reduce(
+            &workflow,
+            &failed.snapshot,
+            ReducerEvent::AssistantEffectFailed {
+                command_id: command.id,
+                attempt_token: command.attempt_token,
+                class: FailureClass::Transient,
+                code: "effect_temporarily_unavailable".into(),
+            },
+        )
+        .unwrap();
+        assert!(!duplicate.applied);
+        assert_eq!(duplicate.snapshot, failed.snapshot);
+    }
+
+    #[test]
+    fn assistant_drive_failure_marks_started_effect_in_doubt_without_replay() {
+        let workflow = actor_loop();
+        let mut empty = RunSnapshot::empty("run-assistant", "revision", "semantics");
+        empty.assistant_membership_id = Some("membership:assistant".to_owned());
+        let started = reduce(&workflow, &empty, ReducerEvent::Start { input: json!({}) }).unwrap();
+        let command = started.emitted_commands[0].clone();
+        let running = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::CommandStarted {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+            },
+        )
+        .unwrap();
+        let failed = reduce(
+            &workflow,
+            &running.snapshot,
+            ReducerEvent::AssistantDriveFailed {
+                code: "effect_outcome_unknown".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(failed.snapshot.status, StrategyRunStatus::CancelInDoubt);
+        assert_eq!(
+            failed.snapshot.commands[&command.id].status,
+            CommandStatus::InDoubt
+        );
+        assert!(failed.emitted_commands.is_empty());
+        let duplicate = reduce(
+            &workflow,
+            &failed.snapshot,
+            ReducerEvent::AssistantDriveFailed {
+                code: "effect_outcome_unknown".into(),
+            },
+        )
+        .unwrap();
+        assert!(!duplicate.applied);
+        assert_eq!(duplicate.snapshot, failed.snapshot);
     }
 }

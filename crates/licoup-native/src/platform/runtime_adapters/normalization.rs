@@ -2,8 +2,8 @@ use super::model::{NormalizedEffectiveSettings, NormalizedExecution, NormalizedF
 use super::params::timestamp;
 use super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server, hermes_driver,
-    lico_agent_driver, openclaw_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server,
+    deepseek_harness_driver, hermes_driver, lico_agent_driver, openclaw_driver, pi_driver,
 };
 use serde_json::{Value, json};
 
@@ -547,5 +547,60 @@ pub(super) fn normalize_lico_agent(execution: lico_agent_driver::RunResult) -> N
         started_at: execution.started_at,
         runtime_protocol: lico_agent_driver::RUNTIME_PROTOCOL,
         driver_id: "lico-agent-rpc",
+    }
+}
+
+pub(super) fn normalize_deepseek_harness(
+    execution: deepseek_harness_driver::RunResult,
+) -> NormalizedExecution {
+    let error = execution.error.map(|failure| {
+        let failure = failure.into_payload();
+        NormalizedFailure {
+            code: failure.code.to_string(),
+            message: failure.message.to_string(),
+            stage: failure.stage.to_string(),
+            user_interaction_required: failure.user_interaction_required,
+            request_method: failure.request_method,
+            session_id: failure.session_id,
+            thread_id: failure.thread_id,
+            turn_id: failure.turn_id,
+            turn_status: failure.turn_status,
+        }
+    });
+    NormalizedExecution {
+        ok: execution.ok,
+        output: execution.output,
+        events: execution.events,
+        capabilities: json!({
+            "newSession": true,
+            "resumeSession": true,
+            "structuredEvents": true,
+            "interactiveApprovalBridge": false,
+            "cancel": false,
+            "interruptSteer": false,
+            "history": false,
+            "modelOverride": true,
+            "reasoningOverride": false
+        }),
+        error,
+        session_id: execution.session_id,
+        thread_id: execution.thread_id,
+        turn_id: execution.turn_id,
+        turn_status: execution.turn_status,
+        effective: NormalizedEffectiveSettings {
+            cwd: execution.effective.cwd,
+            model: execution.effective.model,
+            reasoning_effort: execution.effective.reasoning_effort,
+            permission_mode: execution.effective.permission_mode,
+            sandbox: execution.effective.sandbox,
+            approval_policy: execution.effective.approval_policy,
+            ..NormalizedEffectiveSettings::default()
+        },
+        status_code: execution.status_code,
+        stdout_truncated: execution.stdout_truncated,
+        stderr_truncated: execution.stderr_truncated,
+        started_at: execution.started_at,
+        runtime_protocol: deepseek_harness_driver::RUNTIME_PROTOCOL,
+        driver_id: deepseek_harness_driver::DRIVER_ID,
     }
 }
