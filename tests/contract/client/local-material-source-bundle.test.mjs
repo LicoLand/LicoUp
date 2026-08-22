@@ -99,17 +99,39 @@ test("protocol reset and state codec fail closed on exact protocol-bound state",
   ]) {
     assert.ok(source["protocol_reset.rs"].includes(token), token);
   }
-  for (const requiredField of [
-    "privateKeyBase64url",
-    "signingKeyBase64url",
+  for (const requiredSecretField of [
+    "PrivateKey",
+    "SigningKey",
+    "SignedPrekeyPrivateKey",
+    "OneTimePrekeyPrivateKey",
+    "OneTimeMlKem1024PrekeySeed",
+  ]) {
+    assert.ok(
+      source["state_codec.rs"].includes(
+        `MobileRelayE2eeSecretField::${requiredSecretField}`,
+      ),
+      requiredSecretField,
+    );
+  }
+  for (const requiredStateField of [
     "mailboxRotationEpoch",
     "prekeyPublicationVersion",
+    "sessionId",
+  ]) {
+    assert.ok(source["state_codec.rs"].includes(requiredStateField), requiredStateField);
+  }
+  for (const retiredPrivateStateField of [
+    "privateKeyBase64url",
+    "signingKeyBase64url",
     "signedPrekeyPrivateKeyBase64url",
     "oneTimePrekeyPrivateKeyBase64url",
     "oneTimeMlKem1024PrekeySeedBase64url",
-    "sessionId",
   ]) {
-    assert.ok(source["state_codec.rs"].includes(requiredField), requiredField);
+    assert.equal(
+      source["state_codec.rs"].includes(`\"${retiredPrivateStateField}\"`),
+      false,
+      retiredPrivateStateField,
+    );
   }
   assert.ok(source["state_codec.rs"].includes("ok_or_else"));
 });

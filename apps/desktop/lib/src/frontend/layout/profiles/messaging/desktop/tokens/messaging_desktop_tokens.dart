@@ -123,6 +123,9 @@ abstract final class MessagingDesktopMetrics {
       conversationHeaderCapsulePadV * 2 +
       30;
 
+  /// Extra gap between the header overlay and the group failure alert.
+  static const double conversationFailureAlertGap = 16;
+
   /// Horizontal inset of the floating composer capsule.
   static const double conversationComposerCapsuleInsetH = 12;
 

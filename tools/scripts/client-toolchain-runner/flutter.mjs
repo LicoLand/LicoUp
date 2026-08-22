@@ -14,6 +14,7 @@ import {
   seedClientGradleHome,
   withClientToolchainEnv,
 } from "../client-toolchain-env.mjs";
+import { androidJavaEnvironment } from "../lib/android-apk-facts/sdk.mjs";
 import { FLUTTER_GENERATED_PLUGIN_FILES, ROOT } from "./constants.mjs";
 import { preferredPubHostedUrl, seedStablePubCache } from "./pub-cache.mjs";
 import { run } from "./process.mjs";
@@ -141,6 +142,10 @@ export function restoreFlutterGeneratedPluginFiles(snapshot) {
 }
 
 export async function prepareFlutterCommand(command, args, cwd) {
+  if (["gradlew", "gradlew.bat"].includes(path.basename(command).toLowerCase())) {
+    const java = androidJavaEnvironment();
+    return { command, args, env: { ...process.env, JAVA_HOME: java.env.JAVA_HOME } };
+  }
   if (!isFlutterCommand(command) || !existsSync(path.join(cwd, "pubspec.yaml"))) {
     return { command, args, env: process.env };
   }

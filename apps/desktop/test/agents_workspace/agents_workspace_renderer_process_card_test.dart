@@ -1,3 +1,5 @@
+import 'package:licoup/src/contracts/target_management.dart';
+
 import 'support/agents_workspace_test_harness.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
@@ -264,7 +266,9 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    final controller = ClientController();
+    final agentService = _ProcessCardAgentService();
+    addTearDown(agentService.dispose);
+    final controller = ClientController(agentService: agentService);
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -649,6 +653,17 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });
+}
+
+final class _ProcessCardAgentService extends AgentService {
+  @override
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
+    bool enableAgentCliModelLookup = false,
+  }) async => TargetScanBatch([
+    for (final targetId in targetIds)
+      TargetScanSlot(targetId: targetId, failed: true),
+  ]);
 }
 
 void main() => registerAgentsWorkspaceRendererProcessCardScenarios();
