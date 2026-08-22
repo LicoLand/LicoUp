@@ -189,6 +189,33 @@ void main() {
   );
 
   test(
+    'strategy execute uses the persistent structured conversation lane',
+    () async {
+      final transport = _FakeStdioTransport();
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+
+      await processIo.runCliWithStdin(
+        const ['strategy', 'execute', '--stdin-json', 'true'],
+        '{"action":"strategy.run.active","revisionDigest":"rev","conversationId":"conversation:group"}',
+      );
+
+      expect(context.startCount, 0);
+      expect(transport.structuredCalls.single.method, 'strategy.execute');
+      expect(transport.structuredCalls.single.params, {
+        'action': 'strategy.run.active',
+        'revisionDigest': 'rev',
+        'conversationId': 'conversation:group',
+      });
+    },
+  );
+
+  test(
     'LLM credential writes reuse the persistent authorized process',
     () async {
       final transport = _FakeStdioTransport();

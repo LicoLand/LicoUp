@@ -26,10 +26,24 @@ pub(super) fn upsert_discovery_cache(
     store: &ClientStateStore,
     candidate: &TargetCandidate,
 ) -> Result<()> {
+    upsert_discovery_cache_many(store, &[candidate])
+}
+
+pub(super) fn upsert_discovery_cache_many(
+    store: &ClientStateStore,
+    candidates: &[&TargetCandidate],
+) -> Result<()> {
     let mut records = store.read_target_routes()?;
-    records.retain(|record| record.target != candidate.target);
-    if let Some(record) = cache_record(candidate, now_epoch_seconds()) {
-        records.push(record);
+    let selected = candidates
+        .iter()
+        .map(|candidate| candidate.target.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    records.retain(|record| !selected.contains(record.target.as_str()));
+    let cached_at = now_epoch_seconds();
+    for &candidate in candidates {
+        if let Some(record) = cache_record(candidate, cached_at) {
+            records.push(record);
+        }
     }
     records.sort_by(|left, right| left.target.cmp(&right.target));
     store.write_target_routes(&records)

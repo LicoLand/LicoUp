@@ -4545,6 +4545,13 @@ fn build_command_table() -> CommandTable {
                 value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
         ],
         constraints: &[],
         cardinality: CommandCardinality::Options,

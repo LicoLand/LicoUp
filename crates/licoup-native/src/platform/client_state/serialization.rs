@@ -1,3 +1,4 @@
+use crate::platform::file_security::read_existing_private_text_bounded;
 use crate::platform::file_security::{
     atomic_write_private_text, atomic_write_private_text_bounded, read_private_text_bounded,
 };
@@ -16,6 +17,23 @@ where
     F: FnOnce() -> Value,
 {
     let Some(raw) = read_private_text_bounded(path, max_bytes)? else {
+        return Ok(default_value());
+    };
+    if raw.trim().is_empty() {
+        return Ok(default_value());
+    }
+    Ok(serde_json::from_str(&raw)?)
+}
+
+pub(super) fn read_json_or_default_read_only<F>(
+    path: &Path,
+    max_bytes: usize,
+    default_value: F,
+) -> Result<Value>
+where
+    F: FnOnce() -> Value,
+{
+    let Some(raw) = read_existing_private_text_bounded(path, max_bytes)? else {
         return Ok(default_value());
     };
     if raw.trim().is_empty() {

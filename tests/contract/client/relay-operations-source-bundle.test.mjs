@@ -78,9 +78,12 @@ test("command handlers retain ciphertext-only four-operation station calls", asy
   }
   assert.ok(source["command_handlers/create.rs"].includes("secure_envelope_param(params)"));
   assert.ok(source["command_handlers/create.rs"].includes(
-    "seal_mobile_relay_payload_with_pairwise_operation"));
+    "seal_mobile_relay_payload_deferred"));
+  assert.ok(source["command_handlers/create.rs"].includes("commit_with_pending_delivery"));
+  assert.ok(source["command_handlers/create.rs"].includes("recover_pending_secure_command"));
   assert.ok(source["command_handlers/result.rs"].includes(
-    "open_mobile_relay_payload_with_pairwise_operation"));
+    "open_mobile_relay_payload_deferred"));
+  assert.ok(source["command_handlers/result.rs"].includes("commit_with_received_payload"));
   assert.ok(source["command_handlers/result.rs"].includes('"bodyRedacted": true'));
   assert.ok(handlers.includes("transportHint"));
   assert.equal(handlers.includes("execute_command"), false);

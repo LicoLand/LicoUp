@@ -290,9 +290,16 @@ class TargetController extends ChangeNotifier {
         return;
       }
       final knownIds = _targets.map((target) => target.target).toSet();
-      final probes = await Future.wait<_TargetProbeResult>([
-        for (final id in ids) _probe(id),
-      ]);
+      final batch = await _gateway.scanTargetsBatch(ids);
+      final slots = {for (final slot in batch.slots) slot.targetId: slot};
+      final probes = [
+        for (final id in ids)
+          _TargetProbeResult(
+            targetId: id,
+            candidate: slots[id]?.candidate,
+            failed: slots[id]?.failed ?? true,
+          ),
+      ];
       if (!_isCurrentScan(generation)) return;
       var discovered = 0;
       var failures = 0;
@@ -380,15 +387,6 @@ class TargetController extends ChangeNotifier {
     }
   }
 
-  Future<_TargetProbeResult> _probe(String targetId) async {
-    try {
-      final candidate = await _probeTarget(targetId);
-      return _TargetProbeResult(targetId: targetId, candidate: candidate);
-    } catch (_) {
-      return _TargetProbeResult(targetId: targetId, failed: true);
-    }
-  }
-
   /// Revalidates only the selected conversation target. Cached discovery
   /// metadata intentionally carries no executable authority, so reopening an
   /// agent restores its current binding before the selection flow returns.
@@ -450,6 +448,46 @@ class TargetController extends ChangeNotifier {
 
   bool isRefreshingNativeModelCatalog(String targetId) {
     return _nativeModelCatalogInFlightIds.contains(targetId.trim());
+  }
+
+  Future<void> refreshAgentModelCatalogs(Iterable<String> targetIds) async {
+    if (_disposed || _isMobileRuntime()) return;
+    final ids = <String>[];
+    final seen = <String>{};
+    for (final targetId in targetIds) {
+      final id = targetId.trim();
+      if (id.isNotEmpty && seen.add(id)) ids.add(id);
+    }
+    if (ids.isEmpty) return;
+    final TargetScanBatch batch;
+    try {
+      batch = await _gateway.scanTargetsBatch(
+        ids,
+        enableAgentCliModelLookup: true,
+      );
+    } catch (_) {
+      return;
+    }
+    var next = _targets;
+    for (final slot in batch.slots) {
+      if (slot.failed) continue;
+      next = TargetPolicy.mergeProbe(
+        next,
+        slot.targetId,
+        slot.candidate,
+        replaceModelCatalog: true,
+      );
+      final candidate = slot.candidate;
+      if (candidate != null &&
+          TargetPolicy.hasSelectedAgentModelCatalog(candidate)) {
+        _nativeModelCatalogRefreshedIds.add(slot.targetId);
+      }
+    }
+    if (_sameTargets(_targets, next)) return;
+    _targets = List.unmodifiable(next);
+    _onTargetsSettled();
+    notifyListeners();
+    await _persistCache();
   }
 
   void _scheduleNativeModelCatalogRefresh(
@@ -532,10 +570,17 @@ class TargetController extends ChangeNotifier {
     if (existing != null) return existing;
     late final Future<TargetCandidate?> probe;
     probe = _gateway
-        .scanOneTarget(
+        .scanTargetsBatch([
           targetId,
-          enableAgentCliModelLookup: enableAgentCliModelLookup,
-        )
+        ], enableAgentCliModelLookup: enableAgentCliModelLookup)
+        .then((batch) {
+          for (final slot in batch.slots) {
+            if (slot.targetId == targetId && !slot.failed) {
+              return slot.candidate;
+            }
+          }
+          return null;
+        })
         .whenComplete(() {
           if (identical(_targetProbeFlights[flightKey], probe)) {
             _targetProbeFlights.remove(flightKey);

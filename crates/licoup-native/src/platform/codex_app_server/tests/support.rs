@@ -2,7 +2,7 @@ use crate::platform::codex_app_server::config::ProtocolConfig;
 use crate::platform::codex_app_server::limits::{
     INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
 };
-use crate::platform::codex_app_server::model::{ProtocolEffect, ProtocolOutcome};
+use crate::platform::codex_app_server::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome};
 use crate::platform::codex_app_server::protocol::CodexProtocol;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -75,4 +75,14 @@ pub(super) fn completed_outcome(effects: Vec<ProtocolEffect>) -> ProtocolOutcome
             ProtocolEffect::Send(_) | ProtocolEffect::Fail(_) => None,
         })
         .expect("matching completion should finish the protocol")
+}
+
+pub(super) fn failed_effect(effects: Vec<ProtocolEffect>) -> ProtocolFailure {
+    effects
+        .into_iter()
+        .find_map(|effect| match effect {
+            ProtocolEffect::Fail(failure) => Some(failure),
+            ProtocolEffect::Send(_) | ProtocolEffect::Complete(_) => None,
+        })
+        .expect("matching failure should finish the protocol")
 }

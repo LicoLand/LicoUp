@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_ev
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
@@ -253,6 +254,7 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.sessionKey = '',
     this.participantTargets = const [],
     this.participantConversationIds = const {},
+    this.participantRuntimeProfiles = const {},
     this.primaryConversationId = '',
     this.preferPeerAgents = false,
     this.topOverlayInset = 0,
@@ -281,6 +283,7 @@ class MessagingParticipantFlow extends StatefulWidget {
 
   /// Agent id → that agent's conversation id for hover metadata.
   final Map<String, String> participantConversationIds;
+  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
 
   /// Fallback conversation id when a message has no participant agent id.
   final String primaryConversationId;
@@ -492,6 +495,8 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             participantLabel: participantLabel,
             participantRole: participantRole,
             participantTarget: _participantTarget(participantAgentId),
+            runtimeProfile:
+                widget.participantRuntimeProfiles[participantAgentId],
             messages: messages,
             target: widget.target,
             adapter: widget.adapter,

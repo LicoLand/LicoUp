@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
@@ -28,6 +29,7 @@ class AgentConversationMessageList extends StatefulWidget {
     this.processStyle = AgentsProcessStyle.processCard,
     this.participantTargets = const [],
     this.participantConversationIds = const {},
+    this.participantRuntimeProfiles = const {},
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
@@ -49,6 +51,7 @@ class AgentConversationMessageList extends StatefulWidget {
 
   /// Agent id → conversation id used on hover next to message timestamps.
   final Map<String, String> participantConversationIds;
+  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
 
   /// Extra top padding when a floating header overlays the transcript.
   final double topOverlayInset;
@@ -325,6 +328,7 @@ class AgentConversationMessageListState
               sessionKey: _timelineSessionKey,
               participantTargets: widget.participantTargets,
               participantConversationIds: widget.participantConversationIds,
+              participantRuntimeProfiles: widget.participantRuntimeProfiles,
               primaryConversationId: primaryConversationId,
               preferPeerAgents: false,
               topOverlayInset: widget.topOverlayInset,
