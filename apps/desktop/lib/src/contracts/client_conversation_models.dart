@@ -47,6 +47,7 @@ final class ClientConversation {
     this.pinned = false,
     this.group = false,
     this.strategyRevision = '',
+    this.assistantMembershipId = '',
     required this.revision,
     required this.createdAtUnixMs,
     required this.updatedAtUnixMs,
@@ -62,6 +63,7 @@ final class ClientConversation {
         pinned: json['pinned'] == true,
         group: json['isGroup'] == true,
         strategyRevision: (json['strategyRevision'] ?? '').toString(),
+        assistantMembershipId: (json['assistantMembershipId'] ?? '').toString(),
         revision: _integer(json['revision']),
         createdAtUnixMs: _integer(json['createdAtUnixMs']),
         updatedAtUnixMs: _integer(json['updatedAtUnixMs']),
@@ -77,6 +79,7 @@ final class ClientConversation {
   final bool pinned;
   final bool group;
   final String strategyRevision;
+  final String assistantMembershipId;
   final int revision;
   final int createdAtUnixMs;
   final int updatedAtUnixMs;
@@ -84,6 +87,14 @@ final class ClientConversation {
   final int eventCount;
 
   bool get isDefaultLocalAgentGroup => id == 'lico-group-default';
+
+  ClientConversationMembership? get assistantMembership {
+    if (assistantMembershipId.isEmpty) return null;
+    for (final membership in activeMemberships) {
+      if (membership.id == assistantMembershipId) return membership;
+    }
+    return null;
+  }
 
   List<ClientConversationMembership> get activeMemberships => memberships
       .where(

@@ -28,7 +28,8 @@ test("OpenCode target owns dedicated composition policy and event regressions", 
   const entries = (await fs.readdir(path.join(repoRoot, root, "tests"))).sort();
   assert.deepEqual(entries, ["composition.rs", "events.rs", "mod.rs", "policy.rs"]);
   const events = await read(`${root}/tests/events.rs`);
-  assert.match(events, /cross_session/u);
+  assert.match(events, /target_event_lane_projects_only_assistant_text_parts/u);
+  assert.match(events, /project_event\(&mut projection, "open-2", &event\.to_string\(\)\)/u);
   assert.match(events, /tool\.updated/u);
 });
 

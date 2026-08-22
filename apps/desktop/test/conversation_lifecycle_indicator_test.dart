@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_lifecycle_indicator.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
@@ -10,6 +11,38 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
+  test(
+    'lifecycle projection unions every observed stage, not only the last',
+    () {
+      final projection = projectConversationTurnLifecycle([
+        const AgentConversationMessage(
+          id: 'accepted',
+          role: 'event',
+          text: 'accepted',
+          createdAt: '2026-08-19T00:00:00Z',
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.accepted',
+        ),
+        const AgentConversationMessage(
+          id: 'failed',
+          role: 'error',
+          text: 'failed',
+          createdAt: '2026-08-19T00:00:11Z',
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.failed',
+        ),
+      ]);
+      expect(projection, isNotNull);
+      expect(projection!.stage, ConversationTurnLifecycleStage.failed);
+      expect(
+        projection.observedStages,
+        containsAll([ConversationTurnLifecycleStage.accepted]),
+      );
+      expect(projection.observedStages.length, 1);
+      expect(projection.activeStep, 2);
+    },
+  );
+
   testWidgets('active process card exposes one five-stage lifecycle rail', (
     tester,
   ) async {

@@ -11,6 +11,7 @@ import 'package:licoup/src/contracts/agent_conversation_session.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -188,6 +189,7 @@ void main() {
     tester,
   ) async {
     final agentService = _GroupNavigationAgentService();
+    addTearDown(agentService.dispose);
     final controller = ClientController(
       agentService: agentService,
       llmGatewayMonitorInterval: Duration.zero,
@@ -289,6 +291,7 @@ void main() {
     tester,
   ) async {
     final agentService = _GroupNavigationAgentService();
+    addTearDown(agentService.dispose);
     final controller = ClientController(
       agentService: agentService,
       llmGatewayMonitorInterval: Duration.zero,
@@ -417,6 +420,15 @@ AgentConversationSession _groupAgentSession(String at) {
 }
 
 final class _GroupNavigationAgentService extends AgentService {
+  @override
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
+    bool enableAgentCliModelLookup = false,
+  }) async => TargetScanBatch([
+    for (final targetId in targetIds)
+      TargetScanSlot(targetId: targetId, failed: true),
+  ]);
+
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
     List<String> args,

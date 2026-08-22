@@ -62,12 +62,18 @@ class AgentConversationService implements AgentConversationLane {
     required AgentCommandRunner runner,
     required String agentId,
     String sessionId = '',
+    String conversationId = '',
+    Duration waitForChange = Duration.zero,
   }) async {
+    final waitForChangeMs = waitForChange.inMilliseconds.clamp(0, 2000);
     final output = await runner.runCliWithStdin(
       const ['agent', 'conversation', 'active', '--stdin-json', 'true'],
       jsonEncode({
         'agent': agentId.trim(),
         if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
+        if (conversationId.trim().isNotEmpty)
+          'conversationId': conversationId.trim(),
+        if (waitForChangeMs > 0) 'waitForChangeMs': waitForChangeMs,
       }),
     );
     final turns = output['turns'];

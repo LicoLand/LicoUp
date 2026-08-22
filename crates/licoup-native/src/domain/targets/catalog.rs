@@ -87,10 +87,11 @@ pub(super) fn candidate_runtime_is_available(
     if runtime_adapters::runtime_driver_profile(target).is_none() {
         return false;
     }
-    // Local agents are client-accessible by default: conversation-parity
-    // evidence stays informational (unverified/ready) and never gates local
-    // runtime use. A detected runtime binary is enough to relay messages.
-    let available = executable.is_some();
+    // The developer-preview DeepSeek carrier is callable only after canonical
+    // readiness establishes the official JSON-RPC wire. Detection alone must
+    // not turn an unverified carrier into a send-capable target.
+    let available = executable.is_some()
+        && (target != "deepseek-harness" || capabilities.conversation_readiness == "ready");
     if available {
         capabilities.conversation_blocker = None;
     }
@@ -244,11 +245,21 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "deepseek-harness",
-            label: "DeepSeek Harness - CLI",
+            label: "DeepSeek Harness - SDK Runtime",
             kind: "cli",
-            config_hint: "DeepSeek Harness CLI configuration",
-            binary_names: &["dsh"],
-            process_names: &["dsh.exe", "dsh"],
+            config_hint: "DeepSeek Harness SDK JSON-RPC runtime configuration",
+            binary_names: &[
+                "dsh-jsonrpc-agent",
+                "dsh-jsonrpc-agent-pkg-linux-x64",
+                "dsh-jsonrpc-agent-pkg-linux-arm64",
+                "dsh-jsonrpc-agent-pkg-macos-arm64",
+            ],
+            process_names: &[
+                "dsh-jsonrpc-agent",
+                "dsh-jsonrpc-agent-pkg-linux-x64",
+                "dsh-jsonrpc-agent-pkg-linux-arm64",
+                "dsh-jsonrpc-agent-pkg-macos-arm64",
+            ],
         },
         TargetDef {
             id: "lico-agent",
@@ -339,5 +350,21 @@ mod tests {
         assert_eq!(target_def("claude").unwrap().id, "claude-code");
         assert_eq!(target_def("workbuddy").unwrap().id, "workbuddy");
         assert_eq!(target_def("trae-work").unwrap().id, "trae-work");
+    }
+
+    #[test]
+    fn deepseek_detection_preserves_unverified_readiness_and_disables_send() {
+        let mut capabilities = adapter_capabilities_for("deepseek-harness");
+        assert!(!candidate_runtime_is_available(
+            &mut capabilities,
+            "deepseek-harness",
+            Some(Path::new("dsh-jsonrpc-agent")),
+        ));
+        assert_eq!(capabilities.conversation_blocker, None);
+        assert_eq!(capabilities.conversation_readiness, "unverified");
+        assert_eq!(
+            capabilities.conversation_summary_codes,
+            vec!["evidence_missing"]
+        );
     }
 }

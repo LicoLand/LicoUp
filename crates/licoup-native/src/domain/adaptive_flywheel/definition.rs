@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::WORKFLOW_SCHEMA_VERSION;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowDefinition {
     pub schema: String,
     pub metadata: WorkflowMetadata,
@@ -29,7 +29,7 @@ impl WorkflowDefinition {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowMetadata {
     pub id: String,
     pub name: String,
@@ -39,7 +39,7 @@ pub struct WorkflowMetadata {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowLimits {
     pub max_parallelism: u8,
     pub max_workset_items: u16,
@@ -65,7 +65,7 @@ pub enum BindingKind {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActorSlot {
     pub id: String,
     pub kind: BindingKind,
@@ -95,7 +95,7 @@ impl ActorSlot {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct SlotFallbackPolicy {
     pub after_transient_attempts: u8,
     pub on_quota: bool,
@@ -127,7 +127,7 @@ pub enum RuntimeKind {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeRequirement {
     pub id: String,
     pub kind: RuntimeKind,
@@ -136,7 +136,7 @@ pub struct RuntimeRequirement {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorksetTemplate {
     pub id: String,
     pub item_binding: String,
@@ -161,7 +161,7 @@ pub enum GraphStateKind {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GraphState {
     pub id: String,
     pub kind: GraphStateKind,
@@ -181,7 +181,7 @@ pub struct GraphState {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct RetryPolicy {
     pub max_attempts: u8,
     pub transient_only: bool,
@@ -197,7 +197,7 @@ impl Default for RetryPolicy {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Transition {
     pub id: String,
     pub from: String,
@@ -226,7 +226,7 @@ impl TransitionEvent {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GuardExpression {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -264,7 +264,7 @@ pub enum FailureClass {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BindingCandidate {
     pub value_id: String,
     #[serde(default)]
@@ -274,7 +274,7 @@ pub struct BindingCandidate {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BindingValue {
     pub slot_id: String,
     #[serde(default)]
@@ -284,6 +284,7 @@ pub struct BindingValue {
     pub model: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reasoning_effort: String,
+    #[serde(default)]
     pub revision: u64,
 }
 

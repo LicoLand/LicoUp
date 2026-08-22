@@ -88,6 +88,18 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         request,
       );
     }
+    if (_persistentStdioRpcEnabled && _isStrategyExecute(args)) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      return _stdioRpcTransport.executeStructured('strategy.execute', request);
+    }
     late Process process;
     try {
       final cli = await _processContext.resolveCliBinary();
@@ -257,6 +269,14 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
 }
 
 List<String>? _persistentPrivateInputArgs(List<String> args, String stdinText) {
+  final selectedTargetScan =
+      args.length == 6 &&
+      args[0] == 'targets' &&
+      args[1] == 'scan' &&
+      args[2] == '--include-accessible-environments' &&
+      args[3] == 'true' &&
+      args[4] == '--stdin-json' &&
+      args[5] == 'true';
   final create =
       args.length == 5 &&
       args[0] == 'llm-gateway' &&
@@ -272,7 +292,7 @@ List<String>? _persistentPrivateInputArgs(List<String> args, String stdinText) {
       args[3].isNotEmpty &&
       args[4] == '--stdin-json' &&
       args[5] == 'true';
-  if (!create && !update) {
+  if (!create && !update && !selectedTargetScan) {
     return null;
   }
   return <String>[...args.take(args.length - 1), stdinText];
@@ -297,6 +317,13 @@ String? _conversationControlOperation(List<String> args) {
 bool _isClientConversationExecute(List<String> args) =>
     args.length == 4 &&
     args[0] == 'conversation' &&
+    args[1] == 'execute' &&
+    args[2] == '--stdin-json' &&
+    args[3] == 'true';
+
+bool _isStrategyExecute(List<String> args) =>
+    args.length == 4 &&
+    args[0] == 'strategy' &&
     args[1] == 'execute' &&
     args[2] == '--stdin-json' &&
     args[3] == 'true';

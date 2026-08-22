@@ -1,4 +1,5 @@
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
+import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_privacy_projection.dart';
@@ -273,6 +274,29 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     _projectConversationTurnMessages(scopeKey);
   }
 
+  /// Applies the same PersistentTurn observer used by Canonical group panes to
+  /// one-to-one reattachments, then refreshes this scope's live projection.
+  bool conversationApplyPersistentTurnEvent({
+    required String scopeKey,
+    required String turnId,
+    required AgentDispatchEvent event,
+    required String participantAgentId,
+    required String participantLabel,
+    String participantRole = '',
+  }) {
+    final state = conversationTurnProcessStateByScope[scopeKey];
+    if (state == null || state.turnId != turnId) return false;
+    final terminal = applyPersistentTurnProcessEvent(
+      state: state,
+      event: event,
+      agentId: participantAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
+    );
+    _projectConversationTurnMessages(scopeKey);
+    return terminal;
+  }
+
   void conversationClearLiveProjection(String scopeKey) {
     final normalized = scopeKey.trim();
     if (normalized.isEmpty) return;
@@ -295,62 +319,9 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     if (state == null) {
       return;
     }
-    final messages = <AgentConversationMessage>[
-      AgentConversationMessage(
-        id: '${state.turnId}-user',
-        role: 'user',
-        text: state.userText,
-        createdAt: state.createdAt,
-        stableIdentity: '${state.turnId}-user',
-      ),
-      AgentConversationMessage(
-        id: '${state.turnId}-lifecycle',
-        role: state.stage == ConversationTurnProcessStage.failed
-            ? 'error'
-            : 'event',
-        text: state.stage.id,
-        createdAt: state.createdAt,
-        layer: AgentConversationSemanticLayer.execution,
-        cardType: 'lifecycle',
-        cardTitle: 'lifecycle.${state.stage.id}',
-        cardSubtitle: state.observedStages.join(','),
-        stableIdentity: '${state.turnId}-lifecycle',
-        participantAgentId: state.participantAgentId,
-        participantLabel: state.participantLabel,
-        participantRole: state.participantRole,
-      ),
-    ];
-    final runtimeUpdate = state.runtimeUpdate;
-    if (runtimeUpdate != null) {
-      messages.add(runtimeUpdate);
-    }
-    messages.addAll(state.evidence);
-    // One assistant message per participant: the turn's own participant first
-    // (plain `-assistant` identity), then peer replies and handoff bubbles in
-    // arrival order, each with a stable per-participant identity.
-    for (final reply in state.replies) {
-      final primary = state.isPrimaryReplyKey(reply.key);
-      final participantIdentity = primary
-          ? '${state.turnId}-assistant'
-          : '${state.turnId}-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
-      messages.add(
-        AgentConversationMessage(
-          id: participantIdentity,
-          role: 'assistant',
-          text: reply.text,
-          createdAt: reply.createdAt.isEmpty
-              ? DateTime.now().toUtc().toIso8601String()
-              : reply.createdAt,
-          stableIdentity: participantIdentity,
-          participantAgentId: reply.participantAgentId,
-          participantLabel: reply.participantLabel,
-          participantRole: reply.participantRole,
-        ),
-      );
-    }
     liveConversationMessagesByScope = {
       ...liveConversationMessagesByScope,
-      scopeKey: List<AgentConversationMessage>.unmodifiable(messages),
+      scopeKey: state.projectedMessages(),
     };
   }
 }
