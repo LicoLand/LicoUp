@@ -68,33 +68,39 @@ extension LicoStringsLabels on LicoStrings {
   String get byModel => isChinese ? '模型' : 'By Model';
   String get byWorkflow => isChinese ? '工作流' : 'Workflow';
   String get workflowUsage => isChinese ? '工作流用量' : 'Workflow Usage';
-  String get workflowPlan => isChinese ? '计划' : 'Plan';
-  String get workflowTask => isChinese ? '任务' : 'Task';
-  String get workflowDispatch => isChinese ? '派发' : 'Dispatch';
-  String get workflowMainConversation =>
-      isChinese ? '主对话' : 'Main conversation';
-  String get workflowSubordinate => isChinese ? '下属' : 'Subordinate';
+  String get workflowRuns => isChinese ? '图运行' : 'Graph runs';
+  String get workflowCommands => isChinese ? '图命令' : 'Graph commands';
   String get workflowTotal => isChinese ? '工作流总计' : 'Workflow total';
   String get workflowCachedInput => isChinese ? '缓存输入' : 'Cached input';
   String get workflowPrompt => isChinese ? '提示词' : 'Prompt';
   String get workflowCompletion => isChinese ? '补全' : 'Completion';
   String get workflowExactCoverage => isChinese ? '精确覆盖率' : 'Exact coverage';
-  String get workflowMainShare => isChinese ? '主对话' : 'Main';
-  String get workflowSubordinateShare => isChinese ? '下属对话' : 'Subordinate';
   String workflowCoverage(int exact, int total, int percent) => isChinese
       ? '精确 $exact/$total（$percent%）'
       : 'Exact $exact/$total ($percent%)';
-  String workflowPlanLabel(String planCode, int revision) => isChinese
-      ? '$planCode · 修订版 $revision'
-      : '$planCode · Revision $revision';
-  String workflowTaskLabel(String taskCode) =>
-      isChinese ? '任务 · $taskCode' : 'Task · $taskCode';
-  String workflowDispatchLabel(int ordinal) =>
-      isChinese ? '派发 $ordinal' : 'Dispatch $ordinal';
+  String workflowRunLabel(int ordinal) =>
+      isChinese ? '图运行 $ordinal' : 'Graph run $ordinal';
+  String workflowRevisionLabel(String value) =>
+      isChinese ? '修订 · $value' : 'Revision · $value';
+  String workflowCommandLabel(int ordinal) =>
+      isChinese ? '命令 $ordinal' : 'Command $ordinal';
+  String workflowMembershipLabel(String value) =>
+      isChinese ? '成员资格 · $value' : 'Membership · $value';
   String workflowAgentLabel(String value) =>
       isChinese ? '智能体 · $value' : 'Agent · $value';
   String workflowModelLabel(String value) =>
       isChinese ? '模型 · $value' : 'Model · $value';
+  String workflowKindLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'authorization' => isChinese ? '授权' : 'Authorization',
+      'actor' => isChinese ? '参与者' : 'Actor',
+      'script' => isChinese ? '脚本' : 'Script',
+      'workset-item' => isChinese ? '工作集项' : 'Workset item',
+      _ => isChinese ? '未知类型' : 'Unknown kind',
+    };
+  }
+
   String workflowStatusLabel(String value) {
     final normalized = value.trim().toLowerCase();
     return switch (normalized) {
@@ -105,17 +111,6 @@ extension LicoStringsLabels on LicoStrings {
       'in_doubt' || 'indoubt' => isChinese ? '待核对' : 'In doubt',
       'ready' || 'settled' => isChinese ? '已结算' : 'Settled',
       _ => isChinese ? '未知状态' : 'Unknown status',
-    };
-  }
-
-  String workflowRoleLabel(String value) {
-    final normalized = value.trim().toLowerCase();
-    return switch (normalized) {
-      'main' => isChinese ? '主对话' : 'Main',
-      'designer' => isChinese ? '设计者' : 'Designer',
-      'worker' => isChinese ? '执行者' : 'Worker',
-      'reviewer' => isChinese ? '审阅者' : 'Reviewer',
-      _ => isChinese ? '下属' : 'Subordinate',
     };
   }
 
@@ -475,13 +470,34 @@ extension LicoStringsLabels on LicoStrings {
 
   // Messaging presentation (participant flow, details panel).
   String get agentBadge => 'AGENT';
+  String get assistantBadge => 'ASSISTANT';
+  String get subagentBadge => 'SUBAGENT';
+  String get assistantActiveTooltip =>
+      isChinese ? '暂停 Assistant 的后续派发' : 'Pause future Assistant dispatch';
+  String get assistantPausedTooltip =>
+      isChinese ? '激活 Assistant' : 'Activate Assistant';
+  String get configureAssistantTooltip =>
+      isChinese ? '配置 Assistant' : 'Configure Assistant';
+  String get assistantProfileTitle =>
+      isChinese ? 'Assistant 配置' : 'Assistant profile';
+  String get assistantReadyStatus =>
+      isChinese ? '你的助手已就绪' : 'Your Assistant is ready';
+  String get assistantPausedStatus =>
+      isChinese ? '你的助手已暂停' : 'Your Assistant is paused';
+  String get assistantNeedsConfigurationStatus =>
+      isChinese ? '配置你的助手' : 'Configure your Assistant';
+  String get assistantWorkingAloneStatus =>
+      isChinese ? '你的助手正在独自工作' : 'Your Assistant is working independently';
+  String assistantCoordinatingStatus(int count) => isChinese
+      ? '你的助手正在协调 $count 个 Subagents'
+      : 'Your Assistant is coordinating $count ${count == 1 ? 'Subagent' : 'Subagents'}';
   String get contacts => isChinese ? '对话' : 'Conversations';
   String get conversationBack => isChinese ? '返回上一级' : 'Back one level';
   String mentionAgent(String agent) =>
       isChinese ? '@ $agent' : 'Mention $agent';
   String openAgentConversations(String agent) =>
       isChinese ? '打开 $agent 的对话' : 'Open $agent conversations';
-  String get optionalStrategy => isChinese ? '可选策略' : 'Optional strategy';
+  String get automaticAdaptation => isChinese ? '自动适配' : 'Automatic adaptation';
   String get noAuthorizedStrategies =>
       isChinese ? '没有已授权的策略' : 'No authorized strategies';
   String get exitStrategyMode => isChinese ? '退出策略模式' : 'Exit strategy mode';
@@ -537,6 +553,12 @@ extension LicoStringsLabels on LicoStrings {
   String groupConversationFailure(String stage, String code) => isChinese
       ? '群聊操作失败（$stage：$code）'
       : 'Group conversation failed ($stage: $code)';
+  String groupConversationFailureCapsule(String failureRef) => isChinese
+      ? '群聊操作失败 · $failureRef'
+      : 'Group conversation failed · $failureRef';
+  String groupConversationFailureDetail(String stage, String code) =>
+      '$stage · $code';
+  String get copyFailureReport => isChinese ? '复制报错' : 'Copy error';
   String get attachments => isChinese ? '附件' : 'Attachments';
   String get imageAttachment => isChinese ? '图片' : 'Image';
   String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';
@@ -643,9 +665,6 @@ extension LicoStringsLabels on LicoStrings {
   String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';
-  String get codeEngineeringDesigner => isChinese ? '设计师' : 'Designer';
-  String get codeEngineeringWorker => isChinese ? '执行者' : 'Worker';
-  String get codeEngineeringReviewer => isChinese ? '审查官' : 'Reviewer';
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
   String get agentModeLabel => isChinese ? 'Agent' : 'Agent';
   String get planModeLabel => isChinese ? 'Plan' : 'Plan';

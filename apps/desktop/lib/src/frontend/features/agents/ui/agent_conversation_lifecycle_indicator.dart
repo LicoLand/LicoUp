@@ -42,16 +42,33 @@ bool isConversationLifecycleEvent(AgentConversationMessage message) =>
 ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
   Iterable<AgentConversationMessage> events,
 ) {
-  AgentConversationMessage? lifecycle;
+  ConversationTurnLifecycleStage? last;
+  final observedStages = <ConversationTurnLifecycleStage>{};
   for (final event in events) {
-    if (isConversationLifecycleEvent(event)) lifecycle = event;
+    if (!isConversationLifecycleEvent(event)) continue;
+    final stage = _conversationTurnLifecycleStageOf(event);
+    if (stage == null) continue;
+    last = stage;
+    if (stage != ConversationTurnLifecycleStage.failed) {
+      observedStages.add(stage);
+    }
+    observedStages.addAll(_conversationTurnLifecycleStagesFromSubtitle(event));
   }
-  if (lifecycle == null) return null;
-  final raw = lifecycle.cardTitle.trim().toLowerCase();
+  if (last == null) return null;
+  return ConversationTurnLifecycleProjection(
+    last,
+    observedStages: Set.unmodifiable(observedStages),
+  );
+}
+
+ConversationTurnLifecycleStage? _conversationTurnLifecycleStageOf(
+  AgentConversationMessage event,
+) {
+  final raw = event.cardTitle.trim().toLowerCase();
   final stageName = raw.startsWith('lifecycle.')
       ? raw.substring('lifecycle.'.length)
-      : lifecycle.text.trim().toLowerCase();
-  final stage = switch (stageName) {
+      : event.text.trim().toLowerCase();
+  return switch (stageName) {
     'submitted' => ConversationTurnLifecycleStage.submitted,
     'accepted' => ConversationTurnLifecycleStage.accepted,
     'processing' => ConversationTurnLifecycleStage.processing,
@@ -60,8 +77,11 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
     'failed' => ConversationTurnLifecycleStage.failed,
     _ => null,
   };
-  if (stage == null) return null;
-  final observedStages = lifecycle.cardSubtitle
+}
+
+Set<ConversationTurnLifecycleStage>
+_conversationTurnLifecycleStagesFromSubtitle(AgentConversationMessage event) {
+  return event.cardSubtitle
       .split(',')
       .map(
         (value) => switch (value.trim().toLowerCase()) {
@@ -75,10 +95,6 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
       )
       .whereType<ConversationTurnLifecycleStage>()
       .toSet();
-  return ConversationTurnLifecycleProjection(
-    stage,
-    observedStages: Set.unmodifiable(observedStages),
-  );
 }
 
 String conversationLifecycleStageLabel(

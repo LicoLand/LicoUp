@@ -46,6 +46,10 @@
       "capabilities": ["cli", "rpc"]
     },
     {
+      "agentId": "deepseek-harness",
+      "capabilities": ["cli", "rpc"]
+    },
+    {
       "agentId": "lico-agent",
       "capabilities": ["cli", "rpc"]
     }

@@ -2696,6 +2696,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("include-accessible-environments", Text, false),
             value_option("include-history-model-catalog", Text, false),
             value_option("enable-agent-cli-model-lookup", Text, false),
+            value_option("stdin-json", Json, false),
         ],
         "targets add" => &[
             value_option("target", Text, true),

@@ -1,6 +1,14 @@
 use super::*;
 
 #[test]
+fn stdio_rpc_protocol_matches_the_persistent_host_boundary() {
+    assert_eq!(
+        STDIO_RPC_PROTOCOL,
+        licoup_native::platform::conversation_host_transport::STDIO_RPC_PROTOCOL
+    );
+}
+
+#[test]
 fn stdio_rpc_parses_exact_method_and_absolute_portable_path() {
     let portable = env::temp_dir().join("licoup-rpc-portable");
     let request = serde_json::to_vec(&json!({
@@ -53,6 +61,58 @@ fn stdio_rpc_parses_client_conversation_execute() {
             );
         }
         _ => panic!("expected a client conversation request"),
+    }
+}
+
+#[test]
+fn stdio_rpc_parses_persistent_background_dispatch() {
+    let request = serde_json::to_vec(&json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": "request-1",
+        "workflowId": "workflow-1",
+        "method": "agent.conversation.dispatch",
+        "params": {
+            "agentId": "codex",
+            "text": "bounded prompt",
+            "conversationId": "conversation:group",
+            "membershipId": "membership:codex"
+        },
+    }))
+    .unwrap();
+
+    let parsed = parse_stdio_rpc_request(&request).expect("request should parse");
+    match parsed.method {
+        StdioRpcMethod::Conversation {
+            operation, params, ..
+        } => {
+            assert_eq!(operation, "dispatch");
+            assert_eq!(params["membershipId"], "membership:codex");
+        }
+        _ => panic!("expected a persistent Conversation dispatch"),
+    }
+}
+
+#[test]
+fn stdio_rpc_parses_strategy_execute() {
+    let request = serde_json::to_vec(&json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": "request-1",
+        "workflowId": "workflow-1",
+        "method": "strategy.execute",
+        "params": {
+            "action": "strategy.run.active",
+            "revisionDigest": "rev",
+            "conversationId": "conversation:group"
+        },
+    }))
+    .unwrap();
+
+    let parsed = parse_stdio_rpc_request(&request).expect("request should parse");
+    match parsed.method {
+        StdioRpcMethod::StrategyExecute { params, .. } => {
+            assert_eq!(params["action"], "strategy.run.active");
+        }
+        _ => panic!("expected a strategy execute request"),
     }
 }
 

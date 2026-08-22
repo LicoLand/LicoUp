@@ -98,9 +98,11 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart",
         "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart",
         "apps/desktop/test/native_stdio_rpc_client_test.dart",
+        "apps/desktop/test/stdio_rpc_method_policy_test.dart",
         "apps/desktop/test/stdio_rpc_operation_queue_test.dart",
       ],
       command: flutterTests([
+        "test/stdio_rpc_method_policy_test.dart",
         "test/native_stdio_rpc_client_test.dart",
         "test/stdio_rpc_operation_queue_test.dart",
       ]),
@@ -450,6 +452,7 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       kind: "release",
       summary: "Single current model pricing catalog and freshness guard",
       inputs: [
+        "crates/licoup-native/src/domain/provider_model_pricing.rs",
         "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json",
         "tools/scripts/model-pricing-facts.mjs",
         "tests/contract/client/model-pricing.test.mjs",

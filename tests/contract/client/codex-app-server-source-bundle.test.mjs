@@ -15,6 +15,7 @@ const productionLeaves = Object.freeze([
   "launch.rs",
   "limits.rs",
   "model.rs",
+  "model_catalog.rs",
   "protocol.rs",
   "protocol/control.rs",
   "protocol/events.rs",
@@ -29,6 +30,7 @@ const testLeaves = Object.freeze([
   "events.rs",
   "io.rs",
   "launch.rs",
+  "model_catalog.rs",
   "session.rs",
   "support.rs",
   "transport.rs",
@@ -52,7 +54,7 @@ test("Codex app-server uses a thin facade with no retired monolith", async () =>
       .map((match) => match[1])
       .filter((name) => name !== "tests")
       .sort(),
-    ["config", "contract", "error", "io", "launch", "limits", "model", "protocol", "supervision", "transport"],
+    ["config", "contract", "error", "io", "launch", "limits", "model", "model_catalog", "protocol", "supervision", "transport"],
   );
   for (const implementationToken of [
     "struct CodexProtocol",

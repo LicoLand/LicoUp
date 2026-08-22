@@ -20,6 +20,17 @@ Rust、Android 或依赖回归。各回归通道彼此独立并可并行。发�
 它只在 `stable` → `release` 晋升边执行，具体见
 [客户端晋升权威](docs/releases/PROMOTION-GATES.zh-CN.md)。提交门禁不会构建或发布所有平台。
 
+维护中的完整客户端回归是一张限并发依赖图：共享基础只运行一次，前端与后端重叠执行；
+同级任务即使有失败也会全部收口，之后才进入接口联测、核心场景，以及按本机能力激活的
+平台与 Agent 并行兼容性前沿。定向开发使用独立的
+`client:regression:frontend`、`:backend` 和 `:integration` 入口。进入实时兼容性目标前，
+使用 `client:regression:environment -- --platform <id>` 或 `--agent <id>` 做增量环境检查。
+使用 `client:regression -- --retry-report build/reports/client-module-regression.json`
+仅重派发失败证据，避免重复运行无关成功项。
+一次共享清单/模式检查后，每个 Agent 的静态检查都独立调度；合并的
+Node 测试通过匿名输入索引定位失败，因此单个 Agent 或测试文件不会连带整个
+同级批次。
+
 一旦主动启动完整回归，本次验证闭环就自动扩展到它暴露的全部问题。严禁在仍有已知
 失败、陈旧快照、布局溢出、超时或偶发用例时交付。必须定位并修复权威实现，增加或收紧
 定向回归；更新任何视觉快照前都要先检查实际差异。修复过程中只重跑受影响的测试切片；

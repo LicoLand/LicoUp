@@ -26,25 +26,34 @@ const _clientMethods = <String>{
   'state.get',
   'state.set',
   'client.conversation.execute',
+  'strategy.execute',
 };
 
 bool validStdioRpcStructuredMethod(String method) =>
     _conversationMethods.contains(method) || _clientMethods.contains(method);
 
-bool stdioRpcMethodUsesConversationLane(String method) =>
-    _persistentConversationMethods.contains(method);
+bool stdioRpcMethodUsesConversationLane(
+  String method, [
+  Map<String, dynamic>? params,
+]) {
+  if (method == 'strategy.execute') {
+    final action = params?['action']?.toString() ?? '';
+    return const {
+      'strategy.run.start',
+      'strategy.run.resume',
+      'strategy.run.retry',
+      'strategy.assistant.workflow.execute',
+    }.contains(action);
+  }
+  return _persistentConversationMethods.contains(method);
+}
 
 bool stdioRpcMethodIsUnboundedClientTurn(
   String method,
   Map<String, dynamic> params,
 ) {
-  if (method != 'client.conversation.execute' ||
-      params['action'] != 'conversation.message.post') {
-    return false;
-  }
-  final mentioned = params['mentionedMembershipIds'];
-  return mentioned is List &&
-      mentioned.any((value) => value is String && value.trim().isNotEmpty);
+  return method == 'client.conversation.execute' &&
+      params['action'] == 'conversation.dispatch.after-post';
 }
 
 bool stdioRpcMethodIsInFlightControl(String method) =>

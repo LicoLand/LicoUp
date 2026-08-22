@@ -23,6 +23,19 @@ lane; it runs only at the `stable` → `release` promotion edge described in the
 [client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
 never builds or publishes every platform.
 
+The maintained complete client regression is a bounded dependency graph. It
+runs the shared foundation once, overlaps frontend and backend work, settles
+all eligible siblings after failures, and only then reaches integration,
+scenarios, and the parallel capability-aware platform/Agent frontier. Use the
+dedicated `client:regression:frontend`, `:backend`, and `:integration` entries
+for focused work. Use `client:regression:environment -- --platform <id>` or
+`--agent <id>` immediately before a live compatibility target. Use
+`client:regression -- --retry-report build/reports/client-module-regression.json`
+to redispatch failed evidence instead of repeating unrelated successes.
+Agent static checks are independently scheduled after one shared inventory
+contract, and aggregated Node tests attribute failures through anonymous input
+indexes, so one Agent or test file does not invalidate its whole peer batch.
+
 Starting a complete regression expands the current verification closure to
 every problem it reveals. Do not hand off with a known failure, stale golden,
 layout overflow, timeout, or flaky test from that run. Diagnose and fix its

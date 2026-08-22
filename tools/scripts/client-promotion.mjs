@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
-const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore|release-candidate)\/[A-Za-z0-9._/-]+$/u;
+const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore)\/[A-Za-z0-9._/-]+$/u;
 
 // Train cuts one snapshot onto `release`. Later `nightly` commits are a later
 // cut, not the in-flight version. Public publish remains `origin/release` only.

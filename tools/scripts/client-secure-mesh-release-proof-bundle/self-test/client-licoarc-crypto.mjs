@@ -32,6 +32,9 @@ export function runClientLicoArcCryptoInputsReadinessSelfTest() {
       nonConformantEnvelopeRejected: true,
       transportHintsNonAuthoritative: true,
       exactFiveOuterFields: true,
+      mobileFfiDispatch: true,
+      typedPendingObserved: true,
+      durableResultReceiptAcknowledged: true,
     },
     privacy: {
       redacted: true,
@@ -162,6 +165,12 @@ export function runClientLicoArcCryptoInputsReadinessSelfTest() {
     summarizeScenarioMutation({ transportHintsNonAuthoritative: false });
   const invalidOuterFieldContract =
     summarizeScenarioMutation({ exactFiveOuterFields: false });
+  const missingMobileFfiDispatch =
+    summarizeScenarioMutation({ mobileFfiDispatch: false });
+  const missingTypedPending =
+    summarizeScenarioMutation({ typedPendingObserved: false });
+  const missingDurableResultReceipt =
+    summarizeScenarioMutation({ durableResultReceiptAcknowledged: false });
   const releaseClaim = summarizeClientLicoArcCryptoInputs({
     stationAcceptance: {
       ...stationAcceptance,
@@ -260,6 +269,9 @@ export function runClientLicoArcCryptoInputsReadinessSelfTest() {
     nonConformantEnvelopeAccepted.ready === false &&
     transportHintAuthoritative.ready === false &&
     invalidOuterFieldContract.ready === false &&
+    missingMobileFfiDispatch.ready === false &&
+    missingTypedPending.ready === false &&
+    missingDurableResultReceipt.ready === false &&
     releaseClaim.ready === false &&
     privacyLeak.ready === false &&
     rawRustPlaintext.ready === false &&
@@ -281,6 +293,10 @@ export function runClientLicoArcCryptoInputsReadinessSelfTest() {
     transportHintAuthorityRejected: transportHintAuthoritative.ready === false,
     invalidOuterFieldContractRejected:
       invalidOuterFieldContract.ready === false,
+    missingMobileFfiDispatchRejected: missingMobileFfiDispatch.ready === false,
+    missingTypedPendingRejected: missingTypedPending.ready === false,
+    missingDurableResultReceiptRejected:
+      missingDurableResultReceipt.ready === false,
     releaseClaimRejected: releaseClaim.ready === false,
     privacyLeakRejected: privacyLeak.ready === false,
     staleClientCandidateRejected: staleClientCandidate.ready === false,

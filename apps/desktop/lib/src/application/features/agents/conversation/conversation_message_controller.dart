@@ -127,7 +127,6 @@ mixin AgentConversationMessageController
     );
     agentWorkspaceNotifyLiveConversationChanged();
     agentWorkspaceNotifyStateChanged();
-    var reply = '';
     var attached = false;
     try {
       await for (final event in persistent.attachActiveTurn(
@@ -143,54 +142,24 @@ mixin AgentConversationMessageController
           sendingConversationNativeSessionId = eventSession;
         }
         if (eventTurn.isNotEmpty) sendingConversationTurnId = eventTurn;
-        if (event.kind == 'agent.message.chunk' ||
-            event.kind == 'agent.message.completed') {
-          reply = ConversationRuntimeResultPolicy.mergeProgressiveText(
-            reply,
-            (event.payload['text'] ?? '').toString(),
-            completed: event.kind == 'agent.message.completed',
-          );
-          conversationUpsertLiveReply(
-            scopeKey: scopeKey,
-            turnId: projectionTurnId,
-            text: reply,
-            participantAgentId: agentId,
-            participantLabel: selectedConversationAgent?.label ?? agentId,
-          );
-          conversationUpsertLiveLifecycle(
-            scopeKey: scopeKey,
-            turnId: projectionTurnId,
-            stage: 'responding',
-            participantAgentId: agentId,
-            participantLabel: selectedConversationAgent?.label ?? agentId,
-          );
-        } else if (event.kind == 'dispatch.turn.completed' ||
-            event.kind == 'dispatch.turn.failed') {
-          final ok = event.payload['ok'] == true;
-          conversationUpsertLiveLifecycle(
-            scopeKey: scopeKey,
-            turnId: projectionTurnId,
-            stage: ok ? 'completed' : 'failed',
-            participantAgentId: agentId,
-            participantLabel: selectedConversationAgent?.label ?? agentId,
-          );
-          if (!ok) {
-            final error = event.payload['error'];
-            lastError = error is Map
-                ? (error['code'] ?? 'dispatch_failed').toString()
-                : 'dispatch_failed';
-          }
-        } else {
-          conversationAppendLiveProcessEvent(
-            scopeKey: scopeKey,
-            turnId: projectionTurnId,
-            event: event,
-            participantAgentId: agentId,
-            participantLabel: selectedConversationAgent?.label ?? agentId,
-          );
+        conversationApplyPersistentTurnEvent(
+          scopeKey: scopeKey,
+          turnId: projectionTurnId,
+          event: event,
+          participantAgentId: agentId,
+          participantLabel: selectedConversationAgent?.label ?? agentId,
+        );
+        if (event.kind == 'dispatch.turn.failed' ||
+            event.kind == 'agent.turn.failed') {
+          final error = event.payload['error'];
+          lastError = error is Map
+              ? (error['code'] ?? 'dispatch_failed').toString()
+              : (event.payload['code'] ?? 'dispatch_failed').toString();
         }
         agentWorkspaceNotifyLiveConversationChanged();
       }
+    } on AgentDispatchStreamException catch (error) {
+      lastError = error.failureCode;
     } on Object {
       lastError = 'dispatch_reattach_failed';
     } finally {

@@ -118,6 +118,24 @@ fn native_capability_registry() -> Option<&'static BTreeMap<String, Vec<NativeCa
         .as_ref()
 }
 
+/// Privacy-safe capability keys from the canonical packaged inventory. This
+/// is the single source used by Profile snapshots; callers receive wire names
+/// only and cannot mutate the inventory or infer local runtime details.
+pub(crate) fn native_capabilities_for_agent(agent_id: &str) -> Vec<String> {
+    let Some(adapter) = adapter_for_agent(agent_id) else {
+        return Vec::new();
+    };
+    native_capability_registry()
+        .and_then(|registry| registry.get(adapter.id()))
+        .map(|capabilities| {
+            capabilities
+                .iter()
+                .map(|capability| capability.wire_name().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(super) fn parse_native_capability_registry(
     inventory_json: &str,
 ) -> std::result::Result<BTreeMap<String, Vec<NativeCapabilityKind>>, &'static str> {
@@ -224,6 +242,15 @@ pub(super) fn parse_runtime_driver_registry(
         {
             return Err("runtime_driver_registry_blocker_drift");
         }
+        if state.status != "ready"
+            && !driver.blocker_codes.is_empty()
+            && !driver
+                .blocker_codes
+                .iter()
+                .any(|code| state.summary_codes.contains(code))
+        {
+            return Err("runtime_driver_registry_blocker_drift");
+        }
         if let Some(binding) = state.evidence_binding.as_ref()
             && (binding.agent_id != driver.agent_id
                 || binding.driver_id != driver.driver_id
@@ -280,7 +307,7 @@ fn validate_driver_entry(driver: &DriverInventoryEntry) -> std::result::Result<(
         || !mode_valid
         || !blockers_valid
         || (driver.driver_mode == "blocked" && driver.blocker_codes.is_empty())
-        || (driver.driver_mode != "blocked" && !driver.blocker_codes.is_empty())
+        || (driver.driver_mode == "history-only" && !driver.blocker_codes.is_empty())
         || (driver.driver_mode != "blocked" && driver.official_native_lane_kind == "unavailable")
         || (driver.driver_mode == "history-only" && !driver.history_readable)
     {
@@ -432,7 +459,7 @@ impl RuntimeDriverRegistry {
     pub(super) fn profile(&self, agent_id: &str) -> Option<RuntimeDriverProfile> {
         let driver = self.drivers.get(agent_id)?;
         let readiness = self.readiness.get(agent_id)?;
-        let blocker = if driver.driver_mode == "blocked" {
+        let blocker = if readiness.status != "ready" {
             driver.blocker_codes.first().cloned()
         } else {
             None

@@ -11,6 +11,7 @@ const repoRoot = path.resolve(
 const driverRoot = "crates/licoup-native/src/platform/pi_driver";
 
 const productionLeaves = Object.freeze([
+  "active_control.rs",
   "errors.rs",
   "events.rs",
   "execution.rs",
@@ -85,6 +86,7 @@ test("Pi keeps the official fixed RPC JSONL lane without shell fallback", async 
 
 test("Pi exact-session resolution remains bounded and fails closed", async () => {
   const source = await sources();
+  const activeControl = source["active_control.rs"];
   const sessions = source["sessions.rs"];
   const protocol = source["protocol.rs"];
   for (const token of [
@@ -105,6 +107,16 @@ test("Pi exact-session resolution remains bounded and fails closed", async () =>
     assert.ok(protocol.includes(token), `missing Pi continuity boundary: ${token}`);
   }
   assert.ok(source["params.rs"].includes("resolve_session_path(&requested_session_id)"));
+  for (const token of [
+    "MAX_ACTIVE_TURNS",
+    "ACK_TIMEOUT",
+    "expected_turn_id",
+    "ControlDisposition::NoActiveTurn",
+    "recv_timeout",
+    "steer_is_bound_to_the_exact_active_turn",
+  ]) {
+    assert.ok(activeControl.includes(token), `missing Pi active-turn boundary: ${token}`);
+  }
 });
 
 test("Pi IO, cleanup, events, and errors remain bounded and non-projecting", async () => {

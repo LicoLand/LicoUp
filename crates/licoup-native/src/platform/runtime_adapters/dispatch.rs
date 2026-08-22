@@ -2,8 +2,8 @@ use super::adapter::adapter_for_agent;
 use super::artifact::runtime_executable;
 use super::normalization::{
     execution_response, normalize_acp, normalize_antigravity, normalize_claude, normalize_codex,
-    normalize_cursor, normalize_hermes_with_protocol, normalize_lico_agent, normalize_openclaw,
-    normalize_pi,
+    normalize_cursor, normalize_deepseek_harness, normalize_hermes_with_protocol,
+    normalize_lico_agent, normalize_openclaw, normalize_pi,
 };
 use super::params::{
     AttachmentShapeFailure, LocalImageInput, MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE,
@@ -12,14 +12,14 @@ use super::params::{
 };
 use super::{
     DEFAULT_MAX_STDERR_BYTES, DEFAULT_TIMEOUT_MS, MAX_MESSAGE_BYTES, MAX_TIMEOUT_MS,
-    MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
+    MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError, runtime_driver_profile,
 };
 use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
 use crate::platform::{
     antigravity_driver, claude_code_driver, codex_app_server, copilot_driver, cursor_driver,
-    hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver, openclaw_driver,
-    opencode_driver, pi_driver,
+    deepseek_harness_driver, hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver,
+    openclaw_driver, opencode_driver, pi_driver,
 };
 use serde_json::Value;
 use std::{
@@ -121,6 +121,11 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         adapter_for_agent(&agent_id).ok_or_else(|| RuntimeAdapterError::UnsupportedAdapter {
             agent_label: agent_id.clone(),
         })?;
+    if adapter == RuntimeAdapter::DeepSeekHarness
+        && runtime_driver_profile(adapter.id()).is_none_or(|profile| profile.readiness != "ready")
+    {
+        return Err(RuntimeAdapterError::RuntimeProfileUnavailable);
+    }
     let runtime_connection = SshRuntimeConnection::from_params(params, adapter.id())
         .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
     if !attachments.is_empty() {
@@ -321,6 +326,18 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             max_stdout,
             max_stderr,
         )),
+        RuntimeAdapter::DeepSeekHarness => {
+            normalize_deepseek_harness(deepseek_harness_driver::execute(
+                &executable,
+                params,
+                &text,
+                &session_id,
+                cwd.as_deref(),
+                timeout_ms,
+                max_stdout,
+                max_stderr,
+            ))
+        }
     };
 
     Ok(execution_response(adapter, execution))

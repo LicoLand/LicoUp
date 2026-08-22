@@ -34,8 +34,8 @@ Profile，也不承诺未来兼容。稳定客户端将执行一条固定 Lico A
 Transport Profile 语义，同时继续拥有自己的私钥、Provider 配置、明文、历史、
 备份、信任决定、审批和本地效果。
 
-当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、Copilot、Hermes、
-Kilo Code、Kimi Code、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或
+当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、DeepSeek Harness、
+Copilot、Hermes、Kilo Code、Kimi Code、Lico Agent、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或
 通过合成测试均不代表已支持对话；只有通过原生对话等价验收的 adapter 才能启用发送。
 当前适配状态由原生驱动与 readiness 清单负责，并投影到
 [`docs/COMPATIBILITY.md`](../../docs/COMPATIBILITY.md)；未就绪 adapter 必须保持

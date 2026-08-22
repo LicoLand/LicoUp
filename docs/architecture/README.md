@@ -9,6 +9,10 @@ Rust/Flutter module trees, `apps/desktop/packaging.modules.json`, and the
 architecture verifier under `apps/desktop/scripts/client-architecture/`. This
 document is their public architectural projection.
 
+The [client-native interaction boundary](CLIENT-NATIVE-INTERACTION.md)
+documents the implemented structured-method and bounded stateless-command
+paths between Flutter and Rust.
+
 LicoUp is a local-first client. Flutter owns the interface. Rust owns the
 native client core, local and accessible VM adapters, bounded work,
 and the [current retiring endpoint-protection Preview](../STATUS.md)
@@ -29,7 +33,7 @@ endpoint wire semantics.
 flowchart TB
     UI["Flutter interface"] --> APP["Application layer"]
     APP --> CORE["Rust native client core"]
-    CORE --> CONVERSATIONS["Canonical Conversation domain<br/>Memberships · Events · Roles"]
+    CORE --> CONVERSATIONS["Canonical Conversation domain<br/>Memberships · Events · Dispatch"]
     CORE --> STRATEGIES["Adaptive Flywheel strategy domain<br/>Immutable Graphs · durable runs"]
     CONVERSATIONS --> STORE["Indexed SQLite/WAL client state"]
     CORE --> AGENTS["Agent adapters<br/>ACP · app-server · RPC · CLI"]
@@ -47,13 +51,76 @@ flowchart TB
 | Flutter interface | Navigation, views, user choices, and safe summaries |
 | Application layer | Client flows and adapter-independent rules |
 | Rust native core | Local tasks, protocols, validation, and encryption |
-| Conversation domain | Sole durable authority for direct/group chat, Human/Agent Memberships, structured Events, and roles; native runtime locations stay private |
+| Conversation domain | Sole durable authority for direct/group chat, Human/Agent Memberships, structured Events, and Membership-scoped dispatch; native runtime locations stay private |
 | Adaptive Flywheel strategy domain | Immutable package revisions, JSON Graph validation, bindings, exact authorization, durable run reduction, and bounded effect scheduling independent from Conversation history |
 | Agent adapters | Translate supported local interfaces and discovered or explicit OpenClaw/Hermes VM protocol connections |
 | Platform bridges | Secure storage, user presence, and platform launch work |
 | Endpoint-protection Preview | Current LicoUp executor, local key/Provider custody, peer trust, approval, and retiring endpoint implementation; it is not stable protocol authority |
 | Lico Arc Protocol Line | Owns wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics |
 | Lico Arc adapter | Strict candidate outer-envelope codec and four bounded station transport operations |
+
+## Conversation authorities
+
+[`PRODUCT.md`](../../PRODUCT.md) owns the one-conversation destination. The
+Canonical Conversation store in
+`crates/licoup-native/src/domain/client_conversation/` owns implemented
+direct/group chat facts. Native agent history, Adaptive Flywheel graphs, and
+Assistant Profile/workflow state are adjacent authorities. They are not copies of that
+Conversation, and this section does not replace their owning documents.
+
+```mermaid
+flowchart TB
+    Conv["Canonical Conversation"]
+    Conv --> Principals["Principals: Human or Agent"]
+    Conv --> Memberships["Memberships: access and active/left"]
+    Conv --> Events["Events and Parts"]
+    Conv --> StrategyRef["strategyRevision: optional Graph binding"]
+    Conv --> Dispatches["Private ConversationDispatch"]
+    Conv --> Bindings["Private RuntimeBinding"]
+```
+
+| Authority | Owns | Relation |
+| --- | --- | --- |
+| Canonical Conversation | Human/Agent entry, Memberships, ordered Events | Sole durable chat store. Direct and group are the same type; only `isGroup` and Membership count differ |
+| [Native history catalog](../protocols/semantic-conversation.md) | Read-only adapter sessions assembled as semantic conversation | One-to-one Agent workspace list/replay. Not Canonical `conversation.list`. Native locations stay private on Membership RuntimeBindings |
+| [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Immutable Graph revision, bindings, authorization, durable run reduction | Independent of Conversation history. A group may bind `strategyRevision`; actor effects project back as Membership Events. Graph/run is not a second transcript |
+| [Subagent MCP](../protocols/subagent-mcp.md) | Assistant designation, Membership Profiles, and assistant-temporary Graph lifecycle | Profile facts project named existing authorities; temporary Graphs bind exact Memberships and are preflighted before any effect. Adaptive Flywheel remains the Agent/model route selector |
+
+| Record | Meaning |
+| --- | --- |
+| Principal | Peer identity. `kind` is human or agent; an Agent also has `agentId` |
+| Membership | That Principal's seat in one Conversation. Dispatch keys are `conversationId` + `membershipId` |
+| Event / EventPart | The only visible history. Message, membership-changed, and availability Events carry text, reasoning, tool, artifact, diagnostic, and metadata Parts. Streaming appends Parts on an unfinalized Event |
+| `strategyRevision` | Optional authorized Flywheel Graph on the Conversation. Not a transcript |
+| ConversationDispatch | Private Membership-scoped Agent execution. Native paths stay out of the public contract |
+| RuntimeBinding | Private adapter session bound to a Membership. Hidden from UI, MCP, and export |
+
+Addressing selects Memberships; it is not a second protocol. An `@mention`, a
+strategy actor slot, an assistant-temporary Graph binding, and a Subagent
+`conversationId + membershipId` all name existing Agent Memberships. In this
+model DirectTurn is a mention dispatch cause on ConversationDispatch, not a
+second send, execute, or display stack.
+
+There is one dispatch door. After a human Event is persisted, dispatch runs
+with conversation and event identity alone: native resolves mentioned
+Memberships from the stored Event text, and a bound strategy is the same door
+addressed by binding rather than by text. The dispatch completion authority is
+the only writer of terminal Event, dispatch state, and mention turn state; a
+strategy run start or resume registers its entry Membership turn before the
+drive thread starts, returns that handle in the same response, and abandons an
+unrun entry with a typed code. A Subagent delegation streams frames into the
+same Conversation dispatch scope and settles through the same authority.
+Services constructed without the persistent host runtime reject dispatch-type
+and run actions with the typed transport rejection instead of opening
+unattended turns.
+
+The dropped `conversation_roles` table is not a current store. Adaptive
+Flywheel is a user-imported Graph, not an MCP Role pool or round-robin Role
+flywheel.
+
+Group panes render Canonical Conversation Events. One-to-one Agent panes
+render the native catalog plus live PersistentTurn. Shared bubble widgets do
+not merge those authorities.
 
 ## Built-in capability boundaries
 
@@ -68,12 +135,12 @@ one scenario does not reach into another scenario's storage or interface.
 | MCP adapter | Bounded MCP/JSON-RPC validation, request-ID preservation, response forwarding, and one-shot approval for external effects |
 | Agent discovery | Concurrent probes of the Agent Scan Path Manifest only (named Agent binaries, config, and history). PATH, personal library roots, photo/music libraries, and network volumes are never walked. Third-party Agent binaries are not executed during unused-agent discovery or cold start. Opening an Agent's conversation interface refreshes that Agent's native model catalog from its CLI or named store. Home is taken from the environment; macOS firmlink-equivalent home paths classify the same way. Unused-agent probes classify other-app containers lexically and do not stat them. Token usage is not scanned until Monitoring is opened |
 | Adapter plugin management | One native catalog for packaged native, bundled ACP, and explicitly installable LicoUp bridges; lifecycle actions are confirmed and limited to LicoUp-owned state |
-| Agent conversations | Direct and group chat share the canonical Conversation model. Human and Agent Principals participate through explicit Memberships. One client-local CLI host per portable data root owns every accepted packaged-adapter turn independently of GUI lifetime over private local IPC. New and native continued sessions keep process-local, wakeable progress in that host; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Replaceable observers attach by Conversation-scoped handle and process-local cursor; committed Conversation Events provide exact replay below each active turn's disposable 16 MiB cache floor. Observer loss is not cancel or steer. Native sessions remain adapter-owned execution details bound privately to a Membership. A local [Subagent MCP](../protocols/subagent-mcp.md) dispatches only by `conversationId + membershipId` and never exposes native continuation paths |
+| Agent conversations | Direct and group chat share the canonical Conversation model. Human and Agent Principals participate through explicit Memberships. One client-local CLI host per portable data root and owning LicoUp process owns every accepted packaged-adapter turn over private local IPC. It survives replaceable observer and stdio-proxy lifetimes, then exits when the owning LicoUp process exits. New and native continued sessions keep process-local, wakeable progress in that host; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Replaceable observers attach by Conversation-scoped handle and process-local cursor; committed Conversation Events provide exact replay below each active turn's disposable 16 MiB cache floor. Observer loss is not cancel or steer. Native sessions remain adapter-owned execution details bound privately to a Membership. A local [Subagent MCP](../protocols/subagent-mcp.md) dispatches only by `conversationId + membershipId` and never exposes native continuation paths |
 | Adaptive Flywheel | The catalog stays empty until a ZIP import. Imported ZIP packages contain root `workflow.json` plus optional `scripts/`; the Graph decides pipeline or Agent Loop behavior. Immutable revisions own bindings and exact authorization, while durable runs expose bounded ready-frontier scheduling and explicit terminal or recovery states. There is no Better Plan installation action and no ordinal Conversation compatibility path |
 | Skill management | Read-only discovery of existing local skills, recoverable removal to the system Trash, and invocation counters grouped by time window; no download, install, update, or synchronization channel |
 | Conversation management | Indexed list/get/event paging and search plus bounded canonical import/export; third-party native history is never rewritten |
-| Delivery Plan | Persisted Plans and Checkpoints own delivery eligibility and progression. The Conversation runtime claims the complete eligible frontier in stable order, dispatches through bounded native lanes, and advances a checkpoint only after terminal settlement. Adaptive Flywheel remains the sole Agent/model route-selection authority |
-| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Plan/Task/dispatch rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
+| Assistant workflow | The designated Assistant owns each user goal to completion: it works directly or admits one bounded assistant-temporary Graph with exact Membership bindings. The MCP-bound Agent must be that active designated Membership. Preflight returns ordered stable diagnostics with safe request pointers before any effect; runtime failures return typed terminal results to the Assistant. Group Automatic adaptation uses the same native Membership lane as one-to-one chat. Adaptive Flywheel and Assistant catalogs hydrate through one selected-target Rust batch. The persistent Conversation host remains the sole run and turn owner; Adaptive Flywheel remains the sole Agent/model route-selection authority |
+| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Graph run/command/Membership rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
 | Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
 
 Optional collaboration is absent from default startup and navigation. The
@@ -81,14 +148,15 @@ client imports its trusted signing key through a separate action that is never
 a trust root by itself, then verifies the immutable package source and fixed
 signed external runner on loopback before an explicit start.
 
-The delivery view consumes one safe native ledger projection. LicoUp owns Plan
-scheduling and checkpoint progression; Adaptive Flywheel owns route selection;
-and Conversation Memberships own Agent dispatch. Native continuation locations
+The workflow view consumes one safe native ledger projection. LicoUp owns Graph
+admission, preflight, durable run reduction, and usage accounting; Adaptive
+Flywheel owns route selection; and Conversation Memberships own Agent dispatch.
+Native continuation locations
 remain private adapter bindings. The projection keeps only safe codes,
-localized role and state labels, Agent/model labels, numeric Token counts,
-exact-or-estimated coverage, and Plan hierarchy. It excludes prompts, replies,
+localized Graph and command state labels, Agent/model labels, Membership ids,
+numeric Token counts, and exact-or-estimated coverage. It excludes prompts, replies,
 tool payloads, summaries, compaction, cache controls, and a second client-owned
-context model. Retention is bounded to active deliveries and the newest twenty
+context model. Retention is bounded to active workflows and the newest twenty
 terminal rollups.
 
 The current agent and platform adaptation targets are generated in
