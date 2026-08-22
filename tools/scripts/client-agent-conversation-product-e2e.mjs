@@ -431,7 +431,7 @@ function runReleaseApplication(appBundle, agentId, invocationChallengeDigest) {
       nativeSessionId: receipt.nativeSessionId,
     })}\n`, { mode: 0o600 });
     const cleanup = spawnSync("node", [
-      "tools/scripts/client-acp-conversation-parity.mjs",
+      "tests/product-e2e/cli/agent-conversations/support/parity-facade.mjs",
       "--agent", agentId,
       "--cleanup-product-session", sessionPath,
     ], {

@@ -431,6 +431,26 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
         .map(|p| p.driver_status.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
+    if adapter == RuntimeAdapter::DeepSeekHarness
+        && profile
+            .as_ref()
+            .is_none_or(|profile| profile.readiness != "ready")
+    {
+        return Ok(json!({
+            "ok": false,
+            "agentId": adapter.id(),
+            "laneFamily": effective_lane_family,
+            "driverId": adapter.driver_id(),
+            "runtimeProtocol": effective_runtime_protocol,
+            "capabilities": matrix,
+            "error": {
+                "code": blocker.unwrap_or_else(|| "deepseek_harness_jsonrpc_carrier_unverified".to_string()),
+                "stage": "capability/readiness",
+                "message": "The official DeepSeek Harness JSON-RPC carrier has not been verified."
+            }
+        }));
+    }
+
     if effective_lane_family == "unavailable" {
         return Ok(json!({
             "ok": false,
@@ -732,6 +752,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             | RuntimeAdapter::ClaudeCode
             | RuntimeAdapter::Cursor
             | RuntimeAdapter::Antigravity
+            | RuntimeAdapter::DeepSeekHarness
     ) {
         return Ok(json!({
             "ok": false,
@@ -770,6 +791,13 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
                 _ => 2,
             }
         }
+        RuntimeAdapter::DeepSeekHarness => {
+            match super::deepseek_harness_driver::cleanup_session(&session_id) {
+                super::deepseek_harness_driver::CleanupDisposition::Accepted => 0,
+                super::deepseek_harness_driver::CleanupDisposition::SessionUnavailable => 1,
+                super::deepseek_harness_driver::CleanupDisposition::Unavailable => 2,
+            }
+        }
         _ => match super::hermes_driver::cleanup_session(&session_id) {
             super::acp_session_transport::ControlDisposition::Accepted => 0,
             super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
@@ -780,6 +808,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
         RuntimeAdapter::ClaudeCode => "claude_code",
         RuntimeAdapter::Cursor => "cursor",
         RuntimeAdapter::Antigravity => "antigravity",
+        RuntimeAdapter::DeepSeekHarness => "deepseek_harness",
         _ => "hermes",
     };
     let (ok, status, code) = match disposition {
@@ -964,6 +993,7 @@ pub fn lane_capabilities(params: &Value) -> Result<Value> {
         "driverStatus": profile.as_ref().map(|p| p.driver_status.clone()).unwrap_or_default(),
         "readiness": profile.as_ref().map(|p| p.readiness.clone()).unwrap_or_else(|| "unverified".to_string()),
         "blockerCodes": blocker_codes,
+        "summaryCodes": profile.as_ref().map(|p| p.summary_codes.clone()).unwrap_or_default(),
         "capabilities": matrix
     }))
 }
@@ -1121,6 +1151,44 @@ mod tests {
         assert_eq!(result["ok"], true);
         assert_eq!(result["capabilities"]["exactResume"], true);
         assert_eq!(result["capabilities"]["cancel"], true);
+    }
+
+    #[test]
+    fn deepseek_cleanup_uses_exact_process_local_session_while_cancel_stays_unsupported() {
+        let cleanup = cleanup_conversation(&json!({
+            "agent": "deepseek-harness",
+            "sessionId": "missing-deepseek-session"
+        }))
+        .unwrap();
+        assert_eq!(cleanup["ok"], false);
+        assert_eq!(cleanup["status"], "not_found");
+        assert_eq!(
+            cleanup["error"]["code"],
+            "deepseek_harness_session_unavailable"
+        );
+
+        let cancel = cancel_turn(&json!({
+            "agent": "deepseek-harness",
+            "sessionId": "missing-deepseek-session"
+        }))
+        .unwrap();
+        assert_eq!(cancel["status"], "unsupported");
+        assert_eq!(cancel["error"]["code"], "dispatch_cancel_unsupported");
+    }
+
+    #[test]
+    fn deepseek_open_and_capabilities_fail_closed_while_carrier_is_unverified() {
+        let open = open_or_resume(&json!({"agent": "deepseek-harness"})).unwrap();
+        assert_eq!(open["ok"], false);
+        assert_eq!(
+            open["error"]["code"],
+            "deepseek_harness_jsonrpc_carrier_unverified"
+        );
+
+        let capabilities = lane_capabilities(&json!({"agent": "deepseek-harness"})).unwrap();
+        assert_eq!(capabilities["readiness"], "unverified");
+        assert_eq!(capabilities["blockerCodes"], json!([]));
+        assert_eq!(capabilities["summaryCodes"], json!(["evidence_missing"]));
     }
 
     #[test]

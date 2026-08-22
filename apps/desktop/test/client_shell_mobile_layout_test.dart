@@ -7,6 +7,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -174,7 +175,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       final pairedDeviceKey = Key(
         'mobile-paired-device-${controller.mobileRelayConfig.deviceTabs.single.id}',
@@ -725,18 +726,18 @@ class _NoopAgentService extends AgentService {
   }
 
   @override
-  Future<TargetCandidate?> scanOneTarget(
-    String targetId, {
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
     bool enableAgentCliModelLookup = false,
-  }) async {
-    final id = targetId.trim();
-    for (final target in scanTargetsResponse) {
-      if (target.target == id) {
-        return target;
-      }
-    }
-    return null;
-  }
+  }) async => TargetScanBatch([
+    for (final targetId in targetIds)
+      TargetScanSlot(
+        targetId: targetId,
+        candidate: scanTargetsResponse
+            .where((target) => target.target == targetId.trim())
+            .firstOrNull,
+      ),
+  ]);
 
   @override
   Future<Map<String, dynamic>> stopOpencodeServe() async {

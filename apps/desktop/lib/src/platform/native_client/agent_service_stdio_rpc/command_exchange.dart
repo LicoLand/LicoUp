@@ -29,6 +29,7 @@ Future<Map<String, dynamic>> executeStdioRpcStructuredCommand({
   required String requestId,
   required String workflowId,
   required StdioRpcSessionManager sessionManager,
+  bool recreateIfDeadBeforeWrite = false,
 }) async {
   final encoded = encodeStdioRpcFrame({
     'protocol': stdioRpcProtocol,
@@ -42,5 +43,6 @@ Future<Map<String, dynamic>> executeStdioRpcStructuredCommand({
     requestId: requestId,
     workflowId: workflowId,
     sessionManager: sessionManager,
+    recreateIfDeadBeforeWrite: recreateIfDeadBeforeWrite,
   );
 }

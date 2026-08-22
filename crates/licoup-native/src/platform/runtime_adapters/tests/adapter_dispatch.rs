@@ -86,6 +86,19 @@ fn codex_params(
     })
 }
 
+#[test]
+fn deepseek_send_is_rejected_before_launch_while_carrier_is_unverified() {
+    let error = send_message(&json!({
+        "agent": "deepseek-harness",
+        "text": "must not launch",
+        "model": "profile-authorized-model",
+        "binaryPath": "must-not-run"
+    }))
+    .unwrap_err();
+
+    assert_eq!(error, RuntimeAdapterError::RuntimeProfileUnavailable);
+}
+
 #[cfg(unix)]
 #[test]
 fn codex_attachments_pass_admission_and_reach_the_driver() {

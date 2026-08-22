@@ -24,6 +24,7 @@ authority.
 ## Architecture
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
+- [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
 
 ## Functionality
 
@@ -77,6 +78,11 @@ catalogs and update commands are stated in those files.
 - [CLI workflow examples](examples/CLI-WORKFLOWS.md)
 - [Architecture decision records](adrs/README.md)
 - [ADR 0001: PTY transport for CLI lanes](adrs/0001-pty-transport-for-cli-lanes.md)
+- [ADR 0002: Conversation admission regime for running Agent dialogs](adrs/0002-conversation-admission-regime.md)
+- [ADR 0003: Group-conversation Agent Profile](adrs/0003-group-conversation-agent-profile.md)
+- [ADR 0004: Assistant-authored flexible workflows](adrs/0004-assistant-authored-flexible-workflows.md)
+- [ADR 0005: Assistant auto-adaptation, diagnostics, and DeepSeek Harness](adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md)
+- [ADR 0006: Capability-aware parallel client regression](adrs/0006-capability-aware-parallel-regression.md)
 
 Plans, proposals, work reports, raw audit material, caches, and build output are
 not formal documents. They remain in ignored `docs/plans/`, `docs/reports/`,
