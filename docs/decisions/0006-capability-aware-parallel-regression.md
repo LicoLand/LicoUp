@@ -31,7 +31,11 @@
     and separate Rust, Node, Flutter, and Gradle resource pools. Commands whose
     toolchain already uses internal parallelism consume higher resource
     weights so multiple Cargo, libtest, Node Test Runner, Flutter, or Gradle
-    process trees do not oversubscribe the host.
+    process trees do not oversubscribe the host. The shared Cargo target and
+    Flutter cache are single-owner resources. Hybrid wrappers must claim every
+    toolchain they launch; for example, Android native verification claims
+    Cargo, Flutter, and Gradle resources rather than presenting itself as a
+    pure Node command.
   - Compatible complete selections are batched before scheduling. Rust leaves
     sharing the same manifest, package, features, target kind/name,
     environment, and resources become one target-level `cargo test` invocation

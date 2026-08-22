@@ -444,15 +444,21 @@ final class StrategyWorkflowDiagnostic {
       path: _strategyWorkflowValidPointer(rawPath) ? rawPath : '',
       relatedPaths: relatedPaths,
       membershipId:
-          (stage == StrategyWorkflowDiagnosticStage.assistantWorkflowPreflight ||
-                  stage == StrategyWorkflowDiagnosticStage.assistantWorkflowRevalidate) &&
+          (stage ==
+                      StrategyWorkflowDiagnosticStage
+                          .assistantWorkflowPreflight ||
+                  stage ==
+                      StrategyWorkflowDiagnosticStage
+                          .assistantWorkflowRevalidate) &&
               _strategyWorkflowValidId(membership)
           ? membership
           : '',
       actual: _strategyWorkflowNonNegativeInt(json['actual']),
       limit: _strategyWorkflowNonNegativeInt(json['limit']),
       expected: StrategyWorkflowDiagnosticExpected.fromWire(json['expected']),
-      actualKind: StrategyWorkflowDiagnosticActualKind.fromWire(json['actualKind']),
+      actualKind: StrategyWorkflowDiagnosticActualKind.fromWire(
+        json['actualKind'],
+      ),
       recovery: StrategyWorkflowDiagnosticRecovery.fromWire(json['recovery']),
       line: _strategyWorkflowNonNegativeInt(json['line']),
       column: _strategyWorkflowNonNegativeInt(json['column']),

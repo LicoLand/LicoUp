@@ -39,41 +39,57 @@ Mac App Store 兼容。
 1. 元数据、隐私清单、entitlements、证书、Profile 与工具链预检通过；
 2. 所有嵌套可执行代码和外层应用均具备 Developer ID、Hardened Runtime 与安全时间戳；
 3. 应用完成公证、票据装订并通过 Gatekeeper；
-4. 仅在应用验收后生成更新 ZIP；
+4. 仅在应用验收后生成更新 ZIP；随后由配置的 update 命令生成并签名更新清单，
+   成为第五个发行资产；
 5. 最终 DMG 完成签名、公证、装订、校验与 Gatekeeper 验收；
 6. 隐私政策、Privacy Manifest、AGPL、项目 Notice 和第三方许可证均存在于应用资源中，
    且用户可在 DMG 根目录直接阅读相应材料；
 7. 只有前序检查逐项通过后，才能推进摘要绑定的 Apple 会话；完成公开下载、安装与
    稳定启动验证后，才写入公开收据。
 
-仓库 CI 工作流不得发布 macOS 直发产物。源码工作流直接从 `release` 创建该版本唯一的
-`v<version>` Release；Apple Release 是唯一的 macOS 发布权威，只能在一次不可变
-发布授权内驱动 Apple 与 GitHub 云端操作。它在 `macos-release-candidate` 上执行打包，
-把五项 macOS 制品追加到同一个 Release，并且绝不替换源码资产。LicoUp 不实现第二套
-macOS 发布器，也不再假定存在 Apple Release 后台服务。
+远程工作流不得发布 macOS 直发产物。本机 Apple Release 引擎只能执行单次不可变发布
+授权中逐项列明的上传与公开变更。
 
-## Apple Release 权威命令
+## 本机授权
 
-先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI。
-仓库内配置只是声明式适配：Apple Release 拥有状态机、命令契约、签名、公证、GitHub
-对账、公开发布、恢复语义和最终收据的控制权；LicoUp 只拥有
-`tools/scripts/macos-release/` 中的产品适配层，按 Apple Release 规定的方式准备仓库
-门禁、App 构建和签名更新清单。该目录的 `README.md` 给出完整脚本与制品清单。
-
-签名密钥、公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、
-账户、供应商、凭据、原始输出或本机路径。
-
-Agent 使用以下命令发起一次精确发布：
+先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI，
+再在发布工作站上配置一次发布授权：
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:authority:configure
 ```
 
-唯一一次授权提示之前只运行只读预检。接受后，Apple Release 独占精确接受的 release
-来源、平台候选分支、发布门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确
-资产对账、公开发布、匿名公开下载、安装与稳定启动；不会再次提问。最终收据绑定
-不可变 release 来源、追加到既有源码 Release 的安装包及其摘要、更新包及其摘要、
-签名更新清单、Apple 结果与公开安装证明，共计五项 macOS 制品。
+配置过程选择 Developer ID Provisioning Profile，并填写现有签名身份与 `notarytool`
+钥匙串 Profile 的名称。CLI 把 Profile 副本保存在权限受限的权威目录；签名密钥、
+公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、账户、供应商、
+凭据、原始输出或本机路径。
+
+更新清单签名增加一条授权前置条件：配置前先把两把 Ed25519 PEM 私钥导出到环境
+变量，CLI 会把它们登记进 Keychain，随后可取消导出：
+
+```sh
+export LICO_UPDATE_OFFLINE_ROOT_KEY=<offline-root-ed25519-pem>
+export LICO_UPDATE_ONLINE_CHANNEL_KEY=<online-channel-ed25519-pem>
+npm run client:release:authority:configure
+unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_CHANNEL_KEY
+```
+
+缺少任意一把密钥的发布运行会在预检阶段被拦截。
+
+Agent 使用一条命令发起一次精确发布：
+
+```sh
+npm run client:release:macos:publish
+```
+
+该命令从冻结 `release` 修订的版本文档推导版本号与构建号，一次授权后跟随发布
+直到终态收据。`npm run client:release:macos` 仍是交互变体。
+
+唯一一次授权提示之前只运行只读预检。接受后，CLI 拉起 detached runner 独占精确接受的
+release 来源、发布门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
+安装与稳定启动；不会再次提问。最终收据绑定不可变 release 来源、五个公开制品
+摘要、Apple 结果与公开安装证明。签名更新清单随其余资产一并上传，并通过同样的
+匿名公开下载核验。
 
 ## Apple 一手资料
 

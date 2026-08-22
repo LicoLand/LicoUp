@@ -6,7 +6,7 @@
     "remote": "origin"
   },
   "candidate": {
-    "branch": "macos-release-candidate",
+    "template": "release-candidate/v{version}",
     "requiredChecks": [
       "Branch flow",
       "Commit identity",
@@ -25,18 +25,21 @@
       "ci"
     ],
     [
-      "node",
-      "tools/scripts/macos-release/gate-source.mjs"
+      "npm",
+      "run",
+      "client:gate:source"
     ],
     [
-      "node",
-      "tools/scripts/macos-release/gate-release-policy.mjs"
+      "npm",
+      "run",
+      "client:gate:release-policy"
     ]
   ],
   "build": {
     "command": [
-      "node",
-      "tools/scripts/macos-release/build.mjs"
+      "npm",
+      "run",
+      "client:build:macos"
     ],
     "app": "build/apps/desktop/runnable/macos/release/LicoUp.app",
     "materials": [
@@ -71,13 +74,17 @@
   "update": {
     "command": [
       "node",
-      "tools/scripts/macos-release/write-update-manifest.mjs",
+      "tools/scripts/client-update-manifest.mjs",
+      "--assets",
+      "build/apple-release",
       "--tag",
       "{tag}",
-      "--repository",
+      "--repo",
       "{repository}",
-      "--version",
-      "{version}"
+      "--targets",
+      "macos-direct-arm64",
+      "--minimum-supported-version",
+      "0.0.0"
     ]
   },
   "artifacts": [

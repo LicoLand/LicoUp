@@ -3,6 +3,7 @@ import os from "node:os";
 import test from "node:test";
 import { CLIENT_MODULE_CATALOG } from "../../../tools/regression/client-module-catalog.mjs";
 import { planClientRegressionBatches } from "../../../tools/regression/client-regression-batching.mjs";
+import { defaultRegressionCapacities } from "../../../tools/regression/client-regression-metadata.mjs";
 import { selectModulesById } from "../../../tools/regression/client-module-selection.mjs";
 
 test("complete selection batches native targets and Node test files before scheduling", () => {
@@ -64,4 +65,16 @@ test("Gradle unit filters sharing one task are emitted in one invocation", () =>
   });
   const gradle = batches.filter((batch) => batch.toolchain === "gradle");
   assert.ok(gradle.some((batch) => batch.attribution === "filters" && batch.members.length > 1));
+});
+
+test("hybrid Android native work cannot overlap shared Cargo, Flutter, or Gradle state", () => {
+  const batches = planClientRegressionBatches(CLIENT_MODULE_CATALOG, {
+    catalog: CLIENT_MODULE_CATALOG,
+  });
+  const androidNative = batches.find((batch) => batch.members.includes("bridge.android"));
+  assert.deepEqual(androidNative.resources, ["cargo-target", "flutter-cache", "gradle-cache"]);
+  const capacities = defaultRegressionCapacities(12);
+  assert.equal(capacities.resources["cargo-target"], 1);
+  assert.equal(capacities.resources["flutter-cache"], 1);
+  assert.equal(capacities.resources["gradle-cache"], 1);
 });

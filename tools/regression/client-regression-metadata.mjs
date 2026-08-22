@@ -83,6 +83,17 @@ const TOOLCHAIN_RESOURCES = Object.freeze({
   node: Object.freeze([]),
 });
 
+function wrapperResources(command) {
+  if (command.program === "node" &&
+      command.args[0] === "tools/scripts/client-android-native-tests.mjs") {
+    // This bounded wrapper owns a Gradle test run, two Cargo FFI filters, and
+    // may consult Flutter Doctor while resolving Java. Charge every shared
+    // toolchain resource instead of disguising it as a pure Node leaf.
+    return ["cargo-target", "flutter-cache", "gradle-cache"];
+  }
+  return [];
+}
+
 export function classifyClientModule({ id, kind, command }) {
   const stage = regressionStageForKind(kind);
   const toolchain = regressionToolchain(command);
@@ -92,7 +103,9 @@ export function classifyClientModule({ id, kind, command }) {
     environment: toolchain,
     toolchain,
     weight: TOOLCHAIN_WEIGHT[toolchain],
-    resources: TOOLCHAIN_RESOURCES[toolchain],
+    resources: Object.freeze([
+      ...new Set([...TOOLCHAIN_RESOURCES[toolchain], ...wrapperResources(command)]),
+    ]),
     internalParallelism: ["rust", "flutter", "gradle", "node-test"].includes(toolchain),
     batchKey: `${toolchain}:${id}`,
   });
@@ -111,10 +124,11 @@ export function defaultRegressionCapacities(available = os.availableParallelism(
       compatibility: Math.max(2, Math.floor(global * 0.5)),
     }),
     resources: Object.freeze({
-      // Two bounded Cargo processes may share the managed target. Their
-      // native --jobs/libtest thread counts are charged as global tokens.
-      "cargo-target": 2,
-      "flutter-cache": 2,
+      // Cargo/libtest and Flutter already provide native internal parallelism.
+      // Keep their shared target/cache single-owner so hybrid platform
+      // wrappers cannot create a second hidden toolchain tree.
+      "cargo-target": 1,
+      "flutter-cache": 1,
       "gradle-cache": 1,
     }),
   });

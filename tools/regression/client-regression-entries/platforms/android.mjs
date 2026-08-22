@@ -3,6 +3,7 @@ export default definePlatformEntry({
   id: "android",
   hosts: [],
   tools: ["flutter", "adb", "emulator"],
+  resources: ["cargo-target", "flutter-cache", "gradle-cache"],
   async capabilityProbe() {
     const devices = await readOnlyCommandOutput("adb", ["devices"]);
     return devices.ok && /^emulator-[0-9]+\s+device\s*$/mu.test(devices.output)

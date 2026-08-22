@@ -18,6 +18,10 @@ test("every supported platform owns a dedicated parallel compatibility entry", a
     assert.equal(typeof probe.eligible, "boolean");
     assert.equal(probe.reason === null || /^[a-z0-9_-]+$/u.test(probe.reason), true);
   }
+  const android = PLATFORM_REGRESSION_ENTRIES.find((entry) => entry.id === "android");
+  assert.deepEqual(android.resources, [
+    "platform-runtime:android", "cargo-target", "flutter-cache", "gradle-cache",
+  ]);
 });
 
 test("eligible platform branches probe and execute concurrently", async () => {

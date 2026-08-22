@@ -49,14 +49,19 @@ export function validateGovernanceDeclarations(files) {
     files["tools/apple-release/macos-direct-arm64.json"] || "null",
   );
   const candidate = config?.candidate;
+  const updateManifestArtifact = Array.isArray(config?.artifacts)
+    ? config.artifacts.filter((entry) => entry?.role === "update-manifest")
+    : [];
   requireValue(
     config?.schema === "apple-release.config.v1" &&
       config?.source?.branch === "release" &&
-      candidate?.branch === "macos-release-candidate" &&
+      candidate?.template === "release-candidate/v{version}" &&
       Array.isArray(candidate?.requiredChecks) && candidate.requiredChecks.length > 0 &&
-      Object.keys(config?.version || {}).sort().join(",") === "buildField,file,versionField" &&
       config?.github?.repository === "LicoLand/LicoUp" &&
-      config?.apple?.target === "macos-direct-arm64",
+      config?.apple?.target === "macos-direct-arm64" &&
+      Array.isArray(config?.update?.command) && config.update.command.length > 0 &&
+      updateManifestArtifact.length === 1 &&
+      updateManifestArtifact[0]?.publicName === "LicoUp-update-manifest.json",
     "audit_release_service_contract_invalid",
   );
   return true;

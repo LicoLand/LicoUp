@@ -208,18 +208,13 @@ contact a live service, create release assets, or publish through a channel are
 separate operator-authorized actions. Their success cannot be inferred from a
 source or package build.
 
-After the same-repository `stable` → `release` pull request merges, the source
-publication workflow automatically archives that exact merge under the single
-`v<version>` Release and publishes the archive plus its SHA-256 digest. It does
-not build client binaries. Apple Release later appends the macOS binaries to
-that same Release from the exact accepted `origin/release` source and cannot
-mutate repository source or protected branches. Platform packaging runs on its
-dedicated candidate branch, such as `macos-release-candidate`; source
-publication uses `release` directly and creates no candidate branch. See
+The repository branch train does not publish. Post-release macOS publication is
+delegated to Apple Release from the exact accepted `origin/release` source and
+cannot mutate repository source or protected branches. See
 [Release packages](RELEASE-PACKAGES.md) for the canonical target and output
-model. A platform publisher may append only its declared missing assets to the
-same-source public Release; it may never replace an existing public asset. A
-damaged public asset requires a corrective build or version.
+model. A same-source draft may be resumed; an already public Release may not be
+extended or altered. A damaged public asset requires a corrective build or
+version.
 
 ## Maintain documentation
 

@@ -422,7 +422,9 @@ function validateDelegatedApplePublicationTopology() {
   const packageJson = readJson("package.json");
   const scripts = packageJson.scripts || {};
   const expected = {
+    "client:release:authority:configure": "apple-release authority configure --config tools/apple-release/macos-direct-arm64.json",
     "client:release:macos": "apple-release release start --config tools/apple-release/macos-direct-arm64.json",
+    "client:release:macos:publish": "apple-release release start --config tools/apple-release/macos-direct-arm64.json --authorize",
     "client:release:status": "apple-release release status",
   };
   for (const [name, command] of Object.entries(expected)) {
@@ -437,63 +439,20 @@ function validateDelegatedApplePublicationTopology() {
   }
   const config = readJson("tools/apple-release/macos-direct-arm64.json");
   const candidate = config.candidate;
-  const adapterPrefix = "tools/scripts/macos-release/";
-  const productCommands = [...(config.gates || []), config.build?.command, config.update?.command]
-    .filter((command) => Array.isArray(command) && command[0] === "node");
+  const artifacts = Array.isArray(config.artifacts) ? config.artifacts : [];
+  const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest"];
   if (config.schema !== "apple-release.config.v1" ||
       config.source?.branch !== "release" ||
-      !candidate || candidate.branch !== "macos-release-candidate" ||
-      Object.keys(candidate).sort().join(",") !== "branch,requiredChecks" ||
+      !candidate || candidate.template !== "release-candidate/v{version}" ||
       !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
-      Object.keys(config.version || {}).sort().join(",") !== "buildField,file,versionField" ||
       config.apple?.target !== "macos-direct-arm64" ||
       config.github?.repository !== "LicoLand/LicoUp" ||
-      productCommands.length !== 4 ||
-      productCommands.some((command) => !command[1]?.startsWith(adapterPrefix)) ||
-      config.artifacts?.length !== 5 ||
-      config.artifacts.filter((entry) => entry.role === "update-manifest").length !== 1) {
+      !Array.isArray(config.update?.command) || config.update.command.length === 0 ||
+      artifacts.length !== 5 ||
+      roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
+      artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
+        "LicoUp-update-manifest.json") {
     fail("LicoUp delegated Apple publication configuration is invalid");
-  }
-}
-
-function validateAutomaticSourcePublicationTopology() {
-  const packageJson = readJson("package.json");
-  if (packageJson.scripts?.["client:release:source:self-test"] !==
-      "node --test tests/contract/client/client-source-release.test.mjs") {
-    fail("package.json must bind the automatic source release self-test");
-  }
-  const workflow = readText(".github/workflows/client-source-release.yml");
-  const publisher = readText("tools/scripts/client-source-release.mjs");
-  if (JSON.stringify(workflowJobIds(workflow)) !== JSON.stringify(["publish-source"])) {
-    fail("source publication workflow must keep one publication job");
-  }
-  for (const token of [
-    "name: Publish source release",
-    "pull_request:\n    types: [closed]\n    branches: [release]",
-    "permissions:\n  contents: write",
-    "github.event.pull_request.merged == true",
-    "github.event.pull_request.head.ref == 'stable'",
-    "github.event.pull_request.head.repo.full_name == github.repository",
-    "ref: ${{ github.event.pull_request.merge_commit_sha }}",
-    "persist-credentials: false",
-    "client-source-release.mjs prepare",
-    "client-source-release.mjs publish",
-  ]) {
-    assertIncludes(workflow, token, `automatic source publication is missing: ${token}`);
-  }
-  for (const token of [
-    "tag: `v${version}`",
-    "title: `LicoUp ${version}`",
-    "`apple-release-source:v1:${revision}`",
-  ]) {
-    assertIncludes(publisher, token, `source publisher is missing the shared Release contract: ${token}`);
-  }
-  for (const token of [
-    "\n  push:", "workflow_dispatch:", "client:release:macos", "apple-release",
-    "notarytool", "codesign", "xcodebuild", "flutter build", "npm publish",
-  ]) {
-    assertExcludes(workflow, token,
-      `automatic source publication must remain source-only: ${token}`);
   }
 }
 
@@ -503,7 +462,6 @@ export function validateClientGateTopology() {
   validatePromotionTopology();
   validateReadmeFastPathTopology();
   validateDelegatedApplePublicationTopology();
-  validateAutomaticSourcePublicationTopology();
   return Object.freeze({
     ok: true,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,

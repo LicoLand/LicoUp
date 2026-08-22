@@ -47,7 +47,9 @@ following in a single local release run:
 2. Every nested executable and the outer app are signed with Developer ID,
    Hardened Runtime, and a secure timestamp.
 3. The app is notarized, stapled, and accepted by Gatekeeper.
-4. The update ZIP is created only after the accepted app state.
+4. The update ZIP is created only after the accepted app state; the configured
+   update command then generates and signs the update manifest that becomes the
+   fifth release asset.
 5. The final DMG is signed, notarized, stapled, verified, and accepted by
    Gatekeeper.
 6. Privacy, license, open-source notice, and third-party notices exist in the
@@ -56,43 +58,59 @@ following in a single local release run:
    the public receipt is written only after public download, install, and
    stable-launch verification.
 
-No repository CI workflow may publish a macOS direct artifact. The source
-workflow creates the version's single `v<version>` Release directly from
-`release`; Apple Release is the sole macOS publication authority and may drive
-Apple and GitHub cloud operations only within one immutable per-release
-authorization. It performs packaging on `macos-release-candidate`, appends the
-five macOS assets to that same Release, and never replaces the source assets.
-LicoUp does not implement an alternate macOS publisher or a background Apple
-Release service.
+No remote workflow may publish a macOS direct artifact. The local Apple Release
+engine may upload and publish only the exact mutations in its one immutable
+per-release authorization.
 
-## Authoritative Apple Release command
+## Local authority
 
 Install the private `apple-release` CLI from its standalone checkout first
-(`npm install --global .` there). The checked-in configuration is declarative:
-Apple Release owns the state machine, command contract, signing, notarization,
-GitHub reconciliation, publication, resume behavior, and final receipt. LicoUp
-owns only the product adapter in `tools/scripts/macos-release/`, which prepares
-repository gates, the app build, and the signed update manifest in the form
-Apple Release requires. The adapter's complete script and artifact inventory is
-documented in that directory's `README.md`.
-
-Signing keys, notarization credentials, and GitHub authentication remain in
-their owning secure stores. Public output retains no certificate, account,
-provider, credential, raw-output, or local-path value.
-
-An Agent starts one exact release with:
+(`npm install --global .` there), then configure the release authority once on
+a release workstation:
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:authority:configure
 ```
 
+Configuration selects the Developer ID provisioning profile and the names of
+the existing signing identity and `notarytool` Keychain profile. The CLI keeps
+the profile copy in its permission-bounded authority directory; signing keys,
+notarization credentials, and GitHub authentication stay in their owning
+secure stores. Public output retains no certificate, account, provider,
+credential, raw-output, or local-path value.
+
+Update-manifest signing adds one authorization precondition: export the two
+Ed25519 PEM keys into the environment before configuration so the CLI registers
+them into the Keychain, then unset them:
+
+```sh
+export LICO_UPDATE_OFFLINE_ROOT_KEY=<offline-root-ed25519-pem>
+export LICO_UPDATE_ONLINE_CHANNEL_KEY=<online-channel-ed25519-pem>
+npm run client:release:authority:configure
+unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_CHANNEL_KEY
+```
+
+A release run with either key missing is blocked at preflight.
+
+An Agent starts one exact release with a single command:
+
+```sh
+npm run client:release:macos:publish
+```
+
+The command derives the version and build from the version document at the
+frozen `release` revision, authorizes once, and follows the release to its
+terminal receipt. `npm run client:release:macos` remains the interactive
+variant.
+
 Read-only preflight runs before the only authorization prompt. After acceptance,
-Apple Release owns the exact accepted release source, platform branch, publication gates,
+the CLI launches a detached runner that owns the exact accepted release source, publication gates,
 Developer ID package, app and DMG notarization/stapling/Gatekeeper checks, exact asset reconciliation,
 publication, anonymous public download, install, and stable launch. It asks no
 second question. The final receipt binds the immutable release source,
-the five macOS artifacts appended to the existing source Release, Apple
-results, and public installation proof.
+the five public artifact digests, Apple results, and public installation proof.
+The signed update manifest is uploaded with the other assets and verified by
+the same anonymous public download.
 
 ## Primary Apple references
 
