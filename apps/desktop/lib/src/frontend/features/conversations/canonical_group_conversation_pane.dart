@@ -691,12 +691,15 @@ class _CanonicalGroupConversationPaneState
     final liveHandles = <String>{};
     for (final turn in turns) {
       final handle = (turn['turnHandle'] ?? '').toString().trim();
-      if (handle.isEmpty) continue;
+      final participant = _activeTurnParticipant(turn);
+      if (handle.isEmpty || participant == null) continue;
       liveHandles.add(handle);
       if (_turnSubscriptions.containsKey(handle)) continue;
       _ensureLiveProcess(
         handle: handle,
-        agentId: (turn['agent'] ?? turn['agentId'] ?? '').toString().trim(),
+        agentId: participant.agentId,
+        participantLabel: participant.label,
+        participantRole: participant.role,
         userText: '',
       );
       _listenTurn(
@@ -705,7 +708,9 @@ class _CanonicalGroupConversationPaneState
         conversationId: (turn['conversationId'] ?? conversationId)
             .toString()
             .trim(),
-        agentId: (turn['agent'] ?? turn['agentId'] ?? '').toString().trim(),
+        agentId: participant.agentId,
+        participantLabel: participant.label,
+        participantRole: participant.role,
         // `highWater` is the host's cursor, not this observer's cursor. A new
         // pane has seen no process frames and must rebuild from canonical
         // cursor zero; the transport owns cursor-safe reconnects thereafter.
@@ -727,14 +732,16 @@ class _CanonicalGroupConversationPaneState
   void _ensureLiveProcess({
     required String handle,
     required String agentId,
+    required String participantLabel,
+    required String participantRole,
     required String userText,
   }) {
     final existing = _processByHandle[handle];
     if (existing != null) {
       existing.recordParticipant(
         participantAgentId: agentId,
-        participantLabel: _agentDisplayName(agentId),
-        participantRole: 'member',
+        participantLabel: participantLabel,
+        participantRole: participantRole,
       );
       return;
     }
@@ -745,8 +752,8 @@ class _CanonicalGroupConversationPaneState
     );
     state.recordParticipant(
       participantAgentId: agentId,
-      participantLabel: _agentDisplayName(agentId),
-      participantRole: 'member',
+      participantLabel: participantLabel,
+      participantRole: participantRole,
     );
     _processByHandle[handle] = state;
   }
@@ -756,9 +763,17 @@ class _CanonicalGroupConversationPaneState
     required String handle,
     required String conversationId,
     required String agentId,
+    required String participantLabel,
+    required String participantRole,
     required int afterCursor,
   }) {
-    _ensureLiveProcess(handle: handle, agentId: agentId, userText: '');
+    _ensureLiveProcess(
+      handle: handle,
+      agentId: agentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
+      userText: '',
+    );
     _turnSubscriptions[handle] = gateway
         .attachActiveTurn(
           turnHandle: handle,
@@ -777,8 +792,8 @@ class _CanonicalGroupConversationPaneState
               state: state,
               event: event,
               agentId: agentId,
-              participantLabel: _agentDisplayName(agentId),
-              participantRole: 'member',
+              participantLabel: participantLabel,
+              participantRole: participantRole,
             );
             if (mounted) setState(() {});
             if (terminal) {
@@ -869,10 +884,13 @@ class _CanonicalGroupConversationPaneState
     if (!posted) return false;
     for (final turn in widget.controller.liveTurns) {
       final handle = (turn['turnHandle'] ?? '').toString().trim();
-      if (handle.isEmpty) continue;
+      final participant = _activeTurnParticipant(turn);
+      if (handle.isEmpty || participant == null) continue;
       _ensureLiveProcess(
         handle: handle,
-        agentId: (turn['agent'] ?? turn['agentId'] ?? '').toString().trim(),
+        agentId: participant.agentId,
+        participantLabel: participant.label,
+        participantRole: participant.role,
         userText: text,
       );
     }
@@ -892,6 +910,34 @@ class _CanonicalGroupConversationPaneState
       merged[handle] = turn;
     }
     return merged.values.toList(growable: false);
+  }
+
+  ({String agentId, String label, String role})? _activeTurnParticipant(
+    Map<String, dynamic> turn,
+  ) {
+    final membershipId = (turn['membershipId'] ?? '').toString().trim();
+    final projectedAgent = (turn['agent'] ?? turn['agentId'] ?? '')
+        .toString()
+        .trim();
+    final conversation = widget.controller.selectedConversation;
+    if (conversation == null || membershipId.isEmpty) return null;
+    for (final membership in conversation.activeAgentMemberships) {
+      if (membership.id != membershipId) continue;
+      final agentId = membership.principal.agentId.trim();
+      if (agentId.isEmpty ||
+          (projectedAgent.isNotEmpty && projectedAgent != agentId)) {
+        return null;
+      }
+      final label = membership.principal.displayName.trim();
+      return (
+        agentId: agentId,
+        label: label.isEmpty ? agentId : label,
+        role: membership.id == conversation.assistantMembershipId
+            ? 'assistant'
+            : 'member',
+      );
+    }
+    return null;
   }
 
   void _continueConversationScroll(double overscroll) {
@@ -1946,6 +1992,11 @@ AgentConversationSession canonicalGroupConversationSession(
       continue;
     }
     final user = author?.principal.kind == ConversationPrincipalKind.human;
+    final participantRole = user
+        ? ''
+        : (author != null && author.id == conversation.assistantMembershipId
+              ? 'assistant'
+              : 'member');
     final textChunks = <String>[];
     var textCreatedAt = event.createdAtUnixMs;
     var textFlush = 0;
@@ -1965,7 +2016,7 @@ AgentConversationSession canonicalGroupConversationSession(
           participantLabel: user
               ? ''
               : author?.principal.displayName.trim() ?? '',
-          participantRole: user ? '' : 'member',
+          participantRole: participantRole,
         ),
       );
       textChunks.clear();
@@ -2004,7 +2055,7 @@ AgentConversationSession canonicalGroupConversationSession(
           participantLabel: user
               ? ''
               : author?.principal.displayName.trim() ?? '',
-          participantRole: user ? '' : 'member',
+          participantRole: participantRole,
         ),
       );
     }

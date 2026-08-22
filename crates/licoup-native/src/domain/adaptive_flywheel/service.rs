@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Map, Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -11,11 +11,17 @@ use crate::platform::strategy_runtime::{
     execute_script, predecessor_locator,
 };
 
+use super::assistant::sha256_hex;
 use super::reducer::{effect_input_for, fallback_reason};
+use super::{
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingValue, PreflightCheck,
+    PreflightFailure, preflight_assistant_graph,
+};
 use super::{
     BindingCandidate, BindingKind, CommandKind, CommandStatus, CompiledWorkflow, FailureClass,
     GraphState, GraphStateKind, ReducerEvent, RunCommand, RunSnapshot, StrategyPackageImporter,
-    StrategyRunStatus, StrategyStore, TransitionEvent, compile_persisted_workflow,
+    StrategyRunStatus, StrategyStore, TransitionEvent, WorkflowDefinition,
+    compile_persisted_workflow,
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
@@ -45,6 +51,7 @@ pub struct StrategyService {
     importer: StrategyPackageImporter,
     portable_root: PathBuf,
     actor_port: Option<Arc<ActorTurnPort>>,
+    profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
 }
 
 impl std::fmt::Debug for StrategyService {
@@ -63,6 +70,7 @@ impl StrategyService {
             importer: StrategyPackageImporter::open(portable_root)?,
             portable_root: portable_root.to_path_buf(),
             actor_port: None,
+            profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
         };
         service.refresh_runtime_bindings()?;
         Ok(service)
@@ -78,11 +86,20 @@ impl StrategyService {
             importer,
             portable_root,
             actor_port: None,
+            profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
         }
     }
 
     pub fn with_actor_turn_port(mut self, actor_port: ActorTurnPort) -> Self {
         self.actor_port = Some(Arc::new(actor_port));
+        self
+    }
+
+    pub fn with_profile_snapshot_authority(
+        mut self,
+        authority: crate::domain::client_conversation::SharedSnapshotAuthority,
+    ) -> Self {
+        self.profile_authority = authority;
         self
     }
 
@@ -255,12 +272,7 @@ impl StrategyService {
                     },
                     cwd,
                 )?;
-                let _ = crate::domain::agent_usage::workflow_ledger::begin_strategy_run(&json!({
-                    "stateRoot": self.portable_root,
-                    "runId": snapshot.run_id,
-                    "revisionDigest": revision,
-                    "planRevision": 1,
-                }));
+                self.record_graph_usage(&snapshot, None)?;
                 let entry_turn = self.start_drive(&snapshot)?;
                 let mut value =
                     serde_json::to_value(self.store.projection_for_run(&snapshot.run_id)?)?;
@@ -379,6 +391,8 @@ impl StrategyService {
                         },
                     )?;
                 }
+                let snapshot = self.store.run(run_id)?;
+                self.record_graph_usage(&snapshot, None)?;
                 Ok(serde_json::to_value(
                     self.store.projection_for_run(run_id)?,
                 )?)
@@ -407,8 +421,340 @@ impl StrategyService {
                 }
                 Ok(value)
             }
+            "strategy.assistant.workflow.execute" => {
+                self.require_actor_port()?;
+                let conversation_id = required_string(object, "conversationId")?;
+                let membership_id = required_string(object, "membershipId")?;
+                let idempotency_key = required_string(object, "idempotencyKey")?;
+                let workflow = object
+                    .get("workflow")
+                    .cloned()
+                    .ok_or_else(|| anyhow!("invalid_request"))?;
+                let bindings: Vec<BindingValue> = serde_json::from_value(
+                    object.get("bindings").cloned().unwrap_or_else(|| json!([])),
+                )?;
+                let filters: crate::domain::client_conversation::CandidateFilters =
+                    serde_json::from_value(
+                        object.get("filters").cloned().unwrap_or_else(|| json!({})),
+                    )?;
+                if let Some(run_id) = self.store.run_id_by_idempotency_key(idempotency_key)? {
+                    return self.replay_assistant_workflow(
+                        &run_id,
+                        conversation_id,
+                        membership_id,
+                        &workflow,
+                        &bindings,
+                        object.get("input").cloned().unwrap_or_else(|| json!({})),
+                    );
+                }
+                let admitted = match self.preflight_assistant_workflow(
+                    conversation_id,
+                    membership_id,
+                    &workflow,
+                    &bindings,
+                    &filters,
+                ) {
+                    Ok(admitted) => admitted,
+                    Err(failure) => {
+                        return Ok(json!({"accepted": false, "error": failure}));
+                    }
+                };
+                match self.revalidate_assistant_admission(conversation_id, membership_id, &admitted)
+                {
+                    Ok(()) => {}
+                    Err(failure) => {
+                        return Ok(json!({"accepted": false, "error": failure}));
+                    }
+                }
+                let canonical = serde_json::to_vec(&admitted.definition)?;
+                let semantics_digest = sha256_hex(&canonical);
+                let revision_digest = admitted.receipt.workflow_digest.clone();
+                let input = object.get("input").cloned().unwrap_or_else(|| json!({}));
+                let (snapshot, _fresh) = self.store.admit_assistant_run(
+                    &revision_digest,
+                    &semantics_digest,
+                    &admitted.definition,
+                    &admitted.bindings,
+                    input,
+                    idempotency_key,
+                    conversation_id,
+                    membership_id,
+                    admitted.receipt.route_receipt.clone(),
+                )?;
+                self.record_graph_usage(&snapshot, None)?;
+                self.start_drive(&snapshot)?;
+                self.wait_for_assistant_terminal(&snapshot.run_id, Some(&admitted.receipt))
+            }
+            "strategy.assistant.workflow.inspect" => {
+                let run_id = required_string(object, "runId")?;
+                let snapshot = self.admit_assistant_run_identity(run_id)?;
+                let mut value = self.assistant_run_projection(&snapshot)?;
+                if let Some(terminal) = terminal_projection(&value) {
+                    value["terminal"] = terminal;
+                }
+                Ok(value)
+            }
+            "strategy.assistant.workflow.cancel" => {
+                let run_id = required_string(object, "runId")?;
+                self.admit_assistant_run_identity(run_id)?;
+                let cancelled = self
+                    .store
+                    .apply_event(run_id, ReducerEvent::CancelRequested)?;
+                for command in cancelled
+                    .commands
+                    .values()
+                    .filter(|command| command.status == CommandStatus::CancelRequested)
+                {
+                    self.store.apply_event(
+                        run_id,
+                        ReducerEvent::CancellationUnknown {
+                            command_id: command.id.clone(),
+                            attempt_token: command.attempt_token.clone(),
+                        },
+                    )?;
+                }
+                let snapshot = self.store.run(run_id)?;
+                self.record_graph_usage(&snapshot, None)?;
+                let mut value = self.assistant_run_projection(&snapshot)?;
+                if let Some(terminal) = terminal_projection(&value) {
+                    value["terminal"] = terminal;
+                }
+                Ok(value)
+            }
             _ => Err(anyhow!("unsupported_action")),
         }
+    }
+
+    fn preflight_assistant_workflow(
+        &self,
+        conversation_id: &str,
+        assistant_membership_id: &str,
+        workflow: &Value,
+        bindings: &[BindingValue],
+        filters: &crate::domain::client_conversation::CandidateFilters,
+    ) -> std::result::Result<AssistantPreflight, PreflightFailure> {
+        let store =
+            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)
+                .map_err(|_| assistant_state_failure("conversation_state_unavailable", None))?;
+        let conversation = store
+            .get(conversation_id)
+            .map_err(|_| assistant_state_failure("conversation_not_found", None))?;
+        if conversation.assistant_membership_id.as_deref() != Some(assistant_membership_id)
+            || !conversation.memberships.iter().any(|membership| {
+                membership.id == assistant_membership_id
+                    && membership.status
+                        == crate::domain::client_conversation::MembershipStatus::Active
+                    && membership.principal.kind
+                        == crate::domain::client_conversation::PrincipalKind::Agent
+            })
+        {
+            return Err(assistant_state_failure(
+                "graph_assistant_designation_rejected",
+                Some(assistant_membership_id),
+            ));
+        }
+        let profiles = store
+            .membership_profiles(conversation_id)
+            .map_err(|_| assistant_state_failure("conversation_state_unavailable", None))?;
+        let pairs = profiles
+            .into_iter()
+            .map(|(membership, intent)| {
+                let designated = membership.id == assistant_membership_id;
+                (membership, intent, designated)
+            })
+            .collect::<Vec<_>>();
+        let snapshots = crate::domain::client_conversation::project_profile_snapshots(
+            conversation_id,
+            &pairs,
+            &self.profile_authority,
+        );
+        preflight_assistant_graph(
+            conversation_id,
+            assistant_membership_id,
+            workflow,
+            bindings,
+            &snapshots,
+            filters,
+        )
+    }
+
+    /// Revalidate only store-owned identity immediately before durable
+    /// admission. Derived owners were already read once into the request-scoped
+    /// route snapshot and must not be queried a second time in the same request.
+    fn revalidate_assistant_admission(
+        &self,
+        conversation_id: &str,
+        assistant_membership_id: &str,
+        admitted: &AssistantPreflight,
+    ) -> std::result::Result<(), PreflightFailure> {
+        let store =
+            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)
+                .map_err(|_| assistant_state_failure("conversation_state_unavailable", None))?;
+        let conversation = store
+            .get(conversation_id)
+            .map_err(|_| assistant_state_failure("conversation_not_found", None))?;
+        if conversation.assistant_membership_id.as_deref() != Some(assistant_membership_id) {
+            return Err(assistant_state_failure(
+                "graph_route_stale",
+                Some(assistant_membership_id),
+            ));
+        }
+        let profiles = store
+            .membership_profiles(conversation_id)
+            .map_err(|_| assistant_state_failure("conversation_state_unavailable", None))?
+            .into_iter()
+            .map(|(membership, profile)| (membership.id.clone(), (membership, profile)))
+            .collect::<BTreeMap<_, _>>();
+        for (membership_id, expected_revision) in &admitted.profile_revisions {
+            let Some((membership, profile)) = profiles.get(membership_id) else {
+                return Err(assistant_state_failure(
+                    "graph_route_stale",
+                    Some(membership_id),
+                ));
+            };
+            if membership.status != crate::domain::client_conversation::MembershipStatus::Active
+                || membership.principal.kind
+                    != crate::domain::client_conversation::PrincipalKind::Agent
+                || profile.revision != *expected_revision
+            {
+                return Err(assistant_state_failure(
+                    "graph_route_stale",
+                    Some(membership_id),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn replay_assistant_workflow(
+        &self,
+        run_id: &str,
+        conversation_id: &str,
+        assistant_membership_id: &str,
+        workflow: &Value,
+        bindings: &[BindingValue],
+        input: Value,
+    ) -> Result<Value> {
+        let snapshot = self.admit_assistant_run_identity(run_id)?;
+        ensure!(
+            snapshot.conversation_id.as_deref() == Some(conversation_id)
+                && snapshot.assistant_membership_id.as_deref() == Some(assistant_membership_id)
+                && snapshot.input == input,
+            "strategy_idempotency_conflict"
+        );
+        let submitted: WorkflowDefinition =
+            serde_json::from_value(workflow.clone()).map_err(|_| anyhow!("graph_invalid"))?;
+        let submitted = compile_persisted_workflow(submitted)
+            .map_err(|_| anyhow!("graph_invalid"))?
+            .definition;
+        let stored = self
+            .store
+            .definition_by_revision(&snapshot.definition_digest)?;
+        ensure!(
+            submitted == stored.workflow,
+            "strategy_idempotency_conflict"
+        );
+        let mut submitted_bindings = bindings
+            .iter()
+            .map(|binding| {
+                (
+                    binding.slot_id.as_str(),
+                    binding.ordinal,
+                    binding.value_id.as_str(),
+                    binding.model.as_str(),
+                    binding.reasoning_effort.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        submitted_bindings.sort();
+        let mut stored_bindings = stored
+            .bindings
+            .iter()
+            .map(|binding| {
+                (
+                    binding.slot_id.as_str(),
+                    binding.ordinal,
+                    binding.value_id.as_str(),
+                    binding.model.as_str(),
+                    binding.reasoning_effort.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        stored_bindings.sort();
+        ensure!(
+            submitted_bindings.len() == stored_bindings.len()
+                && submitted_bindings
+                    .iter()
+                    .zip(&stored_bindings)
+                    .all(|(submitted, stored)| {
+                        submitted.0 == stored.0
+                            && submitted.1 == stored.1
+                            && submitted.2 == stored.2
+                            && (submitted.3.is_empty() || submitted.3 == stored.3)
+                            && submitted.4 == stored.4
+                    }),
+            "strategy_idempotency_conflict"
+        );
+        if !assistant_run_terminal(snapshot.status) {
+            self.start_drive(&snapshot)?;
+        }
+        self.wait_for_assistant_terminal(run_id, None)
+    }
+
+    fn wait_for_assistant_terminal(
+        &self,
+        run_id: &str,
+        receipt: Option<&super::PreflightReceipt>,
+    ) -> Result<Value> {
+        loop {
+            let snapshot = self.admit_assistant_run_identity(run_id)?;
+            if assistant_run_terminal(snapshot.status) {
+                self.record_graph_usage(&snapshot, None)?;
+                let mut value = self.assistant_run_projection(&snapshot)?;
+                if let Some(receipt) = receipt {
+                    value["preflight"] = json!({"accepted": true, "receipt": receipt});
+                }
+                if let Some(terminal) = terminal_projection(&value) {
+                    value["terminal"] = terminal;
+                }
+                return Ok(value);
+            }
+            if !DriveReservation::is_active(run_id) {
+                self.start_drive(&snapshot)?;
+            }
+            std::thread::park_timeout(std::time::Duration::from_millis(20));
+        }
+    }
+
+    /// Strict public projection for Assistant-temporary runs. Generic
+    /// strategy projections may carry an entry session locator, definition
+    /// labels, or generic control operations; none belong in the Assistant
+    /// facade. This allowlist retains only opaque Graph/Membership identities,
+    /// stable states, safe bindings, numeric history, and the frozen route
+    /// receipt.
+    fn assistant_run_projection(&self, snapshot: &RunSnapshot) -> Result<Value> {
+        let generic = serde_json::to_value(self.store.projection_for_run(&snapshot.run_id)?)?;
+        let mut value = json!({
+            "schema": "licoup.assistant-workflow.run.v1",
+            "runId": snapshot.run_id,
+            "status": generic.get("status").cloned().unwrap_or(Value::Null),
+            "currentStates": generic.get("currentStates").cloned().unwrap_or_else(|| json!([])),
+            "neighborStates": generic.get("neighborStates").cloned().unwrap_or_else(|| json!([])),
+            "bindings": generic.get("bindings").cloned().unwrap_or_else(|| json!([])),
+            "historyCount": generic.get("historyCount").cloned().unwrap_or_else(|| json!(0)),
+            "conversationId": snapshot.conversation_id,
+            "assistantMembershipId": snapshot.assistant_membership_id,
+            "routeReceipt": snapshot.route_receipt,
+        });
+        if let Some(code) = generic.pointer("/diagnostic/code").and_then(Value::as_str) {
+            value["diagnostic"] = json!({
+                "code": code,
+                "stage": "assistant-workflow/runtime",
+                "retryable": false,
+                "recoveryClass": "assistant-direct-or-new-graph",
+            });
+        }
+        Ok(value)
     }
 
     fn validate_import_identity(&self, prepared: &super::PreparedPackage) -> Result<()> {
@@ -463,13 +809,37 @@ impl StrategyService {
     }
 
     fn admit_revision_identity(&self, revision: &str) -> Result<()> {
-        self.store.definition_by_revision(revision)?;
+        let definition = self.store.definition_by_revision(revision)?;
+        ensure!(
+            !definition
+                .summary
+                .definition_id
+                .starts_with(ASSISTANT_TEMPORARY_DEFINITION_PREFIX),
+            "strategy_definition_not_found"
+        );
         Ok(())
     }
 
     fn admit_run_identity(&self, run_id: &str) -> Result<()> {
         let snapshot = self.store.run(run_id)?;
         self.admit_revision_identity(&snapshot.definition_digest)
+    }
+
+    fn admit_assistant_run_identity(&self, run_id: &str) -> Result<RunSnapshot> {
+        let snapshot = self.store.run(run_id)?;
+        let definition = self
+            .store
+            .definition_by_revision(&snapshot.definition_digest)?;
+        ensure!(
+            definition
+                .summary
+                .definition_id
+                .starts_with(ASSISTANT_TEMPORARY_DEFINITION_PREFIX)
+                && snapshot.assistant_membership_id.is_some()
+                && snapshot.route_receipt.is_some(),
+            "strategy_run_not_found"
+        );
+        Ok(snapshot)
     }
 
     /// Run actions drive Agent work on background threads, so the service is
@@ -541,12 +911,12 @@ impl StrategyService {
         else {
             return Ok(None);
         };
-        let membership_id =
-            group_membership_id(conversation_id, &binding.value_id, &self.portable_root)
-                .map_err(|_| anyhow!("strategy_actor_dispatch_failed"))?;
+        let target = group_actor_target(conversation_id, &binding.value_id, &self.portable_root)
+            .map_err(|_| anyhow!("strategy_actor_dispatch_failed"))?;
         let params = group_actor_params(
             conversation_id,
-            &membership_id,
+            &target.membership_id,
+            &target.agent_id,
             binding,
             &input,
             &snapshot.run_id,
@@ -558,8 +928,8 @@ impl StrategyService {
         let projection = json!({
             "turnHandle": handle,
             "conversationId": conversation_id,
-            "membershipId": membership_id,
-            "agent": binding.value_id,
+            "membershipId": target.membership_id,
+            "agent": target.agent_id,
         });
         Ok(Some(EntryTurnRegistration {
             slot_id: slot.id.clone(),
@@ -612,32 +982,138 @@ impl StrategyService {
         Ok(())
     }
 
+    /// Mirror one durable reducer snapshot into the numeric-only Graph usage
+    /// ledger. The projection is intentionally rebuilt from typed run,
+    /// binding and command fields; input/output bodies never cross this seam.
+    fn record_graph_usage(
+        &self,
+        snapshot: &RunSnapshot,
+        settled: Option<(&RunCommand, &Value)>,
+    ) -> Result<()> {
+        let definition = self
+            .store
+            .definition_by_revision(&snapshot.definition_digest)?;
+        let status = wire_enum(snapshot.status)?;
+        crate::domain::agent_usage::workflow_ledger::begin_graph_run(&json!({
+            "stateRoot": self.portable_root,
+            "runId": snapshot.run_id,
+            "revisionDigest": snapshot.definition_digest,
+            "conversationId": snapshot.conversation_id,
+            "assistantMembershipId": snapshot.assistant_membership_id,
+            "status": status,
+        }))
+        .map_err(|error| anyhow!(error.code))?;
+        for command in snapshot.commands.values() {
+            let binding = command.binding_id.as_deref().and_then(|slot_id| {
+                definition.bindings.iter().find(|binding| {
+                    binding.slot_id == slot_id && binding.ordinal == command.binding_ordinal
+                })
+            });
+            let (membership_id, agent_id) = match (
+                snapshot.conversation_id.as_deref(),
+                binding,
+                matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem),
+            ) {
+                (Some(conversation_id), Some(binding), true) => {
+                    let target = group_actor_target(
+                        conversation_id,
+                        &binding.value_id,
+                        &self.portable_root,
+                    )?;
+                    (Some(target.membership_id), Some(target.agent_id))
+                }
+                (None, Some(binding), true) => (None, Some(binding.value_id.clone())),
+                _ => (None, None),
+            };
+            let usage = settled
+                .filter(|(settled_command, _)| settled_command.id == command.id)
+                .and_then(|(_, output)| numeric_usage_projection(output));
+            crate::domain::agent_usage::workflow_ledger::record_graph_command(&json!({
+                "stateRoot": self.portable_root,
+                "runId": snapshot.run_id,
+                "commandId": command.id,
+                "stateId": command.state_id,
+                "membershipId": membership_id,
+                "kind": wire_enum(command.kind)?,
+                "status": wire_enum(command.status)?,
+                "attempt": command.attempt,
+                "agentId": agent_id,
+                "model": binding.map(|binding| binding.model.as_str()).filter(|model| !model.is_empty()),
+                "usage": usage,
+            }))
+            .map_err(|error| anyhow!(error.code))?;
+        }
+        Ok(())
+    }
+
     fn start_drive(&self, snapshot: &RunSnapshot) -> Result<Option<Value>> {
+        // Usage admission is local and deterministic, so it completes before
+        // registering the first Membership turn or issuing any other effect.
+        self.record_graph_usage(snapshot, None)?;
         let Some(reservation) = DriveReservation::acquire(&snapshot.run_id) else {
             return Ok(None);
         };
-        let entry = self.register_entry_turn(snapshot)?;
+        let assistant_owned = snapshot.assistant_membership_id.is_some();
+        let entry = match self.register_entry_turn(snapshot) {
+            Ok(entry) => entry,
+            Err(error) if assistant_owned => {
+                self.settle_assistant_start_failure(snapshot, &error.to_string())?;
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
         let projection = entry
             .as_ref()
             .map(|registration| registration.projection.clone());
         let run_id = snapshot.run_id.clone();
         let service = self.clone();
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("strategy-drive".to_owned())
             .spawn(move || {
                 let _reservation = reservation;
-                let _ = service.drive_run(&run_id, entry);
-            })
-            .map_err(|_| anyhow!("strategy_run_start_failed"))?;
+                if service.drive_run(&run_id, entry).is_err() {
+                    let _ = service.settle_assistant_drive_failure(&run_id);
+                }
+            });
+        if spawned.is_err() {
+            if assistant_owned {
+                self.settle_assistant_start_failure(snapshot, "strategy_run_start_failed")?;
+                return Ok(None);
+            }
+            return Err(anyhow!("strategy_run_start_failed"));
+        }
         Ok(projection)
+    }
+
+    fn settle_assistant_start_failure(&self, snapshot: &RunSnapshot, message: &str) -> Result<()> {
+        let Some(command) = snapshot.commands.values().find(|command| {
+            matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+                && command.status == CommandStatus::Pending
+        }) else {
+            return self.settle_assistant_drive_failure(&snapshot.run_id);
+        };
+        let (class, code) = classify_effect_error(message);
+        let updated = self.store.apply_event(
+            &snapshot.run_id,
+            ReducerEvent::AssistantEffectFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class,
+                code: code.to_owned(),
+            },
+        )?;
+        self.record_graph_usage(&updated, None)
     }
 
     fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
         self.store.reclaim_abandoned_host_commands(run_id)?;
         self.recover_expired_commands(run_id)?;
+        let assistant_owned = self.store.run(run_id)?.assistant_membership_id.is_some();
         let mut executed = 0usize;
-        while executed < MAX_DRIVE_EFFECTS_PER_CALL {
-            self.recover_persisted_effects(run_id)?;
+        'drive: while executed < MAX_DRIVE_EFFECTS_PER_CALL {
+            if !assistant_owned {
+                self.recover_persisted_effects(run_id)?;
+            }
             let snapshot = self.store.run(run_id)?;
             if snapshot.status == StrategyRunStatus::AuthorizationRequired {
                 let definition = self
@@ -751,11 +1227,21 @@ impl StrategyService {
             })?;
             executed = executed.saturating_add(outcomes.len());
             outcomes.sort_by(|left, right| left.0.id.cmp(&right.0.id));
+            let mut assistant_failures = Vec::new();
             for (command, result) in outcomes {
                 match result {
                     Ok((output, group_streamed)) => {
                         if let Some((class, code)) = actor_output_failure(&command, &output) {
-                            self.store.apply_event(
+                            if assistant_owned {
+                                assistant_failures.push((
+                                    command,
+                                    class,
+                                    code.to_owned(),
+                                    Some(output),
+                                ));
+                                continue;
+                            }
+                            let updated = self.store.apply_event(
                                 run_id,
                                 ReducerEvent::CommandFailed {
                                     command_id: command.id.clone(),
@@ -764,10 +1250,11 @@ impl StrategyService {
                                     code: code.into(),
                                 },
                             )?;
+                            self.record_graph_usage(&updated, None)?;
                             self.recover_failed_effect(run_id, &command.id)?;
                             continue;
                         }
-                        self.store.apply_event(
+                        let updated = self.store.apply_event(
                             run_id,
                             ReducerEvent::CommandSucceeded {
                                 command_id: command.id.clone(),
@@ -775,13 +1262,18 @@ impl StrategyService {
                                 output: output.clone(),
                             },
                         )?;
+                        self.record_graph_usage(&updated, Some((&command, &output)))?;
                         if !group_streamed {
                             let _ = self.project_membership_event(run_id, &command, &output);
                         }
                     }
                     Err(error) => {
                         let (class, code) = classify_effect_error(&error.to_string());
-                        self.store.apply_event(
+                        if assistant_owned {
+                            assistant_failures.push((command, class, code.to_owned(), None));
+                            continue;
+                        }
+                        let updated = self.store.apply_event(
                             run_id,
                             ReducerEvent::CommandFailed {
                                 command_id: command.id.clone(),
@@ -790,12 +1282,45 @@ impl StrategyService {
                                 code: code.into(),
                             },
                         )?;
+                        self.record_graph_usage(&updated, None)?;
                         self.recover_failed_effect(run_id, &command.id)?;
                     }
                 }
             }
+            if !assistant_failures.is_empty() {
+                for (command, class, code, output) in assistant_failures {
+                    let updated = self.store.apply_event(
+                        run_id,
+                        ReducerEvent::AssistantEffectFailed {
+                            command_id: command.id.clone(),
+                            attempt_token: command.attempt_token.clone(),
+                            class,
+                            code,
+                        },
+                    )?;
+                    self.record_graph_usage(
+                        &updated,
+                        output.as_ref().map(|output| (&command, output)),
+                    )?;
+                }
+                break 'drive;
+            }
         }
         Ok(())
+    }
+
+    fn settle_assistant_drive_failure(&self, run_id: &str) -> Result<()> {
+        let snapshot = self.store.run(run_id)?;
+        if snapshot.assistant_membership_id.is_none() || assistant_run_terminal(snapshot.status) {
+            return Ok(());
+        }
+        let updated = self.store.apply_event(
+            run_id,
+            ReducerEvent::AssistantDriveFailed {
+                code: "assistant_drive_outcome_unknown".to_owned(),
+            },
+        )?;
+        self.record_graph_usage(&updated, None)
     }
 
     fn recover_expired_commands(&self, run_id: &str) -> Result<()> {
@@ -852,8 +1377,15 @@ impl StrategyService {
                         .ok_or_else(|| anyhow!("binding_incomplete"))?,
                     command.binding_ordinal,
                 )?;
+                let fingerprint_value_id = match snapshot.conversation_id.as_deref() {
+                    Some(conversation_id) if !conversation_id.is_empty() => {
+                        group_actor_target(conversation_id, &binding.value_id, &self.portable_root)?
+                            .agent_id
+                    }
+                    _ => binding.value_id.clone(),
+                };
                 let fingerprint = actor_fingerprint(
-                    &binding.value_id,
+                    &fingerprint_value_id,
                     &binding.model,
                     &binding.reasoning_effort,
                 )?;
@@ -879,6 +1411,7 @@ impl StrategyService {
                     snapshot.cwd.as_deref(),
                     snapshot.conversation_id.as_deref(),
                     registration,
+                    &fingerprint,
                 )
             }
             CommandKind::Script => {
@@ -1012,6 +1545,7 @@ impl StrategyService {
         cwd: Option<&str>,
         conversation_id: Option<&str>,
         registration: Option<EntryTurnRegistration>,
+        expected_fingerprint: &str,
     ) -> Result<(Value, bool)> {
         let Some(conversation_id) = conversation_id.filter(|value| !value.is_empty()) else {
             return execute_actor(command, authorization_digest, binding, permit, cwd)
@@ -1020,8 +1554,7 @@ impl StrategyService {
         // A Conversation-bound run must run a registered Membership
         // PersistentTurn. The entry command carries the pre-registered handle;
         // every later command opens and runs through the same port.
-        let membership_id =
-            group_membership_id(conversation_id, &binding.value_id, &self.portable_root)?;
+        let target = group_actor_target(conversation_id, &binding.value_id, &self.portable_root)?;
         let Some(port) = self.actor_port.as_ref() else {
             return Err(anyhow!("strategy_actor_dispatch_failed"));
         };
@@ -1029,7 +1562,8 @@ impl StrategyService {
             Some(registration) => registration.params.clone(),
             None => group_actor_params(
                 conversation_id,
-                &membership_id,
+                &target.membership_id,
+                &target.agent_id,
                 binding,
                 &command.input,
                 run_id,
@@ -1037,11 +1571,7 @@ impl StrategyService {
                 cwd,
             )?,
         };
-        permit.consume(
-            command,
-            authorization_digest,
-            &actor_fingerprint(&binding.value_id, &binding.model, &binding.reasoning_effort)?,
-        )?;
+        permit.consume(command, authorization_digest, expected_fingerprint)?;
         let registration = match registration {
             Some(registration) => registration,
             None => {
@@ -1090,7 +1620,7 @@ impl StrategyService {
             crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
         let conversation = store.get(conversation_id)?;
         let Some(membership) = conversation.memberships.iter().find(|membership| {
-            membership.principal.agent_id.as_deref() == Some(binding.value_id.as_str())
+            membership.id == binding.value_id
                 && membership.status == crate::domain::client_conversation::MembershipStatus::Active
         }) else {
             return Ok(());
@@ -1127,6 +1657,13 @@ impl DriveReservation {
         driving.insert(run_id.to_owned()).then(|| Self {
             run_id: run_id.to_owned(),
         })
+    }
+
+    fn is_active(run_id: &str) -> bool {
+        driving_runs()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .contains(run_id)
     }
 }
 
@@ -1222,11 +1759,16 @@ fn entry_state_for_start<'a>(
 
 /// Resolve the active Agent Membership one Conversation-bound command runs
 /// against. Addressing is by Membership identity only.
-fn group_membership_id(
+struct GroupActorTarget {
+    membership_id: String,
+    agent_id: String,
+}
+
+fn group_actor_target(
     conversation_id: &str,
-    agent_id: &str,
+    binding_identity: &str,
     portable_root: &Path,
-) -> Result<String> {
+) -> Result<GroupActorTarget> {
     let store = crate::domain::client_conversation::ConversationStore::open(portable_root)
         .map_err(|_| anyhow!("strategy_actor_dispatch_failed"))?;
     let conversation = store
@@ -1236,10 +1778,19 @@ fn group_membership_id(
         .memberships
         .iter()
         .find(|membership| {
-            membership.principal.agent_id.as_deref() == Some(agent_id)
+            membership.id == binding_identity
                 && membership.status == crate::domain::client_conversation::MembershipStatus::Active
         })
-        .map(|membership| membership.id.clone())
+        .and_then(|membership| {
+            membership
+                .principal
+                .agent_id
+                .as_ref()
+                .map(|agent_id| GroupActorTarget {
+                    membership_id: membership.id.clone(),
+                    agent_id: agent_id.clone(),
+                })
+        })
         .ok_or_else(|| anyhow!("strategy_actor_dispatch_failed"))
 }
 
@@ -1249,6 +1800,7 @@ fn group_membership_id(
 fn group_actor_params(
     conversation_id: &str,
     membership_id: &str,
+    agent_id: &str,
     binding: &super::BindingValue,
     input: &Value,
     run_id: &str,
@@ -1260,8 +1812,8 @@ fn group_actor_params(
         return Err(anyhow!("strategy_actor_dispatch_failed"));
     }
     let mut params = json!({
-        "agent": binding.value_id,
-        "agentId": binding.value_id,
+        "agent": agent_id,
+        "agentId": agent_id,
         "text": prompt,
         "message": prompt,
         "streamEvents": true,
@@ -1466,6 +2018,19 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
         "strategy.run.inspect" | "strategy.run.cancel" | "strategy.run.retry" => {
             &["action", "runId"]
         }
+        "strategy.assistant.workflow.execute" => &[
+            "action",
+            "conversationId",
+            "membershipId",
+            "workflow",
+            "bindings",
+            "filters",
+            "input",
+            "idempotencyKey",
+        ],
+        "strategy.assistant.workflow.inspect" | "strategy.assistant.workflow.cancel" => {
+            &["action", "runId"]
+        }
         "strategy.run.resume" => &["action", "runId", "conversationId"],
         _ => return Err(anyhow!("unsupported_action")),
     };
@@ -1496,6 +2061,69 @@ fn optional_string<'a>(object: &'a Map<String, Value>, key: &str) -> Result<&'a 
         }
         _ => Err(anyhow!("invalid_request")),
     }
+}
+
+fn wire_enum(value: impl serde::Serialize) -> Result<String> {
+    serde_json::to_value(value)?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow!("strategy_enum_invalid"))
+}
+
+/// Extract only checked numeric usage candidates from a runtime result. The
+/// output body itself is never handed to the ledger or stored.
+fn numeric_usage_projection(output: &Value) -> Option<Value> {
+    let source = [
+        output.pointer("/usage"),
+        output.pointer("/result/usage"),
+        output.pointer("/terminal/usage"),
+        output.pointer("/payload/usage"),
+        Some(output),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(Value::as_object)?;
+    let number = |keys: &[&str]| {
+        keys.iter()
+            .find_map(|key| source.get(*key).and_then(Value::as_u64))
+    };
+    let prompt = number(&[
+        "promptTokens",
+        "prompt_tokens",
+        "inputTokens",
+        "input_tokens",
+    ]);
+    let cached = number(&[
+        "cachedInputTokens",
+        "cached_input_tokens",
+        "cacheReadInputTokens",
+        "cache_read_input_tokens",
+    ]);
+    let completion = number(&[
+        "completionTokens",
+        "completion_tokens",
+        "outputTokens",
+        "output_tokens",
+    ]);
+    if prompt.is_none() && cached.is_none() && completion.is_none() {
+        return None;
+    }
+    let prompt = prompt.unwrap_or(0);
+    let completion = completion.unwrap_or(0);
+    let total = prompt.checked_add(completion)?;
+    let accuracy = source
+        .get("accuracy")
+        .or_else(|| source.get("usageAccuracy"))
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "exact" | "estimated" | "unknown"))
+        .unwrap_or("exact");
+    Some(json!({
+        "promptTokens": prompt,
+        "cachedInputTokens": cached.unwrap_or(0),
+        "completionTokens": completion,
+        "totalTokens": total,
+        "accuracy": accuracy,
+    }))
 }
 
 fn optional_cwd(object: &Map<String, Value>) -> Result<Option<String>> {
@@ -1760,6 +2388,22 @@ fn error_projection(message: &str) -> Value {
                 false,
                 "Correct the request fields.",
             )
+        } else if message.contains("graph_preflight_rejected") {
+            (
+                "graph_preflight_rejected",
+                "assistant-workflow/preflight",
+                "assistant_workflow",
+                true,
+                "Correct the Graph or exact Membership bindings and retry.",
+            )
+        } else if message.contains("graph_identity_rejected") {
+            (
+                "graph_identity_rejected",
+                "assistant-workflow/preflight",
+                "assistant_workflow",
+                false,
+                "Only assistant-temporary Graph identities may be submitted.",
+            )
         } else {
             (
                 "strategy_operation_failed",
@@ -1777,6 +2421,68 @@ fn error_projection(message: &str) -> Value {
         "recovery": recovery,
         "presentationArgs": {}
     })
+}
+
+fn terminal_projection(value: &Value) -> Option<Value> {
+    let status = value.get("status").and_then(Value::as_str)?;
+    if !matches!(
+        status,
+        "authorization-required"
+            | "runtime-missing"
+            | "retryable"
+            | "completed"
+            | "failed"
+            | "cancelled"
+            | "blocked"
+            | "cancel-in-doubt"
+    ) {
+        return None;
+    }
+    let code = value
+        .pointer("/diagnostic/code")
+        .and_then(Value::as_str)
+        .filter(|code| !code.is_empty())
+        .unwrap_or(match status {
+            "completed" => "graph_completed",
+            "cancelled" => "graph_cancelled",
+            "cancel-in-doubt" => "cancellation_outcome_unknown",
+            "authorization-required" => "authorization_required",
+            "runtime-missing" => "runtime_unavailable",
+            "retryable" => "runtime_retryable",
+            "blocked" => "graph_blocked",
+            _ => "graph_failed",
+        });
+    Some(json!({
+        "code": code,
+        "status": status,
+        "stage": "assistant-workflow/terminal",
+        "retryable": false,
+        "recoveryClass": "assistant-direct-or-new-graph",
+    }))
+}
+
+fn assistant_state_failure(code: &str, membership_id: Option<&str>) -> PreflightFailure {
+    PreflightFailure::new(
+        "graph_preflight_rejected",
+        vec![PreflightCheck {
+            code: code.to_owned(),
+            membership_id: membership_id.map(str::to_owned),
+        }],
+    )
+}
+
+fn assistant_run_terminal(status: StrategyRunStatus) -> bool {
+    matches!(
+        status,
+        StrategyRunStatus::AuthorizationRequired
+            | StrategyRunStatus::RuntimeMissing
+            | StrategyRunStatus::Retryable
+            | StrategyRunStatus::Completed
+            | StrategyRunStatus::Failed
+            | StrategyRunStatus::Cancelled
+            | StrategyRunStatus::Blocked
+            | StrategyRunStatus::CancelInDoubt
+    )
 }
 
 fn now_ms() -> i64 {
@@ -2233,10 +2939,153 @@ mod tests {
                 MembershipAccess::Member,
             )
             .unwrap();
+        let owner_membership_id = conversation
+            .memberships
+            .iter()
+            .find(|candidate| candidate.principal.kind == PrincipalKind::Human)
+            .unwrap()
+            .id
+            .clone();
+        let revision = conversation_store.get(&conversation.id).unwrap().revision;
+        conversation_store
+            .set_conversation_assistant(
+                &conversation.id,
+                &owner_membership_id,
+                revision,
+                Some(&membership.id),
+            )
+            .unwrap();
         (conversation_store, conversation.id, membership.id)
     }
 
-    fn authorized_entry_store(root: &Path) -> (StrategyStore, String) {
+    struct FixtureProfileAuthority {
+        readiness: &'static str,
+        calls: Arc<Mutex<BTreeMap<&'static str, usize>>>,
+    }
+
+    impl crate::domain::client_conversation::ProfileSnapshotAuthority for FixtureProfileAuthority {
+        fn target_facts(
+            &mut self,
+            _agent_id: &str,
+        ) -> Option<crate::domain::client_conversation::TargetFacts> {
+            *self.calls.lock().unwrap().entry("target").or_default() += 1;
+            Some(crate::domain::client_conversation::TargetFacts {
+                status: Some("available".to_owned()),
+                model: Some("model-a".to_owned()),
+                environment: Some("local".to_owned()),
+                capabilities: vec!["conversationDriver:supported".to_owned()],
+                readiness: Some(self.readiness.to_owned()),
+                reliability_class: Some("verified".to_owned()),
+                latency_class: Some(1),
+            })
+        }
+
+        fn model_price_usd_per_million_tokens(
+            &mut self,
+            _model: &str,
+        ) -> Option<crate::domain::client_conversation::PriceFacts> {
+            *self.calls.lock().unwrap().entry("price").or_default() += 1;
+            Some(crate::domain::client_conversation::PriceFacts {
+                input: 1.0,
+                output: 2.0,
+            })
+        }
+
+        fn coding_score(&mut self, _agent_id: &str, _model: &str) -> Option<i64> {
+            *self.calls.lock().unwrap().entry("score").or_default() += 1;
+            Some(3)
+        }
+
+        fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
+            *self.calls.lock().unwrap().entry("skills").or_default() += 1;
+            vec![
+                crate::domain::client_conversation::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID
+                    .to_owned(),
+            ]
+        }
+    }
+
+    fn fixture_profile_authority(
+        readiness: &'static str,
+        calls: Arc<Mutex<BTreeMap<&'static str, usize>>>,
+    ) -> crate::domain::client_conversation::SharedSnapshotAuthority {
+        Arc::new(Mutex::new(Box::new(FixtureProfileAuthority {
+            readiness,
+            calls,
+        })))
+    }
+
+    struct MutatingProfileAuthority {
+        store: crate::domain::client_conversation::ConversationStore,
+        conversation_id: String,
+        membership_id: String,
+        owner_membership_id: String,
+        calls: Arc<Mutex<BTreeMap<&'static str, usize>>>,
+        mutated: bool,
+    }
+
+    impl crate::domain::client_conversation::ProfileSnapshotAuthority for MutatingProfileAuthority {
+        fn target_facts(
+            &mut self,
+            _agent_id: &str,
+        ) -> Option<crate::domain::client_conversation::TargetFacts> {
+            *self.calls.lock().unwrap().entry("target").or_default() += 1;
+            Some(crate::domain::client_conversation::TargetFacts {
+                model: Some("model-a".to_owned()),
+                environment: Some("local".to_owned()),
+                capabilities: vec!["conversationDriver:supported".to_owned()],
+                readiness: Some("ready".to_owned()),
+                ..Default::default()
+            })
+        }
+
+        fn model_price_usd_per_million_tokens(
+            &mut self,
+            _model: &str,
+        ) -> Option<crate::domain::client_conversation::PriceFacts> {
+            *self.calls.lock().unwrap().entry("price").or_default() += 1;
+            Some(crate::domain::client_conversation::PriceFacts {
+                input: 1.0,
+                output: 2.0,
+            })
+        }
+
+        fn coding_score(&mut self, _agent_id: &str, _model: &str) -> Option<i64> {
+            *self.calls.lock().unwrap().entry("score").or_default() += 1;
+            Some(3)
+        }
+
+        fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
+            *self.calls.lock().unwrap().entry("skills").or_default() += 1;
+            if !self.mutated {
+                let revision = self
+                    .store
+                    .membership_profile(&self.membership_id)
+                    .unwrap()
+                    .unwrap()
+                    .revision;
+                self.store
+                    .set_membership_profile(
+                        &self.conversation_id,
+                        &self.membership_id,
+                        &self.owner_membership_id,
+                        revision,
+                        &crate::domain::client_conversation::ProfileIntentUpdate {
+                            preferred_capabilities: vec!["changed-during-preflight".to_owned()],
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                self.mutated = true;
+            }
+            vec![
+                crate::domain::client_conversation::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID
+                    .to_owned(),
+            ]
+        }
+    }
+
+    fn authorized_entry_store(root: &Path, membership_id: &str) -> (StrategyStore, String) {
         let store = StrategyStore::open(root).unwrap();
         let revision = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
         store
@@ -2247,7 +3096,7 @@ mod tests {
                 revision,
                 "entry",
                 &[BindingCandidate {
-                    value_id: "entry-agent".into(),
+                    value_id: membership_id.to_owned(),
                     model: String::new(),
                     reasoning_effort: String::new(),
                 }],
@@ -2372,9 +3221,9 @@ mod tests {
     #[test]
     fn run_start_registers_the_entry_turn_before_the_drive_runs_it() {
         let root = root();
-        let (store, revision) = authorized_entry_store(&root);
         let (_conversation_store, conversation_id, membership_id) =
             conversation_bound_fixture(&root);
+        let (store, revision) = authorized_entry_store(&root, &membership_id);
         let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
         let port = recording_port(Arc::clone(&calls), |_, _| {
             Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
@@ -2425,11 +3274,404 @@ mod tests {
         remove_drive_root(root, service);
     }
 
+    fn assistant_workflow_json() -> Value {
+        serde_json::json!({
+            "schema": "licoup.adaptive-flywheel.workflow.v1",
+            "metadata": {
+                "id": "assistant-temporary",
+                "name": "Assistant Temporary Graph",
+                "version": "1"
+            },
+            "limits": {"maxParallelism": 2, "maxWorksetItems": 16, "maxAttempts": 2},
+            "actorSlots": [
+                {"id": "subagent-a", "kind": "actor", "label": "Subagent A", "required": true, "entry": true}
+            ],
+            "runtimes": [],
+            "worksets": [],
+            "initial": "running",
+            "states": [
+                {"id": "running", "kind": "actor", "label": "Running", "binding": "subagent-a"},
+                {"id": "done", "kind": "succeed", "label": "Done"},
+                {"id": "failed", "kind": "fail", "label": "Failed"}
+            ],
+            "transitions": [
+                {"id": "succeeded", "from": "running", "event": "success", "to": "done"},
+                {"id": "failed", "from": "running", "event": "failure", "to": "failed"}
+            ]
+        })
+    }
+
+    #[test]
+    fn assistant_graph_start_preflights_and_replays_without_duplicate_effects() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let workflow = assistant_workflow_json();
+        let bindings = json!([{
+            "slotId": "subagent-a",
+            "ordinal": 0,
+            "valueId": membership_id,
+            "model": "model-a",
+            "reasoningEffort": "",
+            "revision": 1
+        }]);
+        let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
+        let service = service.with_profile_snapshot_authority(fixture_profile_authority(
+            "ready",
+            Arc::clone(&authority_calls),
+        ));
+        let request = || {
+            json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": workflow,
+                "bindings": bindings,
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-start-1"
+            })
+        };
+        let response = service.execute(request()).unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(response["result"]["preflight"]["accepted"], true);
+        assert!(response["result"].get("entrySessionId").is_none());
+        assert!(response["result"].get("definition").is_none());
+        assert!(response["result"].get("allowedOperations").is_none());
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+        assert_eq!(
+            response["result"]["preflight"]["receipt"]["membershipIds"][0],
+            membership_id.as_str()
+        );
+
+        let snapshot = wait_for_terminal(&service.store(), &run_id);
+        assert_eq!(snapshot.status, StrategyRunStatus::Completed);
+        {
+            let recorded = calls.lock().unwrap();
+            assert_eq!(recorded.len(), 2);
+            assert_eq!(recorded[0].0, "open");
+            assert_eq!(recorded[1].0, "run:dispatch:entry-1");
+        }
+        assert_eq!(
+            authority_calls.lock().unwrap().clone(),
+            BTreeMap::from([("price", 1), ("score", 1), ("skills", 1), ("target", 1),]),
+            "derived owners are read once for one execute request"
+        );
+
+        let inspect = service
+            .execute(json!({"action": "strategy.assistant.workflow.inspect", "runId": run_id}))
+            .unwrap();
+        assert_eq!(inspect["ok"], true);
+        assert_eq!(inspect["result"]["terminal"]["status"], "completed");
+        assert!(inspect["result"].get("entrySessionId").is_none());
+
+        let replay = service.execute(request()).unwrap();
+        assert_eq!(replay["ok"], true, "{replay}");
+        assert_eq!(replay["result"]["runId"].as_str().unwrap(), run_id.as_str());
+        {
+            let recorded = calls.lock().unwrap();
+            assert_eq!(
+                recorded.len(),
+                2,
+                "idempotent replay must not open a turn or duplicate an effect"
+            );
+        }
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn assistant_runtime_failure_returns_once_without_retry_or_fallback() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Err(RuntimeAdapterError::ConversationDispatchFailed)
+        });
+        let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port)
+        .with_profile_snapshot_authority(fixture_profile_authority("ready", authority_calls));
+        let request = || {
+            json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": assistant_workflow_json(),
+                "bindings": [{
+                    "slotId": "subagent-a",
+                    "ordinal": 0,
+                    "valueId": membership_id,
+                    "model": "model-a",
+                    "reasoningEffort": "",
+                    "revision": 1
+                }],
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-runtime-failure"
+            })
+        };
+
+        let response = service.execute(request()).unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(response["result"]["status"], "failed");
+        assert_eq!(response["result"]["terminal"]["status"], "failed");
+        assert_eq!(
+            response["result"]["terminal"]["code"],
+            "effect_temporarily_unavailable"
+        );
+        assert_eq!(response["result"]["terminal"]["retryable"], false);
+        assert_eq!(
+            response["result"]["terminal"]["recoveryClass"],
+            "assistant-direct-or-new-graph"
+        );
+        let run_id = response["result"]["runId"].as_str().unwrap();
+        let snapshot = service.store().run(run_id).unwrap();
+        assert!(snapshot.fallbacks.is_empty());
+        assert!(snapshot.commands.values().all(|command| {
+            !matches!(
+                command.status,
+                CommandStatus::Pending | CommandStatus::Retryable
+            )
+        }));
+        assert_eq!(calls.lock().unwrap().len(), 2, "one open and one effect");
+
+        let replay = service.execute(request()).unwrap();
+        assert_eq!(replay["result"]["runId"], response["result"]["runId"]);
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            2,
+            "terminal replay must not duplicate the failed effect"
+        );
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn assistant_entry_registration_failure_settles_the_admitted_graph_once() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let opens = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let recorded_opens = Arc::clone(&opens);
+        let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(ActorTurnPort {
+            open: Arc::new(move |_| {
+                recorded_opens.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Err(RuntimeAdapterError::ConversationDispatchFailed)
+            }),
+            run: Arc::new(|_, _| panic!("a rejected registration has no effect to run")),
+            abandon: Arc::new(|_| {}),
+        })
+        .with_profile_snapshot_authority(fixture_profile_authority("ready", authority_calls));
+        let request = || {
+            json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": assistant_workflow_json(),
+                "bindings": [{
+                    "slotId": "subagent-a",
+                    "ordinal": 0,
+                    "valueId": membership_id,
+                    "model": "model-a",
+                    "reasoningEffort": "",
+                    "revision": 1
+                }],
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-entry-registration-failure"
+            })
+        };
+
+        let response = service.execute(request()).unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(response["result"]["status"], "failed");
+        assert_eq!(response["result"]["terminal"]["status"], "failed");
+        assert_eq!(opens.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let run_id = response["result"]["runId"].as_str().unwrap();
+        let snapshot = service.store().run(run_id).unwrap();
+        assert!(snapshot.commands.values().all(|command| {
+            matches!(
+                command.status,
+                CommandStatus::Failed | CommandStatus::Cancelled
+            )
+        }));
+
+        let replay = service.execute(request()).unwrap();
+        assert_eq!(replay["result"]["runId"], response["result"]["runId"]);
+        assert_eq!(
+            opens.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "terminal replay must not attempt registration again"
+        );
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn assistant_graph_preflight_rejects_before_any_actor_effect() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            panic!("a rejected preflight must never reach the actor port")
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
+        let service = service
+            .with_profile_snapshot_authority(fixture_profile_authority("busy", authority_calls));
+        let response = service
+            .execute(json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": assistant_workflow_json(),
+                "bindings": [{
+                    "slotId": "subagent-a",
+                    "ordinal": 0,
+                    "valueId": membership_id,
+                    "model": "model-a",
+                    "reasoningEffort": "",
+                    "revision": 1
+                }],
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-start-rejected"
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true);
+        assert_eq!(response["result"]["accepted"], false);
+        assert_eq!(
+            response["result"]["error"]["code"],
+            "graph_preflight_rejected"
+        );
+        assert!(
+            response["result"]["error"]["checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|check| check["code"] == "graph_readiness_rejected")
+        );
+        {
+            let recorded = calls.lock().unwrap();
+            assert!(
+                recorded.is_empty(),
+                "zero actor effects are allowed before preflight admission"
+            );
+        }
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn assistant_route_revision_change_rejects_before_admission_or_effect() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let owner_membership_id = conversation_store
+            .get(&conversation_id)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .find(|membership| membership.principal.kind == PrincipalKind::Human)
+            .unwrap()
+            .id;
+        let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
+        let authority: crate::domain::client_conversation::SharedSnapshotAuthority =
+            Arc::new(Mutex::new(Box::new(MutatingProfileAuthority {
+                store: conversation_store,
+                conversation_id: conversation_id.clone(),
+                membership_id: membership_id.clone(),
+                owner_membership_id,
+                calls: Arc::clone(&authority_calls),
+                mutated: false,
+            })));
+        let strategy_store = StrategyStore::open(&root).unwrap();
+        let service = StrategyService::from_parts(
+            root.clone(),
+            strategy_store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(ActorTurnPort {
+            open: Arc::new(|_| panic!("a stale route must reject before registration")),
+            run: Arc::new(|_, _| panic!("a stale route must reject before effects")),
+            abandon: Arc::new(|_| {}),
+        })
+        .with_profile_snapshot_authority(authority);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": assistant_workflow_json(),
+                "bindings": [{
+                    "slotId": "subagent-a",
+                    "ordinal": 0,
+                    "valueId": membership_id,
+                    "model": "model-a",
+                    "reasoningEffort": "",
+                    "revision": 1
+                }],
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-stale-route"
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(response["result"]["accepted"], false);
+        assert!(
+            response["result"]["error"]["checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|check| check["code"] == "graph_route_stale")
+        );
+        assert!(
+            strategy_store
+                .run_id_by_idempotency_key("assistant-stale-route")
+                .unwrap()
+                .is_none(),
+            "the route revision check precedes durable admission"
+        );
+        assert_eq!(
+            authority_calls.lock().unwrap().clone(),
+            BTreeMap::from([("price", 1), ("score", 1), ("skills", 1), ("target", 1),]),
+        );
+        drop(service);
+        remove_root(root);
+    }
+
     #[test]
     fn entry_open_failure_is_a_real_typed_start_failure() {
         let root = root();
-        let (store, revision) = authorized_entry_store(&root);
-        let (_conversation_store, conversation_id, _) = conversation_bound_fixture(&root);
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_entry_store(&root, &membership_id);
         let service = StrategyService::from_parts(
             root.clone(),
             store,
@@ -2469,8 +3711,9 @@ mod tests {
     #[test]
     fn drive_retry_opens_and_runs_a_fresh_turn_inline() {
         let root = root();
-        let (store, revision) = authorized_entry_store(&root);
-        let (_conversation_store, conversation_id, _) = conversation_bound_fixture(&root);
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_entry_store(&root, &membership_id);
         let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
         let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let run_attempts = Arc::clone(&attempts);

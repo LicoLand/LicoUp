@@ -234,6 +234,59 @@ impl ConversationService {
                 )?;
                 Ok(json!({"ok": true}))
             }
+            "conversation.assistant.set" => {
+                let membership_id = match object.get("membershipId") {
+                    Some(Value::Null) => None,
+                    Some(Value::String(value)) if value.trim().is_empty() => None,
+                    Some(Value::String(value)) => Some(value.as_str()),
+                    _ => return Err(anyhow!("invalid_request")),
+                };
+                self.store.set_conversation_assistant(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "ownerMembershipId")?,
+                    required_revision(object, "expectedRevision")?,
+                    membership_id,
+                )?;
+                Ok(json!({"ok": true}))
+            }
+            "conversation.profile.update" => {
+                let intent: super::ProfileIntentUpdate = serde_json::from_value(
+                    object
+                        .get("intent")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let profile = self.store.set_membership_profile(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "membershipId")?,
+                    required_string(object, "ownerMembershipId")?,
+                    required_revision(object, "expectedRevision")?,
+                    &intent,
+                )?;
+                Ok(json!({"ok": true, "profile": serde_json::to_value(profile)?}))
+            }
+            "conversation.profile.get" => {
+                let profile = self
+                    .store
+                    .membership_profile(required_string(object, "membershipId")?)?;
+                Ok(serde_json::to_value(profile)?)
+            }
+            "conversation.profile.candidates" => {
+                let conversation_id = required_string(object, "conversationId")?;
+                let filters: super::CandidateFilters = serde_json::from_value(
+                    object.get("filters").cloned().unwrap_or_else(|| json!({})),
+                )?;
+                let pairs = self.profile_projection_pairs(conversation_id)?;
+                let authority = super::production_snapshot_authority();
+                let snapshots =
+                    super::project_profile_snapshots(conversation_id, &pairs, &authority);
+                let candidates =
+                    super::rank_candidates(snapshots, &filters).map_err(anyhow::Error::msg)?;
+                Ok(json!({
+                    "candidates": serde_json::to_value(&candidates)?,
+                    "routeReceipt": route_receipt(conversation_id, &candidates),
+                }))
+            }
             "conversation.list" => Ok(serde_json::to_value(
                 self.store.list(
                     object
@@ -396,6 +449,24 @@ impl ConversationService {
         }))
     }
 
+    /// Active Agent Memberships of one Conversation paired with their
+    /// persistent Profile intents and the Assistant flag for projection.
+    fn profile_projection_pairs(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<(super::Membership, super::ProfileIntent, bool)>> {
+        let conversation = self.store.get(conversation_id)?;
+        let profiles = self.store.membership_profiles(conversation_id)?;
+        Ok(profiles
+            .into_iter()
+            .map(|(membership, intent)| {
+                let is_assistant =
+                    conversation.assistant_membership_id.as_deref() == Some(membership.id.as_str());
+                (membership, intent, is_assistant)
+            })
+            .collect())
+    }
+
     /// The single dispatch door. Addressing runs natively from the stored
     /// Event text, registration happens before this response, a non-empty
     /// turn list means an attachable turn, and the error field is reserved
@@ -407,7 +478,30 @@ impl ConversationService {
         let content = self.store.posted_event_text(conversation_id, event_id)?;
         let mention_ids = self.resolve_mentions(conversation_id, &content)?;
         let active = self.active_turns_for(conversation_id);
-        let start_ids = mention_ids
+        let assistant_ids = if mention_ids.is_empty() {
+            let conversation = self.store.get(conversation_id)?;
+            conversation
+                .assistant_membership_id
+                .as_deref()
+                .filter(|membership_id| {
+                    conversation.memberships.iter().any(|membership| {
+                        membership.id == **membership_id
+                            && membership.status == MembershipStatus::Active
+                            && membership.principal.kind == PrincipalKind::Agent
+                    })
+                })
+                .map(|membership_id| vec![membership_id.to_owned()])
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let mut addressed = mention_ids.clone();
+        for assistant_id in &assistant_ids {
+            if !addressed.contains(assistant_id) {
+                addressed.push(assistant_id.clone());
+            }
+        }
+        let start_ids = addressed
             .iter()
             .filter(|membership_id| {
                 !active
@@ -425,8 +519,8 @@ impl ConversationService {
         let mut live_turns = Vec::new();
         let mut direct_receipts = Vec::new();
         let mut dispatch_error = None;
-        if !mention_ids.is_empty() {
-            for membership_id in &mention_ids {
+        if !addressed.is_empty() {
+            for membership_id in &addressed {
                 if let Some(turn) = active
                     .iter()
                     .find(|candidate| candidate.membership_id == *membership_id)
@@ -455,7 +549,7 @@ impl ConversationService {
             for turn in self.active_turns_for(conversation_id) {
                 merge_live_turn(&mut live_turns, turn.to_json());
             }
-        } else if !active.is_empty() {
+        } else if active.len() == 1 {
             for turn in &active {
                 if self.steer_active_turn(turn, &content).is_err() {
                     dispatch_error.get_or_insert_with(|| {
@@ -467,8 +561,16 @@ impl ConversationService {
                 }
                 merge_live_turn(&mut live_turns, turn.to_json());
             }
+        } else if !active.is_empty() {
+            for turn in &active {
+                merge_live_turn(&mut live_turns, turn.to_json());
+            }
+            dispatch_error = Some(json!({
+                "code": "conversation_address_ambiguous",
+                "stage": "conversation/address",
+            }));
         }
-        let strategy_address = if mention_ids.is_empty() && active.is_empty() {
+        let strategy_address = if addressed.is_empty() && active.is_empty() {
             self.address_strategy(conversation_id, &content, event_id)?
         } else {
             StrategyAddress::default()
@@ -886,6 +988,45 @@ fn unwrap_strategy_execute(value: Value) -> std::result::Result<Value, Value> {
     Err(json!({"code": code, "stage": "strategy/start"}))
 }
 
+/// Privacy-safe immutable decision evidence. It freezes the exact allowlisted
+/// facts and source revisions used for ranking; it is not a mutable catalog.
+pub(crate) fn route_receipt(
+    conversation_id: &str,
+    snapshots: &[super::MembershipProfileSnapshot],
+) -> Value {
+    json!({
+        "conversationId": conversation_id,
+        "sourceRevisions": [
+            {"source": "targets", "revision": "read-only-v1"},
+            {"source": "nativeCapabilities", "revision": "v0.0.1"},
+            {"source": "providerModelPricing", "revision": "catalog-v1"},
+            {"source": "agentIntelligenceCatalog", "revision": "catalog-v1"},
+            {"source": "skillHub", "revision": "request-snapshot-v1"},
+            {"source": "assistantWorkflowAuthoringBundle", "revision": "v1"},
+        ],
+        "rankedMembershipIds": snapshots
+            .iter()
+            .map(|snapshot| snapshot.membership_id.clone())
+            .collect::<Vec<_>>(),
+        "candidates": snapshots.iter().map(|snapshot| json!({
+            "membershipId": snapshot.membership_id,
+            "profileRevision": snapshot.intent_revision,
+            "responsibility": snapshot.responsibility,
+            "model": snapshot.model,
+            "capabilities": snapshot.capabilities,
+            "skills": snapshot.skills,
+            "environment": snapshot.environment,
+            "readiness": snapshot.readiness,
+            "inputPriceUsdPerMillionTokens": snapshot.price_input_usd_per_million_tokens,
+            "outputPriceUsdPerMillionTokens": snapshot.price_output_usd_per_million_tokens,
+            "codingScore": snapshot.intelligence_score,
+            "reliabilityClass": snapshot.reliability_class,
+            "latencyClass": snapshot.latency_class,
+            "authority": snapshot.authority,
+        })).collect::<Vec<_>>(),
+    })
+}
+
 fn merge_live_turn(live_turns: &mut Vec<Value>, turn: Value) {
     let Some(handle) = turn
         .get("turnHandle")
@@ -977,6 +1118,23 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "conversation.archive" => &["action", "conversationId", "archived"],
         "conversation.pin.set" => &["action", "conversationId", "pinned"],
         "conversation.strategy.set" => &["action", "conversationId", "strategyRevision"],
+        "conversation.assistant.set" => &[
+            "action",
+            "conversationId",
+            "ownerMembershipId",
+            "expectedRevision",
+            "membershipId",
+        ],
+        "conversation.profile.update" => &[
+            "action",
+            "conversationId",
+            "membershipId",
+            "ownerMembershipId",
+            "expectedRevision",
+            "intent",
+        ],
+        "conversation.profile.get" => &["action", "membershipId"],
+        "conversation.profile.candidates" => &["action", "conversationId", "filters"],
         "conversation.list" => &["action", "includeArchived"],
         "conversation.get" => &["action", "conversationId"],
         "conversation.events.page" => &["action", "conversationId", "afterSequence", "limit"],
@@ -1032,6 +1190,14 @@ fn required_string<'a>(object: &'a serde_json::Map<String, Value>, key: &str) ->
         .get(key)
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("invalid_request"))
+}
+
+fn required_revision(object: &serde_json::Map<String, Value>, key: &str) -> Result<i64> {
+    object
+        .get(key)
+        .and_then(Value::as_i64)
+        .filter(|revision| *revision >= 0)
         .ok_or_else(|| anyhow!("invalid_request"))
 }
 
@@ -2337,5 +2503,264 @@ mod tests {
             .unwrap();
         let conversation = service.store().get(&conversation_id).unwrap();
         assert!(conversation.strategy_revision.is_none());
+    }
+    #[test]
+    fn assistant_designation_profile_actions_and_candidate_projection_are_bounded() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, owner_id, agent_one) = group_fixture(&service);
+        let agent_two = service
+            .execute(json!({
+                "action": "conversation.membership.add",
+                "conversationId": conversation_id,
+                "principal": {
+                    "id": "agent:two",
+                    "kind": "agent",
+                    "displayName": "Two",
+                    "agentId": "two",
+                },
+                "access": "member",
+            }))
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        let conversation_revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": conversation_revision,
+                "membershipId": agent_one,
+            }))
+            .unwrap();
+        let conversation = service.store().get(&conversation_id).unwrap();
+        assert_eq!(
+            conversation.assistant_membership_id.as_deref(),
+            Some(agent_one.as_str())
+        );
+
+        let intent = json!({
+            "requiredCapabilities": [],
+            "preferredCapabilities": ["workspace"],
+            "skillReferences": [],
+            "preferredModel": "model-a",
+            "preferredEnvironment": "local",
+        });
+        for membership_id in [&agent_one, &agent_two] {
+            let expected_revision = service
+                .store()
+                .membership_profile(membership_id)
+                .unwrap()
+                .unwrap()
+                .revision;
+            let updated = service
+                .execute(json!({
+                    "action": "conversation.profile.update",
+                    "conversationId": conversation_id,
+                    "membershipId": membership_id,
+                    "ownerMembershipId": owner_id,
+                    "expectedRevision": expected_revision,
+                    "intent": intent,
+                }))
+                .unwrap();
+            assert_eq!(updated["profile"]["revision"], expected_revision + 1);
+        }
+        let stored = service
+            .execute(json!({
+                "action": "conversation.profile.get",
+                "membershipId": agent_one,
+            }))
+            .unwrap();
+        assert_eq!(stored["revision"], 2);
+        assert_eq!(stored["preferredModel"], "model-a");
+        assert_eq!(stored["responsibility"], "assistant");
+        assert!(
+            stored["skillReferences"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|skill| skill == "assistant-workflow-authoring")
+        );
+
+        let candidates = service
+            .execute(json!({
+                "action": "conversation.profile.candidates",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(candidates["candidates"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            candidates["routeReceipt"]["rankedMembershipIds"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            candidates["routeReceipt"]["sourceRevisions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|source| source["revision"] != "local-current")
+        );
+
+        let hard_failure = service
+            .execute(json!({
+                "action": "conversation.profile.candidates",
+                "conversationId": conversation_id,
+                "filters": {"membershipIds": ["membership:missing"]},
+            }))
+            .expect_err("a missing exact binding must reject before any effect");
+        assert_eq!(hard_failure.to_string(), "profile_candidate_rejected");
+    }
+
+    #[test]
+    fn designated_group_plain_message_dispatches_to_the_assistant_membership_turn() {
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_calls = Arc::clone(&calls);
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            move |params| {
+                captured_calls.lock().unwrap().push(params.clone());
+                Ok(accepted_receipt(params))
+            },
+        );
+        let (conversation_id, owner_id, agent_one) = group_fixture(&service);
+        let conversation_revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": conversation_revision,
+                "membershipId": agent_one,
+            }))
+            .unwrap();
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "plain message without a mention",
+            }),
+        );
+        assert_eq!(posted["dispatchPending"], true);
+        assert_eq!(posted["directTurns"].as_array().unwrap().len(), 1);
+        assert_eq!(posted["directTurns"][0]["state"], "running");
+        assert_eq!(posted["turns"][0]["membershipId"], agent_one);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["membershipId"], agent_one);
+        assert_eq!(calls[0]["text"], "plain message without a mention");
+        assert_eq!(calls[0]["timeoutMs"], 0);
+        assert_eq!(calls[0]["streamEvents"], true);
+    }
+
+    #[test]
+    fn plain_group_follow_up_steers_only_the_designated_assistant_turn() {
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_steers = Arc::clone(&steers);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(|_| panic!("active turns must be steered, not restarted"))
+        .with_steer_turn(move |params| {
+            captured_steers.lock().unwrap().push(params.clone());
+            Ok(json!({"ok": true}))
+        });
+        let (conversation_id, owner_id, agent_one) = group_fixture(&service);
+        let agent_two = service
+            .execute(json!({
+                "action": "conversation.membership.add",
+                "conversationId": conversation_id,
+                "principal": {"id": "agent:two", "kind": "agent", "displayName": "Two", "agentId": "two"},
+                "access": "member",
+            }))
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let active_turns = vec![
+            json!({"turnHandle": "turn:assistant", "conversationId": conversation_id, "membershipId": agent_one, "agent": "one"}),
+            json!({"turnHandle": "turn:member", "conversationId": conversation_id, "membershipId": agent_two, "agent": "two"}),
+        ];
+        let service = service.with_active_turns(move |_| json!({"turns": active_turns}));
+        let conversation_revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": conversation_revision,
+                "membershipId": agent_one,
+            }))
+            .unwrap();
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "continue the goal",
+            }),
+        );
+        assert!(posted.get("strategyError").is_none());
+        let recorded = steers.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0]["turnHandle"], "turn:assistant");
+        assert_eq!(recorded[0]["text"], "continue the goal");
+    }
+
+    #[test]
+    fn plain_group_follow_up_without_an_assistant_never_fans_out_to_active_turns() {
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_steers = Arc::clone(&steers);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(|_| panic!("ambiguous active turns must not be restarted"))
+        .with_steer_turn(move |params| {
+            captured_steers.lock().unwrap().push(params.clone());
+            Ok(json!({"ok": true}))
+        });
+        let (conversation_id, owner_id, agent_one) = group_fixture(&service);
+        let agent_two = service
+            .execute(json!({
+                "action": "conversation.membership.add",
+                "conversationId": conversation_id,
+                "principal": {"id": "agent:two", "kind": "agent", "displayName": "Two", "agentId": "two"},
+                "access": "member",
+            }))
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let active_turns = vec![
+            json!({"turnHandle": "turn:one", "conversationId": conversation_id, "membershipId": agent_one, "agent": "one"}),
+            json!({"turnHandle": "turn:two", "conversationId": conversation_id, "membershipId": agent_two, "agent": "two"}),
+        ];
+        let service = service.with_active_turns(move |_| json!({"turns": active_turns}));
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "ambiguous follow up",
+            }),
+        );
+        assert_eq!(
+            posted["strategyError"]["code"],
+            "conversation_address_ambiguous"
+        );
+        assert!(steers.lock().unwrap().is_empty());
     }
 }

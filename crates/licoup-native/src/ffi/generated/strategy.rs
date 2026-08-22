@@ -123,6 +123,16 @@ pub enum StrategyFailureCode {
     EffectInDoubt,
     #[serde(rename = "unsupported_action")]
     UnsupportedAction,
+    #[serde(rename = "graph_invalid")]
+    GraphInvalid,
+    #[serde(rename = "graph_preflight_rejected")]
+    GraphPreflightRejected,
+    #[serde(rename = "graph_identity_rejected")]
+    GraphIdentityRejected,
+    #[serde(rename = "graph_route_stale")]
+    GraphRouteStale,
+    #[serde(rename = "strategy_idempotency_conflict")]
+    StrategyIdempotencyConflict,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -163,6 +173,12 @@ pub enum StrategyActionKind {
     StrategyRunCancel,
     #[serde(rename = "strategy.run.retry")]
     StrategyRunRetry,
+    #[serde(rename = "strategy.assistant.workflow.execute")]
+    StrategyAssistantWorkflowExecute,
+    #[serde(rename = "strategy.assistant.workflow.inspect")]
+    StrategyAssistantWorkflowInspect,
+    #[serde(rename = "strategy.assistant.workflow.cancel")]
+    StrategyAssistantWorkflowCancel,
 }
 
 pub const STRATEGY_BRIDGE_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.bridge.v1";

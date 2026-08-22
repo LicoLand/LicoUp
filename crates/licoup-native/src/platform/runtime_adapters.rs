@@ -45,7 +45,8 @@ pub use dispatch::send_message;
 pub use error::RuntimeAdapterError;
 pub(crate) use probe::probe_runtime_driver;
 pub(crate) use registry::{
-    adapter_management_catalog, inventory_capability_matrix, runtime_driver_profile,
+    adapter_management_catalog, inventory_capability_matrix, native_capabilities_for_agent,
+    runtime_driver_profile,
 };
 pub use registry::{
     reload_conversation_readiness_document, reload_conversation_readiness_from_path,

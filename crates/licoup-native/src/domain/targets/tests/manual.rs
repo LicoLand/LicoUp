@@ -165,13 +165,40 @@ fn read_only_target_inspection_skips_model_stores_and_discovery_cache_writes() {
     .unwrap();
 
     assert_eq!(inspected["target"]["target"], "openclaw");
-    assert_eq!(inspected["target"].as_object().unwrap().len(), 4);
+    assert_eq!(
+        inspected["target"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from([
+            "adapterCapabilities",
+            "location",
+            "model",
+            "status",
+            "supportedActions",
+            "target",
+        ])
+    );
+    // Profile derivation needs the safe location/model slots, but read-only
+    // inspection must not open a model owner: this fixture therefore remains
+    // unknown instead of consuming the injected model-catalog trap.
+    assert_eq!(inspected["target"]["location"], "local");
+    assert!(inspected["target"]["model"].is_null());
     assert_eq!(
         inspected["target"]["adapterCapabilities"]
             .as_object()
             .unwrap()
-            .len(),
-        3
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from([
+            "conversationBlocker",
+            "conversationConsecutivePasses",
+            "conversationDriver",
+            "conversationReadiness",
+        ])
     );
     for private in [
         "binaryPath",

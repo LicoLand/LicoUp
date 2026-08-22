@@ -560,7 +560,10 @@ pub(crate) fn strategy_requires_persistent_runtime(params: &Value) -> bool {
         .is_some_and(|action| {
             matches!(
                 action,
-                "strategy.run.start" | "strategy.run.resume" | "strategy.run.retry"
+                "strategy.run.start"
+                    | "strategy.run.resume"
+                    | "strategy.run.retry"
+                    | "strategy.assistant.workflow.execute"
             )
         })
 }

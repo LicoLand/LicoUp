@@ -28,6 +28,7 @@ void main() {
         'createdAtUnixMs': 1,
         'updatedAtUnixMs': 20,
         'eventCount': 2,
+        'assistantMembershipId': 'membership:codex',
         'memberships': [
           _membership(
             id: 'membership:owner',
@@ -101,6 +102,7 @@ void main() {
       expect(session.messages, hasLength(5));
       expect(session.messages[0].participantAgentId, 'codex');
       expect(session.messages[0].participantLabel, 'Codex');
+      expect(session.messages[0].participantRole, 'assistant');
       expect(session.messages[0].text, 'answer');
       expect(session.messages[1].cardType, 'reasoning');
       expect(session.messages[2].cardType, 'tool-call');

@@ -322,8 +322,8 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
       for (final assignment in widget.assignments) assignment.agentId,
     };
 
-    // Root overlay paints above the dialog footer so Reviewer/Worker cards
-    // are not covered by Cancel/Save. Flip upward when space below is tight.
+    // Root overlay paints above the dialog footer so Membership cards are not
+    // covered by Cancel/Save. Flip upward when space below is tight.
     return OverlayPortal(
       controller: _cascadePortalController,
       overlayLocation: OverlayChildLocation.rootOverlay,

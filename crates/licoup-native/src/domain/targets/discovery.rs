@@ -154,13 +154,22 @@ fn inspect_target_inner(params: &Value, read_only: bool) -> Result<Value> {
 }
 
 fn read_only_target_projection(candidate: &TargetCandidate) -> Value {
+    let model = candidate
+        .model_catalog
+        .as_ref()
+        .and_then(|catalog| catalog.get("defaultModel"))
+        .and_then(Value::as_str)
+        .filter(|model| !model.is_empty());
     json!({
         "target": candidate.target,
         "status": candidate.status,
+        "model": model,
+        "location": candidate.location,
         "adapterCapabilities": {
             "conversationDriver": candidate.adapter_capabilities.conversation_driver,
             "conversationReadiness": candidate.adapter_capabilities.conversation_readiness,
             "conversationBlocker": candidate.adapter_capabilities.conversation_blocker,
+            "conversationConsecutivePasses": candidate.adapter_capabilities.conversation_consecutive_passes,
         },
         "supportedActions": candidate.supported_actions,
     })

@@ -124,6 +124,11 @@ enum StrategyFailureCode {
   callbackConflict("callback_conflict"),
   effectInDoubt("effect_in_doubt"),
   unsupportedAction("unsupported_action"),
+  graphInvalid("graph_invalid"),
+  graphPreflightRejected("graph_preflight_rejected"),
+  graphIdentityRejected("graph_identity_rejected"),
+  graphRouteStale("graph_route_stale"),
+  strategyIdempotencyConflict("strategy_idempotency_conflict"),
   unknown('');
 
   const StrategyFailureCode(this.wireName);
@@ -160,6 +165,9 @@ enum StrategyActionKind {
   strategyRunResume("strategy.run.resume"),
   strategyRunCancel("strategy.run.cancel"),
   strategyRunRetry("strategy.run.retry"),
+  strategyAssistantWorkflowExecute("strategy.assistant.workflow.execute"),
+  strategyAssistantWorkflowInspect("strategy.assistant.workflow.inspect"),
+  strategyAssistantWorkflowCancel("strategy.assistant.workflow.cancel"),
   unknown('');
 
   const StrategyActionKind(this.wireName);

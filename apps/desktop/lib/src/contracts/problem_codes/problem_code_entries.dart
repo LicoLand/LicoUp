@@ -18,7 +18,7 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 /// - LU-GW 3300-3499 LLM Gateway and Telegram channel (21 assigned)
 /// - LU-PL 3500-3599 Adapter plugins (11 assigned)
 /// - LU-AR 3600-3699 Conversation archive / snapshots (3 assigned)
-/// - LU-DL 3700-3899 Delivery Plan and Subagent MCP (21 assigned)
+/// - LU-AW 3700-3899 Subagent MCP and Assistant workflow facade (11 assigned)
 /// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (303 assigned)
 /// - LU-CB 4700-4799 Catalog convergence (16 assigned)
 /// - LU-MC 4800-4899 MCP transfer (6 assigned)
@@ -102,6 +102,10 @@ const Map<String, ProblemCode> problemCodeEntries = {
     ProblemDomain.conversation,
     1209,
   ),
+  'profile_candidate_rejected': ProblemCode(ProblemDomain.conversation, 1210),
+  'profile_intent_invalid': ProblemCode(ProblemDomain.conversation, 1211),
+  'profile_intent_limit': ProblemCode(ProblemDomain.conversation, 1212),
+  'profile_revision_stale': ProblemCode(ProblemDomain.conversation, 1213),
   'conversation_operation_failed': ProblemCode(
     ProblemDomain.conversation,
     1402,
@@ -312,6 +316,10 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'strategy_run_start_failed': ProblemCode(ProblemDomain.strategy, 1925),
   'unsupported_action': ProblemCode(ProblemDomain.strategy, 1926),
   'workflow_invalid': ProblemCode(ProblemDomain.strategy, 1927),
+  'graph_invalid': ProblemCode(ProblemDomain.strategy, 1928),
+  'graph_preflight_rejected': ProblemCode(ProblemDomain.strategy, 1929),
+  'graph_identity_rejected': ProblemCode(ProblemDomain.strategy, 1930),
+  'strategy_idempotency_conflict': ProblemCode(ProblemDomain.strategy, 1931),
   // LU-CL Native CLI admission
   'cli_argument_bytes_exceeded': ProblemCode(ProblemDomain.cli, 2200),
   'cli_argument_count_exceeded': ProblemCode(ProblemDomain.cli, 2201),
@@ -566,40 +574,36 @@ const Map<String, ProblemCode> problemCodeEntries = {
     3601,
   ),
   'snapshot_restore_failed': ProblemCode(ProblemDomain.archive, 3602),
-  // LU-DL Delivery Plan and Subagent MCP
-  'delivery_control_not_found': ProblemCode(ProblemDomain.delivery, 3700),
-  'delivery_control_store_unavailable': ProblemCode(
-    ProblemDomain.delivery,
-    3701,
+  // LU-AW Subagent MCP and Assistant workflow facade
+  'invalid_working_directory': ProblemCode(
+    ProblemDomain.assistantWorkflow,
+    3719,
   ),
-  'delivery_dispatch_store_unavailable': ProblemCode(
-    ProblemDomain.delivery,
-    3702,
+  'main_agent_unbound': ProblemCode(ProblemDomain.assistantWorkflow, 3720),
+  'scan_failed': ProblemCode(ProblemDomain.assistantWorkflow, 3723),
+  'server_busy': ProblemCode(ProblemDomain.assistantWorkflow, 3724),
+  'subagent_cancel_unavailable': ProblemCode(
+    ProblemDomain.assistantWorkflow,
+    3725,
   ),
-  'delivery_identity_missing': ProblemCode(ProblemDomain.delivery, 3703),
-  'delivery_state_root_invalid': ProblemCode(ProblemDomain.delivery, 3704),
-  'delivery_state_root_mismatch': ProblemCode(ProblemDomain.delivery, 3705),
-  'delivery_state_root_unavailable': ProblemCode(ProblemDomain.delivery, 3706),
-  'delivery_state_root_unbound': ProblemCode(ProblemDomain.delivery, 3707),
-  'invalid_working_directory': ProblemCode(ProblemDomain.delivery, 3719),
-  'main_agent_unbound': ProblemCode(ProblemDomain.delivery, 3720),
-  'plan_root_invalid': ProblemCode(ProblemDomain.delivery, 3721),
-  'plan_root_missing': ProblemCode(ProblemDomain.delivery, 3722),
-  'scan_failed': ProblemCode(ProblemDomain.delivery, 3723),
-  'server_busy': ProblemCode(ProblemDomain.delivery, 3724),
-  'subagent_cancel_unavailable': ProblemCode(ProblemDomain.delivery, 3725),
   'subagent_model_required_for_effort': ProblemCode(
-    ProblemDomain.delivery,
+    ProblemDomain.assistantWorkflow,
     3726,
   ),
-  'subagent_model_unavailable': ProblemCode(ProblemDomain.delivery, 3727),
-  'subagent_output_limit': ProblemCode(ProblemDomain.delivery, 3728),
+  'subagent_model_unavailable': ProblemCode(
+    ProblemDomain.assistantWorkflow,
+    3727,
+  ),
+  'subagent_output_limit': ProblemCode(ProblemDomain.assistantWorkflow, 3728),
   'subagent_reasoning_effort_unavailable': ProblemCode(
-    ProblemDomain.delivery,
+    ProblemDomain.assistantWorkflow,
     3729,
   ),
-  'subagent_resume_unavailable': ProblemCode(ProblemDomain.delivery, 3730),
-  'subagent_unavailable': ProblemCode(ProblemDomain.delivery, 3731),
+  'subagent_resume_unavailable': ProblemCode(
+    ProblemDomain.assistantWorkflow,
+    3730,
+  ),
+  'subagent_unavailable': ProblemCode(ProblemDomain.assistantWorkflow, 3731),
   // LU-NA Native agent driver ProtocolFailure codes
   'acp_authentication_required': ProblemCode(ProblemDomain.nativeAgent, 3900),
   'acp_client_method_unsupported': ProblemCode(ProblemDomain.nativeAgent, 3901),

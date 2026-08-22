@@ -302,6 +302,85 @@ final class ClientConversationController extends ChangeNotifier {
     });
   }
 
+  /// Designates the selected group's Assistant Membership. Passing null
+  /// clears the designation; the ambiguous multi-Agent group stays
+  /// undesignated until an explicit choice is made.
+  Future<bool> setSelectedAssistantMembership(String? membershipId) async {
+    final conversation = _selectedConversation;
+    if (conversation == null || !conversation.group) return false;
+    final normalized = membershipId?.trim() ?? '';
+    if (conversation.assistantMembershipId == normalized) return true;
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null || !selected.group || selected.id != conversation.id) {
+      return false;
+    }
+    if (selected.assistantMembershipId == normalized) return true;
+    final owner = selected.localOwnerMembership;
+    if (owner == null) return false;
+    return _guard('assistant-set', () async {
+      await _service.execute(_runner, {
+        'action': 'conversation.assistant.set',
+        'conversationId': selected.id,
+        'ownerMembershipId': owner.id,
+        'expectedRevision': selected.revision,
+        'membershipId': normalized.isEmpty ? null : normalized,
+      });
+      await _refreshCatalogWithoutGuard();
+      await _loadSelected();
+    });
+  }
+
+  /// Returns deterministic Membership candidates for the selected
+  /// Conversation under optional hard filters.
+  Future<Map<String, dynamic>> assistantProfileCandidates({
+    Map<String, dynamic>? filters,
+  }) async {
+    final conversation = _selectedConversation;
+    if (conversation == null || conversation.id.isEmpty) {
+      throw const ClientConversationServiceFailure('conversation_not_found');
+    }
+    return _objectMap(
+      await _service.execute(_runner, {
+        'action': 'conversation.profile.candidates',
+        'conversationId': conversation.id,
+        'filters': filters ?? const <String, dynamic>{},
+      }),
+    );
+  }
+
+  /// Persists one Membership's revisioned Profile intent.
+  Future<Map<String, dynamic>> updateMembershipProfileIntent({
+    required String membershipId,
+    required int expectedRevision,
+    required Map<String, dynamic> intent,
+  }) async {
+    final conversation = _selectedConversation;
+    final owner = conversation?.localOwnerMembership;
+    if (conversation == null || owner == null) {
+      throw const ClientConversationServiceFailure('local_owner_required');
+    }
+    return _objectMap(
+      await _service.execute(_runner, {
+        'action': 'conversation.profile.update',
+        'conversationId': conversation.id,
+        'membershipId': membershipId.trim(),
+        'ownerMembershipId': owner.id,
+        'expectedRevision': expectedRevision,
+        'intent': intent,
+      }),
+    );
+  }
+
+  /// Reads one Membership's persistent Profile intent (null when absent).
+  Future<Map<String, dynamic>?> membershipProfile(String membershipId) async {
+    final value = await _service.execute(_runner, {
+      'action': 'conversation.profile.get',
+      'membershipId': membershipId.trim(),
+    });
+    return value is Map ? _objectMap(value) : null;
+  }
+
   Future<bool> postMessage(String text) async {
     final conversation = _selectedConversation;
     final content = text.trim();

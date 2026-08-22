@@ -10,7 +10,6 @@ mod claude_code_driver;
 mod codex_app_server;
 pub(crate) mod codex_runtime_observation;
 mod conversation_lane;
-pub mod conversation_runtime;
 mod copilot_driver;
 mod cursor_driver;
 mod hermes_driver;

@@ -5,23 +5,17 @@ use licoup_native::{
             ConversationService, DispatchSessionMode, MembershipStatus,
             PERSISTENT_TRANSPORT_REQUIRED, PrincipalKind,
         },
-        conversations,
-        delivery_scheduler::{
-            self, DeliveryError, DeliveryExecutor, DeliveryResult, SchedulerConfig,
-        },
-        delivery_state::{self, DeliveryControlRecord, DeliveryFailureRecord, DeliveryRunnerState},
-        targets,
+        conversations, targets,
     },
-    platform::{client_state, conversation_host_transport, conversation_runtime, paths},
+    platform::{conversation_host_transport, paths},
 };
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
     io::{self, BufRead, Read, Write},
-    path::{Path, PathBuf},
     process::ExitCode,
     sync::{
-        Arc, LazyLock, Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, SyncSender, TrySendError},
     },
@@ -37,7 +31,6 @@ const MAX_PENDING_TOOL_CALLS: usize = 32;
 const MAX_TOOL_WORKERS: usize = 8;
 const MAX_PROMPT_BYTES: usize = 48 * 1024;
 const MAX_ID_BYTES: usize = 256;
-const MAX_LOCATION_BYTES: usize = 4096;
 const MAX_WORKING_DIRECTORY_BYTES: usize = 4096;
 const MIN_SUBAGENT_TIMEOUT_MS: u64 = 1_000;
 const MAX_SUBAGENT_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
@@ -45,33 +38,6 @@ const MIN_SUBAGENT_STDOUT_BYTES: u64 = 64 * 1024;
 const MAX_SUBAGENT_STDOUT_BYTES: u64 = 64 * 1024 * 1024;
 const MIN_SUBAGENT_STDERR_BYTES: u64 = 16 * 1024;
 const MAX_SUBAGENT_STDERR_BYTES: u64 = 4 * 1024 * 1024;
-
-static RUNNING_DELIVERIES: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
-
-struct RunningDeliveryGuard(String);
-
-impl RunningDeliveryGuard {
-    fn claim(key: String) -> Option<Self> {
-        let mut running = RUNNING_DELIVERIES
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if running.insert(key.clone()) {
-            Some(Self(key))
-        } else {
-            None
-        }
-    }
-}
-
-impl Drop for RunningDeliveryGuard {
-    fn drop(&mut self) {
-        RUNNING_DELIVERIES
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .remove(&self.0);
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DispatchCandidate {
@@ -448,10 +414,26 @@ fn execute_tool_inner(
     conversation_service: &Mutex<Option<ConversationService>>,
 ) -> Result<Value, ToolFailure> {
     match name {
-        "lico_delivery_start" => delivery_start(manager_agent_id, arguments),
-        "lico_delivery_authorize" => delivery_authorize(manager_agent_id, arguments),
-        "lico_delivery_status" => delivery_status(arguments),
-        "lico_delivery_cancel" => delivery_cancel(arguments),
+        "lico_assistant_profiles" => {
+            ensure_manager_bound(manager_agent_id)?;
+            let service = shared_conversation_service(conversation_service)?;
+            assistant_profiles(&service, manager_agent_id, arguments)
+        }
+        "lico_assistant_workflow_execute" => {
+            ensure_manager_bound(manager_agent_id)?;
+            let service = shared_conversation_service(conversation_service)?;
+            assistant_workflow_execute(&service, manager_agent_id, arguments)
+        }
+        "lico_assistant_workflow_inspect" => {
+            ensure_manager_bound(manager_agent_id)?;
+            let service = shared_conversation_service(conversation_service)?;
+            assistant_workflow_inspect(&service, manager_agent_id, arguments)
+        }
+        "lico_assistant_workflow_cancel" => {
+            ensure_manager_bound(manager_agent_id)?;
+            let service = shared_conversation_service(conversation_service)?;
+            assistant_workflow_cancel(&service, manager_agent_id, arguments)
+        }
         "lico_subagents_list" => list_subagents(manager_agent_id),
         "lico_subagent_probe" => probe_subagent(manager_agent_id, arguments),
         "lico_subagent_delegate" => {
@@ -582,490 +564,213 @@ fn readiness_receipt(agent_id: &str, target: &Value, active_turns: usize) -> Val
     })
 }
 
-fn delivery_start(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
-    let (bound, portable) = bind_delivery_state(arguments)?;
-    // Compose the required host before the Plan opens a role dispatch. Host
-    // absence therefore returns the typed transport rejection without
-    // advancing a dispatch checkpoint or trying another execution lane.
-    let runtime = compose_delivery_runtime(&portable)?;
-    let value = delivery_scheduler::start(&bound).map_err(ToolFailure::from_delivery)?;
-    update_delivery_identity_from_response(&portable, &bound, &value)?;
-    spawn_delivery_run(manager_agent_id, &bound, portable, runtime)?;
-    Ok(value)
-}
-
-fn delivery_authorize(manager_agent_id: &str, arguments: &Value) -> Result<Value, ToolFailure> {
-    let (bound, portable) = bind_delivery_state(arguments)?;
-    let runtime = compose_delivery_runtime(&portable)?;
-    let value = delivery_scheduler::authorize(&bound).map_err(ToolFailure::from_delivery)?;
-    update_delivery_identity_from_response(&portable, &bound, &value)?;
-    spawn_delivery_run(manager_agent_id, &bound, portable, runtime)?;
-    Ok(value)
-}
-
-fn delivery_status(arguments: &Value) -> Result<Value, ToolFailure> {
-    let mut value = delivery_scheduler::status(arguments).map_err(ToolFailure::from_delivery)?;
-    let portable = paths::portable_data_dir()
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
-    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
-    let run_key = delivery_run_key(&workflow_id, arguments)?;
-    let runner_active = RUNNING_DELIVERIES
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .contains(&run_key);
-    let mut control = delivery_state::load_delivery_control(&portable, &workflow_id)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
-    if control
-        .as_ref()
-        .is_some_and(|record| record.runner_state == DeliveryRunnerState::Running)
-        && !runner_active
-    {
-        persist_runner_failure(
-            &portable,
-            &workflow_id,
-            &DeliveryError::new(
-                "delivery_runner_interrupted",
-                "scheduler",
-                "delivery-runner",
-                true,
-                "resume_native_runner",
-            ),
-        )?;
-        control = delivery_state::load_delivery_control(&portable, &workflow_id)
-            .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
-    }
-    value["runner"] = control
-        .as_ref()
-        .map(DeliveryControlRecord::public_projection)
-        .unwrap_or_else(|| json!({"state": "pending", "failure": null}));
-    Ok(value)
-}
-
-fn delivery_cancel(arguments: &Value) -> Result<Value, ToolFailure> {
-    let (bound, portable) = bind_delivery_state(arguments)?;
-    let workflow_id = required_text(&bound, "workflowId", MAX_ID_BYTES)?;
-    set_delivery_runner(&portable, &workflow_id, DeliveryRunnerState::Running, None)?;
-    let value = match delivery_scheduler::cancel(&bound) {
-        Ok(value) => value,
-        Err(error) => {
-            persist_runner_failure(&portable, &workflow_id, &error)?;
-            return Err(ToolFailure::from_delivery(error));
-        }
-    };
-    // Explicit cancellation reaches the same composed host door as the
-    // runner: each live dispatch receives exactly one control-plane cancel
-    // for its recorded identity and Conversation scope, and an
-    // already-settled or never-opened dispatch is an idempotent no-op. No
-    // native admission lookup is needed on this path anymore.
-    let runtime = compose_delivery_runtime(&portable)?;
-    let records = delivery_state::list_delivery_dispatches(&portable)
-        .map_err(|_| ToolFailure::new("delivery_dispatch_store_unavailable", true))?;
-    for record in records {
-        if record.plan_code.is_empty()
-            || !record.dispatch_id.starts_with(&format!("{workflow_id}:"))
-            || !matches!(
-                record.state,
-                delivery_state::DeliveryDispatchState::Accepted
-                    | delivery_state::DeliveryDispatchState::Running
-            )
-        {
-            continue;
-        }
-        runtime
-            .cancel(&record.dispatch_id)
-            .map_err(ToolFailure::from_delivery)?;
-    }
-    set_delivery_runner(
-        &portable,
-        &workflow_id,
-        DeliveryRunnerState::Cancelled,
-        None,
-    )?;
-    Ok(value)
-}
-
-/// The one composed Delivery host door: a single bounded persistent-host
-/// request port plus the canonical Conversation store. Both Delivery entry
-/// points — the background runner pass and explicit Delivery cancellation —
-/// share this composition, so no Delivery path can exist without the host
-/// door. Host failures keep their typed codes unchanged; host absence is
-/// the typed `persistent_conversation_transport_required` rejection produced
-/// by the transport helper, never a one-shot lane fallback.
-fn delivery_host_request(method: &str, params: &Value) -> DeliveryResult<Value> {
-    execute_persistent_conversation_method(method, params).map_err(|failure| {
-        DeliveryError::new(
-            failure.code,
-            "native-dispatch",
-            "persistent-host",
-            failure.retryable,
-            failure.recovery,
-        )
-    })
-}
-
-fn compose_delivery_runtime(
-    portable: &Path,
-) -> Result<conversation_runtime::NativeDeliveryRuntime, ToolFailure> {
-    require_delivery_host_with(|| conversation_host_transport::connect_existing().map(drop))?;
-    let service = ConversationService::open(portable)
-        .map_err(|_| ToolFailure::new("conversation_state_unavailable", true))?;
-    let port: conversation_runtime::DeliveryHostRequest = Arc::new(delivery_host_request);
-    Ok(conversation_runtime::NativeDeliveryRuntime::new(
-        port,
-        service.store().clone(),
-    ))
-}
-
-fn require_delivery_host_with(connect: impl FnOnce() -> io::Result<()>) -> Result<(), ToolFailure> {
-    connect().map_err(|_| ToolFailure::new(PERSISTENT_TRANSPORT_REQUIRED, true))
-}
-
-fn bind_delivery_state(arguments: &Value) -> Result<(Value, PathBuf), ToolFailure> {
-    let portable = paths::portable_data_dir()
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
-    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
-    let existing = delivery_state::load_delivery_control(&portable, &workflow_id)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
-    let state_root = arguments
-        .get("stateRoot")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .or_else(|| {
-            existing
-                .as_ref()
-                .map(|record| PathBuf::from(&record.ledger_state_root))
-        })
-        .unwrap_or_else(|| portable.clone());
-    if !state_root.is_absolute() {
-        return Err(ToolFailure::new("delivery_state_root_invalid", false));
-    }
-    let store = client_state::ClientStateStore::new(state_root)
-        .map_err(|_| ToolFailure::new("delivery_state_root_unavailable", true))?;
-    let state_root = std::fs::canonicalize(store.root())
-        .map_err(|_| ToolFailure::new("delivery_state_root_unavailable", true))?;
-    let state_root_text = state_root.to_string_lossy().into_owned();
-    if existing
-        .as_ref()
-        .is_some_and(|record| record.ledger_state_root != state_root_text)
-    {
-        return Err(ToolFailure::new("delivery_state_root_mismatch", false));
-    }
-    let record =
-        existing.unwrap_or_else(|| DeliveryControlRecord::new(&workflow_id, &state_root_text));
-    delivery_state::persist_delivery_control(&portable, &record)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?;
-    let mut bound = arguments.clone();
-    bound["stateRoot"] = json!(state_root_text);
-    Ok((bound, portable))
-}
-
-fn delivery_run_key(workflow_id: &str, arguments: &Value) -> Result<String, ToolFailure> {
-    let root = arguments
-        .get("planRoot")
-        .and_then(Value::as_str)
-        .ok_or(ToolFailure::new("plan_root_missing", false))?;
-    let root =
-        std::fs::canonicalize(root).map_err(|_| ToolFailure::new("plan_root_invalid", false))?;
-    Ok(format!("{workflow_id}:{}", root.to_string_lossy()))
-}
-
-fn update_delivery_identity_from_response(
-    portable: &Path,
-    arguments: &Value,
-    response: &Value,
-) -> Result<(), ToolFailure> {
-    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
-    let plan_code = response
-        .get("planCode")
-        .and_then(Value::as_str)
-        .ok_or(ToolFailure::new("delivery_identity_missing", false))?;
-    let revision = response
-        .get("planRevision")
-        .and_then(Value::as_u64)
-        .ok_or(ToolFailure::new("delivery_identity_missing", false))?;
-    update_delivery_identity(portable, &workflow_id, plan_code, revision)
-}
-
-fn update_delivery_identity(
-    portable: &Path,
-    workflow_id: &str,
-    plan_code: &str,
-    revision: u64,
-) -> Result<(), ToolFailure> {
-    let mut record = delivery_state::load_delivery_control(portable, workflow_id)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?
-        .ok_or(ToolFailure::new("delivery_control_not_found", false))?;
-    if record.plan_code.as_deref() == Some(plan_code) && record.plan_revision == revision {
-        // An unchanged runner record is never rewritten, so a pass that only
-        // waits on live turns performs no store write.
-        return Ok(());
-    }
-    record.plan_code = Some(plan_code.to_owned());
-    record.plan_revision = revision;
-    record.updated_at_unix_ms = delivery_state::unix_ms_now();
-    delivery_state::persist_delivery_control(portable, &record)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))
-}
-
-fn set_delivery_runner(
-    portable: &Path,
-    workflow_id: &str,
-    state: DeliveryRunnerState,
-    failure: Option<DeliveryFailureRecord>,
-) -> Result<(), ToolFailure> {
-    let mut record = delivery_state::load_delivery_control(portable, workflow_id)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))?
-        .ok_or(ToolFailure::new("delivery_control_not_found", false))?;
-    if record.runner_state == state && record.failure == failure {
-        // An unchanged runner record is never rewritten, so a pass that only
-        // waits on live turns performs no store write.
-        return Ok(());
-    }
-    record.runner_state = state;
-    record.failure = failure;
-    record.updated_at_unix_ms = delivery_state::unix_ms_now();
-    delivery_state::persist_delivery_control(portable, &record)
-        .map_err(|_| ToolFailure::new("delivery_control_store_unavailable", true))
-}
-
-fn persist_runner_failure(
-    portable: &Path,
-    workflow_id: &str,
-    error: &DeliveryError,
-) -> Result<(), ToolFailure> {
-    set_delivery_runner(
-        portable,
-        workflow_id,
-        if error.retryable {
-            DeliveryRunnerState::InDoubt
-        } else {
-            DeliveryRunnerState::Blocked
-        },
-        Some(DeliveryFailureRecord {
-            code: error.code.clone(),
-            stage: error.stage.clone(),
-            component: error.component.clone(),
-            retryable: error.retryable,
-            recovery: error.recovery.clone(),
-        }),
-    )
-}
-
-fn persist_runner_failure_until_durable(portable: &Path, workflow_id: &str, error: &DeliveryError) {
-    while persist_runner_failure(portable, workflow_id, error).is_err() {
-        thread::sleep(Duration::from_millis(250));
-    }
-}
-
-fn set_runner_state_until_durable(portable: &Path, workflow_id: &str, state: DeliveryRunnerState) {
-    while set_delivery_runner(portable, workflow_id, state, None).is_err() {
-        thread::sleep(Duration::from_millis(250));
-    }
-}
-
-fn update_delivery_identity_until_durable(
-    portable: &Path,
-    workflow_id: &str,
-    plan_code: &str,
-    revision: u64,
-) {
-    while update_delivery_identity(portable, workflow_id, plan_code, revision).is_err() {
-        thread::sleep(Duration::from_millis(250));
-    }
-}
-
-fn spawn_delivery_run(
+/// Rank active Agent Membership Profile candidates for one canonical
+/// Conversation under the submitted filters. Only allowlisted candidate
+/// facts and the route receipt leave this boundary.
+fn assistant_profiles(
+    service: &ConversationService,
     manager_agent_id: &str,
     arguments: &Value,
-    portable: PathBuf,
-    runtime: conversation_runtime::NativeDeliveryRuntime,
-) -> Result<(), ToolFailure> {
-    let root = arguments
-        .get("planRoot")
-        .and_then(Value::as_str)
-        .ok_or(ToolFailure::new("plan_root_missing", false))?
-        .to_owned();
-    let workflow_id = required_text(arguments, "workflowId", MAX_ID_BYTES)?;
-    let run_key = delivery_run_key(&workflow_id, arguments)?;
-    let Some(running_guard) = RunningDeliveryGuard::claim(run_key) else {
-        return Ok(());
-    };
-    let mut config = SchedulerConfig {
-        state_root: PathBuf::from(
-            arguments
-                .get("stateRoot")
-                .and_then(Value::as_str)
-                .ok_or(ToolFailure::new("delivery_state_root_unbound", false))?,
-        ),
-        manager_agent_id: manager_agent_id.to_owned(),
-        manager_location: arguments
-            .get("mainConversationLocation")
-            .or_else(|| arguments.get("conversationLocation"))
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-    };
-    let pass_in_doubt = DeliveryError::new(
-        "delivery_runner_pass_uncommitted",
-        "scheduler",
-        "delivery-runner",
-        true,
-        "resume_native_runner",
-    );
-    persist_runner_failure(&portable, &workflow_id, &pass_in_doubt)?;
-    thread::spawn(move || {
-        // Moving the already-claimed guard into the runner makes every setup
-        // error release the process-local claim instead of poisoning retries.
-        let _guard = running_guard;
-        // The bounded progress budget only prices passes that move work;
-        // waiting on live turns is not progress and never spends it.
-        let mut budget = 28_800_u32;
-        loop {
-            persist_runner_failure_until_durable(&portable, &workflow_id, &pass_in_doubt);
-            let engine = match licoup_native::domain::delivery_plan::DeliveryPlanEngine::load(&root)
-            {
-                Ok(engine) => engine,
-                Err(error) => {
-                    persist_runner_failure_until_durable(
-                        &portable,
-                        &workflow_id,
-                        &DeliveryError::from(error),
-                    );
-                    return;
-                }
-            };
-            if config.manager_location.is_none() {
-                config.manager_location = engine
-                    .checkpoints()
-                    .designer
-                    .as_ref()
-                    .and_then(|session| session.conversation_location.clone());
-            }
-            let report = match conversation_runtime::run_once(
-                &workflow_id,
-                engine,
-                config.clone(),
-                &runtime,
-            ) {
-                Ok(report) => report,
-                Err(error) => {
-                    persist_runner_failure_until_durable(&portable, &workflow_id, &error);
-                    return;
-                }
-            };
-            let engine = match licoup_native::domain::delivery_plan::DeliveryPlanEngine::load(&root)
-            {
-                Ok(engine) => engine,
-                Err(error) => {
-                    persist_runner_failure_until_durable(
-                        &portable,
-                        &workflow_id,
-                        &DeliveryError::from(error),
-                    );
-                    return;
-                }
-            };
-            update_delivery_identity_until_durable(
-                &portable,
-                &workflow_id,
-                &engine.plan().code,
-                engine.checkpoints().revision,
-            );
-            if engine.checkpoints().cancellation_requested
-                || matches!(
-                    engine.checkpoints().phase,
-                    licoup_native::domain::delivery_plan::PlanPhase::Ready
-                        | licoup_native::domain::delivery_plan::PlanPhase::Completed
-                        | licoup_native::domain::delivery_plan::PlanPhase::Blocked
-                )
-            {
-                let state = if engine.checkpoints().cancellation_requested {
-                    DeliveryRunnerState::Cancelled
-                } else {
-                    match engine.checkpoints().phase {
-                        licoup_native::domain::delivery_plan::PlanPhase::Completed => {
-                            DeliveryRunnerState::Completed
-                        }
-                        licoup_native::domain::delivery_plan::PlanPhase::Blocked => {
-                            DeliveryRunnerState::Blocked
-                        }
-                        _ => DeliveryRunnerState::Ready,
-                    }
-                };
-                set_runner_state_until_durable(&portable, &workflow_id, state);
-                return;
-            }
-            match delivery_pass_outcome(&report) {
-                DeliveryPassOutcome::WaitPending => {
-                    // A pass that only observes live turns sleeps without
-                    // consuming the bounded progress budget, and the runner
-                    // record above was already left unchanged. Nothing here
-                    // may fail or cancel a turn that is still running.
-                    thread::sleep(Duration::from_millis(250));
-                }
-                DeliveryPassOutcome::Unproductive => {
-                    set_runner_state_until_durable(
-                        &portable,
-                        &workflow_id,
-                        DeliveryRunnerState::Ready,
-                    );
-                    return;
-                }
-                DeliveryPassOutcome::Progress => {
-                    budget = budget.saturating_sub(1);
-                    if budget == 0 {
-                        break;
-                    }
-                    if report.pending > 0 {
-                        thread::sleep(Duration::from_millis(250));
-                    } else {
-                        set_runner_state_until_durable(
-                            &portable,
-                            &workflow_id,
-                            DeliveryRunnerState::Running,
-                        );
-                    }
-                }
-            }
-        }
-        persist_runner_failure_until_durable(
-            &portable,
-            &workflow_id,
-            &DeliveryError::new(
-                "delivery_runner_iteration_limit",
-                "scheduler",
-                "delivery-runner",
-                true,
-                "retry_after_runner_restarts",
-            ),
-        );
-    });
-    Ok(())
+) -> Result<Value, ToolFailure> {
+    let conversation_id = required_text(arguments, "conversationId", MAX_ID_BYTES)?;
+    ensure_designated_assistant_manager(service, manager_agent_id, &conversation_id, None)?;
+    let filters = arguments
+        .get("filters")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let value = service
+        .execute(json!({
+            "action": "conversation.profile.candidates",
+            "conversationId": conversation_id,
+            "filters": filters,
+        }))
+        .map_err(project_conversation_service_failure)?;
+    Ok(value)
 }
 
-/// Budget decision for one runner pass. A pass that only observes pending
-/// turns waits on live work: it sleeps without consuming the bounded
-/// progress budget and without rewriting an unchanged runner record. An
-/// unproductive pass ends the run as ready exactly as before, and any other
-/// pass consumes exactly one bounded budget unit.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DeliveryPassOutcome {
-    WaitPending,
-    Unproductive,
-    Progress,
+/// Project one bounded Conversation service failure into a stable MCP code.
+/// Raw database messages, paths and adapter details never cross the owner.
+fn project_conversation_service_failure(error: anyhow::Error) -> ToolFailure {
+    let code = error.to_string();
+    let code = code.split(':').next().unwrap_or("").trim();
+    let code = match code {
+        "conversation_not_found"
+        | "membership_not_found"
+        | "profile_intent_invalid"
+        | "profile_revision_stale"
+        | "profile_candidate_rejected"
+        | "invalid_request" => code,
+        _ => "conversation_state_unavailable",
+    };
+    ToolFailure::new(code, code == "conversation_state_unavailable")
 }
 
-fn delivery_pass_outcome(report: &delivery_scheduler::ScheduleReport) -> DeliveryPassOutcome {
-    if report.pending > 0 {
-        if report.dispatched == 0 && report.completed == 0 && report.failed == 0 {
-            DeliveryPassOutcome::WaitPending
-        } else {
-            DeliveryPassOutcome::Progress
+/// Build the bounded strategy request for one Assistant Graph tool from the
+/// already-validated MCP arguments. No field outside the tool schema is
+/// forwarded to the persistent host.
+fn assistant_workflow_request(action: &str, arguments: &Value) -> Value {
+    let mut request = json!({ "action": action });
+    for key in [
+        "conversationId",
+        "membershipId",
+        "workflow",
+        "bindings",
+        "filters",
+        "input",
+        "idempotencyKey",
+        "runId",
+    ] {
+        if let Some(value) = arguments.get(key) {
+            request[key] = value.clone();
         }
-    } else if report.dispatched == 0 && report.completed == 0 && report.failed == 0 {
-        DeliveryPassOutcome::Unproductive
-    } else {
-        DeliveryPassOutcome::Progress
     }
+    request
+}
+
+/// Project one rejected Assistant Graph into a stable MCP code. The host
+/// rejection already carries only stable codes and membership identifiers.
+fn project_graph_rejection(source: &Value) -> ToolFailure {
+    let code = source
+        .pointer("/error/code")
+        .and_then(Value::as_str)
+        .filter(|code| !code.is_empty())
+        .unwrap_or("graph_preflight_rejected");
+    let checks = source
+        .pointer("/error/checks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|check| {
+            let code = check.get("code").and_then(Value::as_str)?;
+            let mut projected = json!({"code": code});
+            if let Some(membership_id) = check.get("membershipId").and_then(Value::as_str) {
+                projected["membershipId"] = json!(membership_id);
+            }
+            Some(projected)
+        })
+        .collect();
+    ToolFailure {
+        code: code.to_owned(),
+        stage: "assistant-workflow/preflight".to_owned(),
+        retryable: true,
+        recovery: "correct_graph_or_bindings_and_retry".to_owned(),
+        checks,
+    }
+}
+
+/// Compile, preflight, durably admit and execute one Assistant-temporary Graph
+/// under exact Membership bindings. Replay of an existing idempotency key
+/// returns the same durable run without duplicating effects.
+fn assistant_workflow_execute(
+    service: &ConversationService,
+    manager_agent_id: &str,
+    arguments: &Value,
+) -> Result<Value, ToolFailure> {
+    let conversation_id = required_text(arguments, "conversationId", MAX_ID_BYTES)?;
+    let membership_id = required_text(arguments, "membershipId", MAX_ID_BYTES)?;
+    ensure_designated_assistant_manager(
+        service,
+        manager_agent_id,
+        &conversation_id,
+        Some(&membership_id),
+    )?;
+    let request = assistant_workflow_request("strategy.assistant.workflow.execute", arguments);
+    let value = execute_persistent_conversation_method("strategy.execute", &request)?;
+    if value.get("accepted").and_then(Value::as_bool) == Some(false) {
+        return Err(project_graph_rejection(&value));
+    }
+    Ok(value)
+}
+
+/// Read the projected state of one Assistant-temporary Graph run.
+fn assistant_workflow_inspect(
+    service: &ConversationService,
+    manager_agent_id: &str,
+    arguments: &Value,
+) -> Result<Value, ToolFailure> {
+    let request = assistant_workflow_request("strategy.assistant.workflow.inspect", arguments);
+    let value = execute_persistent_conversation_method("strategy.execute", &request)?;
+    ensure_assistant_run_manager(service, manager_agent_id, &value)?;
+    Ok(value)
+}
+
+/// Request cancellation of one Assistant-temporary Graph run.
+fn assistant_workflow_cancel(
+    service: &ConversationService,
+    manager_agent_id: &str,
+    arguments: &Value,
+) -> Result<Value, ToolFailure> {
+    let inspect = assistant_workflow_request("strategy.assistant.workflow.inspect", arguments);
+    let current = execute_persistent_conversation_method("strategy.execute", &inspect)?;
+    ensure_assistant_run_manager(service, manager_agent_id, &current)?;
+    let request = assistant_workflow_request("strategy.assistant.workflow.cancel", arguments);
+    execute_persistent_conversation_method("strategy.execute", &request)
+}
+
+/// Bind every Assistant facade operation to the exact active designated
+/// Membership owned by this MCP process. Opaque identifiers are checked
+/// locally and no Conversation content crosses this boundary.
+fn ensure_designated_assistant_manager(
+    service: &ConversationService,
+    manager_agent_id: &str,
+    conversation_id: &str,
+    expected_membership_id: Option<&str>,
+) -> Result<String, ToolFailure> {
+    let conversation = service
+        .store()
+        .get(conversation_id)
+        .map_err(|_| ToolFailure::new("assistant_membership_not_authorized", false))?;
+    let assistant_membership_id = conversation
+        .assistant_membership_id
+        .as_deref()
+        .filter(|membership_id| {
+            expected_membership_id.is_none_or(|expected| expected == *membership_id)
+        })
+        .ok_or(ToolFailure::new(
+            "assistant_membership_not_authorized",
+            false,
+        ))?;
+    let authorized = conversation.memberships.iter().any(|membership| {
+        membership.id == assistant_membership_id
+            && membership.status == MembershipStatus::Active
+            && membership.principal.kind == PrincipalKind::Agent
+            && membership.principal.agent_id.as_deref() == Some(manager_agent_id)
+    });
+    if !authorized {
+        return Err(ToolFailure::new(
+            "assistant_membership_not_authorized",
+            false,
+        ));
+    }
+    Ok(assistant_membership_id.to_owned())
+}
+
+fn ensure_assistant_run_manager(
+    service: &ConversationService,
+    manager_agent_id: &str,
+    projection: &Value,
+) -> Result<(), ToolFailure> {
+    let conversation_id = projection
+        .get("conversationId")
+        .and_then(Value::as_str)
+        .ok_or(ToolFailure::new(
+            "assistant_membership_not_authorized",
+            false,
+        ))?;
+    let membership_id = projection
+        .get("assistantMembershipId")
+        .and_then(Value::as_str)
+        .ok_or(ToolFailure::new(
+            "assistant_membership_not_authorized",
+            false,
+        ))?;
+    ensure_designated_assistant_manager(
+        service,
+        manager_agent_id,
+        conversation_id,
+        Some(membership_id),
+    )?;
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -1074,6 +779,7 @@ struct ToolFailure {
     stage: String,
     retryable: bool,
     recovery: String,
+    checks: Vec<Value>,
 }
 
 impl ToolFailure {
@@ -1088,15 +794,7 @@ impl ToolFailure {
                 "correct_request_and_retry"
             }
             .to_owned(),
-        }
-    }
-
-    fn from_delivery(error: DeliveryError) -> Self {
-        Self {
-            code: error.code,
-            stage: error.stage,
-            retryable: error.retryable,
-            recovery: error.recovery,
+            checks: Vec::new(),
         }
     }
 }
@@ -1129,7 +827,7 @@ fn dispatch_subagent(
 ) -> Result<Value, ToolFailure> {
     ensure_manager_bound(manager_agent_id)?;
     let prompt = required_text(arguments, "prompt", MAX_PROMPT_BYTES)?;
-    let context = conversation_dispatch_context(service, arguments)?;
+    let context = conversation_dispatch_context(service, manager_agent_id, arguments)?;
     let candidates = [context.candidate.clone()];
     let mut working_directory = optional_working_directory(arguments)?;
     let timeout_ms = optional_timeout_ms(arguments)?;
@@ -1404,6 +1102,7 @@ fn execute_persistent_conversation_method_with_connector(
 
 fn conversation_dispatch_context(
     service: &ConversationService,
+    manager_agent_id: &str,
     arguments: &Value,
 ) -> Result<ConversationDispatchContext, ToolFailure> {
     let conversation_id = required_text(arguments, "conversationId", MAX_ID_BYTES)?;
@@ -1412,6 +1111,13 @@ fn conversation_dispatch_context(
         .store()
         .get(&conversation_id)
         .map_err(|_| ToolFailure::new("conversation_not_found", false))?;
+    if !conversation.memberships.iter().any(|membership| {
+        membership.status == MembershipStatus::Active
+            && membership.principal.kind == PrincipalKind::Agent
+            && membership.principal.agent_id.as_deref() == Some(manager_agent_id)
+    }) {
+        return Err(ToolFailure::new("conversation_access_denied", false));
+    }
     let membership = conversation
         .memberships
         .iter()
@@ -1443,7 +1149,7 @@ fn cancel_subagent(
     arguments: &Value,
 ) -> Result<Value, ToolFailure> {
     ensure_manager_bound(manager_agent_id)?;
-    let context = conversation_dispatch_context(service, arguments)?;
+    let context = conversation_dispatch_context(service, manager_agent_id, arguments)?;
     let agent_id = context.candidate.agent_id;
     let _ = ensure_subordinate_available(&agent_id)?;
     let dispatch = service
@@ -1895,44 +1601,51 @@ fn optional_permission_mode(value: &Value) -> Result<Option<String>, ToolFailure
 fn tool_catalog() -> Vec<Value> {
     vec![
         json!({
-            "name": "lico_delivery_start",
-            "description": "Start or resume a persisted native delivery through canonical Agent conversations.",
-            "inputSchema": closed_object(&["workflowId", "planRoot"], json!({
-                "workflowId": bounded_string(MAX_ID_BYTES),
-                "planRoot": bounded_string(MAX_LOCATION_BYTES),
-                "stateRoot": bounded_string(MAX_LOCATION_BYTES),
-                "plan": {"type": "object"},
-                "decisions": {"type": "object"},
-                "mainConversationLocation": bounded_string(MAX_LOCATION_BYTES)
-            }))
+            "name": "lico_assistant_profiles",
+            "description": "Rank active Agent Membership Profiles for one canonical Conversation and return a privacy-safe route receipt derived from existing fact owners.",
+            "inputSchema": closed_object(
+                &["conversationId"],
+                json!({
+                    "conversationId": bounded_string(MAX_ID_BYTES),
+                    "filters": {"type": "object"}
+                })
+            )
         }),
         json!({
-            "name": "lico_delivery_authorize",
-            "description": "Authorize the current semantic Plan digest and run the native scheduler.",
-            "inputSchema": closed_object(&["workflowId", "planRoot", "semanticDigest"], json!({
-                "workflowId": bounded_string(MAX_ID_BYTES),
-                "planRoot": bounded_string(MAX_LOCATION_BYTES),
-                "semanticDigest": bounded_string(128),
-                "stateRoot": bounded_string(MAX_LOCATION_BYTES),
-                "mainConversationLocation": bounded_string(MAX_LOCATION_BYTES)
-            }))
+            "name": "lico_assistant_workflow_execute",
+            "description": "Compile, preflight, durably admit and execute one Assistant-temporary workflow under exact Membership bindings and an idempotency key.",
+            "inputSchema": closed_object(
+                &["conversationId", "membershipId", "workflow", "bindings", "idempotencyKey"],
+                json!({
+                    "conversationId": bounded_string(MAX_ID_BYTES),
+                    "membershipId": bounded_string(MAX_ID_BYTES),
+                    "workflow": {"type": "object"},
+                    "bindings": {"type": "array"},
+                    "filters": {"type": "object"},
+                    "input": {"type": "object"},
+                    "idempotencyKey": bounded_string(MAX_ID_BYTES)
+                })
+            )
         }),
         json!({
-            "name": "lico_delivery_status",
-            "description": "Read persisted delivery, runner, Plan, and numeric Token ledger status.",
-            "inputSchema": closed_object(&["workflowId", "planRoot"], json!({
-                "workflowId": bounded_string(MAX_ID_BYTES),
-                "planRoot": bounded_string(MAX_LOCATION_BYTES)
-            }))
+            "name": "lico_assistant_workflow_inspect",
+            "description": "Read the projected state of one Assistant-temporary workflow run.",
+            "inputSchema": closed_object(
+                &["runId"],
+                json!({
+                    "runId": bounded_string(MAX_ID_BYTES)
+                })
+            )
         }),
         json!({
-            "name": "lico_delivery_cancel",
-            "description": "Persist cancellation of a delivery before any later scheduler pass.",
-            "inputSchema": closed_object(&["workflowId", "planRoot"], json!({
-                "workflowId": bounded_string(MAX_ID_BYTES),
-                "planRoot": bounded_string(MAX_LOCATION_BYTES),
-                "stateRoot": bounded_string(MAX_LOCATION_BYTES)
-            }))
+            "name": "lico_assistant_workflow_cancel",
+            "description": "Request cancellation of one Assistant-temporary workflow run.",
+            "inputSchema": closed_object(
+                &["runId"],
+                json!({
+                    "runId": bounded_string(MAX_ID_BYTES)
+                })
+            )
         }),
         json!({
             "name": "lico_subagents_list",
@@ -2037,10 +1750,10 @@ fn permission_mode_schema() -> Value {
 
 fn tool_names() -> &'static [&'static str] {
     &[
-        "lico_delivery_start",
-        "lico_delivery_authorize",
-        "lico_delivery_status",
-        "lico_delivery_cancel",
+        "lico_assistant_profiles",
+        "lico_assistant_workflow_execute",
+        "lico_assistant_workflow_inspect",
+        "lico_assistant_workflow_cancel",
         "lico_subagents_list",
         "lico_subagent_probe",
         "lico_subagent_delegate",
@@ -2054,23 +1767,17 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         return false;
     };
     let allowed: &[&str] = match name {
-        "lico_delivery_start" => &[
-            "workflowId",
-            "planRoot",
-            "stateRoot",
-            "plan",
-            "decisions",
-            "mainConversationLocation",
+        "lico_assistant_profiles" => &["conversationId", "filters"],
+        "lico_assistant_workflow_execute" => &[
+            "conversationId",
+            "membershipId",
+            "workflow",
+            "bindings",
+            "filters",
+            "input",
+            "idempotencyKey",
         ],
-        "lico_delivery_authorize" => &[
-            "workflowId",
-            "planRoot",
-            "semanticDigest",
-            "stateRoot",
-            "mainConversationLocation",
-        ],
-        "lico_delivery_status" => &["workflowId", "planRoot"],
-        "lico_delivery_cancel" => &["workflowId", "planRoot", "stateRoot"],
+        "lico_assistant_workflow_inspect" | "lico_assistant_workflow_cancel" => &["runId"],
         "lico_subagents_list" => &[],
         "lico_subagent_probe" => &["agentId"],
         "lico_subagent_delegate" => &[
@@ -2106,37 +1813,24 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         return false;
     }
     match name {
-        "lico_delivery_start" => {
-            valid_required(object, "workflowId", MAX_ID_BYTES)
-                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
-                && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
-                && valid_optional(
-                    object,
-                    "mainConversationLocation",
-                    MAX_WORKING_DIRECTORY_BYTES,
-                )
-                && object.get("plan").is_none_or(Value::is_object)
-                && object.get("decisions").is_none_or(Value::is_object)
+        "lico_assistant_profiles" => {
+            valid_required(object, "conversationId", MAX_ID_BYTES)
+                && (object.get("filters").is_none()
+                    || object.get("filters").is_some_and(Value::is_object))
         }
-        "lico_delivery_authorize" => {
-            valid_required(object, "workflowId", MAX_ID_BYTES)
-                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
-                && valid_required(object, "semanticDigest", 128)
-                && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
-                && valid_optional(
-                    object,
-                    "mainConversationLocation",
-                    MAX_WORKING_DIRECTORY_BYTES,
-                )
+        "lico_assistant_workflow_execute" => {
+            valid_required(object, "conversationId", MAX_ID_BYTES)
+                && valid_required(object, "membershipId", MAX_ID_BYTES)
+                && valid_required(object, "idempotencyKey", MAX_ID_BYTES)
+                && object.get("workflow").is_some_and(Value::is_object)
+                && object.get("bindings").is_some_and(Value::is_array)
+                && (object.get("filters").is_none()
+                    || object.get("filters").is_some_and(Value::is_object))
+                && (object.get("input").is_none()
+                    || object.get("input").is_some_and(Value::is_object))
         }
-        "lico_delivery_status" => {
-            valid_required(object, "workflowId", MAX_ID_BYTES)
-                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
-        }
-        "lico_delivery_cancel" => {
-            valid_required(object, "workflowId", MAX_ID_BYTES)
-                && valid_required(object, "planRoot", MAX_WORKING_DIRECTORY_BYTES)
-                && valid_optional(object, "stateRoot", MAX_WORKING_DIRECTORY_BYTES)
+        "lico_assistant_workflow_inspect" | "lico_assistant_workflow_cancel" => {
+            valid_required(object, "runId", MAX_ID_BYTES)
         }
         "lico_subagents_list" => object.is_empty(),
         "lico_subagent_probe" => valid_required(object, "agentId", MAX_ID_BYTES),
@@ -2273,13 +1967,16 @@ fn tool_success(value: Value) -> Value {
 }
 
 fn tool_error(error: &ToolFailure) -> Value {
-    let value = json!({
+    let mut value = json!({
         "schemaVersion": "licoup.subagent.error.v1",
         "reasonCode": error.code,
         "stage": error.stage,
         "retryable": error.retryable,
         "recovery": error.recovery
     });
+    if !error.checks.is_empty() {
+        value["checks"] = json!(error.checks);
+    }
     let text = serde_json::to_string(&value).unwrap_or_else(|_| "{}".into());
     json!({
         "content": [{"type": "text", "text": text}],
@@ -2329,6 +2026,7 @@ fn extract_id(prefix: &[u8]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use licoup_native::domain::client_conversation::{MembershipAccess, Principal};
 
     #[test]
     fn protocol_version_negotiation_accepts_newer_clients() {
@@ -2353,14 +2051,14 @@ mod tests {
     }
 
     #[test]
-    fn tool_surface_is_closed_and_contains_delivery_and_subagent_operations() {
+    fn tool_surface_is_closed_and_contains_assistant_and_subagent_operations() {
         assert_eq!(
             tool_names(),
             &[
-                "lico_delivery_start",
-                "lico_delivery_authorize",
-                "lico_delivery_status",
-                "lico_delivery_cancel",
+                "lico_assistant_profiles",
+                "lico_assistant_workflow_execute",
+                "lico_assistant_workflow_inspect",
+                "lico_assistant_workflow_cancel",
                 "lico_subagents_list",
                 "lico_subagent_probe",
                 "lico_subagent_delegate",
@@ -2369,14 +2067,54 @@ mod tests {
             ]
         );
         assert!(validate_tool_arguments(
-            "lico_delivery_status",
-            &json!({"workflowId": "workflow:fixture", "planRoot": "/fixture-root/plan"})
+            "lico_assistant_profiles",
+            &json!({"conversationId": "conversation:fixture", "filters": {"membershipIds": []}})
         ));
         assert!(validate_tool_arguments(
-            "lico_subagent_probe",
-            &json!({"agentId": "worker"})
+            "lico_assistant_workflow_execute",
+            &json!({
+                "conversationId": "conversation:fixture",
+                "membershipId": "membership:assistant",
+                "workflow": {"metadata": {"id": "assistant-temporary:fixture"}},
+                "bindings": [],
+                "input": {"message": "run"},
+                "idempotencyKey": "assistant-graph-1"
+            })
+        ));
+        assert!(validate_tool_arguments(
+            "lico_assistant_workflow_inspect",
+            &json!({"runId": "run:assistant-fixture"})
+        ));
+        assert!(validate_tool_arguments(
+            "lico_assistant_workflow_cancel",
+            &json!({"runId": "run:assistant-fixture"})
         ));
         assert!(!validate_tool_arguments("lico_subagent_probe", &json!({})));
+        assert!(!validate_tool_arguments(
+            "lico_assistant_workflow_execute",
+            &json!({
+                "conversationId": "conversation:fixture",
+                "membershipId": "membership:assistant",
+                "workflow": "not-an-object",
+                "bindings": [],
+                "idempotencyKey": "assistant-graph-1"
+            })
+        ));
+        assert!(!validate_tool_arguments(
+            "lico_assistant_workflow_execute",
+            &json!({
+                "conversationId": "conversation:fixture",
+                "membershipId": "membership:assistant",
+                "workflow": {"metadata": {"id": "assistant-temporary:fixture"}},
+                "bindings": [],
+                "idempotencyKey": "assistant-graph-1",
+                "planRoot": "/fixture-root/plan"
+            })
+        ));
+        assert!(!validate_tool_arguments(
+            "lico_assistant_workflow_inspect",
+            &json!({"runId": "run:assistant-fixture", "workflowId": "workflow:fixture"})
+        ));
         assert!(!validate_tool_arguments(
             "lico_subagent_probe",
             &json!({"agentId": "worker", "workingDirectory": "/fixture-root/project"})
@@ -2423,6 +2161,214 @@ mod tests {
                 "unexpected": true
             })
         ));
+    }
+
+    #[test]
+    fn assistant_workflow_request_forwards_only_bounded_tool_fields() {
+        let request = assistant_workflow_request(
+            "strategy.assistant.workflow.execute",
+            &json!({
+                "conversationId": "conversation:fixture",
+                "membershipId": "membership:assistant",
+                "workflow": {"metadata": {"id": "assistant-temporary:fixture"}},
+                "bindings": [{"ordinal": 0, "slotId": "review", "valueId": "membership:worker"}],
+                "filters": {"membershipIds": ["membership:worker"]},
+                "input": {"message": "run"},
+                "idempotencyKey": "assistant-graph-1",
+                "planRoot": "/fixture-root/plan"
+            }),
+        );
+        let object = request.as_object().unwrap();
+        assert_eq!(
+            request["action"],
+            json!("strategy.assistant.workflow.execute")
+        );
+        assert_eq!(request["conversationId"], json!("conversation:fixture"));
+        assert_eq!(request["membershipId"], json!("membership:assistant"));
+        assert_eq!(
+            request["workflow"]["metadata"]["id"],
+            json!("assistant-temporary:fixture")
+        );
+        assert_eq!(
+            request["bindings"][0]["valueId"],
+            json!("membership:worker")
+        );
+        assert_eq!(
+            request["filters"]["membershipIds"][0],
+            json!("membership:worker")
+        );
+        assert_eq!(request["input"]["message"], json!("run"));
+        assert_eq!(request["idempotencyKey"], json!("assistant-graph-1"));
+        assert!(!object.contains_key("planRoot"));
+        assert_eq!(object.len(), 8);
+
+        let inspect = assistant_workflow_request(
+            "strategy.assistant.workflow.inspect",
+            &json!({"runId": "run:assistant-fixture"}),
+        );
+        let inspect = inspect.as_object().unwrap();
+        assert_eq!(inspect.len(), 2);
+        assert_eq!(
+            inspect["action"],
+            json!("strategy.assistant.workflow.inspect")
+        );
+        assert_eq!(inspect["runId"], json!("run:assistant-fixture"));
+    }
+
+    #[test]
+    fn conversation_failures_project_only_stable_codes() {
+        let stale = project_conversation_service_failure(anyhow::anyhow!("profile_revision_stale"));
+        assert_eq!(stale.code, "profile_revision_stale");
+        assert!(!stale.retryable);
+        let missing =
+            project_conversation_service_failure(anyhow::anyhow!("conversation_not_found"));
+        assert_eq!(missing.code, "conversation_not_found");
+        let private = project_conversation_service_failure(anyhow::anyhow!(
+            "conversation_database_open_failed: <user-home>/private.db"
+        ));
+        assert_eq!(private.code, "conversation_state_unavailable");
+        assert!(private.retryable);
+        assert!(!tool_error(&private).to_string().contains("<user-home>"));
+    }
+
+    #[test]
+    fn assistant_and_direct_tools_are_bound_to_active_manager_membership() {
+        let root = std::env::temp_dir().join(format!(
+            "lico-subagent-mcp-membership-auth-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let service = ConversationService::open(&root).unwrap();
+        let now = 1;
+        let conversation = service
+            .store()
+            .create_conversation_with_members(
+                "Membership authorization",
+                Principal {
+                    id: "human:owner".to_owned(),
+                    kind: PrincipalKind::Human,
+                    display_name: "Local owner".to_owned(),
+                    agent_id: None,
+                    created_at_unix_ms: now,
+                },
+                &[
+                    (
+                        Principal {
+                            id: "agent:codex".to_owned(),
+                            kind: PrincipalKind::Agent,
+                            display_name: "Codex".to_owned(),
+                            agent_id: Some("codex".to_owned()),
+                            created_at_unix_ms: now,
+                        },
+                        MembershipAccess::Member,
+                    ),
+                    (
+                        Principal {
+                            id: "agent:kimi-code".to_owned(),
+                            kind: PrincipalKind::Agent,
+                            display_name: "Kimi Code".to_owned(),
+                            agent_id: Some("kimi-code".to_owned()),
+                            created_at_unix_ms: now,
+                        },
+                        MembershipAccess::Member,
+                    ),
+                ],
+            )
+            .unwrap();
+        let owner_membership_id = conversation
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.kind == PrincipalKind::Human)
+            .unwrap()
+            .id
+            .clone();
+        let assistant_membership_id = conversation
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.agent_id.as_deref() == Some("codex"))
+            .unwrap()
+            .id
+            .clone();
+        let target_membership_id = conversation
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.agent_id.as_deref() == Some("kimi-code"))
+            .unwrap()
+            .id
+            .clone();
+        service
+            .store()
+            .set_conversation_assistant(
+                &conversation.id,
+                &owner_membership_id,
+                conversation.revision,
+                Some(&assistant_membership_id),
+            )
+            .unwrap();
+
+        assert_eq!(
+            ensure_designated_assistant_manager(&service, "codex", &conversation.id, None).unwrap(),
+            assistant_membership_id
+        );
+        assert_eq!(
+            ensure_designated_assistant_manager(
+                &service,
+                "kimi-code",
+                &conversation.id,
+                Some(&assistant_membership_id),
+            )
+            .unwrap_err()
+            .code,
+            "assistant_membership_not_authorized"
+        );
+        let arguments = json!({
+            "conversationId": conversation.id,
+            "membershipId": target_membership_id,
+        });
+        assert_eq!(
+            conversation_dispatch_context(&service, "codex", &arguments)
+                .unwrap()
+                .candidate
+                .agent_id,
+            "kimi-code"
+        );
+        assert_eq!(
+            conversation_dispatch_context(&service, "unrelated-agent", &arguments)
+                .unwrap_err()
+                .code,
+            "conversation_access_denied"
+        );
+        drop(service);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn graph_rejections_keep_the_stable_preflight_code() {
+        let failure = project_graph_rejection(&json!({
+            "accepted": false,
+            "error": {
+                "code": "graph_membership_rejected",
+                "stage": "assistant-workflow/preflight",
+                "checks": [{"code": "membership_inactive", "membershipId": "membership:worker"}]
+            }
+        }));
+        assert_eq!(failure.code, "graph_membership_rejected");
+        assert!(failure.retryable);
+        assert_eq!(failure.stage, "assistant-workflow/preflight");
+        assert_eq!(failure.recovery, "correct_graph_or_bindings_and_retry");
+        assert_eq!(
+            failure.checks,
+            vec![json!({
+                "code": "membership_inactive",
+                "membershipId": "membership:worker"
+            })]
+        );
+        assert_eq!(
+            tool_error(&failure)["structuredContent"]["checks"],
+            json!(failure.checks)
+        );
+        let fallback = project_graph_rejection(&json!({"accepted": false}));
+        assert_eq!(fallback.code, "graph_preflight_rejected");
+        assert!(fallback.checks.is_empty());
     }
 
     #[test]
@@ -2842,135 +2788,5 @@ mod tests {
                 "allowAll": "true"
             })
         ));
-    }
-
-    #[test]
-    fn delivery_pending_only_pass_sleeps_without_consuming_the_progress_budget() {
-        let pending_only = delivery_scheduler::ScheduleReport {
-            dispatched: 0,
-            completed: 0,
-            failed: 0,
-            pending: 3,
-        };
-        assert_eq!(
-            delivery_pass_outcome(&pending_only),
-            DeliveryPassOutcome::WaitPending
-        );
-        let mixed = delivery_scheduler::ScheduleReport {
-            dispatched: 1,
-            ..pending_only
-        };
-        assert_eq!(delivery_pass_outcome(&mixed), DeliveryPassOutcome::Progress);
-        let settled = delivery_scheduler::ScheduleReport {
-            dispatched: 0,
-            completed: 1,
-            failed: 0,
-            pending: 0,
-        };
-        assert_eq!(
-            delivery_pass_outcome(&settled),
-            DeliveryPassOutcome::Progress
-        );
-        let unproductive = delivery_scheduler::ScheduleReport::default();
-        assert_eq!(
-            delivery_pass_outcome(&unproductive),
-            DeliveryPassOutcome::Unproductive
-        );
-    }
-
-    #[test]
-    fn delivery_runner_record_is_not_rewritten_when_unchanged() {
-        let root = std::env::temp_dir().join(format!(
-            "licoup-delivery-runner-record-{}",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&root).unwrap();
-        let workflow_id = "workflow-delivery-pass";
-        let record = delivery_state::DeliveryControlRecord::new(workflow_id, "/fixture-state");
-        delivery_state::persist_delivery_control(&root, &record).unwrap();
-        let failure = DeliveryFailureRecord {
-            code: "delivery_runner_pass_uncommitted".to_owned(),
-            stage: "scheduler".to_owned(),
-            component: "delivery-runner".to_owned(),
-            retryable: true,
-            recovery: "resume_native_runner".to_owned(),
-        };
-        set_delivery_runner(
-            &root,
-            workflow_id,
-            DeliveryRunnerState::InDoubt,
-            Some(failure.clone()),
-        )
-        .unwrap();
-        let first = delivery_state::load_delivery_control(&root, workflow_id)
-            .unwrap()
-            .unwrap();
-        std::thread::sleep(Duration::from_millis(2));
-        set_delivery_runner(
-            &root,
-            workflow_id,
-            DeliveryRunnerState::InDoubt,
-            Some(failure),
-        )
-        .unwrap();
-        let second = delivery_state::load_delivery_control(&root, workflow_id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(second.runner_state, DeliveryRunnerState::InDoubt);
-        assert_eq!(first.updated_at_unix_ms, second.updated_at_unix_ms);
-        update_delivery_identity(&root, workflow_id, "PLAN-DELIVERY", 7).unwrap();
-        let third = delivery_state::load_delivery_control(&root, workflow_id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(third.plan_code.as_deref(), Some("PLAN-DELIVERY"));
-        std::thread::sleep(Duration::from_millis(2));
-        update_delivery_identity(&root, workflow_id, "PLAN-DELIVERY", 7).unwrap();
-        let fourth = delivery_state::load_delivery_control(&root, workflow_id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(third.updated_at_unix_ms, fourth.updated_at_unix_ms);
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn delivery_host_absence_is_the_typed_persistent_transport_rejection() {
-        let error = require_delivery_host_with(|| {
-            Err(io::Error::new(io::ErrorKind::NotFound, "synthetic absence"))
-        })
-        .unwrap_err();
-        assert_eq!(error.code, PERSISTENT_TRANSPORT_REQUIRED);
-        assert!(error.retryable);
-    }
-
-    #[test]
-    fn delivery_host_absence_does_not_open_a_plan_checkpoint() {
-        let root = std::env::temp_dir().join(format!(
-            "licoup-delivery-host-absence-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let plan_root = root.join("plan");
-        std::fs::create_dir_all(&plan_root).unwrap();
-        let previous = paths::set_portable_data_dir_override(Some(root.clone()));
-        let error = delivery_start(
-            "manager-agent",
-            &json!({
-                "workflowId": "workflow-host-absence",
-                "planRoot": plan_root.to_string_lossy(),
-            }),
-        )
-        .unwrap_err();
-        paths::set_portable_data_dir_override(previous);
-        assert_eq!(error.code, PERSISTENT_TRANSPORT_REQUIRED);
-        assert!(!plan_root.join("Checkpoints.json").exists());
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn delivery_runner_setup_failure_releases_the_process_local_claim() {
-        let key = format!("delivery-claim-fixture-{}", uuid::Uuid::new_v4());
-        let first = RunningDeliveryGuard::claim(key.clone()).unwrap();
-        assert!(RunningDeliveryGuard::claim(key.clone()).is_none());
-        drop(first);
-        assert!(RunningDeliveryGuard::claim(key).is_some());
     }
 }

@@ -1,8 +1,9 @@
 use super::{
-    Conversation, ConversationDispatch, ConversationEvent, ConversationSummary,
-    DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn, DispatchSessionMode,
-    DispatchState, EventKind, EventPage, EventPart, EventPartKind, Membership, MembershipAccess,
-    Principal, PrincipalKind, RuntimeBinding, SourceLink, TurnState,
+    ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, Conversation, ConversationDispatch, ConversationEvent,
+    ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn,
+    DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind, Membership,
+    MembershipAccess, Principal, PrincipalKind, ProfileIntent, ProfileIntentUpdate,
+    ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
 };
 use anyhow::{Result, anyhow};
 use rusqlite::{
@@ -10,7 +11,7 @@ use rusqlite::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 #[cfg(test)]
@@ -41,6 +42,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
            id TEXT PRIMARY KEY, title TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
            pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
            is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)), strategy_revision TEXT,
+           assistant_membership_id TEXT REFERENCES memberships(id),
            revision INTEGER NOT NULL DEFAULT 0,
            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
          );
@@ -52,6 +54,18 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
          );
          CREATE UNIQUE INDEX IF NOT EXISTS memberships_active_unique ON memberships(conversation_id, principal_id) WHERE status='active';
          CREATE INDEX IF NOT EXISTS memberships_conversation_idx ON memberships(conversation_id, status, joined_at);
+         CREATE TABLE IF NOT EXISTS membership_profiles (
+           membership_id TEXT PRIMARY KEY REFERENCES memberships(id) ON DELETE CASCADE,
+           revision INTEGER NOT NULL,
+           responsibility TEXT NOT NULL DEFAULT 'member' CHECK(responsibility IN ('assistant','member')),
+           required_capabilities TEXT NOT NULL DEFAULT '[]',
+           preferred_capabilities TEXT NOT NULL DEFAULT '[]',
+           skill_references TEXT NOT NULL DEFAULT '[]',
+           preferred_model TEXT, preferred_environment TEXT,
+           updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx
+           ON membership_profiles(membership_id, revision);
          CREATE TABLE IF NOT EXISTS events (
            id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
            sequence INTEGER NOT NULL, author_membership_id TEXT REFERENCES memberships(id), kind TEXT NOT NULL,
@@ -1194,6 +1208,9 @@ impl ConversationStore {
                      VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
                     params![membership_id, id, principal.id, enum_wire(*access)?, now],
                 )?;
+                if principal.kind == PrincipalKind::Agent {
+                    ensure_membership_profile_default(&transaction, &membership_id, now)?;
+                }
                 append_domain_event(
                     &transaction,
                     &id,
@@ -1256,11 +1273,15 @@ impl ConversationStore {
                  ) VALUES (?1, ?2, 0, 0, ?3, 0, ?4, ?4)",
                 params![id, title, is_group as i64, now],
             )?;
+            let owner_membership_id = new_id("membership");
             transaction.execute(
                 "INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
                  VALUES (?1, ?2, ?3, 'owner', 'active', ?4)",
-                params![new_id("membership"), id, owner.id, now],
+                params![owner_membership_id, id, owner.id, now],
             )?;
+            if owner.kind == PrincipalKind::Agent {
+                ensure_membership_profile_default(&transaction, &owner_membership_id, now)?;
+            }
             transaction.commit()?;
             self.get(id)
         })
@@ -1349,6 +1370,255 @@ impl ConversationStore {
         })
     }
 
+    /// Designate (or clear) the one visible long-lived Assistant Membership
+    /// of a Conversation. The target must be an active Agent Membership of
+    /// the same Conversation. Existing ambiguous groups stay undesignated
+    /// until an explicit call; clearing is idempotent.
+    pub fn set_conversation_assistant(
+        &self,
+        conversation_id: &str,
+        owner_membership_id: &str,
+        expected_revision: i64,
+        membership_id: Option<&str>,
+    ) -> StoreResult<()> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(owner_membership_id, "membership_id")?;
+        let membership_id = membership_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(membership_id) = membership_id {
+            validate_identifier(membership_id, "membership_id")?;
+        }
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            ensure_conversation(&transaction, conversation_id)?;
+            ensure_local_owner(&transaction, conversation_id, owner_membership_id)?;
+            let (current_assistant, current_revision): (Option<String>, i64) = transaction
+                .query_row(
+                    "SELECT assistant_membership_id, revision FROM conversations WHERE id=?1",
+                    params![conversation_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+            if current_assistant.as_deref() == membership_id {
+                transaction.commit()?;
+                return Ok(());
+            }
+            if current_revision != expected_revision {
+                return Err(anyhow!("conversation_revision_stale"));
+            }
+            if let Some(membership_id) = membership_id {
+                let eligible: bool = transaction.query_row(
+                    "SELECT EXISTS(
+                       SELECT 1 FROM memberships m
+                       JOIN principals p ON p.id=m.principal_id
+                       WHERE m.id=?1 AND m.conversation_id=?2
+                         AND m.status='active' AND p.kind='agent'
+                     )",
+                    params![membership_id, conversation_id],
+                    |row| row.get(0),
+                )?;
+                if !eligible {
+                    return Err(anyhow!("membership_not_found"));
+                }
+                ensure_membership_profile_default(&transaction, membership_id, now_ms())?;
+            }
+            let now = now_ms();
+            if let Some(previous) = current_assistant.as_deref() {
+                set_profile_responsibility(
+                    &transaction,
+                    previous,
+                    ProfileResponsibility::Member,
+                    now,
+                )?;
+            }
+            if let Some(next) = membership_id {
+                set_profile_responsibility(
+                    &transaction,
+                    next,
+                    ProfileResponsibility::Assistant,
+                    now,
+                )?;
+            }
+            let changed = transaction.execute(
+                "UPDATE conversations
+                 SET assistant_membership_id=?2,
+                     revision=revision + 1,
+                     updated_at=?3
+                 WHERE id=?1 AND revision=?4",
+                params![conversation_id, membership_id, now, expected_revision],
+            )?;
+            if changed == 0 {
+                return Err(anyhow!("conversation_not_found"));
+            }
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Read one Membership's persistent Profile intent. Returns `None` only
+    /// when the Membership does not exist or has no profile row.
+    pub fn membership_profile(&self, membership_id: &str) -> StoreResult<Option<ProfileIntent>> {
+        validate_identifier(membership_id, "membership_id")?;
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT revision, responsibility, required_capabilities,
+                     preferred_capabilities, skill_references, preferred_model,
+                     preferred_environment, updated_at FROM membership_profiles
+                     WHERE membership_id=?1",
+                    params![membership_id],
+                    profile_intent_from_row,
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
+    /// Persist bounded Profile intent for one active Agent Membership.
+    /// Revisions must be monotonic: equal revisions are idempotent, older
+    /// revisions are rejected with a stable code.
+    pub fn set_membership_profile(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+        owner_membership_id: &str,
+        expected_revision: i64,
+        update: &ProfileIntentUpdate,
+    ) -> StoreResult<ProfileIntent> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(membership_id, "membership_id")?;
+        validate_identifier(owner_membership_id, "membership_id")?;
+        update.validate().map_err(anyhow::Error::msg)?;
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            ensure_conversation(&transaction, conversation_id)?;
+            ensure_local_owner(&transaction, conversation_id, owner_membership_id)?;
+            let active: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM memberships m
+                   JOIN principals p ON p.id=m.principal_id
+                   WHERE m.id=?1 AND m.conversation_id=?2
+                     AND m.status='active' AND p.kind='agent'
+                 )",
+                params![membership_id, conversation_id],
+                |row| row.get(0),
+            )?;
+            if !active {
+                return Err(anyhow!("membership_not_found"));
+            }
+            let current: Option<ProfileIntent> = transaction
+                .query_row(
+                    "SELECT revision, responsibility, required_capabilities,
+                     preferred_capabilities, skill_references, preferred_model,
+                     preferred_environment, updated_at
+                     FROM membership_profiles WHERE membership_id=?1",
+                    params![membership_id],
+                    profile_intent_from_row,
+                )
+                .optional()?;
+            let current = current.ok_or_else(|| anyhow!("membership_not_found"))?;
+            let same = current.required_capabilities == update.required_capabilities
+                && current.preferred_capabilities == update.preferred_capabilities
+                && current.preferred_model == update.preferred_model
+                && current.preferred_environment == update.preferred_environment
+                && normalized_skill_references(&update.skill_references, current.responsibility)
+                    == current.skill_references;
+            if same {
+                transaction.commit()?;
+                return Ok(current);
+            }
+            if current.revision != expected_revision {
+                return Err(anyhow!("profile_revision_stale"));
+            }
+            let required_capabilities = serde_json::to_string(&update.required_capabilities)?;
+            let preferred_capabilities = serde_json::to_string(&update.preferred_capabilities)?;
+            let skill_references =
+                normalized_skill_references(&update.skill_references, current.responsibility);
+            let encoded_skill_references = serde_json::to_string(&skill_references)?;
+            let now = now_ms();
+            transaction.execute(
+                "UPDATE membership_profiles
+                 SET revision=revision+1,
+                     required_capabilities=?2,
+                     preferred_capabilities=?3,
+                     skill_references=?4,
+                     preferred_model=?5,
+                     preferred_environment=?6,
+                     updated_at=?7
+                 WHERE membership_id=?1 AND revision=?8",
+                params![
+                    membership_id,
+                    required_capabilities,
+                    preferred_capabilities,
+                    encoded_skill_references,
+                    update.preferred_model,
+                    update.preferred_environment,
+                    now,
+                    expected_revision,
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(ProfileIntent {
+                revision: expected_revision + 1,
+                responsibility: current.responsibility,
+                required_capabilities: update.required_capabilities.clone(),
+                preferred_capabilities: update.preferred_capabilities.clone(),
+                skill_references,
+                preferred_model: update.preferred_model.clone(),
+                preferred_environment: update.preferred_environment.clone(),
+                updated_at_unix_ms: now,
+            })
+        })
+    }
+
+    /// All active Agent Memberships of one Conversation paired with their
+    /// persistent Profile intents (a bounded default when no row exists).
+    pub fn membership_profiles(
+        &self,
+        conversation_id: &str,
+    ) -> StoreResult<Vec<(Membership, ProfileIntent)>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT m.id, m.conversation_id, p.id, p.kind, p.display_name,
+                 p.agent_id, p.created_at, m.access, m.status, m.joined_at, m.left_at,
+                 COALESCE(fp.revision, 0),
+                 COALESCE(fp.responsibility, 'member'),
+                 COALESCE(fp.required_capabilities, '[]'),
+                 COALESCE(fp.preferred_capabilities, '[]'),
+                 COALESCE(fp.skill_references, '[]'),
+                 fp.preferred_model, fp.preferred_environment,
+                 COALESCE(fp.updated_at, m.joined_at)
+                 FROM memberships m
+                 JOIN principals p ON p.id=m.principal_id
+                 LEFT JOIN membership_profiles fp ON fp.membership_id=m.id
+                 WHERE m.conversation_id=?1 AND m.status='active' AND p.kind='agent'
+                 ORDER BY m.joined_at ASC, m.id ASC",
+            )?;
+            let rows = statement.query_map(params![conversation_id], |row| {
+                let membership = membership_from_row(row)?;
+                let intent = ProfileIntent {
+                    revision: row.get(11)?,
+                    responsibility: parse_profile_responsibility(&row.get::<_, String>(12)?)?,
+                    required_capabilities: serde_json::from_str(&row.get::<_, String>(13)?)
+                        .unwrap_or_default(),
+                    preferred_capabilities: serde_json::from_str(&row.get::<_, String>(14)?)
+                        .unwrap_or_default(),
+                    skill_references: serde_json::from_str(&row.get::<_, String>(15)?)
+                        .unwrap_or_default(),
+                    preferred_model: row.get(16)?,
+                    preferred_environment: row.get(17)?,
+                    updated_at_unix_ms: row.get(18)?,
+                };
+                Ok((membership, intent))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
+        })
+    }
+
     pub fn add_member(
         &self,
         conversation_id: &str,
@@ -1380,6 +1650,9 @@ impl ConversationStore {
                  VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
                 params![membership_id, conversation_id, principal.id, enum_wire(access)?, now],
             )?;
+            if principal.kind == PrincipalKind::Agent {
+                ensure_membership_profile_default(&transaction, &membership_id, now)?;
+            }
             append_domain_event(
                 &transaction,
                 conversation_id,
@@ -1420,6 +1693,23 @@ impl ConversationStore {
                 return Err(anyhow!("conversation_requires_owner"));
             }
             let now = now_ms();
+            let was_assistant: bool = transaction.query_row(
+                "SELECT assistant_membership_id IS ?2 FROM conversations WHERE id=?1",
+                params![conversation_id, membership_id],
+                |row| row.get(0),
+            )?;
+            if was_assistant {
+                set_profile_responsibility(
+                    &transaction,
+                    membership_id,
+                    ProfileResponsibility::Member,
+                    now,
+                )?;
+                transaction.execute(
+                    "UPDATE conversations SET assistant_membership_id=NULL WHERE id=?1",
+                    params![conversation_id],
+                )?;
+            }
             transaction.execute(
                 "UPDATE memberships SET status='left', left_at=?3 WHERE id=?1 AND conversation_id=?2",
                 params![membership_id, conversation_id, now],
@@ -2419,8 +2709,8 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     match prior_schema_version.as_deref() {
         None => {
             connection.execute_batch(
-                "INSERT INTO schema_meta(key, value) VALUES ('version', '6')
-                 ON CONFLICT(key) DO UPDATE SET value='6';",
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '8')
+                 ON CONFLICT(key) DO UPDATE SET value='8';",
             )?;
         }
         Some("1") => {
@@ -2458,7 +2748,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6") => {}
+        Some("4" | "5" | "6" | "7" | "8") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -2479,6 +2769,28 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     if current_schema_version == "5" {
         migrate_strategy_selection_v6(connection)?;
     }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "6" {
+        migrate_assistant_profile_v7(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "7" {
+        migrate_profile_intent_v8(connection)?;
+    }
+    ensure_column(
+        connection,
+        "conversations",
+        "assistant_membership_id",
+        "TEXT REFERENCES memberships(id)",
+    )?;
     ensure_column(connection, "runtime_bindings", "runtime_session_id", "TEXT")?;
     ensure_column(
         connection,
@@ -2648,6 +2960,111 @@ fn migrate_strategy_selection_v6(connection: &mut Connection) -> StoreResult<()>
     transaction.execute(
         "INSERT INTO schema_meta(key, value) VALUES ('version', '6')
          ON CONFLICT(key) DO UPDATE SET value='6'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// One-time schema transition to version 7: persist one explicit long-lived
+/// Assistant per Conversation and bounded endpoint-local Profile intent for
+/// every active Agent Membership. The migration never assigns an Assistant
+/// to an existing ambiguous group; it only backfills default Profile intent
+/// rows so existing active Agent Memberships remain revisioned and visible.
+fn migrate_assistant_profile_v7(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let has_assistant_column = {
+        let mut statement = transaction.prepare("PRAGMA table_info(conversations)")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .iter()
+            .any(|column| column == "assistant_membership_id")
+    };
+    if !has_assistant_column {
+        transaction.execute_batch(
+            "ALTER TABLE conversations ADD COLUMN assistant_membership_id TEXT REFERENCES memberships(id);",
+        )?;
+    }
+    transaction.execute_batch(
+        "INSERT OR IGNORE INTO membership_profiles(
+           membership_id, revision, responsibility, required_capabilities,
+           preferred_capabilities, skill_references, preferred_model,
+           preferred_environment, updated_at
+         )
+         SELECT m.id, 0, 'member', '[]', '[]', '[]', NULL, NULL, m.joined_at
+         FROM memberships m
+         WHERE m.status='active'
+           AND EXISTS (
+             SELECT 1 FROM principals p
+             WHERE p.id=m.principal_id AND p.kind='agent'
+           );",
+    )?;
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '7')
+         ON CONFLICT(key) DO UPDATE SET value='7'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Version 8 replaces the draft Profile row with intent-only fields. Any
+/// draft caller-asserted capability, Skill, or Authority values are discarded
+/// instead of being translated into trusted facts. The current Assistant is
+/// reconstructed solely from the Conversation-owned designation.
+fn migrate_profile_intent_v8(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let columns = {
+        let mut statement = transaction.prepare("PRAGMA table_info(membership_profiles)")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<BTreeSet<_>>>()?
+    };
+    if !columns.contains("required_capabilities") || columns.contains("authority") {
+        transaction.execute_batch(
+            "ALTER TABLE membership_profiles RENAME TO membership_profiles_v7_draft;
+             CREATE TABLE membership_profiles (
+               membership_id TEXT PRIMARY KEY REFERENCES memberships(id) ON DELETE CASCADE,
+               revision INTEGER NOT NULL,
+               responsibility TEXT NOT NULL DEFAULT 'member' CHECK(responsibility IN ('assistant','member')),
+               required_capabilities TEXT NOT NULL DEFAULT '[]',
+               preferred_capabilities TEXT NOT NULL DEFAULT '[]',
+               skill_references TEXT NOT NULL DEFAULT '[]',
+               preferred_model TEXT, preferred_environment TEXT,
+               updated_at INTEGER NOT NULL
+             );",
+        )?;
+        transaction.execute(
+            "INSERT INTO membership_profiles(
+               membership_id, revision, responsibility, required_capabilities,
+               preferred_capabilities, skill_references, preferred_model,
+               preferred_environment, updated_at
+             )
+             SELECT m.id,
+                    COALESCE(d.revision, 0) + 1,
+                    CASE WHEN c.assistant_membership_id=m.id THEN 'assistant' ELSE 'member' END,
+                    '[]', '[]',
+                    CASE WHEN c.assistant_membership_id=m.id THEN ?1 ELSE '[]' END,
+                    NULL, NULL, COALESCE(d.updated_at, m.joined_at)
+             FROM memberships m
+             JOIN principals p ON p.id=m.principal_id
+             JOIN conversations c ON c.id=m.conversation_id
+             LEFT JOIN membership_profiles_v7_draft d ON d.membership_id=m.id
+             WHERE m.status='active' AND p.kind='agent'",
+            params![serde_json::to_string(&vec![
+                ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID
+            ])?],
+        )?;
+        transaction.execute_batch(
+            "DROP TABLE membership_profiles_v7_draft;
+             CREATE INDEX membership_profiles_membership_idx
+               ON membership_profiles(membership_id, revision);",
+        )?;
+    }
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '8')
+         ON CONFLICT(key) DO UPDATE SET value='8'",
         [],
     )?;
     transaction.commit()?;
@@ -3033,7 +3450,7 @@ fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversat
     let base = connection
         .query_row(
             "SELECT id, title, archived, pinned, is_group, strategy_revision,
-             revision, created_at, updated_at,
+             assistant_membership_id, revision, created_at, updated_at,
              (SELECT COUNT(*) FROM events WHERE conversation_id=c.id)
              FROM conversations c WHERE id=?1",
             params![id],
@@ -3045,10 +3462,11 @@ fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversat
                     row.get::<_, i64>(3)? != 0,
                     row.get::<_, i64>(4)? != 0,
                     row.get::<_, Option<String>>(5)?,
-                    row.get::<_, i64>(6)?,
+                    row.get::<_, Option<String>>(6)?,
                     row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
                     row.get::<_, i64>(9)?,
+                    row.get::<_, i64>(10)?,
                 ))
             },
         )
@@ -3060,6 +3478,7 @@ fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversat
         pinned,
         is_group,
         strategy_revision,
+        assistant_membership_id,
         revision,
         created,
         updated,
@@ -3076,6 +3495,7 @@ fn get_inner(connection: &impl CountedSqlite, id: &str) -> StoreResult<Conversat
         pinned,
         is_group,
         strategy_revision,
+        assistant_membership_id,
         revision,
         created_at_unix_ms: created,
         updated_at_unix_ms: updated,
@@ -3582,6 +4002,118 @@ fn bump_revision(
     if changed == 0 {
         return Err(anyhow!("conversation_not_found"));
     }
+    Ok(())
+}
+
+/// Ensure one active Agent Membership has a bounded default Profile intent
+/// row. Idempotent: an existing row is never overwritten.
+fn ensure_membership_profile_default(
+    connection: &impl CountedSqlite,
+    membership_id: &str,
+    now: i64,
+) -> StoreResult<()> {
+    connection.execute(
+        "INSERT OR IGNORE INTO membership_profiles(
+           membership_id, revision, responsibility, required_capabilities,
+           preferred_capabilities, skill_references, preferred_model,
+           preferred_environment, updated_at
+         ) VALUES (?1, 0, 'member', '[]', '[]', '[]', NULL, NULL, ?2)",
+        params![membership_id, now],
+    )?;
+    Ok(())
+}
+
+fn profile_intent_from_row(row: &Row<'_>) -> rusqlite::Result<ProfileIntent> {
+    Ok(ProfileIntent {
+        revision: row.get(0)?,
+        responsibility: parse_profile_responsibility(&row.get::<_, String>(1)?)?,
+        required_capabilities: serde_json::from_str(&row.get::<_, String>(2)?).unwrap_or_default(),
+        preferred_capabilities: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or_default(),
+        skill_references: serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default(),
+        preferred_model: row.get(5)?,
+        preferred_environment: row.get(6)?,
+        updated_at_unix_ms: row.get(7)?,
+    })
+}
+
+fn parse_profile_responsibility(value: &str) -> rusqlite::Result<ProfileResponsibility> {
+    match value {
+        "assistant" => Ok(ProfileResponsibility::Assistant),
+        "member" => Ok(ProfileResponsibility::Member),
+        _ => Err(rusqlite::Error::InvalidQuery),
+    }
+}
+
+fn ensure_local_owner(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    membership_id: &str,
+) -> StoreResult<()> {
+    let valid: bool = connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM memberships m
+           JOIN principals p ON p.id=m.principal_id
+           WHERE m.id=?1 AND m.conversation_id=?2 AND m.status='active'
+             AND m.access='owner' AND p.kind='human'
+         )",
+        params![membership_id, conversation_id],
+        |row| row.get(0),
+    )?;
+    if !valid {
+        return Err(anyhow!("local_owner_required"));
+    }
+    Ok(())
+}
+
+fn normalized_skill_references(
+    references: &[String],
+    responsibility: ProfileResponsibility,
+) -> Vec<String> {
+    let mut normalized = references
+        .iter()
+        .filter(|reference| reference.as_str() != ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID)
+        .cloned()
+        .collect::<Vec<_>>();
+    if responsibility == ProfileResponsibility::Assistant {
+        normalized.push(ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned());
+    }
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn set_profile_responsibility(
+    connection: &impl CountedSqlite,
+    membership_id: &str,
+    responsibility: ProfileResponsibility,
+    now: i64,
+) -> StoreResult<()> {
+    let current = connection.query_row(
+        "SELECT revision, responsibility, required_capabilities,
+         preferred_capabilities, skill_references, preferred_model,
+         preferred_environment, updated_at
+         FROM membership_profiles WHERE membership_id=?1",
+        params![membership_id],
+        profile_intent_from_row,
+    )?;
+    let skill_references = normalized_skill_references(&current.skill_references, responsibility);
+    if current.responsibility == responsibility && current.skill_references == skill_references {
+        return Ok(());
+    }
+    connection.execute(
+        "UPDATE membership_profiles
+         SET revision=revision+1, responsibility=?2, skill_references=?3, updated_at=?4
+         WHERE membership_id=?1",
+        params![
+            membership_id,
+            match responsibility {
+                ProfileResponsibility::Assistant => "assistant",
+                ProfileResponsibility::Member => "member",
+            },
+            serde_json::to_string(&skill_references)?,
+            now,
+        ],
+    )?;
     Ok(())
 }
 
@@ -4683,17 +5215,17 @@ mod tests {
     }
 
     #[test]
-    fn delivery_dispatch_record_reads_one_identity_and_reports_absent_unknowns() {
+    fn dispatch_record_reads_one_identity_and_reports_absent_unknowns() {
         let store = ConversationStore::open_in_memory().unwrap();
-        let conversation = store.create_conversation("Delivery", owner()).unwrap();
+        let conversation = store.create_conversation("Workflow", owner()).unwrap();
         let agent = store
             .add_member(
                 &conversation.id,
                 Principal {
-                    id: "agent:delivery-read".into(),
+                    id: "agent:workflow-read".into(),
                     kind: PrincipalKind::Agent,
-                    display_name: "Delivery Agent".into(),
-                    agent_id: Some("delivery-read".into()),
+                    display_name: "Workflow Agent".into(),
+                    agent_id: Some("workflow-read".into()),
                     created_at_unix_ms: 1,
                 },
                 MembershipAccess::Member,
@@ -4701,7 +5233,7 @@ mod tests {
             .unwrap();
         assert!(
             store
-                .dispatch_record("dispatch:delivery-missing")
+                .dispatch_record("dispatch:workflow-missing")
                 .unwrap()
                 .is_none()
         );
@@ -4709,7 +5241,7 @@ mod tests {
             .create_dispatch(
                 &conversation.id,
                 &agent.id,
-                "delivery.dispatch",
+                "assistant.workflow.dispatch",
                 DispatchSessionMode::New,
             )
             .unwrap();
@@ -4730,17 +5262,17 @@ mod tests {
     }
 
     #[test]
-    fn delivery_requested_dispatch_identity_is_canonical_and_rejects_a_duplicate_open() {
+    fn requested_dispatch_identity_is_canonical_and_rejects_a_duplicate_open() {
         let store = ConversationStore::open_in_memory().unwrap();
-        let dispatch_id = "workflow-delivery:task:TASK-001:1";
+        let dispatch_id = "assistant-workflow:run:RUN-001:1";
         let scope = store
             .prepare_runtime_dispatch(
-                "delivery-agent",
-                "native-session-delivery",
-                "synthetic delivery brief",
+                "workflow-agent",
+                "native-session-workflow",
+                "synthetic workflow input",
                 None,
                 None,
-                Some("delivery.dispatch"),
+                Some("assistant.workflow.dispatch"),
                 Some(dispatch_id),
             )
             .unwrap();
@@ -4752,12 +5284,12 @@ mod tests {
         assert!(
             store
                 .prepare_runtime_dispatch(
-                    "delivery-agent",
-                    "native-session-delivery",
-                    "synthetic delivery brief",
+                    "workflow-agent",
+                    "native-session-workflow",
+                    "synthetic workflow input",
                     None,
                     None,
-                    Some("delivery.dispatch"),
+                    Some("assistant.workflow.dispatch"),
                     Some(dispatch_id),
                 )
                 .is_err()
@@ -5233,7 +5765,7 @@ mod tests {
 
         let custom_before = snapshot_group(&root, "custom-group");
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "6");
+        assert_eq!(schema_version(&root), "8");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -5379,7 +5911,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "6");
+        assert_eq!(schema_version(&root), "8");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -5410,7 +5942,7 @@ mod tests {
         fixture.close().unwrap();
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "6");
+        assert_eq!(schema_version(&root), "8");
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -5438,7 +5970,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "6");
+        assert_eq!(schema_version(&root), "8");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -5653,5 +6185,211 @@ mod tests {
         assert!(event.parts.iter().any(|part| {
             part.kind == EventPartKind::Metadata && part.content.contains("accepted")
         }));
+    }
+    fn agent(agent_id: &str, display_name: &str) -> Principal {
+        Principal {
+            id: agent_id.into(),
+            kind: PrincipalKind::Agent,
+            display_name: display_name.into(),
+            agent_id: Some(agent_id.into()),
+            created_at_unix_ms: 1,
+        }
+    }
+
+    #[test]
+    fn assistant_designation_and_profile_intent_are_persistent_and_idempotent() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store
+            .create_conversation_with_members(
+                "Group",
+                owner(),
+                &[
+                    (agent("agent:one", "One"), MembershipAccess::Member),
+                    (agent("agent:two", "Two"), MembershipAccess::Member),
+                ],
+            )
+            .unwrap();
+        let agent_ids = conversation
+            .memberships
+            .iter()
+            .filter(|membership| membership.principal.kind == PrincipalKind::Agent)
+            .map(|membership| membership.id.clone())
+            .collect::<Vec<_>>();
+        let owner_membership_id = conversation
+            .memberships
+            .iter()
+            .find(|membership| {
+                membership.principal.kind == PrincipalKind::Human
+                    && membership.access == MembershipAccess::Owner
+            })
+            .unwrap()
+            .id
+            .clone();
+        assert_eq!(agent_ids.len(), 2);
+        for membership_id in &agent_ids {
+            let profile = store.membership_profile(membership_id).unwrap().unwrap();
+            assert_eq!(profile.revision, 0);
+        }
+
+        store
+            .set_conversation_assistant(
+                &conversation.id,
+                &owner_membership_id,
+                conversation.revision,
+                Some(&agent_ids[0]),
+            )
+            .unwrap();
+        let conversation = store.get(&conversation.id).unwrap();
+        assert_eq!(
+            conversation.assistant_membership_id.as_deref(),
+            Some(agent_ids[0].as_str())
+        );
+        let revision_after_designation = conversation.revision;
+        store
+            .set_conversation_assistant(
+                &conversation.id,
+                &owner_membership_id,
+                conversation.revision - 1,
+                Some(&agent_ids[0]),
+            )
+            .unwrap();
+        assert_eq!(
+            store.get(&conversation.id).unwrap().revision,
+            revision_after_designation
+        );
+        store
+            .set_conversation_assistant(
+                &conversation.id,
+                &owner_membership_id,
+                revision_after_designation,
+                None,
+            )
+            .unwrap();
+        assert!(
+            store
+                .get(&conversation.id)
+                .unwrap()
+                .assistant_membership_id
+                .is_none()
+        );
+
+        let update = ProfileIntentUpdate {
+            required_capabilities: vec!["workspace".into()],
+            preferred_model: Some("model-a".into()),
+            preferred_environment: Some("local".into()),
+            ..Default::default()
+        };
+        let profile_revision = store
+            .membership_profile(&agent_ids[0])
+            .unwrap()
+            .unwrap()
+            .revision;
+        let intent = store
+            .set_membership_profile(
+                &conversation.id,
+                &agent_ids[0],
+                &owner_membership_id,
+                profile_revision,
+                &update,
+            )
+            .unwrap();
+        let replayed = store
+            .set_membership_profile(
+                &conversation.id,
+                &agent_ids[0],
+                &owner_membership_id,
+                profile_revision,
+                &update,
+            )
+            .unwrap();
+        assert_eq!(intent, replayed);
+        assert_eq!(intent.revision, profile_revision + 1);
+        assert_eq!(
+            store.membership_profile(&agent_ids[0]).unwrap().unwrap(),
+            intent
+        );
+        let stale = ProfileIntentUpdate {
+            preferred_model: Some("model-b".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            store
+                .set_membership_profile(
+                    &conversation.id,
+                    &agent_ids[0],
+                    &owner_membership_id,
+                    profile_revision,
+                    &stale,
+                )
+                .unwrap_err()
+                .to_string(),
+            "profile_revision_stale"
+        );
+        let profiles = store.membership_profiles(&conversation.id).unwrap();
+        assert_eq!(profiles.len(), 2);
+        assert!(
+            profiles
+                .iter()
+                .any(|(_, profile)| profile.revision == profile_revision + 1)
+        );
+        assert!(profiles.iter().any(|(_, profile)| profile.revision == 0));
+    }
+
+    #[test]
+    fn migrates_v6_conversations_to_assistant_and_profile_state_without_assigning_assistants() {
+        let root = std::env::temp_dir().join(format!("lico-conv-v6-assistant-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
+        let fixture = open_fixture_connection(&root);
+        fixture
+            .execute_batch(
+                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO schema_meta(key, value) VALUES ('version', '6');
+                 CREATE TABLE principals (
+                   id TEXT PRIMARY KEY, kind TEXT NOT NULL, display_name TEXT NOT NULL,
+                   agent_id TEXT, created_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE conversations (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
+                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
+                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
+                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
+                   strategy_revision TEXT,
+                   revision INTEGER NOT NULL DEFAULT 0,
+                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+                 );
+                 INSERT INTO principals(id, kind, display_name, agent_id, created_at)
+                   VALUES ('agent:one', 'agent', 'One', 'one', 1),
+                          ('human:local', 'human', 'You', NULL, 1);
+                 INSERT INTO conversations(id, title, archived, pinned, is_group, revision, created_at, updated_at)
+                   VALUES ('legacy-group', 'Legacy', 0, 0, 1, 0, 1, 1);
+                 CREATE TABLE memberships (
+                   id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
+                   principal_id TEXT NOT NULL, access TEXT NOT NULL,
+                   status TEXT NOT NULL, joined_at INTEGER NOT NULL, left_at INTEGER
+                 );
+                 INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
+                   VALUES ('m-human', 'legacy-group', 'human:local', 'owner', 'active', 1),
+                          ('m-agent', 'legacy-group', 'agent:one', 'member', 'active', 1);",
+            )
+            .unwrap();
+        fixture.close().unwrap();
+
+        let store = ConversationStore::open(&root).unwrap();
+        assert_eq!(schema_version(&root), "8");
+        let conversation = store.get("legacy-group").unwrap();
+        assert!(conversation.assistant_membership_id.is_none());
+        let profiles = store.membership_profiles("legacy-group").unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].1.revision, 0);
+        assert_eq!(profiles[0].1.required_capabilities.len(), 0);
+
+        drop(store);
+        let reopened = ConversationStore::open(&root).unwrap();
+        assert_eq!(schema_version(&root), "8");
+        assert_eq!(
+            reopened.membership_profiles("legacy-group").unwrap().len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

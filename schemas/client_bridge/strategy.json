@@ -24,10 +24,20 @@
     "strategy.run.active",
     "strategy.run.resume",
     "strategy.run.cancel",
-    "strategy.run.retry"
+    "strategy.run.retry",
+    "strategy.assistant.workflow.execute",
+    "strategy.assistant.workflow.inspect",
+    "strategy.assistant.workflow.cancel"
   ],
-  "bindingKinds": ["actor", "runtime", "workspace"],
-  "runtimeKinds": ["python", "node"],
+  "bindingKinds": [
+    "actor",
+    "runtime",
+    "workspace"
+  ],
+  "runtimeKinds": [
+    "python",
+    "node"
+  ],
   "stateKinds": [
     "pass",
     "choice",
@@ -79,6 +89,11 @@
     "callback_stale",
     "callback_conflict",
     "effect_in_doubt",
-    "unsupported_action"
+    "unsupported_action",
+    "graph_invalid",
+    "graph_preflight_rejected",
+    "graph_identity_rejected",
+    "graph_route_stale",
+    "strategy_idempotency_conflict"
   ]
 }

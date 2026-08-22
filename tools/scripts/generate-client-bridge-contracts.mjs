@@ -364,6 +364,10 @@ function readConversationSchema(family) {
     "conversation.membership.leave",
     "conversation.export",
     "conversation.import",
+    "conversation.assistant.set",
+    "conversation.profile.update",
+    "conversation.profile.get",
+    "conversation.profile.candidates",
   ];
   if (
     !isRecord(schema) ||
@@ -467,6 +471,9 @@ function readStrategySchema(family) {
     "strategy.run.resume",
     "strategy.run.cancel",
     "strategy.run.retry",
+    "strategy.assistant.workflow.execute",
+    "strategy.assistant.workflow.inspect",
+    "strategy.assistant.workflow.cancel",
   ];
   if (
     !isRecord(schema) ||

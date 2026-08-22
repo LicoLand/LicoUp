@@ -47,8 +47,8 @@ enum ProblemDomain {
   /// Conversation archive / snapshots. Range 3600-3699.
   archive('AR', 3600, 3699, 'archive'),
 
-  /// Delivery Plan and Subagent MCP. Range 3700-3899.
-  delivery('DL', 3700, 3899, 'delivery'),
+  /// Subagent MCP and Assistant workflow facade. Range 3700-3899.
+  assistantWorkflow('AW', 3700, 3899, 'assistant-workflow'),
 
   /// Native agent driver ProtocolFailure codes. Range 3900-4699.
   nativeAgent('NA', 3900, 4699, 'native'),

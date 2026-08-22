@@ -4,6 +4,7 @@
 //! immutable, reducers are pure, and every external effect is represented by
 //! a durable command before an adapter is allowed to run it.
 
+mod assistant;
 #[cfg(test)]
 mod conformance;
 mod definition;
@@ -13,6 +14,10 @@ mod reducer;
 mod service;
 mod store;
 
+pub use assistant::{
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, PreflightCheck, PreflightFailure,
+    PreflightReceipt, preflight_assistant_graph,
+};
 pub use definition::{
     ActorSlot, BindingCandidate, BindingKind, BindingValue, FailureClass, FallbackReceipt,
     GraphState, GraphStateKind, GuardExpression, RetryPolicy, RuntimeKind, RuntimeRequirement,

@@ -61,7 +61,7 @@ flowchart TB
 Canonical Conversation store in
 `crates/licoup-native/src/domain/client_conversation/` owns implemented
 direct/group chat facts. Native agent history, Adaptive Flywheel graphs, and
-Delivery Plans are adjacent authorities. They are not copies of that
+Assistant Profile/workflow state are adjacent authorities. They are not copies of that
 Conversation, and this section does not replace their owning documents.
 
 ```mermaid
@@ -80,7 +80,7 @@ flowchart TB
 | Canonical Conversation | Human/Agent entry, Memberships, ordered Events | Sole durable chat store. Direct and group are the same type; only `isGroup` and Membership count differ |
 | [Native history catalog](../protocols/semantic-conversation.md) | Read-only adapter sessions assembled as semantic conversation | One-to-one Agent workspace list/replay. Not Canonical `conversation.list`. Native locations stay private on Membership RuntimeBindings |
 | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Immutable Graph revision, bindings, authorization, durable run reduction | Independent of Conversation history. A group may bind `strategyRevision`; actor effects project back as Membership Events. Graph/run is not a second transcript |
-| [Delivery Plan](../protocols/subagent-mcp.md) | Plan and Checkpoint lifecycle | Dispatches through Conversation Memberships. Adaptive Flywheel remains the Agent/model route selector |
+| [Subagent MCP](../protocols/subagent-mcp.md) | Assistant designation, Membership Profiles, and assistant-temporary Graph lifecycle | Profile facts project named existing authorities; temporary Graphs bind exact Memberships and are preflighted before any effect. Adaptive Flywheel remains the Agent/model route selector |
 
 | Record | Meaning |
 | --- | --- |
@@ -92,7 +92,7 @@ flowchart TB
 | RuntimeBinding | Private adapter session bound to a Membership. Hidden from UI, MCP, and export |
 
 Addressing selects Memberships; it is not a second protocol. An `@mention`, a
-strategy actor slot, a Delivery route, and a Subagent
+strategy actor slot, an assistant-temporary Graph binding, and a Subagent
 `conversationId + membershipId` all name existing Agent Memberships. In this
 model DirectTurn is a mention dispatch cause on ConversationDispatch, not a
 second send, execute, or display stack.
@@ -135,8 +135,8 @@ one scenario does not reach into another scenario's storage or interface.
 | Adaptive Flywheel | The catalog stays empty until a ZIP import. Imported ZIP packages contain root `workflow.json` plus optional `scripts/`; the Graph decides pipeline or Agent Loop behavior. Immutable revisions own bindings and exact authorization, while durable runs expose bounded ready-frontier scheduling and explicit terminal or recovery states. There is no Better Plan installation action and no ordinal Conversation compatibility path |
 | Skill management | Read-only discovery of existing local skills, recoverable removal to the system Trash, and invocation counters grouped by time window; no download, install, update, or synchronization channel |
 | Conversation management | Indexed list/get/event paging and search plus bounded canonical import/export; third-party native history is never rewritten |
-| Delivery Plan | Persisted Plans and Checkpoints own delivery eligibility and progression. The Conversation runtime claims the complete eligible frontier in stable order, opens each Agent effect as a Membership-scoped PersistentTurn through the process-owned Conversation host, and advances a checkpoint only after terminal settlement. Adaptive Flywheel remains the sole Agent/model route-selection authority |
-| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Plan/Task/dispatch rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
+| Assistant workflow | The designated Assistant owns each user goal to completion: it works directly or admits one bounded assistant-temporary Graph with exact Membership bindings. The MCP-bound Agent must be that active designated Membership. Preflight returns every locally discoverable failure before any effect; runtime failures return typed terminal results to the Assistant. The persistent Conversation host remains the sole run and turn owner. Adaptive Flywheel remains the sole Agent/model route-selection authority |
+| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Graph run/command/Membership rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
 | Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
 
 Optional collaboration is absent from default startup and navigation. The
@@ -144,14 +144,15 @@ client imports its trusted signing key through a separate action that is never
 a trust root by itself, then verifies the immutable package source and fixed
 signed external runner on loopback before an explicit start.
 
-The delivery view consumes one safe native ledger projection. LicoUp owns Plan
-scheduling and checkpoint progression; Adaptive Flywheel owns route selection;
-and Conversation Memberships own Agent dispatch. Native continuation locations
+The workflow view consumes one safe native ledger projection. LicoUp owns Graph
+admission, preflight, durable run reduction, and usage accounting; Adaptive
+Flywheel owns route selection; and Conversation Memberships own Agent dispatch.
+Native continuation locations
 remain private adapter bindings. The projection keeps only safe codes,
-localized role and state labels, Agent/model labels, numeric Token counts,
-exact-or-estimated coverage, and Plan hierarchy. It excludes prompts, replies,
+localized Graph and command state labels, Agent/model labels, Membership ids,
+numeric Token counts, and exact-or-estimated coverage. It excludes prompts, replies,
 tool payloads, summaries, compaction, cache controls, and a second client-owned
-context model. Retention is bounded to active deliveries and the newest twenty
+context model. Retention is bounded to active workflows and the newest twenty
 terminal rollups.
 
 The current agent and platform adaptation targets are generated in

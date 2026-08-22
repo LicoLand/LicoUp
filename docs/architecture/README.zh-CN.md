@@ -56,7 +56,7 @@ flowchart TB
 长期「一个 Conversation」目标由[产品定义](../../PRODUCT.zh-CN.md)负责。已实现的
 单聊/群聊事实由
 `crates/licoup-native/src/domain/client_conversation/` 中的统一 Conversation
-存储负责。原生智能体历史、Adaptive Flywheel Graph 和 Delivery Plan 是相邻权威，
+存储负责。原生智能体历史、Adaptive Flywheel Graph 和 Assistant Profile/工作流状态是相邻权威，
 不是该 Conversation 的副本；本节也不取代它们各自的归属文档。
 
 ```mermaid
@@ -75,7 +75,7 @@ flowchart TB
 | 统一 Conversation | 人机入口、Membership、有序 Event | 唯一持久化聊天存储。单聊与群聊是同一类型，差别只有 `isGroup` 和 Membership 数量 |
 | [原生历史目录](../protocols/semantic-conversation.md) | 只读适配器会话，汇编为 semantic conversation | 一对一 Agent 工作区的列表/回放，不是统一 `conversation.list`。原生位置只作为 Membership 上的私有 RuntimeBinding |
 | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | 不可变 Graph 版本、绑定、授权、持久化运行归约 | 独立于 Conversation 历史。群可以绑定 `strategyRevision`；actor 效果作为 Membership Event 投影回来。Graph/run 不是第二份 transcript |
-| [Delivery Plan](../protocols/subagent-mcp.zh-CN.md) | Plan 与 Checkpoint 生命周期 | 通过 Conversation Membership 派发。Adaptive Flywheel 仍是 Agent/model 路由选择权威 |
+| [下属智能体 MCP](../protocols/subagent-mcp.zh-CN.md) | Assistant 指定、Membership Profile 与 assistant 临时 Graph 生命周期 | Profile 事实投影具名既有权威；临时 Graph 绑定准确 Membership 并在任何效果之前预检。Adaptive Flywheel 仍是 Agent/model 路由选择权威 |
 
 | 记录 | 含义 |
 | --- | --- |
@@ -87,7 +87,7 @@ flowchart TB
 | RuntimeBinding | 绑在 Membership 上的私有适配器会话。对 UI、MCP 和导出不可见 |
 
 寻址只选出 Membership，不是第二套协议。正文里的 `@mention`、策略 actor 槽、
-Delivery 路由，以及下属智能体的 `conversationId + membershipId`，都只点名已有的
+assistant 临时 Graph 绑定，以及下属智能体的 `conversationId + membershipId`，都只点名已有的
 Agent Membership。在该模型里，DirectTurn 是 ConversationDispatch 的 mention
 派发成因，不是第二套发送、执行或展示栈。
 
@@ -122,8 +122,8 @@ PersistentTurn。共用气泡组件并不合并这两套权威。
 | 适应性飞轮 | 目录在 ZIP 导入之前保持为空。导入 ZIP 在根目录包含 `workflow.json`，并可带 `scripts/`；Graph 决定流水线或 Agent Loop。不可变版本拥有绑定与准确授权，持久化运行提供有界就绪前沿调度以及明确终态和恢复状态。不存在 Better Plan 安装动作，也不存在序号式 Conversation 兼容路径 |
 | 技能管理 | 只读发现本机已有技能、可恢复地移入系统废纸篓，并按时间窗口统计真实调用次数；不提供下载、安装、更新或同步通道 |
 | 对话管理 | 带索引的列表、精确读取、Event 分页与检索，以及有界的统一导入/导出；绝不改写第三方原生历史 |
-| Delivery Plan | 持久化 Plan 与 Checkpoints 是交付资格和推进的权威。Conversation runtime 以稳定顺序领取完整 eligible frontier，经由进程自有 Conversation 主进程把每个 Agent 效果开启为 Membership 作用域 PersistentTurn，并且只在终态结算后推进 checkpoint。Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
-| 用量统计 | 依据本机记录按智能体或模型聚合 Token；包含不可变历史日/模型汇总、当日事件明细、无路径 Plan/Task/dispatch 汇总和精确覆盖率，使用 90 天扫描缓存，默认展示 30 天并支持 7/30/90 天窗口 |
+| Assistant 工作流 | 被指定的 Assistant 对每个用户目标负责到底：它直接完成，或准入一份带准确 Membership 绑定的有界 assistant 临时 Graph。MCP 绑定的 Agent 必须正是该活动指定 Membership。预检在任何效果之前返回所有本地可发现失败；运行期失败以 typed 终态结果返回 Assistant。持久化 Conversation 宿主仍是唯一的 run 与 turn 属主。Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
+| 用量统计 | 依据本机记录按智能体或模型聚合 Token；包含不可变历史日/模型汇总、当日事件明细、无路径 Graph run/command/Membership 汇总和精确覆盖率，使用 90 天扫描缓存，默认展示 30 天并支持 7/30/90 天窗口 |
 | 端点保护预览 | 当前配对、信任、对端消息/文件加密、防重放、端点认证结果与 Lico Arc 候选承载；该退役中实现不承诺未来兼容 |
 
 默认启动和
@@ -131,11 +131,11 @@ PersistentTurn。共用气泡组件并不合并这两套权威。
 不能建立信任。显式启动前，客户端还会重新校验不可变的软件包来源以及固定、
 已签名且只监听 loopback 的外部运行器。
 
-交付视图只消费一个安全的原生 ledger 投影。LicoUp 负责 Plan 调度与 checkpoint 推进，
-Adaptive Flywheel 负责 route 选择，Conversation Membership 负责 Agent dispatch。原生续接
-位置只作为私有适配器绑定。投影只保留安全 code、本地化角色与状态标签、Agent/model
-标签、数字 Token 计数、精确或估算覆盖率和 Plan 层级；明确排除 prompt、reply、tool
-payload、摘要、压缩、cache 控件以及第二套客户端 context 模型。保留范围限定为活动交付
+工作流视图只消费一个安全的原生 ledger 投影。LicoUp 负责 Graph 准入、预检、持久化运行归约
+与用量记账，Adaptive Flywheel 负责 route 选择，Conversation Membership 负责 Agent dispatch。原生续接
+位置只作为私有适配器绑定。投影只保留安全 code、本地化 Graph 与 command 状态标签、
+Agent/model 标签、Membership id、数字 Token 计数以及精确或估算覆盖率；明确排除 prompt、reply、tool
+payload、摘要、压缩、cache 控件以及第二套客户端 context 模型。保留范围限定为活动工作流
 和最新二十份终态汇总。
 
 当前智能体与平台适配目标由[兼容性文档](../COMPATIBILITY.zh-CN.md)生成。

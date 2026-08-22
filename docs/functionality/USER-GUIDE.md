@@ -93,23 +93,28 @@ mode may only write the bound local plan file under OS sandbox. See
 [Lico Agent](../protocols/lico-agent.md).
 
 Open **Adaptive Flywheel** to choose everyday conversation agents and configure
-the delivery route table. The flywheel is the only route-selection authority:
-each delivery role and difficulty resolves to one agent, model, and reasoning
-effort, and LicoUp freezes that decision in the dispatch receipt.
+the Assistant workflow surface. The flywheel is the only route-selection
+authority: each workflow entry resolves to one agent, model, and reasoning
+effort, and LicoUp freezes that decision in the run receipt.
 
-The Conversation runtime consumes the persisted Plan and Checkpoints. It selects
-the complete eligible frontier, preserves stable order and bounded native lanes,
-dispatches each Agent through its exact Conversation Membership, and advances a
-checkpoint only after terminal settlement. The MCP caller can start, authorize,
-inspect, or explicitly cancel a delivery; it cannot submit Tasks, choose routes,
-bind native sessions, or accept a Reviewer. Independent deliveries can run
-concurrently while each delivery and Task attempt stays ordered.
+The Assistant is the long-lived owner of your goal in the same native
+conversation. It either completes the work itself or submits one bounded
+temporary workflow Graph with exact Membership bindings. The Graph is compiled
+and preflighted before any Agent effect: structure, quota, model, Agent, Skill,
+environment, capability, readiness, and existing-Authority problems return stable typed errors first, and
+runtime failures that cannot be preflighted return to the Assistant, which may
+continue directly or author a later Graph. The four Assistant MCP tools rank
+Profiles and execute (including internal preflight and durable admission),
+inspect, or explicitly cancel a temporary workflow. The MCP-bound Agent must
+be the exact active designated Assistant Membership; it cannot choose routes,
+bind native sessions, or create hidden participants. Independent workflows can
+run concurrently while each workflow and Membership turn stays ordered.
 
 Assistant still controls the everyday conversation picker. Its model and
-reasoning controls remain separate from delivery role routing. Save Adaptive
-Flywheel after changing a route so the Conversation runtime reads the new
-persisted state; the client does not expose the state file, executable paths, or
-native continuation locations.
+reasoning controls remain separate from Adaptive Flywheel route selection. Save
+Adaptive Flywheel after changing a route so the client reads the new persisted
+state; the client does not expose the state file, executable paths, or native
+continuation locations.
 
 ## Connect OpenClaw or Hermes in your VM
 
@@ -168,7 +173,7 @@ catalog entry declares a real lifecycle action. Each bridge action requires
 direct confirmation and changes only LicoUp-owned files or namespaced hooks.
 Discovery and installation do not by themselves prove that an agent is ready
 for conversation. Plugin readiness is reported separately from the native
-delivery and Adaptive Flywheel authorities.
+Assistant workflow and Adaptive Flywheel authorities.
 
 Optional collaboration remains outside the default client. Installation or
 enablement never grants continuing transfer permission. Assembly does not
@@ -195,11 +200,11 @@ external transfer remains disabled.
   conversations or an exact keyword filter before previewing and starting the
   local backup job.
 - Token usage views are calculated from local records. The default window is
-  the latest 30 days; choose the Agent, Model, or Delivery dimension and a
-  custom window when needed. Delivery shows the Plan → Task → dispatch
-  hierarchy, exact coverage, and the main-versus-subordinate split using
-  numeric-only ledger facts. LicoUp owns scheduling, Adaptive Flywheel owns
-  route selection, and raw native conversation locations remain a private
+  the latest 30 days; choose the Agent, Model, or Workflow dimension and a
+  custom window when needed. Workflow shows Graph runs, commands, and exact
+  Membership attribution with checked numeric usage and exact coverage.
+  LicoUp owns workflow accounting, Adaptive Flywheel
+  owns route selection, and raw native conversation locations remain a private
   adapter binding. The view does not expose prompts, replies, tool payloads, summaries,
   compaction, or cache controls; active work plus the newest twenty terminal
   rollups are bounded by the native ledger.

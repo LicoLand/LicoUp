@@ -53,6 +53,18 @@ LicoUp 只持久化 Graph、绑定、run 与 locator 摘要。各 Agent 持有�
 是人机入口和成员事件投影，不是第二份 transcript 仓库。已经退役的 Conversation 序号式
 Flywheel 模型不会被读取或翻译。
 
+## Assistant 临时运行
+
+Assistant 编写的 Graph 是请求本地的不可变 run 对象，不是导入的目录策略。它只能绑定
+同一 Conversation 中准确且活动的 Agent Membership，不能包含 script 或 runtime 资产。
+Assistant facade 从既有权威派生 Profile 事实，先硬过滤再确定性排序候选，完成所有本地
+可知检查，并在幂等键下持久准入前重新校验存储自有的 Membership 与 Profile 版本。
+
+准入后，actor 效果与单聊、群聊共用同一持久 Membership turn 及 Conversation
+Event/Part 时间线。Assistant run 的效果或 drive 失败只结算一个 typed 终态结果并取消
+尚未启动的 command；不会进入通用重试、Fallback 或 failure edge 路径。run 不存在按
+经过时间推断终态的规则，也不会被改写。同一 Assistant 可以直接继续，或提交后续 Graph。
+
 ## Graph 契约
 
 每个工作流在导入前都会按一份类型化转换契约编译。转换只能携带 `complete`、
@@ -120,7 +132,7 @@ Membership，但不会启动 run。
 上有进行中的 PersistentTurn 则 steer；若 run 处于 Waiting 则 resume。叉掉胶囊只退出
 策略模式，不取消已经在跑的 run。
 
-`@mention` 只负责选出 Membership，与策略、Delivery、Subagent 共用同一套
+`@mention` 只负责选出 Membership，与策略、Assistant、Subagent 共用同一套
 PersistentTurn 流式 I/O，而不是第二套发送协议。Graph 的 actor 与 workset
 效果作为对应 Membership 上的结构化 Event，走共享 conversation display。
 

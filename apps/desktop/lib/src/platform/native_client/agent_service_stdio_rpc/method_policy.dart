@@ -42,6 +42,7 @@ bool stdioRpcMethodUsesConversationLane(
       'strategy.run.start',
       'strategy.run.resume',
       'strategy.run.retry',
+      'strategy.assistant.workflow.execute',
     }.contains(action);
   }
   return _persistentConversationMethods.contains(method);

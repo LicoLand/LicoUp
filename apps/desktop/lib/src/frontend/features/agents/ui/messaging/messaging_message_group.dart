@@ -342,11 +342,6 @@ class _MessagingAgentBadge extends StatelessWidget {
     final role = switch (participantRole.trim().toLowerCase()) {
       'main-agent' => 'MAIN AGENT',
       'peer-agent' => 'AGENT',
-      'designer' => 'DESIGNER',
-      'backend-worker' => 'BACKEND WORKER',
-      'frontend-worker' => 'FRONTEND WORKER',
-      'backend-reviewer' => 'BACKEND REVIEWER',
-      'frontend-reviewer' => 'FRONTEND REVIEWER',
       _ => strings.agentBadge,
     };
     return Container(

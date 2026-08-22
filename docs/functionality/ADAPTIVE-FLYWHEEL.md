@@ -74,6 +74,23 @@ its native conversation. A group Conversation is the human entry and
 membership-event projection, not a second transcript store. The retired
 ordinal Conversation Flywheel model is not read or translated.
 
+## Assistant-temporary runs
+
+An Assistant-authored Graph is a request-local immutable run object, not an
+imported catalog strategy. It may bind only exact active Agent Memberships
+from the same Conversation and may not contain script or runtime assets. The
+Assistant facade derives Profile facts from their existing owners, hard-filters
+and orders candidates deterministically, completes every locally knowable
+check, and revalidates store-owned Membership and Profile revisions before
+durable admission under the idempotency key.
+
+Once admitted, actor effects use the same persistent Membership turns and
+Conversation Event/Part timeline as direct and group chat. An Assistant-run
+effect or drive failure settles one typed terminal result and cancels
+unstarted commands; it does not enter the generic retry, Fallback, or failure
+edge path. The run has no elapsed-time terminal rule and is never rewritten.
+The same Assistant may continue directly or submit a later Graph.
+
 ## Graph contract
 
 Every workflow is compiled before import against one typed transition
@@ -161,7 +178,7 @@ PersistentTurn is steered; a Waiting run is resumed. Clearing the capsule exits
 strategy mode and does not cancel a run that is already executing.
 
 An `@mention` only selects Memberships. It uses the same PersistentTurn stream
-as strategy, delivery, and subagent effects — not a second I/O stack. Graph actor
+as strategy, Assistant, and subagent effects — not a second I/O stack. Graph actor
 and workset effects land as structured Events on the matching Membership through
 the shared conversation display.
 

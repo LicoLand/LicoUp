@@ -68,33 +68,39 @@ extension LicoStringsLabels on LicoStrings {
   String get byModel => isChinese ? '模型' : 'By Model';
   String get byWorkflow => isChinese ? '工作流' : 'Workflow';
   String get workflowUsage => isChinese ? '工作流用量' : 'Workflow Usage';
-  String get workflowPlan => isChinese ? '计划' : 'Plan';
-  String get workflowTask => isChinese ? '任务' : 'Task';
-  String get workflowDispatch => isChinese ? '派发' : 'Dispatch';
-  String get workflowMainConversation =>
-      isChinese ? '主对话' : 'Main conversation';
-  String get workflowSubordinate => isChinese ? '下属' : 'Subordinate';
+  String get workflowRuns => isChinese ? '图运行' : 'Graph runs';
+  String get workflowCommands => isChinese ? '图命令' : 'Graph commands';
   String get workflowTotal => isChinese ? '工作流总计' : 'Workflow total';
   String get workflowCachedInput => isChinese ? '缓存输入' : 'Cached input';
   String get workflowPrompt => isChinese ? '提示词' : 'Prompt';
   String get workflowCompletion => isChinese ? '补全' : 'Completion';
   String get workflowExactCoverage => isChinese ? '精确覆盖率' : 'Exact coverage';
-  String get workflowMainShare => isChinese ? '主对话' : 'Main';
-  String get workflowSubordinateShare => isChinese ? '下属对话' : 'Subordinate';
   String workflowCoverage(int exact, int total, int percent) => isChinese
       ? '精确 $exact/$total（$percent%）'
       : 'Exact $exact/$total ($percent%)';
-  String workflowPlanLabel(String planCode, int revision) => isChinese
-      ? '$planCode · 修订版 $revision'
-      : '$planCode · Revision $revision';
-  String workflowTaskLabel(String taskCode) =>
-      isChinese ? '任务 · $taskCode' : 'Task · $taskCode';
-  String workflowDispatchLabel(int ordinal) =>
-      isChinese ? '派发 $ordinal' : 'Dispatch $ordinal';
+  String workflowRunLabel(int ordinal) =>
+      isChinese ? '图运行 $ordinal' : 'Graph run $ordinal';
+  String workflowRevisionLabel(String value) =>
+      isChinese ? '修订 · $value' : 'Revision · $value';
+  String workflowCommandLabel(int ordinal) =>
+      isChinese ? '命令 $ordinal' : 'Command $ordinal';
+  String workflowMembershipLabel(String value) =>
+      isChinese ? '成员资格 · $value' : 'Membership · $value';
   String workflowAgentLabel(String value) =>
       isChinese ? '智能体 · $value' : 'Agent · $value';
   String workflowModelLabel(String value) =>
       isChinese ? '模型 · $value' : 'Model · $value';
+  String workflowKindLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'authorization' => isChinese ? '授权' : 'Authorization',
+      'actor' => isChinese ? '参与者' : 'Actor',
+      'script' => isChinese ? '脚本' : 'Script',
+      'workset-item' => isChinese ? '工作集项' : 'Workset item',
+      _ => isChinese ? '未知类型' : 'Unknown kind',
+    };
+  }
+
   String workflowStatusLabel(String value) {
     final normalized = value.trim().toLowerCase();
     return switch (normalized) {
@@ -105,17 +111,6 @@ extension LicoStringsLabels on LicoStrings {
       'in_doubt' || 'indoubt' => isChinese ? '待核对' : 'In doubt',
       'ready' || 'settled' => isChinese ? '已结算' : 'Settled',
       _ => isChinese ? '未知状态' : 'Unknown status',
-    };
-  }
-
-  String workflowRoleLabel(String value) {
-    final normalized = value.trim().toLowerCase();
-    return switch (normalized) {
-      'main' => isChinese ? '主对话' : 'Main',
-      'designer' => isChinese ? '设计者' : 'Designer',
-      'worker' => isChinese ? '执行者' : 'Worker',
-      'reviewer' => isChinese ? '审阅者' : 'Reviewer',
-      _ => isChinese ? '下属' : 'Subordinate',
     };
   }
 
@@ -649,9 +644,6 @@ extension LicoStringsLabels on LicoStrings {
   String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';
-  String get codeEngineeringDesigner => isChinese ? '设计师' : 'Designer';
-  String get codeEngineeringWorker => isChinese ? '执行者' : 'Worker';
-  String get codeEngineeringReviewer => isChinese ? '审查官' : 'Reviewer';
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
   String get agentModeLabel => isChinese ? 'Agent' : 'Agent';
   String get planModeLabel => isChinese ? 'Plan' : 'Plan';

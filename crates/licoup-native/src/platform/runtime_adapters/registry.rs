@@ -118,6 +118,24 @@ fn native_capability_registry() -> Option<&'static BTreeMap<String, Vec<NativeCa
         .as_ref()
 }
 
+/// Privacy-safe capability keys from the canonical packaged inventory. This
+/// is the single source used by Profile snapshots; callers receive wire names
+/// only and cannot mutate the inventory or infer local runtime details.
+pub(crate) fn native_capabilities_for_agent(agent_id: &str) -> Vec<String> {
+    let Some(adapter) = adapter_for_agent(agent_id) else {
+        return Vec::new();
+    };
+    native_capability_registry()
+        .and_then(|registry| registry.get(adapter.id()))
+        .map(|capabilities| {
+            capabilities
+                .iter()
+                .map(|capability| capability.wire_name().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(super) fn parse_native_capability_registry(
     inventory_json: &str,
 ) -> std::result::Result<BTreeMap<String, Vec<NativeCapabilityKind>>, &'static str> {
