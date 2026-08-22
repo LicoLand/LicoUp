@@ -38,6 +38,7 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
     "kimi-code",
     "pi",
     "lico-agent",
+    "deepseek-harness",
 ];
 
 pub(crate) use adapter::{RuntimeAdapter, adapter_for_agent_public, text_param_public};

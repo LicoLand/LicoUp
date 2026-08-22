@@ -1,16 +1,21 @@
-use super::catalog::{TargetCandidate, TargetDef, target_def, target_defs};
+use super::catalog::{TargetCandidate, TargetDef, normalize_target, target_def, target_defs};
 use super::manual::{ManualTarget, manual_targets, manual_targets_read_only};
 use super::parameters::target_param;
 use super::probe_pool::{run_bounded_target_probes, target_scan_concurrency};
 use super::processes::ScanContext;
 use super::scan_merge::{scan_target_read_only_with_manual, scan_target_with_manual};
 use super::support::{client_state_store, client_state_store_read_only};
-use super::target_cache::{persist_discovery_cache, upsert_discovery_cache};
+use super::target_cache::{
+    persist_discovery_cache, upsert_discovery_cache, upsert_discovery_cache_many,
+};
 use super::virtual_machine_discovery::{AutomaticVmTarget, discover_virtual_machine_targets};
 use crate::platform::client_state::ClientStateStore;
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+
+const MAX_SELECTED_TARGETS: usize = 64;
 
 #[derive(Clone, Debug)]
 struct TargetProbe {
@@ -18,7 +23,14 @@ struct TargetProbe {
     manual: Option<ManualTarget>,
     automatic_vm: Option<AutomaticVmTarget>,
     scan_context: ScanContext,
-    params: Value,
+    params: Arc<Value>,
+}
+
+#[derive(Clone, Debug)]
+struct SelectedTarget {
+    id: String,
+    definition: Option<TargetDef>,
+    model_catalog_lookup: bool,
 }
 
 pub(super) fn scan_targets() -> Result<Value> {
@@ -37,27 +49,97 @@ pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) 
         .map(|target| (target.target.clone(), target))
         .collect::<BTreeMap<_, _>>();
     let process_snapshot = ScanContext::snapshot_from_params(params);
-    let definitions = target_defs();
+    let selected = selected_targets(params)?;
+    let definitions = selected
+        .as_ref()
+        .map(|targets| {
+            targets
+                .iter()
+                .filter_map(|target| target.definition.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(target_defs);
     let requested_targets = definitions.iter().map(|def| def.id).collect::<Vec<_>>();
     let automatic_vm = discover_virtual_machine_targets(params, &requested_targets);
     let probes = definitions
         .into_iter()
-        .map(|def| TargetProbe {
-            manual: manual_by_target.get(def.id).cloned(),
-            automatic_vm: automatic_vm.targets.get(def.id).cloned(),
-            def,
-            scan_context: process_snapshot.clone(),
-            params: params.clone(),
+        .map(|def| {
+            let mut target_params = params.clone();
+            let model_catalog_lookup = selected.as_ref().is_some_and(|targets| {
+                targets
+                    .iter()
+                    .find(|target| target.id == def.id)
+                    .is_some_and(|target| target.model_catalog_lookup)
+            });
+            if selected.is_some()
+                && let Some(object) = target_params.as_object_mut()
+            {
+                object.insert(
+                    "enableAgentCliModelLookup".to_string(),
+                    json!(model_catalog_lookup),
+                );
+            }
+            TargetProbe {
+                manual: manual_by_target.get(def.id).cloned(),
+                automatic_vm: automatic_vm.targets.get(def.id).cloned(),
+                def,
+                scan_context: process_snapshot.clone(),
+                params: Arc::new(target_params),
+            }
         })
         .collect::<Vec<_>>();
     let concurrency = target_scan_concurrency(params, probes.len());
+    if selected.is_some() {
+        let outcomes = run_bounded_target_probes(probes, concurrency, |mut probe| {
+            let target_id = probe.def.id.to_string();
+            let candidate = scan_target_with_manual(
+                &probe.def,
+                probe.manual.as_ref(),
+                probe.automatic_vm.as_ref(),
+                &mut probe.scan_context,
+                probe.params.as_ref(),
+            )
+            .ok();
+            Ok((target_id, candidate))
+        })?;
+        let successful = outcomes
+            .iter()
+            .filter_map(|(_, candidate)| candidate.as_ref())
+            .collect::<Vec<_>>();
+        upsert_discovery_cache_many(store, &successful)?;
+        let mut outcomes = outcomes.into_iter().collect::<BTreeMap<_, _>>();
+        let results = selected
+            .as_ref()
+            .expect("selected scan has selected slots")
+            .iter()
+            .map(|selected| match outcomes.remove(&selected.id).flatten() {
+                Some(candidate) => json!({
+                    "targetId": selected.id,
+                    "ok": true,
+                    "candidate": candidate,
+                }),
+                None => json!({
+                    "targetId": selected.id,
+                    "ok": false,
+                    "error": { "code": "target_scan_failed" },
+                }),
+            })
+            .collect::<Vec<_>>();
+        return Ok(json!({
+            "ok": true,
+            "schemaVersion": 1,
+            "source": "target-adapters",
+            "diagnostics": automatic_vm.diagnostics,
+            "results": results,
+        }));
+    }
     let candidates = run_bounded_target_probes(probes, concurrency, |mut probe| {
         scan_target_with_manual(
             &probe.def,
             probe.manual.as_ref(),
             probe.automatic_vm.as_ref(),
             &mut probe.scan_context,
-            &probe.params,
+            probe.params.as_ref(),
         )
     })?;
     persist_discovery_cache(store, &candidates)?;
@@ -79,6 +161,60 @@ pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) 
         "diagnostics": automatic_vm.diagnostics,
         "candidates": candidates,
     }))
+}
+
+fn selected_targets(params: &Value) -> Result<Option<Vec<SelectedTarget>>> {
+    let Some(values) = params.get("targetIds") else {
+        return Ok(None);
+    };
+    let values = values
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("target_selection_invalid"))?;
+    ensure!(
+        values.len() <= MAX_SELECTED_TARGETS,
+        "target_selection_limit"
+    );
+    let lookup_values = params
+        .get("modelCatalogTargetIds")
+        .map(|value| {
+            value
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("target_selection_invalid"))
+        })
+        .transpose()?
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    ensure!(
+        lookup_values.len() <= MAX_SELECTED_TARGETS,
+        "target_selection_limit"
+    );
+    let lookup_ids = lookup_values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(normalize_target)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("target_selection_invalid"))
+        })
+        .collect::<Result<BTreeSet<_>>>()?;
+    let mut seen = BTreeSet::new();
+    let mut selected = Vec::new();
+    for value in values {
+        let id = value
+            .as_str()
+            .map(normalize_target)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("target_selection_invalid"))?;
+        if seen.insert(id.clone()) {
+            selected.push(SelectedTarget {
+                model_catalog_lookup: lookup_ids.contains(&id),
+                definition: target_def(&id).ok(),
+                id,
+            });
+        }
+    }
+    Ok(Some(selected))
 }
 
 pub(super) fn inspect_target(target: &str) -> Result<Value> {

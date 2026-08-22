@@ -18,6 +18,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
@@ -29,6 +30,7 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/mes
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -257,9 +259,9 @@ class _CanonicalGroupConversationPaneState
   final ScrollController _messageScrollController = ScrollController();
   List<AdaptiveFlywheelDefinition> _authorizedStrategies = const [];
   String? _strategyRevision;
-  String _strategyName = '';
-  String _entrySlotLabel = '';
-  String _entryAgentId = '';
+  Map<String, AgentParticipantRuntimeProfile> _strategyRuntimeProfiles =
+      const {};
+  final Map<String, bool> _assistantActiveByConversation = {};
   String _strategyProjectionConversationId = '';
   String _strategyProjectionRevision = '';
   int _strategyProjectionGeneration = 0;
@@ -353,9 +355,7 @@ class _CanonicalGroupConversationPaneState
 
   void _clearStrategyFields() {
     _strategyRevision = null;
-    _strategyName = '';
-    _entrySlotLabel = '';
-    _entryAgentId = '';
+    _strategyRuntimeProfiles = const {};
   }
 
   Future<void> _exitStrategyMode() async {
@@ -419,7 +419,7 @@ class _CanonicalGroupConversationPaneState
             revisionDigest) {
       return;
     }
-    _applyPersistedStrategySelection(revisionDigest, strategies);
+    _applyPersistedStrategySelection(revisionDigest);
     try {
       final projection = await _inspectStrategy(
         revisionDigest,
@@ -470,7 +470,7 @@ class _CanonicalGroupConversationPaneState
       setState(_clearStrategyFields);
       return;
     }
-    _applyPersistedStrategySelection(revision, _authorizedStrategies);
+    _applyPersistedStrategySelection(revision);
     try {
       final projection = await _inspectStrategy(revision);
       if (!mounted ||
@@ -491,30 +491,12 @@ class _CanonicalGroupConversationPaneState
     }
   }
 
-  void _applyPersistedStrategySelection(
-    String revision,
-    List<AdaptiveFlywheelDefinition> strategies,
-  ) {
-    AdaptiveFlywheelDefinition? selected;
-    for (final definition in strategies) {
-      if (definition.revisionDigest == revision) {
-        selected = definition;
-        break;
-      }
-    }
-    final selectedName = selected?.name.trim() ?? '';
-    final fallbackName = selectedName.isNotEmpty
-        ? selectedName
-        : (selected?.id.trim().isNotEmpty == true
-              ? selected!.id.trim()
-              : revision);
+  void _applyPersistedStrategySelection(String revision) {
     setState(() {
       if (_strategyRevision != revision) {
-        _entrySlotLabel = '';
-        _entryAgentId = '';
+        _strategyRuntimeProfiles = const {};
       }
       _strategyRevision = revision;
-      _strategyName = fallbackName;
     });
   }
 
@@ -543,68 +525,71 @@ class _CanonicalGroupConversationPaneState
       ),
     );
     if (!inspection.authorized) return null;
-    final entry = inspection.entrySlot;
-    final entryBindings = entry == null
-        ? const <AdaptiveFlywheelBinding>[]
-        : inspection.bindings[entry.id] ?? const <AdaptiveFlywheelBinding>[];
     final agentIds = <String>{};
+    final runtimeProfiles = <String, AgentParticipantRuntimeProfile>{};
     for (final slot in inspection.slots.where((slot) => slot.kind == 'actor')) {
       for (final binding in inspection.bindings[slot.id] ?? const []) {
         final agentId = binding.valueId.trim();
-        if (agentId.isNotEmpty) agentIds.add(agentId);
+        if (agentId.isEmpty) continue;
+        agentIds.add(agentId);
+        runtimeProfiles[agentId] = AgentParticipantRuntimeProfile(
+          model: binding.model,
+          reasoningEffort: binding.reasoningEffort,
+        );
       }
     }
-    final selectedName = selected.name.trim();
     return _GroupStrategyProjection(
       revision: revisionDigest,
-      name: selectedName.isEmpty ? selected.id : selectedName,
-      entrySlotLabel: entry?.label.trim().isNotEmpty == true
-          ? entry!.label.trim()
-          : (entry?.id ?? ''),
-      entryAgentId: entryBindings.isEmpty
-          ? ''
-          : entryBindings.first.valueId.trim(),
       agentIds: Set<String>.unmodifiable(agentIds),
+      runtimeProfiles: Map<String, AgentParticipantRuntimeProfile>.unmodifiable(
+        runtimeProfiles,
+      ),
     );
   }
 
   void _applyStrategyProjection(_GroupStrategyProjection projection) {
     setState(() {
       _strategyRevision = projection.revision;
-      _strategyName = projection.name;
-      _entrySlotLabel = projection.entrySlotLabel;
-      _entryAgentId = projection.entryAgentId;
+      _strategyRuntimeProfiles = projection.runtimeProfiles;
     });
   }
 
-  String _agentDisplayName(String agentId) {
-    for (final target in widget.targets) {
-      if (target.target == agentId || target.id == agentId) {
-        return agentConversationTargetDisplayName(target);
-      }
-    }
-    final conversation = widget.controller.selectedConversation;
-    if (conversation != null) {
-      for (final membership in conversation.activeAgentMemberships) {
-        if (membership.principal.agentId == agentId) {
-          final label = membership.principal.displayName.trim();
-          if (label.isNotEmpty) return label;
-        }
-      }
-    }
-    return agentId;
+  bool _assistantActive(ClientConversation conversation) =>
+      _assistantActiveByConversation[conversation.id] ??
+      conversation.assistantMembership != null;
+
+  void _toggleAssistant(ClientConversation conversation) {
+    setState(() {
+      _assistantActiveByConversation[conversation.id] = !_assistantActive(
+        conversation,
+      );
+    });
   }
 
-  String get _entryCapsuleLabel {
-    final agent = _entryAgentId.isNotEmpty
-        ? _agentDisplayName(_entryAgentId)
-        : '';
-    final slot = _entrySlotLabel.trim();
-    if (slot.isNotEmpty && agent.isNotEmpty && slot != agent) {
-      return '$slot · $agent';
+  String _assistantStatusLabel(
+    LicoStrings strings,
+    ClientConversation conversation,
+  ) {
+    if (conversation.assistantMembership == null) {
+      return strings.assistantNeedsConfigurationStatus;
     }
-    if (agent.isNotEmpty) return agent;
-    return slot.isEmpty ? 'entry' : slot;
+    if (!_assistantActive(conversation)) return strings.assistantPausedStatus;
+    final subagents = _processByHandle.values
+        .where((state) => state.participantRole.trim() != 'assistant')
+        .map((state) => state.participantAgentId.trim())
+        .where((agentId) => agentId.isNotEmpty)
+        .toSet();
+    if (subagents.isNotEmpty) {
+      return strings.assistantCoordinatingStatus(subagents.length);
+    }
+    final assistantWorking =
+        _processByHandle.values.any(
+          (state) => state.participantRole.trim() == 'assistant',
+        ) ||
+        widget.controller.dispatchPending;
+    return assistantWorking
+        ? strings.assistantWorkingAloneStatus
+        : strings.assistantReadyStatus;
   }
 
   List<AgentConversationMessage> get _liveMessages =>
@@ -851,7 +836,7 @@ class _CanonicalGroupConversationPaneState
     try {
       await widget.controller.reloadSelected();
       if (!mounted) return;
-      if (allowNextActor && widget.controller.dispatchPending) {
+      if (widget.controller.dispatchPending) {
         await _attachLiveTurns(waitForChange: true);
         if (!mounted) return;
         if (_turnSubscriptions.isNotEmpty || _processByHandle.isNotEmpty) {
@@ -880,7 +865,14 @@ class _CanonicalGroupConversationPaneState
   }
 
   Future<bool> _sendComposerMessage(String text) async {
-    final posted = await widget.controller.postMessage(text);
+    final conversation = widget.controller.selectedConversation;
+    final posted = await widget.controller.postMessage(
+      text,
+      dispatch:
+          conversation != null &&
+          conversation.assistantMembership != null &&
+          _assistantActive(conversation),
+    );
     if (!posted) return false;
     for (final turn in widget.controller.liveTurns) {
       final handle = (turn['turnHandle'] ?? '').toString().trim();
@@ -1052,30 +1044,24 @@ class _CanonicalGroupConversationPaneState
         for (final membership in conversation.activeAgentMemberships)
           membership.principal.agentId: conversation.id,
       },
-      composerFlywheel: widget.flywheelGateway == null
-          ? null
-          : _GroupStrategyPickerCapsule(
-              label: _strategyRevision == null
-                  ? strings.optionalStrategy
-                  : (_strategyName.isEmpty
-                        ? strings.optionalStrategy
-                        : _strategyName),
-              strategies: _authorizedStrategies,
-              selectedRevision: _strategyRevision,
-              onSelected: (revision) => unawaited(_selectStrategy(revision)),
-              onOpen: widget.onOpenAdaptiveFlywheel == null
-                  ? null
-                  : (revision) => unawaited(_openAdaptiveFlywheel(revision)),
-            ),
-      composerLeading: _strategyRevision == null
-          ? null
-          : _GroupStrategyEntryCapsule(
-              label: _entryCapsuleLabel,
-              onOpen: widget.onOpenAdaptiveFlywheel == null
-                  ? null
-                  : () => unawaited(_openAdaptiveFlywheel(_strategyRevision)),
-              onClear: () => unawaited(_exitStrategyMode()),
-            ),
+      participantRuntimeProfiles: _strategyRuntimeProfiles,
+      composerFlywheel: _GroupStrategyPickerCapsule(
+        label: _assistantStatusLabel(strings, conversation),
+        strategies: _authorizedStrategies,
+        selectedRevision: _strategyRevision,
+        onSelected: (revision) => unawaited(_selectStrategy(revision)),
+        onCleared: () => unawaited(_exitStrategyMode()),
+        onOpen: widget.onOpenAdaptiveFlywheel == null
+            ? null
+            : (revision) => unawaited(_openAdaptiveFlywheel(revision)),
+      ),
+      composerLeading: _AssistantToggleButton(
+        active: _assistantActive(conversation),
+        configured: conversation.assistantMembership != null,
+        onTap: conversation.assistantMembership == null
+            ? () => unawaited(_openAdaptiveFlywheel(_strategyRevision))
+            : () => _toggleAssistant(conversation),
+      ),
     );
     final actions = AgentConversationPaneActions(
       onModelChanged: (_) {},
@@ -2315,17 +2301,13 @@ String _iso(int unixMs) => unixMs <= 0
 final class _GroupStrategyProjection {
   const _GroupStrategyProjection({
     required this.revision,
-    required this.name,
-    required this.entrySlotLabel,
-    required this.entryAgentId,
     required this.agentIds,
+    required this.runtimeProfiles,
   });
 
   final String revision;
-  final String name;
-  final String entrySlotLabel;
-  final String entryAgentId;
   final Set<String> agentIds;
+  final Map<String, AgentParticipantRuntimeProfile> runtimeProfiles;
 }
 
 final class _GroupStrategyPickerCapsule extends StatelessWidget {
@@ -2334,6 +2316,7 @@ final class _GroupStrategyPickerCapsule extends StatelessWidget {
     required this.strategies,
     required this.selectedRevision,
     required this.onSelected,
+    required this.onCleared,
     this.onOpen,
   });
 
@@ -2341,6 +2324,7 @@ final class _GroupStrategyPickerCapsule extends StatelessWidget {
   final List<AdaptiveFlywheelDefinition> strategies;
   final String? selectedRevision;
   final ValueChanged<String> onSelected;
+  final VoidCallback onCleared;
   final ValueChanged<String?>? onOpen;
 
   @override
@@ -2363,6 +2347,21 @@ final class _GroupStrategyPickerCapsule extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              MessagingGlassMenuItem(
+                key: const Key('canonical-group-strategy-option-none'),
+                label: strings.automaticAdaptation,
+                dense: true,
+                selected: selectedRevision == null,
+                leading: Icon(
+                  Icons.account_tree_outlined,
+                  size: 14,
+                  color: context.licoColors.textMuted,
+                ),
+                onTap: () {
+                  onCleared();
+                  close();
+                },
+              ),
               if (strategies.isEmpty)
                 MessagingGlassMenuItem(
                   label: strings.noAuthorizedStrategies,
@@ -2510,7 +2509,7 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
     final strings = LicoStrings.of(context);
     return Semantics(
       button: true,
-      label: strings.optionalStrategy,
+      label: strings.automaticAdaptation,
       child: AppleGlassSurface(
         borderRadius: kComposerCapsuleBorderRadius,
         fillAlpha: colors.isDark ? 22 : 10,
@@ -2559,73 +2558,55 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
   }
 }
 
-final class _GroupStrategyEntryCapsule extends StatelessWidget {
-  const _GroupStrategyEntryCapsule({
-    required this.label,
-    required this.onClear,
-    this.onOpen,
+final class _AssistantToggleButton extends StatelessWidget {
+  const _AssistantToggleButton({
+    required this.active,
+    required this.configured,
+    required this.onTap,
   });
 
-  final String label;
-  final VoidCallback onClear;
-  final VoidCallback? onOpen;
+  final bool active;
+  final bool configured;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final radius = BorderRadius.circular(
-      MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
-    );
-    return MessagingConversationOverlayGlass(
-      key: const Key('canonical-group-strategy-entry'),
-      borderRadius: radius,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: const Key('canonical-group-strategy-entry-open'),
-          onTap: onOpen,
-          borderRadius: radius,
-          mouseCursor: onOpen == null
-              ? MouseCursor.defer
-              : SystemMouseCursors.click,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  key: const Key('canonical-group-strategy-entry-capsule'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.text.withAlpha(235),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.08,
-                    height: 1.15,
-                  ),
+    final enabled = active && configured;
+    final tooltip = !configured
+        ? strings.configureAssistantTooltip
+        : enabled
+        ? strings.assistantActiveTooltip
+        : strings.assistantPausedTooltip;
+    return SizedBox.square(
+      key: const Key('canonical-group-assistant-control'),
+      dimension: 40,
+      child: Tooltip(
+        message: tooltip,
+        waitDuration: LicoMotion.tooltipWait,
+        child: Semantics(
+          button: true,
+          toggled: enabled,
+          label: tooltip,
+          child: Material(
+            color: enabled ? colors.accent : colors.surfaceRaised,
+            shape: CircleBorder(
+              side: BorderSide(
+                color: enabled ? colors.accent : colors.line,
+                width: 1,
+              ),
+            ),
+            child: InkWell(
+              key: const Key('canonical-group-assistant-toggle'),
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: Center(
+                child: AssistantSparklesIcon(
+                  color: enabled ? colors.textOnAccent : colors.textMuted,
+                  size: 20,
                 ),
-                const SizedBox(width: 2),
-                Tooltip(
-                  message: strings.exitStrategyMode,
-                  waitDuration: LicoMotion.tooltipWait,
-                  child: InkWell(
-                    key: const Key('canonical-group-strategy-entry-clear'),
-                    customBorder: const CircleBorder(),
-                    onTap: onClear,
-                    child: SizedBox.square(
-                      dimension: 22,
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 14,
-                        color: colors.textMuted.withAlpha(200),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),

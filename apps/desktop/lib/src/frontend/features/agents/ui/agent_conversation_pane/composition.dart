@@ -172,6 +172,7 @@ class AgentConversationActivePane extends StatelessWidget {
             processStyle: strategy.processStyle,
             participantTargets: state.participantTargets,
             participantConversationIds: state.participantConversationIds,
+            participantRuntimeProfiles: state.participantRuntimeProfiles,
             topOverlayInset: headerOverlayInset,
             bottomOverlayInset: composerOverlayInset,
           );

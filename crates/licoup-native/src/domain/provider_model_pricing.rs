@@ -674,6 +674,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn catalog_last_updated_bounds_route_verification_dates() {
+        let catalog = serde_json::from_str::<PricingCatalog>(PRICING_CATALOG_JSON).unwrap();
+        assert!(validate_catalog(&catalog));
+
+        let mut invalid_catalog_date = catalog.clone();
+        invalid_catalog_date.last_updated = "invalid".to_owned();
+        assert!(!validate_catalog(&invalid_catalog_date));
+
+        let mut future_route = catalog;
+        future_route.providers[0].routes[0].verified_on = "9999-12-31".to_owned();
+        assert!(!validate_catalog(&future_route));
+    }
+
+    #[test]
     fn model_price_returns_planning_rates_without_usage() {
         let price = model_price("deepseek-v4-flash").unwrap();
         assert!(price.input.is_finite() && price.input >= 0.0);

@@ -116,6 +116,19 @@ Adaptive Flywheel after changing a route so the client reads the new persisted
 state; the client does not expose the state file, executable paths, or native
 continuation locations.
 
+In a group composer, **Automatic adaptation** means the next message goes to
+the designated Assistant through the same native lane used by a one-to-one
+chat. Imported strategies are Assistant-controlled workflow tools, not a
+replacement Assistant. Workflow rejections identify the failing stage and
+safe request location, and the role plus Assistant model catalogs load in one
+background target batch.
+
+DeepSeek Harness is an adaptation target through the official SDK JSON-RPC
+runtime carrier. It supports text sessions, exact session continuity,
+structured streaming events, and explicit model selection. Its release
+readiness remains unverified, and LicoUp does not claim cancel, active-prompt
+steer, history readback, reasoning override, or multimodal input for this lane.
+
 ## Connect OpenClaw or Hermes in your VM
 
 This desktop flow is for a VM you control. Install and configure OpenClaw or

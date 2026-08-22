@@ -1,6 +1,7 @@
 use interprocess::local_socket::{Stream, traits::Stream as _};
 use licoup_native::{
     domain::{
+        adaptive_flywheel::{WorkflowDiagnosticCode, WorkflowDiagnosticRecovery},
         client_conversation::{
             ConversationService, DispatchSessionMode, MembershipStatus,
             PERSISTENT_TRANSPORT_REQUIRED, PrincipalKind,
@@ -633,29 +634,168 @@ fn project_graph_rejection(source: &Value) -> ToolFailure {
     let code = source
         .pointer("/error/code")
         .and_then(Value::as_str)
-        .filter(|code| !code.is_empty())
+        .filter(|code| {
+            matches!(
+                *code,
+                "graph_invalid" | "graph_preflight_rejected" | "graph_identity_rejected"
+            )
+        })
         .unwrap_or("graph_preflight_rejected");
-    let checks = source
-        .pointer("/error/checks")
+    let diagnostics = source
+        .pointer("/error/diagnostics")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|check| {
-            let code = check.get("code").and_then(Value::as_str)?;
-            let mut projected = json!({"code": code});
-            if let Some(membership_id) = check.get("membershipId").and_then(Value::as_str) {
+        .filter_map(|diagnostic| {
+            let code = diagnostic.get("code").and_then(Value::as_str)?;
+            let stage = diagnostic.get("stage").and_then(Value::as_str)?;
+            if !workflow_diagnostic_code_allowed(code) {
+                return None;
+            }
+            if !matches!(
+                stage,
+                "workflow/parse"
+                    | "workflow/compile"
+                    | "package/validate"
+                    | "assistant-workflow/preflight"
+                    | "assistant-workflow/revalidate"
+            ) {
+                return None;
+            }
+            if code == WorkflowDiagnosticCode::WorkflowSyntaxInvalid.wire() {
+                if stage != "workflow/parse" {
+                    return None;
+                }
+                let mut projected = json!({"code": code, "stage": stage});
+                for key in ["line", "column"] {
+                    if let Some(value) = diagnostic.get(key).and_then(Value::as_u64) {
+                        projected[key] = json!(value);
+                    }
+                }
+                return Some(projected);
+            }
+            let recovery = diagnostic
+                .get("recovery")
+                .and_then(Value::as_str)
+                .filter(|value| workflow_diagnostic_recovery_allowed(value))?;
+            let mut projected = json!({
+                "code": code,
+                "stage": stage,
+                "recovery": recovery,
+            });
+            if let Some(pointer) = diagnostic
+                .get("path")
+                .and_then(Value::as_str)
+                .filter(|pointer| valid_workflow_json_pointer(pointer))
+            {
+                projected["path"] = json!(pointer);
+            }
+            if let Some(paths) = diagnostic.get("relatedPaths").and_then(Value::as_array) {
+                let paths = paths
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|pointer| valid_workflow_json_pointer(pointer))
+                    .take(8)
+                    .collect::<Vec<_>>();
+                if !paths.is_empty() {
+                    projected["relatedPaths"] = json!(paths);
+                }
+            }
+            if stage.starts_with("assistant-workflow/")
+                && let Some(membership_id) = diagnostic
+                    .get("membershipId")
+                    .and_then(Value::as_str)
+                    .filter(|value| valid_diagnostic_identifier(value))
+            {
                 projected["membershipId"] = json!(membership_id);
+            }
+            for key in ["actual", "limit"] {
+                if let Some(value) = diagnostic.get(key).and_then(Value::as_u64) {
+                    projected[key] = json!(value);
+                }
+            }
+            for (key, allowed) in [
+                (
+                    "expected",
+                    &[
+                        "object",
+                        "array",
+                        "string",
+                        "integer",
+                        "boolean",
+                        "enum_value",
+                        "identifier",
+                        "non_empty_text",
+                        "unique_id",
+                        "existing_reference",
+                        "supported_schema",
+                        "valid_routing",
+                        "valid_topology",
+                    ][..],
+                ),
+                (
+                    "actualKind",
+                    &[
+                        "missing", "null", "object", "array", "string", "number", "boolean",
+                    ][..],
+                ),
+            ] {
+                if let Some(value) = diagnostic
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .filter(|value| allowed.contains(value))
+                {
+                    projected[key] = json!(value);
+                }
             }
             Some(projected)
         })
+        .take(128)
         .collect();
     ToolFailure {
         code: code.to_owned(),
         stage: "assistant-workflow/preflight".to_owned(),
         retryable: true,
         recovery: "correct_graph_or_bindings_and_retry".to_owned(),
-        checks,
+        diagnostics,
     }
+}
+
+fn workflow_diagnostic_code_allowed(code: &str) -> bool {
+    WorkflowDiagnosticCode::from_wire(code).is_some()
+}
+
+fn workflow_diagnostic_recovery_allowed(value: &str) -> bool {
+    serde_json::from_value::<WorkflowDiagnosticRecovery>(json!(value)).is_ok()
+}
+
+fn valid_workflow_json_pointer(pointer: &str) -> bool {
+    if pointer.is_empty() {
+        return true;
+    }
+    if pointer.len() > 256 || !pointer.starts_with('/') {
+        return false;
+    }
+    let bytes = pointer.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'~' {
+            index += 1;
+            if index == bytes.len() || !matches!(bytes[index], b'0' | b'1') {
+                return false;
+            }
+        }
+        index += 1;
+    }
+    true
+}
+
+fn valid_diagnostic_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_ID_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'.' | b'_' | b'-'))
 }
 
 /// Compile, preflight, durably admit and execute one Assistant-temporary Graph
@@ -779,7 +919,7 @@ struct ToolFailure {
     stage: String,
     retryable: bool,
     recovery: String,
-    checks: Vec<Value>,
+    diagnostics: Vec<Value>,
 }
 
 impl ToolFailure {
@@ -794,7 +934,7 @@ impl ToolFailure {
                 "correct_request_and_retry"
             }
             .to_owned(),
-            checks: Vec::new(),
+            diagnostics: Vec::new(),
         }
     }
 }
@@ -1974,8 +2114,8 @@ fn tool_error(error: &ToolFailure) -> Value {
         "retryable": error.retryable,
         "recovery": error.recovery
     });
-    if !error.checks.is_empty() {
-        value["checks"] = json!(error.checks);
+    if !error.diagnostics.is_empty() {
+        value["diagnostics"] = json!(error.diagnostics);
     }
     let text = serde_json::to_string(&value).unwrap_or_else(|_| "{}".into());
     json!({
@@ -2346,29 +2486,38 @@ mod tests {
         let failure = project_graph_rejection(&json!({
             "accepted": false,
             "error": {
-                "code": "graph_membership_rejected",
+                "code": "graph_preflight_rejected",
                 "stage": "assistant-workflow/preflight",
-                "checks": [{"code": "membership_inactive", "membershipId": "membership:worker"}]
+                "diagnostics": [{
+                    "code": "graph_membership_rejected",
+                    "stage": "assistant-workflow/preflight",
+                    "recovery": "update_binding",
+                    "path": "/bindings/0/valueId",
+                    "membershipId": "membership:worker"
+                }]
             }
         }));
-        assert_eq!(failure.code, "graph_membership_rejected");
+        assert_eq!(failure.code, "graph_preflight_rejected");
         assert!(failure.retryable);
         assert_eq!(failure.stage, "assistant-workflow/preflight");
         assert_eq!(failure.recovery, "correct_graph_or_bindings_and_retry");
         assert_eq!(
-            failure.checks,
+            failure.diagnostics,
             vec![json!({
-                "code": "membership_inactive",
+                "code": "graph_membership_rejected",
+                "stage": "assistant-workflow/preflight",
+                "recovery": "update_binding",
+                "path": "/bindings/0/valueId",
                 "membershipId": "membership:worker"
             })]
         );
         assert_eq!(
-            tool_error(&failure)["structuredContent"]["checks"],
-            json!(failure.checks)
+            tool_error(&failure)["structuredContent"]["diagnostics"],
+            json!(failure.diagnostics)
         );
         let fallback = project_graph_rejection(&json!({"accepted": false}));
         assert_eq!(fallback.code, "graph_preflight_rejected");
-        assert!(fallback.checks.is_empty());
+        assert!(fallback.diagnostics.is_empty());
     }
 
     #[test]

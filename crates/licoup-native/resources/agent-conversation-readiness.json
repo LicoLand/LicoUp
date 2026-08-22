@@ -3,12 +3,12 @@
   "contractVersion": "CL-06",
   "minimumConsecutivePasses": 1,
   "summary": {
-    "total": 12,
+    "total": 13,
     "ready": 0,
     "partial": 0,
     "failed": 0,
     "blocked": 0,
-    "unverified": 12,
+    "unverified": 13,
     "historyOnly": 0,
     "sendEnabled": 0
   },
@@ -219,6 +219,32 @@
       "evidenceBinding": null,
       "summaryCodes": [
         "evidence_stale_or_incomplete"
+      ]
+    },
+    {
+      "agentId": "deepseek-harness",
+      "status": "unverified",
+      "sendEnabled": false,
+      "officialNativeLaneProven": false,
+      "conversationGatePassed": false,
+      "cleanupPassed": false,
+      "privacyPassed": false,
+      "consecutivePasses": 0,
+      "coreChecks": {
+        "required": 10,
+        "passed": 0,
+        "failed": 0
+      },
+      "conditionalChecks": {
+        "total": 6,
+        "nativeSupported": 0,
+        "passed": 0,
+        "gaps": 0,
+        "failed": 0
+      },
+      "evidenceBinding": null,
+      "summaryCodes": [
+        "evidence_missing"
       ]
     },
     {

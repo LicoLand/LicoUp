@@ -381,7 +381,7 @@ final class ClientConversationController extends ChangeNotifier {
     return value is Map ? _objectMap(value) : null;
   }
 
-  Future<bool> postMessage(String text) async {
+  Future<bool> postMessage(String text, {bool dispatch = true}) async {
     final conversation = _selectedConversation;
     final content = text.trim();
     final author = conversation?.localOwnerMembership;
@@ -404,36 +404,41 @@ final class ClientConversationController extends ChangeNotifier {
       }
       _draft = '';
       _notifyListeners();
-      try {
-        final dispatched = await _service.execute(_runner, {
-          'action': 'conversation.dispatch.after-post',
-          'conversationId': conversation.id,
-          'eventId': eventId,
-        });
-        _liveTurns = _postedLiveTurns(dispatched);
-        _dispatchPending = _liveTurns.isNotEmpty;
-        if (dispatched is Map) {
-          final strategyError = dispatched['strategyError'];
-          if (strategyError is Map) {
-            final code = (strategyError['code'] ?? '').toString().trim();
-            if (code.isNotEmpty) {
-              final stage = (strategyError['stage'] ?? 'strategy/start')
-                  .toString()
-                  .trim();
-              _recordFailure(
-                stage.isEmpty ? 'strategy/start' : stage,
-                code,
-                strategyCode: code,
-              );
-              _dispatchPending = false;
+      if (dispatch) {
+        try {
+          final dispatched = await _service.execute(_runner, {
+            'action': 'conversation.dispatch.after-post',
+            'conversationId': conversation.id,
+            'eventId': eventId,
+          });
+          _liveTurns = _postedLiveTurns(dispatched);
+          _dispatchPending = _liveTurns.isNotEmpty;
+          if (dispatched is Map) {
+            final strategyError = dispatched['strategyError'];
+            if (strategyError is Map) {
+              final code = (strategyError['code'] ?? '').toString().trim();
+              if (code.isNotEmpty) {
+                final stage = (strategyError['stage'] ?? 'strategy/start')
+                    .toString()
+                    .trim();
+                _recordFailure(
+                  stage.isEmpty ? 'strategy/start' : stage,
+                  code,
+                  strategyCode: code,
+                );
+                _dispatchPending = false;
+              }
             }
           }
+        } on ClientConversationServiceFailure catch (failure) {
+          _recordFailure('send', failure.code);
+          _liveTurns = const [];
+          _dispatchPending = false;
+        } catch (_) {
+          _liveTurns = const [];
+          _dispatchPending = false;
         }
-      } on ClientConversationServiceFailure catch (failure) {
-        _recordFailure('send', failure.code);
-        _liveTurns = const [];
-        _dispatchPending = false;
-      } catch (_) {
+      } else {
         _liveTurns = const [];
         _dispatchPending = false;
       }

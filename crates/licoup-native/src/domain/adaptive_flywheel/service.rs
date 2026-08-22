@@ -14,14 +14,15 @@ use crate::platform::strategy_runtime::{
 use super::assistant::sha256_hex;
 use super::reducer::{effect_input_for, fallback_reason};
 use super::{
-    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingValue, PreflightCheck,
-    PreflightFailure, preflight_assistant_graph,
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingValue, PreflightDiagnostic,
+    PreflightFailure, WorkflowDiagnosticCode, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
+    preflight_assistant_graph,
 };
 use super::{
     BindingCandidate, BindingKind, CommandKind, CommandStatus, CompiledWorkflow, FailureClass,
     GraphState, GraphStateKind, ReducerEvent, RunCommand, RunSnapshot, StrategyPackageImporter,
-    StrategyRunStatus, StrategyStore, TransitionEvent, WorkflowDefinition,
-    compile_persisted_workflow,
+    StrategyRunStatus, StrategyStore, TransitionEvent, WorkflowValidationFailure,
+    compile_persisted_workflow, compile_workflow_value,
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
@@ -113,7 +114,7 @@ impl StrategyService {
         match self.execute_inner(request) {
             Ok(result) => Ok(json!({"ok": true, "result": result})),
             Err(error) => {
-                let projected = error_projection(&error.to_string());
+                let projected = error_projection(&error);
                 Ok(json!({"ok": false, "error": projected}))
             }
         }
@@ -642,11 +643,7 @@ impl StrategyService {
                 && snapshot.input == input,
             "strategy_idempotency_conflict"
         );
-        let submitted: WorkflowDefinition =
-            serde_json::from_value(workflow.clone()).map_err(|_| anyhow!("graph_invalid"))?;
-        let submitted = compile_persisted_workflow(submitted)
-            .map_err(|_| anyhow!("graph_invalid"))?
-            .definition;
+        let submitted = compile_workflow_value(workflow)?.definition;
         let stored = self
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
@@ -2224,7 +2221,19 @@ fn actor_output_failure(
     )))
 }
 
-fn error_projection(message: &str) -> Value {
+fn error_projection(error: &anyhow::Error) -> Value {
+    if let Some(failure) = error.downcast_ref::<WorkflowValidationFailure>() {
+        return json!({
+            "code": "workflow_invalid",
+            "stage": "workflow/compile",
+            "component": "strategy_graph",
+            "retryable": false,
+            "recovery": "correct_workflow_and_retry",
+            "diagnostics": failure.diagnostics,
+            "presentationArgs": {}
+        });
+    }
+    let message = error.to_string();
     let (code, stage, component, retryable, recovery) =
         if message.contains(crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED) {
             (
@@ -2388,22 +2397,6 @@ fn error_projection(message: &str) -> Value {
                 false,
                 "Correct the request fields.",
             )
-        } else if message.contains("graph_preflight_rejected") {
-            (
-                "graph_preflight_rejected",
-                "assistant-workflow/preflight",
-                "assistant_workflow",
-                true,
-                "Correct the Graph or exact Membership bindings and retry.",
-            )
-        } else if message.contains("graph_identity_rejected") {
-            (
-                "graph_identity_rejected",
-                "assistant-workflow/preflight",
-                "assistant_workflow",
-                false,
-                "Only assistant-temporary Graph identities may be submitted.",
-            )
         } else {
             (
                 "strategy_operation_failed",
@@ -2464,9 +2457,20 @@ fn terminal_projection(value: &Value) -> Option<Value> {
 fn assistant_state_failure(code: &str, membership_id: Option<&str>) -> PreflightFailure {
     PreflightFailure::new(
         "graph_preflight_rejected",
-        vec![PreflightCheck {
-            code: code.to_owned(),
+        vec![PreflightDiagnostic {
+            code: WorkflowDiagnosticCode::from_wire(code)
+                .unwrap_or(WorkflowDiagnosticCode::WorkflowInvalid),
+            stage: WorkflowDiagnosticStage::AssistantWorkflowRevalidate,
+            path: membership_id.map(|_| "/membershipId".to_owned()),
+            related_paths: Vec::new(),
             membership_id: membership_id.map(str::to_owned),
+            actual: None,
+            limit: None,
+            expected: None,
+            actual_kind: None,
+            recovery: Some(WorkflowDiagnosticRecovery::RefreshConversationState),
+            line: None,
+            column: None,
         }],
     )
 }
@@ -3571,7 +3575,7 @@ mod tests {
             "graph_preflight_rejected"
         );
         assert!(
-            response["result"]["error"]["checks"]
+            response["result"]["error"]["diagnostics"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -3586,6 +3590,103 @@ mod tests {
         }
         drop(service);
         remove_root(root);
+    }
+
+    #[test]
+    fn assistant_graph_aggregates_compiler_profile_and_binding_failures_deterministically() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            panic!("a rejected multi-pass preflight must never reach the actor port")
+        });
+        let strategy_store = StrategyStore::open(&root).unwrap();
+        let service = StrategyService::from_parts(
+            root.clone(),
+            strategy_store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port)
+        .with_profile_snapshot_authority(fixture_profile_authority(
+            "busy",
+            Arc::new(Mutex::new(BTreeMap::new())),
+        ));
+        let mut workflow = assistant_workflow_json();
+        workflow["metadata"]["id"] = json!("imported-workflow");
+        workflow["metadata"]["name"] = json!(" private-workspace-sentinel ");
+        workflow["limits"]["maxParallelism"] = json!(0);
+        workflow["states"][0]["binding"] = json!("private-workspace-sentinel");
+        workflow["transitions"][0]["to"] = json!("private-workspace-sentinel");
+        let request = || {
+            json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": workflow,
+                "bindings": [],
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-multi-pass-rejected"
+            })
+        };
+
+        let first = service.execute(request()).unwrap();
+        let second = service.execute(request()).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first["ok"], true);
+        assert_eq!(first["result"]["accepted"], false);
+        assert_eq!(first["result"]["error"]["code"], "graph_preflight_rejected");
+        let diagnostics = first["result"]["error"]["diagnostics"].as_array().unwrap();
+        for code in [
+            "workflow_metadata_name_invalid",
+            "workflow_parallelism_invalid",
+            "workflow_actor_binding_invalid",
+            "workflow_transition_state_unknown",
+            "graph_identity_not_assistant_temporary",
+            "graph_readiness_rejected",
+            "graph_binding_incomplete",
+        ] {
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic["code"] == code),
+                "missing {code}: {diagnostics:?}"
+            );
+        }
+        let serialized = serde_json::to_string(&first).unwrap();
+        assert!(!serialized.contains("private-workspace-sentinel"));
+        assert!(!serialized.contains("checks"));
+        assert!(calls.lock().unwrap().is_empty());
+        assert!(
+            strategy_store
+                .run_id_by_idempotency_key("assistant-multi-pass-rejected")
+                .unwrap()
+                .is_none()
+        );
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn workflow_error_projection_keeps_the_exact_typed_list() {
+        let source = json!({
+            "schema": "licoup.adaptive-flywheel.workflow.v1",
+            "metadata": {"id": "private-workspace-sentinel", "name": 3},
+            "initial": false,
+            "states": [],
+            "transitions": []
+        });
+        let validation = compile_workflow_value(&source).unwrap_err();
+        let expected = serde_json::to_value(&validation.diagnostics).unwrap();
+        let error: anyhow::Error = validation.into();
+        let projected = error_projection(&error);
+        assert_eq!(projected["code"], "workflow_invalid");
+        assert_eq!(projected["diagnostics"], expected);
+        assert!(
+            !serde_json::to_string(&projected)
+                .unwrap()
+                .contains("private-workspace-sentinel")
+        );
     }
 
     #[test]
@@ -3645,7 +3746,7 @@ mod tests {
         assert_eq!(response["ok"], true, "{response}");
         assert_eq!(response["result"]["accepted"], false);
         assert!(
-            response["result"]["error"]["checks"]
+            response["result"]["error"]["diagnostics"]
                 .as_array()
                 .unwrap()
                 .iter()

@@ -122,7 +122,7 @@ PersistentTurn。共用气泡组件并不合并这两套权威。
 | 适应性飞轮 | 目录在 ZIP 导入之前保持为空。导入 ZIP 在根目录包含 `workflow.json`，并可带 `scripts/`；Graph 决定流水线或 Agent Loop。不可变版本拥有绑定与准确授权，持久化运行提供有界就绪前沿调度以及明确终态和恢复状态。不存在 Better Plan 安装动作，也不存在序号式 Conversation 兼容路径 |
 | 技能管理 | 只读发现本机已有技能、可恢复地移入系统废纸篓，并按时间窗口统计真实调用次数；不提供下载、安装、更新或同步通道 |
 | 对话管理 | 带索引的列表、精确读取、Event 分页与检索，以及有界的统一导入/导出；绝不改写第三方原生历史 |
-| Assistant 工作流 | 被指定的 Assistant 对每个用户目标负责到底：它直接完成，或准入一份带准确 Membership 绑定的有界 assistant 临时 Graph。MCP 绑定的 Agent 必须正是该活动指定 Membership。预检在任何效果之前返回所有本地可发现失败；运行期失败以 typed 终态结果返回 Assistant。持久化 Conversation 宿主仍是唯一的 run 与 turn 属主。Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
+| Assistant 工作流 | 被指定的 Assistant 对每个用户目标负责到底：它直接完成，或准入一份带准确 Membership 绑定的有界 assistant 临时 Graph。MCP 绑定的 Agent 必须正是该活动指定 Membership。预检在任何效果之前返回带安全请求 pointer 的有序稳定诊断；运行期失败以 typed 终态结果返回 Assistant。群聊“自动适配”与一对一共用同一原生 Membership 通道；Adaptive Flywheel 与 Assistant 目录通过一次 Rust 选中 target batch 加载。持久化 Conversation 宿主仍是唯一的 run 与 turn 属主，Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
 | 用量统计 | 依据本机记录按智能体或模型聚合 Token；包含不可变历史日/模型汇总、当日事件明细、无路径 Graph run/command/Membership 汇总和精确覆盖率，使用 90 天扫描缓存，默认展示 30 天并支持 7/30/90 天窗口 |
 | 端点保护预览 | 当前配对、信任、对端消息/文件加密、防重放、端点认证结果与 Lico Arc 候选承载；该退役中实现不承诺未来兼容 |
 

@@ -93,6 +93,15 @@ Membership turn 保持有序。
 选择分离。修改 route 后请保存适应性飞轮，客户端会读取新的持久化状态；
 客户端不会暴露状态文件、可执行文件路径或原生续接位置。
 
+群聊输入框中的**自动适配**表示下一条消息通过与一对一聊天相同的原生通道发给指定
+Assistant。导入策略是由 Assistant 控制的工作流工具，不会替换 Assistant。工作流拒绝会
+标出失败 stage 和安全的请求位置；角色与 Assistant 的 model 目录通过一次后台 target
+batch 加载。
+
+DeepSeek Harness 通过官方 SDK JSON-RPC runtime carrier 纳入适配目标。当前声明文本会话、
+准确 session 连续性、结构化流式事件与显式 model 选择；发布 readiness 仍为 unverified，
+且本通道不声明 cancel、活动 prompt steer、历史回读、reasoning override 或多模态输入。
+
 ## 连接虚拟机内的 OpenClaw 或 Hermes
 
 此桌面流程面向用户自己控制的虚拟机。请先在虚拟机内安装并配置 OpenClaw 或 Hermes；

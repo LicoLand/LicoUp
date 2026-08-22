@@ -79,6 +79,48 @@ Run the smallest owning module:
 npm run client:regression -- --module <module-id>
 ```
 
+The complete client regression is one capability-aware staged run:
+
+```text
+foundation -> (frontend || backend) -> integration -> scenarios -> compatibility
+```
+
+Use a dedicated stage entry while developing, and use the standalone probe
+before investigating a platform or Agent runtime:
+
+```bash
+npm run client:regression:frontend
+npm run client:regression:backend
+npm run client:regression:integration
+npm run client:regression:environment -- --platform android
+npm run client:regression:environment -- --agent codex
+```
+
+Frontend and backend work run concurrently after the shared foundation.
+Locally eligible platform and Agent targets run concurrently after the core
+stages settle. Missing optional hosts, SDKs, devices, or Agent executables are
+recorded as `unverified`; they do not become false passes or fail the core.
+Agent static validation runs one shared inventory/schema contract followed by
+independent per-Agent contracts, so one broken adapter blocks only its own live
+branch. Aggregated Node tests use an anonymous numeric reporter to attribute
+failed inputs back to module IDs; a retry therefore selects the failing
+members rather than the entire batch. Incomplete attribution remains
+`attribution-pending`.
+Each command records wall time and an honest measured/unavailable resource
+schema. Rust additionally records Cargo/libtest-native timing facts, and
+Flutter reduces its JSON reporter stream to anonymous counts and durations.
+The report is written privately to
+`build/reports/client-module-regression.json` without command output, paths,
+arguments, environment values, PIDs, or runtime payloads.
+
+Redispatch only the failed, attribution-pending, or blocked core members and
+failed compatibility targets:
+
+```bash
+npm run client:regression -- \
+  --retry-report build/reports/client-module-regression.json
+```
+
 Common focused checks are:
 
 | Change | Command |
@@ -166,13 +208,18 @@ contact a live service, create release assets, or publish through a channel are
 separate operator-authorized actions. Their success cannot be inferred from a
 source or package build.
 
-The repository branch train does not publish. Post-release macOS publication is
-delegated to Apple Release from the exact accepted `origin/release` source and
-cannot mutate repository source or protected branches. See
+After the same-repository `stable` → `release` pull request merges, the source
+publication workflow automatically archives that exact merge under the single
+`v<version>` Release and publishes the archive plus its SHA-256 digest. It does
+not build client binaries. Apple Release later appends the macOS binaries to
+that same Release from the exact accepted `origin/release` source and cannot
+mutate repository source or protected branches. Platform packaging runs on its
+dedicated candidate branch, such as `macos-release-candidate`; source
+publication uses `release` directly and creates no candidate branch. See
 [Release packages](RELEASE-PACKAGES.md) for the canonical target and output
-model. A same-source draft may be resumed; an already public Release may not be
-extended or altered. A damaged public asset requires a corrective build or
-version.
+model. A platform publisher may append only its declared missing assets to the
+same-source public Release; it may never replace an existing public asset. A
+damaged public asset requires a corrective build or version.
 
 ## Maintain documentation
 

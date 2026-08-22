@@ -84,6 +84,13 @@ and orders candidates deterministically, completes every locally knowable
 check, and revalidates store-owned Membership and Profile revisions before
 durable admission under the idempotency key.
 
+A rejected request returns an ordered `diagnostics` list. Every item has a
+stable code and stage; when available it also carries a safe JSON Pointer, the
+affected Membership id, and numeric actual/limit facts. The Assistant can
+therefore repair workflow shape, limits, bindings, model, readiness,
+environment, Skill, and Authority problems without parsing prose or repeating
+effects.
+
 Once admitted, actor effects use the same persistent Membership turns and
 Conversation Event/Part timeline as direct and group chat. An Assistant-run
 effect or drive failure settles one typed terminal result and cancels
@@ -161,15 +168,27 @@ not user-selectable fields. Agent pickers contain only detected targets with a
 usable conversation driver; unsupported or merely known targets are omitted.
 Session-policy implementation details are not shown as role labels.
 
+Opening the editor hydrates selected workflow-role and Assistant model catalogs
+through one target batch. Rust reuses bounded discovery workers, one shared
+process/environment snapshot, and one discovery-cache commit; the client does
+not start a scanner or async runtime per role.
+
 ## Group Conversation start
 
 Only a group Conversation shows the strategy capsule. A one-to-one
 Conversation does not.
 
-The capsule above the composer defaults to **Optional strategy**. Selecting an
+The capsule above the composer defaults to **Automatic adaptation**. This is
+the Assistant's default mode, not a built-in strategy. Selecting an
 authorized revision shows the strategy name and places an `@` capsule for the
 entry-slot candidate in front of the input. Selection admits every bound Agent
 as a group Membership. It does not start a run.
+
+While Assistant mode is active, a user send always addresses the designated
+Assistant through the same Membership-scoped native lane as a one-to-one
+conversation. The Assistant may answer directly or use a workflow; that choice
+does not replace the dialogue lane. Native steer, resume, cancellation, event,
+and safe-boundary behavior remain those of the selected adapter.
 
 The first send is still a Conversation Event. Native addressing starts
 `strategy.run.start` on the persistent conversation sidecar (the Graph does not

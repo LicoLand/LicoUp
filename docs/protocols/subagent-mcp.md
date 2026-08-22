@@ -78,7 +78,9 @@ Profile snapshots. `lico_assistant_workflow_execute` performs the internal
 preflight and returns every locally discoverable failure (structure, quota,
 Membership, model, Skill, environment, capability, readiness, Authority)
 before durable admission or any Agent/script effect, with a stable code and the
-complete check list. It then revalidates store-owned Membership and Profile
+complete ordered `diagnostics` list. Each diagnostic carries a stable stage and
+may add an allowlisted JSON Pointer, affected Membership id, and numeric
+actual/limit facts. It then revalidates store-owned Membership and Profile
 revisions immediately before durable admission, freezes the route receipt,
 admits the run under an idempotency key, and starts each
 ready actor as a Membership-scoped PersistentTurn through the persistent
@@ -162,7 +164,8 @@ its stable code (`graph_invalid`, `graph_identity_rejected`,
 `graph_membership_rejected`, `graph_binding_incomplete`, `graph_model_rejected`,
 `graph_readiness_rejected`, `graph_environment_unavailable`,
 `graph_preflight_rejected`) so the Assistant can correct one request instead of
-guessing. An uncertain native effect remains pending reconciliation and is
+guessing. Diagnostic projection drops unknown fields and raw values. An
+uncertain native effect remains pending reconciliation and is
 never reported as completed. Branches that already settled keep their recorded
 outcome; no new branch effect is issued after the Assistant failure settles the
 Graph.

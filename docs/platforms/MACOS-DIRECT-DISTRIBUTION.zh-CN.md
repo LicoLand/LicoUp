@@ -46,23 +46,22 @@ Mac App Store 兼容。
 7. 只有前序检查逐项通过后，才能推进摘要绑定的 Apple 会话；完成公开下载、安装与
    稳定启动验证后，才写入公开收据。
 
-远程工作流不得发布 macOS 直发产物。本机 Apple Release 服务只能执行单次不可变发布
-授权中逐项列明的上传与公开变更。
+仓库 CI 工作流不得发布 macOS 直发产物。源码工作流直接从 `release` 创建该版本唯一的
+`v<version>` Release；Apple Release 是唯一的 macOS 发布权威，只能在一次不可变
+发布授权内驱动 Apple 与 GitHub 云端操作。它在 `macos-release-candidate` 上执行打包，
+把五项 macOS 制品追加到同一个 Release，并且绝不替换源码资产。LicoUp 不实现第二套
+macOS 发布器，也不再假定存在 Apple Release 后台服务。
 
-## 本机服务
+## Apple Release 权威命令
 
-先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI，
-再在发布工作站上安装并配置一次每用户服务：
+先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI。
+仓库内配置只是声明式适配：Apple Release 拥有状态机、命令契约、签名、公证、GitHub
+对账、公开发布、恢复语义和最终收据的控制权；LicoUp 只拥有
+`tools/scripts/macos-release/` 中的产品适配层，按 Apple Release 规定的方式准备仓库
+门禁、App 构建和签名更新清单。该目录的 `README.md` 给出完整脚本与制品清单。
 
-```sh
-npm run client:release:service:install
-npm run client:release:service:configure
-```
-
-配置过程选择 Developer ID Provisioning Profile，并填写现有签名身份与 `notarytool`
-钥匙串 Profile 的名称。服务把 Profile 副本保存在权限受限的权威目录；签名密钥、
-公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、账户、供应商、
-凭据、原始输出或本机路径。
+签名密钥、公证凭据与 GitHub 身份验证仍留在各自安全存储中。公开输出不保留证书、
+账户、供应商、凭据、原始输出或本机路径。
 
 Agent 使用以下命令发起一次精确发布：
 
@@ -70,10 +69,11 @@ Agent 使用以下命令发起一次精确发布：
 npm run client:release:macos -- --version <version> --build <build>
 ```
 
-唯一一次授权提示之前只运行只读预检。接受后，服务独占精确接受的 release 来源、发布
-门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确资产对账、公开发布、匿名公开下载、
-安装与稳定启动；不会再次提问。最终收据绑定不可变 release 来源、四个公开制品
-摘要、Apple 结果与公开安装证明。
+唯一一次授权提示之前只运行只读预检。接受后，Apple Release 独占精确接受的 release
+来源、平台候选分支、发布门禁、Developer ID 打包、App 与 DMG 公证/装订/Gatekeeper 检查、精确
+资产对账、公开发布、匿名公开下载、安装与稳定启动；不会再次提问。最终收据绑定
+不可变 release 来源、追加到既有源码 Release 的安装包及其摘要、更新包及其摘要、
+签名更新清单、Apple 结果与公开安装证明，共计五项 macOS 制品。
 
 ## Apple 一手资料
 

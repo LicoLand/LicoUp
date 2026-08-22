@@ -77,6 +77,15 @@ catalogs and update commands are stated in those files.
 - [CLI workflow examples](examples/CLI-WORKFLOWS.md)
 - [Architecture decision records](adrs/README.md)
 - [ADR 0001: PTY transport for CLI lanes](adrs/0001-pty-transport-for-cli-lanes.md)
+- [Design decisions](decisions/README.md)
+  - [0001: Flutter-Rust interaction uses RPC, not CLI tool invocation](decisions/0001-flutter-rust-rpc-interface.md)
+  - [0002: Conversation admission regime for running Agent dialogs](decisions/0002-conversation-admission-regime.md)
+  - [0003: Group-conversation Agent Profile with long-term memory](decisions/0003-group-conversation-agent-profile.md)
+  - [0004: Assistant-authored flexible workflows](decisions/0004-assistant-authored-flexible-workflows.md)
+  - [0005: Assistant auto-adaptation, diagnostics, and DeepSeek Harness](decisions/0005-assistant-auto-adaptation-and-deepseek-harness.md)
+  - [0006: Capability-aware parallel client regression](decisions/0006-capability-aware-parallel-regression.md)
+- [Design issues](issues/README.md)
+  - [0001: Client-server interaction includes non-RPC paths](issues/0001-non-rpc-client-server-interaction.md)
 
 Plans, proposals, work reports, raw audit material, caches, and build output are
 not formal documents. They remain in ignored `docs/plans/`, `docs/reports/`,

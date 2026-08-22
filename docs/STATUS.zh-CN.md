@@ -23,7 +23,8 @@
 | --- | --- | --- |
 | 本机智能体发现与会话 | 源码中已实现 | 桌面与原生客户端包含本机和明确配置的智能体适配及会话流程。 |
 | 统一 Conversation 后端 | 源码中已实现 | Rust 以一个带索引的 SQLite/WAL 存储作为单聊与群聊、对等 Human/Agent Membership、显式 Assistant 指定、带版本的每 Membership Profile intent、结构化 Event/Part、拓扑中立的不可变 Graph 快照及私有运行时绑定的唯一权威。生成的 Rust/Dart 契约与群聊界面投影同一组封闭事实。 |
-| Assistant 工作流与下属智能体 MCP | 源码中已实现 | 四个封闭 Assistant 工具暴露 Profile 排序以及 assistant 临时 workflow 的执行/查看/取消。MCP 绑定的 Agent 必须是活动的指定 Assistant Membership。执行工具在效果前完成本地预检，冻结准确 Membership 绑定与隐私安全的 route receipt；动态失败只返回一次且不隐式重试。直接 `lico_subagent_*` 操作要求活动的管理 Membership 并保持独立，持久化 Conversation 宿主是唯一的 run、turn 与 transcript 属主。 |
+| Assistant 工作流与下属智能体 MCP | 源码中已实现 | 四个封闭 Assistant 工具暴露 Profile 排序以及 assistant 临时 workflow 的执行/查看/取消。MCP 绑定的 Agent 必须是活动的指定 Assistant Membership。执行工具在效果前完成本地预检，返回带稳定 stage 与请求 pointer 的有序隐私安全诊断，冻结准确 Membership 绑定与 route receipt；动态失败只返回一次且不隐式重试。直接 `lico_subagent_*` 操作保持独立，持久化 Conversation 宿主是唯一的 run、turn 与 transcript 属主。 |
+| Assistant 适配与 target 加载 | 源码中已实现，发布证据未验证 | 群聊“自动适配”通过与一对一相同的 Membership 作用域原生通道寻址指定 Assistant。Adaptive Flywheel 角色与 Assistant model 目录使用一次有界并发的 Rust 选中 target batch。DeepSeek Harness 通过官方 SDK JSON-RPC carrier 打包，且只声明原生协议实际提供的能力；readiness 仍为 unverified。 |
 | Gateway Runtime（LLM + Communication Channel） | 源码中已实现 | 单一 `lico-gateway` 进程托管 LLM Gateway 回环层与 Telegram Communication Channel（已配对私聊、`/agent` `/session`、conversation lane）。verified readiness 变更走局部热加载（`gateway inventory reload` / `inventory.sock`：新 ready 准入，绑定/会话保留，不重启进程）。`llm-gateway` CLI 仍为生命周期别名。Channel 仅私聊；发布证据尚未包含对真实 BotFather bot 的验证。 |
 | 技能、历史、备份与用量 | 源码中已实现 | 当前第一阶段存在相应本机客户端模块。 |
 | 完整 Lico Arc 端点 Protocol Line | 未实现 | LicoUp 当前没有可执行的 Lico Arc 自有 Pairwise Protection、Generic Message、Reliable Exchange、协商或 Transport Profile。下方候选外层信封 adapter 不是这条完整端点线路。 |

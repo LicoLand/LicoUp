@@ -269,6 +269,14 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
 }
 
 List<String>? _persistentPrivateInputArgs(List<String> args, String stdinText) {
+  final selectedTargetScan =
+      args.length == 6 &&
+      args[0] == 'targets' &&
+      args[1] == 'scan' &&
+      args[2] == '--include-accessible-environments' &&
+      args[3] == 'true' &&
+      args[4] == '--stdin-json' &&
+      args[5] == 'true';
   final create =
       args.length == 5 &&
       args[0] == 'llm-gateway' &&
@@ -284,7 +292,7 @@ List<String>? _persistentPrivateInputArgs(List<String> args, String stdinText) {
       args[3].isNotEmpty &&
       args[4] == '--stdin-json' &&
       args[5] == 'true';
-  if (!create && !update) {
+  if (!create && !update && !selectedTargetScan) {
     return null;
   }
   return <String>[...args.take(args.length - 1), stdinText];

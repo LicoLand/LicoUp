@@ -10,6 +10,7 @@ const exists = (relative) => existsSync(path.join(root, relative));
 
 const decision0003 = read("docs/decisions/0003-group-conversation-agent-profile.md");
 const decision0004 = read("docs/decisions/0004-assistant-authored-flexible-workflows.md");
+const decision0005 = read("docs/decisions/0005-assistant-auto-adaptation-and-deepseek-harness.md");
 const domain = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const store = read("crates/licoup-native/src/domain/client_conversation/store.rs");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
@@ -42,6 +43,8 @@ test("Decision 0003 is historical and Decision 0004 freezes the Assistant bounda
   assert.match(decision0003, /intentionally unspecified|follow-up decision|left open/u);
   assert.match(decision0004, /assistant-temporary/u);
   assert.match(decision0004, /assistant-workflow-authoring/u);
+  assert.match(decision0005, /Automatic adaptation/u);
+  assert.match(decision0005, /DeepSeek Harness/u);
 });
 
 test("conversation migration v8 cuts over to intent-only Assistant Profiles idempotently", () => {
@@ -107,6 +110,15 @@ test("preflight returns every hard failure before any actor/script effect", () =
   assert.match(assistant, /graph_readiness_rejected/u);
   assert.match(assistant, /graph_environment_unavailable/u);
   assert.match(assistant, /assistant-temporary/u);
+  assert.match(assistant, /pub struct PreflightDiagnostic/u);
+  assert.match(assistant, /pub diagnostics: Vec<PreflightDiagnostic>/u);
+  assert.deepEqual(strategyContract.diagnosticStages, [
+    "workflow/parse",
+    "workflow/compile",
+    "package/validate",
+    "assistant-workflow/preflight",
+    "assistant-workflow/revalidate",
+  ]);
   assert.match(flywheelService, /assistant_graph_preflight_rejects_before_any_actor_effect/u);
   assert.match(flywheelService, /assistant_graph_start_preflights_and_replays_without_duplicate_effects/u);
   assert.match(flywheelService, /assistant_route_revision_change_rejects_before_admission_or_effect/u);
@@ -126,10 +138,10 @@ test("receipts freeze exact bindings and allowlisted sources without private dat
     "workflow_digest",
     "membership_ids",
     "route_receipt",
-    "checks",
   ]) {
     assert.match(assistant, new RegExp(`pub ${field}:`, "u"), field);
   }
+  assert.doesNotMatch(assistant, /pub checks:/u);
   assert.match(assistant, /route_receipt/u);
   for (const owner of [
     "targets",

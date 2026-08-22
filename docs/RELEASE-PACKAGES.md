@@ -150,9 +150,10 @@ target's typed preflight. Prepare only builds, stages, verifies, and uploads
 packages; it never submits to a store or package repository. Its publish phase
 accepts only `releaseSupported` targets, downloads every package from one
 source-bound prepare run, verifies the exact target-directory set and every
-installer digest, reconciles one draft Release, creates one cross-target
-consumer verification manifest that also binds every package-manifest digest,
-and publishes only after the complete selected set succeeds.
+installer digest, requires the exact public source-first `v<version>` Release,
+creates one cross-target consumer verification manifest that also binds every
+package-manifest digest, and appends only the selected platform assets after the
+complete selected set succeeds. Existing public assets are never replaced.
 
 Store and package-repository submission remain separate channel operations.
 Building an AAB, MSIX upload bundle, DEB, RPM, Pacman package, Alpine package, or

@@ -1590,6 +1590,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/codex_app_server/limits.rs",
         "crates/licoup-native/src/platform/codex_app_server/model.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests.rs",
+        "crates/licoup-native/src/platform/codex_app_server/tests/model_catalog.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/support.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::"),
@@ -1677,6 +1678,16 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/tests/fixtures/fake_codex_app_server.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::transport::"),
+    }),
+  defineModule({
+      id: "rust.platform.deepseek-harness-driver",
+      kind: "rust-platform",
+      summary: "Official DeepSeek Harness SDK JSON-RPC transport and bounded protocol projection",
+      inputs: [
+        "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+        "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/deepseek-harness.json",
+      ],
+      command: rustLayer("platform::deepseek_harness_driver::tests::"),
     }),
   defineModule({
       id: "rust.platform.runtime-adapters",
@@ -1957,6 +1968,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/bin/licoup.rs",
         "crates/licoup-native/src/bin/licoup/conversation_host.rs",
+        "crates/licoup-native/src/platform/conversation_host_transport.rs",
         "crates/licoup-native/src/bin/licoup/presentation.rs",
         "crates/licoup-native/src/bin/licoup/private_stdin_json.rs",
         "crates/licoup-native/src/bin/licoup/tests.rs",

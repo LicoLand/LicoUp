@@ -703,6 +703,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.codex-app-server.io",
   "rust.platform.codex-app-server.launch",
   "rust.platform.codex-app-server.transport",
+  "rust.platform.deepseek-harness-driver",
   "rust.platform.runtime-adapters",
   "rust.platform.runtime-adapters.registry",
   "rust.platform.runtime-adapters.dispatch",

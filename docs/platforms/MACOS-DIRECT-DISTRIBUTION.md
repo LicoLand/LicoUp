@@ -56,27 +56,29 @@ following in a single local release run:
    the public receipt is written only after public download, install, and
    stable-launch verification.
 
-No remote workflow may publish a macOS direct artifact. The local Apple Release
-service may upload and publish only the exact mutations in its one immutable
-per-release authorization.
+No repository CI workflow may publish a macOS direct artifact. The source
+workflow creates the version's single `v<version>` Release directly from
+`release`; Apple Release is the sole macOS publication authority and may drive
+Apple and GitHub cloud operations only within one immutable per-release
+authorization. It performs packaging on `macos-release-candidate`, appends the
+five macOS assets to that same Release, and never replaces the source assets.
+LicoUp does not implement an alternate macOS publisher or a background Apple
+Release service.
 
-## Local service
+## Authoritative Apple Release command
 
 Install the private `apple-release` CLI from its standalone checkout first
-(`npm install --global .` there), then install and configure the per-user
-service once on a release workstation:
+(`npm install --global .` there). The checked-in configuration is declarative:
+Apple Release owns the state machine, command contract, signing, notarization,
+GitHub reconciliation, publication, resume behavior, and final receipt. LicoUp
+owns only the product adapter in `tools/scripts/macos-release/`, which prepares
+repository gates, the app build, and the signed update manifest in the form
+Apple Release requires. The adapter's complete script and artifact inventory is
+documented in that directory's `README.md`.
 
-```sh
-npm run client:release:service:install
-npm run client:release:service:configure
-```
-
-Configuration selects the Developer ID provisioning profile and the names of
-the existing signing identity and `notarytool` Keychain profile. The service
-keeps the profile copy in its permission-bounded authority directory; signing
-keys, notarization credentials, and GitHub authentication stay in their owning
-secure stores. Public output retains no certificate, account, provider,
-credential, raw-output, or local-path value.
+Signing keys, notarization credentials, and GitHub authentication remain in
+their owning secure stores. Public output retains no certificate, account,
+provider, credential, raw-output, or local-path value.
 
 An Agent starts one exact release with:
 
@@ -85,11 +87,12 @@ npm run client:release:macos -- --version <version> --build <build>
 ```
 
 Read-only preflight runs before the only authorization prompt. After acceptance,
-the service owns the exact accepted release source, publication gates,
+Apple Release owns the exact accepted release source, platform branch, publication gates,
 Developer ID package, app and DMG notarization/stapling/Gatekeeper checks, exact asset reconciliation,
 publication, anonymous public download, install, and stable launch. It asks no
 second question. The final receipt binds the immutable release source,
-the four public artifact digests, Apple results, and public installation proof.
+the five macOS artifacts appended to the existing source Release, Apple
+results, and public installation proof.
 
 ## Primary Apple references
 

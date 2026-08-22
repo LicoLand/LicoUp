@@ -60,6 +60,33 @@
     Subagent is an explicit active Membership whose text, reasoning, tool,
     artifact, diagnostic and terminal output appends to the same Canonical
     Conversation Event/Part timeline.
+  - The group composer exposes one circular Assistant control, never a
+    strategy actor chip. Its active state addresses future messages to the
+    designated Assistant; pausing only suppresses future dispatch and never
+    cancels, interrupts, or rewrites an already running PersistentTurn or
+    Graph. The control has no hover editor or extra vertical container and is
+    exactly as tall as the adjacent input capsule. An undesignated group opens
+    explicit Assistant configuration instead of silently choosing a
+    Membership.
+  - Imported strategy capsules remain workflow tools adjacent to, but never
+    identical with, the Assistant. Their collapsed projection reports the
+    Assistant's current work state. The Assistant may start, steer, replace,
+    or stop a workflow through the existing Graph control surface while
+    retaining the only user-dialogue ownership.
+  - Assistant Agent, model, and reasoning effort are edited through the same
+    target/model/reasoning catalog component used by Adaptive Flywheel actor
+    bindings. The Assistant is the first card in the Adaptive Flywheel editor
+    and exposes Agent, Model, and Thinking Effort as three adjacent columns;
+    it is not configured from a composer popover. Model and reasoning intent
+    are stored in the Assistant's revisioned Profile and passed through the
+    existing direct-turn dispatch; the card remains independent of imported
+    workflow bindings and the client does not create a second runtime-settings
+    store.
+  - Canonical participant-flow bubbles distinguish the Assistant from
+    Subagents. Subagents remain chronological Conversation participants and
+    show the model and reasoning effort from the selected workflow binding;
+    the Assistant bubble omits those execution details because its Profile is
+    independently editable.
   - The fixed delivery generation is removed in one cutover: `delivery_plan`,
     `delivery_scheduler`, `delivery_state`, `delivery_routes`, `lico_delivery_*`
     and fixed Designer/Worker/Reviewer sequencing leave the source, tests,
@@ -89,7 +116,8 @@
     runtime object, not a product catalog entry.
 - `consequences` —
   - The Conversation schema adds Assistant designation and Profile intent
-    state idempotently; existing ambiguous groups stay undesignated.
+    state idempotently, including preferred reasoning effort; existing
+    ambiguous groups stay undesignated.
   - Profile snapshots and route receipts are deterministic and privacy-safe
     projections; they contain no prompt body, credential, absolute path,
     machine identity or backend runtime data.
@@ -97,4 +125,4 @@
     tests, catalog entries and documents are removed in the same cutover.
   - The Assistant/Profile/workflow boundary is frozen before implementation
     branches begin; later changes are follow-up decisions.
-- `status` — decided, 2026-08-22.
+- `status` — implementing, 2026-08-22.

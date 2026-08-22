@@ -353,6 +353,7 @@ impl PersistentConversationRuntime {
         params: &Value,
         portable_data_dir: Option<PathBuf>,
     ) -> std::result::Result<Value, RuntimeAdapterError> {
+        let continuation_dir = portable_data_dir.clone();
         let persistence_failed = Arc::new(AtomicBool::new(false));
         let sink_failed = Arc::clone(&persistence_failed);
         let sink_turn = Arc::clone(&turn);
@@ -369,7 +370,7 @@ impl PersistentConversationRuntime {
         }));
         drop(stream_guard);
 
-        match execution {
+        let result = match execution {
             Ok(Ok(value)) => {
                 if Self::finish(
                     &turn,
@@ -403,6 +404,36 @@ impl PersistentConversationRuntime {
                 );
                 Err(RuntimeAdapterError::ConversationDispatchFailed)
             }
+        };
+        self.start_next_boundary_turn(
+            &turn.scope.conversation_id,
+            &turn.scope.membership_id,
+            continuation_dir,
+        );
+        result
+    }
+
+    fn start_next_boundary_turn(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+        portable_data_dir: Option<PathBuf>,
+    ) {
+        let Ok(Some(context)) = self
+            .inner
+            .store
+            .claim_next_pending_direct_turn(conversation_id, membership_id)
+        else {
+            return;
+        };
+        let params = direct_turn_params(&context);
+        if self.start_background(&params, portable_data_dir).is_err() {
+            let diagnostic =
+                r#"{"code":"conversation_dispatch_failed","stage":"conversation/dispatch"}"#;
+            let _ = self
+                .inner
+                .store
+                .fail_direct_turn_unless_dispatched(&context.turn.id, diagnostic);
         }
     }
 
@@ -601,6 +632,37 @@ impl PersistentConversationRuntime {
         state.terminal = Some(terminal);
         turn.changed.notify_all();
     }
+}
+
+fn direct_turn_params(
+    context: &licoup_native::domain::client_conversation::DirectTurnExecutionContext,
+) -> Value {
+    let mut params = json!({
+        "agentId": context.agent_id,
+        "agent": context.agent_id,
+        "text": context.source_content,
+        "streamEvents": true,
+        "timeoutMs": 0,
+        "conversationId": context.turn.conversation_id,
+        "membershipId": context.turn.membership_id,
+        "causationId": context.turn.source_event_id,
+        "dispatchId": context.turn.id,
+    });
+    for (key, value) in [
+        ("sessionId", context.runtime_session_id.as_deref()),
+        ("sourcePath", context.runtime_conversation_path.as_deref()),
+        ("workingDirectory", context.working_directory.as_deref()),
+        ("model", context.preferred_model.as_deref()),
+        (
+            "reasoningEffort",
+            context.preferred_reasoning_effort.as_deref(),
+        ),
+    ] {
+        if let Some(value) = value.filter(|value| !value.is_empty()) {
+            params[key] = json!(value);
+        }
+    }
+    params
 }
 
 pub(super) fn spawn_send<W>(

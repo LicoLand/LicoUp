@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/plan_document_reader.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
 /// only production adapter from mutable application controllers to this view.
@@ -40,6 +41,8 @@ final class AgentConversationPaneState {
     this.planDocumentPath = '',
     this.planDocumentReader = const UnavailablePlanDocumentReader(),
     Map<String, String> participantConversationIds = const {},
+    Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
+        const {},
     Set<String> runningRecentSessionIds = const {},
     this.recentSessionsCached = false,
     this.composerFlywheel,
@@ -53,6 +56,9 @@ final class AgentConversationPaneState {
        composerMentionLabels = Map.unmodifiable(composerMentionLabels),
        participantConversationIds = Map.unmodifiable(
          participantConversationIds,
+       ),
+       participantRuntimeProfiles = Map.unmodifiable(
+         participantRuntimeProfiles,
        ),
        runningRecentSessionIds = Set.unmodifiable(runningRecentSessionIds),
        composerBusy = composerBusy ?? turnActive;
@@ -91,6 +97,7 @@ final class AgentConversationPaneState {
 
   /// Agent id → that agent's conversation id for bubble hover metadata.
   final Map<String, String> participantConversationIds;
+  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
   final Set<String> runningRecentSessionIds;
   final bool recentSessionsCached;
   final Widget? composerFlywheel;

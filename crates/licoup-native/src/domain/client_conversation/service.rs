@@ -199,7 +199,7 @@ impl ConversationService {
                     required_string(object, "conversationId")?,
                     required_string(object, "title")?,
                 )?;
-                Ok(json!({"ok": true}))
+                Ok(json!({"ok": true, "status": "accepted"}))
             }
             "conversation.archive" => {
                 self.store.archive_conversation(
@@ -209,7 +209,7 @@ impl ConversationService {
                         .and_then(Value::as_bool)
                         .ok_or_else(|| anyhow!("invalid_request"))?,
                 )?;
-                Ok(json!({"ok": true}))
+                Ok(json!({"ok": true, "status": "accepted"}))
             }
             "conversation.pin.set" => {
                 self.store.set_conversation_pinned(
@@ -219,7 +219,7 @@ impl ConversationService {
                         .and_then(Value::as_bool)
                         .ok_or_else(|| anyhow!("invalid_request"))?,
                 )?;
-                Ok(json!({"ok": true}))
+                Ok(json!({"ok": true, "status": "accepted"}))
             }
             "conversation.strategy.set" => {
                 let strategy_revision = match object.get("strategyRevision") {
@@ -518,6 +518,7 @@ impl ConversationService {
         };
         let mut live_turns = Vec::new();
         let mut direct_receipts = Vec::new();
+        let mut boundary_queue_ids = Vec::new();
         let mut dispatch_error = None;
         if !addressed.is_empty() {
             for membership_id in &addressed {
@@ -525,13 +526,14 @@ impl ConversationService {
                     .iter()
                     .find(|candidate| candidate.membership_id == *membership_id)
                 {
-                    if self.steer_active_turn(turn, &content).is_err() {
-                        dispatch_error.get_or_insert_with(|| {
-                            json!({
-                                "code": "conversation_dispatch_failed",
-                                "stage": "conversation/steer",
-                            })
-                        });
+                    match self.steer_active_turn(turn, &content) {
+                        SteerDisposition::Accepted => {}
+                        SteerDisposition::QueueAtBoundary => {
+                            boundary_queue_ids.push(turn.membership_id.clone());
+                        }
+                        SteerDisposition::Unknown => {
+                            dispatch_error.get_or_insert_with(dispatch_steer_error);
+                        }
                     }
                     merge_live_turn(&mut live_turns, turn.to_json());
                 }
@@ -551,13 +553,14 @@ impl ConversationService {
             }
         } else if active.len() == 1 {
             for turn in &active {
-                if self.steer_active_turn(turn, &content).is_err() {
-                    dispatch_error.get_or_insert_with(|| {
-                        json!({
-                            "code": "conversation_dispatch_failed",
-                            "stage": "conversation/steer",
-                        })
-                    });
+                match self.steer_active_turn(turn, &content) {
+                    SteerDisposition::Accepted => {}
+                    SteerDisposition::QueueAtBoundary => {
+                        boundary_queue_ids.push(turn.membership_id.clone());
+                    }
+                    SteerDisposition::Unknown => {
+                        dispatch_error.get_or_insert_with(dispatch_steer_error);
+                    }
                 }
                 merge_live_turn(&mut live_turns, turn.to_json());
             }
@@ -577,6 +580,14 @@ impl ConversationService {
         };
         if let Some(entry_turn) = strategy_address.entry_turn {
             merge_live_turn(&mut live_turns, entry_turn);
+        }
+        if !boundary_queue_ids.is_empty() {
+            for turn in
+                self.store
+                    .enqueue_mention_turns(conversation_id, event_id, &boundary_queue_ids)?
+            {
+                direct_receipts.push(json!({"id": turn.id, "state": turn.state}));
+            }
         }
         if dispatch_error.is_none() {
             dispatch_error = strategy_address.error;
@@ -673,17 +684,28 @@ impl ConversationService {
             .collect()
     }
 
-    fn steer_active_turn(&self, turn: &ActiveTurnRef, text: &str) -> Result<Value> {
+    fn steer_active_turn(&self, turn: &ActiveTurnRef, text: &str) -> SteerDisposition {
         let Some(steer_turn) = self.host.steer_turn.as_ref() else {
-            return Err(anyhow!("conversation_steer_failed"));
+            return SteerDisposition::Unknown;
         };
-        steer_turn(&json!({
+        let Ok(receipt) = steer_turn(&json!({
             "turnHandle": turn.turn_handle,
             "conversationId": turn.conversation_id,
             "text": text,
             "agent": turn.agent,
-        }))
-        .map_err(|_| anyhow!("conversation_steer_failed"))
+        })) else {
+            return SteerDisposition::Unknown;
+        };
+        match (
+            receipt.get("ok").and_then(Value::as_bool),
+            receipt.get("status").and_then(Value::as_str),
+        ) {
+            (Some(true), Some("accepted")) => SteerDisposition::Accepted,
+            (Some(false), Some("unsupported" | "no_active_turn" | "session_unavailable")) => {
+                SteerDisposition::QueueAtBoundary
+            }
+            _ => SteerDisposition::Unknown,
+        }
     }
 
     fn address_strategy(
@@ -898,6 +920,12 @@ impl ConversationService {
         if let Some(working_directory) = context.working_directory.as_deref() {
             params["workingDirectory"] = json!(working_directory);
         }
+        if let Some(model) = context.preferred_model.as_deref() {
+            params["model"] = json!(model);
+        }
+        if let Some(reasoning_effort) = context.preferred_reasoning_effort.as_deref() {
+            params["reasoningEffort"] = json!(reasoning_effort);
+        }
         #[cfg(test)]
         self.store.counters().begin_turn();
         let dispatched = sender(&params);
@@ -959,6 +987,20 @@ struct ActiveTurnRef {
     conversation_id: String,
     membership_id: String,
     agent: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SteerDisposition {
+    Accepted,
+    QueueAtBoundary,
+    Unknown,
+}
+
+fn dispatch_steer_error() -> Value {
+    json!({
+        "code": "conversation_dispatch_failed",
+        "stage": "conversation/steer",
+    })
 }
 
 impl ActiveTurnRef {
@@ -2231,7 +2273,7 @@ mod tests {
             })
             .with_steer_turn(move |params| {
                 captured.lock().unwrap().push(params.clone());
-                Ok(json!({"ok": true}))
+                Ok(json!({"ok": true, "status": "accepted"}))
             });
         let (conversation_id, owner_id, _) = group_fixture(&service);
         let posted = persist_then_dispatch(
@@ -2286,6 +2328,38 @@ mod tests {
                 "stage": "conversation/steer"
             })
         );
+    }
+
+    #[test]
+    fn known_unsupported_steer_queues_one_membership_turn_at_the_boundary() {
+        let base = ConversationService::from_store(ConversationStore::open_in_memory().unwrap());
+        let (conversation_id, owner_id, agent_id) = group_fixture(&base);
+        let active_conversation = conversation_id.clone();
+        let active_membership = agent_id.clone();
+        let service = base
+            .with_native_turn_sender(|_| panic!("boundary follow-up must not start early"))
+            .with_active_turns(move |_| {
+                json!({"turns": [{
+                    "turnHandle": "dispatch:live",
+                    "conversationId": active_conversation,
+                    "membershipId": active_membership,
+                    "agent": "one"
+                }]})
+            })
+            .with_steer_turn(|_| Ok(json!({"ok": false, "status": "unsupported"})));
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "follow after the active turn"
+            }),
+        );
+        assert!(posted.get("strategyError").is_none());
+        assert_eq!(posted["directTurns"].as_array().unwrap().len(), 1);
+        assert_eq!(posted["directTurns"][0]["state"], "pending");
+        assert_eq!(posted["turns"][0]["turnHandle"], "dispatch:live");
     }
 
     #[test]
@@ -2548,6 +2622,7 @@ mod tests {
             "preferredCapabilities": ["workspace"],
             "skillReferences": [],
             "preferredModel": "model-a",
+            "preferredReasoningEffort": "high",
             "preferredEnvironment": "local",
         });
         for membership_id in [&agent_one, &agent_two] {
@@ -2577,6 +2652,7 @@ mod tests {
             .unwrap();
         assert_eq!(stored["revision"], 2);
         assert_eq!(stored["preferredModel"], "model-a");
+        assert_eq!(stored["preferredReasoningEffort"], "high");
         assert_eq!(stored["responsibility"], "assistant");
         assert!(
             stored["skillReferences"]
@@ -2640,6 +2716,25 @@ mod tests {
                 "membershipId": agent_one,
             }))
             .unwrap();
+        let profile_revision = service
+            .store()
+            .membership_profile(&agent_one)
+            .unwrap()
+            .unwrap()
+            .revision;
+        service
+            .execute(json!({
+                "action": "conversation.profile.update",
+                "conversationId": conversation_id,
+                "membershipId": agent_one,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": profile_revision,
+                "intent": {
+                    "preferredModel": "model-a",
+                    "preferredReasoningEffort": "high"
+                }
+            }))
+            .unwrap();
 
         let posted = persist_then_dispatch(
             &service,
@@ -2660,6 +2755,8 @@ mod tests {
         assert_eq!(calls[0]["text"], "plain message without a mention");
         assert_eq!(calls[0]["timeoutMs"], 0);
         assert_eq!(calls[0]["streamEvents"], true);
+        assert_eq!(calls[0]["model"], "model-a");
+        assert_eq!(calls[0]["reasoningEffort"], "high");
     }
 
     #[test]
@@ -2672,7 +2769,7 @@ mod tests {
         .with_native_turn_sender(|_| panic!("active turns must be steered, not restarted"))
         .with_steer_turn(move |params| {
             captured_steers.lock().unwrap().push(params.clone());
-            Ok(json!({"ok": true}))
+            Ok(json!({"ok": true, "status": "accepted"}))
         });
         let (conversation_id, owner_id, agent_one) = group_fixture(&service);
         let agent_two = service
@@ -2728,7 +2825,7 @@ mod tests {
         .with_native_turn_sender(|_| panic!("ambiguous active turns must not be restarted"))
         .with_steer_turn(move |params| {
             captured_steers.lock().unwrap().push(params.clone());
-            Ok(json!({"ok": true}))
+            Ok(json!({"ok": true, "status": "accepted"}))
         });
         let (conversation_id, owner_id, agent_one) = group_fixture(&service);
         let agent_two = service

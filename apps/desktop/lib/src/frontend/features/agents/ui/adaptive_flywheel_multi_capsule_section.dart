@@ -349,7 +349,7 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
             child: Material(
               color: Colors.transparent,
               elevation: 0,
-              child: _DailyConversationCascadeCards(
+              child: AgentRuntimeAssignmentCascadeCards(
                 keyPrefix: widget.keyPrefix,
                 showFast: widget.showFast,
                 borderRadius: menuRadius,
@@ -611,8 +611,11 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
   }
 }
 
-final class _DailyConversationCascadeCards extends StatefulWidget {
-  const _DailyConversationCascadeCards({
+/// Shared Agent → model → reasoning assignment cards used by workflow actor
+/// bindings and the independent Assistant Profile card.
+final class AgentRuntimeAssignmentCascadeCards extends StatefulWidget {
+  const AgentRuntimeAssignmentCascadeCards({
+    super.key,
     required this.keyPrefix,
     required this.showFast,
     required this.borderRadius,
@@ -621,6 +624,9 @@ final class _DailyConversationCascadeCards extends StatefulWidget {
     required this.draft,
     required this.selectedAgentIds,
     required this.onDraftChanged,
+    this.agentCardWidth = 220,
+    this.modelCardWidth = 320,
+    this.settingsCardWidth = 200,
     this.isRefreshingAgentCatalog,
     this.onAgentCatalogRequested,
   });
@@ -633,20 +639,20 @@ final class _DailyConversationCascadeCards extends StatefulWidget {
   final DailyConversationAgentAssignment draft;
   final Set<String> selectedAgentIds;
   final ValueChanged<DailyConversationAgentAssignment> onDraftChanged;
+  final double agentCardWidth;
+  final double modelCardWidth;
+  final double settingsCardWidth;
   final bool Function(String agentId)? isRefreshingAgentCatalog;
   final ValueChanged<String>? onAgentCatalogRequested;
 
   @override
-  State<_DailyConversationCascadeCards> createState() =>
-      _DailyConversationCascadeCardsState();
+  State<AgentRuntimeAssignmentCascadeCards> createState() =>
+      _AgentRuntimeAssignmentCascadeCardsState();
 }
 
-final class _DailyConversationCascadeCardsState
-    extends State<_DailyConversationCascadeCards> {
+final class _AgentRuntimeAssignmentCascadeCardsState
+    extends State<AgentRuntimeAssignmentCascadeCards> {
   static const double _rowExtent = 32;
-  static const double _agentCardWidth = 220;
-  static const double _modelCardWidth = 320;
-  static const double _settingsCardWidth = 200;
   static const Duration _dismissGrace = LicoMotion.short;
 
   String? _previewAgentId;
@@ -796,7 +802,7 @@ final class _DailyConversationCascadeCardsState
           children: [
             glassCard(
               key: Key('${widget.keyPrefix}-agent-card'),
-              width: _agentCardWidth,
+              width: widget.agentCardWidth,
               header: sectionHeader(strings.agent),
               children: [
                 if (widget.targets.isEmpty)
@@ -830,7 +836,7 @@ final class _DailyConversationCascadeCardsState
               SizedBox(width: gap),
               glassCard(
                 key: Key('${widget.keyPrefix}-model-card'),
-                width: _modelCardWidth,
+                width: widget.modelCardWidth,
                 header: sectionHeader(strings.model),
                 children: [
                   if (refreshing)
@@ -904,7 +910,7 @@ final class _DailyConversationCascadeCardsState
                 SizedBox(width: gap),
                 glassCard(
                   key: Key('${widget.keyPrefix}-settings-card'),
-                  width: _settingsCardWidth,
+                  width: widget.settingsCardWidth,
                   header: sectionHeader(strings.reasoningEffort),
                   children: [
                     if (efforts.isNotEmpty)

@@ -6,8 +6,7 @@
     "remote": "origin"
   },
   "candidate": {
-    "template": "release-candidate/v{version}",
-    "mergeMethod": "merge",
+    "branch": "macos-release-candidate",
     "requiredChecks": [
       "Branch flow",
       "Commit identity",
@@ -18,16 +17,7 @@
   "version": {
     "file": "tools/client-version.json",
     "versionField": "productVersion",
-    "buildField": "buildNumber",
-    "allowedPaths": [
-      "tools/client-version.json"
-    ],
-    "prepare": [
-      "node",
-      "tools/scripts/client-release-version-prepare.mjs",
-      "{version}",
-      "{build}"
-    ]
+    "buildField": "buildNumber"
   },
   "gates": [
     [
@@ -35,21 +25,18 @@
       "ci"
     ],
     [
-      "npm",
-      "run",
-      "client:gate:source"
+      "node",
+      "tools/scripts/macos-release/gate-source.mjs"
     ],
     [
-      "npm",
-      "run",
-      "client:gate:release-policy"
+      "node",
+      "tools/scripts/macos-release/gate-release-policy.mjs"
     ]
   ],
   "build": {
     "command": [
-      "npm",
-      "run",
-      "client:build:macos"
+      "node",
+      "tools/scripts/macos-release/build.mjs"
     ],
     "app": "build/apps/desktop/runnable/macos/release/LicoUp.app",
     "materials": [
@@ -81,6 +68,18 @@
     "tagTemplate": "v{version}",
     "releaseNameTemplate": "LicoUp {version}"
   },
+  "update": {
+    "command": [
+      "node",
+      "tools/scripts/macos-release/write-update-manifest.mjs",
+      "--tag",
+      "{tag}",
+      "--repository",
+      "{repository}",
+      "--version",
+      "{version}"
+    ]
+  },
   "artifacts": [
     {
       "role": "installer",
@@ -101,6 +100,11 @@
       "role": "update-digest",
       "path": "build/apple-release/LicoUp-macos-arm64-update.zip.sha256",
       "publicName": "LicoUp-macos-arm64-update.zip.sha256"
+    },
+    {
+      "role": "update-manifest",
+      "path": "build/apple-release/LicoUp-update-manifest.json",
+      "publicName": "LicoUp-update-manifest.json"
     }
   ]
 }

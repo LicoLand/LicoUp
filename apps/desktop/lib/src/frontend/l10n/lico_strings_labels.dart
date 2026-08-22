@@ -470,13 +470,34 @@ extension LicoStringsLabels on LicoStrings {
 
   // Messaging presentation (participant flow, details panel).
   String get agentBadge => 'AGENT';
+  String get assistantBadge => 'ASSISTANT';
+  String get subagentBadge => 'SUBAGENT';
+  String get assistantActiveTooltip =>
+      isChinese ? '暂停 Assistant 的后续派发' : 'Pause future Assistant dispatch';
+  String get assistantPausedTooltip =>
+      isChinese ? '激活 Assistant' : 'Activate Assistant';
+  String get configureAssistantTooltip =>
+      isChinese ? '配置 Assistant' : 'Configure Assistant';
+  String get assistantProfileTitle =>
+      isChinese ? 'Assistant 配置' : 'Assistant profile';
+  String get assistantReadyStatus =>
+      isChinese ? '你的助手已就绪' : 'Your Assistant is ready';
+  String get assistantPausedStatus =>
+      isChinese ? '你的助手已暂停' : 'Your Assistant is paused';
+  String get assistantNeedsConfigurationStatus =>
+      isChinese ? '配置你的助手' : 'Configure your Assistant';
+  String get assistantWorkingAloneStatus =>
+      isChinese ? '你的助手正在独自工作' : 'Your Assistant is working independently';
+  String assistantCoordinatingStatus(int count) => isChinese
+      ? '你的助手正在协调 $count 个 Subagents'
+      : 'Your Assistant is coordinating $count ${count == 1 ? 'Subagent' : 'Subagents'}';
   String get contacts => isChinese ? '对话' : 'Conversations';
   String get conversationBack => isChinese ? '返回上一级' : 'Back one level';
   String mentionAgent(String agent) =>
       isChinese ? '@ $agent' : 'Mention $agent';
   String openAgentConversations(String agent) =>
       isChinese ? '打开 $agent 的对话' : 'Open $agent conversations';
-  String get optionalStrategy => isChinese ? '可选策略' : 'Optional strategy';
+  String get automaticAdaptation => isChinese ? '自动适配' : 'Automatic adaptation';
   String get noAuthorizedStrategies =>
       isChinese ? '没有已授权的策略' : 'No authorized strategies';
   String get exitStrategyMode => isChinese ? '退出策略模式' : 'Exit strategy mode';

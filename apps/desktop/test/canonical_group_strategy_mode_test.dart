@@ -64,10 +64,10 @@ void main() {
 
       final picker = find.byKey(const Key('canonical-group-strategy-picker'));
       expect(picker, findsOneWidget);
-      expect(find.text('Optional strategy'), findsOneWidget);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
-        findsNothing,
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
       );
 
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
@@ -79,9 +79,10 @@ void main() {
         find.byKey(const Key('canonical-group-strategy-picker-panel')),
         findsOneWidget,
       );
+      expect(find.text('Automatic adaptation'), findsOneWidget);
       expect(find.text('Authorized Graph'), findsOneWidget);
       expect(find.text('Pending Graph'), findsNothing);
-      expect(find.byIcon(Icons.check_rounded), findsNothing);
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
       final option = find.byKey(
         const Key('canonical-group-strategy-option-rev-auth'),
       );
@@ -107,9 +108,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
       expect(conversationRunner.strategyRevision, 'rev-auth');
@@ -139,9 +140,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
       expect(
@@ -162,7 +163,7 @@ void main() {
       );
 
       final entry = tester.getRect(
-        find.byKey(const Key('canonical-group-strategy-entry')),
+        find.byKey(const Key('canonical-group-assistant-control')),
       );
       final field = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
@@ -187,11 +188,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(openedRevisions, ['rev-auth', 'rev-auth']);
 
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-entry-open')),
-      );
-      await tester.pumpAndSettle();
-      expect(openedRevisions, ['rev-auth', 'rev-auth', 'rev-auth']);
+      expect(openedRevisions, ['rev-auth', 'rev-auth']);
       expect(
         conversationRunner.requests.where(
           (request) => request['action'] == 'conversation.membership.add',
@@ -237,22 +234,24 @@ void main() {
           .where((action) => action == 'strategy.run.cancel')
           .length;
 
+      await mouse.moveTo(tester.getCenter(picker));
+      await tester.pump();
       await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-entry-clear')),
+        find.byKey(const Key('canonical-group-strategy-option-none')),
       );
       await tester.pumpAndSettle();
 
-      expect(openedRevisions, ['rev-auth', 'rev-auth', 'rev-auth']);
+      expect(openedRevisions, ['rev-auth', 'rev-auth']);
       expect(
         gateway.actions
             .where((action) => action == 'strategy.run.cancel')
             .length,
         cancelsBeforeClearingStrategy,
       );
-      expect(find.text('Optional strategy'), findsOneWidget);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
-        findsNothing,
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
       );
       expect(conversationRunner.strategyRevision, isEmpty);
       expect(
@@ -342,6 +341,122 @@ void main() {
   );
 
   testWidgets(
+    'Assistant sparkles control pauses only future dispatch and resumes on the next tap',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _GroupConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final toggle = find.byKey(const Key('canonical-group-assistant-toggle'));
+      expect(toggle, findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(find.text('Your Assistant is paused'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'save without dispatch');
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.dispatch.after-post',
+        ),
+        isEmpty,
+      );
+
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'dispatch again');
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.dispatch.after-post',
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
+  testWidgets(
+    'Assistant control has no hover editor and matches the input capsule height',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 700);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _GroupConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(
+        tester.getCenter(
+          find.byKey(const Key('canonical-group-assistant-control')),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const Key('canonical-group-assistant-edit')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('canonical-group-assistant-editor')),
+        findsNothing,
+      );
+      final assistant = tester.getRect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+      );
+      final field = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(assistant.height, lessThanOrEqualTo(42));
+      expect(assistant.height, closeTo(field.height, 0.5));
+      expect(assistant.top, closeTo(field.top, 0.5));
+      expect(assistant.bottom, closeTo(field.bottom, 0.5));
+    },
+  );
+
+  testWidgets(
     'persists a selected strategy when navigation disposes the pane immediately',
     (tester) async {
       tester.view.devicePixelRatio = 1;
@@ -406,9 +521,9 @@ void main() {
       await tester.pumpWidget(groupPane());
       await tester.pumpAndSettle();
 
-      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
       expect(conversationRunner.strategyRevision, 'rev-auth');
@@ -451,10 +566,10 @@ void main() {
 
       expect(gateway.inspectionCount, 1);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
-      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
       expect(conversationRunner.strategyRevision, 'rev-auth');
 
       controller.updateDraft('notify projection retry');
@@ -462,10 +577,10 @@ void main() {
 
       expect(gateway.inspectionCount, 2);
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
-      expect(find.text('Authorized Graph'), findsWidgets);
+      expect(find.text('Your Assistant is ready'), findsOneWidget);
     },
   );
 
@@ -505,7 +620,7 @@ void main() {
       expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
 
@@ -986,10 +1101,20 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
   configured: true,
   confidence: 1,
   adapterStatus: 'implemented',
+  binaryPath: '/fixture/agent',
   adapterCapabilities: const {
     'conversationDriver': 'implemented',
     'conversationProtocol': 'fixture',
     'conversationReadiness': 'ready',
+  },
+  modelCatalog: const {
+    'models': [
+      {
+        'id': 'model-a',
+        'reasoningEfforts': ['low', 'high'],
+        'defaultReasoningEffort': 'low',
+      },
+    ],
   },
   supportedActions: const ['runtime.message.send'],
 );
@@ -1195,6 +1320,15 @@ final class _GroupConversationRunner implements AgentCommandRunner {
         },
         'conversation.membership.add' => <String, dynamic>{},
         'conversation.strategy.set' => <String, dynamic>{},
+        'conversation.profile.get' => <String, dynamic>{
+          'revision': 0,
+          'requiredCapabilities': <String>[],
+          'preferredCapabilities': <String>[],
+          'skillReferences': <String>[],
+        },
+        'conversation.profile.update' => <String, dynamic>{
+          'profile': request['intent'],
+        },
         _ => <String, dynamic>{},
       },
     };
@@ -1238,6 +1372,7 @@ Map<String, dynamic> _conversation(
   'archived': false,
   'pinned': true,
   'isGroup': true,
+  'assistantMembershipId': 'membership:codex',
   if (strategyRevision.isNotEmpty) 'strategyRevision': strategyRevision,
   'revision': revision,
   'createdAtUnixMs': 1,

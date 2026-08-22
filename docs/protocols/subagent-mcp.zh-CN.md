@@ -65,7 +65,8 @@ Graph，或直接委托给准确 Membership；不能创建角色、替换 Conver
 合格 Profile 快照中选出的准确 `conversationId` 加 `membershipId`。
 `lico_assistant_workflow_execute` 在内部完成预检，并在持久准入或任何 Agent/脚本效果
 之前返回所有本地可发现失败（结构、额度、Membership、model、Skill、环境、能力、
-readiness、Authority），同时提供稳定 code 与完整检查清单。随后它立即重新校验存储
+readiness、Authority），同时提供稳定 code 与完整有序 `diagnostics` 列表。每项包含稳定
+stage，并可附带白名单 JSON Pointer、受影响 Membership id 与 actual/limit 数字事实。随后它立即重新校验存储
 自有的 Membership 与 Profile 版本、冻结 route receipt、在幂等键下准入 run，并通过持久化
 Conversation 宿主把每个就绪 actor 作为 Membership 作用域 PersistentTurn 启动。
 重放已有键会返回已有 run，不会产生重复效果。该 facade 不暴露独立的公开 preflight
@@ -131,7 +132,8 @@ prompt、Agent 输出、原生 session 标识、续接位置与工作目录绑�
 失败都返回有界 typed 错误。预检拒绝保留稳定 code（`graph_invalid`、
 `graph_identity_rejected`、`graph_membership_rejected`、`graph_binding_incomplete`、
 `graph_model_rejected`、`graph_readiness_rejected`、`graph_environment_unavailable`、
-`graph_preflight_rejected`），让 Assistant 修正一次请求而不是猜测。不确定的原生效果
+`graph_preflight_rejected`），让 Assistant 修正一次请求而不是猜测。诊断投影会丢弃未知
+字段与原始值。不确定的原生效果
 保持 pending 对账，绝不会报告为已完成。已经结算的分支保留其结果；Assistant 失败
 结算 Graph 后不会再发出新的分支效果。
 

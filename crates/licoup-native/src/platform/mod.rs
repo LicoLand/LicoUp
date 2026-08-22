@@ -12,6 +12,7 @@ pub(crate) mod codex_runtime_observation;
 mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
+mod deepseek_harness_driver;
 mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;

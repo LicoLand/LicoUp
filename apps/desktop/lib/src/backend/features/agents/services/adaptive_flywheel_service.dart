@@ -18,11 +18,7 @@ final class AdaptiveFlywheelService {
     ], jsonEncode(request));
     if (output['ok'] != true) {
       final error = adaptiveFlywheelStringMap(output['error']);
-      throw AdaptiveFlywheelFailure(
-        code: (error['code'] ?? 'strategy_operation_failed').toString(),
-        recovery: (error['recovery'] ?? '').toString(),
-        retryable: error['retryable'] == true,
-      );
+      throw AdaptiveFlywheelFailure.fromJson(error);
     }
     return output['result'];
   }
@@ -39,7 +35,7 @@ final class AdaptiveFlywheelService {
     Map<String, dynamic> input = const {},
     required String idempotencyKey,
   }) async {
-    return _resultMap(
+    final result = _resultMap(
       await execute(runner, {
         'action': 'strategy.assistant.workflow.execute',
         'conversationId': conversationId,
@@ -51,6 +47,12 @@ final class AdaptiveFlywheelService {
         'idempotencyKey': idempotencyKey,
       }),
     );
+    if (result['accepted'] == false) {
+      throw AdaptiveFlywheelFailure.fromJson(
+        adaptiveFlywheelStringMap(result['error']),
+      );
+    }
+    return result;
   }
 
   /// Inspects one assistant Graph run projection with typed terminal facts.

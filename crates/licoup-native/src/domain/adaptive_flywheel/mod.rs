@@ -13,10 +13,13 @@ mod package;
 mod reducer;
 mod service;
 mod store;
+mod workflow_diagnostics;
 
 pub use assistant::{
-    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, PreflightCheck, PreflightFailure,
-    PreflightReceipt, preflight_assistant_graph,
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, PreflightDiagnostic,
+    PreflightFailure, PreflightReceipt, WorkflowDiagnosticActualKind, WorkflowDiagnosticCode,
+    WorkflowDiagnosticExpected, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
+    preflight_assistant_graph,
 };
 pub use definition::{
     ActorSlot, BindingCandidate, BindingKind, BindingValue, FailureClass, FallbackReceipt,
@@ -33,6 +36,10 @@ pub use reducer::{
 };
 pub use service::{ActorTurnPort, StrategyService};
 pub use store::StrategyStore;
+pub(crate) use workflow_diagnostics::{
+    WorkflowValidationFailure, compile_workflow_source, compile_workflow_value,
+    validate_workflow_value,
+};
 
 pub const WORKFLOW_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.workflow.v1";
 pub const STRATEGY_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.state.v1";

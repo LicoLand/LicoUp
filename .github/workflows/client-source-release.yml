@@ -1,0 +1,61 @@
+name: Publish source release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [release]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-release-${{ github.event.pull_request.merge_commit_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish-source:
+    name: Publish source release
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'stable' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - name: Build the exact versioned source package
+        id: source
+        env:
+          SOURCE_EVENT_PATH: ${{ github.event_path }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_REVISION: ${{ github.event.pull_request.merge_commit_sha }}
+        run: >-
+          node tools/scripts/client-source-release.mjs prepare
+          --event "$SOURCE_EVENT_PATH"
+          --repository "$SOURCE_REPOSITORY"
+          --revision "$SOURCE_REVISION"
+          --output build/source-release
+      - name: Publish the source package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_REVISION: ${{ github.event.pull_request.merge_commit_sha }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          SOURCE_TITLE: ${{ steps.source.outputs.title }}
+          SOURCE_ARCHIVE: ${{ steps.source.outputs.archive }}
+          SOURCE_DIGEST: ${{ steps.source.outputs.digest }}
+        run: >-
+          node tools/scripts/client-source-release.mjs publish
+          --repository "$SOURCE_REPOSITORY"
+          --revision "$SOURCE_REVISION"
+          --tag "$SOURCE_TAG"
+          --title "$SOURCE_TITLE"
+          --archive "$SOURCE_ARCHIVE"
+          --digest "$SOURCE_DIGEST"

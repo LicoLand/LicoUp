@@ -242,6 +242,15 @@ pub(super) fn parse_runtime_driver_registry(
         {
             return Err("runtime_driver_registry_blocker_drift");
         }
+        if state.status != "ready"
+            && !driver.blocker_codes.is_empty()
+            && !driver
+                .blocker_codes
+                .iter()
+                .any(|code| state.summary_codes.contains(code))
+        {
+            return Err("runtime_driver_registry_blocker_drift");
+        }
         if let Some(binding) = state.evidence_binding.as_ref()
             && (binding.agent_id != driver.agent_id
                 || binding.driver_id != driver.driver_id
@@ -298,7 +307,7 @@ fn validate_driver_entry(driver: &DriverInventoryEntry) -> std::result::Result<(
         || !mode_valid
         || !blockers_valid
         || (driver.driver_mode == "blocked" && driver.blocker_codes.is_empty())
-        || (driver.driver_mode != "blocked" && !driver.blocker_codes.is_empty())
+        || (driver.driver_mode == "history-only" && !driver.blocker_codes.is_empty())
         || (driver.driver_mode != "blocked" && driver.official_native_lane_kind == "unavailable")
         || (driver.driver_mode == "history-only" && !driver.history_readable)
     {
@@ -450,7 +459,7 @@ impl RuntimeDriverRegistry {
     pub(super) fn profile(&self, agent_id: &str) -> Option<RuntimeDriverProfile> {
         let driver = self.drivers.get(agent_id)?;
         let readiness = self.readiness.get(agent_id)?;
-        let blocker = if driver.driver_mode == "blocked" {
+        let blocker = if readiness.status != "ready" {
             driver.blocker_codes.first().cloned()
         } else {
             None

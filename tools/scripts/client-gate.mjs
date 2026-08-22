@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import {
   appendFileSync,
   readFileSync,
+  writeSync,
 } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -18,6 +19,9 @@ import {
 } from "./client-gate-policy.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const taskEventPrefix = "::lico-dev-task-event::";
+const taskEventSchemaVersion = "v0.0.1:lico-dev:task-event-1";
+const safeTaskEventValue = /^[a-z0-9][a-z0-9:._-]{0,127}$/u;
 const forbiddenSourceTokens = Object.freeze([
   "dtolnay/rust-toolchain",
   "subosito/flutter-action",
@@ -35,6 +39,31 @@ const forbiddenSourceTokens = Object.freeze([
 
 function fail(message) {
   throw new Error(message);
+}
+
+export function clientGateTaskEvent({ type, stage, code, exitCode, retryable, recovery }) {
+  if (!["step-start", "step-failure"].includes(type) || !safeTaskEventValue.test(stage ?? "")) {
+    fail("client gate task event is invalid");
+  }
+  const event = {
+    schemaVersion: taskEventSchemaVersion,
+    type,
+    stage,
+    component: "client-gate",
+  };
+  if (type === "step-failure") {
+    if (!safeTaskEventValue.test(code ?? "") || !Number.isInteger(exitCode) ||
+        exitCode < -1 || exitCode > 255 || typeof retryable !== "boolean" ||
+        !safeTaskEventValue.test(recovery ?? "")) {
+      fail("client gate failure event is invalid");
+    }
+    Object.assign(event, { code, exitCode, retryable, recovery });
+  }
+  return `${taskEventPrefix}${JSON.stringify(event)}`;
+}
+
+function emitClientGateTaskEvent(event) {
+  writeSync(2, `${clientGateTaskEvent(event)}\n`);
 }
 
 function readText(relativePath) {
@@ -96,7 +125,7 @@ function validatePackageTopology() {
   }
   if (
     scripts["client:verify:agent-conversations:release-ready"] !==
-    "node tools/scripts/client-agent-conversation-parity-reducer.mjs --check --require-ready"
+    "node tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs --check --require-ready"
   ) {
     fail("package.json must bind the canonical conversation release-readiness gate");
   }
@@ -127,12 +156,13 @@ function validatePackageTopology() {
   const realConversationToolTokens = [
     "client-agent-conversation-verify.mjs --release-ui",
     "client-agent-conversation-verify.mjs --live",
-    "client-cursor-conversation-gate.mjs",
-    "client-up-local-service-conversation-gate.mjs",
-    "client-same-session-conversation-gate.mjs",
-    "client-claude-code-conversation-gate.mjs",
-    "client-antigravity-conversation-gate.mjs",
-    "client-codex-conversation-parity.mjs",
+    "agent-conversations/cursor/conversation.test.mjs",
+    "agent-conversations/codex/conversation.test.mjs",
+    "agent-conversations/opencode/conversation.test.mjs",
+    "agent-conversations/kimi-code/conversation.test.mjs",
+    "agent-conversations/claude-code/conversation.test.mjs",
+    "agent-conversations/antigravity/conversation.test.mjs",
+    "agent-conversations/support/gates/codex-parity.mjs",
   ];
   for (const [script, command] of Object.entries(scripts)) {
     const runsRealConversation = realConversationToolTokens.some((token) =>
@@ -392,29 +422,78 @@ function validateDelegatedApplePublicationTopology() {
   const packageJson = readJson("package.json");
   const scripts = packageJson.scripts || {};
   const expected = {
-    "client:release:service:install": "apple-release service install",
-    "client:release:service:configure": "apple-release service configure --config tools/apple-release/macos-direct-arm64.json",
-    "client:release:service:status": "apple-release service status",
     "client:release:macos": "apple-release release start --config tools/apple-release/macos-direct-arm64.json",
     "client:release:status": "apple-release release status",
   };
   for (const [name, command] of Object.entries(expected)) {
     if (scripts[name] !== command) fail(`package.json must bind ${name} to Apple Release`);
   }
+  for (const retired of [
+    "client:release:service:install",
+    "client:release:service:configure",
+    "client:release:service:status",
+  ]) {
+    if (Object.hasOwn(scripts, retired)) fail(`retired Apple Release command remains: ${retired}`);
+  }
   const config = readJson("tools/apple-release/macos-direct-arm64.json");
   const candidate = config.candidate;
+  const adapterPrefix = "tools/scripts/macos-release/";
+  const productCommands = [...(config.gates || []), config.build?.command, config.update?.command]
+    .filter((command) => Array.isArray(command) && command[0] === "node");
   if (config.schema !== "apple-release.config.v1" ||
       config.source?.branch !== "release" ||
-      !candidate || candidate.template !== "release-candidate/v{version}" ||
-      candidate.mergeMethod !== "merge" ||
+      !candidate || candidate.branch !== "macos-release-candidate" ||
+      Object.keys(candidate).sort().join(",") !== "branch,requiredChecks" ||
       !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
-      !Array.isArray(config.version?.prepare) || config.version.prepare.length === 0 ||
-      !Array.isArray(config.version?.allowedPaths) ||
-      !config.version.allowedPaths.includes("tools/client-version.json") ||
+      Object.keys(config.version || {}).sort().join(",") !== "buildField,file,versionField" ||
       config.apple?.target !== "macos-direct-arm64" ||
       config.github?.repository !== "LicoLand/LicoUp" ||
-      config.artifacts?.filter((entry) => entry.role === "installer").length !== 1) {
+      productCommands.length !== 4 ||
+      productCommands.some((command) => !command[1]?.startsWith(adapterPrefix)) ||
+      config.artifacts?.length !== 5 ||
+      config.artifacts.filter((entry) => entry.role === "update-manifest").length !== 1) {
     fail("LicoUp delegated Apple publication configuration is invalid");
+  }
+}
+
+function validateAutomaticSourcePublicationTopology() {
+  const packageJson = readJson("package.json");
+  if (packageJson.scripts?.["client:release:source:self-test"] !==
+      "node --test tests/contract/client/client-source-release.test.mjs") {
+    fail("package.json must bind the automatic source release self-test");
+  }
+  const workflow = readText(".github/workflows/client-source-release.yml");
+  const publisher = readText("tools/scripts/client-source-release.mjs");
+  if (JSON.stringify(workflowJobIds(workflow)) !== JSON.stringify(["publish-source"])) {
+    fail("source publication workflow must keep one publication job");
+  }
+  for (const token of [
+    "name: Publish source release",
+    "pull_request:\n    types: [closed]\n    branches: [release]",
+    "permissions:\n  contents: write",
+    "github.event.pull_request.merged == true",
+    "github.event.pull_request.head.ref == 'stable'",
+    "github.event.pull_request.head.repo.full_name == github.repository",
+    "ref: ${{ github.event.pull_request.merge_commit_sha }}",
+    "persist-credentials: false",
+    "client-source-release.mjs prepare",
+    "client-source-release.mjs publish",
+  ]) {
+    assertIncludes(workflow, token, `automatic source publication is missing: ${token}`);
+  }
+  for (const token of [
+    "tag: `v${version}`",
+    "title: `LicoUp ${version}`",
+    "`apple-release-source:v1:${revision}`",
+  ]) {
+    assertIncludes(publisher, token, `source publisher is missing the shared Release contract: ${token}`);
+  }
+  for (const token of [
+    "\n  push:", "workflow_dispatch:", "client:release:macos", "apple-release",
+    "notarytool", "codesign", "xcodebuild", "flutter build", "npm publish",
+  ]) {
+    assertExcludes(workflow, token,
+      `automatic source publication must remain source-only: ${token}`);
   }
 }
 
@@ -424,6 +503,7 @@ export function validateClientGateTopology() {
   validatePromotionTopology();
   validateReadmeFastPathTopology();
   validateDelegatedApplePublicationTopology();
+  validateAutomaticSourcePublicationTopology();
   return Object.freeze({
     ok: true,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
@@ -443,6 +523,7 @@ function run(command, args, options = {}) {
   });
   if (result.error || result.status !== 0) {
     if (options.capture) fail(options.errorMessage);
+    options.onFailure?.(result);
     process.exit(result.status ?? 1);
   }
   return result.stdout;
@@ -551,8 +632,18 @@ function runLane(lane) {
   const scripts = CLIENT_GATE_LANES[lane];
   if (!scripts) fail(`unknown client gate lane: ${lane || "<missing>"}`);
   for (const script of scripts) {
+    emitClientGateTaskEvent({ type: "step-start", stage: script });
     process.stdout.write(`\n[client-gate:${lane}] npm run ${script}\n`);
-    run("npm", ["run", script]);
+    run("npm", ["run", script], {
+      onFailure: (result) => emitClientGateTaskEvent({
+        type: "step-failure",
+        stage: script,
+        code: result.error ? "command-launch-failed" : "command-exit-nonzero",
+        exitCode: result.status ?? 1,
+        retryable: false,
+        recovery: "inspect-failed-step",
+      }),
+    });
   }
   process.stdout.write(`${JSON.stringify({
     ok: true,

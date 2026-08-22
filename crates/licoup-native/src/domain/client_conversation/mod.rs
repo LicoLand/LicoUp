@@ -18,8 +18,8 @@ pub use profile_snapshot::{
 pub use service::ConversationService;
 pub(crate) use service::route_receipt;
 pub use store::{
-    ConversationRuntimeScope, ConversationStore, DEFAULT_EVENT_PAGE_SIZE, MAX_EVENT_PAGE_SIZE,
-    NewEventPart, StoreError, StoreResult,
+    ConversationRuntimeScope, ConversationStore, DEFAULT_EVENT_PAGE_SIZE,
+    DirectTurnExecutionContext, MAX_EVENT_PAGE_SIZE, NewEventPart, StoreError, StoreResult,
 };
 
 use serde::{Deserialize, Serialize};
@@ -147,6 +147,8 @@ pub struct ProfileIntent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_environment: Option<String>,
     #[serde(default)]
     pub responsibility: ProfileResponsibility,
@@ -166,6 +168,8 @@ pub struct ProfileIntentUpdate {
     pub skill_references: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_reasoning_effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_environment: Option<String>,
 }
@@ -199,6 +203,10 @@ impl ProfileIntentUpdate {
         }
         for (field, value) in [
             ("preferred_model", self.preferred_model.as_deref()),
+            (
+                "preferred_reasoning_effort",
+                self.preferred_reasoning_effort.as_deref(),
+            ),
             (
                 "preferred_environment",
                 self.preferred_environment.as_deref(),
@@ -234,6 +242,8 @@ pub struct MembershipProfileSnapshot {
     pub skill_references: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_reasoning_effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_environment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

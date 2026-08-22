@@ -61,7 +61,8 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
            required_capabilities TEXT NOT NULL DEFAULT '[]',
            preferred_capabilities TEXT NOT NULL DEFAULT '[]',
            skill_references TEXT NOT NULL DEFAULT '[]',
-           preferred_model TEXT, preferred_environment TEXT,
+           preferred_model TEXT, preferred_reasoning_effort TEXT,
+           preferred_environment TEXT,
            updated_at INTEGER NOT NULL
          );
          CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx
@@ -479,10 +480,12 @@ impl CountedSqlite for CountedTransaction<'_> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct DirectTurnExecutionContext {
+pub struct DirectTurnExecutionContext {
     pub turn: DirectTurn,
     pub agent_id: String,
     pub source_content: String,
+    pub preferred_model: Option<String>,
+    pub preferred_reasoning_effort: Option<String>,
     pub runtime_session_id: Option<String>,
     pub runtime_conversation_path: Option<String>,
     pub working_directory: Option<String>,
@@ -1465,7 +1468,8 @@ impl ConversationStore {
                 .query_row(
                     "SELECT revision, responsibility, required_capabilities,
                      preferred_capabilities, skill_references, preferred_model,
-                     preferred_environment, updated_at FROM membership_profiles
+                     preferred_reasoning_effort, preferred_environment, updated_at
+                     FROM membership_profiles
                      WHERE membership_id=?1",
                     params![membership_id],
                     profile_intent_from_row,
@@ -1512,7 +1516,7 @@ impl ConversationStore {
                 .query_row(
                     "SELECT revision, responsibility, required_capabilities,
                      preferred_capabilities, skill_references, preferred_model,
-                     preferred_environment, updated_at
+                     preferred_reasoning_effort, preferred_environment, updated_at
                      FROM membership_profiles WHERE membership_id=?1",
                     params![membership_id],
                     profile_intent_from_row,
@@ -1522,6 +1526,7 @@ impl ConversationStore {
             let same = current.required_capabilities == update.required_capabilities
                 && current.preferred_capabilities == update.preferred_capabilities
                 && current.preferred_model == update.preferred_model
+                && current.preferred_reasoning_effort == update.preferred_reasoning_effort
                 && current.preferred_environment == update.preferred_environment
                 && normalized_skill_references(&update.skill_references, current.responsibility)
                     == current.skill_references;
@@ -1545,15 +1550,17 @@ impl ConversationStore {
                      preferred_capabilities=?3,
                      skill_references=?4,
                      preferred_model=?5,
-                     preferred_environment=?6,
-                     updated_at=?7
-                 WHERE membership_id=?1 AND revision=?8",
+                     preferred_reasoning_effort=?6,
+                     preferred_environment=?7,
+                     updated_at=?8
+                 WHERE membership_id=?1 AND revision=?9",
                 params![
                     membership_id,
                     required_capabilities,
                     preferred_capabilities,
                     encoded_skill_references,
                     update.preferred_model,
+                    update.preferred_reasoning_effort,
                     update.preferred_environment,
                     now,
                     expected_revision,
@@ -1567,6 +1574,7 @@ impl ConversationStore {
                 preferred_capabilities: update.preferred_capabilities.clone(),
                 skill_references,
                 preferred_model: update.preferred_model.clone(),
+                preferred_reasoning_effort: update.preferred_reasoning_effort.clone(),
                 preferred_environment: update.preferred_environment.clone(),
                 updated_at_unix_ms: now,
             })
@@ -1589,7 +1597,8 @@ impl ConversationStore {
                  COALESCE(fp.required_capabilities, '[]'),
                  COALESCE(fp.preferred_capabilities, '[]'),
                  COALESCE(fp.skill_references, '[]'),
-                 fp.preferred_model, fp.preferred_environment,
+                 fp.preferred_model, fp.preferred_reasoning_effort,
+                 fp.preferred_environment,
                  COALESCE(fp.updated_at, m.joined_at)
                  FROM memberships m
                  JOIN principals p ON p.id=m.principal_id
@@ -1609,8 +1618,9 @@ impl ConversationStore {
                     skill_references: serde_json::from_str(&row.get::<_, String>(15)?)
                         .unwrap_or_default(),
                     preferred_model: row.get(16)?,
-                    preferred_environment: row.get(17)?,
-                    updated_at_unix_ms: row.get(18)?,
+                    preferred_reasoning_effort: row.get(17)?,
+                    preferred_environment: row.get(18)?,
+                    updated_at_unix_ms: row.get(19)?,
                 };
                 Ok((membership, intent))
             })?;
@@ -2018,43 +2028,48 @@ impl ConversationStore {
                 transaction.commit()?;
                 return Ok(None);
             }
-            let context = transaction.query_row(
-                "SELECT t.id, t.conversation_id, t.source_event_id, t.membership_id,
-                        t.state, t.ordinal, p.agent_id,
-                        (SELECT ep.content FROM event_parts ep
-                         WHERE ep.event_id=t.source_event_id AND ep.kind='text'
-                         ORDER BY ep.ordinal ASC LIMIT 1),
-                        rb.runtime_session_id, rb.runtime_conversation_path,
-                        rb.working_directory
-                 FROM direct_turns t
-                 JOIN memberships m ON m.id=t.membership_id
-                    AND m.conversation_id=t.conversation_id
-                    AND m.status='active'
-                 JOIN principals p ON p.id=m.principal_id
-                    AND p.kind='agent' AND p.agent_id IS NOT NULL AND p.agent_id<>''
-                 LEFT JOIN runtime_bindings rb
-                    ON rb.conversation_id=t.conversation_id
-                    AND rb.membership_id=t.membership_id AND rb.lane='conversation'
-                 WHERE t.id=?1",
+            let context = direct_turn_execution_context(&transaction, turn_id)?;
+            transaction.commit()?;
+            Ok(Some(context))
+        })
+    }
+
+    /// Atomically claim the oldest safe-boundary continuation for one
+    /// Conversation Membership and reload its current runtime/Profile facts.
+    pub fn claim_next_pending_direct_turn(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+    ) -> StoreResult<Option<DirectTurnExecutionContext>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(membership_id, "membership_id")?;
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let turn_id = transaction
+                .query_row(
+                    "SELECT t.id FROM direct_turns t
+                     JOIN events e ON e.id=t.source_event_id
+                     WHERE t.conversation_id=?1 AND t.membership_id=?2
+                       AND t.state='pending'
+                     ORDER BY e.sequence ASC, t.ordinal ASC, t.id ASC LIMIT 1",
+                    params![conversation_id, membership_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            let Some(turn_id) = turn_id else {
+                transaction.commit()?;
+                return Ok(None);
+            };
+            let changed = transaction.execute(
+                "UPDATE direct_turns SET state='running' WHERE id=?1 AND state='pending'",
                 params![turn_id],
-                |row| {
-                    Ok(DirectTurnExecutionContext {
-                        turn: DirectTurn {
-                            id: row.get(0)?,
-                            conversation_id: row.get(1)?,
-                            source_event_id: row.get(2)?,
-                            membership_id: row.get(3)?,
-                            state: decode(row.get(4)?)?,
-                            ordinal: row.get(5)?,
-                        },
-                        agent_id: row.get(6)?,
-                        source_content: row.get(7)?,
-                        runtime_session_id: row.get(8)?,
-                        runtime_conversation_path: row.get(9)?,
-                        working_directory: row.get(10)?,
-                    })
-                },
             )?;
+            if changed != 1 {
+                transaction.commit()?;
+                return Ok(None);
+            }
+            let context = direct_turn_execution_context(&transaction, &turn_id)?;
             transaction.commit()?;
             Ok(Some(context))
         })
@@ -2073,7 +2088,7 @@ impl ConversationStore {
     /// Settle a mention turn whose dispatch was never opened. When a dispatch
     /// row with the turn's identity exists, the dispatch completion authority
     /// already owns the terminal write and this call is a no-op.
-    pub(super) fn fail_direct_turn_unless_dispatched(
+    pub fn fail_direct_turn_unless_dispatched(
         &self,
         turn_id: &str,
         diagnostic: &str,
@@ -2709,8 +2724,8 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     match prior_schema_version.as_deref() {
         None => {
             connection.execute_batch(
-                "INSERT INTO schema_meta(key, value) VALUES ('version', '8')
-                 ON CONFLICT(key) DO UPDATE SET value='8';",
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '9')
+                 ON CONFLICT(key) DO UPDATE SET value='9';",
             )?;
         }
         Some("1") => {
@@ -2748,7 +2763,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -2784,6 +2799,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if current_schema_version == "7" {
         migrate_profile_intent_v8(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "8" {
+        migrate_profile_reasoning_effort_v9(connection)?;
     }
     ensure_column(
         connection,
@@ -3065,6 +3088,31 @@ fn migrate_profile_intent_v8(connection: &mut Connection) -> StoreResult<()> {
     transaction.execute(
         "INSERT INTO schema_meta(key, value) VALUES ('version', '8')
          ON CONFLICT(key) DO UPDATE SET value='8'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Version 9 makes reasoning effort part of the same revisioned Profile intent
+/// as the preferred model. It is nullable so existing Profiles preserve their
+/// native runtime default without inventing a value.
+fn migrate_profile_reasoning_effort_v9(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let columns = {
+        let mut statement = transaction.prepare("PRAGMA table_info(membership_profiles)")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<BTreeSet<_>>>()?
+    };
+    if !columns.contains("preferred_reasoning_effort") {
+        transaction.execute_batch(
+            "ALTER TABLE membership_profiles ADD COLUMN preferred_reasoning_effort TEXT;",
+        )?;
+    }
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '9')
+         ON CONFLICT(key) DO UPDATE SET value='9'",
         [],
     )?;
     transaction.commit()?;
@@ -3795,6 +3843,52 @@ fn enqueue_mention_turns_in_transaction(
     Ok(turns)
 }
 
+fn direct_turn_execution_context(
+    connection: &impl CountedSqlite,
+    turn_id: &str,
+) -> StoreResult<DirectTurnExecutionContext> {
+    Ok(connection.query_row(
+        "SELECT t.id, t.conversation_id, t.source_event_id, t.membership_id,
+                t.state, t.ordinal, p.agent_id,
+                (SELECT ep.content FROM event_parts ep
+                 WHERE ep.event_id=t.source_event_id AND ep.kind='text'
+                 ORDER BY ep.ordinal ASC LIMIT 1),
+                rb.runtime_session_id, rb.runtime_conversation_path,
+                rb.working_directory, fp.preferred_model,
+                fp.preferred_reasoning_effort
+         FROM direct_turns t
+         JOIN memberships m ON m.id=t.membership_id
+            AND m.conversation_id=t.conversation_id AND m.status='active'
+         JOIN principals p ON p.id=m.principal_id
+            AND p.kind='agent' AND p.agent_id IS NOT NULL AND p.agent_id<>''
+         LEFT JOIN runtime_bindings rb
+            ON rb.conversation_id=t.conversation_id
+            AND rb.membership_id=t.membership_id AND rb.lane='conversation'
+         LEFT JOIN membership_profiles fp ON fp.membership_id=t.membership_id
+         WHERE t.id=?1",
+        params![turn_id],
+        |row| {
+            Ok(DirectTurnExecutionContext {
+                turn: DirectTurn {
+                    id: row.get(0)?,
+                    conversation_id: row.get(1)?,
+                    source_event_id: row.get(2)?,
+                    membership_id: row.get(3)?,
+                    state: decode(row.get(4)?)?,
+                    ordinal: row.get(5)?,
+                },
+                agent_id: row.get(6)?,
+                source_content: row.get(7)?,
+                runtime_session_id: row.get(8)?,
+                runtime_conversation_path: row.get(9)?,
+                working_directory: row.get(10)?,
+                preferred_model: row.get(11)?,
+                preferred_reasoning_effort: row.get(12)?,
+            })
+        },
+    )?)
+}
+
 fn upsert_principal(connection: &impl CountedSqlite, principal: &Principal) -> StoreResult<()> {
     let kind = enum_wire(principal.kind)?;
     let existing_kind: Option<String> = connection
@@ -4016,8 +4110,8 @@ fn ensure_membership_profile_default(
         "INSERT OR IGNORE INTO membership_profiles(
            membership_id, revision, responsibility, required_capabilities,
            preferred_capabilities, skill_references, preferred_model,
-           preferred_environment, updated_at
-         ) VALUES (?1, 0, 'member', '[]', '[]', '[]', NULL, NULL, ?2)",
+           preferred_reasoning_effort, preferred_environment, updated_at
+         ) VALUES (?1, 0, 'member', '[]', '[]', '[]', NULL, NULL, NULL, ?2)",
         params![membership_id, now],
     )?;
     Ok(())
@@ -4031,8 +4125,9 @@ fn profile_intent_from_row(row: &Row<'_>) -> rusqlite::Result<ProfileIntent> {
         preferred_capabilities: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or_default(),
         skill_references: serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default(),
         preferred_model: row.get(5)?,
-        preferred_environment: row.get(6)?,
-        updated_at_unix_ms: row.get(7)?,
+        preferred_reasoning_effort: row.get(6)?,
+        preferred_environment: row.get(7)?,
+        updated_at_unix_ms: row.get(8)?,
     })
 }
 
@@ -4091,7 +4186,7 @@ fn set_profile_responsibility(
     let current = connection.query_row(
         "SELECT revision, responsibility, required_capabilities,
          preferred_capabilities, skill_references, preferred_model,
-         preferred_environment, updated_at
+         preferred_reasoning_effort, preferred_environment, updated_at
          FROM membership_profiles WHERE membership_id=?1",
         params![membership_id],
         profile_intent_from_row,
@@ -5765,7 +5860,7 @@ mod tests {
 
         let custom_before = snapshot_group(&root, "custom-group");
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "8");
+        assert_eq!(schema_version(&root), "9");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -5911,7 +6006,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "8");
+        assert_eq!(schema_version(&root), "9");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -5942,7 +6037,7 @@ mod tests {
         fixture.close().unwrap();
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "8");
+        assert_eq!(schema_version(&root), "9");
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -5970,7 +6065,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "8");
+        assert_eq!(schema_version(&root), "9");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -6276,6 +6371,7 @@ mod tests {
         let update = ProfileIntentUpdate {
             required_capabilities: vec!["workspace".into()],
             preferred_model: Some("model-a".into()),
+            preferred_reasoning_effort: Some("high".into()),
             preferred_environment: Some("local".into()),
             ..Default::default()
         };
@@ -6375,7 +6471,7 @@ mod tests {
         fixture.close().unwrap();
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "8");
+        assert_eq!(schema_version(&root), "9");
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());
         let profiles = store.membership_profiles("legacy-group").unwrap();
@@ -6385,7 +6481,7 @@ mod tests {
 
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "8");
+        assert_eq!(schema_version(&root), "9");
         assert_eq!(
             reopened.membership_profiles("legacy-group").unwrap().len(),
             1

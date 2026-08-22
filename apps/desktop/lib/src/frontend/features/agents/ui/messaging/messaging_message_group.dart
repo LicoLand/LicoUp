@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
@@ -10,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -32,6 +35,7 @@ class MessagingMessageGroup extends StatelessWidget {
     required this.messages,
     required this.target,
     required this.adapter,
+    this.runtimeProfile,
     this.conversationId = '',
   });
 
@@ -42,6 +46,7 @@ class MessagingMessageGroup extends StatelessWidget {
   final List<AgentConversationMessage> messages;
   final TargetCandidate target;
   final AgentRenderAdapter adapter;
+  final AgentParticipantRuntimeProfile? runtimeProfile;
 
   /// This author's native/local conversation id, revealed on message hover
   /// immediately before the timestamp (agent bubbles only).
@@ -51,6 +56,7 @@ class MessagingMessageGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final isAssistant = participantRole.trim().toLowerCase() == 'assistant';
     final authorName = authorIsUser
         ? strings.you
         : participantLabel.trim().isNotEmpty
@@ -94,11 +100,14 @@ class MessagingMessageGroup extends StatelessWidget {
                     _MessagingUserAvatar(accessibilityLabel: authorName),
                   ]
                 : [
-                    MessagingAgentAvatar(
-                      target: participantTarget ?? target,
-                      size: 36,
-                      iconSize: 20,
-                    ),
+                    if (isAssistant)
+                      _MessagingAssistantAvatar(accessibilityLabel: authorName)
+                    else
+                      MessagingAgentAvatar(
+                        target: participantTarget ?? target,
+                        size: 36,
+                        iconSize: 20,
+                      ),
                     const SizedBox(width: 12),
                     Flexible(
                       child: Text(
@@ -114,6 +123,26 @@ class MessagingMessageGroup extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     _MessagingAgentBadge(participantRole: participantRole),
+                    if (!isAssistant && runtimeProfile?.hasDetails == true) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _runtimeProfileLabel(
+                            strings,
+                            participantTarget,
+                            runtimeProfile!,
+                          ),
+                          key: const Key('messaging-subagent-runtime-profile'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
           ),
         ),
@@ -126,6 +155,7 @@ class MessagingMessageGroup extends StatelessWidget {
             message: messages[index],
             adapter: adapter,
             authorIsUser: authorIsUser,
+            assistantStyle: isAssistant,
             conversationId: conversationId,
           ),
           if (index != messages.length - 1)
@@ -133,6 +163,27 @@ class MessagingMessageGroup extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  String _runtimeProfileLabel(
+    LicoStrings strings,
+    TargetCandidate? target,
+    AgentParticipantRuntimeProfile profile,
+  ) {
+    final model = profile.model.trim();
+    final effort = profile.reasoningEffort.trim();
+    final labels = <String>[];
+    if (model.isNotEmpty) {
+      labels.add(
+        target == null
+            ? model
+            : agentOrchestrationModelDisplayName(target, model),
+      );
+    }
+    if (effort.isNotEmpty) {
+      labels.add(strings.reasoningEffortOptionLabel(effort, effort));
+    }
+    return labels.join(' · ');
   }
 }
 
@@ -142,6 +193,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     required this.message,
     required this.adapter,
     required this.authorIsUser,
+    required this.assistantStyle,
     this.conversationId = '',
   });
 
@@ -152,6 +204,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   /// bubble is why the surface did not read like a chat client: there was no
   /// visual cue for who is speaking beyond the avatar.
   final bool authorIsUser;
+  final bool assistantStyle;
   final String conversationId;
 
   @override
@@ -266,10 +319,12 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
           )
         : LicoSurface(
             key: const Key('messaging-message-bubble'),
-            tone: LicoSurfaceTone.neutral,
+            tone: widget.assistantStyle
+                ? LicoSurfaceTone.accent
+                : LicoSurfaceTone.neutral,
             elevation: LicoElevation.flat,
             radius: LicoRadius.composerField,
-            bordered: false,
+            bordered: widget.assistantStyle,
             hovered: _hovered,
             padding: bubblePadding,
             child: content,
@@ -293,6 +348,32 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                 alignment: Alignment.centerLeft,
                 child: _buildMessageColumn(context, bubble),
               ),
+      ),
+    );
+  }
+}
+
+class _MessagingAssistantAvatar extends StatelessWidget {
+  const _MessagingAssistantAvatar({required this.accessibilityLabel});
+
+  final String accessibilityLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Semantics(
+      label: accessibilityLabel,
+      child: Container(
+        key: const Key('messaging-assistant-avatar'),
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: colors.accentSurface,
+          border: Border.all(color: colors.accentBorder, width: 1),
+        ),
+        child: AssistantSparklesIcon(color: colors.accent, size: 19),
       ),
     );
   }
@@ -340,8 +421,9 @@ class _MessagingAgentBadge extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final role = switch (participantRole.trim().toLowerCase()) {
+      'assistant' => strings.assistantBadge,
+      'member' || 'peer-agent' => strings.subagentBadge,
       'main-agent' => 'MAIN AGENT',
-      'peer-agent' => 'AGENT',
       _ => strings.agentBadge,
     };
     return Container(
