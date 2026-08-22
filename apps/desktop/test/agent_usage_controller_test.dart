@@ -294,13 +294,10 @@ void main() {
       await controller.scan(showProgress: false);
 
       expect(controller.report?.workflowTotalTokens, 52);
-      expect(controller.report?.workflows.single.nodes, hasLength(4));
+      expect(controller.report?.workflows.single.commands, hasLength(4));
       await controller.setHistoryDays(7);
       expect(controller.report?.workflowTotalTokens, 52);
-      expect(
-        controller.report?.workflows.single.roots.single.children,
-        hasLength(3),
-      );
+      expect(controller.report?.workflows.single.commands, hasLength(4));
     },
   );
 }

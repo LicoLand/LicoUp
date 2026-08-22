@@ -176,7 +176,7 @@ while IFS= read -r line; do
   request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
   case "$line" in
-    *'"method":"client.conversation.execute"'*'"mentionedMembershipIds":["membership:agent"]'*)
+    *'"method":"client.conversation.execute"'*'"action":"conversation.dispatch.after-post"'*)
       sleep 1
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"directTurns":[{"state":"succeeded"}]}}\n' "$request_id" "$workflow_id"
       ;;
@@ -198,17 +198,199 @@ done
 
       final result = await client
           .executeStructured('client.conversation.execute', const {
-            'action': 'conversation.message.post',
+            'action': 'conversation.dispatch.after-post',
             'conversationId': 'conversation:group',
-            'authorMembershipId': 'membership:human',
-            'content': '@Agent run',
-            'mentionedMembershipIds': ['membership:agent'],
+            'eventId': 'event:posted',
           })
           .timeout(const Duration(seconds: 3));
 
       expect(result['ok'], isTrue);
       expect(result['directTurns'], isNotEmpty);
       expect(context.startCount, 1);
+    },
+  );
+
+  test(
+    'conversation command EOF reconnects once without replaying the command',
+    () async {
+      if (Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-stdio-eof-reconnect-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final executable = File('${directory.path}/licoup');
+      final firstStarted = File('${directory.path}/first-started');
+      final commands = File('${directory.path}/commands');
+      await executable.writeAsString(r'''#!/bin/sh
+if [ ! -f "$LICO_TEST_FIRST_STARTED" ]; then
+  : > "$LICO_TEST_FIRST_STARTED"
+  first=1
+else
+  first=0
+fi
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"agent.conversation.active"'*)
+      printf '%s\n' "$line" >> "$LICO_TEST_COMMAND_FILE"
+      if [ "$first" -eq 1 ]; then
+        exit 0
+      fi
+      ;;
+  esac
+done
+''');
+      final chmod = await Process.run('chmod', ['+x', executable.path]);
+      expect(chmod.exitCode, 0);
+      final context = _LiveProcessContext(
+        executable,
+        environment: {
+          'LICO_TEST_FIRST_STARTED': firstStarted.path,
+          'LICO_TEST_COMMAND_FILE': commands.path,
+        },
+      );
+      final client = NativeStdioRpcClient(processContext: context);
+      addTearDown(client.dispose);
+
+      await expectLater(
+        client.executeStructured('agent.conversation.active', const {
+          'conversationId': 'conversation:group',
+        }),
+        throwsA(
+          isA<LicoClientRpcException>().having(
+            (error) => error.code,
+            'code',
+            'transport_failed',
+          ),
+        ),
+      );
+      await _waitUntil(() => context.startCount == 2);
+
+      expect(await commands.readAsLines(), hasLength(1));
+      expect(context.startCount, 2);
+    },
+  );
+
+  test('conversation observer reconnects once from the last cursor', () async {
+    if (Platform.isWindows) return;
+    final directory = await Directory.systemTemp.createTemp(
+      'lico-stdio-observer-reconnect-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final executable = File('${directory.path}/licoup');
+    final firstStarted = File('${directory.path}/first-started');
+    final attachRequest = File('${directory.path}/attach-request');
+    await executable.writeAsString(r'''#!/bin/sh
+if [ ! -f "$LICO_TEST_FIRST_STARTED" ]; then
+  : > "$LICO_TEST_FIRST_STARTED"
+  first=1
+else
+  first=0
+fi
+while IFS= read -r line; do
+  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  if [ "$first" -eq 1 ]; then
+    printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","turnHandle":"dispatch:live","conversationId":"conversation:group","cursor":1,"payload":{"text":"first"}}}\n' "$request_id" "$workflow_id"
+    exit 0
+  fi
+  printf '%s\n' "$line" > "$LICO_TEST_ATTACH_REQUEST"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","turnHandle":"dispatch:live","conversationId":"conversation:group","cursor":2,"payload":{"text":"second"}}}\n' "$request_id" "$workflow_id"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true}}\n' "$request_id" "$workflow_id"
+done
+''');
+    final chmod = await Process.run('chmod', ['+x', executable.path]);
+    expect(chmod.exitCode, 0);
+    final context = _LiveProcessContext(
+      executable,
+      environment: {
+        'LICO_TEST_FIRST_STARTED': firstStarted.path,
+        'LICO_TEST_ATTACH_REQUEST': attachRequest.path,
+      },
+    );
+    final client = NativeStdioRpcClient(processContext: context);
+    addTearDown(client.dispose);
+
+    final events = await client
+        .streamConversation(const {
+          'agent': 'synthetic',
+          'text': 'synthetic prompt',
+          'conversationId': 'conversation:group',
+        })
+        .toList()
+        .timeout(const Duration(seconds: 5));
+
+    expect(events.map((event) => event['cursor']).whereType<int>(), [1, 2]);
+    expect(events.last['event'], 'done');
+    expect(context.startCount, 2);
+    final attach = await attachRequest.readAsString();
+    expect(attach, contains('"method":"agent.conversation.attach"'));
+    expect(attach, contains('"afterCursor":1'));
+  });
+
+  test(
+    'cancelling an observer releases the conversation lane before turn completion',
+    () async {
+      if (Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-stdio-observer-detach-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final executable = File('${directory.path}/licoup');
+      final release = File('${directory.path}/release');
+      final completed = File('${directory.path}/completed');
+      await executable.writeAsString(r'''#!/bin/sh
+while IFS= read -r line; do
+  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"agent.conversation.send"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","turnHandle":"dispatch:live","conversationId":"conversation:group","cursor":1,"payload":{"text":"working"}}}\n' "$request_id" "$workflow_id"
+      (
+        while [ ! -f "$LICO_TEST_RELEASE_FILE" ]; do sleep 0.01; done
+        printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true}}\n' "$request_id" "$workflow_id"
+        : > "$LICO_TEST_COMPLETED_FILE"
+      ) &
+      ;;
+    *'"method":"agent.conversation.active"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"turns":[]}}\n' "$request_id" "$workflow_id"
+      ;;
+  esac
+done
+''');
+      final chmod = await Process.run('chmod', ['+x', executable.path]);
+      expect(chmod.exitCode, 0);
+      final context = _LiveProcessContext(
+        executable,
+        environment: {
+          'LICO_TEST_RELEASE_FILE': release.path,
+          'LICO_TEST_COMPLETED_FILE': completed.path,
+        },
+      );
+      final client = NativeStdioRpcClient(processContext: context);
+      addTearDown(client.dispose);
+      final events = <Map<String, dynamic>>[];
+      final subscription = client
+          .streamConversation(const {
+            'agent': 'synthetic',
+            'text': 'synthetic prompt',
+            'conversationId': 'conversation:group',
+          })
+          .listen(events.add);
+
+      await _waitUntil(() => events.isNotEmpty);
+      final detached = subscription.cancel();
+      final active = await client
+          .executeStructured('agent.conversation.active', const {
+            'conversationId': 'conversation:group',
+          })
+          .timeout(const Duration(seconds: 1));
+
+      expect(active['turns'], isEmpty);
+      expect(context.startCount, 1);
+      expect(completed.existsSync(), isFalse);
+      await release.writeAsString('release');
+      await _waitUntil(completed.existsSync);
+      await detached.timeout(const Duration(seconds: 1));
     },
   );
 

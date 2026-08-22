@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -218,7 +219,11 @@ class _ConversationWorkspaceBodyState
     if (_observedConversationSelection == selection) return;
     _observedConversationSelection = selection;
     if (groupId.isNotEmpty) {
-      _applyConversationListLocation((agentId: '', groupId: groupId));
+      final hasBody =
+          controller.clientConversationController.selectedConversation != null;
+      if (hasBody) {
+        _applyConversationListLocation((agentId: '', groupId: groupId));
+      }
     } else if (agentId.isNotEmpty && sessionId.isNotEmpty) {
       _applyConversationListLocation((agentId: agentId, groupId: ''));
     } else if (agentId.isEmpty) {
@@ -1068,6 +1073,12 @@ class _ConversationWorkspaceBodyState
               },
               framed: false,
               flywheelGateway: controller.adaptiveFlywheelGateway,
+              persistentGateway:
+                  controller.conversationGateway
+                      is PersistentAgentConversationGateway
+                  ? controller.conversationGateway
+                        as PersistentAgentConversationGateway
+                  : null,
               onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
                 context,
                 controller,
@@ -1100,6 +1111,11 @@ class _ConversationWorkspaceBodyState
         targets: widget.targets,
         onCopyText: controller.clientClipboardService.writeText,
         flywheelGateway: controller.adaptiveFlywheelGateway,
+        persistentGateway:
+            controller.conversationGateway is PersistentAgentConversationGateway
+            ? controller.conversationGateway
+                  as PersistentAgentConversationGateway
+            : null,
         onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
           context,
           controller,

@@ -15,6 +15,7 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/frontend/shell/client_shell.dart';
@@ -213,17 +214,18 @@ final class _FixtureAgentService extends AgentService {
   Future<List<TargetCandidate>> scanTargets() async => targets;
 
   @override
-  Future<TargetCandidate?> scanOneTarget(
-    String targetId, {
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
     bool enableAgentCliModelLookup = false,
-  }) async {
-    for (final target in targets) {
-      if (target.target == targetId) {
-        return target;
-      }
-    }
-    return null;
-  }
+  }) async => TargetScanBatch([
+    for (final targetId in targetIds)
+      TargetScanSlot(
+        targetId: targetId,
+        candidate: targets
+            .where((target) => target.target == targetId)
+            .firstOrNull,
+      ),
+  ]);
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {

@@ -45,7 +45,8 @@ private keys, Provider configuration, plaintext, history, backups, trust
 decisions, approvals, and local effects.
 
 Packaged targets currently include Antigravity, Claude Code, Codex, Cursor,
-Copilot, Hermes, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi Agent.
+DeepSeek Harness, Copilot, Hermes, Kilo Code, Kimi Code, Lico Agent, OpenClaw,
+OpenCode, and Pi Agent.
 Discovery, readable history, or a synthetic check does not establish
 conversation support. Send remains enabled only for an adapter that passes
 native-conversation parity acceptance. Native drivers and the readiness

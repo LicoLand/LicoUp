@@ -8,7 +8,9 @@ import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptiv
 import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_editor_models.dart';
 import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_diagram.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
@@ -17,6 +19,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -62,6 +65,11 @@ final class _AdaptiveFlywheelDialogState
     extends State<_AdaptiveFlywheelDialog> {
   late final AdaptiveFlywheelController _controller;
   final Map<String, List<DailyConversationAgentAssignment>> _assignments = {};
+  DailyConversationAgentAssignment _assistantDraft =
+      const DailyConversationAgentAssignment();
+  String _assistantConversationId = '';
+  bool _assistantLoading = false;
+  bool _assistantSaving = false;
   String _loadedRevision = '';
   String _validationError = '';
   bool _draftDirty = false;
@@ -84,15 +92,38 @@ final class _AdaptiveFlywheelDialogState
   }
 
   Future<void> _initialize() async {
-    await _controller.initialize();
-    if (!mounted || widget.initialRevision.isEmpty) return;
-    final revisionExists = _controller.definitions.any(
-      (definition) => definition.revisionDigest == widget.initialRevision,
-    );
-    if (revisionExists &&
-        _controller.selectedRevision != widget.initialRevision) {
-      await _controller.selectDefinition(widget.initialRevision);
+    await Future.wait([_controller.initialize(), _loadAssistantProfile()]);
+    if (!mounted) return;
+    if (widget.initialRevision.isNotEmpty) {
+      final revisionExists = _controller.definitions.any(
+        (definition) => definition.revisionDigest == widget.initialRevision,
+      );
+      if (revisionExists &&
+          _controller.selectedRevision != widget.initialRevision) {
+        await _controller.selectDefinition(widget.initialRevision);
+      }
     }
+    _syncDraft(force: true);
+    unawaited(_refreshSelectedModelCatalogs());
+  }
+
+  Future<void> _refreshSelectedModelCatalogs() async {
+    final targetIds = <String>{};
+    final inspection = _controller.inspection;
+    if (inspection != null) {
+      for (final bindings in inspection.bindings.values) {
+        for (final binding in bindings) {
+          final id = binding.valueId.trim();
+          if (id.isNotEmpty) targetIds.add(id);
+        }
+      }
+    }
+    final assistantId = _assistantDraft.agentId.trim();
+    if (assistantId.isNotEmpty) targetIds.add(assistantId);
+    await widget.clientController.refreshAgentModelCatalogs(targetIds);
+    if (!mounted) return;
+    _syncDraft(force: true);
+    setState(() {});
   }
 
   @override
@@ -168,6 +199,157 @@ final class _AdaptiveFlywheelDialogState
     return null;
   }
 
+  ClientConversation? get _assistantConversation {
+    final conversation = widget
+        .clientController
+        .clientConversationController
+        .selectedConversation;
+    return conversation?.group == true ? conversation : null;
+  }
+
+  DailyConversationAgentAssignment _assistantAssignmentDefaults(
+    String agentId, {
+    String preferredModel = '',
+    String preferredReasoningEffort = '',
+  }) {
+    final target = _targetById(_targets, agentId);
+    if (target == null) {
+      return DailyConversationAgentAssignment(
+        agentId: agentId,
+        modelName: preferredModel,
+        reasoningEffort: preferredReasoningEffort,
+      );
+    }
+    final models = agentOrchestrationCommanderModels(target);
+    final model = models.contains(preferredModel)
+        ? preferredModel
+        : (models.isEmpty ? '' : models.first);
+    final efforts = model.isEmpty
+        ? const <String>[]
+        : agentOrchestrationReasoningEffortsForModel(target, model);
+    final effort = efforts.contains(preferredReasoningEffort)
+        ? preferredReasoningEffort
+        : agentOrchestrationDefaultReasoningEffortForModel(target, model);
+    return DailyConversationAgentAssignment(
+      agentId: agentId,
+      modelName: model,
+      reasoningEffort: effort,
+    );
+  }
+
+  ClientConversationMembership? _membershipForAgent(
+    ClientConversation conversation,
+    String agentId,
+  ) {
+    for (final membership in conversation.activeAgentMemberships) {
+      if (membership.principal.agentId == agentId) return membership;
+    }
+    return null;
+  }
+
+  Future<void> _loadAssistantProfile() async {
+    final conversation = _assistantConversation;
+    if (conversation == null) return;
+    final conversationId = conversation.id;
+    final membership =
+        conversation.assistantMembership ??
+        (conversation.activeAgentMemberships.isEmpty
+            ? null
+            : conversation.activeAgentMemberships.first);
+    final targets = _targets;
+    final agentId =
+        membership?.principal.agentId.trim() ??
+        (targets.isEmpty ? '' : targets.first.target);
+    if (mounted) {
+      setState(() {
+        _assistantConversationId = conversationId;
+        _assistantLoading = membership != null;
+        _assistantDraft = _assistantAssignmentDefaults(agentId);
+      });
+    }
+    if (membership == null) return;
+    try {
+      final profile = await widget.clientController.clientConversationController
+          .membershipProfile(membership.id);
+      if (!mounted ||
+          _assistantConversation?.id != conversationId ||
+          _assistantConversationId != conversationId) {
+        return;
+      }
+      setState(() {
+        _assistantDraft = _assistantAssignmentDefaults(
+          agentId,
+          preferredModel: (profile?['preferredModel'] ?? '').toString(),
+          preferredReasoningEffort: (profile?['preferredReasoningEffort'] ?? '')
+              .toString(),
+        );
+        _assistantLoading = false;
+      });
+    } on Object {
+      if (!mounted || _assistantConversationId != conversationId) return;
+      setState(() => _assistantLoading = false);
+    }
+  }
+
+  List<String> _profileStringList(Object? value) => value is List
+      ? value
+            .map((entry) => entry.toString().trim())
+            .where((entry) => entry.isNotEmpty)
+            .toList(growable: false)
+      : const [];
+
+  Future<bool> _saveAssistantProfile() async {
+    final controller = widget.clientController.clientConversationController;
+    final conversation = controller.selectedConversation;
+    final conversationId = conversation?.id ?? '';
+    final agentId = _assistantDraft.agentId.trim();
+    if (conversation == null ||
+        !conversation.group ||
+        conversationId != _assistantConversationId ||
+        agentId.isEmpty) {
+      return false;
+    }
+    var membership = _membershipForAgent(conversation, agentId);
+    if (membership == null) {
+      final target = _targetById(_targets, agentId);
+      final joined = await controller.ensureSelectedAgentMembership(
+        agentId: agentId,
+        displayName: target == null
+            ? agentId
+            : agentConversationTargetDisplayName(target),
+      );
+      if (!joined) return false;
+      final refreshed = controller.selectedConversation;
+      if (refreshed == null || refreshed.id != conversationId) return false;
+      membership = _membershipForAgent(refreshed, agentId);
+    }
+    if (membership == null) return false;
+    if (!await controller.setSelectedAssistantMembership(membership.id)) {
+      return false;
+    }
+    final profile = await controller.membershipProfile(membership.id);
+    if (profile == null) return false;
+    final model = _assistantDraft.modelName.trim();
+    final effort = _assistantDraft.reasoningEffort.trim();
+    await controller.updateMembershipProfileIntent(
+      membershipId: membership.id,
+      expectedRevision: (profile['revision'] as num?)?.toInt() ?? 0,
+      intent: {
+        'requiredCapabilities': _profileStringList(
+          profile['requiredCapabilities'],
+        ),
+        'preferredCapabilities': _profileStringList(
+          profile['preferredCapabilities'],
+        ),
+        'skillReferences': _profileStringList(profile['skillReferences']),
+        'preferredModel': model.isEmpty ? null : model,
+        'preferredReasoningEffort': effort.isEmpty ? null : effort,
+        'preferredEnvironment': profile['preferredEnvironment'],
+      },
+    );
+    return mounted && controller.selectedConversationId == conversationId;
+  }
+
   Future<void> _importPackage() async {
     const zip = XTypeGroup(label: 'ZIP', extensions: ['zip']);
     final file = await openFile(acceptedTypeGroups: const [zip]);
@@ -199,11 +381,23 @@ final class _AdaptiveFlywheelDialogState
 
   Future<void> _save() async {
     final inspection = _controller.inspection;
-    if (inspection == null) return;
-    final missing = inspection.slots
-        .where((slot) => slot.kind == 'actor' && slot.required)
-        .where((slot) => _assignments[slot.id]?.isNotEmpty != true)
-        .toList(growable: false);
+    final hasAssistant = _assistantConversation != null;
+    if (!hasAssistant && inspection == null) return;
+    if (hasAssistant && _assistantDraft.agentId.trim().isEmpty) {
+      setState(() {
+        _validationError = _copy(
+          '请为 Assistant 选择一个可调用 Agent。',
+          'Choose one callable Agent for the Assistant.',
+        );
+      });
+      return;
+    }
+    final missing = inspection == null
+        ? const <AdaptiveFlywheelSlot>[]
+        : inspection.slots
+              .where((slot) => slot.kind == 'actor' && slot.required)
+              .where((slot) => _assignments[slot.id]?.isNotEmpty != true)
+              .toList(growable: false);
     if (missing.isNotEmpty) {
       setState(() {
         _validationError = _copy(
@@ -213,25 +407,58 @@ final class _AdaptiveFlywheelDialogState
       });
       return;
     }
-    await _controller.saveActorBindings({
-      for (final slot in inspection.slots.where((slot) => slot.kind == 'actor'))
-        slot.id: [
-          for (
-            var index = 0;
-            index < (_assignments[slot.id]?.length ?? 0);
-            index += 1
-          )
-            AdaptiveFlywheelBinding(
-              slotId: slot.id,
-              ordinal: index,
-              valueId: _assignments[slot.id]![index].agentId,
-              model: _assignments[slot.id]![index].modelName,
-              reasoningEffort: _assignments[slot.id]![index].reasoningEffort,
-            ),
-        ],
+    setState(() {
+      _assistantSaving = true;
+      _validationError = '';
     });
+    try {
+      if (hasAssistant && !await _saveAssistantProfile()) {
+        if (!mounted) return;
+        setState(() {
+          _validationError = _copy(
+            'Assistant 配置保存失败，请重试。',
+            'Assistant profile could not be saved. Try again.',
+          );
+        });
+        return;
+      }
+      if (inspection != null) {
+        await _controller.saveActorBindings({
+          for (final slot in inspection.slots.where(
+            (slot) => slot.kind == 'actor',
+          ))
+            slot.id: [
+              for (
+                var index = 0;
+                index < (_assignments[slot.id]?.length ?? 0);
+                index += 1
+              )
+                AdaptiveFlywheelBinding(
+                  slotId: slot.id,
+                  ordinal: index,
+                  valueId: _assignments[slot.id]![index].agentId,
+                  model: _assignments[slot.id]![index].modelName,
+                  reasoningEffort:
+                      _assignments[slot.id]![index].reasoningEffort,
+                ),
+            ],
+        });
+      }
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _validationError = _copy(
+          '配置保存失败，请重试。',
+          'The configuration could not be saved. Try again.',
+        );
+      });
+      return;
+    } finally {
+      if (mounted) setState(() => _assistantSaving = false);
+    }
     if (!mounted || _controller.error.isNotEmpty) return;
-    if (_controller.inspection?.diagnosticCode == 'binding_incomplete') {
+    if (inspection != null &&
+        _controller.inspection?.diagnosticCode == 'binding_incomplete') {
       setState(() {
         _validationError = _copy(
           '后台未检测到策略所需的本机运行时，请安装后重试。',
@@ -257,6 +484,7 @@ final class _AdaptiveFlywheelDialogState
     final actorSlots = inspection?.slots
         .where((slot) => slot.kind == 'actor')
         .toList(growable: false);
+    final showAssistantCard = _assistantConversation != null;
     return Dialog(
       key: const Key('adaptive-flywheel-dialog'),
       backgroundColor: colors.surface,
@@ -296,6 +524,30 @@ final class _AdaptiveFlywheelDialogState
                 key: const Key('main-agent-settings'),
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (showAssistantCard) ...[
+                    _AdaptiveFlywheelAssistantCard(
+                      targets: _targets,
+                      draft: _assistantDraft,
+                      loading: _assistantLoading || _assistantSaving,
+                      onDraftChanged: (draft) {
+                        setState(() {
+                          _validationError = '';
+                          _assistantDraft = _assistantAssignmentDefaults(
+                            draft.agentId,
+                            preferredModel: draft.modelName,
+                            preferredReasoningEffort: draft.reasoningEffort,
+                          );
+                        });
+                      },
+                      isRefreshingAgentCatalog: widget
+                          .clientController
+                          .isRefreshingNativeModelCatalog,
+                      onAgentCatalogRequested: widget
+                          .clientController
+                          .ensureSelectedAgentModelCatalog,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -388,10 +640,19 @@ final class _AdaptiveFlywheelDialogState
                   FilledButton(
                     key: const Key('main-agent-save'),
                     onPressed:
-                        _controller.busy || _controller.inspection == null
+                        _controller.busy ||
+                            _assistantLoading ||
+                            _assistantSaving ||
+                            (!showAssistantCard &&
+                                _controller.inspection == null)
                         ? null
                         : _save,
-                    child: Text(strings.save),
+                    child: _assistantSaving
+                        ? const SizedBox.square(
+                            dimension: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(strings.save),
                   ),
                 ],
               ),
@@ -516,6 +777,105 @@ final class _AdaptiveFlywheelDialogState
       }
     }
     return null;
+  }
+}
+
+final class _AdaptiveFlywheelAssistantCard extends StatelessWidget {
+  const _AdaptiveFlywheelAssistantCard({
+    required this.targets,
+    required this.draft,
+    required this.loading,
+    required this.onDraftChanged,
+    required this.isRefreshingAgentCatalog,
+    required this.onAgentCatalogRequested,
+  });
+
+  final List<TargetCandidate> targets;
+  final DailyConversationAgentAssignment draft;
+  final bool loading;
+  final ValueChanged<DailyConversationAgentAssignment> onDraftChanged;
+  final bool Function(String agentId) isRefreshingAgentCatalog;
+  final ValueChanged<String> onAgentCatalogRequested;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final radius = BorderRadius.circular(kAdaptiveFlywheelToolbarControlRadius);
+    return AppleGlassSurface(
+      key: const Key('adaptive-flywheel-assistant-card'),
+      borderRadius: radius,
+      fillAlpha: colors.isDark ? 18 : 8,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: colors.accentSurface,
+                    border: Border.all(color: colors.accentBorder),
+                  ),
+                  child: AssistantSparklesIcon(color: colors.accent, size: 16),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        strings.assistantProfileTitle,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        strings.isChinese
+                            ? '独立于工作流的长期调度者配置'
+                            : 'Long-term coordinator, independent of workflows',
+                        style: TextStyle(color: colors.textMuted, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (loading) ...[
+              const SizedBox(height: 10),
+              const LinearProgressIndicator(minHeight: 2),
+            ],
+            const SizedBox(height: 12),
+            AgentRuntimeAssignmentCascadeCards(
+              keyPrefix: 'adaptive-flywheel-assistant',
+              showFast: false,
+              borderRadius: BorderRadius.circular(
+                AppleControlMetrics.menuCornerRadius,
+              ),
+              maxHeight: 190,
+              agentCardWidth: 188,
+              modelCardWidth: 288,
+              settingsCardWidth: 184,
+              targets: targets,
+              draft: draft,
+              selectedAgentIds: draft.agentId.trim().isEmpty
+                  ? const {}
+                  : {draft.agentId.trim()},
+              onDraftChanged: onDraftChanged,
+              isRefreshingAgentCatalog: isRefreshingAgentCatalog,
+              onAgentCatalogRequested: onAgentCatalogRequested,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

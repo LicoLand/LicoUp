@@ -107,10 +107,14 @@ Future<void> _run(ClientController controller) async {
       for (final target in controller.scannedTargets)
         if (target.target == agentId) enabled else target,
     ];
-    await controller.selectConversationAgent(agentId);
+    await _selectAgentFromSidebar(agentId, controller);
     await _waitFor(
       () => controller.selectedConversationAgent?.canRelayRuntime == true,
       reasonCode: 'release_ui_acceptance_target_not_enabled',
+    );
+    await _waitFor(
+      () => _composerTextField() != null,
+      reasonCode: 'release_ui_agent_composer_timeout',
     );
     controller.startNewConversationSession();
     if (model.isNotEmpty &&
@@ -316,6 +320,40 @@ Element? _findElement(bool Function(Element element) predicate) {
 
   visit(root);
   return match;
+}
+
+/// Selects the target agent exactly as a user does: by tapping its contact
+/// row in the Agents workspace sidebar (`messaging-contact-<agentId>`). The
+/// row's InkWell onTap runs the real sidebar onSelectAgent path, which clears
+/// any active group selection and mounts the agent conversation.
+Future<void> _selectAgentFromSidebar(
+  String agentId,
+  ClientController controller,
+) async {
+  await _waitFor(
+    () => _sidebarContactRowElement(agentId) != null,
+    reasonCode: 'release_ui_sidebar_agent_missing',
+    timeout: const Duration(seconds: 30),
+  );
+  final rowElement = _sidebarContactRowElement(agentId)!;
+  final inkWell = _findDescendantWidget<InkWell>(rowElement);
+  _require(inkWell != null, 'release_ui_sidebar_agent_tap_missing');
+  _require(inkWell!.onTap != null, 'release_ui_sidebar_agent_tap_missing');
+  await WidgetsBinding.instance.endOfFrame;
+  inkWell.onTap!();
+  await WidgetsBinding.instance.endOfFrame;
+  await _waitFor(
+    () => controller.selectedConversationAgentId == agentId,
+    reasonCode: 'release_ui_sidebar_agent_selection_failed',
+    timeout: const Duration(seconds: 30),
+  );
+}
+
+Element? _sidebarContactRowElement(String agentId) {
+  return _findElement(
+    (element) =>
+        element.widget.key == ValueKey<String>('messaging-contact-$agentId'),
+  );
 }
 
 T? _findDescendantWidget<T extends Widget>(Element root) {

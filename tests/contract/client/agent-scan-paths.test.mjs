@@ -80,16 +80,22 @@ test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
     agentServiceActions,
     /'--include-history-model-catalog',\s*'false'/u,
   );
-  const inspectOne = (agentServiceActions.split("scanOneTarget")[1] ?? "")
-    .split("inspectTarget")[0] ?? "";
+  const selectedBatch = (agentServiceActions.split("scanTargetsBatch")[1] ?? "")
+    .split("_targetScanSlot")[0] ?? "";
   assert.match(
-    inspectOne,
+    selectedBatch,
     /bool enableAgentCliModelLookup = false/u,
   );
   assert.match(
-    inspectOne,
-    /if \(enableAgentCliModelLookup\)[\s\S]*--enable-agent-cli-model-lookup/u,
+    selectedBatch,
+    /runCliWithStdin\([\s\S]*'--stdin-json',[\s\S]*'true'/u,
   );
+  assert.match(selectedBatch, /'targetIds': normalizedTargetIds/u);
+  assert.match(
+    selectedBatch,
+    /'modelCatalogTargetIds': enableAgentCliModelLookup[\s\S]*\? normalizedTargetIds/u,
+  );
+  assert.equal(selectedBatch.match(/runCliWithStdin/gu)?.length, 1);
   assert.match(agentServiceActions, /enable-agent-cli-model-lookup/u);
   assert.match(historyDiscovery, /denied_personal_location/u);
   assert.match(historyDiscovery, /denied_symlink_escape/u);

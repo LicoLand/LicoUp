@@ -115,6 +115,7 @@ pub(crate) fn parse_stdio_rpc_request(
         }
         "agent.conversation.open"
         | "agent.conversation.send"
+        | "agent.conversation.dispatch"
         | "agent.conversation.cancel"
         | "agent.conversation.history"
         | "agent.conversation.cleanup"
@@ -145,6 +146,17 @@ pub(crate) fn parse_stdio_rpc_request(
             }
             let portable_data_dir = parse_portable_data_dir(object, &invalid)?;
             StdioRpcMethod::ClientConversation {
+                params,
+                portable_data_dir,
+            }
+        }
+        "strategy.execute" => {
+            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+            if !params.is_object() {
+                return Err(invalid("invalid_params"));
+            }
+            let portable_data_dir = parse_portable_data_dir(object, &invalid)?;
+            StdioRpcMethod::StrategyExecute {
                 params,
                 portable_data_dir,
             }
