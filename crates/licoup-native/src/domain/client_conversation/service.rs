@@ -5,6 +5,7 @@ use super::{
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use std::{
+    borrow::Cow,
     fmt,
     path::Path,
     sync::{
@@ -900,10 +901,19 @@ impl ConversationService {
                 live: None,
             });
         };
+        let text = if context.is_assistant {
+            Cow::Owned(format!(
+                "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
+                super::assistant_workflow_authoring_prompt(),
+                context.source_content
+            ))
+        } else {
+            Cow::Borrowed(context.source_content.as_str())
+        };
         let mut params = json!({
             "agentId": context.agent_id,
             "agent": context.agent_id,
-            "text": context.source_content,
+            "text": text.as_ref(),
             "streamEvents": true,
             "timeoutMs": 0,
             "conversationId": context.turn.conversation_id,
@@ -2752,7 +2762,11 @@ mod tests {
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_one);
-        assert_eq!(calls[0]["text"], "plain message without a mention");
+        let text = calls[0]["text"].as_str().unwrap();
+        assert!(text.starts_with("<skills_instructions>\n"));
+        assert!(text.contains("Understand and complete the user's request."));
+        assert!(text.contains("use tools freely"));
+        assert!(text.ends_with("plain message without a mention"));
         assert_eq!(calls[0]["timeoutMs"], 0);
         assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["model"], "model-a");
