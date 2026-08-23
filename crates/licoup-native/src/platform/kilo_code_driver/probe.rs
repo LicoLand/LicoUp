@@ -74,14 +74,42 @@ pub(super) fn unavailable_failure() -> ProtocolFailure {
 }
 
 pub(super) fn endpoint_failure(error_code: &str) -> ProtocolFailure {
-    ProtocolFailure::new(
-        "acp_process_start_failed",
-        if error_code.contains("missing") || error_code.contains("not available") {
-            "The requested ACP agent executable is not available."
-        } else {
-            "The Kilo serve endpoint is not available for attach."
-        },
-        "serve/ensure",
-    )
-    .namespaced(KILO_CODE_DRIVER)
+    match error_code.trim() {
+        "kilo_executable_missing" => ProtocolFailure::new(
+            "kilo_executable_missing",
+            "The requested Kilo executable is not available.",
+            "serve/ensure",
+        ),
+        "kilo_code_serve_port_exhausted" => ProtocolFailure::new(
+            "kilo_code_serve_port_exhausted",
+            "No local port is available for the Kilo serve endpoint.",
+            "serve/ensure",
+        ),
+        "kilo_code_serve_start_failed" => ProtocolFailure::new(
+            "kilo_code_serve_start_failed",
+            "The Kilo serve process could not be started.",
+            "serve/ensure",
+        ),
+        "kilo_code_serve_health_failed" => ProtocolFailure::new(
+            "kilo_code_serve_health_failed",
+            "The Kilo serve endpoint did not become healthy.",
+            "serve/health",
+        ),
+        "kilo_code_serve_attach_probe_failed" => ProtocolFailure::new(
+            "kilo_code_serve_attach_probe_failed",
+            "The Kilo serve endpoint rejected the attach probe.",
+            "serve/session",
+        ),
+        "kilo_code_serve_state_invalid" => ProtocolFailure::new(
+            "kilo_code_serve_state_invalid",
+            "The Kilo serve state is invalid.",
+            "serve/ensure",
+        ),
+        _ => ProtocolFailure::new(
+            "acp_process_start_failed",
+            "The Kilo serve endpoint is not available for attach.",
+            "serve/ensure",
+        )
+        .namespaced(KILO_CODE_DRIVER),
+    }
 }
