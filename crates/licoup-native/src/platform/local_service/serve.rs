@@ -166,16 +166,6 @@ pub(in crate::platform) fn post_json(spec: ServeSpec, url: &str, body: &Value) -
         .map_err(|failure| http_error(spec, failure))
 }
 
-pub(in crate::platform) fn post_json_with_optional_timeout(
-    spec: ServeSpec,
-    url: &str,
-    body: &Value,
-    timeout: Option<Duration>,
-) -> Result<Value> {
-    http::post_json_with_optional_timeout(url, body, timeout)
-        .map_err(|failure| http_error(spec, failure))
-}
-
 pub(in crate::platform) fn watch_session_events(
     spec: ServeSpec,
     attach_url: &str,
@@ -184,8 +174,18 @@ pub(in crate::platform) fn watch_session_events(
     chunks: &SyncSender<String>,
 ) {
     let url = format!("{}/event", attach_url.trim_end_matches('/'));
+    watch_session_events_url(spec, &url, session_id, stop, chunks);
+}
+
+pub(in crate::platform) fn watch_session_events_url(
+    spec: ServeSpec,
+    url: &str,
+    session_id: &str,
+    stop: &AtomicBool,
+    chunks: &SyncSender<String>,
+) {
     let mut projection = SessionEventProjection::default();
-    let _ = super::sse::watch_data(&url, stop, |data| {
+    let _ = super::sse::watch_data(url, stop, |data| {
         if let Some(text) = projection.observe(session_id, data) {
             let _ = chunks.try_send(text);
         }
