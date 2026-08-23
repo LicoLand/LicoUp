@@ -8,7 +8,7 @@ mod transport;
 use super::super::kilo_code_serve;
 use super::config::ServeTurnConfig;
 use super::execution::execute;
-use super::probe::capability_probe;
+use super::probe::{capability_probe, endpoint_failure};
 use super::projection::{extract_assistant_text, project_turn, serve_capabilities};
 use super::transport::{build_message_body, execute_via_serve, wait_post_json};
 use super::{KILO_CODE_DRIVER, RUNTIME_PROTOCOL};
