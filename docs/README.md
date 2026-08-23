@@ -24,6 +24,7 @@ authority.
 ## Architecture
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
+- [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
 - [Agent adapters and runtime architecture](architecture/AGENT-ADAPTERS-ARCHITECTURE.md) · [智能体适配器架构规范](architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)

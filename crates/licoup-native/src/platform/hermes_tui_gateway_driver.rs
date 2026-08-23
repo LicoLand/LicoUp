@@ -8,6 +8,13 @@ use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+#[allow(dead_code)]
+#[path = "../../../licoup-conversation/src/state_machine/mod.rs"]
+mod conversation_state_machine;
+use conversation_state_machine::{
+    TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState,
+};
+
 const MAX_EVENTS: usize = 4_096;
 const MAX_IDENTIFIER_BYTES: usize = 512;
 
@@ -159,7 +166,7 @@ fn run_turn(
         .wait_ready(deadline)
         .map_err(|failure| protocol_transport_failure(failure, None, Some(&config.turn_id)))?;
     let opened = open_session(client, config, deadline)?;
-    let mut turn = TurnState::new(
+    let mut turn = TurnObservation::new(
         opened.live_session_id,
         opened.durable_session_id,
         config.turn_id.clone(),
@@ -196,7 +203,10 @@ fn run_turn(
             "prompt/submit",
         ));
     }
-    while !turn.completed {
+    turn.ensure_started().map_err(|failure| {
+        protocol_transport_failure(failure, Some(&turn.durable_session_id), Some(&turn.turn_id))
+    })?;
+    while !turn.state.is_terminal() {
         let message = client.next_message(deadline).map_err(|failure| {
             protocol_transport_failure(failure, Some(&turn.durable_session_id), Some(&turn.turn_id))
         })?;
@@ -332,7 +342,9 @@ fn reject_interaction_event(message: &Value) -> Result<(), GatewayFailure> {
     }
 }
 
-struct TurnState {
+/// Hermes protocol observation data. Lifecycle decisions are delegated to the
+/// canonical Conversation state machine; this adapter reports signals only.
+struct TurnObservation {
     live_session_id: String,
     durable_session_id: String,
     turn_id: String,
@@ -340,10 +352,10 @@ struct TurnState {
     events: Vec<Value>,
     model: Option<String>,
     max_output_bytes: Option<usize>,
-    completed: bool,
+    state: CanonicalTurnState,
 }
 
-impl TurnState {
+impl TurnObservation {
     fn new(
         live_session_id: String,
         durable_session_id: String,
@@ -359,7 +371,7 @@ impl TurnState {
             events: Vec::new(),
             model,
             max_output_bytes,
-            completed: false,
+            state: CanonicalTurnState::Pending,
         }
     }
 
@@ -371,10 +383,13 @@ impl TurnState {
             return Err(GatewayFailure::InvalidMessage);
         }
         if is_interaction_event(event) {
+            self.ensure_started()?;
+            self.report(CanonicalTurnEvent::WaitForHuman)?;
             return Err(GatewayFailure::Interaction);
         }
         match event {
             "message.delta" => {
+                self.ensure_started()?;
                 let text = event_payload(message)
                     .and_then(|payload| payload.get("text"))
                     .and_then(Value::as_str)
@@ -387,8 +402,10 @@ impl TurnState {
                 );
             }
             "message.complete" => {
+                self.ensure_started()?;
                 let payload = event_payload(message).ok_or(GatewayFailure::InvalidMessage)?;
                 if payload.get("status").and_then(Value::as_str) == Some("error") {
+                    self.report(CanonicalTurnEvent::Fail)?;
                     return Err(GatewayFailure::Rpc);
                 }
                 if let Some(text) = payload.get("text").and_then(Value::as_str)
@@ -402,9 +419,12 @@ impl TurnState {
                     }
                     self.output = text.to_string();
                 }
-                self.completed = true;
+                self.report(CanonicalTurnEvent::Succeed)?;
             }
-            "error" => return Err(GatewayFailure::Rpc),
+            "error" => {
+                self.report(CanonicalTurnEvent::Fail)?;
+                return Err(GatewayFailure::Rpc);
+            }
             "session.info" => {
                 if let Some(model) = event_payload(message)
                     .and_then(|payload| payload.get("model"))
@@ -429,6 +449,28 @@ impl TurnState {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    fn ensure_started(&mut self) -> Result<(), GatewayFailure> {
+        match self.state {
+            CanonicalTurnState::Pending | CanonicalTurnState::Claimed => {
+                self.report(CanonicalTurnEvent::Start)
+            }
+            CanonicalTurnState::Running => Ok(()),
+            CanonicalTurnState::WaitingForHuman => self.report(CanonicalTurnEvent::Resume),
+            CanonicalTurnState::Succeeded
+            | CanonicalTurnState::Failed
+            | CanonicalTurnState::Interrupted
+            | CanonicalTurnState::Cancelled => Ok(()),
+        }
+    }
+
+    fn report(&mut self, event: CanonicalTurnEvent) -> Result<(), GatewayFailure> {
+        self.state = self
+            .state
+            .transition(event)
+            .map_err(|_| GatewayFailure::InvalidMessage)?;
         Ok(())
     }
 
@@ -614,8 +656,8 @@ mod tests {
     #[cfg(unix)]
     use std::process::Command;
 
-    fn turn() -> TurnState {
-        TurnState::new(
+    fn turn() -> TurnObservation {
+        TurnObservation::new(
             "live-1".to_string(),
             "durable-1".to_string(),
             "turn-1".to_string(),
@@ -641,13 +683,23 @@ mod tests {
             "jsonrpc": "2.0",
             "method": "event",
             "params": {
+                "type": "message.delta",
+                "session_id": "live-1",
+                "payload": {"text": "lo"}
+            }
+        }))
+        .unwrap();
+        turn.observe(&json!({
+            "jsonrpc": "2.0",
+            "method": "event",
+            "params": {
                 "type": "message.complete",
                 "session_id": "live-1",
                 "payload": {"text": "hello", "status": "complete"}
             }
         }))
         .unwrap();
-        assert!(turn.completed);
+        assert_eq!(turn.state, CanonicalTurnState::Succeeded);
         assert_eq!(turn.output, "hello");
         assert_eq!(turn.durable_session_id, "durable-1");
     }
@@ -683,7 +735,7 @@ mod tests {
 
     #[test]
     fn turn_output_and_event_storage_are_bounded() {
-        let mut turn = TurnState::new(
+        let mut turn = TurnObservation::new(
             "live".to_string(),
             "durable".to_string(),
             "turn".to_string(),
