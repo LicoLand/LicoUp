@@ -6,7 +6,9 @@ use anyhow::Result;
 pub(super) fn handle_opencode_serve(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["opencode-serve", action] => *action,
-        _ => unreachable!("admission only registers concrete OpenCode serve routes"),
+        _ => {
+            return Err(super::handler_error("command_failed", "use_cli_help").into());
+        }
     };
     let params = admitted_params(
         &[
@@ -23,7 +25,9 @@ pub(super) fn handle_opencode_serve(command: AdmittedCommand) -> Result<CliExecu
         "stop" => crate::platform::opencode_serve::stop(&params)?,
         "restart" => crate::platform::opencode_serve::restart(&params)?,
         "status" => crate::platform::opencode_serve::status(&params)?,
-        _ => unreachable!("admission only registers supported OpenCode serve actions"),
+        _ => {
+            return Err(super::handler_error("command_failed", "use_cli_help").into());
+        }
     };
     Ok(CliExecution::Json(result))
 }

@@ -193,11 +193,23 @@ pub struct CliCommandError {
     recovery: &'static str,
 }
 
+const EXECUTION_STAGE: &str = "cli/execution";
+
 impl CliCommandError {
     fn from_admission(code: &'static str, recovery: &'static str) -> Self {
         Self {
             code,
             stage: ADMISSION_STAGE,
+            component: ADMISSION_COMPONENT,
+            retryable: false,
+            recovery,
+        }
+    }
+
+    fn from_handler(code: &'static str, recovery: &'static str) -> Self {
+        Self {
+            code,
+            stage: EXECUTION_STAGE,
             component: ADMISSION_COMPONENT,
             retryable: false,
             recovery,
@@ -506,6 +518,14 @@ impl AdmittedCommand {
 
 fn admission_error(code: &'static str, recovery: &'static str) -> CliCommandError {
     CliCommandError::from_admission(code, recovery)
+}
+
+/// Structured handler-side failure for an admissible command whose dispatch
+/// route disagrees with the registered command table. This is an interior
+/// inconsistency, never an assertion panic: the host-facing boundary always
+/// returns a typed failure with a stable problem code.
+pub(super) fn handler_error(code: &'static str, recovery: &'static str) -> CliCommandError {
+    CliCommandError::from_handler(code, recovery)
 }
 
 fn validate_cli_admission(args: &[String]) -> Result<()> {
@@ -5220,4 +5240,44 @@ fn build_command_table() -> CommandTable {
         help: "Revoke Telegram DM access for a chat id",
     });
     table
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Host-facing boundary guard: malformed JSON admitted as an FFI command
+    /// argument yields a structured typed failure (problem code preserved
+    /// downcast as `CliCommandError`) and never unwinds the process; the
+    /// boundary remains able to serve the next command.
+    #[test]
+    fn ffi_boundary_malformed_json_is_structured_failure_with_process_alive() {
+        let malformed = execute_cli(vec![
+            "agent".to_string(),
+            "conversation".to_string(),
+            "open".to_string(),
+            "--stdin-json".to_string(),
+            "{not-json:".to_string(),
+        ]);
+        let error = malformed.expect_err("malformed JSON must be rejected at the boundary");
+        let command_error = error
+            .downcast_ref::<CliCommandError>()
+            .expect("boundary failure must be typed as CliCommandError");
+        assert_eq!(command_error.code(), "cli_json_invalid");
+        assert_eq!(command_error.stage(), "cli/admission");
+        assert!(!command_error.retryable());
+
+        // The same process boundary still serves a subsequent valid command.
+        match execute_cli(vec!["adapter".to_string(), "catalog".to_string()]) {
+            Ok(CliExecution::Json(value)) => assert_eq!(value["ok"], true),
+            Ok(_) => assert!(
+                false,
+                "catalog command must return JSON after a rejected request"
+            ),
+            Err(error) => assert!(
+                false,
+                "catalog command must succeed after a rejected request: {error}"
+            ),
+        }
+    }
 }
