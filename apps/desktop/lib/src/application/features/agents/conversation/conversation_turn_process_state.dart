@@ -253,18 +253,21 @@ final class ConversationTurnProcessState {
   );
 
   /// Advance to a later lifecycle stage. Regressions are no-ops; `failed` is
-  /// terminal and locks the card.
+  /// terminal and locks the card. A later stage proves that every earlier
+  /// stage was crossed even when the transport coalesces their events, so the
+  /// observed prefix is filled monotonically instead of leaving visual holes.
   void advanceStage(String stage) {
     if (_stage == ConversationTurnProcessStage.failed) return;
     if (stage.trim().toLowerCase() == ConversationTurnProcessStage.failed.id) {
       _stage = ConversationTurnProcessStage.failed;
-      _recordObservedStage(ConversationTurnProcessStage.failed);
       return;
     }
     final next = ConversationTurnProcessStage.of(stage);
     if (next == null || next.index <= _stage.index) return;
+    for (var index = _stage.index + 1; index <= next.index; index++) {
+      _recordObservedStage(ConversationTurnProcessStage.values[index]);
+    }
     _stage = next;
-    _recordObservedStage(next);
   }
 
   void recordParticipant({
