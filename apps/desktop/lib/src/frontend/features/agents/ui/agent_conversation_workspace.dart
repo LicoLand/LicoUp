@@ -77,7 +77,7 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.addListener(
       _handleControllerChanged,
     );
-    widget.controller.liveConversationListenable.addListener(
+    widget.controller.conversationStateHolder.addListener(
       _handleControllerChanged,
     );
   }
@@ -95,7 +95,7 @@ class _AgentConversationWorkspaceState
     oldWidget.controller.activeConversationListenable.removeListener(
       _handleControllerChanged,
     );
-    oldWidget.controller.liveConversationListenable.removeListener(
+    oldWidget.controller.conversationStateHolder.removeListener(
       _handleControllerChanged,
     );
     widget.controller.addListener(_handleControllerChanged);
@@ -105,7 +105,7 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.addListener(
       _handleControllerChanged,
     );
-    widget.controller.liveConversationListenable.addListener(
+    widget.controller.conversationStateHolder.addListener(
       _handleControllerChanged,
     );
   }
@@ -119,7 +119,7 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.removeListener(
       _handleControllerChanged,
     );
-    widget.controller.liveConversationListenable.removeListener(
+    widget.controller.conversationStateHolder.removeListener(
       _handleControllerChanged,
     );
     super.dispose();
@@ -543,7 +543,13 @@ class _ConversationWorkspaceBodyState
     final workingDirectorySelectable =
         showWorkingDirectory &&
         controller.canSelectNewConversationWorkingDirectory;
-    final composerEnabled = target.canRelayRuntime;
+    final projection = controller.conversationProjectionFor(
+      controller.conversationComposerScopeKey,
+    );
+    final projectedInputEnabled = projection.turnState.inputEnabled;
+    final composerEnabled =
+        target.canRelayRuntime && (projectedInputEnabled ?? true);
+    final projectedMessages = projection.messages;
     final attachmentStatus = controller.conversationAttachmentStatus;
     final gateReasonCode = composerEnabled
         ? (attachmentStatus.isNotEmpty
@@ -570,13 +576,19 @@ class _ConversationWorkspaceBodyState
     final state = AgentConversationPaneState(
       target: target,
       session: session,
-      liveMessages: controller.selectedConversationTimelineMessages,
+      liveMessages:
+          projectedMessages.isEmpty ||
+              controller.conversationComposerAttachments.isNotEmpty
+          ? controller.selectedConversationTimelineMessages
+          : projectedMessages,
       recentSessions: controller.selectedConversationSessions,
       loading: controller.isLoadingConversations,
       recentSessionsHasMore: controller.selectedConversationSessionsHasMore,
       recentSessionsLoadingMore:
           controller.isLoadingMoreSelectedConversationSessions,
-      turnActive: controller.isSendingConversationMessage,
+      turnActive: projection.turnState.active,
+      inputEnabled: composerEnabled,
+      cancelEnabled: projection.turnState.cancelEnabled ?? false,
       preparingNewConversation: controller.preparingNewConversation,
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
@@ -632,6 +644,7 @@ class _ConversationWorkspaceBodyState
       onPermissionDeny: controller.dismissDeniedConversationTurn,
       onCopyText: controller.clientClipboardService.writeText,
       onSend: controller.sendConversationMessage,
+      onCancel: controller.cancelActiveConversationTurn,
       onSelectSession: (sessionId) {
         _showAgentConversationList(target.target);
         controller.selectConversationSession(sessionId);

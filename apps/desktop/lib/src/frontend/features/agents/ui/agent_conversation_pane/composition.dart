@@ -54,7 +54,8 @@ class AgentConversationActivePane extends StatelessWidget {
       initialDraft: state.composerDraft,
       hasAttachments: state.hasAttachments,
       busy: state.composerBusy,
-      enabled: state.composerEnabled,
+      enabled: state.composerEnabled && state.inputEnabled,
+      cancelEnabled: state.cancelEnabled,
       modelOptions: state.modelOptions,
       selectedModel: state.selectedModel,
       reasoningEffortOptions: state.reasoningEffortOptions,
@@ -63,6 +64,7 @@ class AgentConversationActivePane extends StatelessWidget {
       onReasoningEffortChanged: actions.onReasoningEffortChanged,
       onDraftChanged: actions.onDraftChanged,
       onSend: actions.onSend,
+      onCancel: actions.onCancel,
       defaultModel: state.defaultModel,
       defaultReasoningEffort: state.defaultReasoningEffort,
       showRuntimeSettings:
@@ -145,7 +147,7 @@ class AgentConversationActivePane extends StatelessWidget {
                   ? MessagingDesktopMetrics.conversationComposerCapsuleRowExtent
                   : 0)
         : 0.0;
-    final messages =
+    final messageSurface =
         state.session == null &&
             state.preparingNewConversation &&
             state.liveMessages.isEmpty
@@ -176,6 +178,10 @@ class AgentConversationActivePane extends StatelessWidget {
             topOverlayInset: headerOverlayInset,
             bottomOverlayInset: composerOverlayInset,
           );
+    final messages = RepaintBoundary(
+      key: const Key('conversation-streaming-repaint-boundary'),
+      child: messageSurface,
+    );
     final showPlanDocumentPanel =
         !mobileClient &&
         messagingFlow &&

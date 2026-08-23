@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:licoup/src/application/features/agents/contracts/adaptive_flywhe
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
+import 'package:licoup/src/application/features/conversations/canonical_group_event_metadata_parser.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -1859,7 +1859,7 @@ List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
                 ? agentId
                 : membership.principal.displayName.trim(),
             kind: 'conversation-member',
-            status: 'detected',
+            status: TargetCandidateStatus.synthesizedMembership,
             configured: false,
             confidence: 1,
             adapterStatus: 'runtime-unavailable',
@@ -1899,7 +1899,7 @@ List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
                 ? agentId
                 : membership.principal.displayName.trim(),
             kind: 'conversation-member',
-            status: 'detected',
+            status: TargetCandidateStatus.synthesizedMembership,
             configured: false,
             confidence: 1,
             adapterStatus: 'runtime-unavailable',
@@ -2054,27 +2054,14 @@ AgentConversationSession canonicalGroupConversationSession(
 
 ({String cardType, String cardTitle, String text})
 _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
-  if (eventPart.kind == ConversationEventPartKind.metadata) {
-    try {
-      final decoded = jsonDecode(eventPart.content);
-      if (decoded is Map && decoded['lifecycle'] != null) {
-        final stage = decoded['lifecycle'].toString().trim();
-        if (const {
-          'submitted',
-          'accepted',
-          'processing',
-          'responding',
-          'completed',
-          'failed',
-        }.contains(stage)) {
-          return (
-            cardType: 'lifecycle',
-            cardTitle: 'lifecycle.$stage',
-            text: stage,
-          );
-        }
-      }
-    } catch (_) {}
+  final lifecycleStage =
+      CanonicalGroupEventMetadataParser.lifecycleStage(eventPart);
+  if (lifecycleStage != null) {
+    return (
+      cardType: 'lifecycle',
+      cardTitle: 'lifecycle.$lifecycleStage',
+      text: lifecycleStage,
+    );
   }
   final cardType = switch (eventPart.kind) {
     ConversationEventPartKind.text => '',
@@ -2147,21 +2134,7 @@ _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
 Map<String, dynamic>? _canonicalGroupEventMetadata(
   ClientConversationEvent event,
 ) {
-  for (final part in event.parts) {
-    if (part.kind != ConversationEventPartKind.metadata ||
-        part.content.trim().isEmpty) {
-      continue;
-    }
-    try {
-      final decoded = jsonDecode(part.content);
-      if (decoded is Map) {
-        return Map<String, dynamic>.from(decoded);
-      }
-    } on FormatException {
-      continue;
-    }
-  }
-  return null;
+  return CanonicalGroupEventMetadataParser.eventMetadata(event);
 }
 
 String _canonicalGroupEventMemberLabel(

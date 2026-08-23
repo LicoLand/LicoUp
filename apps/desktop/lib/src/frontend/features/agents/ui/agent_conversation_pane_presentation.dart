@@ -17,6 +17,8 @@ final class AgentConversationPaneState {
     this.recentSessionsHasMore = false,
     this.recentSessionsLoadingMore = false,
     required this.turnActive,
+    this.inputEnabled = true,
+    this.cancelEnabled = false,
     required this.preparingNewConversation,
     required this.composerEnabled,
     required this.sendGateReasonCode,
@@ -71,6 +73,8 @@ final class AgentConversationPaneState {
   final bool recentSessionsHasMore;
   final bool recentSessionsLoadingMore;
   final bool turnActive;
+  final bool inputEnabled;
+  final bool cancelEnabled;
   final bool preparingNewConversation;
   final bool composerEnabled;
   final String sendGateReasonCode;
@@ -112,6 +116,7 @@ final class AgentConversationPaneActions {
     required this.onReasoningEffortChanged,
     required this.onDraftChanged,
     required this.onSend,
+    this.onCancel,
     required this.onSelectSession,
     this.onNewConversation,
     this.onLoadMoreRecentSessions,
@@ -130,6 +135,7 @@ final class AgentConversationPaneActions {
   final ValueChanged<String> onReasoningEffortChanged;
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
+  final Future<void> Function()? onCancel;
   final ValueChanged<String> onSelectSession;
   final VoidCallback? onNewConversation;
   final VoidCallback? onLoadMoreRecentSessions;

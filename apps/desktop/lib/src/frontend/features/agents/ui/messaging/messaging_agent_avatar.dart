@@ -57,7 +57,7 @@ class MessagingAgentAvatar extends StatelessWidget {
               iconSize: iconSize,
               selected: false,
               detected:
-                  resolvedTarget.status == 'detected' ||
+                  resolvedTarget.status == TargetCandidateStatus.detected ||
                   resolvedTarget.configured,
             ),
     );
