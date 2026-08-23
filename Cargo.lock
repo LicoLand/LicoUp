@@ -2027,6 +2027,15 @@ name = "licoup-agent-adapters"
 version = "0.1.1"
 
 [[package]]
+name = "licoup-agent-runtime"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "licoup-client-state"
 version = "0.1.1"
 
@@ -2034,7 +2043,12 @@ version = "0.1.1"
 name = "licoup-conversation"
 version = "0.1.1"
 dependencies = [
+ "anyhow",
  "proptest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -2069,7 +2083,9 @@ dependencies = [
  "libcrux-traits",
  "lico-catalog-convergence",
  "licoup-agent-adapters",
+ "licoup-agent-runtime",
  "licoup-client-state",
+ "licoup-conversation",
  "licoup-endpoint-core",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",

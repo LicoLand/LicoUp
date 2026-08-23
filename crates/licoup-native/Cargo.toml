@@ -20,6 +20,8 @@ licoup-client-state = { path = "../licoup-client-state" }
 licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
+licoup-agent-runtime = { path = "../licoup-agent-runtime" }
+licoup-conversation = { path = "../licoup-conversation" }
 anyhow.workspace = true
 thiserror.workspace = true
 base64.workspace = true
@@ -89,6 +91,7 @@ windows-sys = { version = "0.61", features = [
 nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
 
 [dev-dependencies]
+licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
 
