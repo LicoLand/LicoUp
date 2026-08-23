@@ -347,8 +347,8 @@ fn create_chat_time_is_charged_against_the_turn_deadline() {
     );
 }
 
-/// timeoutMs 0 keeps its contract: no turn deadline at all (dispatch.rs),
-/// while the create-chat phase stays bounded by its own CREATE_CHAT_BOUND_MS.
+/// timeoutMs 0 keeps its contract: no synthetic deadline in either session
+/// creation or turn execution.
 #[test]
 fn timeout_zero_keeps_the_turn_deadline_free() {
     let stamp = SystemTime::now()

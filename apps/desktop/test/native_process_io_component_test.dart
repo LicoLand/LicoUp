@@ -247,23 +247,23 @@ void main() {
       ], '{"label":"Renamed"}');
 
       expect(context.startCount, 0);
-      expect(transport.executions, [
-        const [
-          'llm-gateway',
-          'credentials',
-          'create',
-          '--stdin-json',
-          createBody,
-        ],
-        const [
-          'llm-gateway',
-          'credentials',
-          'update',
-          '11111111-1111-4111-8111-111111111111',
-          '--stdin-json',
-          '{"label":"Renamed"}',
-        ],
+      // The JSON payload travels as structured params inside the RPC frame,
+      // never inside the CLI argument array (Tier-2 boundary).
+      expect(transport.executions, isEmpty);
+      expect(transport.structuredCalls.map((call) => call.method), [
+        'gateway.credentials.create',
+        'gateway.credentials.update',
       ]);
+      expect(transport.structuredCalls[0].params, {
+        'provider': 'kimi',
+        'label': 'Primary',
+        'apiKey': 'synthetic',
+        'leaseDays': 30,
+      });
+      expect(transport.structuredCalls[1].params, {
+        'label': 'Renamed',
+        'credentialId': '11111111-1111-4111-8111-111111111111',
+      });
     },
   );
 

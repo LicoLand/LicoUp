@@ -1,4 +1,4 @@
-use super::AdapterContract;
+use super::{AdapterContract, NativeLineParser};
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::{Value, json};
 
@@ -23,12 +23,20 @@ impl ProtocolFrame {
     }
 }
 
-pub(in crate::platform) fn parse_line(
-    bytes: &[u8],
-    wire_bytes: usize,
-) -> Result<ProtocolFrame, FrameError> {
-    let value = serde_json::from_slice(bytes).map_err(|_| FrameError::InvalidJson)?;
-    Ok(ProtocolFrame { value, wire_bytes })
+#[derive(Default)]
+pub(in crate::platform) struct FrameParser;
+
+impl NativeLineParser for FrameParser {
+    type Report = ProtocolFrame;
+    type Error = FrameError;
+
+    fn parse_line(&mut self, bytes: &[u8]) -> Result<Self::Report, Self::Error> {
+        let value = serde_json::from_slice(bytes).map_err(|_| FrameError::InvalidJson)?;
+        Ok(ProtocolFrame {
+            value,
+            wire_bytes: bytes.len().saturating_add(1),
+        })
+    }
 }
 
 pub(in crate::platform) fn encode_request(value: &Value) -> Result<Vec<u8>, serde_json::Error> {
@@ -244,18 +252,18 @@ fn is_idle_status(frame: &ProtocolFrame) -> bool {
 }
 
 fn final_assistant_response(frames: &[ProtocolFrame]) -> String {
-    let Some(event) = frames.iter().rev().find_map(|frame| {
-        let event = frame.value.pointer("/params/event")?;
-        (event.get("type").and_then(Value::as_str) == Some("assistant/message")).then_some(event)
-    }) else {
-        return String::new();
-    };
-    event
-        .pointer("/data/message/content")
-        .or_else(|| event.pointer("/data/content"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    frames
+        .iter()
+        .filter_map(|frame| frame.value.pointer("/params/event"))
+        .filter(|event| event.get("type").and_then(Value::as_str) == Some("assistant/message"))
+        .flat_map(|event| {
+            event
+                .pointer("/data/message/content")
+                .or_else(|| event.pointer("/data/content"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
         .filter_map(|block| block.get("text").and_then(Value::as_str))
         .collect()
@@ -266,7 +274,9 @@ mod tests {
     use super::*;
 
     fn frame(value: Value) -> ProtocolFrame {
-        parse_line(value.to_string().as_bytes(), value.to_string().len()).unwrap()
+        FrameParser
+            .parse_line(value.to_string().as_bytes())
+            .unwrap()
     }
 
     #[test]
@@ -281,10 +291,11 @@ mod tests {
                 .is_none()
         );
         assert!(parser.ingest(frame(json!({"method":"session.event","params":{"sessionId":"session-1","event":{"type":"agent/inbox/spliced","data":{"inserted":[{"id":"message-1"}]}}}}))).unwrap().is_none());
-        assert!(parser.ingest(frame(json!({"method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"ok"}]}}}}}))).unwrap().is_none());
+        assert!(parser.ingest(frame(json!({"method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"first "}]}}}}}))).unwrap().is_none());
+        assert!(parser.ingest(frame(json!({"method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"second"}]}}}}}))).unwrap().is_none());
         let result = parser.ingest(frame(json!({"method":"session.status","params":{"sessionId":"session-1","status":"idle"}}))).unwrap().unwrap();
         assert_eq!(result.turn_id, "message-1");
-        assert_eq!(result.output, "ok");
+        assert_eq!(result.output, "first second");
         assert_eq!(
             result.transitions.last(),
             Some(&Transition::Lifecycle(LifecycleStage::Completed))

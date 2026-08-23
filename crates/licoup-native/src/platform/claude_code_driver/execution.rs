@@ -9,8 +9,9 @@ use super::supervision::{
     set_active_session, spawn_transport,
 };
 use super::transport::PersistentTransport;
+use crate::platform::native_agent_parser::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::claude_code::{
-    ClaudeCodeParser, ClaudeEffect, TurnOutcome, interrupt_request, steer_message,
+    ClaudeCodeParser, ClaudeEffect, ProtocolFinishReport, interrupt_request, steer_message,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -204,7 +205,7 @@ fn run_turn_loop(
     known_session: Option<String>,
     mut deadline: Option<Instant>,
     max_stdout: Option<usize>,
-) -> (Option<TurnOutcome>, Option<ProtocolFailure>, bool) {
+) -> (Option<ProtocolFinishReport>, Option<ProtocolFailure>, bool) {
     let mut state = ClaudeCodeParser::new(config, &managed.identity, known_session);
     let mut observed_bytes = 0usize;
     let mut pending_approval: Option<(PendingApproval, Instant)> = None;
@@ -316,7 +317,7 @@ fn run_turn_loop(
                             );
                         }
                     }
-                    ClaudeEffect::Complete(outcome) => return (Some(outcome), None, false),
+                    ClaudeEffect::ProtocolFinished(report) => return (Some(report), None, false),
                     ClaudeEffect::Progress { session_id } => {
                         if let Some(session_id) = session_id.as_deref() {
                             if let Err(failure) = bind_session(managed, session_id) {
