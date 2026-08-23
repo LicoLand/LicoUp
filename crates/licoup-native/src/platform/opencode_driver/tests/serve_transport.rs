@@ -35,6 +35,41 @@ fn serve_message_body_keeps_prompt_and_exact_settings_in_http_json() {
 }
 
 #[test]
+fn workspace_routing_uses_the_query_and_keeps_session_creation_body_clean() {
+    let url = workspace_request_url(
+        "http://127.0.0.1:24173",
+        &["session", "session/with space", "message"],
+        "/workspace/with space",
+    )
+    .unwrap();
+    let parsed = url::Url::parse(&url).unwrap();
+    assert_eq!(parsed.path(), "/session/session%2Fwith%20space/message");
+    assert_eq!(
+        parsed.query_pairs().collect::<Vec<_>>(),
+        vec![("directory".into(), "/workspace/with space".into())]
+    );
+    assert_eq!(build_session_create_body(), json!({}));
+}
+
+#[test]
+fn serve_http_failures_keep_actionable_status_classes() {
+    let authentication = request_failure(HttpFailure::Status(401), "session/new", None);
+    assert_eq!(
+        authentication.code,
+        "opencode_serve_authentication_required"
+    );
+    assert!(authentication.user_interaction_required);
+    assert_eq!(
+        request_failure(HttpFailure::Status(422), "session/new", None).code,
+        "opencode_serve_request_rejected"
+    );
+    assert_eq!(
+        request_failure(HttpFailure::Status(429), "session/prompt", None).code,
+        "opencode_serve_rate_limited"
+    );
+}
+
+#[test]
 fn serve_request_fails_before_network_io_after_the_turn_deadline() {
     let failure = wait_post_json(
         "http://invalid.test/session/native/message",

@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
+use url::Url;
 use uuid::Uuid;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -123,9 +124,10 @@ fn execute_via_serve(
     let message_body = build_serve_message_body(config);
 
     let turn_id = Uuid::new_v4().to_string();
+    let workspace_attach_url = workspace_request_url(&endpoint.attach_url, &[], &config.cwd)?;
     let _active_turn = super::super::local_service::turn_control::register(
         OPENCODE_DRIVER.agent_id,
-        &endpoint.attach_url,
+        &workspace_attach_url,
         &session_id,
     )
     .map_err(|_| {
@@ -144,18 +146,22 @@ fn execute_via_serve(
     );
     let watch_stop = Arc::new(AtomicBool::new(false));
     let watch_flag = Arc::clone(&watch_stop);
-    let watch_url = endpoint.attach_url.clone();
+    let watch_url = workspace_request_url(&endpoint.attach_url, &["event"], &config.cwd)?;
     let watch_session = session_id.clone();
     let (chunk_sender, chunk_receiver) = mpsc::sync_channel::<String>(64);
     let watch_handle = thread::spawn(move || {
-        super::super::opencode_serve::watch_session_events(
+        super::super::opencode_serve::watch_session_events_url(
             &watch_url,
             &watch_session,
             &watch_flag,
             &chunk_sender,
         );
     });
-    let post_url = format!("{}/session/{}/message", endpoint.attach_url, session_id);
+    let post_url = workspace_request_url(
+        &endpoint.attach_url,
+        &["session", &session_id, "message"],
+        &config.cwd,
+    )?;
     let post_handle = thread::spawn(move || wait_post_json(&post_url, &message_body, deadline));
     let mut streamed = Vec::new();
     while !post_handle.is_finished() {
@@ -245,18 +251,110 @@ pub(super) fn wait_post_json(
 ) -> Result<Value, ProtocolFailure> {
     let timeout = remaining_turn_timeout(deadline)?;
     super::super::opencode_serve::post_json_with_optional_timeout(url, body, timeout).map_err(
-        |_| {
+        |failure| {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 turn_timeout_failure()
             } else {
-                ProtocolFailure::new(
-                    "acp_protocol_write_failed",
-                    "The ACP agent stopped accepting protocol messages.",
-                    "serve/http",
-                )
+                request_failure(failure, "session/prompt", None)
             }
         },
     )
+}
+
+pub(super) fn workspace_request_url(
+    attach_url: &str,
+    segments: &[&str],
+    directory: &str,
+) -> Result<String, ProtocolFailure> {
+    let mut url = Url::parse(attach_url).map_err(|_| {
+        ProtocolFailure::new(
+            "opencode_serve_url_invalid",
+            "The OpenCode serve endpoint URL is invalid.",
+            "serve/url",
+        )
+    })?;
+    {
+        let mut path = url.path_segments_mut().map_err(|_| {
+            ProtocolFailure::new(
+                "opencode_serve_url_invalid",
+                "The OpenCode serve endpoint URL is invalid.",
+                "serve/url",
+            )
+        })?;
+        path.pop_if_empty();
+        path.extend(segments.iter().copied());
+    }
+    url.query_pairs_mut().append_pair("directory", directory);
+    Ok(url.into())
+}
+
+pub(super) fn request_failure(
+    failure: super::super::local_service::http::HttpFailure,
+    stage: &'static str,
+    session_id: Option<&str>,
+) -> ProtocolFailure {
+    use super::super::local_service::http::HttpFailure;
+
+    let (code, message) = match failure {
+        HttpFailure::BodyTooLarge => (
+            "opencode_serve_request_too_large",
+            "The OpenCode serve request exceeds the supported size.",
+        ),
+        HttpFailure::Busy => (
+            "opencode_serve_client_busy",
+            "The OpenCode serve client is busy with other requests.",
+        ),
+        HttpFailure::HeadersTooLarge => (
+            "opencode_serve_response_headers_too_large",
+            "The OpenCode serve response headers exceed the supported size.",
+        ),
+        HttpFailure::InvalidJson => (
+            "opencode_serve_invalid_json",
+            "The OpenCode serve endpoint returned invalid JSON.",
+        ),
+        HttpFailure::InvalidUrl => (
+            "opencode_serve_url_invalid",
+            "The OpenCode serve endpoint URL is invalid.",
+        ),
+        HttpFailure::NotFound => (
+            "opencode_serve_not_found",
+            "The requested OpenCode serve resource does not exist.",
+        ),
+        HttpFailure::Serialize => (
+            "opencode_serve_request_invalid",
+            "The OpenCode serve request could not be encoded.",
+        ),
+        HttpFailure::Status(401 | 403) => (
+            "opencode_serve_authentication_required",
+            "The OpenCode serve endpoint requires authentication.",
+        ),
+        HttpFailure::Status(400 | 422) => (
+            "opencode_serve_request_rejected",
+            "The OpenCode serve endpoint rejected the request.",
+        ),
+        HttpFailure::Status(409) => (
+            "opencode_serve_session_busy",
+            "The OpenCode session is already processing another request.",
+        ),
+        HttpFailure::Status(429) => (
+            "opencode_serve_rate_limited",
+            "The OpenCode provider rate-limited the request.",
+        ),
+        HttpFailure::Status(500..=599) | HttpFailure::Unavailable => (
+            "opencode_serve_unavailable",
+            "The OpenCode serve endpoint is temporarily unavailable.",
+        ),
+        HttpFailure::Request | HttpFailure::Status(_) => (
+            "opencode_serve_request_failed",
+            "The OpenCode serve request could not be completed.",
+        ),
+    };
+    let mut failure = ProtocolFailure::new(code, message, stage).with_session(session_id);
+    if code == "opencode_serve_authentication_required" {
+        failure.user_interaction_required = true;
+        failure.request_method = Some("authenticate".to_string());
+    }
+    failure
 }
 
 pub(super) fn remaining_turn_timeout(

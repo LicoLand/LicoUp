@@ -19,7 +19,7 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 /// - LU-PL 3500-3599 Adapter plugins (11 assigned)
 /// - LU-AR 3600-3699 Conversation archive / snapshots (3 assigned)
 /// - LU-AW 3700-3899 Subagent MCP and Assistant workflow facade (11 assigned)
-/// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (303 assigned)
+/// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (313 assigned)
 /// - LU-CB 4700-4799 Catalog convergence (16 assigned)
 /// - LU-MC 4800-4899 MCP transfer (6 assigned)
 /// - LU-OC 4900-5199 Optional collaboration plugins (64 assigned)
@@ -1265,6 +1265,35 @@ const Map<String, ProblemCode> problemCodeEntries = {
     ProblemDomain.nativeAgent,
     4202,
   ),
+  'opencode_serve_authentication_required': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4203,
+  ),
+  'opencode_serve_client_busy': ProblemCode(ProblemDomain.nativeAgent, 4204),
+  'opencode_serve_protocol_write_failed': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4205,
+  ),
+  'opencode_serve_rate_limited': ProblemCode(ProblemDomain.nativeAgent, 4206),
+  'opencode_serve_request_invalid': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4207,
+  ),
+  'opencode_serve_request_rejected': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4208,
+  ),
+  'opencode_serve_request_too_large': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4209,
+  ),
+  'opencode_serve_response_headers_too_large': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4210,
+  ),
+  'opencode_serve_session_busy': ProblemCode(ProblemDomain.nativeAgent, 4211),
+  'opencode_serve_url_invalid': ProblemCode(ProblemDomain.nativeAgent, 4212),
+  'pi_model_override_failed': ProblemCode(ProblemDomain.nativeAgent, 4213),
   // LU-CB Catalog convergence
   'catalog_disabled': ProblemCode(ProblemDomain.catalog, 4700),
   'catalog_discovery_invalid': ProblemCode(ProblemDomain.catalog, 4701),

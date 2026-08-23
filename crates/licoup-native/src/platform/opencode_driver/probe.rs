@@ -33,6 +33,12 @@ pub(in crate::platform) fn capability_probe(
             .namespaced(OPENCODE_DRIVER)
         })?;
     let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
+    let session_url = super::serve_transport::workspace_request_url(
+        &endpoint.attach_url,
+        &["session"],
+        &cwd.to_string_lossy(),
+    )
+    .map_err(|failure| failure.namespaced(OPENCODE_DRIVER))?;
     loop {
         match super::super::opencode_serve::get_json(&format!(
             "{}/global/health",
@@ -44,16 +50,17 @@ pub(in crate::platform) fn capability_probe(
                     .and_then(Value::as_bool)
                     .unwrap_or(false) =>
             {
-                super::super::opencode_serve::get_json(&format!("{}/session", endpoint.attach_url))
-                    .map_err(|_| {
-                        ProtocolFailure::new(
-                            "acp_initialize_invalid",
-                            "The ACP agent returned an invalid initialization response.",
-                            "serve/session",
-                        )
-                        .namespaced(OPENCODE_DRIVER)
-                    })?;
+                super::super::opencode_serve::get_json(&session_url).map_err(|failure| {
+                    super::serve_transport::request_failure(failure, "serve/session", None)
+                })?;
                 return Ok(serve_capabilities());
+            }
+            Err(failure @ super::super::local_service::http::HttpFailure::Status(401 | 403)) => {
+                return Err(super::serve_transport::request_failure(
+                    failure,
+                    "serve/health",
+                    None,
+                ));
             }
             _ if Instant::now() >= deadline => {
                 return Err(ProtocolFailure::new(

@@ -543,8 +543,8 @@ impl ProfileSnapshotAuthority for ProductionSnapshotAuthority {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE,
-        MembershipAccess, MembershipStatus, Principal, PrincipalKind, ProfileResponsibility,
+        ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, MembershipAccess, MembershipStatus, Principal,
+        PrincipalKind, ProfileResponsibility, assistant_workflow_authoring_prompt,
     };
     use super::*;
 
@@ -632,7 +632,11 @@ mod tests {
                 .skills
                 .contains(&ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned())
         );
-        assert!(ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE.contains("assistant-temporary"));
+        let assistant_prompt = assistant_workflow_authoring_prompt();
+        assert!(assistant_prompt.len() <= 256);
+        assert!(assistant_prompt.contains("Understand and complete the user's request."));
+        assert!(assistant_prompt.contains("use tools freely"));
+        assert!(!assistant_prompt.contains("must not"));
         assert_eq!(snapshot.environment.as_deref(), Some("local"));
         assert_eq!(snapshot.readiness.as_deref(), Some("ready"));
         assert_eq!(
