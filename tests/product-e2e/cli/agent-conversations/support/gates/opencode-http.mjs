@@ -25,6 +25,13 @@ async function readJson(response, code) {
   return payload;
 }
 
+export function openCodeWorkspaceUrl(attachUrl, segments, directory) {
+  const url = new URL(attachUrl);
+  url.pathname = segments.map((segment) => `/${encodeURIComponent(segment)}`).join("");
+  url.searchParams.set("directory", directory);
+  return url.toString();
+}
+
 export function ensureOpenCodeServeAttachUrl(sidecar, binary, timeoutMs) {
   const ensure = spawnSync(
     sidecar,
@@ -59,17 +66,25 @@ export async function nativeOpenCodeHttpTurn(context, requestedSessionId, prompt
   try {
     let sessionId = requestedSessionId;
     if (sessionId) {
-      const probe = await fetch(`${attachUrl}/session/${encodeURIComponent(sessionId)}`, {
+      const probe = await fetch(openCodeWorkspaceUrl(
+        attachUrl,
+        ["session", sessionId],
+        context.cwd,
+      ), {
         signal: controller.signal,
       });
       requireFact(probe.ok, "acp_native_session_not_found");
       const probed = await readJson(probe, "opencode_serve_invalid_json");
       requireFact(typeof probed?.id === "string" && probed.id === sessionId, "native_session_identity_mismatch");
     } else {
-      const created = await fetch(`${attachUrl}/session`, {
+      const created = await fetch(openCodeWorkspaceUrl(
+        attachUrl,
+        ["session"],
+        context.cwd,
+      ), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(context.cwd ? { directory: context.cwd } : {}),
+        body: JSON.stringify({}),
         signal: controller.signal,
       });
       requireFact(created.ok, "opencode_serve_session_create_failed");
@@ -79,7 +94,11 @@ export async function nativeOpenCodeHttpTurn(context, requestedSessionId, prompt
     }
     context.observedSessions?.add(sessionId);
     const message = await fetch(
-      `${attachUrl}/session/${encodeURIComponent(sessionId)}/message`,
+      openCodeWorkspaceUrl(
+        attachUrl,
+        ["session", sessionId, "message"],
+        context.cwd,
+      ),
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -123,7 +142,11 @@ export async function nativeOpenCodeHttpReadback(context, sessionId) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), context.timeoutMs);
   try {
-    const response = await fetch(`${attachUrl}/session/${encodeURIComponent(sessionId)}`, {
+    const response = await fetch(openCodeWorkspaceUrl(
+      attachUrl,
+      ["session", sessionId],
+      context.cwd,
+    ), {
       signal: controller.signal,
     });
     requireFact(response.ok, "readback_session_identity_mismatch");

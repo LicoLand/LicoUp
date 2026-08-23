@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { openCodeWorkspaceUrl } from "../../product-e2e/cli/agent-conversations/support/gates/opencode-http.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadePath = "crates/licoup-native/src/platform/opencode_serve.rs";
@@ -38,4 +39,14 @@ test("OpenCode facade never projects raw state or local executable paths", async
   assert.equal(sources.includes('"state":'), false);
   assert.equal(sources.includes("stateDir"), false);
   assert.equal(sources.includes("unsafe {"), false);
+});
+
+test("OpenCode live regression uses official workspace query routing", () => {
+  const url = new URL(openCodeWorkspaceUrl(
+    "http://127.0.0.1:24173",
+    ["session", "session/with space", "message"],
+    "/workspace/with space",
+  ));
+  assert.equal(url.pathname, "/session/session%2Fwith%20space/message");
+  assert.equal(url.searchParams.get("directory"), "/workspace/with space");
 });
