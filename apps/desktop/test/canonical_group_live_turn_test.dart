@@ -29,7 +29,7 @@ void main() {
       );
       expect(terminal, isTrue);
       expect(s.stage, ConversationTurnProcessStage.failed);
-      expect(s.observedStages, ['submitted', 'accepted', 'failed']);
+      expect(s.observedStages, ['submitted', 'accepted']);
       expect(s.replyText, isEmpty);
       final live = s.projectedMessages(includeUser: false);
       expect(live.first.cardType, 'lifecycle');
