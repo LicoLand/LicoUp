@@ -40,7 +40,7 @@ bool applyPersistentTurnProcessEvent({
     if (next.isNotEmpty) {
       state.setReplyText(
         next,
-        createdAt: DateTime.now().toUtc().toIso8601String(),
+        createdAt: _eventCreatedAt(event),
         participantAgentId: agentId,
         participantLabel: participantLabel,
         participantRole: participantRole,
@@ -78,6 +78,7 @@ void _appendPersistentTurnEvidence(
       (event.payload['text'] ??
               event.payload['summary'] ??
               event.payload['status'] ??
+              event.payload['toolName'] ??
               event.payload['evidenceKind'] ??
               kind)
           .toString()
@@ -98,7 +99,7 @@ void _appendPersistentTurnEvidence(
       id: messageId,
       role: role,
       text: rawText,
-      createdAt: DateTime.now().toUtc().toIso8601String(),
+      createdAt: _eventCreatedAt(event),
       layer: AgentConversationSemanticLayer.execution,
       cardType: diagnostic != null ? 'diagnostic' : role.replaceAll('_', '-'),
       cardTitle: kind,
@@ -108,6 +109,11 @@ void _appendPersistentTurnEvidence(
       participantRole: state.participantRole,
     ),
   );
+}
+
+String _eventCreatedAt(AgentDispatchEvent event) {
+  final value = event.payload['createdAt'];
+  return value is String ? value.trim() : '';
 }
 
 /// Only a successful terminal may advance the next Graph actor.
@@ -131,11 +137,19 @@ String? _persistentTurnDiagnosticText(AgentDispatchEvent event) {
   if (terminal is! Map || terminal['kind'] != 'failed') return null;
   final code = (terminal['code'] ?? '').toString().trim();
   final stage = (terminal['stage'] ?? '').toString().trim();
-  final turnStatus = (terminal['turnStatus'] ?? '').toString().trim();
+  final turnStatus =
+      (terminal['turnStatus'] ?? event.payload['turnStatus'] ?? '')
+          .toString()
+          .trim();
+  final nestedError = event.payload['error'];
+  final message = nestedError is Map
+      ? (nestedError['message'] ?? '').toString().trim()
+      : '';
   if (code.isEmpty && turnStatus.isEmpty) return null;
   return jsonEncode({
     if (code.isNotEmpty) 'code': code,
     if (stage.isNotEmpty) 'stage': stage,
     if (turnStatus.isNotEmpty) 'turnStatus': turnStatus,
+    if (message.isNotEmpty) 'message': message,
   });
 }

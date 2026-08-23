@@ -431,7 +431,7 @@ class _MessagingChromeTabState extends State<_MessagingChromeTab> {
                   iconSize: 13,
                   selected: false,
                   detected:
-                      widget.entry.iconTarget.status == 'detected' ||
+                      widget.entry.iconTarget.status == TargetCandidateStatus.detected ||
                       widget.entry.iconTarget.configured,
                 ),
                 const SizedBox(width: 7),
