@@ -1,7 +1,8 @@
 use crate::platform::native_agent_parser::adapters::antigravity::valid_session_id;
-use std::collections::HashMap;
+use crate::platform::native_agent_parser::adapters::driver_registry::{
+    registry_get, registry_insert, registry_remove,
+};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum ControlDisposition {
@@ -12,35 +13,25 @@ pub(in crate::platform) enum ControlDisposition {
     TransportUnavailable,
 }
 
-static ACTIVE_TURNS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
-
-fn active_turns() -> &'static Mutex<HashMap<String, u32>> {
-    ACTIVE_TURNS.get_or_init(|| Mutex::new(HashMap::new()))
-}
+const REGISTRY_NAMESPACE: &str = "antigravity-active-turn";
+const MAX_ACTIVE_TURNS: usize = 128;
 
 pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
     if !valid_session_id(session_id) {
         return;
     }
-    if let Ok(mut registry) = active_turns().lock() {
-        registry.insert(session_id.to_string(), pid);
-    }
+    let _ = registry_insert(REGISTRY_NAMESPACE, session_id, pid, MAX_ACTIVE_TURNS);
 }
 
 pub(in crate::platform) fn clear_active_turn(session_id: &str) {
-    if let Ok(mut registry) = active_turns().lock() {
-        registry.remove(session_id);
-    }
+    let _ = registry_remove::<u32>(REGISTRY_NAMESPACE, session_id);
 }
 
 pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
     if !valid_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
-    let pid = active_turns()
-        .lock()
-        .ok()
-        .and_then(|registry| registry.get(session_id).copied());
+    let pid = registry_get::<u32>(REGISTRY_NAMESPACE, session_id);
     let Some(pid) = pid else {
         return ControlDisposition::NoActiveTurn;
     };

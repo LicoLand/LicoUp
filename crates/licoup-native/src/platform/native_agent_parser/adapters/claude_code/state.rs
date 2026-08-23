@@ -6,7 +6,7 @@ use crate::platform::claude_code_driver::params::DriverConfig;
 use serde_json::{Value, json};
 
 #[derive(Debug)]
-pub(in crate::platform) struct TurnOutcome {
+pub(in crate::platform) struct ProtocolFinishReport {
     pub(in crate::platform) output: String,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) turn_id: String,
@@ -39,7 +39,7 @@ impl<'a> ClaudeCodeParser<'a> {
     pub(in crate::platform) fn handle(
         &mut self,
         message: Value,
-    ) -> Result<Option<TurnOutcome>, ProtocolFailure> {
+    ) -> Result<Option<ProtocolFinishReport>, ProtocolFailure> {
         if let Some(session_id) = message
             .get("session_id")
             .or_else(|| message.get("sessionId"))
@@ -174,7 +174,7 @@ impl<'a> ClaudeCodeParser<'a> {
         Ok(())
     }
 
-    fn finish(&self, terminal: Value) -> Result<TurnOutcome, ProtocolFailure> {
+    fn finish(&self, terminal: Value) -> Result<ProtocolFinishReport, ProtocolFailure> {
         let session_id = self
             .observed_session_id
             .clone()
@@ -290,7 +290,7 @@ impl<'a> ClaudeCodeParser<'a> {
             &self.config.turn_id,
             serde_json::json!({"output": output}),
         );
-        Ok(TurnOutcome {
+        Ok(ProtocolFinishReport {
             output: output.to_string(),
             session_id,
             turn_id: self.config.turn_id.clone(),

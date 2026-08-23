@@ -16,12 +16,6 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Hard bound for the session-creation phase of a new conversation. The turn
-/// itself may run without a deadline (timeoutMs 0), but `cursor-agent
-/// create-chat` must never leave the client spinning: a blocked create-chat
-/// fails with `cursor_cli_create_chat_timeout` instead.
-const CREATE_CHAT_BOUND_MS: u64 = 60_000;
-
 pub(in crate::platform) fn execute(
     executable: &str,
     params: &Value,
@@ -85,15 +79,6 @@ pub(in crate::platform) fn execute(
     };
     let mut native_session = session_id.trim().to_string();
     if native_session.is_empty() {
-        // The desktop dispatches turns without a deadline (timeoutMs 0), so the
-        // session-creation phase must stay independently bounded: a blocked
-        // `cursor-agent create-chat` (auto-update lock, first-run, network)
-        // must fail visibly instead of leaving the client on an empty spinner.
-        let create_bound_ms = if timeout_ms == 0 {
-            CREATE_CHAT_BOUND_MS
-        } else {
-            timeout_ms.min(CREATE_CHAT_BOUND_MS)
-        };
         emit_turn_event(
             "agent.turn.processing",
             "",
@@ -104,7 +89,7 @@ pub(in crate::platform) fn execute(
                 "text": "creating native chat session",
             }),
         );
-        match create_chat_session(executable, &workspace, create_bound_ms, max_stdout) {
+        match create_chat_session(executable, &workspace, timeout_ms, max_stdout) {
             Ok(created) => {
                 native_session = created;
                 emit_turn_event(
@@ -471,7 +456,7 @@ fn spawn_turn_transport(
     Ok((child, stdout))
 }
 
-struct TurnOutcome {
+struct ProtocolFinishReport {
     output: String,
     session_id: String,
     turn_id: String,
@@ -510,7 +495,7 @@ fn consume_turn_stream(
     deadline: Option<Instant>,
     max_stdout: Option<usize>,
     root_pid: u32,
-) -> (Option<TurnOutcome>, Option<ProtocolFailure>, bool) {
+) -> (Option<ProtocolFinishReport>, Option<ProtocolFailure>, bool) {
     use crate::platform::native_agent_parser::adapters::cursor::{
         CursorEffect, CursorParseFailure, CursorParser,
     };
@@ -615,7 +600,7 @@ fn consume_turn_stream(
                                 &outcome.output,
                             );
                             return (
-                                Some(TurnOutcome {
+                                Some(ProtocolFinishReport {
                                     output: outcome.output,
                                     session_id: outcome.session_id,
                                     turn_id: outcome.turn_id,

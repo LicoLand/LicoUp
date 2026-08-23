@@ -1,4 +1,4 @@
-use super::AdapterContract;
+use super::{AdapterContract, NativeLineParser};
 use crate::platform::claude_code_driver::approval::PermissionRequest;
 use crate::platform::claude_code_driver::errors::ProtocolFailure;
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
@@ -8,7 +8,7 @@ use std::io;
 pub(in crate::platform) mod events;
 mod state;
 
-pub(in crate::platform) use state::{ClaudeCodeParser, TurnOutcome};
+pub(in crate::platform) use state::{ClaudeCodeParser, ProtocolFinishReport};
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("claude-code", "lf-ndjson");
 
 pub(in crate::platform) fn encode_message(message: &Value) -> io::Result<Vec<u8>> {
@@ -91,15 +91,15 @@ pub(in crate::platform) enum ClaudeEffect {
     Permission(PermissionRequest),
     Control { response: Option<Value> },
     Progress { session_id: Option<String> },
-    Complete(TurnOutcome),
+    ProtocolFinished(ProtocolFinishReport),
 }
 
 /// Sole ingress for one Claude Code stream-json wire line.
-impl ClaudeCodeParser<'_> {
-    pub(in crate::platform) fn parse_line(
-        &mut self,
-        line: &[u8],
-    ) -> Result<Option<ClaudeEffect>, ProtocolFailure> {
+impl NativeLineParser for ClaudeCodeParser<'_> {
+    type Report = Option<ClaudeEffect>;
+    type Error = ProtocolFailure;
+
+    fn parse_line(&mut self, line: &[u8]) -> Result<Self::Report, Self::Error> {
         let trimmed = line
             .iter()
             .copied()
@@ -151,7 +151,7 @@ impl ClaudeCodeParser<'_> {
             return Ok(Some(ClaudeEffect::Control { response }));
         }
         Ok(Some(match self.handle(message)? {
-            Some(outcome) => ClaudeEffect::Complete(outcome),
+            Some(report) => ClaudeEffect::ProtocolFinished(report),
             None => ClaudeEffect::Progress {
                 session_id: self.observed_session_id.clone(),
             },
