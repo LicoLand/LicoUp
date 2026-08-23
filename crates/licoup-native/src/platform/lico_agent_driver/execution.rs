@@ -2,8 +2,9 @@ use super::errors::ProtocolFailure;
 use super::model::{EffectiveSettings, RunResult};
 use crate::domain::lico_agent::AgentProfileKind;
 use crate::platform::file_security::{append_private_line, ensure_private_dir};
+use crate::platform::native_agent_parser::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::lico_agent::{
-    RpcEffect, encode_request, parse_line,
+    RpcEffect, RpcParser, encode_request,
 };
 use crate::platform::paths::portable_data_dir;
 use crate::platform::process_sandbox::lico_agent_plan_command;
@@ -409,7 +410,7 @@ fn write_line(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
 fn read_effect(reader: &mut impl BufRead) -> Option<RpcEffect> {
     let mut line = String::new();
     reader.read_line(&mut line).ok()?;
-    parse_line(&line).ok()
+    RpcParser.parse_line(line.as_bytes()).ok()
 }
 
 fn read_handshake(reader: &mut impl BufRead) -> Option<bool> {

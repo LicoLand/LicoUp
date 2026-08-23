@@ -39,7 +39,6 @@ pub(super) enum ProtocolEffect {
 
 pub(super) struct ParsedProtocolFrame {
     pub(super) effects: Vec<ProtocolEffect>,
-    pub(super) prompt_notification: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,7 +47,6 @@ pub(super) enum ProtocolPhase {
     AwaitSession,
     AwaitConfig,
     AwaitPrompt,
-    AwaitPromptDrain,
     Finished,
 }
 
@@ -67,7 +65,6 @@ pub(super) struct AcpProtocol {
     pub(super) output: String,
     pub(super) events: Vec<Value>,
     pub(super) interaction_failure: Option<ProtocolFailure>,
-    pub(super) terminal_stop_reason: Option<acp::AcpStopReason>,
     pub(super) turn_id: String,
 }
 
@@ -87,7 +84,6 @@ impl AcpProtocol {
             output: String::new(),
             events: Vec::new(),
             interaction_failure: None,
-            terminal_stop_reason: None,
             turn_id: Uuid::new_v4().to_string(),
         }
     }
@@ -151,17 +147,11 @@ impl AcpProtocol {
                         error,
                         "protocol/read",
                     ))],
-                    prompt_notification: false,
                 };
             }
         };
-        let prompt_notification = matches!(
-            self.phase,
-            ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
-        ) && self.is_notification(&message);
         ParsedProtocolFrame {
             effects: self.handle_message(message),
-            prompt_notification,
         }
     }
 
@@ -396,10 +386,7 @@ impl AcpProtocol {
         {
             modes["currentModeId"] = json!(mode);
         }
-        if !matches!(
-            self.phase,
-            ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
-        ) {
+        if !matches!(self.phase, ProtocolPhase::AwaitPrompt) {
             return Vec::new();
         }
         if let Some(evidence_kind) = update.kind().processing_evidence_kind() {
@@ -534,26 +521,7 @@ impl AcpProtocol {
             failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
-        self.terminal_stop_reason = Some(stop_reason);
-        self.phase = ProtocolPhase::AwaitPromptDrain;
-        Vec::new()
-    }
-
-    pub(super) fn finish_prompt_drain(&mut self) -> Vec<ProtocolEffect> {
-        if self.phase != ProtocolPhase::AwaitPromptDrain {
-            return Vec::new();
-        }
         self.phase = ProtocolPhase::Finished;
-        let Some(stop_reason) = self.terminal_stop_reason.take() else {
-            return vec![ProtocolEffect::Fail(
-                ProtocolFailure::new(
-                    "acp_prompt_response_invalid",
-                    "The ACP agent returned an invalid prompt response.",
-                    acp::SESSION_PROMPT_METHOD,
-                )
-                .with_session(self.session_id.as_deref()),
-            )];
-        };
         let stop_reason = stop_reason.as_str().to_owned();
         if let Some(mut failure) = self.interaction_failure.take() {
             failure.turn_status = Some(stop_reason);

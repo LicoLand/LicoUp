@@ -18,69 +18,6 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub(super) const PROMPT_DRAIN_QUIET_DURATION: Duration = Duration::from_millis(100);
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum PromptDrainExpiration {
-    Pending,
-    Quiet,
-    Hard,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(super) struct PromptDrainBudget {
-    hard_deadline: Option<Instant>,
-    last_valid_notification_at: Instant,
-    quiet_deadline: Instant,
-}
-
-impl PromptDrainBudget {
-    pub(super) fn new(prompt_response_at: Instant, hard_deadline: Option<Instant>) -> Self {
-        Self {
-            hard_deadline,
-            last_valid_notification_at: prompt_response_at,
-            quiet_deadline: quiet_deadline_after(prompt_response_at, hard_deadline),
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn hard_deadline(self) -> Option<Instant> {
-        self.hard_deadline
-    }
-
-    pub(super) fn next_deadline(self) -> Instant {
-        self.quiet_deadline
-    }
-
-    pub(super) fn observe_valid_notification(&mut self, observed_at: Instant) {
-        let observed_at = self
-            .hard_deadline
-            .map_or(observed_at, |deadline| observed_at.min(deadline))
-            .max(self.last_valid_notification_at);
-        self.last_valid_notification_at = observed_at;
-        self.quiet_deadline = self
-            .quiet_deadline
-            .max(quiet_deadline_after(observed_at, self.hard_deadline));
-    }
-
-    pub(super) fn expiration_at(self, now: Instant) -> PromptDrainExpiration {
-        if self.hard_deadline.is_some_and(|deadline| now >= deadline) {
-            PromptDrainExpiration::Hard
-        } else if now >= self.quiet_deadline {
-            PromptDrainExpiration::Quiet
-        } else {
-            PromptDrainExpiration::Pending
-        }
-    }
-}
-
-fn quiet_deadline_after(observed_at: Instant, hard_deadline: Option<Instant>) -> Instant {
-    let quiet = observed_at
-        .checked_add(PROMPT_DRAIN_QUIET_DURATION)
-        .unwrap_or(observed_at);
-    hard_deadline.map_or(quiet, |deadline| quiet.min(deadline))
-}
-
 pub(super) trait ProtocolLoopTransport {
     fn check_health(&mut self) -> io::Result<()>;
     fn write(&mut self, message: &Value) -> io::Result<()>;
@@ -420,7 +357,6 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
     Option<i32>,
     bool,
 ) {
-    let mut drain_budget: Option<PromptDrainBudget> = None;
     loop {
         if transport
             .sync_control(protocol.session_id.as_deref())
@@ -444,24 +380,10 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
             return (None, Some(failure), None, false);
         }
         let now = transport.now();
-        if let Some(budget) = drain_budget {
-            match budget.expiration_at(now) {
-                PromptDrainExpiration::Hard => return protocol_timeout(protocol),
-                PromptDrainExpiration::Quiet => {
-                    let effects = protocol.finish_prompt_drain();
-                    if let Some(result) = apply_protocol_effects(transport, protocol, effects) {
-                        return result;
-                    }
-                    return protocol_failed(protocol);
-                }
-                PromptDrainExpiration::Pending => {}
-            }
-        } else if hard_deadline.is_some_and(|deadline| now >= deadline) {
+        if hard_deadline.is_some_and(|deadline| now >= deadline) {
             return protocol_timeout(protocol);
         }
-        let wait = drain_budget
-            .map(PromptDrainBudget::next_deadline)
-            .or(hard_deadline)
+        let wait = hard_deadline
             .map(|deadline| deadline.saturating_duration_since(now))
             .unwrap_or(PROCESS_POLL_INTERVAL)
             .min(PROCESS_POLL_INTERVAL);
@@ -474,12 +396,6 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
             Ok(TransportEvent::Frame(line)) => {
                 let phase_before = protocol.phase;
                 let parsed = protocol.handle_frame(&line);
-                let notification_accepted = parsed.prompt_notification
-                    && parsed.effects.is_empty()
-                    && matches!(
-                        protocol.phase,
-                        ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
-                    );
                 if let Some(result) = apply_protocol_effects(transport, protocol, parsed.effects) {
                     return result;
                 }
@@ -502,13 +418,6 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
                         &protocol.turn_id,
                         serde_json::json!({}),
                     );
-                }
-                if phase_before == ProtocolPhase::AwaitPrompt
-                    && protocol.phase == ProtocolPhase::AwaitPromptDrain
-                {
-                    drain_budget = Some(PromptDrainBudget::new(observed_at, hard_deadline));
-                } else if notification_accepted && let Some(budget) = drain_budget.as_mut() {
-                    budget.observe_valid_notification(observed_at);
                 }
             }
             Ok(TransportEvent::StdoutLimitExceeded) => {
@@ -601,23 +510,6 @@ fn protocol_timeout(
         "acp_protocol_timeout",
         "The ACP agent timed out before the turn completed.",
         "session/prompt",
-    )
-    .with_session(protocol.session_id.as_deref());
-    (None, Some(failure), None, false)
-}
-
-fn protocol_failed(
-    protocol: &AcpProtocol,
-) -> (
-    Option<ProtocolOutcome>,
-    Option<ProtocolFailure>,
-    Option<i32>,
-    bool,
-) {
-    let failure = ProtocolFailure::new(
-        "acp_protocol_failed",
-        "The ACP agent did not complete the request.",
-        "protocol",
     )
     .with_session(protocol.session_id.as_deref());
     (None, Some(failure), None, false)

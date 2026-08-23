@@ -1,4 +1,4 @@
-use super::AdapterContract;
+use super::{AdapterContract, NativeLineParser};
 use crate::platform::cursor_driver::model::EffectiveSettings;
 use crate::platform::cursor_driver::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
@@ -112,11 +112,28 @@ impl CursorParser {
         }
     }
 
-    /// Sole ingress for a PTY-originated strict NDJSON wire line.
+    pub(in crate::platform) fn session_id(&self) -> &str {
+        if self.observed_session.is_empty() {
+            &self.requested_session
+        } else {
+            &self.observed_session
+        }
+    }
+
     pub(in crate::platform) fn parse_line(
         &mut self,
         line: &[u8],
     ) -> Result<Vec<CursorEffect>, CursorParseFailure> {
+        NativeLineParser::parse_line(self, line)
+    }
+}
+
+impl NativeLineParser for CursorParser {
+    type Report = Vec<CursorEffect>;
+    type Error = CursorParseFailure;
+
+    /// Sole ingress for a PTY-originated strict NDJSON wire line.
+    fn parse_line(&mut self, line: &[u8]) -> Result<Self::Report, Self::Error> {
         let trimmed = line
             .iter()
             .copied()
@@ -193,14 +210,6 @@ impl CursorParser {
             }));
         }
         Ok(effects)
-    }
-
-    pub(in crate::platform) fn session_id(&self) -> &str {
-        if self.observed_session.is_empty() {
-            &self.requested_session
-        } else {
-            &self.observed_session
-        }
     }
 }
 

@@ -4,7 +4,7 @@ mod helpers;
 mod session;
 
 use self::helpers::request_id_matches;
-use super::AdapterContract;
+use super::{AdapterContract, NativeLineParser};
 use crate::platform::codex_app_server::config::ProtocolConfig;
 use crate::platform::codex_app_server::limits::{
     INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
@@ -124,35 +124,6 @@ impl CodexParser {
         })
     }
 
-    /// Sole ingress for one app-server JSON-RPC wire line.
-    pub(in crate::platform) fn parse_line(
-        &mut self,
-        line: &[u8],
-    ) -> Result<Vec<CodexEffect>, ProtocolFailure> {
-        let message: Value = serde_json::from_slice(line).map_err(|_| {
-            self.contextualize(ProtocolFailure::new(
-                "codex_app_server_invalid_json",
-                "Codex app-server returned an invalid protocol message.",
-                "protocol/read",
-            ))
-        })?;
-        if let Some(request_id) = message
-            .get("id")
-            .and_then(Value::as_str)
-            .filter(|id| id.starts_with("lico-steer-"))
-        {
-            return Ok(vec![CodexEffect::SteerResponse {
-                request_id: request_id.to_owned(),
-                accepted: message.get("error").is_none() && message.get("result").is_some(),
-            }]);
-        }
-        Ok(self
-            .handle_message(message)
-            .into_iter()
-            .map(CodexEffect::Protocol)
-            .collect())
-    }
-
     pub(in crate::platform) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         if let Some(effects) = self.reject_server_request(&message) {
             self.phase = ProtocolPhase::Finished;
@@ -196,5 +167,43 @@ impl CodexParser {
     pub(in crate::platform) fn active_turn_binding(&self) -> Option<(&str, &str)> {
         (self.phase == ProtocolPhase::AwaitTurnCompleted)
             .then_some((self.thread_id.as_deref()?, self.turn_id.as_deref()?))
+    }
+
+    pub(in crate::platform) fn parse_line(
+        &mut self,
+        line: &[u8],
+    ) -> Result<Vec<CodexEffect>, ProtocolFailure> {
+        NativeLineParser::parse_line(self, line)
+    }
+}
+
+impl NativeLineParser for CodexParser {
+    type Report = Vec<CodexEffect>;
+    type Error = ProtocolFailure;
+
+    /// Sole ingress for one app-server JSON-RPC wire line.
+    fn parse_line(&mut self, line: &[u8]) -> Result<Self::Report, Self::Error> {
+        let message: Value = serde_json::from_slice(line).map_err(|_| {
+            self.contextualize(ProtocolFailure::new(
+                "codex_app_server_invalid_json",
+                "Codex app-server returned an invalid protocol message.",
+                "protocol/read",
+            ))
+        })?;
+        if let Some(request_id) = message
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| id.starts_with("lico-steer-"))
+        {
+            return Ok(vec![CodexEffect::SteerResponse {
+                request_id: request_id.to_owned(),
+                accepted: message.get("error").is_none() && message.get("result").is_some(),
+            }]);
+        }
+        Ok(self
+            .handle_message(message)
+            .into_iter()
+            .map(CodexEffect::Protocol)
+            .collect())
     }
 }

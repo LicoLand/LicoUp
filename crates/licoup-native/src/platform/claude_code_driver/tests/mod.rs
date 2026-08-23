@@ -33,6 +33,7 @@ use super::supervision::{
     cancel, cleanup_session, clear_all_for_test, has_live_session, lookup_session_transport, steer,
 };
 use super::transport::PersistentTransport;
+use crate::platform::native_agent_parser::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::claude_code::events::partial_text_delta;
 use crate::platform::native_agent_parser::adapters::claude_code::{
     ClaudeCodeParser, ClaudeEffect, interrupt_request,

@@ -209,7 +209,7 @@ fn select_canonical_failure(
         return exact_failure;
     }
     if matches!(response, Some(Ok(_))) {
-        // The message endpoint owns terminal settlement. A plain SSE EOF is
+        // The message endpoint reports the protocol finish. A plain SSE EOF is
         // observer loss and cannot relabel an already returned HTTP terminal.
         return None;
     }

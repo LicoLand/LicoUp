@@ -1,4 +1,4 @@
-use super::AdapterContract;
+use super::{AdapterContract, NativeLineParser};
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::Value;
 
@@ -27,33 +27,43 @@ pub(in crate::platform) fn encode_request(value: &Value) -> Result<Vec<u8>, serd
     Ok(encoded)
 }
 
-pub(in crate::platform) fn parse_line(line: &str) -> Result<RpcEffect, FrameError> {
-    let line = line.trim();
-    if line.is_empty() {
-        return Err(FrameError::Empty);
-    }
-    let event: Value = serde_json::from_str(line).map_err(|_| FrameError::InvalidJson)?;
-    if event.get("type").and_then(Value::as_str) == Some("response") {
-        return Ok(RpcEffect::Handshake {
-            accepted: event.get("success").and_then(Value::as_bool) == Some(true),
-        });
-    }
-    if let Some(delta) = event
-        .pointer("/assistantMessageEvent/delta")
-        .and_then(Value::as_str)
-    {
-        return Ok(RpcEffect::Text {
-            delta: delta.to_owned(),
-        });
-    }
-    match event.get("type").and_then(Value::as_str) {
-        Some("agent.event" | "agent.progress" | "agent.tool") => Ok(RpcEffect::Processing),
-        Some("agent.interaction") => Ok(RpcEffect::Control {
-            method: "agent.interaction".to_owned(),
-        }),
-        Some("agent_end") => Ok(RpcEffect::Completed),
-        Some("error") => Ok(RpcEffect::Failed),
-        _ => Ok(RpcEffect::Ignored),
+#[derive(Default)]
+pub(in crate::platform) struct RpcParser;
+
+impl NativeLineParser for RpcParser {
+    type Report = RpcEffect;
+    type Error = FrameError;
+
+    fn parse_line(&mut self, line: &[u8]) -> Result<Self::Report, Self::Error> {
+        let line = std::str::from_utf8(line)
+            .map_err(|_| FrameError::InvalidJson)?
+            .trim();
+        if line.is_empty() {
+            return Err(FrameError::Empty);
+        }
+        let event: Value = serde_json::from_str(line).map_err(|_| FrameError::InvalidJson)?;
+        if event.get("type").and_then(Value::as_str) == Some("response") {
+            return Ok(RpcEffect::Handshake {
+                accepted: event.get("success").and_then(Value::as_bool) == Some(true),
+            });
+        }
+        if let Some(delta) = event
+            .pointer("/assistantMessageEvent/delta")
+            .and_then(Value::as_str)
+        {
+            return Ok(RpcEffect::Text {
+                delta: delta.to_owned(),
+            });
+        }
+        match event.get("type").and_then(Value::as_str) {
+            Some("agent.event" | "agent.progress" | "agent.tool") => Ok(RpcEffect::Processing),
+            Some("agent.interaction") => Ok(RpcEffect::Control {
+                method: "agent.interaction".to_owned(),
+            }),
+            Some("agent_end") => Ok(RpcEffect::Completed),
+            Some("error") => Ok(RpcEffect::Failed),
+            _ => Ok(RpcEffect::Ignored),
+        }
     }
 }
 
@@ -113,15 +123,15 @@ mod tests {
     #[test]
     fn jsonl_parser_owns_handshake_text_and_terminal_classification() {
         assert!(matches!(
-            parse_line(r#"{"type":"response","success":true}"#),
+            RpcParser.parse_line(br#"{"type":"response","success":true}"#),
             Ok(RpcEffect::Handshake { accepted: true })
         ));
         assert!(matches!(
-            parse_line(r#"{"assistantMessageEvent":{"delta":"hello"}}"#),
+            RpcParser.parse_line(br#"{"assistantMessageEvent":{"delta":"hello"}}"#),
             Ok(RpcEffect::Text { delta }) if delta == "hello"
         ));
         assert!(matches!(
-            parse_line(r#"{"type":"agent_end"}"#),
+            RpcParser.parse_line(br#"{"type":"agent_end"}"#),
             Ok(RpcEffect::Completed)
         ));
         assert_eq!(

@@ -1,24 +1,25 @@
 use serde_json::Value;
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
-use std::sync::{Arc, LazyLock, Mutex, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use super::native_agent_parser::Transition;
+use super::native_agent_parser::adapters::NativeLineParser;
 use super::native_agent_parser::adapters::deepseek_harness::{
-    FrameError, ProtocolFrame, TurnParseError, TurnParser, encode_request, initialize_accepted,
-    initialize_request, parse_line, prompt_request, shutdown_request,
+    FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
+    initialize_accepted, initialize_request, prompt_request, shutdown_request,
+};
+use super::native_agent_parser::adapters::driver_registry::{
+    registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
 };
 use super::process_supervisor::SupervisedChild;
 
 pub(super) const DRIVER_ID: &str = "deepseek-harness-sdk-jsonrpc";
 pub(super) const RUNTIME_PROTOCOL: &str = "deepseek-harness-sdk-stdio-jsonrpc";
 const MAX_TRANSPORTS: usize = 8;
-
-static TRANSPORTS: LazyLock<Mutex<HashMap<String, Arc<ManagedTransport>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+const REGISTRY_NAMESPACE: &str = "deepseek-harness-transport";
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct EffectiveSettings {
@@ -124,7 +125,7 @@ struct TransportConfig {
     model: String,
     max_tokens: Option<u64>,
     cordis_config: Option<PathBuf>,
-    output_limit: usize,
+    output_limit: Option<usize>,
     stderr_limit: usize,
 }
 
@@ -235,7 +236,7 @@ pub(super) fn execute(
             .and_then(Value::as_u64)
             .filter(|value| *value > 0),
         cordis_config,
-        output_limit: max_stdout.unwrap_or(64 * 1024 * 1024),
+        output_limit: max_stdout,
         stderr_limit: max_stderr,
     };
     let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
@@ -286,13 +287,7 @@ pub(super) fn execute(
 }
 
 pub(in crate::platform) fn cleanup_session(session_id: &str) -> CleanupDisposition {
-    let transport = {
-        let mut transports = match TRANSPORTS.lock() {
-            Ok(transports) => transports,
-            Err(_) => return CleanupDisposition::Unavailable,
-        };
-        transports.remove(session_id.trim())
-    };
+    let transport = registry_remove::<Arc<ManagedTransport>>(REGISTRY_NAMESPACE, session_id.trim());
     let Some(transport) = transport else {
         return CleanupDisposition::SessionUnavailable;
     };
@@ -308,8 +303,7 @@ fn transport_for_session(
     config: &TransportConfig,
     deadline: Option<Instant>,
 ) -> std::result::Result<Arc<ManagedTransport>, ProtocolFailure> {
-    let mut transports = TRANSPORTS.lock().map_err(|_| transport_unavailable())?;
-    if let Some(transport) = transports.get(session_id) {
+    if let Some(transport) = registry_get::<Arc<ManagedTransport>>(REGISTRY_NAMESPACE, session_id) {
         if transport.config != *config {
             return Err(failure(
                 "deepseek_harness_session_config_changed",
@@ -317,18 +311,38 @@ fn transport_for_session(
                 "session/config",
             ));
         }
-        return Ok(Arc::clone(transport));
-    }
-    if transports.len() >= MAX_TRANSPORTS {
-        return Err(failure(
-            "deepseek_harness_transport_capacity_exceeded",
-            "The bounded DeepSeek Harness transport pool is full.",
-            "process/capacity",
-        ));
+        return Ok(transport);
     }
     let transport = Arc::new(spawn_transport(config, deadline)?);
-    transports.insert(session_id.to_string(), Arc::clone(&transport));
-    Ok(transport)
+    let inserted = registry_insert_if_absent(
+        REGISTRY_NAMESPACE,
+        session_id,
+        Arc::clone(&transport),
+        MAX_TRANSPORTS,
+    );
+    match inserted {
+        Ok(Ok(())) => Ok(transport),
+        Ok(Err(existing)) => {
+            shutdown_transport(&transport);
+            if existing.config == *config {
+                Ok(existing)
+            } else {
+                Err(failure(
+                    "deepseek_harness_session_config_changed",
+                    "DeepSeek Harness cannot resume a session after its executable or initialization settings changed.",
+                    "session/config",
+                ))
+            }
+        }
+        Err(()) => {
+            shutdown_transport(&transport);
+            Err(failure(
+                "deepseek_harness_transport_capacity_exceeded",
+                "The bounded DeepSeek Harness transport pool is full.",
+                "process/capacity",
+            ))
+        }
+    }
 }
 
 fn spawn_transport(
@@ -430,7 +444,7 @@ fn execute_turn(
     state: &mut TransportState,
     prompt: &str,
     session_id: &str,
-    output_limit: usize,
+    output_limit: Option<usize>,
     deadline: Option<Instant>,
 ) -> std::result::Result<
     super::native_agent_parser::adapters::deepseek_harness::TurnResult,
@@ -451,7 +465,7 @@ fn execute_turn(
     loop {
         let frame = next_frame(&state.receiver, deadline).ok_or_else(turn_incomplete)??;
         output_bytes = output_bytes.saturating_add(frame.wire_bytes());
-        if output_bytes > output_limit {
+        if output_limit.is_some_and(|limit| output_bytes > limit) {
             return Err(output_limit_exceeded());
         }
         match parser.ingest(frame) {
@@ -466,9 +480,9 @@ fn execute_turn(
 /// past the protocol cap. An oversized frame terminates its transport.
 fn read_protocol_frame(
     reader: &mut impl BufRead,
-    limit: usize,
+    limit: Option<usize>,
 ) -> std::result::Result<Option<ProtocolFrame>, FrameError> {
-    let mut bytes = Vec::with_capacity(limit.min(8192));
+    let mut bytes = Vec::with_capacity(limit.unwrap_or(8192).min(8192));
     loop {
         let available = reader.fill_buf().map_err(|_| FrameError::InvalidJson)?;
         if available.is_empty() {
@@ -481,7 +495,7 @@ fn read_protocol_frame(
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |index| index + 1);
-        if bytes.len().saturating_add(take) > limit {
+        if limit.is_some_and(|limit| bytes.len().saturating_add(take) > limit) {
             return Err(FrameError::OutputLimit);
         }
         bytes.extend_from_slice(&available[..take]);
@@ -496,8 +510,7 @@ fn read_protocol_frame(
     {
         bytes.pop();
     }
-    let wire_bytes = bytes.len().saturating_add(1);
-    parse_line(&bytes, wire_bytes).map(Some)
+    FrameParser.parse_line(&bytes).map(Some)
 }
 
 fn write_frame(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
@@ -527,13 +540,9 @@ fn next_frame(
 }
 
 fn evict_transport(session_id: &str, expected: &Arc<ManagedTransport>) {
-    if let Ok(mut transports) = TRANSPORTS.lock()
-        && transports
-            .get(session_id)
-            .is_some_and(|current| Arc::ptr_eq(current, expected))
-    {
-        transports.remove(session_id);
-    }
+    registry_remove_if::<Arc<ManagedTransport>>(REGISTRY_NAMESPACE, session_id, |current| {
+        Arc::ptr_eq(current, expected)
+    });
 }
 
 fn shutdown_transport(transport: &ManagedTransport) -> bool {
@@ -614,7 +623,7 @@ mod tests {
         let input = format!("{{\"value\":\"{}\"}}\n", "x".repeat(128));
         let mut reader = BufReader::new(input.as_bytes());
         assert!(matches!(
-            read_protocol_frame(&mut reader, 32),
+            read_protocol_frame(&mut reader, Some(32)),
             Err(FrameError::OutputLimit)
         ));
     }
