@@ -6,6 +6,7 @@ use crate::platform::runtime_adapters;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,10 +20,30 @@ pub(super) fn find_binary(names: &[&str]) -> Option<PathBuf> {
 }
 
 pub(super) fn find_target_binary(def: &TargetDef, params: &Value) -> Option<PathBuf> {
+    if def.id == "deepseek-harness" {
+        // `dsh` is the installed-product authority. Resolve that exact command
+        // from PATH instead of probing SDK carrier package names or walking
+        // package-manager directories.
+        return find_command_binary_in_path(def.binary_names, env::var_os("PATH").as_deref());
+    }
     if def.id != "cursor" {
         return find_binary(def.binary_names);
     }
     find_cursor_binary_in_dirs(&binary_search_dirs(), params)
+}
+
+fn find_command_binary_in_path(names: &[&str], path: Option<&OsStr>) -> Option<PathBuf> {
+    let home = crate::platform::paths::user_home_from_env();
+    env::split_paths(path?).find_map(|dir| {
+        if !dir.is_absolute() || scan_paths::denied(&dir, home.as_deref()) {
+            return None;
+        }
+        names.iter().find_map(|name| {
+            binary_candidate_paths(&dir, name)
+                .into_iter()
+                .find(|candidate| automatic_path_is_file(candidate))
+        })
+    })
 }
 
 fn find_cursor_binary_in_dirs(dirs: &[PathBuf], _params: &Value) -> Option<PathBuf> {
@@ -337,6 +358,25 @@ mod tests {
     }
 
     #[test]
+    fn command_detection_checks_only_exact_path_entries() {
+        let dir = unique_temp_dir("exact-command-path");
+        let executable = dir.join("dsh");
+        fs::write(&executable, "dsh").unwrap();
+        let nested = dir.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("dsh-jsonrpc-agent"), "carrier").unwrap();
+        let path = env::join_paths([dir.as_path()]).unwrap();
+
+        assert_eq!(
+            find_command_binary_in_path(&["dsh"], Some(path.as_os_str())),
+            Some(executable)
+        );
+        assert!(
+            find_command_binary_in_path(&["dsh-jsonrpc-agent"], Some(path.as_os_str())).is_none()
+        );
+    }
+
+    #[test]
     fn platform_sources_cover_application_stores_and_package_managers() {
         let roots = HostRoots {
             home: Some(posix_path(&["profile"])),
@@ -410,6 +450,12 @@ mod tests {
                 "Resources",
                 "app",
                 "bin",
+            ]),
+            posix_path(&[
+                "Applications",
+                "ChatGPT.app",
+                "Contents",
+                "Resources",
             ]),
             posix_path(&["profile", ".local", "bin"]),
             posix_path(&["profile", ".nvm", "current", "bin"]),

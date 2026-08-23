@@ -248,18 +248,8 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
             label: "DeepSeek Harness - SDK Runtime",
             kind: "cli",
             config_hint: "DeepSeek Harness SDK JSON-RPC runtime configuration",
-            binary_names: &[
-                "dsh-jsonrpc-agent",
-                "dsh-jsonrpc-agent-pkg-linux-x64",
-                "dsh-jsonrpc-agent-pkg-linux-arm64",
-                "dsh-jsonrpc-agent-pkg-macos-arm64",
-            ],
-            process_names: &[
-                "dsh-jsonrpc-agent",
-                "dsh-jsonrpc-agent-pkg-linux-x64",
-                "dsh-jsonrpc-agent-pkg-linux-arm64",
-                "dsh-jsonrpc-agent-pkg-macos-arm64",
-            ],
+            binary_names: &["dsh"],
+            process_names: &["dsh.exe", "dsh"],
         },
         TargetDef {
             id: "lico-agent",
@@ -347,6 +337,10 @@ mod tests {
         assert_eq!(normalize_target("workbuddy-cli"), "codebuddy");
         assert_eq!(normalize_target("trae-cli"), "trae-agent");
         assert_eq!(normalize_target("dsh"), "deepseek-harness");
+        assert_eq!(
+            target_def("deepseek-harness").unwrap().binary_names,
+            &["dsh"]
+        );
         assert_eq!(target_def("claude").unwrap().id, "claude-code");
         assert_eq!(target_def("workbuddy").unwrap().id, "workbuddy");
         assert_eq!(target_def("trae-work").unwrap().id, "trae-work");
