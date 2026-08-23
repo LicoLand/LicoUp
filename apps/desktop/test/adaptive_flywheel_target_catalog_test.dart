@@ -21,6 +21,18 @@ TargetCandidate _target({
 }
 
 void main() {
+  test('Assistant catalog includes detected Codex and DeepSeek Harness', () {
+    final targets = agentOrchestrationCommanderTargets([
+      _target(id: 'codex', models: const []),
+      _target(id: 'deepseek-harness', models: const []),
+    ]);
+
+    expect(targets.map((target) => target.target), [
+      'codex',
+      'deepseek-harness',
+    ]);
+  });
+
   test('Claude Code exposes the configured current model unchanged', () {
     final target = _target(
       id: 'claude-code',
