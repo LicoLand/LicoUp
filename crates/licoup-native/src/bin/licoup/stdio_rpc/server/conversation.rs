@@ -361,10 +361,7 @@ impl PersistentConversationRuntime {
         let sink_failed = Arc::clone(&persistence_failed);
         let sink_turn = Arc::clone(&turn);
         licoup_native::platform::install_stream_sink(Box::new(move |event| {
-            if Self::record_event(&sink_turn, event).is_err() {
-                sink_failed.store(true, Ordering::Release);
-                panic!("conversation frame persistence failed");
-            }
+            Self::persist_frame(&sink_turn, event, &sink_failed);
         }));
         let stream_guard = licoup_native::platform::StreamSinkGuard;
         let execution = catch_unwind(AssertUnwindSafe(|| {
@@ -507,6 +504,18 @@ impl PersistentConversationRuntime {
             if timed_out.timed_out() {
                 return json!({"turns": []});
             }
+        }
+    }
+
+    /// Persist one emitted turn frame through the host-facing stream sink. A
+    /// SQLite write failure is recorded as a typed persistence-failure signal
+    /// and the frame is dropped; the surrounding turn then settles with a
+    /// `conversation_persistence_failed` error delta while the stdio frame
+    /// loop keeps serving. Only interior invariants may assert; frame
+    /// persistence is a store failure and must never unwind the boundary.
+    fn persist_frame(turn: &Arc<PersistentTurn>, event: Value, persistence_failed: &AtomicBool) {
+        if Self::record_event(turn, event).is_err() {
+            persistence_failed.store(true, Ordering::Release);
         }
     }
 
@@ -934,8 +943,12 @@ where
                 match PersistentConversationRuntime::record_event(turn, event) {
                     Ok(event) => event,
                     Err(_) => {
+                        // A SQLite write failure is a typed persistence-failure
+                        // signal, never a panic: drop the frame and let the
+                        // turn settle with a `conversation_persistence_failed`
+                        // delta.
                         persistence_failed.store(true, Ordering::Release);
-                        panic!("conversation frame persistence failed");
+                        return;
                     }
                 }
             } else {
@@ -1649,6 +1662,141 @@ mod tests {
         assert!(!join_until(&mut workers, Duration::from_millis(20)));
         release.send(()).unwrap();
         assert!(join_until(&mut workers, Duration::from_secs(1)));
+    }
+
+    /// SQLite write failure injected into frame persistence: the host-facing
+    /// persistence path settles the turn with a typed error delta and the
+    /// runtime keeps accepting turns instead of unwinding the process.
+    #[test]
+    fn stdio_rpc_resilience_sqlite_write_failure_emits_error_delta_and_loop_survives() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime = PersistentConversationRuntime::with_cache_budget(
+            store.clone(),
+            DEFAULT_TURN_CACHE_BYTES,
+        );
+        let turn = runtime
+            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
+            .unwrap();
+        // Inject the write failure behind the connection pool: remove the
+        // registered dispatch rows so the next persisted frame fails closed.
+        {
+            let connection = rusqlite::Connection::open(store.db_path()).unwrap();
+            connection
+                .execute(
+                    "DELETE FROM conversation_dispatches WHERE id=?1",
+                    [turn.scope.dispatch_id.as_str()],
+                )
+                .unwrap();
+        }
+
+        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let dispatched = execute(
+            &writer,
+            "request-resilience",
+            "workflow-resilience",
+            "send",
+            json!({"agent": "synthetic", "text": "synthetic prompt"}),
+            None,
+            true,
+            Some(turn),
+        );
+        assert!(
+            dispatched.is_ok(),
+            "frame persistence failure must not unwind the loop"
+        );
+
+        let output = String::from_utf8(writer.lock().unwrap().clone()).unwrap();
+        let frames = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let terminal = frames
+            .iter()
+            .find(|frame| frame["id"] == "request-resilience")
+            .expect("terminal delta frame");
+        assert_eq!(terminal["ok"], false);
+        assert!(terminal.get("result").is_none());
+        // The known problem code degrades into the canonical ClientError
+        // vocabulary; the exact external code is the host metadata codec for
+        // frame-persistence failures.
+        assert_eq!(terminal["error"]["code"], "command_failed");
+
+        // The loop survived: the same runtime registers and persists a fresh,
+        // healthy turn afterwards.
+        let next = runtime
+            .begin(&json!({"agent": "synthetic", "text": "next prompt"}))
+            .unwrap();
+        PersistentConversationRuntime::record_event(
+            &next,
+            json!({
+                "event": "agent.message.chunk",
+                "payload": {"ordinal": 1}
+            }),
+        )
+        .unwrap();
+    }
+
+    /// A panicking dispatch is converted into a `command_panicked` error delta
+    /// at the frame-loop boundary and the loop keeps serving the next request.
+    #[test]
+    fn stdio_rpc_resilience_frame_loop_survives_panicking_dispatch() {
+        let mut input = Vec::new();
+        for frame in [
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-panic",
+                "workflowId": "workflow-1",
+                "method": "execute",
+                "args": ["boom"],
+            }),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-ok",
+                "workflowId": "workflow-1",
+                "method": "execute",
+                "args": ["ok"],
+            }),
+        ] {
+            input.extend_from_slice(&serde_json::to_vec(&frame).unwrap());
+            input.push(b'\n');
+        }
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let output =
+            serve_stdio_rpc_with_runtime(
+                std::io::Cursor::new(input),
+                Vec::new(),
+                |args,
+                 _|
+                 -> std::result::Result<
+                    licoup_native::ffi::commands::CliExecution,
+                    anyhow::Error,
+                > {
+                    if args.first().map(String::as_str) == Some("boom") {
+                        // Deliberate panic injection: the frame-loop boundary
+                        // must convert it into a `command_panicked` error
+                        // delta.
+                        std::panic::panic_any("synthetic dispatch panic");
+                    }
+                    Ok(licoup_native::ffi::commands::CliExecution::Json(
+                        json!({"ok": true}),
+                    ))
+                },
+                runtime,
+            )
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        let frames = text
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0]["id"], "request-panic");
+        assert_eq!(frames[0]["ok"], false);
+        assert_eq!(frames[0]["error"]["code"], "command_panicked");
+        assert!(frames[0].get("result").is_none());
+        assert_eq!(frames[1]["id"], "request-ok");
+        assert_eq!(frames[1]["ok"], true);
+        assert_eq!(frames[1]["result"]["ok"], true);
     }
 
     #[test]

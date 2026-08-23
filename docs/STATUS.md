@@ -67,15 +67,16 @@ hosted operation.
 
 | Dimension or channel | Status |
 | --- | --- |
-| Product version metadata | `0.1.0-alpha` |
-| Next governed release | none planned |
-| Archived release history | none |
-| GitHub Release publication | not claimed |
+| Product version metadata | `0.1.1` (build 2), owned by `tools/client-version.json` |
+| Next governed release | none currently planned |
+| Archived release history | none archived in the governed release plan; `CHANGELOG.md` records `0.1.1` (2026-08-14) and `0.1.0-alpha` (2026-07-25) entries; `git tag -l` lists only `v0.1.0` |
+| GitHub Release publication | not claimed; no `v0.1.1` tag exists |
 | Platform-store publication | not claimed |
 
-A build target or GitHub Release eligibility flag is not publication. Each
-platform build, physical/device verification, GitHub Release, and store channel
-is an independent claim.
+The `0.1.1` version metadata and its CHANGELOG entry record a version-sources
+synchronization, not a publication. A build target or GitHub Release eligibility
+flag is not publication. Each platform build, physical/device verification,
+GitHub Release, and store channel is an independent claim.
 
 ## Support
 

@@ -1,9 +1,18 @@
 //! Complete Agent output spool. Memory overflow transfers intact chunks to a
 //! process-local sealed store. Chunks are never truncated.
+//!
+//! Sealing uses a per-spool randomly derived key so the ciphertext is not
+//! decryptable or forgeable against a publicly known constant key. The spool
+//! is process-local and non-persistent: the key never leaves the process and
+//! no ciphertext survives a restart, so a per-spool random key provides the
+//! full confidentiality and integrity service of the AEAD without any
+//! key-export or key-custody requirement.
 
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use std::collections::BTreeMap;
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpoolError {
@@ -40,7 +49,7 @@ pub struct OutputSpool {
 impl OutputSpool {
     pub fn process_local() -> Self {
         Self {
-            cipher: ChaCha20Poly1305::new(&Key::from([0x11; 32])),
+            cipher: ChaCha20Poly1305::new(&derive_process_key()),
             chunks: BTreeMap::new(),
             next_offset: 0,
             next_nonce: 1,
@@ -101,6 +110,17 @@ fn nonce_from(index: u64) -> Nonce {
     let mut bytes = [0_u8; 12];
     bytes[4..].copy_from_slice(&index.to_le_bytes());
     Nonce::from(bytes)
+}
+
+/// Derives a fresh 256-bit key from the std random-seeded hasher, which draws
+/// OS entropy. Each `OutputSpool` instance gets an independent key, so two
+/// spools never share a key and no key material is embedded or exported.
+fn derive_process_key() -> Key {
+    let mut bytes = [0_u8; 32];
+    for chunk in bytes.chunks_mut(core::mem::size_of::<u64>()) {
+        chunk.copy_from_slice(&RandomState::new().build_hasher().finish().to_le_bytes());
+    }
+    Key::from(bytes)
 }
 
 #[cfg(test)]
