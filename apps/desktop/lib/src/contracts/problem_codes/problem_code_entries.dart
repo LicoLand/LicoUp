@@ -1293,6 +1293,7 @@ const Map<String, ProblemCode> problemCodeEntries = {
   ),
   'opencode_serve_session_busy': ProblemCode(ProblemDomain.nativeAgent, 4211),
   'opencode_serve_url_invalid': ProblemCode(ProblemDomain.nativeAgent, 4212),
+  'pi_model_override_failed': ProblemCode(ProblemDomain.nativeAgent, 4213),
   // LU-CB Catalog convergence
   'catalog_disabled': ProblemCode(ProblemDomain.catalog, 4700),
   'catalog_discovery_invalid': ProblemCode(ProblemDomain.catalog, 4701),

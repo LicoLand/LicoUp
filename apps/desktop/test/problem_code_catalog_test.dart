@@ -101,6 +101,10 @@ void main() {
     );
   });
 
+  test('Pi model resolution failures have a native-agent problem code', () {
+    expect(ProblemCodeCatalog.wire('pi_model_override_failed'), 'LU-NA-4213');
+  });
+
   test('copy payload includes both problem code and occurrence id', () {
     final blob = ProblemCodeCopy.copyableDetail(
       legacyCode: 'transport_failed',

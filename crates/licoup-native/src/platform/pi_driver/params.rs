@@ -78,24 +78,25 @@ impl ProtocolConfig {
         let model = text_param(params, &["model", "modelId"]);
         let (model_provider, model_id) = match model.as_deref() {
             Some(value) => {
-                let Some((provider, model_id)) = value.split_once('/') else {
-                    return Err(ProtocolFailure::new(
-                        "pi_model_provider_required",
-                        "Pi RPC model overrides require provider/model identity.",
-                        "capability/model",
-                    ));
-                };
-                if provider.trim().is_empty() || model_id.trim().is_empty() {
-                    return Err(ProtocolFailure::new(
-                        "pi_model_provider_required",
-                        "Pi RPC model overrides require provider/model identity.",
-                        "capability/model",
-                    ));
+                if let Some((provider, model_id)) = value.split_once('/') {
+                    if provider.trim().is_empty() || model_id.trim().is_empty() {
+                        return Err(ProtocolFailure::new(
+                            "pi_model_provider_required",
+                            "Pi RPC model overrides require provider/model identity.",
+                            "capability/model",
+                        ));
+                    }
+                    (
+                        Some(provider.trim().to_string()),
+                        Some(model_id.trim().to_string()),
+                    )
+                } else {
+                    // Pi's CLI accepts a bare model selector, while its RPC
+                    // set_model command requires provider + modelId. Resolve
+                    // the selector against Pi's own configured model registry
+                    // after the RPC process starts.
+                    (None, Some(value.to_string()))
                 }
-                (
-                    Some(provider.trim().to_string()),
-                    Some(model_id.trim().to_string()),
-                )
             }
             None => (None, None),
         };
