@@ -702,18 +702,9 @@ class AgentConversationService implements AgentConversationLane {
     required String sessionId,
     String turnId = '',
   }) async* {
-    // Progressive turn echo is bound to send (--stream-events). This method
-    // advertises the transport so callers share one stream API.
-    yield AgentDispatchEvent(
-      kind: 'dispatch.lane.bound',
-      sessionId: sessionId.trim(),
-      turnId: turnId.trim(),
-      payload: <String, dynamic>{
-        'agentId': agentId.trim(),
-        'streamTransport': 'stdio_ndjson_on_send',
-        'status': 'bound_on_send',
-      },
-    );
+    // Progressive turn echo is bound to send (--stream-events). This transport
+    // lane emits only native events; it never fabricates a binding event.
+    return;
   }
 
   @override

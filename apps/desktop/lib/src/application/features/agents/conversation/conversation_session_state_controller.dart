@@ -1,9 +1,11 @@
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_context_projection.dart';
+import 'package:licoup/src/contracts/generated/conversation.g.dart';
 
 const int conversationSessionPageSize = 10;
 const int conversationSessionLoadMoreIncrement = 10;
@@ -35,7 +37,8 @@ int conversationSessionLoadMorePageSize(int completedLoadMoreCount) {
 }
 
 /// Owns deterministic session-list reconciliation and native identity binding.
-mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
+mixin AgentConversationSessionStateController
+    on AgentWorkspaceCoordinator, AgentConversationLiveProjectionController {
   bool conversationCommitCatalog(
     String agentId,
     ConversationSessionPage page, {
@@ -61,9 +64,13 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     // a newer turn-bound projection otherwise shadows the project directory.
     next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
     _conversationPromoteNativeTitles(agentId, page.sessions, next);
-    final liveProjection =
-        liveConversationMessagesByScope[conversationComposerScopeKey] ??
-        const [];
+    final projectedLive = conversationStateHolder.messagesFor(
+      conversationComposerScopeKey,
+    );
+    final liveProjection = projectedLive.isNotEmpty
+        ? projectedLive
+        : liveConversationMessagesByScope[conversationComposerScopeKey] ??
+              const <AgentConversationMessage>[];
     AgentConversationSession? providerReadback;
     if (previousSelected != null && liveProjection.isNotEmpty) {
       // A completed streamed turn is already an authoritative local session.
@@ -518,12 +525,16 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
   /// clearing the live projection then silently drops every later
   /// lifecycle/evidence/reply event of that turn.
   bool _conversationScopeTurnInFlight(String scopeKey) {
-    final state = conversationTurnProcessStateByScope[scopeKey];
-    if (state == null) {
-      return false;
+    final projected = conversationStateHolder.turnStateFor(scopeKey);
+    if (projected.phase != ConversationTurnState.unknown) {
+      return projected.active;
     }
-    return state.stage != ConversationTurnProcessStage.completed &&
-        state.stage != ConversationTurnProcessStage.failed;
+    // Legacy state is retained only for test/readback compatibility; the
+    // renderer never consumes it after a generated delta has arrived.
+    final legacy = conversationTurnProcessStateByScope[scopeKey];
+    return legacy != null &&
+        legacy.stage != ConversationTurnProcessStage.completed &&
+        legacy.stage != ConversationTurnProcessStage.failed;
   }
 
   bool _conversationMessageParticipatesInReadback(

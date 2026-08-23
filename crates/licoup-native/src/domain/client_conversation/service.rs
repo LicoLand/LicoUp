@@ -908,7 +908,6 @@ impl ConversationService {
             // or assistant message body.
             "text": context.source_content,
             "streamEvents": true,
-            "timeoutMs": 0,
             "conversationId": context.turn.conversation_id,
             "membershipId": context.turn.membership_id,
             "causationId": context.turn.source_event_id,
@@ -1799,7 +1798,7 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["agentId"], "one");
         assert_eq!(calls[0]["text"], "@One Please answer");
-        assert_eq!(calls[0]["timeoutMs"], 0);
+        assert!(calls[0].get("timeoutMs").is_none());
         assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["conversationId"], conversation_id);
         assert_eq!(calls[0]["membershipId"], agent_id);
@@ -2783,7 +2782,7 @@ mod tests {
         assert!(guidance.contains("Understand and complete the user's request."));
         assert!(guidance.contains("use tools freely"));
         assert!(!guidance.contains("plain message without a mention"));
-        assert_eq!(calls[0]["timeoutMs"], 0);
+        assert!(calls[0].get("timeoutMs").is_none());
         assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["model"], "model-a");
         assert_eq!(calls[0]["reasoningEffort"], "high");
