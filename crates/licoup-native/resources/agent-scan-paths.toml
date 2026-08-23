@@ -165,6 +165,10 @@ history = [
 
 [[agents]]
 id = "codex"
+binaries = [
+  { oses = ["macos"], path = "/Applications/ChatGPT.app/Contents/Resources" },
+  { oses = ["macos"], path = "{home}/Applications/ChatGPT.app/Contents/Resources" },
+]
 config = [{ path = "{home}/.codex/config.toml" }]
 history = [
   { path = "{home}/.codex/history.jsonl", kind = "codex-prompt-history" },
