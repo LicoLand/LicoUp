@@ -79,12 +79,16 @@ test("Profile snapshots derive only from named existing authorities", () => {
     /agent_intelligence_catalog::agent_model_max_intelligence/u,
   );
   assert.match(profile, /skill_hub::skill_list/u);
-  // The Assistant Profile references the bundled product-owned Skill without
-  // installing or mutating a third-party Agent skill root.
+  // The Assistant Profile references one concise, product-owned coordinator Skill.
   assert.match(profile, /ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID/u);
-  assert.equal(bundledSkill.includes("assistant-temporary"), true);
-  assert.equal(bundledSkill.includes("exact `conversationId` plus `membershipId` bindings"), true);
-  assert.match(bundledSkill, /does not install or mutate any third-party/u);
+  const prompt = bundledSkill.split("\n---\n").at(-1).trim();
+  assert.ok(Buffer.byteLength(prompt, "utf8") <= 256);
+  assert.match(prompt, /Understand and complete the user's request/u);
+  assert.match(prompt, /use tools freely/u);
+  assert.match(prompt, /existing workflow/u);
+  assert.match(prompt, /write one/u);
+  assert.match(prompt, /Keep going until it is done/u);
+  assert.doesNotMatch(prompt, /\b(?:must not|never|do not|only)\b/iu);
   assert.match(usage, /graph-usage-ledger-v2\.sqlite3/u);
   assert.match(usage, /licoup\.graph-usage-report\.v2/u);
   assert.doesNotMatch(policy, /assistant-workflow-usage/u);

@@ -20,7 +20,7 @@ pub(in crate::platform) enum HttpFailure {
     NotFound,
     Request,
     Serialize,
-    Status,
+    Status(u16),
     Unavailable,
 }
 
@@ -158,9 +158,9 @@ fn map_response(
             validate_headers(&response)?;
             Err(HttpFailure::NotFound)
         }
-        Err(ureq::Error::Status(_, response)) => {
+        Err(ureq::Error::Status(status, response)) => {
             validate_headers(&response)?;
-            Err(HttpFailure::Status)
+            Err(HttpFailure::Status(status))
         }
         Err(_) => Err(HttpFailure::Request),
     }

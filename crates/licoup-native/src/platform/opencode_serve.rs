@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::SyncSender;
 
-use super::local_service;
+use super::local_service::{self, http::HttpFailure};
 
 pub use super::local_service::ServeEndpoint;
 pub const DEFAULT_PORT: u16 = policy::DEFAULT_PORT;
@@ -51,25 +51,25 @@ pub fn is_reserved_conflict_port(port: u16) -> bool {
     local_service::serve::is_reserved_port(policy::SPEC, port)
 }
 
-pub(super) fn get_json(url: &str) -> Result<Value> {
-    local_service::serve::get_json(policy::SPEC, url)
+pub(super) fn get_json(url: &str) -> std::result::Result<Value, HttpFailure> {
+    local_service::http::get_json(url, std::time::Duration::from_secs(5))
 }
 
 pub(super) fn post_json_with_optional_timeout(
     url: &str,
     body: &Value,
     timeout: Option<std::time::Duration>,
-) -> Result<Value> {
-    local_service::serve::post_json_with_optional_timeout(policy::SPEC, url, body, timeout)
+) -> std::result::Result<Value, HttpFailure> {
+    local_service::http::post_json_with_optional_timeout(url, body, timeout)
 }
 
-pub(super) fn watch_session_events(
-    attach_url: &str,
+pub(super) fn watch_session_events_url(
+    url: &str,
     session_id: &str,
     stop: &AtomicBool,
     chunks: &SyncSender<String>,
 ) {
-    local_service::serve::watch_session_events(policy::SPEC, attach_url, session_id, stop, chunks)
+    local_service::serve::watch_session_events_url(policy::SPEC, url, session_id, stop, chunks)
 }
 
 #[cfg(test)]
