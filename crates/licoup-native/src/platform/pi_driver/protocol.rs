@@ -25,6 +25,7 @@ pub(super) enum ProtocolEffect {
 pub(super) enum ProtocolPhase {
     AwaitSwitch,
     AwaitInitialState,
+    AwaitAvailableModels,
     AwaitModel,
     AwaitThinking,
     AwaitPromptAccept,
@@ -128,9 +129,21 @@ impl PiProtocol {
         }))
     }
 
+    fn available_models_request(&mut self) -> Value {
+        self.pending_request = Some("get_available_models");
+        self.phase = ProtocolPhase::AwaitAvailableModels;
+        json!({
+            "id": "lico-pi-available-models",
+            "type": "get_available_models"
+        })
+    }
+
     fn next_configuration_request(&mut self) -> Value {
         if let Some(request) = self.model_request() {
             return request;
+        }
+        if self.config.model_id.is_some() {
+            return self.available_models_request();
         }
         if let Some(request) = self.thinking_request() {
             return request;
@@ -265,6 +278,75 @@ impl PiProtocol {
                     ))];
                 }
                 vec![ProtocolEffect::Send(self.next_configuration_request())]
+            }
+            ProtocolPhase::AwaitAvailableModels if command == "get_available_models" => {
+                if !success {
+                    self.phase = ProtocolPhase::Finished;
+                    return vec![ProtocolEffect::Fail(self.failure_with_ids(
+                        "pi_model_override_failed",
+                        "Pi Agent could not resolve the requested model.",
+                        "capability/model",
+                    ))];
+                }
+                let requested_model = self.config.model_id.as_deref().unwrap_or_default();
+                let mut matches = message
+                    .pointer("/data/models")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|model| {
+                        let provider = model.get("provider").and_then(Value::as_str)?.trim();
+                        let model_id = model
+                            .get("id")
+                            .or_else(|| model.get("modelId"))
+                            .and_then(Value::as_str)?
+                            .trim();
+                        (model_id == requested_model
+                            && !provider.is_empty()
+                            && !model_id.is_empty())
+                        .then(|| (provider.to_string(), model_id.to_string()))
+                    })
+                    .collect::<Vec<_>>();
+                matches.sort();
+                matches.dedup();
+                if matches.len() != 1 {
+                    self.phase = ProtocolPhase::Finished;
+                    let (code, message) = if matches.is_empty() {
+                        (
+                            "pi_model_override_failed",
+                            "Pi Agent could not resolve the requested model.",
+                        )
+                    } else {
+                        (
+                            "pi_model_provider_required",
+                            "Pi Agent found the requested model under more than one provider.",
+                        )
+                    };
+                    return vec![ProtocolEffect::Fail(self.failure_with_ids(
+                        code,
+                        message,
+                        "capability/model",
+                    ))];
+                }
+                let Some((provider, model_id)) = matches.pop() else {
+                    self.phase = ProtocolPhase::Finished;
+                    return vec![ProtocolEffect::Fail(self.failure_with_ids(
+                        "pi_model_override_failed",
+                        "Pi Agent could not resolve the requested model.",
+                        "capability/model",
+                    ))];
+                };
+                self.config.model_provider = Some(provider);
+                self.config.model_id = Some(model_id);
+                let Some(request) = self.model_request() else {
+                    self.phase = ProtocolPhase::Finished;
+                    return vec![ProtocolEffect::Fail(self.failure_with_ids(
+                        "pi_model_override_failed",
+                        "Pi Agent could not resolve the requested model.",
+                        "capability/model",
+                    ))];
+                };
+                vec![ProtocolEffect::Send(request)]
             }
             ProtocolPhase::AwaitModel if command == "set_model" => {
                 if !success {

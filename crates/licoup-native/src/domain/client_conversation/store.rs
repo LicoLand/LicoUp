@@ -484,6 +484,7 @@ pub struct DirectTurnExecutionContext {
     pub turn: DirectTurn,
     pub agent_id: String,
     pub source_content: String,
+    pub is_assistant: bool,
     pub preferred_model: Option<String>,
     pub preferred_reasoning_effort: Option<String>,
     pub runtime_session_id: Option<String>,
@@ -3855,7 +3856,10 @@ fn direct_turn_execution_context(
                  ORDER BY ep.ordinal ASC LIMIT 1),
                 rb.runtime_session_id, rb.runtime_conversation_path,
                 rb.working_directory, fp.preferred_model,
-                fp.preferred_reasoning_effort
+                fp.preferred_reasoning_effort,
+                EXISTS(SELECT 1 FROM conversations c
+                       WHERE c.id=t.conversation_id
+                         AND c.assistant_membership_id=t.membership_id)
          FROM direct_turns t
          JOIN memberships m ON m.id=t.membership_id
             AND m.conversation_id=t.conversation_id AND m.status='active'
@@ -3879,6 +3883,7 @@ fn direct_turn_execution_context(
                 },
                 agent_id: row.get(6)?,
                 source_content: row.get(7)?,
+                is_assistant: row.get(13)?,
                 runtime_session_id: row.get(8)?,
                 runtime_conversation_path: row.get(9)?,
                 working_directory: row.get(10)?,

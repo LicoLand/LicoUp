@@ -9,45 +9,45 @@ pub(super) fn open_serve_session(
     deadline: Option<Instant>,
 ) -> Result<String, ProtocolFailure> {
     if config.is_resume() {
-        let url = format!(
-            "{}/session/{}",
-            endpoint.attach_url, config.requested_session_id
-        );
+        let url = super::serve_transport::workspace_request_url(
+            &endpoint.attach_url,
+            &["session", &config.requested_session_id],
+            &config.cwd,
+        )?;
         return match super::super::opencode_serve::get_json(&url) {
             Ok(payload) if payload.get("id").and_then(Value::as_str).is_some() => {
                 Ok(config.requested_session_id.clone())
             }
-            Ok(_) | Err(_) => Err(ProtocolFailure::new(
+            Ok(_) => Err(ProtocolFailure::new(
                 "acp_native_session_not_found",
                 "The requested native conversation does not exist in the ACP agent.",
                 "session/load",
             )
             .with_session(Some(&config.requested_session_id))),
+            Err(failure) => Err(super::serve_transport::request_failure(
+                failure,
+                "session/load",
+                Some(&config.requested_session_id),
+            )),
         };
     }
 
     let timeout = super::serve_transport::remaining_turn_timeout(deadline)?;
-    let body = if config.cwd.is_empty() {
-        json!({})
-    } else {
-        json!({"directory": config.cwd})
-    };
-    let created = super::super::opencode_serve::post_json_with_optional_timeout(
-        &format!("{}/session", endpoint.attach_url),
-        &body,
-        timeout,
-    )
-    .map_err(|_| {
-        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-            super::serve_transport::turn_timeout_failure()
-        } else {
-            ProtocolFailure::new(
-                "acp_protocol_write_failed",
-                "The ACP agent stopped accepting protocol messages.",
-                "serve/http",
-            )
-        }
-    })?;
+    let url = super::serve_transport::workspace_request_url(
+        &endpoint.attach_url,
+        &["session"],
+        &config.cwd,
+    )?;
+    let body = build_session_create_body();
+    let created =
+        super::super::opencode_serve::post_json_with_optional_timeout(&url, &body, timeout)
+            .map_err(|failure| {
+                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    super::serve_transport::turn_timeout_failure()
+                } else {
+                    super::serve_transport::request_failure(failure, "session/new", None)
+                }
+            })?;
     created
         .get("id")
         .and_then(Value::as_str)
@@ -60,4 +60,8 @@ pub(super) fn open_serve_session(
                 "session/new",
             )
         })
+}
+
+pub(super) fn build_session_create_body() -> Value {
+    json!({})
 }

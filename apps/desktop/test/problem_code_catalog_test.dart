@@ -94,6 +94,17 @@ void main() {
     expect(ProblemCodeCatalog.isMapped(''), isFalse);
   });
 
+  test('OpenCode serve protocol failures have a native-agent problem code', () {
+    expect(
+      ProblemCodeCatalog.wire('opencode_serve_protocol_write_failed'),
+      'LU-NA-4205',
+    );
+  });
+
+  test('Pi model resolution failures have a native-agent problem code', () {
+    expect(ProblemCodeCatalog.wire('pi_model_override_failed'), 'LU-NA-4213');
+  });
+
   test('copy payload includes both problem code and occurrence id', () {
     final blob = ProblemCodeCopy.copyableDetail(
       legacyCode: 'transport_failed',

@@ -32,12 +32,21 @@ pub const DEFAULT_LOCAL_AGENT_GROUP_TITLE: &str = "Local";
 pub const MAX_PROFILE_CAPABILITIES: usize = 32;
 pub const MAX_PROFILE_SKILLS: usize = 32;
 pub const MAX_PROFILE_FIELD_BYTES: usize = 128;
-/// Product-owned, bundle-embedded Assistant workflow-authoring Skill. The
-/// designated Assistant Profile references this bounded local resource by
-/// default; it is never installed into a third-party Agent skill root.
+/// Product-owned, bundle-embedded Assistant coordinator Skill. The designated
+/// Assistant Profile references this local resource by default.
 pub const ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID: &str = "assistant-workflow-authoring";
 pub(crate) const ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE: &str =
     include_str!("../../../resources/assistant-workflow-authoring/SKILL.md");
+
+pub(crate) fn assistant_workflow_authoring_prompt() -> &'static str {
+    let source = ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE.trim();
+    source
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n"))
+        .map(|(_, prompt)| prompt.trim())
+        .filter(|prompt| !prompt.is_empty())
+        .unwrap_or(source)
+}
 
 /// Typed rejection for dispatch-type work on a service constructed without
 /// the persistent host runtime. One-shot transports route through the
