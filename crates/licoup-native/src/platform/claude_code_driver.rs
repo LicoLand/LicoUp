@@ -1,14 +1,12 @@
-mod approval;
-mod command;
+pub(in crate::platform) mod approval;
+pub(in crate::platform) mod command;
 mod control;
-mod errors;
-mod events;
+pub(in crate::platform) mod errors;
 mod execution;
 mod io;
-mod model;
-mod params;
+pub(in crate::platform) mod model;
+pub(in crate::platform) mod params;
 mod probe;
-mod protocol;
 mod supervision;
 mod transport;
 #[cfg(test)]

@@ -684,29 +684,40 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             RuntimeAdapter::KimiCode => "Kimi Code ACP",
             _ => "Agent",
         };
-        let (ok, status, code, message) = match disposition {
+        let (ok, status, code, stage, message) = match disposition {
             0 => (
                 true,
                 "cancel_requested",
                 Value::Null,
+                "turn/cancel",
                 "The official lane accepted cancellation for the active native turn.",
             ),
             1 => (
                 false,
                 "not_active",
                 json!(format!("{prefix}_turn_not_active")),
+                "turn/cancel",
                 "The selected native session has no active turn.",
             ),
             2 => (
                 false,
                 "not_found",
                 json!(format!("{prefix}_session_unavailable")),
+                "turn/cancel",
                 "The selected native session is not bound to this client process.",
+            ),
+            _ if adapter == RuntimeAdapter::OpenCode => (
+                false,
+                "unavailable",
+                json!("opencode_serve_control_failed"),
+                "turn/control",
+                "The OpenCode control endpoint failed while controlling the turn.",
             ),
             _ => (
                 false,
                 "unavailable",
                 json!(format!("{prefix}_cancel_transport_unavailable")),
+                "turn/cancel",
                 "The supervised native cancel channel is unavailable.",
             ),
         };
@@ -718,7 +729,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             "transport": label,
             "error": if ok { Value::Null } else { json!({
                 "code": code,
-                "stage": "turn/cancel",
+                "stage": stage,
                 "message": message
             }) },
             "capabilities": matrix

@@ -54,7 +54,11 @@ fn new_session_applies_settings_then_finishes_after_prompt_quiescence() {
     assert_eq!(outcome.output, "final");
     assert_eq!(outcome.session_id, "native-session");
     assert_eq!(outcome.effective.model.as_deref(), Some("provider/model"));
-    assert_eq!(outcome.events.len(), 1);
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "final"
+    )));
 }
 
 #[test]
@@ -90,9 +94,11 @@ fn prompt_response_before_multiple_notifications_preserves_complete_ordered_outp
         panic!("expected completion after the bounded quiet state")
     };
     assert_eq!(outcome.output, "late ordered");
-    assert_eq!(outcome.events.len(), 2);
-    assert_eq!(outcome.events[0]["content"]["text"], "late ");
-    assert_eq!(outcome.events[1]["content"]["text"], "ordered");
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "late ordered"
+    )));
     assert_eq!(protocol.phase, ProtocolPhase::Finished);
     assert!(protocol.finish_prompt_drain().is_empty());
 }
@@ -250,24 +256,9 @@ fn interleaved_updates_keep_both_public_views_complete_and_ordered() {
         panic!("expected completion after the interleaved updates")
     };
     assert_eq!(outcome.output, "first second third");
-    assert_eq!(outcome.events.len(), 6);
-    let kinds: Vec<&str> = outcome
-        .events
-        .iter()
-        .map(|event| event["sessionUpdate"].as_str().expect("update kind"))
-        .collect();
-    assert_eq!(
-        kinds,
-        vec![
-            "agent_message_chunk",
-            "available_commands_update",
-            "agent_message_chunk",
-            "available_commands_update",
-            "agent_message_chunk",
-            "available_commands_update",
-        ]
-    );
-    assert_eq!(outcome.events[0]["content"]["text"], "first ");
-    assert_eq!(outcome.events[2]["content"]["text"], "second ");
-    assert_eq!(outcome.events[4]["content"]["text"], "third");
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "first second third"
+    )));
 }

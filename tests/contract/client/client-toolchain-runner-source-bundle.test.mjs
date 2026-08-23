@@ -108,6 +108,38 @@ test("toolchain artifact leases release on command failure", async () => {
   assert.equal(releases, 1);
 });
 
+test("default Flutter tests opt into safe JSON capture while explicit reporters stay intact", async () => {
+  const module = await import(
+    `${pathToFileURL(path.join(repoRoot, moduleRoot, "flutter.mjs")).href}?flutter-reporting`
+  );
+  assert.deepEqual(module.prepareFlutterTestReporting(["test", "--no-pub"]), {
+    capture: true,
+    args: ["test", "--no-pub", "--reporter=json"],
+  });
+  const explicit = ["test", "--no-pub", "--reporter=json"];
+  assert.deepEqual(module.prepareFlutterTestReporting(explicit), {
+    capture: false,
+    args: explicit,
+  });
+});
+
+test("toolchain processes drain captured stdout and stderr through explicit handlers", async () => {
+  const module = await import(
+    `${pathToFileURL(path.join(repoRoot, moduleRoot, "process.mjs")).href}?process-capture`
+  );
+  let stdout = "";
+  let stderr = "";
+  await module.run(process.execPath, [
+    "-e",
+    "process.stdout.write('safe-out'); process.stderr.write('safe-error');",
+  ], {
+    onStdout: (chunk) => { stdout += chunk.toString("utf8"); },
+    onStderr: (chunk) => { stderr += chunk.toString("utf8"); },
+  });
+  assert.equal(stdout, "safe-out");
+  assert.equal(stderr, "safe-error");
+});
+
 test("Windows command resolution prefers executable tools and handles command wrappers", async () => {
   const module = await import(
     `${pathToFileURL(path.join(repoRoot, moduleRoot, "windows.mjs")).href}?windows-behavior`

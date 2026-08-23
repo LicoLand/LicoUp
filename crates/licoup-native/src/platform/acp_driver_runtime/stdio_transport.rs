@@ -224,7 +224,7 @@ pub(in crate::platform) fn execute_acp(
     let stderr_flag = Arc::clone(&stderr_truncated);
     let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
 
-    let mut protocol = AcpProtocol::new(config);
+    let mut protocol = AcpProtocol::new(config, driver.parser);
     let initial_request = match protocol.initial_request() {
         Ok(request) => request,
         Err(failure) => {
@@ -340,7 +340,6 @@ pub(in crate::platform) fn execute_acp(
         return RunResult {
             ok: true,
             output: outcome.output,
-            events: outcome.events,
             error: None,
             session_id: outcome.session_id,
             thread_id: outcome.thread_id,
@@ -348,6 +347,7 @@ pub(in crate::platform) fn execute_acp(
             turn_status: outcome.turn_status,
             effective,
             capabilities: outcome.capabilities,
+            transitions: outcome.transitions,
             status_code,
             stdout_truncated: stdout_was_truncated,
             stderr_truncated: stderr_was_truncated,
@@ -471,21 +471,16 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
             return protocol_timeout(protocol);
         }
         match received {
-            Ok(TransportEvent::Message(message)) => {
+            Ok(TransportEvent::Frame(line)) => {
                 let phase_before = protocol.phase;
-                let prompt_notification = matches!(
-                    phase_before,
-                    ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
-                ) && message.get("method").and_then(Value::as_str)
-                    == Some(crate::core::acp::SESSION_UPDATE_METHOD);
-                let effects = protocol.handle_message(message);
-                let notification_accepted = prompt_notification
-                    && effects.is_empty()
+                let parsed = protocol.handle_frame(&line);
+                let notification_accepted = parsed.prompt_notification
+                    && parsed.effects.is_empty()
                     && matches!(
                         protocol.phase,
                         ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
                     );
-                if let Some(result) = apply_protocol_effects(transport, protocol, effects) {
+                if let Some(result) = apply_protocol_effects(transport, protocol, parsed.effects) {
                     return result;
                 }
                 if phase_before != ProtocolPhase::AwaitPrompt
@@ -515,18 +510,6 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
                 } else if notification_accepted && let Some(budget) = drain_budget.as_mut() {
                     budget.observe_valid_notification(observed_at);
                 }
-            }
-            Ok(TransportEvent::InvalidJson) => {
-                return (
-                    None,
-                    Some(ProtocolFailure::new(
-                        "acp_protocol_invalid_json",
-                        "The ACP agent returned an invalid protocol message.",
-                        "protocol/read",
-                    )),
-                    None,
-                    false,
-                );
             }
             Ok(TransportEvent::StdoutLimitExceeded) => {
                 return (

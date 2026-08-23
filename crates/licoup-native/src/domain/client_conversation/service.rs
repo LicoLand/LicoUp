@@ -5,7 +5,6 @@ use super::{
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use std::{
-    borrow::Cow,
     fmt,
     path::Path,
     sync::{
@@ -901,19 +900,13 @@ impl ConversationService {
                 live: None,
             });
         };
-        let text = if context.is_assistant {
-            Cow::Owned(format!(
-                "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
-                super::assistant_workflow_authoring_prompt(),
-                context.source_content
-            ))
-        } else {
-            Cow::Borrowed(context.source_content.as_str())
-        };
         let mut params = json!({
             "agentId": context.agent_id,
             "agent": context.agent_id,
-            "text": text.as_ref(),
+            // User-authored content is exact. Assistant workflow guidance is
+            // a private, non-durable request field and never becomes a user
+            // or assistant message body.
+            "text": context.source_content,
             "streamEvents": true,
             "timeoutMs": 0,
             "conversationId": context.turn.conversation_id,
@@ -921,6 +914,9 @@ impl ConversationService {
             "causationId": context.turn.source_event_id,
             "dispatchId": context.turn.id,
         });
+        if let Some(instructions) = context.private_instructions() {
+            params["privateInstructions"] = json!(instructions);
+        }
         if let Some(session_id) = context.runtime_session_id.as_deref() {
             params["sessionId"] = json!(session_id);
         }
@@ -1901,7 +1897,27 @@ mod tests {
                 .count(),
             1
         );
-        assert_eq!(replies[0].parts[0].content, "agent answer");
+        assert_eq!(
+            replies[0]
+                .parts
+                .iter()
+                .find(|part| part.kind == super::super::EventPartKind::Text)
+                .unwrap()
+                .content,
+            "agent answer"
+        );
+        for expected_lifecycle in [
+            r#"{"lifecycle":"submitted"}"#,
+            r#"{"lifecycle":"accepted"}"#,
+            r#"{"lifecycle":"processing"}"#,
+            r#"{"lifecycle":"responding"}"#,
+            r#"{"lifecycle":"completed"}"#,
+        ] {
+            assert!(replies[0].parts.iter().any(|part| {
+                part.kind == super::super::EventPartKind::Metadata
+                    && part.content == expected_lifecycle
+            }));
+        }
     }
 
     #[test]
@@ -2762,11 +2778,11 @@ mod tests {
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_one);
-        let text = calls[0]["text"].as_str().unwrap();
-        assert!(text.starts_with("<skills_instructions>\n"));
-        assert!(text.contains("Understand and complete the user's request."));
-        assert!(text.contains("use tools freely"));
-        assert!(text.ends_with("plain message without a mention"));
+        assert_eq!(calls[0]["text"], "plain message without a mention");
+        let guidance = calls[0]["privateInstructions"].as_str().unwrap();
+        assert!(guidance.contains("Understand and complete the user's request."));
+        assert!(guidance.contains("use tools freely"));
+        assert!(!guidance.contains("plain message without a mention"));
         assert_eq!(calls[0]["timeoutMs"], 0);
         assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["model"], "model-a");

@@ -492,6 +492,15 @@ pub struct DirectTurnExecutionContext {
     pub working_directory: Option<String>,
 }
 
+impl DirectTurnExecutionContext {
+    /// Private request-only guidance for the canonical Assistant membership.
+    /// The value is derived at dispatch time and is never stored as Event text.
+    pub fn private_instructions(&self) -> Option<&'static str> {
+        self.is_assistant
+            .then(super::assistant_workflow_authoring_prompt)
+    }
+}
+
 /// Private canonical ownership for one persistent desktop Agent turn. The
 /// dispatch id is also the opaque transport handle; conversation and
 /// membership ids are required on every later attach or control operation.
@@ -855,6 +864,20 @@ impl ConversationStore {
                 |row| row.get(0),
             )?;
             for part in runtime_semantic_parts(frame) {
+                if part.kind == EventPartKind::Metadata
+                    && part.content.contains("\"lifecycle\"")
+                    && transaction
+                        .query_row(
+                            "SELECT 1 FROM event_parts
+                             WHERE event_id=?1 AND kind='metadata' AND content=?2 LIMIT 1",
+                            params![scope.event_id, part.content],
+                            |row| row.get::<_, i64>(0),
+                        )
+                        .optional()?
+                        .is_some()
+                {
+                    continue;
+                }
                 insert_runtime_event_part(
                     &transaction,
                     &scope.conversation_id,
@@ -1067,22 +1090,55 @@ impl ConversationStore {
                 )?;
                 ordinal += 1;
             }
-            let lifecycle = serde_json::to_string(&serde_json::json!({
-                "lifecycle": enum_wire(state)?,
-            }))?;
-            insert_runtime_event_part(
-                &transaction,
-                &scope.conversation_id,
-                &scope.event_id,
-                ordinal,
-                &NewEventPart {
-                    id: String::new(),
-                    kind: EventPartKind::Metadata,
-                    content: lifecycle,
-                },
-                None,
-                now,
-            )?;
+            if state == DispatchState::Completed {
+                for stage in [
+                    "submitted",
+                    "accepted",
+                    "processing",
+                    "responding",
+                    "completed",
+                ] {
+                    let content = serde_json::json!({"lifecycle": stage}).to_string();
+                    let exists: bool = transaction.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM event_parts
+                         WHERE event_id=?1 AND kind='metadata' AND content=?2)",
+                        params![scope.event_id, content],
+                        |row| row.get(0),
+                    )?;
+                    if exists {
+                        continue;
+                    }
+                    insert_runtime_event_part(
+                        &transaction,
+                        &scope.conversation_id,
+                        &scope.event_id,
+                        ordinal,
+                        &NewEventPart {
+                            id: String::new(),
+                            kind: EventPartKind::Metadata,
+                            content,
+                        },
+                        None,
+                        now,
+                    )?;
+                    ordinal += 1;
+                }
+            } else {
+                let lifecycle = serde_json::json!({"lifecycle": enum_wire(state)?}).to_string();
+                insert_runtime_event_part(
+                    &transaction,
+                    &scope.conversation_id,
+                    &scope.event_id,
+                    ordinal,
+                    &NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Metadata,
+                        content: lifecycle,
+                    },
+                    None,
+                    now,
+                )?;
+            }
             transaction.execute(
                 "UPDATE events SET finalized=1 WHERE id=?1 AND finalized=0",
                 params![scope.event_id],
@@ -4298,13 +4354,33 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
         .get("text")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty());
-    let part = match event {
-        "agent.turn.accepted" => Some((
-            EventPartKind::Metadata,
-            serde_json::json!({"lifecycle": "accepted"}).to_string(),
-        )),
+    let mut parts = payload
+        .get("lifecyclePrefix")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|stage| {
+            matches!(
+                *stage,
+                "submitted" | "accepted" | "processing" | "responding" | "completed"
+            )
+        })
+        .map(|stage| {
+            (
+                EventPartKind::Metadata,
+                serde_json::json!({"lifecycle": stage}).to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let semantic_parts = match event {
+        "agent.turn.accepted" => Vec::new(),
         "agent.message.chunk" | "agent.message.completed" => {
-            text.map(|value| (EventPartKind::Text, value.to_owned()))
+            let mut parts = Vec::new();
+            if let Some(value) = text {
+                parts.push((EventPartKind::Text, value.to_owned()));
+            }
+            parts
         }
         "agent.turn.processing" => {
             let evidence = payload
@@ -4312,11 +4388,11 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
                 .and_then(Value::as_str)
                 .unwrap_or("activity");
             match evidence {
-                "reasoning" | "plan" => Some((
+                "reasoning" | "plan" => vec![(
                     EventPartKind::Reasoning,
                     text.unwrap_or(evidence).to_owned(),
-                )),
-                "tool" => Some((
+                )],
+                "tool" => vec![(
                     EventPartKind::ToolCall,
                     payload
                         .get("toolName")
@@ -4325,27 +4401,20 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
                         .or(text)
                         .unwrap_or("tool")
                         .to_owned(),
-                )),
-                _ => Some((
-                    EventPartKind::Metadata,
-                    serde_json::json!({
-                        "lifecycle": "running",
-                        "evidenceKind": evidence,
-                    })
-                    .to_string(),
-                )),
+                )],
+                _ => Vec::new(),
             }
         }
-        "dispatch.turn.failed" | "agent.turn.failed" => None,
-        "permission.denied" => Some((
+        "dispatch.turn.failed" | "agent.turn.failed" => Vec::new(),
+        "permission.denied" => vec![(
             EventPartKind::Diagnostic,
             text.unwrap_or("permission denied").to_owned(),
-        )),
-        _ if event.contains("tool") && event.contains("result") => Some((
+        )],
+        _ if event.contains("tool") && event.contains("result") => vec![(
             EventPartKind::ToolResult,
             text.unwrap_or("tool result").to_owned(),
-        )),
-        _ if event.contains("tool") => Some((
+        )],
+        _ if event.contains("tool") => vec![(
             EventPartKind::ToolCall,
             payload
                 .get("toolName")
@@ -4354,18 +4423,20 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
                 .or(text)
                 .unwrap_or("tool")
                 .to_owned(),
-        )),
-        _ if event.contains("artifact") => Some((
+        )],
+        _ if event.contains("artifact") => vec![(
             EventPartKind::Artifact,
             text.unwrap_or("artifact").to_owned(),
-        )),
-        _ if event.contains("diagnostic") || event.contains("failed") => Some((
+        )],
+        _ if event.contains("diagnostic") || event.contains("failed") => vec![(
             EventPartKind::Diagnostic,
             text.unwrap_or("runtime diagnostic").to_owned(),
-        )),
-        _ => None,
+        )],
+        _ => Vec::new(),
     };
-    part.into_iter()
+    parts.extend(semantic_parts);
+    parts
+        .into_iter()
         .map(|(kind, content)| NewEventPart {
             id: String::new(),
             kind,
@@ -6223,7 +6294,9 @@ mod tests {
                     "event": "agent.turn.accepted",
                     "sessionId": "session-1",
                     "turnId": "turn-1",
-                    "payload": {}
+                    "payload": {
+                        "lifecyclePrefix": ["submitted", "accepted"]
+                    }
                 }),
             )
             .unwrap();

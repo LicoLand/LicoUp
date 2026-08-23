@@ -1,6 +1,7 @@
 use super::super::process_supervisor::{BoundedStdinWriter, finish_protocol_transport};
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
 use super::launch::CodexLaunchSpec;
+use crate::platform::native_agent_parser::adapters::codex::parse_response_line;
 use serde_json::{Map, Value, json};
 use std::io::BufReader;
 use std::path::Path;
@@ -93,12 +94,11 @@ fn wait_for_response(
             return Err(());
         }
         match receiver.recv_timeout(deadline - now) {
-            Ok(TransportEvent::Message(message))
-                if message.get("id").and_then(Value::as_i64) == Some(request_id) =>
-            {
-                return message.get("result").cloned().ok_or(());
+            Ok(TransportEvent::Line(line)) => {
+                if let Some(result) = parse_response_line(&line, request_id)? {
+                    return Ok(result);
+                }
             }
-            Ok(TransportEvent::Message(_)) => {}
             Ok(_) | Err(RecvTimeoutError::Disconnected | RecvTimeoutError::Timeout) => {
                 return Err(());
             }

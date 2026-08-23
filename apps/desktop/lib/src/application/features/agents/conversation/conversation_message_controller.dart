@@ -118,13 +118,6 @@ mixin AgentConversationMessageController
       turnId: projectionTurnId,
       userText: userText,
     );
-    conversationUpsertLiveLifecycle(
-      scopeKey: scopeKey,
-      turnId: projectionTurnId,
-      stage: 'processing',
-      participantAgentId: agentId,
-      participantLabel: selectedConversationAgent?.label ?? agentId,
-    );
     agentWorkspaceNotifyLiveConversationChanged();
     agentWorkspaceNotifyStateChanged();
     var attached = false;
@@ -149,19 +142,17 @@ mixin AgentConversationMessageController
           participantAgentId: agentId,
           participantLabel: selectedConversationAgent?.label ?? agentId,
         );
-        if (event.kind == 'dispatch.turn.failed' ||
-            event.kind == 'agent.turn.failed') {
-          final error = event.payload['error'];
-          lastError = error is Map
-              ? (error['code'] ?? 'dispatch_failed').toString()
-              : (event.payload['code'] ?? 'dispatch_failed').toString();
+        final terminal = event.payload['terminalTransition'];
+        if (terminal is Map && terminal['kind'] == 'failed') {
+          lastError = (terminal['code'] ?? '').toString();
         }
         agentWorkspaceNotifyLiveConversationChanged();
       }
-    } on AgentDispatchStreamException catch (error) {
-      lastError = error.failureCode;
+    } on AgentDispatchStreamException {
+      // Observer disconnect is detach. The persisted native terminal remains
+      // the only failure authority and is recovered by the normal reload.
     } on Object {
-      lastError = 'dispatch_reattach_failed';
+      // Same rule for an untyped transport closure: do not invent failure.
     } finally {
       _reattachingActiveConversationTurn = false;
       isSendingConversationMessage = false;
@@ -649,37 +640,34 @@ mixin AgentConversationMessageController
       turnId: liveTurnId,
       userText: messageText,
     );
-    var lifecycleStage = 'submitted';
-    void publishLifecycle(String stage) {
-      const stageRank = <String, int>{
-        'submitted': 0,
-        'accepted': 1,
-        'processing': 2,
-        'responding': 3,
-        'completed': 4,
-      };
-      if (agentWorkspaceDisposed || lifecycleStage == 'failed') return;
-      if (stage == 'failed') {
-        lifecycleStage = stage;
-      } else {
-        final nextRank = stageRank[stage];
-        final currentRank = stageRank[lifecycleStage];
-        if (nextRank == null ||
-            currentRank == null ||
-            nextRank <= currentRank) {
-          return;
-        }
-        lifecycleStage = stage;
+    var lifecycleStage = '';
+    var firstTerminalFailureCode = '';
+    bool publishLifecycle(String stage) {
+      if (agentWorkspaceDisposed || lifecycleStage == 'failed') return false;
+      final normalized = stage.trim().toLowerCase();
+      if (normalized.isEmpty) return false;
+      const ordered = [
+        'submitted',
+        'accepted',
+        'processing',
+        'responding',
+        'completed',
+      ];
+      if (normalized != 'failed') {
+        final nextIndex = ordered.indexOf(normalized);
+        final currentIndex = ordered.indexOf(lifecycleStage);
+        if (nextIndex < 0 || nextIndex <= currentIndex) return false;
       }
+      lifecycleStage = normalized;
       conversationUpsertLiveLifecycle(
         scopeKey: queuedTurn.scopeKey,
         turnId: liveTurnId,
-        stage: stage,
+        stage: normalized,
         participantAgentId: queuedTurn.agent.target,
         participantLabel: queuedTurn.participantLabel,
         participantRole: queuedTurn.participantRole,
       );
-      agentWorkspaceNotifyLiveConversationChanged();
+      return true;
     }
 
     statusCaption = 'Agent chat';
@@ -733,10 +721,10 @@ mixin AgentConversationMessageController
               reasoningEffort: queuedTurn.reasoningEffort,
               licoProfile: queuedTurn.licoProfile,
               acceptanceMode: _releaseConversationAcceptanceMode,
-              // Auto mode: skip native permission prompts so agent turns run
-              // without interaction (developer-mandated; approvals are surfaced
-              // honestly when the runtime still reports denials).
-              permissionMode: 'bypassPermissions',
+              // Native permission requests remain interactive. The shared
+              // one-shot route resumes the same turn after an explicit user
+              // decision; dispatch must never auto-allow them.
+              permissionMode: '',
               allowedTools: queuedTurn.allowedTools,
               runtimeConnection: agent.runtimeConnection,
             ),
@@ -756,16 +744,43 @@ mixin AgentConversationMessageController
             if (eventTurnId.isNotEmpty) {
               sendingConversationTurnId = eventTurnId;
             }
+            var lifecycleChanged = false;
+            final lifecyclePrefix = event.payload['lifecyclePrefix'];
+            if (lifecyclePrefix is List) {
+              for (final stage in lifecyclePrefix) {
+                if (publishLifecycle(stage.toString())) {
+                  lifecycleChanged = true;
+                }
+              }
+            }
+            final terminalTransition = event.payload['terminalTransition'];
+            if (terminalTransition is Map) {
+              final terminalKind = (terminalTransition['kind'] ?? '')
+                  .toString();
+              if (terminalKind == 'failed') {
+                final code = (terminalTransition['code'] ?? '')
+                    .toString()
+                    .trim();
+                if (firstTerminalFailureCode.isEmpty && code.isNotEmpty) {
+                  firstTerminalFailureCode = code;
+                }
+                if (publishLifecycle('failed')) lifecycleChanged = true;
+              } else if (terminalKind == 'lifecycle' &&
+                  terminalTransition['stage'] == 'completed') {
+                if (publishLifecycle('completed')) lifecycleChanged = true;
+              }
+            }
+            if (lifecycleChanged) {
+              agentWorkspaceNotifyLiveConversationChanged();
+            }
             if (event.kind == 'dispatch.turn.bound' ||
                 event.kind == 'agent.turn.accepted') {
-              publishLifecycle('accepted');
               continue;
             }
             if (event.kind == 'agent.turn.processing') {
               final evidenceKind = (event.payload['evidenceKind'] ?? '')
                   .toString()
                   .trim();
-              publishLifecycle('processing');
               // Stream evidence (reasoning / tool / plan) advances the
               // blackboard with one operation per step; pure progress markers
               // only advance the lifecycle stage.
@@ -794,16 +809,8 @@ mixin AgentConversationMessageController
               }
               continue;
             }
-            if (event.kind.contains('reason') ||
-                event.kind.contains('tool') ||
-                event.kind.contains('plan')) {
-              publishLifecycle('processing');
-            }
             if (event.kind == 'agent.message.chunk' ||
                 event.kind == 'agent.message.completed') {
-              if (event.kind == 'agent.message.chunk') {
-                publishLifecycle('responding');
-              }
               final chunk = (event.payload['text'] ?? '').toString();
               if (chunk.isNotEmpty) {
                 final participantAgentId =
@@ -878,13 +885,13 @@ mixin AgentConversationMessageController
               final ok = raw['ok'] == true;
               // Defer lifecycle `failed` until quota fallback is ruled out so a
               // later Daily Conversation capsule can still advance the turn.
-              if (ok) {
-                publishLifecycle('completed');
-              }
               final nested = raw['error'];
               final rawCode = nested is Map
                   ? (nested['code'] ?? '')
                   : (raw['code'] ?? '');
+              if (!ok && firstTerminalFailureCode.isEmpty) {
+                firstTerminalFailureCode = rawCode.toString().trim();
+              }
               turn = AgentDispatchTurnResult(
                 ok: ok,
                 sessionId: event.sessionId,
@@ -913,7 +920,8 @@ mixin AgentConversationMessageController
                   );
                 }
               }
-              if (!ok) {
+              if (terminalTransition is Map &&
+                  terminalTransition['kind'] == 'failed') {
                 // Surface the driver failure in the transcript; the outer loop
                 // may still walk Daily Conversation fallback capsules.
                 final failedTurn = turn;
@@ -934,6 +942,9 @@ mixin AgentConversationMessageController
                       'text': failedTurn.status.trim().isNotEmpty
                           ? '$failureText (${failedTurn.status.trim()})'
                           : failureText,
+                      'terminalTransition': Map<String, dynamic>.from(
+                        terminalTransition,
+                      ),
                     },
                   ),
                 );
@@ -1084,7 +1095,6 @@ mixin AgentConversationMessageController
           }
         }
         if (result['ok'] != true) {
-          publishLifecycle('failed');
           final clientError = ConversationRuntimeResultPolicy.clientError(
             result,
           );
@@ -1111,7 +1121,6 @@ mixin AgentConversationMessageController
           statusCaption = 'Agent chat';
           break;
         }
-        publishLifecycle('completed');
         if (sendThroughMobileRelay) {
           final receivedAt = DateTime.now().toUtc().toIso8601String();
           appendRelayConversationMessages(
@@ -1184,8 +1193,9 @@ mixin AgentConversationMessageController
         break;
       }
     } on AgentDispatchStreamException catch (error) {
-      publishLifecycle('failed');
-      lastError = 'native_agent_${error.failureCode}';
+      lastError = firstTerminalFailureCode.isNotEmpty
+          ? firstTerminalFailureCode
+          : 'native_agent_${error.failureCode}';
       recordConversationTabSendOutcome(
         agentId: queuedTurn.agent.target,
         ok: false,
@@ -1197,8 +1207,9 @@ mixin AgentConversationMessageController
       );
       statusCaption = 'Agent chat';
     } catch (_) {
-      publishLifecycle('failed');
-      lastError = 'native_agent_transport_failed';
+      lastError = firstTerminalFailureCode.isNotEmpty
+          ? firstTerminalFailureCode
+          : 'native_agent_transport_failed';
       recordConversationTabSendOutcome(
         agentId: queuedTurn.agent.target,
         ok: false,

@@ -11,7 +11,10 @@ fn codex_response_uses_the_canonical_shape() {
         normalize_codex(codex_app_server::RunResult {
             ok: true,
             output: "answer".to_string(),
-            events: Vec::new(),
+            transitions:
+                crate::platform::native_agent_parser::adapters::codex::completed_transitions(
+                    "answer",
+                ),
             error: None,
             session_id: "session-1".to_string(),
             thread_id: "thread-1".to_string(),
@@ -51,7 +54,10 @@ fn non_codex_response_uses_session_id_as_native_continuity_id() {
         NormalizedExecution {
             ok: true,
             output: "answer".to_string(),
-            events: Vec::new(),
+            transitions:
+                crate::platform::native_agent_parser::adapters::opencode::completed_transitions(
+                    "answer",
+                ),
             capabilities: json!({}),
             error: None,
             session_id: "native-session-1".to_string(),

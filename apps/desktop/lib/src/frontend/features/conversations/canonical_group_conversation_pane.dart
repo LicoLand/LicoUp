@@ -782,40 +782,26 @@ class _CanonicalGroupConversationPaneState
             );
             if (mounted) setState(() {});
             if (terminal) {
-              unawaited(
-                _finishTurn(
-                  handle,
-                  allowNextActor: persistentTurnAllowsNextActor(state),
-                ),
-              );
+              unawaited(_finishTurn(handle));
             }
           },
           onDone: () => unawaited(_finishTurn(handle)),
-          onError: (Object error) => unawaited(
-            _handleTurnObserverFailure(
-              handle,
-              error is AgentDispatchStreamException
-                  ? error.failureCode
-                  : 'transport_failed',
-            ),
-          ),
+          onError: (Object _) => unawaited(_handleTurnObserverFailure(handle)),
           cancelOnError: false,
         );
   }
 
-  Future<void> _handleTurnObserverFailure(String handle, String code) async {
+  Future<void> _handleTurnObserverFailure(String handle) async {
     if (!_finishingHandles.add(handle)) return;
     final subscription = _turnSubscriptions.remove(handle);
     if (subscription != null) unawaited(subscription.cancel());
-    _processByHandle.remove(handle);
-    if (mounted) setState(() {});
     try {
+      // Reload the durable Conversation before changing its live projection.
+      // Observer loss is detach and carries no lifecycle or failure authority.
       await widget.controller.reloadSelected();
       if (!mounted) return;
-      widget.controller.surfaceFailure(
-        'conversation/observe',
-        code.trim().isEmpty ? 'transport_failed' : code.trim(),
-      );
+      _surfacePersistedDispatchFailure();
+      _processByHandle.remove(handle);
       if (_turnSubscriptions.isEmpty) {
         widget.controller.settleLiveDispatch();
       }
@@ -825,13 +811,10 @@ class _CanonicalGroupConversationPaneState
     }
   }
 
-  Future<void> _finishTurn(String handle, {bool allowNextActor = false}) async {
+  Future<void> _finishTurn(String handle) async {
     if (!_finishingHandles.add(handle)) return;
     unawaited(_turnSubscriptions.remove(handle)?.cancel());
-    final state = _processByHandle.remove(handle);
-    if (state != null && !allowNextActor) {
-      failPersistentTurnIfOpen(state);
-    }
+    _processByHandle.remove(handle);
     if (mounted) setState(() {});
     try {
       await widget.controller.reloadSelected();
@@ -2075,17 +2058,21 @@ _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
     try {
       final decoded = jsonDecode(eventPart.content);
       if (decoded is Map && decoded['lifecycle'] != null) {
-        final stage = decoded['lifecycle'].toString();
-        final mapped = switch (stage) {
-          'running' => 'processing',
-          'cancelled' => 'failed',
-          _ => stage,
-        };
-        return (
-          cardType: 'lifecycle',
-          cardTitle: 'lifecycle.$mapped',
-          text: mapped,
-        );
+        final stage = decoded['lifecycle'].toString().trim();
+        if (const {
+          'submitted',
+          'accepted',
+          'processing',
+          'responding',
+          'completed',
+          'failed',
+        }.contains(stage)) {
+          return (
+            cardType: 'lifecycle',
+            cardTitle: 'lifecycle.$stage',
+            text: stage,
+          );
+        }
       }
     } catch (_) {}
   }

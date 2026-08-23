@@ -1,4 +1,4 @@
-use super::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
+use crate::platform::native_agent_parser::adapters::antigravity::valid_session_id;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -19,7 +19,7 @@ fn active_turns() -> &'static Mutex<HashMap<String, u32>> {
 }
 
 pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
-    if !safe_session_id(session_id) {
+    if !valid_session_id(session_id) {
         return;
     }
     if let Ok(mut registry) = active_turns().lock() {
@@ -34,7 +34,7 @@ pub(in crate::platform) fn clear_active_turn(session_id: &str) {
 }
 
 pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
-    if !safe_session_id(session_id) {
+    if !valid_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
     let pid = active_turns()
@@ -61,7 +61,7 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
 }
 
 pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
-    if !safe_session_id(session_id) {
+    if !valid_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
     match remove_antigravity_brain(session_id) {
@@ -69,15 +69,6 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
         Ok(false) => ControlDisposition::NotPersisted,
         Err(_) => ControlDisposition::TransportUnavailable,
     }
-}
-
-pub(in crate::platform) fn safe_session_id(session_id: &str) -> bool {
-    let len = session_id.len();
-    len >= MIN_SESSION_ID_LEN
-        && len <= MAX_SESSION_ID_LEN
-        && session_id
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -104,7 +95,7 @@ fn remove_antigravity_brain(session_id: &str) -> Result<bool, ()> {
 }
 
 fn is_safe_brain_dir(home: &Path, brain: &Path, session_id: &str) -> bool {
-    if !safe_session_id(session_id) {
+    if !valid_session_id(session_id) {
         return false;
     }
     let root = home.join(".gemini").join("antigravity-cli").join("brain");

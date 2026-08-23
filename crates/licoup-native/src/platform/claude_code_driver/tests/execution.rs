@@ -23,6 +23,12 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     );
     assert!(first.ok, "first turn failed: {:?}", first.error);
     assert_eq!(first.output, "fake Claude final answer 1");
+    assert!(matches!(
+        first.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
+            crate::platform::native_agent_parser::LifecycleStage::Completed
+        ))
+    ));
     assert_eq!(first.session_id, "fake-claude-session");
     assert!(has_live_session(&first.session_id));
     let second = execute(
@@ -417,7 +423,7 @@ fn permission_request_suspends_the_turn_until_external_approval() {
             "fake-claude-permission-prompt-1",
             "",
             Some(&working_dir),
-            10_000,
+            500,
             Some(1024 * 1024),
             1024,
         )
@@ -426,14 +432,8 @@ fn permission_request_suspends_the_turn_until_external_approval() {
     // the parked approval to allow and let the turn continue.
     let deadline = Instant::now() + Duration::from_secs(5);
     let token = loop {
-        let parked = super::super::super::acp_session_transport::parked_permissions()
-            .lock()
-            .unwrap();
-        let token = parked
-            .iter()
-            .find(|(_, parked)| parked.display_summary.contains("Bash"))
-            .map(|(token, _)| token.clone());
-        drop(parked);
+        let token =
+            super::super::super::native_agent_interaction::pending_token("claude-code", "Bash");
         if let Some(token) = token {
             break token;
         }
@@ -442,11 +442,13 @@ fn permission_request_suspends_the_turn_until_external_approval() {
         }
         thread::sleep(Duration::from_millis(10));
     };
+    // Deliberately exceed the ordinary turn deadline while the native
+    // permission route is parked. User decision time is not execution time.
+    thread::sleep(Duration::from_millis(550));
     let resolved =
-        super::super::super::acp_session_transport::resolve_parked_permission(&token, true)
+        super::super::super::acp_session_transport::resolve_interaction_approval(&token, true)
             .unwrap();
-    assert_eq!(resolved["decision"], "allow");
-    assert_eq!(resolved["agentId"], "claude-code");
+    assert_eq!(resolved["adapterId"], "claude-code");
     let allowed = run.join().unwrap();
     assert!(allowed.ok, "allowed turn failed: {:?}", allowed.error);
     assert_eq!(allowed.output, "fake Claude allowed answer");
@@ -457,8 +459,8 @@ fn permission_request_suspends_the_turn_until_external_approval() {
         ControlDisposition::Accepted
     );
 
-    // Denying a later permission request ends the turn with an interaction
-    // failure instead of failing the transport.
+    // Denying a later permission request resumes the same native turn. The
+    // CLI's valid reply and denial metadata remain authoritative.
     let working_dir = directory.clone();
     let executable_for_deny = executable_text.clone();
     let deny_params = params.clone();
@@ -476,14 +478,8 @@ fn permission_request_suspends_the_turn_until_external_approval() {
     });
     let deadline = Instant::now() + Duration::from_secs(5);
     let token = loop {
-        let parked = super::super::super::acp_session_transport::parked_permissions()
-            .lock()
-            .unwrap();
-        let token = parked
-            .iter()
-            .find(|(_, parked)| parked.display_summary.contains("Bash"))
-            .map(|(token, _)| token.clone());
-        drop(parked);
+        let token =
+            super::super::super::native_agent_interaction::pending_token("claude-code", "Bash");
         if let Some(token) = token {
             break token;
         }
@@ -493,18 +489,43 @@ fn permission_request_suspends_the_turn_until_external_approval() {
         thread::sleep(Duration::from_millis(10));
     };
     let denied =
-        super::super::super::acp_session_transport::resolve_parked_permission(&token, false)
+        super::super::super::acp_session_transport::resolve_interaction_approval(&token, false)
             .unwrap();
-    assert_eq!(denied["decision"], "deny");
+    assert_eq!(denied["adapterId"], "claude-code");
     let turn = run.join().unwrap();
-    assert!(!turn.ok);
-    let failure = turn.error.unwrap();
-    assert_eq!(failure.code, "claude_code_user_interaction_required");
-    // The denied transport still owns the shared fixture session; release it
-    // so later fixture turns bind their own fresh process.
-    if let Some(session_id) = failure.session_id.as_deref() {
-        assert_eq!(cleanup_session(session_id), ControlDisposition::Accepted);
-    }
+    assert!(turn.ok, "denied turn failed: {:?}", turn.error);
+    assert_eq!(turn.output, "fake Claude denied answer");
+    assert_eq!(
+        cleanup_session(&turn.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn permission_park_reports_transport_loss_and_releases_its_route() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-approval-exit");
+    let result = execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-permission-exit-prompt",
+        "",
+        Some(&directory),
+        0,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(!result.ok);
+    assert_eq!(result.error.unwrap().code, "claude_code_exited");
+    assert!(
+        super::super::super::native_agent_interaction::pending_token("claude-code", "Bash")
+            .is_none()
+    );
     let _ = fs::remove_dir_all(directory);
 }
 
