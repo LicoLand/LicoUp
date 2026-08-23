@@ -47,14 +47,22 @@ fn main() {
     // not reject the launch: the fixture accepts the bounded value sets the
     // driver may legitimately pass.
     let mut value_arguments = remaining.clone();
-    for key in ["--model", "--effort", "--permission-mode", "--allowedTools"] {
+    for key in [
+        "--model",
+        "--effort",
+        "--permission-mode",
+        "--allowedTools",
+        "--append-system-prompt",
+    ] {
         if let Some(position) = value_arguments.iter().position(|argument| argument == key) {
-            let value = value_arguments.get(position + 1).cloned().unwrap_or_default();
-            let allowed = if key == "--allowedTools" {
+            let value = value_arguments
+                .get(position + 1)
+                .cloned()
+                .unwrap_or_default();
+            let allowed = if matches!(key, "--allowedTools" | "--append-system-prompt") {
                 !value.is_empty()
             } else {
-                ["fake-model", "fake-model-2", "high", "max", "plan"]
-                    .contains(&value.as_str())
+                ["fake-model", "fake-model-2", "high", "max", "plan"].contains(&value.as_str())
             };
             if !allowed {
                 std::process::exit(2);
@@ -181,6 +189,22 @@ fn main() {
             );
             continue;
         }
+        let is_permission_exit_turn = line.contains("fake-claude-permission-exit-prompt");
+        if is_permission_exit_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                r#"{"type":"control_request","request_id":"perm-exit","request":{"subtype":"permission_request","prompt":"Run Bash command","toolUse":{"id":"toolu_exit","name":"Bash","input":{}}}}"#,
+            );
+            return;
+        }
         let is_permission_turn = line.contains("fake-claude-permission-prompt");
         if is_permission_turn {
             if turns == 1 {
@@ -196,15 +220,24 @@ fn main() {
                 r#"{"type":"control_request","request_id":"perm-1","request":{"subtype":"permission_request","prompt":"Run Bash command","toolUse":{"id":"toolu_perm","name":"Bash","input":{}}}}"#,
             );
             let response = lines.next().and_then(Result::ok).unwrap_or_default();
-            if !response.contains(r#""subtype":"permission_response""#)
-                || !response.contains(r#""response":"allow""#)
-            {
+            if !response.contains(r#""subtype":"permission_response""#) {
                 std::process::exit(6);
             }
+            let allowed = response.contains(r#""response":"allow""#);
             send(
                 &mut stdout,
                 &format!(
-                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"fake Claude allowed answer","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"{}","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":{}}}"#,
+                    if allowed {
+                        "fake Claude allowed answer"
+                    } else {
+                        "fake Claude denied answer"
+                    },
+                    if allowed {
+                        "[]"
+                    } else {
+                        r#"[{"tool_name":"Bash","tool_use_id":"toolu_perm"}]"#
+                    },
                 ),
             );
             continue;

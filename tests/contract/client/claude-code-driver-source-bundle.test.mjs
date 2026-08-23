@@ -9,38 +9,39 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const driverRoot = "crates/licoup-native/src/platform/claude_code_driver";
+const parserRoot = "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code";
 
 const productionLeaves = Object.freeze([
   "approval.rs",
   "command.rs",
   "control.rs",
   "errors.rs",
-  "events.rs",
   "execution.rs",
   "io.rs",
   "model.rs",
   "params.rs",
   "probe.rs",
-  "protocol.rs",
   "supervision.rs",
   "transport.rs",
 ]);
+const parserLeaves = Object.freeze(["events.rs", "state.rs"]);
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
 async function sources() {
-  return Object.fromEntries(await Promise.all(productionLeaves.map(async (leaf) => [
-    leaf,
-    await read(`${driverRoot}/${leaf}`),
-  ])));
+  return Object.fromEntries(await Promise.all([
+    ...productionLeaves.map(async (leaf) => [leaf, await read(`${driverRoot}/${leaf}`)]),
+    ["parser.rs", await read(`${parserRoot}.rs`)],
+    ...parserLeaves.map(async (leaf) => [`parser/${leaf}`, await read(`${parserRoot}/${leaf}`)]),
+  ]));
 }
 
 test("Claude Code driver facade is thin and owns every production leaf", async () => {
   const facade = await read(`${driverRoot}.rs`);
   assert.deepEqual(
-    [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
+    [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
       .filter((moduleName) => moduleName !== "tests")
       .map((moduleName) => `${moduleName}.rs`)
@@ -67,6 +68,8 @@ test("Claude Code keeps the fixed streaming-input lane with native resume and no
     assert.ok(source["command.rs"].includes(token), `missing fixed command token: ${token}`);
   }
   assert.ok(source["params.rs"].includes("stdin_message"));
+  assert.ok(source["command.rs"].includes('"--append-system-prompt"'));
+  assert.equal(source["params.rs"].includes("claude_code_private_instructions_unsupported"), false);
   for (const forbidden of [
     '"--continue"',
     'Command::new("sh")',
@@ -115,7 +118,10 @@ test("Claude Code IO, events, controls, probe, and failures stay bounded and red
   ]) {
     assert.ok(joined.includes(token), `missing bounded lifecycle token: ${token}`);
   }
-  assert.ok(source["events.rs"].includes("project_event"));
+  assert.ok(source["parser/events.rs"].includes("processing_evidence_kind"));
+  assert.ok(source["parser.rs"].includes("fn parse_line"));
+  assert.ok(source["io.rs"].includes("Line(Vec<u8>)"));
+  assert.equal(source["io.rs"].includes("serde_json::from"), false);
   assert.ok(source["errors.rs"].includes("message: &'static str"));
   for (const rawProjection of [
     "stderr: String",
@@ -158,7 +164,7 @@ test("Claude Code process-local lifecycle and transcript have one bounded superv
       `missing frozen lifecycle symbol: ${symbol}`,
     );
   }
-  assert.ok(source["protocol.rs"].includes("claude_code_authentication_required"));
+  assert.ok(source["parser/state.rs"].includes("claude_code_authentication_required"));
 });
 
 test("Claude Code product controls and parity use one persistent stdio RPC owner", async () => {

@@ -24,6 +24,24 @@ fn missing_executable_is_unavailable_and_never_supported() {
     );
 }
 
+#[test]
+fn private_instructions_fail_before_process_launch() {
+    let result = execute(
+        "definitely-not-a-real-antigravity",
+        &json!({"privateInstructions":"private sentinel"}),
+        "exact user prompt",
+        "session-secret-sentinel",
+        Some(std::env::temp_dir().as_path()),
+        1_000,
+        None,
+        1_024,
+    );
+    assert_eq!(
+        result.error.as_ref().map(|error| error.code),
+        Some("antigravity_private_instructions_unsupported")
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn uninstall_removes_only_lico_hook_namespace() {
@@ -177,7 +195,7 @@ fn execute_reads_hook_receipt_and_returns_session_output() {
     assert!(result.ok, "{:?}", result.error);
     assert_eq!(result.session_id, "11111111-2222-3333-4444-555555555555");
     assert_eq!(result.output, "PONG");
-    assert!(!result.events.is_empty());
+    assert!(!result.transitions.is_empty());
 }
 
 #[cfg(unix)]
@@ -376,7 +394,7 @@ done
 receipt="${LICO_ANTIGRAVITY_SESSION_RECEIPT:?}"
 python3 - "$receipt" <<'PY'
 import json, os, sys
-json.dump({"conversationId": "11111111-2222-3333-4444-555555555555"}, open(sys.argv[1], "w"))
+json.dump({"hookPayload": json.dumps({"conversationId": "11111111-2222-3333-4444-555555555555"}), "environmentConversationId": ""}, open(sys.argv[1], "w"))
 PY
 printf '%s\n' 'PONG'
 exit 0
@@ -427,7 +445,7 @@ done
 receipt="${LICO_ANTIGRAVITY_SESSION_RECEIPT:?}"
 python3 - "$receipt" <<'PY'
 import json, sys
-json.dump({"conversationId": "11111111-2222-3333-4444-555555555555"}, open(sys.argv[1], "w"))
+json.dump({"hookPayload": json.dumps({"conversationId": "11111111-2222-3333-4444-555555555555"}), "environmentConversationId": ""}, open(sys.argv[1], "w"))
 PY
 printf '%s\n' 'first'
 sleep 0.4
@@ -504,7 +522,7 @@ for arg in "$@"; do
       if [ -n "${{LICO_ANTIGRAVITY_SESSION_RECEIPT:-}}" ]; then
         python3 - "$LICO_ANTIGRAVITY_SESSION_RECEIPT" <<'PY'
 import json, sys
-json.dump({{"conversationId": "11111111-2222-3333-4444-555555555555"}}, open(sys.argv[1], "w"))
+json.dump({{"hookPayload": json.dumps({{"conversationId": "11111111-2222-3333-4444-555555555555"}}), "environmentConversationId": ""}}, open(sys.argv[1], "w"))
 PY
       fi
       printf '%s\n' 'PONG'
@@ -523,7 +541,7 @@ done
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
 python3 - "$receipt" <<'PY'
 import json, sys
-json.dump({{"conversationId": "11111111-2222-3333-4444-555555555555"}}, open(sys.argv[1], "w"))
+json.dump({{"hookPayload": json.dumps({{"conversationId": "11111111-2222-3333-4444-555555555555"}}), "environmentConversationId": ""}}, open(sys.argv[1], "w"))
 PY
 printf '%s\n' 'PONG'
 exit 0

@@ -1,6 +1,5 @@
 //! Process-local control registry for Pi RPC `steer` commands.
 
-use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock, mpsc},
@@ -117,14 +116,8 @@ pub(in crate::platform) fn steer(
 }
 
 impl SteerRequest {
-    pub(super) fn into_protocol(self) -> (String, Value, mpsc::SyncSender<bool>) {
-        let request_id = format!("lico-pi-steer-{}", uuid::Uuid::new_v4().simple());
-        let message = json!({
-            "id": request_id,
-            "type": "steer",
-            "message": self.text,
-        });
-        (request_id, message, self.acknowledged)
+    pub(super) fn into_parts(self) -> (String, mpsc::SyncSender<bool>) {
+        (self.text, self.acknowledged)
     }
 }
 
@@ -146,7 +139,9 @@ mod tests {
         );
         let worker = std::thread::spawn(move || {
             let request = receiver.recv().unwrap();
-            let (request_id, message, acknowledged) = request.into_protocol();
+            let (text, acknowledged) = request.into_parts();
+            let (request_id, message) =
+                crate::platform::native_agent_parser::adapters::pi::encode_steer(text);
             assert_eq!(message["id"], request_id);
             assert_eq!(message["type"], "steer");
             acknowledged.send(true).unwrap();

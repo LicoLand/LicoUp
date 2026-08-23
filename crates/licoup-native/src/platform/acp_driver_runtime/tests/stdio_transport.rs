@@ -80,7 +80,12 @@ fn fake_child_transport_drains_ordered_chunks_sent_after_prompt_response() {
     assert_eq!(result.session_id, "native-fake-session");
     assert_eq!(result.turn_status, "end_turn");
     assert_eq!(result.capabilities.protocol_version, Some(1));
-    assert_eq!(result.events.len(), 2);
+    assert!(matches!(
+        result.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
+            crate::platform::native_agent_parser::LifecycleStage::Completed
+        ))
+    ));
     assert!(result.stderr_truncated);
     let _ = fs::remove_dir_all(dir);
 }
@@ -153,7 +158,11 @@ fn production_protocol_loop_resets_quiet_deadline_for_controlled_valid_chunks() 
     assert_eq!(status_code, None);
     assert!(!stdout_truncated);
     assert_eq!(outcome.output, "first second");
-    assert_eq!(outcome.events.len(), 2);
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "first second"
+    )));
     assert_eq!(transport.now(), start + Duration::from_millis(280));
     assert_eq!(transport.remaining_events(), 0);
     assert!(transport.writes().is_empty());
@@ -284,7 +293,7 @@ fn malformed_notification_before_prompt_response_stops_before_later_response_and
     assert_eq!(transport.now(), start + Duration::from_millis(10));
     assert_eq!(transport.remaining_events(), 2);
     let remaining_messages = transport.remaining_messages();
-    assert_eq!(remaining_messages, vec![&later_response, &later_chunk]);
+    assert_eq!(remaining_messages, vec![later_response, later_chunk]);
     assert!(protocol.output.is_empty());
     assert!(protocol.events.is_empty());
 }
@@ -423,10 +432,11 @@ fn flood_above_queue_capacity_delivers_complete_ordered_output() {
     assert!(result.ok, "flood ACP failure: {:?}", result.error);
     let expected: String = (0..70).map(|index| format!("chunk-{index}")).collect();
     assert_eq!(result.output, expected);
-    assert_eq!(result.events.len(), 70);
-    for (index, event) in result.events.iter().enumerate() {
-        assert_eq!(event["content"]["text"], format!("chunk-{index}"));
-    }
+    assert!(result.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == &expected
+    )));
     assert_eq!(result.turn_status, "end_turn");
     let _ = fs::remove_dir_all(dir);
 }

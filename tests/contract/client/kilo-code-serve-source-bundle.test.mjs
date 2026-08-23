@@ -19,7 +19,8 @@ test("Kilo Code serve is a thin facade plus one target policy leaf", async () =>
     facade,
     /local_service::serve::ensure_attach_endpoint\(policy::SPEC/u,
   );
-  assert.match(facade, /local_service::serve::watch_session_events/u);
+  assert.match(facade, /local_service::sse::watch_data/u);
+  assert.match(facade, /adapters::kilo_code/u);
   assert.match(policy, /default_port: DEFAULT_PORT/u);
   assert.match(policy, /default_executable: "kilo"/u);
   assert.match(policy, /"kilo_code_serve_health_failed"/u);
@@ -32,7 +33,7 @@ test("Kilo Code target owns dedicated composition policy and event regressions",
   assert.deepEqual(entries, ["composition.rs", "events.rs", "mod.rs", "policy.rs"]);
   const events = await read(`${root}/tests/events.rs`);
   assert.match(events, /target_event_lane_projects_only_assistant_text_parts/u);
-  assert.match(events, /project_event\(&mut projection, "kilo-2", &event\.to_string\(\)\)/u);
+  assert.match(events, /ServeEventParser::new\("kilo-2"\)/u);
   assert.match(events, /missing_session/u);
 });
 

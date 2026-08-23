@@ -17,6 +17,24 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 /// scheduling tolerance without relaxing the production handshake bound.
 const FAKE_RESPONSE_BOUND: Duration = Duration::from_secs(30);
 
+#[test]
+fn private_instructions_fail_before_process_launch() {
+    let result = lico_agent_driver::execute(
+        "definitely-not-a-real-lico-agent",
+        &json!({"model":"test","privateInstructions":"private sentinel"}),
+        "exact user prompt",
+        "",
+        Some(std::env::temp_dir().as_path()),
+        1_000,
+        None,
+        1_024,
+    );
+    assert_eq!(
+        result.error.as_ref().map(|error| error.code),
+        Some("lico_agent_private_instructions_unsupported")
+    );
+}
+
 /// M12: a lico-agent that starts but never answers `get_state` must fail the
 /// send within the handshake bound instead of blocking forever.
 #[test]

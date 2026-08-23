@@ -50,6 +50,17 @@ impl ProtocolConfig {
                 "session/configure",
             ));
         }
+        if params
+            .get("privateInstructions")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.is_empty())
+        {
+            return Err(ProtocolFailure::new(
+                "acp_private_instructions_unsupported",
+                "This ACP agent does not expose a private instruction channel.",
+                "capability/private-instructions",
+            ));
+        }
         let allow_all = params.get("allowAll").and_then(Value::as_bool);
         Ok(Self {
             prompt: prompt.to_string(),

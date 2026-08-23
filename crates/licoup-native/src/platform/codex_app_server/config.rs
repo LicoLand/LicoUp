@@ -2,34 +2,35 @@ use super::model::ProtocolFailure;
 use serde_json::Value;
 use std::path::Path;
 
-pub(super) const MAX_IMAGE_ATTACHMENTS: usize = 4;
-pub(super) const SUPPORTED_IMAGE_MEDIA_TYPES: &[&str] =
+pub(in crate::platform) const MAX_IMAGE_ATTACHMENTS: usize = 4;
+pub(in crate::platform) const SUPPORTED_IMAGE_MEDIA_TYPES: &[&str] =
     &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 /// Canonical ordered local-image input for `turn/start`. The runtime adapter
 /// already validated the files; this config parse only maps the request shape.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct LocalImageInput {
-    pub(super) name: String,
-    pub(super) media_type: String,
-    pub(super) path: String,
+pub(in crate::platform) struct LocalImageInput {
+    pub(in crate::platform) name: String,
+    pub(in crate::platform) media_type: String,
+    pub(in crate::platform) path: String,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ProtocolConfig {
-    pub(super) prompt: String,
-    pub(super) requested_session_id: String,
-    pub(super) session_path: Option<String>,
-    pub(super) local_images: Vec<LocalImageInput>,
-    pub(super) cwd: Option<String>,
-    pub(super) model: Option<String>,
-    pub(super) reasoning_effort: Option<String>,
-    pub(super) sandbox: Option<Value>,
-    pub(super) approval_policy: Option<Value>,
+pub(in crate::platform) struct ProtocolConfig {
+    pub(in crate::platform) prompt: String,
+    pub(in crate::platform) private_instructions: Option<String>,
+    pub(in crate::platform) requested_session_id: String,
+    pub(in crate::platform) session_path: Option<String>,
+    pub(in crate::platform) local_images: Vec<LocalImageInput>,
+    pub(in crate::platform) cwd: Option<String>,
+    pub(in crate::platform) model: Option<String>,
+    pub(in crate::platform) reasoning_effort: Option<String>,
+    pub(in crate::platform) sandbox: Option<Value>,
+    pub(in crate::platform) approval_policy: Option<Value>,
 }
 
 impl ProtocolConfig {
-    pub(super) fn from_params(
+    pub(in crate::platform) fn from_params(
         params: &Value,
         prompt: &str,
         session_id: &str,
@@ -78,6 +79,10 @@ impl ProtocolConfig {
 
         Ok(Self {
             prompt: prompt.to_string(),
+            private_instructions: text_param(
+                params,
+                &["privateInstructions", "private_instructions"],
+            ),
             requested_session_id,
             session_path,
             local_images,
@@ -93,7 +98,7 @@ impl ProtocolConfig {
         })
     }
 
-    pub(super) fn is_resume(&self) -> bool {
+    pub(in crate::platform) fn is_resume(&self) -> bool {
         !self.requested_session_id.is_empty() || self.session_path.is_some()
     }
 }
@@ -157,7 +162,7 @@ fn attachment_failure() -> ProtocolFailure {
     )
 }
 
-pub(super) fn spark_default_reasoning_effort(model: Option<&str>) -> Option<String> {
+pub(in crate::platform) fn spark_default_reasoning_effort(model: Option<&str>) -> Option<String> {
     let model = model?.to_ascii_lowercase();
     model.contains("spark").then(|| "low".to_string())
 }

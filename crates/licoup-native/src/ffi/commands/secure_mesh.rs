@@ -156,8 +156,8 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 let allow = result.get("decision").and_then(Value::as_str) == Some("allow");
-                if agent_id == "hermes" && !token.is_empty() {
-                    match crate::platform::hermes_resolve_parked_permission(token, allow) {
+                if matches!(agent_id, "hermes" | "claude-code") && !token.is_empty() {
+                    match crate::platform::resolve_native_agent_interaction_approval(token, allow) {
                         Ok(resume) => {
                             if let Some(object) = result.as_object_mut() {
                                 object.insert("adapterResume".to_string(), resume);

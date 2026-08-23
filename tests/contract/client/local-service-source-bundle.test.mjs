@@ -81,7 +81,7 @@ test("SSE line frame event timeout and stream concurrency remain bounded", async
   assert.match(sse, /timeout_read/u);
 });
 
-test("state PID process and event projection remain private bounded and redacted", async () => {
+test("state PID process remain private and neutral serve owns no event decoding", async () => {
   const state = await read(`${root}/state.rs`);
   const process = await read(`${root}/process.rs`);
   const serve = await read(`${root}/serve.rs`);
@@ -90,10 +90,10 @@ test("state PID process and event projection remain private bounded and redacted
   assert.match(state, /try_lock_exclusive/u);
   assert.match(process, /stdout\(Stdio::null\(\)\)/u);
   assert.match(process, /stderr\(Stdio::null\(\)\)/u);
-  assert.match(serve, /event_session != session_id/u);
-  assert.match(serve, /event_type != "message\.part\.updated"/u);
-  assert.match(serve, /assistant_messages/u);
-  assert.equal(serve.includes('"message.part.delta"'), false);
+  assert.equal(serve.includes("message.updated"), false);
+  assert.equal(serve.includes("message.part.updated"), false);
+  assert.equal(serve.includes("assistant_messages"), false);
+  assert.equal(serve.includes("serde_json::from_str"), false);
   assert.equal(serve.includes('"state": service_state'), false);
   assert.equal(serve.includes('"stateDir"'), false);
 });

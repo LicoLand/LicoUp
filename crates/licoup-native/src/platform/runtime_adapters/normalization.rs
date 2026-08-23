@@ -9,6 +9,36 @@ use serde_json::{Value, json};
 
 pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedExecution) -> Value {
     debug_assert_eq!(execution.driver_id, adapter.driver_id());
+    // Vendor frames have already crossed their isolated parser. Downstream
+    // receives only the parser-produced closed transition vocabulary.
+    let transitions = execution
+        .transitions
+        .iter()
+        .map(crate::platform::native_agent_parser::Transition::to_json)
+        .collect::<Vec<_>>();
+    let lifecycle_prefix = transitions
+        .iter()
+        .filter_map(|transition| {
+            (transition.get("kind").and_then(Value::as_str) == Some("lifecycle"))
+                .then(|| {
+                    transition
+                        .get("stage")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                })
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    let terminal_transition = transitions
+        .iter()
+        .rev()
+        .find(|transition| {
+            matches!(
+                transition.get("kind").and_then(Value::as_str),
+                Some("failed")
+            ) || transition.get("stage").and_then(Value::as_str) == Some("completed")
+        })
+        .cloned();
     let native_session_id = if adapter == RuntimeAdapter::Codex {
         execution.thread_id.clone()
     } else {
@@ -63,7 +93,9 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         // contract while containing only the driver's fixed sanitized message.
         "stderr": stderr,
         "error": error,
-        "events": execution.events,
+        "events": transitions,
+        "lifecyclePrefix": lifecycle_prefix,
+        "terminalTransition": terminal_transition,
         "capabilities": execution.capabilities,
         "stdoutTruncated": execution.stdout_truncated,
         "stderrTruncated": execution.stderr_truncated,
@@ -87,7 +119,7 @@ pub(super) fn normalize_codex(execution: codex_app_server::RunResult) -> Normali
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -135,7 +167,7 @@ pub(super) fn normalize_antigravity(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -184,7 +216,7 @@ pub(super) fn normalize_claude(execution: claude_code_driver::RunResult) -> Norm
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -234,7 +266,7 @@ pub(super) fn normalize_cursor(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -298,7 +330,7 @@ pub(super) fn normalize_acp(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities,
         error: execution.error.map(|failure| {
             let failure = failure.into_payload();
@@ -360,7 +392,7 @@ pub(super) fn normalize_openclaw(execution: openclaw_driver::RunResult) -> Norma
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -396,6 +428,18 @@ pub(super) fn normalize_hermes_with_protocol(
     execution: hermes_driver::RunResult,
     runtime_protocol: &'static str,
 ) -> NormalizedExecution {
+    let transitions = match execution.error.as_ref() {
+        Some(failure) => {
+            crate::platform::native_agent_parser::adapters::hermes::failed_transitions(
+                &failure.code,
+                &failure.stage,
+                &failure.message,
+            )
+        }
+        None => crate::platform::native_agent_parser::adapters::hermes::completed_transitions(
+            &execution.output,
+        ),
+    };
     let error = execution.error.map(|failure| {
         let failure = failure.into_payload();
         let thread_id = failure.session_id.clone();
@@ -414,7 +458,7 @@ pub(super) fn normalize_hermes_with_protocol(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -465,7 +509,7 @@ pub(super) fn normalize_pi(execution: pi_driver::RunResult) -> NormalizedExecuti
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -517,7 +561,7 @@ pub(super) fn normalize_lico_agent(execution: lico_agent_driver::RunResult) -> N
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -570,7 +614,7 @@ pub(super) fn normalize_deepseek_harness(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: execution.events,
+        transitions: execution.transitions,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,

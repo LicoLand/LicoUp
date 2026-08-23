@@ -1,12 +1,15 @@
-use super::control::{clear_active_turn, register_active_turn, safe_session_id};
+use super::control::{clear_active_turn, register_active_turn};
 use super::errors::ProtocolFailure;
 use super::hooks::{ensure_hook_bridge, read_conversation_id, receipt_path_for_turn};
 use super::model::{EffectiveSettings, PROCESS_POLL_INTERVAL, RECEIPT_ENV, RunResult};
+use crate::platform::native_agent_parser::adapters::antigravity::{
+    PtyOutputParser, TerminalFacts, classify_terminal, valid_session_id,
+};
 #[cfg(not(unix))]
 use crate::platform::process_supervisor::SupervisedChild;
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, join_bounded};
 #[cfg(unix)]
-use crate::platform::pty_transport::{AnsiStripper, PtyEvent};
+use crate::platform::pty_transport::PtyEvent;
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -27,6 +30,23 @@ pub(in crate::platform) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
+    if params
+        .get("privateInstructions")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "antigravity_private_instructions_unsupported",
+                "Antigravity CLI does not expose a separate private-instruction channel.",
+                "params/privateInstructions",
+            )
+            .with_session(Some(session_id)),
+            started_at,
+            false,
+            false,
+        );
+    }
     if prompt.trim().is_empty() {
         return RunResult::failed(
             ProtocolFailure::new(
@@ -69,7 +89,19 @@ pub(in crate::platform) fn execute(
             );
         }
     };
-    let workspace = resolve_workspace(params, cwd);
+    let Some(workspace) = resolve_workspace(params, cwd) else {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "antigravity_cli_workspace_unavailable",
+                "Antigravity CLI requires a bounded local workspace directory.",
+                "params/cwd",
+            )
+            .with_session(Some(session_id)),
+            started_at,
+            false,
+            false,
+        );
+    };
     let requested = session_id.trim();
     let mut command = Command::new(executable);
     command
@@ -79,7 +111,7 @@ pub(in crate::platform) fn execute(
         .env(RECEIPT_ENV, &receipt)
         .stderr(Stdio::piped());
     if !requested.is_empty() {
-        if !safe_session_id(requested) {
+        if !valid_session_id(requested) {
             return RunResult::failed(
                 ProtocolFailure::new(
                     "antigravity_cli_session_invalid",
@@ -108,6 +140,7 @@ pub(in crate::platform) fn execute(
     ) {
         Ok(outcome) => outcome,
         Err(failure) => {
+            let _ = std::fs::remove_file(&receipt);
             return RunResult::failed(
                 failure.with_session(Some(session_id)),
                 started_at,
@@ -118,102 +151,38 @@ pub(in crate::platform) fn execute(
     };
     let stdout_truncated = outcome.stdout_truncated;
     let stderr_truncated = outcome.stderr_truncated;
-    let status = outcome.status;
-    let output = outcome.output;
-    if outcome.timed_out {
-        return RunResult::failed(
-            ProtocolFailure::new(
-                "antigravity_cli_timeout",
-                "Antigravity CLI timed out before completing the turn.",
-                "turn/execute",
-            )
-            .with_session(Some(session_id)),
-            started_at,
-            stdout_truncated,
-            stderr_truncated,
-        );
-    }
-    let status_code = status.as_ref().and_then(ExitStatus::code);
+    let status_code = outcome.status.as_ref().and_then(ExitStatus::code);
     let receipt_session = read_conversation_id(&receipt).unwrap_or_default();
-    let native_session = if !requested.is_empty() {
-        requested.to_string()
-    } else {
-        receipt_session.clone()
+    let _ = std::fs::remove_file(&receipt);
+    let terminal = match classify_terminal(TerminalFacts {
+        requested_session: requested,
+        receipt_session: (!receipt_session.is_empty()).then_some(receipt_session.as_str()),
+        output: &outcome.output,
+        timed_out: outcome.timed_out,
+        exit_success: outcome.status.is_some_and(|status| status.success()),
+    }) {
+        Ok(terminal) => terminal,
+        Err(failure) => {
+            return RunResult::failed(
+                ProtocolFailure::new(failure.code, failure.message, failure.stage)
+                    .with_session(Some(&failure.session_id)),
+                started_at,
+                stdout_truncated,
+                stderr_truncated,
+            );
+        }
     };
-    if native_session.is_empty() || !safe_session_id(&native_session) {
-        return RunResult::failed(
-            ProtocolFailure::new(
-                "antigravity_hook_receipt_missing",
-                "Antigravity hook bridge did not return a native conversation identifier.",
-                "session/new",
-            )
-            .with_session(Some(session_id)),
-            started_at,
-            stdout_truncated,
-            stderr_truncated,
-        );
-    }
-    if !requested.is_empty() && !receipt_session.is_empty() && receipt_session != requested {
-        return RunResult::failed(
-            ProtocolFailure::new(
-                "antigravity_cli_session_drift",
-                "Antigravity CLI resumed a different native conversation than requested.",
-                "session/resume",
-            )
-            .with_session(Some(requested)),
-            started_at,
-            stdout_truncated,
-            stderr_truncated,
-        );
-    }
-    if !status.is_some_and(|value| value.success()) {
-        return RunResult::failed(
-            ProtocolFailure::new(
-                "antigravity_cli_turn_failed",
-                "Antigravity CLI exited without a successful turn.",
-                "turn/execute",
-            )
-            .with_session(Some(&native_session)),
-            started_at,
-            stdout_truncated,
-            stderr_truncated,
-        );
-    }
-    if output.is_empty() {
-        return RunResult::failed(
-            ProtocolFailure::new(
-                "antigravity_cli_empty_output",
-                "Antigravity CLI returned an empty final response.",
-                "turn/execute",
-            )
-            .with_session(Some(&native_session)),
-            started_at,
-            stdout_truncated,
-            stderr_truncated,
-        );
-    }
+    let native_session = terminal.session_id;
+    let output = terminal.output;
+    let transitions = terminal.transitions;
     // Progressive chunks are emitted by the unix run_turn_process as the pty
     // stream arrives; the post-hoc events remain the terminal response envelope.
     #[cfg(unix)]
     crate::platform::emit_agent_message_completed(&native_session, &turn_id, &output);
-    let events = vec![
-        json!({
-            "event": "agent.message.completed",
-            "sessionId": native_session,
-            "turnId": turn_id,
-            "payload": { "text": output }
-        }),
-        json!({
-            "event": "dispatch.turn.completed",
-            "sessionId": native_session,
-            "turnId": turn_id,
-            "payload": { "turnStatus": "completed" }
-        }),
-    ];
     RunResult {
         ok: true,
+        transitions,
         output,
-        events,
         error: None,
         session_id: native_session.clone(),
         thread_id: native_session,
@@ -293,8 +262,7 @@ fn run_turn_process(
     } else {
         Some(Instant::now() + Duration::from_millis(timeout_ms))
     };
-    let mut stripper = AnsiStripper::new();
-    let mut output_buf = String::new();
+    let mut parser = PtyOutputParser::new();
     let mut stdout_truncated = false;
     let mut timed_out = false;
     loop {
@@ -305,9 +273,7 @@ fn run_turn_process(
         match receiver.recv_timeout(PROCESS_POLL_INTERVAL) {
             Ok(PtyEvent::Data(bytes)) => {
                 if !stdout_truncated {
-                    let text = stripper.push(&bytes);
-                    if !text.is_empty() {
-                        output_buf.push_str(&text);
+                    if let Some(text) = parser.push(&bytes) {
                         crate::platform::emit_agent_message_chunk(
                             requested_session,
                             turn_id,
@@ -332,14 +298,21 @@ fn run_turn_process(
         .ok()
         .is_some_and(|truncated| truncated);
     if !stdout_truncated {
-        let tail = stripper.finish();
-        if !tail.is_empty() {
-            output_buf.push_str(&tail);
+        let (output, tail) = parser.finish();
+        if let Some(tail) = tail {
             crate::platform::emit_agent_message_chunk(requested_session, turn_id, &tail);
         }
+        return Ok(ProcessOutcome {
+            output,
+            status,
+            stdout_truncated,
+            stderr_truncated,
+            timed_out,
+        });
     }
+    let (output, _) = parser.finish();
     Ok(ProcessOutcome {
-        output: output_buf.trim().to_string(),
+        output,
         status,
         stdout_truncated,
         stderr_truncated,
@@ -441,16 +414,18 @@ fn run_turn_process(
     })
 }
 
-fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> PathBuf {
-    params
+fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Option<PathBuf> {
+    let requested = params
         .get("cwd")
         .or_else(|| params.get("workingDirectory"))
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .or_else(|| cwd.map(Path::to_path_buf))
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."))
+        .or_else(|| cwd.map(Path::to_path_buf));
+    crate::platform::agent_workspace::resolve_local_agent_workspace(
+        "antigravity",
+        requested.as_deref(),
+    )
 }
 
 fn apply_optional_flags(command: &mut Command, params: &Value, workspace: &Path) {
