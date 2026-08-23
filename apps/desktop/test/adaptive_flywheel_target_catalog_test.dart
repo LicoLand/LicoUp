@@ -52,6 +52,26 @@ void main() {
     );
   });
 
+  test('Pi keeps provider-qualified selectors behind concise labels', () {
+    final target = _target(
+      id: 'pi',
+      models: const [
+        {
+          'name': 'provider/model-a',
+          'displayName': 'Model A',
+          'providerId': 'provider',
+          'provider': 'Provider',
+        },
+      ],
+    );
+
+    expect(agentOrchestrationCommanderModels(target), ['provider/model-a']);
+    expect(
+      agentOrchestrationModelDisplayName(target, 'provider/model-a'),
+      'Model A',
+    );
+  });
+
   test('empty effort catalogs omit the independent reasoning dimension', () {
     final cursor = _target(
       id: 'cursor',
