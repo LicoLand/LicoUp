@@ -414,6 +414,10 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   for (const relativePath of [
     "crates/licoup-native/src/platform/acp_driver_runtime.rs",
     ...sources,
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/framing.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `neutral ACP runtime source must have a precise regression owner: ${relativePath}`);
@@ -425,7 +429,7 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
     "crates/licoup-native/src/platform/acp_driver_runtime/params.rs",
   ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.params"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/protocol.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-runtime.interaction",
@@ -460,6 +464,9 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
       "crates/licoup-native/src/platform/acp_session_transport",
       ".rs",
     ),
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/framing.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
   ]) {
     assert.equal(sessionInputs.has(relativePath), true,
       `neutral ACP session source must have a precise regression owner: ${relativePath}`);
@@ -527,18 +534,26 @@ test("runtime adapter modules retain leaf-owned inputs and exact command filters
 test("Codex app-server leaves retain exact narrow regression ownership", async () => {
   const sourceBundleId = "regression.codex-app-server-source-bundle";
   const selections = new Map([
-    ["config.rs", "rust.platform.codex-app-server.config"],
-    ["protocol/session.rs", "rust.platform.codex-app-server.session"],
-    ["protocol/events.rs", "rust.platform.codex-app-server.events"],
-    ["protocol/control.rs", "rust.platform.codex-app-server.control"],
-    ["io.rs", "rust.platform.codex-app-server.io"],
-    ["launch.rs", "rust.platform.codex-app-server.launch"],
-    ["supervision.rs", "rust.platform.codex-app-server.transport"],
-    ["transport.rs", "rust.platform.codex-app-server.transport"],
+    ["crates/licoup-native/src/platform/codex_app_server/config.rs",
+      "rust.platform.codex-app-server.config"],
+    ["crates/licoup-native/src/platform/native_agent_parser/adapters/codex/session.rs",
+      "rust.platform.codex-app-server.session"],
+    ["crates/licoup-native/src/platform/native_agent_parser/adapters/codex/events.rs",
+      "rust.platform.codex-app-server.events"],
+    ["crates/licoup-native/src/platform/native_agent_parser/adapters/codex/control.rs",
+      "rust.platform.codex-app-server.control"],
+    ["crates/licoup-native/src/platform/codex_app_server/io.rs",
+      "rust.platform.codex-app-server.io"],
+    ["crates/licoup-native/src/platform/codex_app_server/launch.rs",
+      "rust.platform.codex-app-server.launch"],
+    ["crates/licoup-native/src/platform/codex_app_server/supervision.rs",
+      "rust.platform.codex-app-server.transport"],
+    ["crates/licoup-native/src/platform/codex_app_server/transport.rs",
+      "rust.platform.codex-app-server.transport"],
   ]);
-  for (const [leaf, moduleId] of selections) {
+  for (const [source, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/licoup-native/src/platform/codex_app_server/${leaf}`,
+      source,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -575,6 +590,11 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
   for (const relativePath of [
     "crates/licoup-native/src/platform/codex_app_server.rs",
     ...splitSources,
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/codex.rs",
+    ...await sourceFiles(
+      "crates/licoup-native/src/platform/native_agent_parser/adapters/codex",
+      ".rs",
+    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `Codex app-server source must have a precise regression owner: ${relativePath}`);
@@ -872,6 +892,11 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
   for (const relativePath of [
     "crates/licoup-native/src/platform/claude_code_driver.rs",
     ...splitSources,
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code.rs",
+    ...await sourceFiles(
+      "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code",
+      ".rs",
+    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `Claude Code driver source must have a precise regression owner: ${relativePath}`);
@@ -951,6 +976,11 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
   for (const relativePath of [
     "crates/licoup-native/src/platform/openclaw_driver.rs",
     ...splitSources,
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
+    ...await sourceFiles(
+      "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw",
+      ".rs",
+    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `OpenClaw driver source must have a precise regression owner: ${relativePath}`);
@@ -972,11 +1002,11 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
     ["rust.platform.pi-driver.settings",
       "platform::pi_driver::tests::settings::"],
     ["rust.platform.pi-driver.protocol",
-      "platform::pi_driver::tests::protocol::"],
+      "platform::pi_driver::tests::parser_protocol::"],
     ["rust.platform.pi-driver.interaction",
       "platform::pi_driver::tests::interaction::"],
     ["rust.platform.pi-driver.events",
-      "platform::pi_driver::tests::events::"],
+      "platform::pi_driver::tests::parser_events::"],
     ["rust.platform.pi-driver.sessions",
       "platform::pi_driver::tests::sessions::"],
     ["rust.platform.pi-driver.io",
@@ -1016,6 +1046,11 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   for (const relativePath of [
     "crates/licoup-native/src/platform/pi_driver.rs",
     ...splitSources,
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
+    ...await sourceFiles(
+      "crates/licoup-native/src/platform/native_agent_parser/adapters/pi",
+      ".rs",
+    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `Pi driver source must have a precise regression owner: ${relativePath}`);

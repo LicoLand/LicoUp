@@ -1,5 +1,5 @@
-use super::approval_store::{parked_permissions, register_park_and_inbox};
-use super::capabilities::{APPROVAL_POLL_INTERVAL, APPROVAL_WAIT_TIMEOUT};
+use super::approval_store::register_park_and_inbox;
+use super::capabilities::APPROVAL_POLL_INTERVAL;
 use super::continuity::handle_control_requests;
 use super::errors::ProtocolFailure;
 use super::io::{write_cancel_notification, write_message};
@@ -23,7 +23,7 @@ pub(super) fn await_external_approval(
     display_summary: &str,
     option_id: Option<&str>,
     requested_tools: &[String],
-    deadline: Option<Instant>,
+    _deadline: Option<Instant>,
 ) -> Result<ApprovalWaitOutcome, ProtocolFailure> {
     let (decision_tx, decision_rx) = mpsc::sync_channel(1);
     let token = Uuid::new_v4().to_string();
@@ -60,22 +60,9 @@ pub(super) fn await_external_approval(
         protocol.interaction_failure = Some(failure.clone());
         return Err(failure);
     }
-    // Without a turn deadline the approval wait is bounded only by the
-    // approval interaction timeout itself.
-    let approval_deadline = deadline
-        .map(|deadline| {
-            Instant::now()
-                .checked_add(APPROVAL_WAIT_TIMEOUT)
-                .unwrap_or(deadline)
-                .min(deadline)
-        })
-        .unwrap_or_else(|| Instant::now() + APPROVAL_WAIT_TIMEOUT);
     loop {
         if let Some(failure) = handle_control_requests(transport, protocol) {
-            let _ = parked_permissions()
-                .lock()
-                .ok()
-                .and_then(|mut guard| guard.remove(&token));
+            crate::platform::native_agent_interaction::abandon(&token);
             let _ = write_message(
                 &mut transport.stdin,
                 &json!({
@@ -84,32 +71,6 @@ pub(super) fn await_external_approval(
                     "result": {"outcome": {"outcome": "cancelled"}}
                 }),
             );
-            return Err(failure);
-        }
-        let now = Instant::now();
-        if now >= approval_deadline {
-            let _ = parked_permissions()
-                .lock()
-                .ok()
-                .and_then(|mut guard| guard.remove(&token));
-            let _ = write_message(
-                &mut transport.stdin,
-                &json!({
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {"outcome": {"outcome": "cancelled"}}
-                }),
-            );
-            if let Some(session_id) = protocol.session_id.as_deref() {
-                let _ = write_cancel_notification(&mut transport.stdin, session_id);
-            }
-            let mut failure = ProtocolFailure::user_interaction(
-                "session/request_permission",
-                protocol.session_id.as_deref(),
-                Some(&protocol.config.turn_id),
-            );
-            failure.turn_status = Some("approval_timeout".to_string());
-            protocol.interaction_failure = Some(failure.clone());
             return Err(failure);
         }
         match decision_rx.recv_timeout(APPROVAL_POLL_INTERVAL) {
@@ -184,8 +145,8 @@ pub(super) fn await_external_approval(
                     }),
                 );
                 return Err(ProtocolFailure::new(
-                    "hermes_approval_park_disconnected",
-                    "Hermes approval park channel disconnected.",
+                    "native_interaction_transport_closed",
+                    "The native interaction route closed before a response was delivered.",
                     "server/request",
                 ));
             }

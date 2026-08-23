@@ -1,352 +1,278 @@
 # LicoUp Architecture
 
-English (normative) · [简体中文](README.zh-CN.md) · [Documentation](../README.md) · [Project](../../README.md)
+| Related Document | Language / Path | Authority |
+|:---|:---|:---|
+| **Normative Version** | English (Normative) | Authoritative technical architecture specification |
+| **Localization** | [简体中文](README.zh-CN.md) | Localized Chinese projection |
+| **Product Goal** | [PRODUCT.md](../../PRODUCT.md) | Durable product goal, design philosophy, and promises |
+| **Current Status** | [STATUS.md](../STATUS.md) | Current implementation facts and release evidence |
+| **Compatibility Matrix** | [COMPATIBILITY.md](../COMPATIBILITY.md) | Platform and 13-agent support matrix |
+| **Domain Vocabulary** | [CONTEXT.md](../../CONTEXT.md) | Unified domain vocabulary definitions |
+| **Documentation Index** | [docs/README.md](../README.md) | Complete documentation table of contents |
 
-[`PRODUCT.md`](../../PRODUCT.md) owns the durable product goal and boundary.
-[`../STATUS.md`](../STATUS.md) owns current status. Current component and
-dependency facts are owned by the
-Rust/Flutter module trees, `apps/desktop/packaging.modules.json`, and the
-architecture verifier under `apps/desktop/scripts/client-architecture/`. This
-document is their public architectural projection.
+[`PRODUCT.md`](../../PRODUCT.md) owns the durable product goal and boundary. [`../STATUS.md`](../STATUS.md) owns current status. Current component and dependency facts are owned by the Rust/Flutter module trees, `apps/desktop/packaging.modules.json`, and the architecture verifier under `apps/desktop/scripts/client-architecture/`. This document is their public architectural projection.
 
-The [client-native interaction boundary](CLIENT-NATIVE-INTERACTION.md)
-documents the implemented structured-method and bounded stateless-command
-paths between Flutter and Rust.
+---
 
-LicoUp is a local-first client. Flutter owns the interface. Rust owns the
-native client core, local and accessible VM adapters, bounded work,
-and the [current retiring endpoint-protection Preview](../STATUS.md)
-implementation. Lico Arc Protocol, not this client repository, owns stable
-endpoint wire semantics.
+## Security and Public-Source Boundary
 
-## Design ideas
+[Security & Data Boundaries](SECURITY-AND-DATA-BOUNDARY.md) owns the detailed mechanics. This entry preserves their cross-document invariants:
 
-- **Diverse** — adapters let different agents and devices join the client.
-- **Connected** — local tools and peer clients share a clear flow.
-- **Open** — source and client contracts can be reviewed and extended.
-- **Integrated** — one application layer keeps the interface independent from
-  each adapter.
+- A Compatible untrusted station is transport only. The sender emits a Five-field Lico Arc envelope; peer identity, freshness, replay rejection, and authenticated final receipt remain endpoint decisions.
+- Local paths, logs, histories, usage records, credentials, and raw runtime data stay on the device. Only approved protected peer content and the protocol's minimal routing fields cross the station boundary.
+- Current platform key custody uses operating-system secure storage when available or explicit memory-only custody. Caller-supplied flags or ordinary state files are not proof of approval; protected effects require a platform-held authorization session.
+- The client accepts no executable crypto patches from a relay or service, and there is no runtime crypto-patch loader.
 
-## Components
+Agent conversations remain Rust-hosted. New and native continued sessions keep process-local, wakeable progress; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Observer loss is not cancellation or settlement. Subagent MCP addresses only canonical Conversation and Membership identities, while native continuation locations remain private.
 
-```mermaid
-flowchart TB
-    UI["Flutter interface"] --> APP["Application layer"]
-    APP --> CORE["Rust native client core"]
-    CORE --> CONVERSATIONS["Canonical Conversation domain<br/>Memberships · Events · Dispatch"]
-    CORE --> STRATEGIES["Adaptive Flywheel strategy domain<br/>Immutable Graphs · durable runs"]
-    CONVERSATIONS --> STORE["Indexed SQLite/WAL client state"]
-    CORE --> AGENTS["Agent adapters<br/>ACP · app-server · RPC · CLI"]
-    AGENTS --> VM["Accessible user-owned VM<br/>OrbStack discovery · OpenSSH stdio · ACP/Hermes Gateway"]
-    CORE --> MESH["Retiring endpoint-protection Preview<br/>current executor"]
-    MESH --> ARC["Lico Arc candidate adapter<br/>closed five-field envelope"]
-    ARC --> STATION["Compatible station<br/>untrusted transport"]
-    STATION --> PEER["Peer LicoUp client"]
-    KEYS["Platform secure store<br/>user presence"] --> MESH
-    LINE["Pinned Lico Arc Protocol Line<br/>required future endpoint wire authority"] -. "governs conforming execution" .-> MESH
-```
+---
 
-| Area | Responsibility |
-| --- | --- |
-| Flutter interface | Navigation, views, user choices, and safe summaries |
-| Application layer | Client flows and adapter-independent rules |
-| Rust native core | Local tasks, protocols, validation, and encryption |
-| Conversation domain | Sole durable authority for direct/group chat, Human/Agent Memberships, structured Events, and Membership-scoped dispatch; native runtime locations stay private |
-| Adaptive Flywheel strategy domain | Immutable package revisions, JSON Graph validation, bindings, exact authorization, durable run reduction, and bounded effect scheduling independent from Conversation history |
-| Agent adapters | Translate supported local interfaces and discovered or explicit OpenClaw/Hermes VM protocol connections |
-| Platform bridges | Secure storage, user presence, and platform launch work |
-| Endpoint-protection Preview | Current LicoUp executor, local key/Provider custody, peer trust, approval, and retiring endpoint implementation; it is not stable protocol authority |
-| Lico Arc Protocol Line | Owns wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics |
-| Lico Arc adapter | Strict candidate outer-envelope codec and four bounded station transport operations |
+## Horizontal Tiers & Vertical Domain Slices
 
-## Conversation authorities
+LicoUp is structured across **Horizontal Platform Tiers** and **Vertical Domain Slices**:
 
-[`PRODUCT.md`](../../PRODUCT.md) owns the one-conversation destination. The
-Canonical Conversation store in
-`crates/licoup-native/src/domain/client_conversation/` owns implemented
-direct/group chat facts. Native agent history, Adaptive Flywheel graphs, and
-Assistant Profile/workflow state are adjacent authorities. They are not copies of that
-Conversation, and this section does not replace their owning documents.
+### 1. Four Horizontal Platform Tiers
+1. **Tier 1: Flutter Presentation / Shell Layer** — Pure user appearance, navigation, and interaction views without core business processing logic (any legacy processing logic will be progressively decoupled downward).
+2. **Tier 2: Bridging Contract / RPC Protocol Layer** — Bidirectional communication contract between Flutter and Rust (`licoup.stdio.v1` structured method frames and mobile platform FFI commands), strictly precluding raw CLI argument array pass-through.
+3. **Tier 3: Rust Functional Core & Infrastructure Layer** — Explicitly bifurcated into:
+   - **Rust Domain Core**: Hosts `Canonical Conversation` (dispatch door & turn host), `Adaptive Flywheel` (strategy graphs and route selection), and `Agent Adapters & Runtime` (13 agent vendor protocols and dispatch).
+   - **Rust Infrastructure & External Boundary Gateway**: Serves as the clear boundary between internal domain logic and the external physical world, encompassing **Database Storage (SQLite WAL)**, **Dynamic Configuration**, **Secret & Key Custody Facade (Layered atop Native OS)**, **Network & Transport**, and **PTY / TTY & Subprocess Management**.
+4. **Tier 4: Native OS / System Adaptation Layer** — Low-level operating system and platform script/API adaptations (macOS Keychain/PTY/launchd; Windows WinCred/ConPTY/PowerShell; Linux Secret Service/XDG; Android JNI/Keystore/SAF; iOS Secure Enclave/FaceID, etc.).
+
+### 2. Vertical Domain Slices
+Vertical business capabilities such as **Conversation** operate as end-to-end vertical architectural slices cutting across Flutter presentation views, bridging contracts, Rust domain dispatching, infrastructure persistence, and native operating system environments.
+
+Lico Arc Protocol, not this client repository, owns stable endpoint wire semantics.
+
+---
+
+## Four-tier Architecture Component Diagram
 
 ```mermaid
 flowchart TB
-    Conv["Canonical Conversation"]
-    Conv --> Principals["Principals: Human or Agent"]
-    Conv --> Memberships["Memberships: access and active/left"]
-    Conv --> Events["Events and Parts"]
-    Conv --> StrategyRef["strategyRevision: optional Graph binding"]
-    Conv --> Dispatches["Private ConversationDispatch"]
-    Conv --> Bindings["Private RuntimeBinding"]
+    subgraph LAYER1["1. Flutter Presentation / Shell Layer"]
+        UI["Flutter Views · Navigation · Gestures · Security Summaries<br/>(No core processing logic)"]
+    end
+
+    subgraph LAYER2["2. Bridging Contract / RPC Protocol Layer"]
+        BRIDGE["licoup.stdio.v1 Structured Method Frames (Desktop RPC)<br/>Platform FFI Commands (Mobile Bridge) · Strict Bidirectional Contract"]
+    end
+
+    subgraph LAYER3["3. Rust Functional Core & Infrastructure Layer"]
+        subgraph DOMAIN_BOX["Rust Domain Core"]
+            CONVERSATIONS["Canonical Conversation Domain<br/>Sole Durable Chat Authority · Memberships · Dispatch Door · Turn Host"]
+            STRATEGIES["Adaptive Flywheel Strategy Domain<br/>Immutable Graphs · Route Selection · Durable Runs"]
+            AGENTS["Agent Adapters & Runtime<br/>ACP · app-server · RPC · CLI · 13 Packaged Agent Drivers"]
+        end
+
+        subgraph INFRA_BOX["Rust Infrastructure & External Boundary Gateway"]
+            DB_STORAGE["Database Storage (SQLite / WAL Engine · Transactions · Indices)"]
+            DYNAMIC_CONFIG["Dynamic Configuration System (Hot-reload · Manifests · Precedence)"]
+            SECRET_CUSTODY["Secret & Key Custody Facade (Key Derivation · Layered atop Native OS)"]
+            NET_TRANSPORT["Network & Transport (HTTP/SSE Streams · SSH Tunnels · P2P Envelopes)"]
+            PTY_TRANSPORT["PTY / TTY Subprocess Transport (PTY Sessions · Winsize · Process Supervision)"]
+        end
+
+        CONVERSATIONS --> DB_STORAGE
+        STRATEGIES --> DB_STORAGE
+        AGENTS --> NET_TRANSPORT
+        AGENTS --> PTY_TRANSPORT
+        CONVERSATIONS --> SECRET_CUSTODY
+        AGENTS --> DYNAMIC_CONFIG
+    end
+
+    subgraph LAYER4["4. Native OS / System Adaptation Layer"]
+        MACOS["macOS / Darwin<br/>Swift/ObjC · Keychain · LocalAuth · Launchd · POSIX PTY · Firmlink · OrbStack"]
+        WINDOWS["Windows / Win32<br/>PowerShell · MSVC · WinCred · ConPTY/NamedPipe · Registry · %APPDATA%"]
+        LINUX["Linux / Ubuntu<br/>GNU Toolchain · D-Bus Secret Service · XDG Specs · Linux PTY · Signals"]
+        ANDROID["Android<br/>Kotlin/Java · JNI/FFI · Keystore · BiometricPrompt · SAF · Android Shell"]
+        IOS["iOS<br/>Swift · C-ABI FFI · Secure Enclave · FaceID/TouchID · Sandbox Container"]
+        COMMON_OS["Cross-Platform System Tooling<br/>OpenSSH Batch Tunnels · Process Supervision (SIGTERM/KILL) · Env Sanitization"]
+    end
+
+    LAYER1 --> LAYER2
+    LAYER2 --> LAYER3
+    SECRET_CUSTODY --> LAYER4
+    NET_TRANSPORT --> LAYER4
+    PTY_TRANSPORT --> LAYER4
+    DB_STORAGE --> LAYER4
+    DYNAMIC_CONFIG --> LAYER4
 ```
 
-| Authority | Owns | Relation |
-| --- | --- | --- |
-| Canonical Conversation | Human/Agent entry, Memberships, ordered Events | Sole durable chat store. Direct and group are the same type; only `isGroup` and Membership count differ |
-| [Native history catalog](../protocols/semantic-conversation.md) | Read-only adapter sessions assembled as semantic conversation | One-to-one Agent workspace list/replay. Not Canonical `conversation.list`. Native locations stay private on Membership RuntimeBindings |
-| [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Immutable Graph revision, bindings, authorization, durable run reduction | Independent of Conversation history. A group may bind `strategyRevision`; actor effects project back as Membership Events. Graph/run is not a second transcript |
-| [Subagent MCP](../protocols/subagent-mcp.md) | Assistant designation, Membership Profiles, and assistant-temporary Graph lifecycle | Profile facts project named existing authorities; temporary Graphs bind exact Memberships and are preflighted before any effect. Adaptive Flywheel remains the Agent/model route selector |
+---
 
-| Record | Meaning |
-| --- | --- |
-| Principal | Peer identity. `kind` is human or agent; an Agent also has `agentId` |
-| Membership | That Principal's seat in one Conversation. Dispatch keys are `conversationId` + `membershipId` |
-| Event / EventPart | The only visible history. Message, membership-changed, and availability Events carry text, reasoning, tool, artifact, diagnostic, and metadata Parts. Streaming appends Parts on an unfinalized Event |
-| `strategyRevision` | Optional authorized Flywheel Graph on the Conversation. Not a transcript |
-| ConversationDispatch | Private Membership-scoped Agent execution. Native paths stay out of the public contract |
-| RuntimeBinding | Private adapter session bound to a Membership. Hidden from UI, MCP, and export |
+## Tier and Module Responsibilities
 
-Addressing selects Memberships; it is not a second protocol. An `@mention`, a
-strategy actor slot, an assistant-temporary Graph binding, and a Subagent
-`conversationId + membershipId` all name existing Agent Memberships. In this
-model DirectTurn is a mention dispatch cause on ConversationDispatch, not a
-second send, execute, or display stack.
+| Tier | Architectural Module | Responsibility Boundary |
+|:---|:---|:---|
+| **Tier 1: Flutter Presentation Layer** | Flutter User Interface (Shell / UI) | Navigation, views, user interactions, visual styling, and security summaries. Must not contain core business processing logic. |
+| **Tier 2: Bridging Contract Layer** | RPC / FFI Communication Contract | Governs Flutter ↔ Rust contract. Desktop uses `licoup.stdio.v1` structured method frames, mobile uses C-ABI FFI commands; strictly prohibits CLI argument array pass-through. |
+| **Tier 3: Rust Domain Core** | Canonical Conversation Domain | Sole durable authority for direct/group chat, Human/Agent Memberships, structured Events, and Membership-scoped dispatch; native runtime locations stay private. |
+| | Adaptive Flywheel Strategy Domain | Immutable package revisions, JSON Graph validation, bindings, exact authorization, durable run reduction, and bounded effect scheduling independent from Conversation history. |
+| | Agent Adapters & Runtime | Translates 13 supported local agent interfaces (ACP, app-server, CLI, RPC) and discovered VM protocol connections. |
+| **Tier 3: Rust Infrastructure Layer** | Database Storage (SQLite WAL) | Sole persistence engine providing ACID transactions, typed migrations, and compound indexed query access. |
+| | Dynamic Configuration System | Runtime config parsing, dynamic reload/perception, deterministic precedence (CLI > Env > Manifest > Platform defaults). |
+| | Secret & Key Custody Facade | Unified security facade directly layered atop Tier 4 Native OS keyrings (Keychain/WinCred/Keystore/Secure Enclave). |
+| | Network & Transport | HTTP/SSE streaming client, system batch SSH tunnels, P2P encrypted envelope transport, and connection lifecycles. |
+| | PTY / TTY Subprocess Transport | Cross-platform pseudo-terminal abstraction, window size synchronization, ANSI streaming, and process supervision ladders (Grace $\to$ SIGTERM $\to$ SIGKILL). |
+| **Tier 4: Native OS Adaptation Layer** | macOS / iOS Adaptation | Swift/ObjC bridge, Keychain secure storage, `LocalAuthentication` biometric confirmation, Launchd autostart, APFS/Firmlink path normalization, OrbStack CLI discovery. |
+| | Windows Adaptation | PowerShell/Cmd script wrapping, WinCred credential management, ConPTY pseudo console and named pipes, registry autostart, wide-character paths. |
+| | Linux / Ubuntu Adaptation | GNU toolchain, D-Bus Secret Service (with ephemeral fallback), XDG Base Directory/Autostart specs, POSIX PTY, and signal supervisor. |
+| | Android Adaptation | Kotlin/Java host integration, `android_ffi.rs` lifecycle bridge, Android Keystore, `BiometricPrompt`, SAF storage, and Android Shell sandbox interaction. |
+| | Cross-Platform Tooling & Sandbox | OpenSSH batch tunnels, `process_supervisor.rs` supervision ladders (Grace Period $\to$ SIGTERM $\to$ SIGKILL), and environment variable sanitization allowlists. |
 
-There is one dispatch door. After a human Event is persisted, dispatch runs
-with conversation and event identity alone: native resolves mentioned
-Memberships from the stored Event text, and a bound strategy is the same door
-addressed by binding rather than by text. The dispatch completion authority is
-the only writer of terminal Event, dispatch state, and mention turn state; a
-strategy run start or resume registers its entry Membership turn before the
-drive thread starts, returns that handle in the same response, and abandons an
-unrun entry with a typed code. A Subagent delegation streams frames into the
-same Conversation dispatch scope and settles through the same authority.
-Services constructed without the persistent host runtime reject dispatch-type
-and run actions with the typed transport rejection instead of opening
-unattended turns.
+---
 
-The dropped `conversation_roles` table is not a current store. Adaptive
-Flywheel is a user-imported Graph, not an MCP Role pool or round-robin Role
-flywheel.
+## Native OS Adaptation Boundary
 
-Group panes render Canonical Conversation Events. One-to-one Agent panes
-render the native catalog plus live PersistentTurn. Shared bubble widgets do
-not merge those authorities.
+The shared Rust functional core and Flutter presentation layer remain platform-neutral. Tier 4 "Native OS Adaptation Layer" owns the low-level operating system APIs, scripts, and platform-specific toolchains:
 
-## Built-in capability boundaries
+| Platform / Tooling Domain | Native System Adaptation Responsibilities |
+|:---|:---|
+| **macOS (Darwin / Swift / Unix)** | 1. **Security & Presence**: `Security.framework` (Keychain Services) and `LocalAuthentication.framework` (Touch ID / Apple Watch auth);<br>2. **Daemons & Autostart**: `~/Library/LaunchAgents/` launchd plist management and `launchctl bootstrap / bootout` scheduling;<br>3. **Terminal & Sandbox**: POSIX PTY (`openpty`, `termios`, `ioctl(TIOCSCTTY)`, `winsize`), APFS Firmlink system and data volume mapping;<br>4. **VM Probing**: OrbStack local Unix Domain Socket probing and `orb` CLI discovery. |
+| **Windows (Win32 / PowerShell / MSVC)** | 1. **Credentials & Storage**: Windows Credential Manager (WinCred `CredReadW`/`CredWriteW`) secure custody;<br>2. **Terminal & Console**: Windows Pseudo Console API (ConPTY: `CreatePseudoConsole`) and Windows Named Pipes;<br>3. **Autostart & Registry**: Windows Registry Run key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) and Task Scheduler;<br>4. **Script Wrapping**: PowerShell / Cmd script wrapping (`Get-Command`, `.cmd`/`.ps1`), safe argument quoting, and wide-character path resolution. |
+| **Linux / Ubuntu (GNU / POSIX / D-Bus)** | 1. **Secret Service**: D-Bus Freedesktop Secret Service spec (libsecret / GNOME Keyring / KWallet) with ephemeral in-memory fallback;<br>2. **System Standards**: XDG Base Directory spec (`$XDG_DATA_HOME`, `$XDG_CONFIG_HOME`) and XDG Autostart (`~/.config/autostart/*.desktop`);<br>3. **Terminal & Processes**: Linux PTY (`forkpty`, `ptsname`, `grantpt`), standard signal trapping, and `/proc` process-tree tracking. |
+| **Android (Kotlin / Java / Android Shell)** | 1. **Host & Lifecycle**: `android_ffi.rs` JNI bridge, managing lifecycle across Android Activity/Service events and memory trimming;<br>2. **Hardware Keys & Auth**: Android Keystore System and `BiometricPrompt` hardware fingerprint/face confirmation;<br>3. **Storage & Shell**: Storage Access Framework (SAF), app private sandbox directories, and Android Toybox/Termux Shell sandbox interaction. |
+| **iOS (Swift / ObjC / C-ABI FFI)** | 1. **FFI Integration**: `ios_ffi.rs` C-ABI memory-safe bridge, managing single-process restricted execution lifecycle;<br>2. **Hardware Storage & Auth**: Apple Secure Enclave hardware Keychain access and `LocalAuthentication` (Face ID / Touch ID);<br>3. **Sandbox & Container**: `NSApplicationSupportDirectory` sandbox paths and background execution constraints handling. |
+| **Cross-Platform System Tooling** | 1. **Network Tunnels**: OpenSSH batch mode (`ssh -o BatchMode=yes -o StrictHostKeyChecking=yes`) interactive-free secure tunnels;<br>2. **Process Supervision**: `process_supervisor.rs` supervision ladders (Grace Period $\to$ SIGTERM $\to$ SIGKILL) and environment variable sanitization allowlists. |
 
-The default client contains only the foundations and local-first scenarios in
-this table. Each row owns a narrow contract and a dedicated regression module;
-one scenario does not reach into another scenario's storage or interface.
+---
 
-| Capability | Owned boundary |
-| --- | --- |
-| Rust task queue | Bounded multi-producer FIFO work, backpressure, disconnect handling, and worker lifecycle for local jobs |
-| ACP adapter | Agent session negotiation, native continuation, session listing/loading, streamed events, permission waits, cancellation, and sanitized errors |
-| MCP adapter | Bounded MCP/JSON-RPC validation, request-ID preservation, response forwarding, and one-shot approval for external effects |
-| Agent discovery | Concurrent probes of the Agent Scan Path Manifest only (named Agent binaries, config, and history). PATH, personal library roots, photo/music libraries, and network volumes are never walked. Third-party Agent binaries are not executed during unused-agent discovery or cold start. Opening an Agent's conversation interface refreshes that Agent's native model catalog from its CLI or named store. Home is taken from the environment; macOS firmlink-equivalent home paths classify the same way. Unused-agent probes classify other-app containers lexically and do not stat them. Token usage is not scanned until Monitoring is opened |
-| Adapter plugin management | One native catalog for packaged native, bundled ACP, and explicitly installable LicoUp bridges; lifecycle actions are confirmed and limited to LicoUp-owned state |
-| Agent conversations | Direct and group chat share the canonical Conversation model. Human and Agent Principals participate through explicit Memberships. One client-local CLI host per portable data root and owning LicoUp process owns every accepted packaged-adapter turn over private local IPC. It survives replaceable observer and stdio-proxy lifetimes, then exits when the owning LicoUp process exits. New and native continued sessions keep process-local, wakeable progress in that host; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Replaceable observers attach by Conversation-scoped handle and process-local cursor; committed Conversation Events provide exact replay below each active turn's disposable 16 MiB cache floor. Observer loss is not cancel or steer. Native sessions remain adapter-owned execution details bound privately to a Membership. A local [Subagent MCP](../protocols/subagent-mcp.md) dispatches only by `conversationId + membershipId` and never exposes native continuation paths |
-| Adaptive Flywheel | The catalog stays empty until a ZIP import. Imported ZIP packages contain root `workflow.json` plus optional `scripts/`; the Graph decides pipeline or Agent Loop behavior. Immutable revisions own bindings and exact authorization, while durable runs expose bounded ready-frontier scheduling and explicit terminal or recovery states. There is no Better Plan installation action and no ordinal Conversation compatibility path |
-| Skill management | Read-only discovery of existing local skills, recoverable removal to the system Trash, and invocation counters grouped by time window; no download, install, update, or synchronization channel |
-| Conversation management | Indexed list/get/event paging and search plus bounded canonical import/export; third-party native history is never rewritten |
-| Assistant workflow | The designated Assistant owns each user goal to completion: it works directly or admits one bounded assistant-temporary Graph with exact Membership bindings. The MCP-bound Agent must be that active designated Membership. Preflight returns ordered stable diagnostics with safe request pointers before any effect; runtime failures return typed terminal results to the Assistant. Group Automatic adaptation uses the same native Membership lane as one-to-one chat. Adaptive Flywheel and Assistant catalogs hydrate through one selected-target Rust batch. The persistent Conversation host remains the sole run and turn owner; Adaptive Flywheel remains the sole Agent/model route-selection authority |
-| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Graph run/command/Membership rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
-| Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
+## Domain Architecture Index
 
-Optional collaboration is absent from default startup and navigation. The
-client imports its trusted signing key through a separate action that is never
-a trust root by itself, then verifies the immutable package source and fixed
-signed external runner on loopback before an explicit start.
+To maintain clarity across the four primary architectural tiers, detailed domain-specific designs are separated into dedicated documents:
 
-The workflow view consumes one safe native ledger projection. LicoUp owns Graph
-admission, preflight, durable run reduction, and usage accounting; Adaptive
-Flywheel owns route selection; and Conversation Memberships own Agent dispatch.
-Native continuation locations
-remain private adapter bindings. The projection keeps only safe codes,
-localized Graph and command state labels, Agent/model labels, Membership ids,
-numeric Token counts, and exact-or-estimated coverage. It excludes prompts, replies,
-tool payloads, summaries, compaction, cache controls, and a second client-owned
-context model. Retention is bounded to active workflows and the newest twenty
-terminal rollups.
+| Architecture Domain | Architectural Tier | Specification Document | Domain Responsibilities |
+|:---|:---|:---|:---|
+| **Client-Native Interaction** | Tier 2: Bridging Contract Layer | [CLIENT-NATIVE-INTERACTION.md](CLIENT-NATIVE-INTERACTION.md) | `licoup.stdio.v1` structured method frames and mobile FFI command contracts |
+| **Canonical Conversation Vertical** | Vertical Slice (Tiers 1 ~ 4) | [CONVERSATION-DOMAIN.md](CONVERSATION-DOMAIN.md) | Bidirectional binding, direct chat base with group orchestration encapsulation, state machine & end-to-end flows |
+| **Agent Adapters & Runtime Architecture** | Tier 3: Rust Functional Core | [AGENT-ADAPTERS-ARCHITECTURE.md](AGENT-ADAPTERS-ARCHITECTURE.md) | 13-agent driver taxonomy, standard protocols (ACP/RPC/PTY) vs proprietary (Codex/OpenCode) normalization |
+| **Rust Infrastructure & Boundaries** | Tier 3: Infra & Boundary Gateway | [RUST-INFRASTRUCTURE-LAYER.md](RUST-INFRASTRUCTURE-LAYER.md) | Database (SQLite WAL), dynamic config, secret custody facade, transport, PTY/TTY |
+| **Adaptive Flywheel** | Tier 3: Rust Functional Core | [ADAPTIVE-FLYWHEEL.md](../functionality/ADAPTIVE-FLYWHEEL.md) | Immutable Graph revisions, route selection, and durable run reduction |
+| **Subagent MCP** | Tier 3: Rust Functional Core | [subagent-mcp.md](../protocols/subagent-mcp.md) | Assistant goal ownership, profile facts, and temporary Graph admission |
+| **Semantic Conversation** | Tier 3: Rust Functional Core | [semantic-conversation.md](../protocols/semantic-conversation.md) | 13 agent protocol translations, native catalog discovery, and read-only replay |
+| **Security & Data Boundaries** | Tier 3: Rust Functional Core | [SECURITY-AND-DATA-BOUNDARY.md](SECURITY-AND-DATA-BOUNDARY.md) | VM discovery isolation, endpoint protection preview, platform secret custody, zero-trust data |
+| **Platform System Bridges** | Tier 4: Native OS Adaptation | `crates/licoup-native/src/platform/` | Low-level OS APIs and system tooling for macOS, Windows, Linux, Android, iOS |
 
-The current agent and platform adaptation targets are generated in
-[Compatibility](../COMPATIBILITY.md). Station-wire and operation status is
-recorded in [Status](../STATUS.md).
+---
 
-## VM discovery and native-protocol boundary
-
-For OpenClaw and Hermes, the desktop client enumerates running local OrbStack
-machines with a bounded command and checks a fixed set of official and common
-executable locations. It reads no guest configuration or history. Machine
-names and returned absolute paths are validated before Rust creates a transient
-`machine@orb` route; automatic VM routes are excluded from discovery caches.
-The scan has fixed time, output, machine-count, and concurrency bounds.
-
-For another VM, Flutter collects the host, optional port/user, guest executable,
-and absolute guest working directory. Rust validates a closed connection shape
-and stores it only with the canonical manual target. Passwords, private keys,
-command fragments, relative guest directories, and unknown fields are rejected.
-
-The native core starts the platform's system `ssh` executable in batch mode
-with strict host-key checking, no TTY, forwarding, local command, environment
-forwarding, or connection multiplexing. It passes one fixed, shell-quoted
-guest command. OpenClaw starts ACP. Hermes starts ACP when its optional package
-passes the fixed capability check; otherwise automatic discovery starts the
-installer environment's Python with `tui_gateway.entry`. Both protocols use
-bounded JSON-RPC over stdin/stdout. Local collaboration MCP descriptors are not
-sent to the guest. Conversation discovery and readback use the selected
-protocol's session list/load operations; the client does not scan, mount, or
-copy the guest history store. The UI keeps the SSH destination visible whenever
-that target is selected.
-
-## Platform adapter boundary
-
-The shared Rust and Flutter layers remain platform-neutral. Native hosts own
-only the platform operation that cannot be portable:
-
-| Platform | Native adapter ownership |
-| --- | --- |
-| macOS | Application discovery, Keychain/user-presence bridge, packaging, and launch |
-| Windows | Application discovery, Credential Manager custody, client authorization sessions, packaging, and launch |
-| Ubuntu | Package/application discovery, Secret Service or explicit memory-only custody, packaging, and launch |
-| Android | Package discovery, Keystore/BiometricPrompt bridge, Rust FFI lifecycle, install, and launch |
-| iOS | Application container integration, Keychain/LocalAuthentication bridge, Rust FFI lifecycle, install, and launch |
-
-Source support, ordinary builds, physical-device security evidence, GitHub
-Release artifacts, and store publication are separate claims. The current
-[compatibility matrix](../COMPATIBILITY.md) records them without
-promoting simulator or source checks into physical-device or release proof.
-Caller-supplied flags or ordinary state files are not proof of approval;
-protected operations require the platform-owned authorization session.
-
-For an external MCP effect, the bridge may stage an exact preview, but it
-performs no exchange and cannot approve it. The native command requests fresh
-platform user presence for the canonical digest, then atomically claims the
-matching short-lived preview exactly once before exchange.
-
-## Current retiring endpoint-protection Preview layers
-
-The current retiring endpoint-protection Preview uses one fixed security
-profile. This section inventories that implementation; it does not define a
-Lico Arc Profile or promise future wire compatibility. The preview is to be
-retired directly rather than retained as a compatibility mode when a complete
-pinned Lico Arc Protocol Line replaces it. Each current algorithm has one
-job. Security is not measured by the number of algorithms that can be turned
-on.
-
-```mermaid
-flowchart TB
-    ID["Peer identity<br/>Ed25519 signatures"] --> SETUP["Session setup<br/>X25519 + ML-KEM-1024"]
-    SETUP --> DERIVE["Key derivation and ratchets<br/>HKDF-SHA256"]
-    DERIVE --> CONTENT["Message protection<br/>ChaCha20-Poly1305"]
-    CONTENT --> VERIFY["Verify before use<br/>no plaintext fallback"]
-```
-
-The profile combines algorithms only when they have different roles and a
-reviewed combination rule. The signed handshake fixes the profile used by the
-session. Derived keys have clear labels, so a key for one job is not reused for
-another job. A missing or failed security check never enables plaintext.
-
-## Current platform key custody
-
-The current client checks the platform before it selects local key storage. It
-uses an available OS secret store or an explicit memory-only store. Memory-only
-keys are lost on restart, so the client requires pairing and new keys again. A
-storage failure never enables plaintext communication.
-
-Current platform adapters protect sealed secret data. They do not expose a
-general external crypto-provider interface.
-The client has no runtime crypto-patch loader.
-
-Moving the same sealed key data to another local store does not change the
-selected wire profile. Private-key custody and local Provider selection remain
-LicoUp concerns; the wire-observable profile and negotiation rules belong to
-the pinned Lico Arc Protocol Line. The current storage interface can return key
-data to the native core, so an OS store must not be described as proof that
-every protocol key is hardware-backed or non-exportable. Platform support
-claims need current measured evidence.
-
-Installation, enablement, startup, a schedule, or an agent request cannot grant
-external-transfer permission. Each exact request and each selected local file
-that would leave the device requires its own protected one-shot approval.
-
-## Data boundary
-
-```mermaid
-sequenceDiagram
-    participant A as Client A
-    participant R as Compatible untrusted station
-    participant B as Client B
-    A->>A: User selects B and approves one payload
-    A->>A: Encrypt for B
-    A->>R: Five-field Lico Arc envelope
-    R->>B: Forward opaque protected carrier
-    B->>B: Authenticate, check freshness/replay, decrypt
-```
-
-The transport edge is transport adaptation, not a client-service trust
-relationship. The current preview pairs and negotiates only with the peer
-endpoint. A stable implementation must instead execute the Pairwise
-Protection and negotiation semantics of one pinned Lico Arc Protocol Line.
-Choosing a relay address or using its delivery interface does not pair LicoUp
-with that relay, make the relay an identity authority, or delegate any security
-decision to it.
-
-Lico Arc Protocol owns the wire-observable Pairwise Protection, Generic
-Message, Reliable Exchange, negotiation, and Transport Profile contracts.
-LicoUp owns their local execution, private keys, Provider configuration,
-plaintext, history, backups, user trust, approvals, and local effects. The
-current retiring endpoint-protection Preview is not a Lico Arc Profile and
-will not be retained as a future compatibility surface.
-
-The current client-owned adapter pins the candidate `licoarc.relay.v1` outer
-contract. Its public object contains exactly `contractVersion`, `envelopeId`,
-`mailboxId`, `ciphertext`, and `expiresAt`; the client rejects unknown fields
-and unsupported versions. The encrypted carrier binds those routing fields as
-authenticated data and keeps the private header and protected content inside
-the ciphertext field.
-
-The BadTower HTTP adapter has four transport operations: lease one mailbox,
-send one envelope, receive a bounded envelope set, and delete one envelope.
-The adapter is an implementation boundary owned by LicoUp, not a station SDK,
-protocol authority, or trusted product integration. A bounded local
-acceptance has exercised this path through an actual BadTower candidate with
-two freshly initialized endpoints. See [Status](../STATUS.md) for the exact
-verification and release boundaries.
-
-The client treats all relay output as attacker-controlled. LicoUp never
-accepts an encryption algorithm, key, trust root, or security policy from a
-relay.
-Delivery acknowledgements, leases, timestamps, and queue state reported by a
-relay are transport hints only. They do not prove peer identity, packet
-freshness, non-replay, integrity, or final receipt. LicoUp makes those decisions
-from its endpoint-owned end-to-end state and accepts a final receipt only when
-the peer-authenticated protocol state supports it.
-
-The client follows these rules:
-
-- Sensitive runtime data stay on the device.
-- Local paths, logs, histories, usage records, credentials, and raw runtime
-  data stay on the device.
-- Default client scenarios do not upload sensitive runtime data or plaintext
-  user content to a service.
-- An optional external MCP request can contain only the exact body and files in
-  its protected one-shot approval. HTTPS protects transport, but the named
-  external service can read the approved content.
-- Without such an exact external-service approval, protected content leaves
-  the client only as ciphertext addressed to a named peer client, unless you
-  choose Telegram or another external messenger as a trusted channel.
-- The sender encrypts before network I/O. The receiver authenticates and
-  verifies before use.
-- The station is outside the trusted client boundary. Client security does not
-  depend on its storage policy or operator claims.
-- Only ciphertext and the minimum routing fields cross the station boundary.
-  Private keys, local trust and approval policy, protocol-defined freshness and
-  replay state, and authenticated final-receipt state remain endpoint-held.
-- Keys are held in an available OS secret store or an explicit memory-only
-  store. Protected key use asks for user presence when the platform supports
-  it.
-- Logs and test reports contain safe summaries, not raw user content.
-
-## Repository map
+## Repository Structure
 
 | Path | Purpose |
-| --- | --- |
-| `apps/desktop/` | Flutter desktop and mobile client |
-| `crates/licoup-native/` | Rust client core and command |
-| `packages/contracts/client/` | Client-owned schemas |
+|:---|:---|
+| `apps/desktop/` | Flutter desktop and mobile client (Tier 1 and parts of Tier 2) |
+| `crates/licoup-native/` | Rust client core, commands, and platform bridges (Tier 3 and Tier 4) |
+| `crates/licoup-conversation/` | (Target) Extracted Conversation domain crate |
+| `crates/licoup-agent-runtime/` | (Target) Extracted Agent Runtime and adapter crate |
+| `crates/licoup-platform-bridges/` | Native platform ABI and handle management (Tier 4) |
+| `crates/licoup-endpoint-core/` | Endpoint identity, key custody, crypto foundations |
+| `crates/licoup-protocol-bindings/` | Protocol type definitions |
+| `crates/licoup-client-state/` | Client state management contracts |
+| `crates/licoup-agent-adapters/` | Agent adapter trait definitions |
+| `crates/lico-catalog-convergence/` | Catalog convergence logic |
+| `packages/contracts/client/` | Client-owned schemas (Tier 2) |
 | `tests/` | Contract and boundary tests with synthetic data |
-| `tools/` | Reusable build and verification tools |
+| `tools/` | Reusable build and validation tools |
 
-Plans, temporary scripts, local skills, raw evidence, and runtime data are local
-work materials. They are not part of the public source tree.
+Plans, temporary scripts, local skills, raw evidence, and runtime data belong to local working materials and do not enter public source.
+
+---
+
+## Current Architecture Debt & Migration Status
+
+> This section documents known structural problems and the approved migration path.
+> It is maintained alongside the living codebase and updated as migration progresses.
+
+### Known Structural Problems (as of 2026-08-24)
+
+| Problem | Severity | Location | Impact |
+|:---|:---|:---|:---|
+| **God Object `ClientController`** | Critical | `apps/desktop/lib/src/application/controller/` | 452-line constructor, 19+ mixins sharing one `ChangeNotifier`. Any state change triggers full-tree notification. Untestable in isolation. |
+| **Mixin abuse as decomposition** | High | `application/controller/`, `application/features/agents/conversation/` | 25+ mixins on a single inheritance chain; shared `this` means no encapsulation. |
+| **Monolithic Rust crate** | High | `crates/licoup-native/` (302K lines) | `domain/` has 48 entries, `core/` has 52 entries. Compilation slow, boundaries unclear. |
+| **Contracts layer bloat** | Medium | `apps/desktop/lib/src/contracts/` (93 files, 15K lines) | Mixes models, interfaces, parsing logic, and generated code in one flat namespace. |
+| **Giant Widget files** | Medium | `frontend/features/` | `canonical_group_conversation_pane.dart` (2603 lines), `agent_conversation_workspace.dart` (1390 lines). |
+| **Vestigial backend layer** | Low | `apps/desktop/lib/src/backend/` (2K lines) | Too thin to provide real abstraction; logic leaks into `application/` and `platform/`. |
+| **Manual JSON-RPC bridge** | High | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | No codegen, schema drift causes runtime failures, no backpressure. |
+
+### Target Architecture (Migration Destination)
+
+#### Flutter App (`apps/desktop/lib/src/`)
+
+```
+src/
+├── core/                    # Shared foundation (NO business logic)
+│   ├── bridge/              # flutter_rust_bridge v2 generated codecs
+│   ├── models/              # Generated immutable Rust projections
+│   ├── errors/              # Typed error hierarchy
+│   └── extensions/          # Pure Dart utilities
+├── features/                # Vertical feature slices (self-contained)
+│   ├── conversation/        # Main conversation feature
+│   │   ├── domain/          # Feature-local contracts & models
+│   │   ├── application/     # Riverpod providers (AsyncNotifier per concern)
+│   │   └── presentation/    # Widgets, pages, components
+│   ├── agent_hub/           # Agent discovery & installation
+│   ├── settings/            # App settings & updates
+│   ├── skill_hub/           # Skill management
+│   ├── mobile_relay/        # Mobile relay & secure mesh
+│   ├── models_management/   # LLM model/provider config
+│   ├── plugin_management/   # Optional collaboration plugins
+│   └── targets/             # Local agent target scanning
+├── shell/                   # App shell (composes features into layout)
+│   ├── layout/              # Layout system & responsive surfaces
+│   ├── navigation/          # Destination routing
+│   └── chrome/              # Window chrome & platform decorations
+└── shared/                  # Cross-feature shared UI
+    ├── widgets/             # Reusable components
+    ├── theme/               # Theme data & color schemes
+    └── l10n/                # Localization
+```
+
+**Key decisions:**
+- State management: **Riverpod** (compile-time safe, no BuildContext dependency, auto-dispose, AsyncNotifier for async flows)
+- Bridge: **flutter_rust_bridge v2** (in-process FFI with codegen, replacing manual stdio JSON-RPC)
+- Each feature is a self-contained vertical slice; cross-feature dependencies go through `core/models/`
+- The god `ClientController` is decomposed into per-feature Riverpod providers
+
+#### Rust Crates (Target Decomposition)
+
+```
+crates/
+├── licoup-native/              # Thin shell: FFI exports + binary entry points only
+├── licoup-conversation/        # Conversation domain (identity, membership, events, turns)
+├── licoup-agent-runtime/       # Agent host + 13 adapter drivers + transport supervision
+├── licoup-endpoint-core/       # Endpoint identity, key derivation, crypto
+├── licoup-protocol-bindings/   # Wire protocol types
+├── licoup-client-state/        # Client state contracts
+├── licoup-platform-bridges/    # OS-specific bridges (Keychain, WinCred, etc.)
+├── licoup-agent-adapters/      # Agent adapter trait definitions
+└── lico-catalog-convergence/   # Catalog management
+```
+
+**Key decisions:**
+- `licoup-native` becomes a thin FFI/bin shell importing domain crates
+- `licoup-conversation` owns the Conversation bounded context exclusively
+- `licoup-agent-runtime` owns adapter lifecycle and the persistent host
+- Crate boundaries enforce compile-time dependency isolation
+
+### Migration Strategy
+
+The migration follows three sequential phases:
+
+1. **Phase 1: Infrastructure** (current milestone)
+   - Introduce flutter_rust_bridge v2 alongside existing stdio RPC
+   - Add Riverpod to pubspec, create first provider wrappers around existing controllers
+   - Create target directory structure (done)
+   - Establish linting rules preventing new code in legacy locations
+
+2. **Phase 2: Feature Extraction** (feature-by-feature, least-coupled first)
+   - Migrate `settings` feature first (least dependencies)
+   - Then `agent_hub`, `skill_hub`, `targets`
+   - Then `conversation` (most complex, last)
+   - Each migration: extract domain → create providers → move widgets → delete old code
+
+3. **Phase 3: Rust Crate Extraction**
+   - Extract `licoup-conversation` from `licoup-native/src/domain/`
+   - Extract `licoup-agent-runtime` from `licoup-native/src/platform/`
+   - `licoup-native` becomes thin FFI shell
+   - Remove stdio JSON-RPC path (desktop uses in-process FFI like mobile)

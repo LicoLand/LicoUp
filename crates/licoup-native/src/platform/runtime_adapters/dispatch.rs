@@ -121,6 +121,7 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         adapter_for_agent(&agent_id).ok_or_else(|| RuntimeAdapterError::UnsupportedAdapter {
             agent_label: agent_id.clone(),
         })?;
+    crate::platform::native_agent_parser::require_registered(adapter);
     if adapter == RuntimeAdapter::DeepSeekHarness
         && runtime_driver_profile(adapter.id()).is_none_or(|profile| profile.readiness != "ready")
     {

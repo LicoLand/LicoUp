@@ -66,7 +66,7 @@ Runtime targets and release packages are intentionally different authorities. Ea
 ## Agent adapter targets
 
 This table projects the native driver inventory. Runtime protocol and capability fields remain owned by that inventory.
-Lifecycle evidence columns describe whether the lane can emit a native receipt for that stage. `submitted` is always a local client fact. On each turn, the UI shows only receipts actually observed; unsupported or absent stages are skipped and are never inferred from a later response or terminal result.
+Lifecycle evidence columns describe whether the lane can emit native evidence for that stage. Rust persists one explicit prefix-closed `submitted → accepted → processing → responding → completed` projection from typed parser transitions. The UI renders only that canonical prefix and terminal transition; it never infers missing stages or failure from vendor event kinds, payload success flags, reply presence, aliases, or observer disconnect.
 
 | Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | GUI-exit survival | Active-turn reattach | Ordered cursor replay | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

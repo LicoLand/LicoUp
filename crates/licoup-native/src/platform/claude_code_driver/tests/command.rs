@@ -36,6 +36,28 @@ fn fixed_stream_command_keeps_prompt_off_argv_and_resumes_by_session_flag() {
 }
 
 #[test]
+fn private_instructions_use_the_native_system_channel_and_define_process_identity() {
+    let driver_config = config(
+        json!({"privateInstructions": "synthetic private guidance"}),
+        "exact user prompt",
+        "",
+    );
+    let identity = LaunchIdentity::new("claude-test", &driver_config, None);
+    let args = identity.args();
+    let position = args
+        .iter()
+        .position(|argument| argument == "--append-system-prompt");
+    assert_eq!(
+        position.map(|index| args[index + 1].as_str()),
+        Some("synthetic private guidance")
+    );
+    assert!(args.iter().all(|argument| argument != "exact user prompt"));
+
+    let without_guidance = config(json!({}), "next exact user prompt", "");
+    assert!(!identity.compatible_with("claude-test", &without_guidance, None));
+}
+
+#[test]
 fn executable_directory_precedes_inherited_runtime_path() {
     let inherited = std::ffi::OsStr::new("/usr/bin:/bin");
     let path = executable_augmented_path("/runtime/bin/claude", Some(inherited)).unwrap();

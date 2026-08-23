@@ -49,7 +49,7 @@ final class ConversationTurnLifecycleProjection {
         return index;
       }
     }
-    return 0;
+    return -1;
   }
 }
 
@@ -65,11 +65,11 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
     if (!isConversationLifecycleEvent(event)) continue;
     final stage = _conversationTurnLifecycleStageOf(event);
     if (stage == null) continue;
-    _includeConversationLifecyclePrefix(observedStages, stage);
+    _includeConversationLifecycleStage(observedStages, stage);
     for (final observed in _conversationTurnLifecycleStagesFromSubtitle(
       event,
     )) {
-      _includeConversationLifecyclePrefix(observedStages, observed);
+      _includeConversationLifecycleStage(observedStages, observed);
     }
     if (stage == ConversationTurnLifecycleStage.failed) {
       last = stage;
@@ -89,22 +89,20 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
   );
 }
 
-void _includeConversationLifecyclePrefix(
+void _includeConversationLifecycleStage(
   Set<ConversationTurnLifecycleStage> target,
   ConversationTurnLifecycleStage stage,
 ) {
-  final reached = _conversationLifecycleProgressStages.indexOf(stage);
-  if (reached < 0) return;
-  target.addAll(_conversationLifecycleProgressStages.take(reached + 1));
+  if (!_conversationLifecycleProgressStages.contains(stage)) return;
+  target.add(stage);
 }
 
 ConversationTurnLifecycleStage? _conversationTurnLifecycleStageOf(
   AgentConversationMessage event,
 ) {
   final raw = event.cardTitle.trim().toLowerCase();
-  final stageName = raw.startsWith('lifecycle.')
-      ? raw.substring('lifecycle.'.length)
-      : event.text.trim().toLowerCase();
+  if (!raw.startsWith('lifecycle.')) return null;
+  final stageName = raw.substring('lifecycle.'.length);
   return switch (stageName) {
     'submitted' => ConversationTurnLifecycleStage.submitted,
     'accepted' => ConversationTurnLifecycleStage.accepted,
@@ -174,18 +172,23 @@ class ConversationLifecycleSteps extends StatelessWidget {
                   label: labels[index],
                   first: index == 0,
                   last: index == labels.length - 1,
-                  completed:
-                      index < projection.activeStep ||
-                      projection.stage ==
-                          ConversationTurnLifecycleStage.completed,
+                  completed: projection.observedStages.contains(
+                    _conversationLifecycleProgressStages[index],
+                  ),
                   current:
                       projection.stage !=
                           ConversationTurnLifecycleStage.completed &&
-                      index == projection.activeStep,
+                      index == projection.activeStep &&
+                      projection.observedStages.contains(
+                        _conversationLifecycleProgressStages[index],
+                      ),
                   failed:
                       projection.stage ==
                           ConversationTurnLifecycleStage.failed &&
-                      index == projection.activeStep,
+                      index == projection.activeStep &&
+                      projection.observedStages.contains(
+                        _conversationLifecycleProgressStages[index],
+                      ),
                   // Neutral progress chrome — primary/lemon reads as 泛黄 in
                   // the messaging transcript (same family as user-bubble glow).
                   accent: colors.text,

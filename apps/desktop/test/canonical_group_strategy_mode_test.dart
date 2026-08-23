@@ -929,7 +929,7 @@ void main() {
     expect(find.text('streaming token'), findsOneWidget);
   });
 
-  testWidgets('observer failure surfaces transport error without cancelling', (
+  testWidgets('observer loss detaches without inventing a turn failure', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -974,6 +974,59 @@ void main() {
     expect(controller.dispatchPending, isTrue);
 
     persistent.failObserver();
+    await tester.pumpAndSettle();
+
+    expect(controller.failureStage, isEmpty);
+    expect(controller.failureCode, isEmpty);
+    expect(controller.dispatchPending, isFalse);
+    expect(persistent.cancelCount, 0);
+  });
+
+  testWidgets('observer loss reloads and preserves exact persisted failure', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner()
+      ..postTurns = [
+        {
+          'turnHandle': 'dispatch:live',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ]
+      ..dispatchPending = true;
+    final persistent = _PersistentGateway();
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(runner: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPane(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'hello @Codex');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+    await tester.pump();
+
+    conversationRunner.persistedEvents = [_failedConversationEvent()];
+    persistent.failObserver();
     for (
       var attempt = 0;
       attempt < 20 && controller.failureCode.isEmpty;
@@ -982,8 +1035,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 10));
     }
 
-    expect(controller.failureStage, 'conversation/observe');
-    expect(controller.failureCode, 'transport_failed');
+    expect(controller.failureStage, 'turn');
+    expect(controller.failureCode, 'exact_native_failure');
+    expect(controller.failureCode, isNot('transport_failed'));
     expect(controller.dispatchPending, isFalse);
     expect(persistent.cancelCount, 0);
   });
@@ -1249,6 +1303,7 @@ final class _GroupConversationRunner implements AgentCommandRunner {
   bool failStrategyStart = false;
   bool dispatchPending = false;
   List<Map<String, dynamic>> postTurns = const [];
+  List<Map<String, dynamic>> persistedEvents = const [];
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -1288,9 +1343,9 @@ final class _GroupConversationRunner implements AgentCommandRunner {
               .toString(),
         ),
         'conversation.events.page' => {
-          'events': <Map<String, dynamic>>[],
+          'events': persistedEvents,
           'nextCursor': null,
-          'totalCount': 0,
+          'totalCount': persistedEvents.length,
         },
         'conversation.message.post' => {
           'event': <String, dynamic>{
@@ -1412,6 +1467,26 @@ Map<String, dynamic> _conversation(
         agentId: entry.key,
         conversationId: conversationId,
       ),
+  ],
+};
+
+Map<String, dynamic> _failedConversationEvent() => {
+  'id': 'event:failed',
+  'conversationId': 'conversation:group',
+  'sequence': 1,
+  'authorMembershipId': 'membership:codex',
+  'kind': 'message',
+  'createdAtUnixMs': 3,
+  'finalized': true,
+  'parts': [
+    {
+      'id': 'part:failure',
+      'eventId': 'event:failed',
+      'ordinal': 0,
+      'kind': 'diagnostic',
+      'content': '{"code":"exact_native_failure","stage":"native/turn"}',
+      'createdAtUnixMs': 3,
+    },
   ],
 };
 

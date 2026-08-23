@@ -120,7 +120,6 @@ void registerClientHistoryRuntimeSessionSelectionScenarios() {
         'text': 'Fresh prompt',
         'streamEvents': true,
         'timeoutMs': 0,
-        'permissionMode': 'bypassPermissions',
         'workingDirectory': localConversationWorkingDirectoryFallback(
           agentId: 'codex',
         ),

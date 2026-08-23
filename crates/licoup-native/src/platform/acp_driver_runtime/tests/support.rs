@@ -34,6 +34,7 @@ pub(super) fn new_protocol(params: Value, prompt: &str, session: &str) -> AcpPro
             Some(absolute_test_cwd().as_path()),
         )
         .unwrap(),
+        super::super::model::AcpParserKind::Copilot,
     )
 }
 
@@ -47,7 +48,12 @@ impl ScriptedProtocolLoopTransport {
     pub(super) fn messages(start: Instant, messages: Vec<(Duration, Value)>) -> Self {
         let events = messages
             .into_iter()
-            .map(|(after_start, message)| (start + after_start, TransportEvent::Message(message)))
+            .map(|(after_start, message)| {
+                (
+                    start + after_start,
+                    TransportEvent::Frame(serde_json::to_vec(&message).unwrap()),
+                )
+            })
             .collect();
         Self {
             now: start,
@@ -64,11 +70,11 @@ impl ScriptedProtocolLoopTransport {
         self.events.len()
     }
 
-    pub(super) fn remaining_messages(&self) -> Vec<&Value> {
+    pub(super) fn remaining_messages(&self) -> Vec<Value> {
         self.events
             .iter()
             .filter_map(|(_, event)| match event {
-                TransportEvent::Message(message) => Some(message),
+                TransportEvent::Frame(line) => serde_json::from_slice(line).ok(),
                 _ => None,
             })
             .collect()

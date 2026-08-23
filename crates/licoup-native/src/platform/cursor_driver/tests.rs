@@ -3,6 +3,7 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -10,6 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// must not run concurrently: one test's env mutation would leak into another
 /// test's spawned process and change its behavior.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+static FAKE_BUILD_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     // A panicking test must not poison the lock for every later test.
@@ -62,6 +64,12 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
     assert!(first.ok, "first Cursor CLI failure: {:?}", first.error);
     assert!(!first.session_id.is_empty());
     assert_eq!(first.output, "first response");
+    assert!(matches!(
+        first.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
+            crate::platform::native_agent_parser::LifecycleStage::Completed
+        ))
+    ));
 
     let second = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
@@ -105,9 +113,54 @@ fn canonical_protocol_is_cli_only() {
     assert_eq!(cursor_driver::DRIVER_ID, "cursor-cli");
 }
 
+#[test]
+fn pty_controls_are_isolated_before_strict_ndjson_decoding() {
+    use super::io::isolate_pty_protocol_line;
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{
+        CursorParseFailure, CursorParser,
+    };
+
+    let isolated = isolate_pty_protocol_line(
+        b"\x1b[?25l{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"ok\"}\x1b[0m\r\n",
+    );
+    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    assert!(parser.parse_line(&isolated).is_ok());
+
+    let prose = isolate_pty_protocol_line(b"diagnostic prose\r\n");
+    assert!(matches!(
+        parser.parse_line(&prose),
+        Err(CursorParseFailure::InvalidJson)
+    ));
+    assert!(
+        isolate_pty_protocol_line(b"\x1b[?25l\x1b[0m\r\n")
+            .iter()
+            .all(|byte| byte.is_ascii_whitespace())
+    );
+}
+
+#[test]
+fn private_instructions_fail_before_process_launch() {
+    let result = cursor_driver::execute(
+        "definitely-not-a-real-cursor-agent",
+        &json!({"privateInstructions": "synthetic private instruction"}),
+        "exact user prompt",
+        "",
+        Some(std::env::temp_dir().as_path()),
+        0,
+        None,
+        1024,
+    );
+    assert_eq!(
+        result.error.as_ref().map(|failure| failure.code),
+        Some("cursor_cli_private_instructions_unsupported")
+    );
+}
+
 /// Builds a fake cursor-agent executable in a fresh temp dir (shared helper).
 fn compile_fake_cursor(stamp: u128) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir().join(format!("lico-cursor-cli-fake-{stamp}"));
+    let sequence = FAKE_BUILD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("lico-cursor-cli-fake-{stamp}-{sequence}"));
     fs::create_dir_all(&dir).unwrap();
     let source = dir.join("fake_cursor_agent.rs");
     let executable = dir.join(format!("fake-cursor-agent{}", std::env::consts::EXE_SUFFIX));

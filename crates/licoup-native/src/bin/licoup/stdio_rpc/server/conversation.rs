@@ -333,7 +333,10 @@ impl PersistentConversationRuntime {
                 "event": "agent.turn.accepted",
                 "sessionId": "",
                 "turnId": "",
-                "payload": {"status": "accepted"}
+                "payload": {
+                    "status": "accepted",
+                    "lifecyclePrefix": ["submitted", "accepted"]
+                }
             }),
         )
         .is_err()
@@ -562,6 +565,13 @@ impl PersistentConversationRuntime {
     }
 
     fn finish(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) -> Result<()> {
+        // Terminal settlement is one write: serialize persistence and the
+        // in-memory projection so a later observer/transport closure cannot
+        // race and replace the first exact native outcome.
+        let mut persistent_state = turn.state.lock().expect("turn state lock");
+        if persistent_state.terminal.is_some() {
+            return Ok(());
+        }
         let response_ok = terminal
             .payload
             .get("ok")
@@ -621,16 +631,17 @@ impl PersistentConversationRuntime {
         }
         turn.store
             .finish_runtime_dispatch(&turn.scope, &terminal.payload, state, error_code)?;
-        let mut state = turn.state.lock().expect("turn state lock");
-        state.terminal = Some(terminal);
+        persistent_state.terminal = Some(terminal);
         turn.changed.notify_all();
         Ok(())
     }
 
     fn force_terminal(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) {
         let mut state = turn.state.lock().expect("turn state lock");
-        state.terminal = Some(terminal);
-        turn.changed.notify_all();
+        if state.terminal.is_none() {
+            state.terminal = Some(terminal);
+            turn.changed.notify_all();
+        }
     }
 }
 
@@ -648,6 +659,9 @@ fn direct_turn_params(
         "causationId": context.turn.source_event_id,
         "dispatchId": context.turn.id,
     });
+    if let Some(instructions) = context.private_instructions() {
+        params["privateInstructions"] = json!(instructions);
+    }
     for (key, value) in [
         ("sessionId", context.runtime_session_id.as_deref()),
         ("sourcePath", context.runtime_conversation_path.as_deref()),
@@ -840,6 +854,35 @@ pub(super) fn execute<W>(
 where
     W: Write + Send + 'static,
 {
+    // Structured native UI replies use the already trusted, live-turn-scoped
+    // steer RPC. They never become prompt text: the callback token and exact
+    // structured response resolve one parked transport generation directly.
+    if operation == "steer"
+        && let Some(token) = params
+            .get("adapterCallbackTokenRef")
+            .and_then(Value::as_str)
+        && let Some(response) = params.get("interactionResponse").cloned()
+    {
+        let session_id = params
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("native_interaction_session_id_missing"))?;
+        let turn_id = params
+            .get("turnId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("native_interaction_turn_id_missing"))?;
+        let resolved = licoup_native::platform::resolve_scoped_native_agent_interaction(
+            token,
+            Some(session_id),
+            Some(turn_id),
+            response,
+        )
+        .map_err(anyhow::Error::msg)?;
+        write_stdio_rpc_terminal_success(writer, request_id, workflow_id, 1, resolved)?;
+        return Ok(());
+    }
     let (initial_sequence, observer_is_connected) = if let Some(turn) = persistent_turn.as_ref() {
         let accepted = match PersistentConversationRuntime::record_event(
             turn,
@@ -847,7 +890,10 @@ where
                 "event": "agent.turn.accepted",
                 "sessionId": "",
                 "turnId": "",
-                "payload": {"status": "accepted"}
+                "payload": {
+                    "status": "accepted",
+                    "lifecyclePrefix": ["submitted", "accepted"]
+                }
             }),
         ) {
             Ok(accepted) => accepted,
@@ -1122,13 +1168,58 @@ pub(super) fn reap_finished(workers: &mut Vec<std::thread::JoinHandle<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use licoup_native::domain::client_conversation::{ConversationService, EventPartKind};
+    use licoup_native::domain::client_conversation::{
+        ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind, TurnState,
+    };
 
     fn runtime(cache_budget: usize) -> PersistentConversationRuntime {
         PersistentConversationRuntime::with_cache_budget(
             ConversationStore::open_in_memory().unwrap(),
             cache_budget,
         )
+    }
+
+    #[test]
+    fn assistant_boundary_continuation_keeps_guidance_private_and_user_text_exact() {
+        let context = DirectTurnExecutionContext {
+            turn: DirectTurn {
+                id: "turn:synthetic".to_owned(),
+                conversation_id: "conversation:synthetic".to_owned(),
+                source_event_id: "event:synthetic".to_owned(),
+                membership_id: "membership:assistant".to_owned(),
+                state: TurnState::Claimed,
+                ordinal: 0,
+            },
+            agent_id: "codex".to_owned(),
+            source_content: "exact user-authored text".to_owned(),
+            is_assistant: true,
+            preferred_model: None,
+            preferred_reasoning_effort: None,
+            runtime_session_id: None,
+            runtime_conversation_path: None,
+            working_directory: None,
+        };
+
+        let params = direct_turn_params(&context);
+        assert_eq!(params["text"], "exact user-authored text");
+        assert_eq!(
+            params["privateInstructions"].as_str(),
+            context.private_instructions()
+        );
+        assert!(
+            !params["text"]
+                .as_str()
+                .unwrap()
+                .contains(params["privateInstructions"].as_str().unwrap())
+        );
+
+        let mut ordinary = context;
+        ordinary.is_assistant = false;
+        assert!(
+            direct_turn_params(&ordinary)
+                .get("privateInstructions")
+                .is_none()
+        );
     }
 
     #[test]
@@ -1420,6 +1511,46 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn later_observer_failure_cannot_overwrite_first_native_terminal() {
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let turn = runtime
+            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
+            .unwrap();
+        let exact = PersistentTerminal {
+            ok: false,
+            payload: json!({
+                "ok": false,
+                "terminalTransition": {
+                    "kind": "failed",
+                    "code": "exact_native_failure",
+                    "stage": "native/turn"
+                }
+            }),
+        };
+        PersistentConversationRuntime::finish(&turn, exact).unwrap();
+        PersistentConversationRuntime::finish(
+            &turn,
+            PersistentTerminal {
+                ok: false,
+                payload: json!({"code": "later_transport_failed"}),
+            },
+        )
+        .unwrap();
+        PersistentConversationRuntime::force_terminal(
+            &turn,
+            PersistentTerminal {
+                ok: false,
+                payload: json!({"code": "observer_disconnected"}),
+            },
+        );
+        let state = turn.state.lock().unwrap();
+        assert_eq!(
+            state.terminal.as_ref().unwrap().payload["terminalTransition"]["code"],
+            "exact_native_failure"
         );
     }
 
