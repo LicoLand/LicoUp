@@ -13,6 +13,14 @@ enum ConversationTurnLifecycleStage {
   failed,
 }
 
+const _conversationLifecycleProgressStages = <ConversationTurnLifecycleStage>[
+  ConversationTurnLifecycleStage.submitted,
+  ConversationTurnLifecycleStage.accepted,
+  ConversationTurnLifecycleStage.processing,
+  ConversationTurnLifecycleStage.responding,
+  ConversationTurnLifecycleStage.completed,
+];
+
 final class ConversationTurnLifecycleProjection {
   const ConversationTurnLifecycleProjection(
     this.stage, {
@@ -26,14 +34,23 @@ final class ConversationTurnLifecycleProjection {
       stage == ConversationTurnLifecycleStage.completed ||
       stage == ConversationTurnLifecycleStage.failed;
 
-  int get activeStep => switch (stage) {
-    ConversationTurnLifecycleStage.submitted => 0,
-    ConversationTurnLifecycleStage.accepted => 1,
-    ConversationTurnLifecycleStage.processing => 2,
-    ConversationTurnLifecycleStage.responding => 3,
-    ConversationTurnLifecycleStage.completed => 4,
-    ConversationTurnLifecycleStage.failed => 2,
-  };
+  int get activeStep {
+    if (stage != ConversationTurnLifecycleStage.failed) {
+      return _conversationLifecycleProgressStages.indexOf(stage);
+    }
+    for (
+      var index = _conversationLifecycleProgressStages.length - 1;
+      index >= 0;
+      index--
+    ) {
+      if (observedStages.contains(
+        _conversationLifecycleProgressStages[index],
+      )) {
+        return index;
+      }
+    }
+    return 0;
+  }
 }
 
 bool isConversationLifecycleEvent(AgentConversationMessage message) =>
@@ -48,17 +65,37 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
     if (!isConversationLifecycleEvent(event)) continue;
     final stage = _conversationTurnLifecycleStageOf(event);
     if (stage == null) continue;
-    last = stage;
-    if (stage != ConversationTurnLifecycleStage.failed) {
-      observedStages.add(stage);
+    _includeConversationLifecyclePrefix(observedStages, stage);
+    for (final observed in _conversationTurnLifecycleStagesFromSubtitle(
+      event,
+    )) {
+      _includeConversationLifecyclePrefix(observedStages, observed);
     }
-    observedStages.addAll(_conversationTurnLifecycleStagesFromSubtitle(event));
+    if (stage == ConversationTurnLifecycleStage.failed) {
+      last = stage;
+      break;
+    }
+    if (last == null ||
+        _conversationLifecycleProgressStages.indexOf(stage) >
+            _conversationLifecycleProgressStages.indexOf(last)) {
+      last = stage;
+    }
+    if (stage == ConversationTurnLifecycleStage.completed) break;
   }
   if (last == null) return null;
   return ConversationTurnLifecycleProjection(
     last,
     observedStages: Set.unmodifiable(observedStages),
   );
+}
+
+void _includeConversationLifecyclePrefix(
+  Set<ConversationTurnLifecycleStage> target,
+  ConversationTurnLifecycleStage stage,
+) {
+  final reached = _conversationLifecycleProgressStages.indexOf(stage);
+  if (reached < 0) return;
+  target.addAll(_conversationLifecycleProgressStages.take(reached + 1));
 }
 
 ConversationTurnLifecycleStage? _conversationTurnLifecycleStageOf(
@@ -138,10 +175,9 @@ class ConversationLifecycleSteps extends StatelessWidget {
                   first: index == 0,
                   last: index == labels.length - 1,
                   completed:
-                      projection.observedStages.contains(
-                        ConversationTurnLifecycleStage.values[index],
-                      ) &&
-                      (projection.terminal || index < projection.activeStep),
+                      index < projection.activeStep ||
+                      projection.stage ==
+                          ConversationTurnLifecycleStage.completed,
                   current:
                       projection.stage !=
                           ConversationTurnLifecycleStage.completed &&

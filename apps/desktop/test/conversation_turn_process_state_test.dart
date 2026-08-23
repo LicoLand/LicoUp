@@ -36,6 +36,13 @@ void main() {
     expect(s.stage, ConversationTurnProcessStage.submitted);
   });
 
+  test('a coalesced later stage fills every required predecessor', () {
+    final s = state();
+    s.advanceStage('processing');
+    expect(s.stage, ConversationTurnProcessStage.processing);
+    expect(s.observedStages, ['submitted', 'accepted', 'processing']);
+  });
+
   test('failed is terminal', () {
     final s = state();
     s.advanceStage('accepted');
@@ -44,7 +51,7 @@ void main() {
     s.advanceStage('processing');
     s.advanceStage('completed');
     expect(s.stage, ConversationTurnProcessStage.failed);
-    expect(s.observedStages, ['submitted', 'accepted', 'failed']);
+    expect(s.observedStages, ['submitted', 'accepted']);
   });
 
   test('evidence collapses consecutive identical steps', () {
