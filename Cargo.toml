@@ -1,21 +1,3 @@
-[package]
-name = "licoup-conversation"
-version.workspace = true
-edition.workspace = true
-repository.workspace = true
-license.workspace = true
-publish = false
-
-[lib]
-path = "crates/licoup-conversation/src/state_machine/mod.rs"
-
-[[test]]
-name = "state_machine_proptest"
-path = "crates/licoup-conversation/tests/state_machine_proptest.rs"
-
-[dev-dependencies]
-proptest = "1.7"
-
 [workspace]
 members = [
     "crates/lico-catalog-convergence",
@@ -24,6 +6,8 @@ members = [
     "crates/licoup-endpoint-core",
     "crates/licoup-platform-bridges",
     "crates/licoup-agent-adapters",
+    "crates/licoup-agent-runtime",
+    "crates/licoup-conversation",
     "crates/licoup-native",
     "crates/trybuild",
 ]

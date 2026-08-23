@@ -256,7 +256,8 @@ impl CapabilitySnapshot {
         &self.revision
     }
 
-    pub(crate) fn contains_pin(&self, pin: &PinnedProtocol) -> bool {
+    #[doc(hidden)]
+    pub fn contains_pin(&self, pin: &PinnedProtocol) -> bool {
         self.revision == pin.capability_revision
             && self
                 .index
@@ -442,11 +443,13 @@ fn valid_binding(value: &str) -> bool {
         && value.bytes().all(|byte| byte.is_ascii_graphic())
 }
 
-pub(crate) fn valid_opaque_evidence(value: &str) -> bool {
+#[doc(hidden)]
+pub fn valid_opaque_evidence(value: &str) -> bool {
     valid_binding(value)
 }
 
-pub(crate) fn valid_pin(pin: &PinnedProtocol) -> bool {
+#[doc(hidden)]
+pub fn valid_pin(pin: &PinnedProtocol) -> bool {
     valid_identifier(&pin.attempt_id)
         && valid_identifier(&pin.adapter_id)
         && valid_identifier(&pin.driver_id)
