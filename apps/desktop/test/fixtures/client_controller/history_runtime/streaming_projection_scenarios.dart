@@ -222,11 +222,15 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       expect(updateCardSubtitles, anyElement(contains('下载中')));
       expect(card.cardSubtitle, contains('2026.08.04-aaa8809'));
       // Update events must not advance the turn lifecycle beyond accepted;
-      // the later message events advance it to responding/completed as usual.
+      // the later responding event proves processing was crossed before the
+      // turn completes, even when the transport coalesces that event.
       final lifecycle = controller.selectedConversationSession!.messages
           .where((message) => message.cardType == 'lifecycle')
           .single;
-      expect(lifecycle.cardSubtitle, 'submitted,accepted,responding,completed');
+      expect(
+        lifecycle.cardSubtitle,
+        'submitted,accepted,processing,responding,completed',
+      );
       // The turn itself still converges.
       expect(
         controller.selectedConversationSession!.messages
