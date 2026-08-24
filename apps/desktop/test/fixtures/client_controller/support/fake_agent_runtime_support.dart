@@ -31,6 +31,7 @@ mixin FakeAgentRuntimeSupport
     if (runtimeMessageRpcErrorCode.isNotEmpty) {
       throw LicoClientRpcException(runtimeMessageRpcErrorCode);
     }
+    final submittedText = _fakeSubmittedText(stdinText);
     final messageGate = runtimeMessageGate;
     late final Map<String, dynamic> result;
     if (messageGate != null &&
@@ -57,10 +58,70 @@ mixin FakeAgentRuntimeSupport
     final streamEvents = runtimeMessageStreamEventQueue.isEmpty
         ? const <Map<String, dynamic>>[]
         : runtimeMessageStreamEventQueue.removeAt(0);
+    // A real native transport delivers stage events across time while token
+    // streams arrive as a continuous burst. The stream-level projection
+    // consumer coalesces on publish, so keep the same shape here: stage
+    // changes are separated by a transport gap, consecutive same-kind chunk
+    // frames stay contiguous. The native host also binds every frame of one
+    // turn to one identity (the persistent runtime enriches recorded frames),
+    // so frames that omit their turn id inherit the stream's declared one.
+    var streamTurnId = '';
+    var previousStageKind = '';
     for (final event in streamEvents) {
-      yield event;
+      final stageKind = (event['event'] ?? '').toString();
+      final eventTurnId = (event['turnId'] ?? '').toString();
+      if (streamTurnId.isEmpty && eventTurnId.isNotEmpty) {
+        streamTurnId = eventTurnId;
+      }
+      // Only a contiguous token-chunk stream arrives as a burst; every other
+      // stage change is separated by a transport gap so the stream consumer's
+      // publish coalescing behaves as for a real native transport.
+      final chunkFollowsChunk = stageKind == 'agent.message.chunk' &&
+          previousStageKind == 'agent.message.chunk';
+      if (previousStageKind.isNotEmpty && !chunkFollowsChunk) {
+        await Future<void>.delayed(const Duration(milliseconds: 37));
+      }
+      previousStageKind = stageKind;
+      yield eventTurnId.isEmpty && streamTurnId.isNotEmpty
+          ? <String, dynamic>{...event, 'turnId': streamTurnId}
+          : event;
     }
-    yield {'event': 'done', ...result};
+    // Native send-stream projection: the submitted user message is carried by
+    // the native delta stream so the client never fabricates it.
+    yield {
+      'event': 'conversation.user.message',
+      'sessionId': (result['nativeSessionId'] ?? result['sessionId'] ?? '')
+          .toString(),
+      'turnId': streamTurnId,
+      'payload': {
+        'text': submittedText,
+        'role': 'user',
+        'lifecyclePrefix': const ['submitted'],
+        'turnState': {
+          'state': 'pending',
+          'inputEnabled': true,
+          'cancelEnabled': false,
+        },
+      },
+    };
+    yield {
+      'event': 'done',
+      if (streamTurnId.isNotEmpty) 'turnId': streamTurnId,
+      ...result,
+    };
+  }
+
+  String _fakeSubmittedText(String stdinText) {
+    try {
+      final decoded = jsonDecode(stdinText);
+      if (decoded is Map<String, dynamic>) {
+        return (decoded['text'] ?? '').toString();
+      }
+    } on Object {
+      // Malformed fixture input yields an empty projection; the client drops
+      // an empty delta exactly as the real native host does.
+    }
+    return '';
   }
 
   @override

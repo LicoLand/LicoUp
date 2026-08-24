@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseJson, privacyFindings, redactionSecrets, transcriptHash } from "./shared.mjs";
+import { allowedSources, parseJson, privacyFindings, redactionSecrets, transcriptHash } from "./shared.mjs";
 
 const args = process.argv.slice(2);
 const input = args.find((entry) => !entry.startsWith("--"));
@@ -18,6 +18,7 @@ if (!input || required.some((flag) => !args.includes(flag))) {
 }
 const path = resolve(input);
 const document = parseJson(path);
+if (!allowedSources.includes(document.provenance?.source)) throw new Error("transcript_provenance_invalid");
 if (document.redaction?.contentSha256 !== transcriptHash(document)) throw new Error("redacted_content_hash_mismatch");
 const findings = privacyFindings(document, redactionSecrets());
 if (findings.length > 0) throw new Error("redaction_scan_failed");

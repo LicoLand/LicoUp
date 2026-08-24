@@ -6,6 +6,7 @@
 
 mod migration;
 mod profile_snapshot;
+pub(crate) mod projection_delta;
 mod service;
 #[allow(hidden_glob_reexports)]
 mod store;

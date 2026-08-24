@@ -21,6 +21,7 @@ import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
   final ConversationStateHolder conversationStateHolder =
       ConversationStateHolder();
+  bool _liveRevisionBridgeAttached = false;
 
   ConversationScopeProjection conversationProjectionFor(String scopeKey) =>
       conversationStateHolder.projectionFor(scopeKey);
@@ -54,6 +55,14 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       participantRole: participantRole,
     );
     if (!applied) return false;
+    // Bridge the holder's coalesced publish to the renderer-facing live
+    // revision (one notification per publish interval, never per delta). The
+    // mirrors are re-derived from the sole authority so the notified snapshot
+    // is never stale relative to the holder publish that triggered it.
+    if (!_liveRevisionBridgeAttached) {
+      _liveRevisionBridgeAttached = true;
+      conversationStateHolder.addListener(_syncLiveMirrorsAndNotify);
+    }
     // Transitional mirrors remain for non-rendering acceptance probes and
     // readback persistence. Rendering reads [conversationStateHolder]
     // directly, so these maps are not a second UI authority.
@@ -62,6 +71,14 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       scopeKey: conversationStateHolder.messagesFor(scopeKey),
     };
     return true;
+  }
+
+  void _syncLiveMirrorsAndNotify() {
+    liveConversationMessagesByScope = <String, List<AgentConversationMessage>>{
+      for (final scopeKey in conversationStateHolder.scopeKeys)
+        scopeKey: conversationStateHolder.messagesFor(scopeKey),
+    };
+    agentWorkspaceNotifyLiveConversationChanged();
   }
 
   /// Legacy fixture seam. Production code has no call site; release builds do

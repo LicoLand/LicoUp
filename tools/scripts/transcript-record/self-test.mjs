@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { privacyFindings, transcriptHash } from "./shared.mjs";
+import { privacyFindings, schemaVersion, transcriptHash } from "./shared.mjs";
 
 const directory = mkdtempSync(join(tmpdir(), "lico-transcript-pipeline-"));
 const raw = join(directory, "raw.json");
@@ -19,15 +19,18 @@ const run = (script, args, env = process.env) => {
 };
 
 try {
-  run("record.mjs", [
-    "--adapter", "codex",
-    "--scenario", "normal-turn",
-    "--output", raw,
-    "--",
-    process.execPath,
-    "-e",
-    "process.stdout.write(JSON.stringify({type:'result',cwd:process.cwd(),role:'user'})+'\\n')",
-  ], { ...process.env, LICO_TRANSCRIPT_SYNTHETIC_ACK: "1" });
+  writeFileSync(raw, `${JSON.stringify({
+    schemaVersion,
+    adapterId: "codex",
+    scenario: "normal-turn",
+    provenance: {
+      source: "synthetic-fallback",
+      taskContent: "synthetic-engineering-only",
+      redacted: false,
+      humanReviewed: false,
+    },
+    privateMessages: [{ role: "user", text: "private fixture" }],
+  })}\n`, { mode: 0o600 });
   run("redact.mjs", [raw, candidate]);
   run("review.mjs", [
     candidate,

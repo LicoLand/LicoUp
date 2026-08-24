@@ -16,6 +16,7 @@ use settlement::{
     SettlementDelta, SettlementFailureReason, SettlementOutcome, SettlementSignal,
     TurnSettlementArbiter, send_state_wire, turn_state_wire,
 };
+use crate::domain::client_conversation::projection_delta;
 
 // lico-governed-orchestration:start
 #[cfg(test)]
@@ -1083,6 +1084,7 @@ fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterE
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             emit_settlement_deltas(&deltas, session_id, turn_id);
+            emit_user_message_projection(params, &arbiter, session_id, turn_id);
             projected_deltas.extend(deltas);
             project_settlement(&mut response, outcome, &arbiter, &projected_deltas);
             Ok(response)
@@ -1169,6 +1171,47 @@ fn emit_settlement_deltas(deltas: &[SettlementDelta], session_id: &str, turn_id:
             delta.to_json(),
         );
     }
+}
+
+/// Project the submitted user message (with explicit interaction capability
+/// flags) through the send stream. No stream identity means the client could
+/// not bind the projection to a turn, so nothing is emitted; the native host
+/// never projects content without a groundable scope.
+fn emit_user_message_projection(
+    params: &Value,
+    arbiter: &TurnSettlementArbiter,
+    session_id: &str,
+    turn_id: &str,
+) {
+    if session_id.trim().is_empty() && turn_id.trim().is_empty() {
+        return;
+    }
+    let Some(text) = runtime_adapters::text_param_public(params, &["text", "message", "prompt"])
+    else {
+        return;
+    };
+    let cancel_supported = agent_id_param(params)
+        .ok()
+        .and_then(|agent_id| adapter_or_err(&agent_id).ok())
+        .and_then(|adapter| {
+            static_capability_matrix(adapter)
+                .get("cancel")
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false);
+    let Some(delta) = projection_delta::project_submitted_user_message(
+        &text,
+        turn_state_wire(arbiter.turn_state()),
+        cancel_supported,
+    ) else {
+        return;
+    };
+    super::turn_event_emit::emit_turn_event(
+        delta.event_kind(),
+        session_id,
+        turn_id,
+        delta.to_event_payload(),
+    );
 }
 
 fn project_settlement(

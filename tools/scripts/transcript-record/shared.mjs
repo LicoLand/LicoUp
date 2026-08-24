@@ -25,6 +25,10 @@ export const adapterIds = Object.freeze([
   "deepseek-harness",
 ]);
 
+export const historySource = "local-agent-history-catalog";
+export const syntheticSource = "synthetic-fallback";
+export const allowedSources = Object.freeze([historySource, syntheticSource]);
+
 export function parseJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
@@ -56,6 +60,59 @@ export function transcriptHash(document) {
     exit: document.exit,
   };
   return `sha256:${sha256(canonicalJson(projection))}`;
+}
+
+export function scenarioEvents(scenario) {
+  switch (scenario) {
+    case "normal-turn":
+      return [{ event: "assistant-text", text: "<REDACTED_CONTENT>" }];
+    case "user-cancel":
+      return [{ event: "user-cancel" }];
+    case "agent-error":
+      return [{ event: "agent-error", message: "<REDACTED_ERROR>" }];
+    case "streaming-interruption":
+      return [
+        { event: "assistant-text", text: "<REDACTED_CONTENT>" },
+        { event: "stream-interrupted" },
+      ];
+    default:
+      throw new Error(`scenario_unknown:${scenario}`);
+  }
+}
+
+export function projectionForEvent(adapterId, event) {
+  switch (event.event) {
+    case "assistant-text":
+      return [{ kind: "text", unitId: `${adapterId}:reply`, text: event.text }];
+    case "user-cancel":
+      return [{ kind: "control", method: "cancel", summary: "user-cancel" }];
+    case "agent-error":
+      return [{
+        kind: "failed",
+        code: `${adapterId.replaceAll("-", "_")}_replay_agent_error`,
+        stage: "turn/execute",
+        message: event.message,
+      }];
+    case "stream-interrupted":
+      return [{
+        kind: "failed",
+        code: `${adapterId.replaceAll("-", "_")}_replay_stream_interrupted`,
+        stage: "protocol/read",
+        message: "stream interrupted",
+      }];
+    default:
+      throw new Error(`replay_event_unknown:${event.event}`);
+  }
+}
+
+export function replayFrames(adapterId, scenario) {
+  return scenarioEvents(scenario).map((event, index) => ({
+    index,
+    direction: "agent-to-client",
+    channel: "history-catalog-replay",
+    payload: canonicalJson(event),
+    projection: projectionForEvent(adapterId, event),
+  }));
 }
 
 export function assertAdapterAndScenario(adapterId, scenario) {
@@ -124,6 +181,12 @@ export function privacyFindings(document, extraForbidden = []) {
     }
   });
   return findings;
+}
+
+export function reviewApproved(document) {
+  return document.provenance?.humanReviewed === true
+    && document.review?.status === "approved"
+    && Object.values(document.review?.checklist || {}).every((value) => value === true);
 }
 
 export function redactionSecrets() {
