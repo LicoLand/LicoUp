@@ -151,7 +151,11 @@ fn codex_rollout(home: &Path, session_id: &str, prompt: &str, reply: &str) -> Pa
     ];
     fs::write(
         &path,
-        lines.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"),
+        lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
     )
     .unwrap();
     path
@@ -356,12 +360,7 @@ fn claude_conversation_record(session_id: &str, kind: &str, text: &str) -> Value
     })
 }
 
-fn claude_sidechain_record(
-    session_id: &str,
-    agent_id: &str,
-    kind: &str,
-    text: &str,
-) -> Value {
+fn claude_sidechain_record(session_id: &str, agent_id: &str, kind: &str, text: &str) -> Value {
     json!({
         "type": kind,
         "isSidechain": true,
@@ -416,9 +415,7 @@ fn claude_delegated(project: &Path, session_id: &str, task_id: &str, records: Ve
 // -- Cursor ----------------------------------------------------------------
 
 fn cursor_chat_meta(home: &Path, conversation_id: &str, cwd: Option<&str>) {
-    let chat_dir = home
-        .join(".cursor/chats/ab12cd34")
-        .join(conversation_id);
+    let chat_dir = home.join(".cursor/chats/ab12cd34").join(conversation_id);
     fs::create_dir_all(&chat_dir).unwrap();
     let mut meta = json!({
         "createdAtMs": now_millis() - 60_000,
@@ -486,7 +483,13 @@ fn cursor_transcript(project: &Path, conversation_id: &str, prompt: &str, reply:
     .unwrap();
 }
 
-fn cursor_delegated(project: &Path, conversation_id: &str, task_id: &str, prompt: &str, reply: &str) {
+fn cursor_delegated(
+    project: &Path,
+    conversation_id: &str,
+    task_id: &str,
+    prompt: &str,
+    reply: &str,
+) {
     let dir = project
         .join("agent-transcripts")
         .join(conversation_id)
@@ -559,9 +562,19 @@ fn one_conversation_recorded_in_several_locations_is_one_row() {
     let conversation_id = "11111111-1111-4111-8111-111111111111";
 
     cursor_chat_meta(&home, conversation_id, None);
-    cursor_ide_store(&home, conversation_id, "Cursor IDE title", "/workspace/from-ide");
+    cursor_ide_store(
+        &home,
+        conversation_id,
+        "Cursor IDE title",
+        "/workspace/from-ide",
+    );
     let project = cursor_project(&home, "Users-fixture-LicoUp");
-    cursor_transcript(&project, conversation_id, "Multi-store prompt", "Multi-store reply");
+    cursor_transcript(
+        &project,
+        conversation_id,
+        "Multi-store prompt",
+        "Multi-store reply",
+    );
 
     let listed = browse(&home, "cursor");
     assert_eq!(listed["page"]["totalSessions"], 1);
@@ -587,8 +600,18 @@ fn lineage_outside_the_transcript_folds_delegated_work_into_the_parent() {
     let home = temp_root("codex-lineage-not-in-transcript");
     let parent_id = "019f0000-0000-7000-8000-00000000e001";
     let child_id = "019f0000-0000-7000-8000-00000000e002";
-    let parent_rollout = codex_rollout(&home, parent_id, "Plan the migration", "Delegating the survey");
-    let child_rollout = codex_rollout(&home, child_id, "Survey the adapter modules", "Survey complete");
+    let parent_rollout = codex_rollout(
+        &home,
+        parent_id,
+        "Plan the migration",
+        "Delegating the survey",
+    );
+    let child_rollout = codex_rollout(
+        &home,
+        child_id,
+        "Survey the adapter modules",
+        "Survey complete",
+    );
     codex_state_db(
         &home,
         &[
@@ -632,7 +655,9 @@ fn lineage_outside_the_transcript_folds_delegated_work_into_the_parent() {
     );
     let card_messages = cards[0]["messages"].as_array().unwrap();
     assert!(
-        card_messages.iter().any(|message| message["text"] == "Survey complete"),
+        card_messages
+            .iter()
+            .any(|message| message["text"] == "Survey complete"),
         "the delegated trace stays inside its conversation"
     );
 }
@@ -650,11 +675,19 @@ fn a_drifted_schema_still_yields_its_conversations() {
     let home = temp_root("schema-drift");
     let data_dir = home.join(".local/share/opencode");
     fs::create_dir_all(&data_dir).unwrap();
-    openagent_drifted_db(&data_dir.join("opencode.db"), "ses_drift", "Drift-tolerant prompt");
+    openagent_drifted_db(
+        &data_dir.join("opencode.db"),
+        "ses_drift",
+        "Drift-tolerant prompt",
+    );
 
     let listed = browse(&home, "opencode");
     let rows = listed["sessions"].as_array().unwrap();
-    assert_eq!(rows.len(), 1, "a drifted schema must not yield zero conversations");
+    assert_eq!(
+        rows.len(),
+        1,
+        "a drifted schema must not yield zero conversations"
+    );
     assert_eq!(rows[0]["nativeSessionId"], "ses_drift");
     assert!(
         rows[0]["messages"]
@@ -682,7 +715,10 @@ fn root_and_home_directory_records_are_never_bindable_workspaces() {
     let mut dirs = vec![
         ("ses_root", Some("/".to_string())),
         ("ses_relative", Some("leaky/project".to_string())),
-        ("ses_media", Some("/synthetic/Personal.photoslibrary".to_string())),
+        (
+            "ses_media",
+            Some("/synthetic/Personal.photoslibrary".to_string()),
+        ),
         ("ses_ok", Some("/synthetic/projects/beta".to_string())),
     ];
     if let Some(env_home) = env_home_path() {
@@ -744,7 +780,11 @@ fn a_stale_recorded_directory_is_provenance_only() {
 
     let listed = browse(&home, "kilo-code");
     let rows = listed["sessions"].as_array().unwrap();
-    assert_eq!(rows.len(), 2, "a stale directory must not drop the conversation");
+    assert_eq!(
+        rows.len(),
+        2,
+        "a stale directory must not drop the conversation"
+    );
     let stale = rows
         .iter()
         .find(|row| row["nativeSessionId"] == "ses_stale")
@@ -755,8 +795,14 @@ fn a_stale_recorded_directory_is_provenance_only() {
         .unwrap();
     // Each row keeps exactly its own recorded directory: stale provenance is
     // never adopted by another conversation as a historical fallback.
-    assert_eq!(stale["workingDirectory"], "/synthetic/missing/renamed-project");
-    assert_eq!(scoped["workingDirectory"], "/synthetic/existing/project-alpha");
+    assert_eq!(
+        stale["workingDirectory"],
+        "/synthetic/missing/renamed-project"
+    );
+    assert_eq!(
+        scoped["workingDirectory"],
+        "/synthetic/existing/project-alpha"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -774,7 +820,12 @@ fn a_delegate_claiming_the_parent_identity_is_identified_as_the_child() {
     let conversation_id = "11111111-1111-4111-8111-111111111111";
     let task_id = "22222222-2222-4222-8222-222222222222";
     let project = cursor_project(&home, "Users-fixture-LicoUp");
-    cursor_transcript(&project, conversation_id, "Audit the parser", "Audit finished");
+    cursor_transcript(
+        &project,
+        conversation_id,
+        "Audit the parser",
+        "Audit finished",
+    );
     cursor_delegated(
         &project,
         conversation_id,
@@ -792,8 +843,15 @@ fn a_delegate_claiming_the_parent_identity_is_identified_as_the_child() {
     let row = &listed["sessions"][0];
     assert_eq!(row["nativeSessionId"], conversation_id);
     let cards = subagent_cards(row);
-    assert_eq!(cards.len(), 1, "the delegate must be identified as a child card");
-    assert_eq!(cards[0]["cardTitle"], "Map the scan pipeline for the sales dashboard");
+    assert_eq!(
+        cards.len(),
+        1,
+        "the delegate must be identified as a child card"
+    );
+    assert_eq!(
+        cards[0]["cardTitle"],
+        "Map the scan pipeline for the sales dashboard"
+    );
     let card_messages = cards[0]["messages"].as_array().unwrap();
     assert!(
         card_messages
@@ -803,11 +861,15 @@ fn a_delegate_claiming_the_parent_identity_is_identified_as_the_child() {
     );
     let thread_messages = text_messages(row);
     assert!(
-        thread_messages.iter().all(|message| message["text"] != "Map the scan pipeline for the sales dashboard"),
+        thread_messages
+            .iter()
+            .all(|message| message["text"] != "Map the scan pipeline for the sales dashboard"),
         "the child prompt must never be spliced into the parent's own thread"
     );
     assert!(
-        thread_messages.iter().any(|message| message["text"] == "Audit the parser"),
+        thread_messages
+            .iter()
+            .any(|message| message["text"] == "Audit the parser"),
         "the parent's own messages stay intact"
     );
 }
@@ -827,7 +889,12 @@ fn the_richest_source_wins_and_metadata_carries_over_from_discarded_copies() {
     let conversation_id = "11111111-1111-4111-8111-111111111111";
     cursor_chat_meta(&home, conversation_id, Some("/workspace/from-chat-meta"));
     let project = cursor_project(&home, "Users-fixture-LicoUp");
-    cursor_transcript(&project, conversation_id, "Rich source prompt", "Rich source reply");
+    cursor_transcript(
+        &project,
+        conversation_id,
+        "Rich source prompt",
+        "Rich source reply",
+    );
 
     let listed = browse(&home, "cursor");
     let rows = listed["sessions"].as_array().unwrap();
@@ -871,7 +938,11 @@ fn the_catalog_walk_is_bounded() {
     // is never read.
     let deep = sessions.join("deep-0/d1/d2/d3/d4/d5/d6/d7");
     fs::create_dir_all(&deep).unwrap();
-    fs::write(deep.join("state.json"), json!({"title": "Too deep"}).to_string()).unwrap();
+    fs::write(
+        deep.join("state.json"),
+        json!({"title": "Too deep"}).to_string(),
+    )
+    .unwrap();
 
     let listed = browse(&home, "kimi-code");
     assert_eq!(
@@ -880,9 +951,7 @@ fn the_catalog_walk_is_bounded() {
         "sessions beyond the walk bound must not be catalogued"
     );
     assert_eq!(listed["sources"]["filesSeen"], 1);
-    let entries_seen = listed["sources"]["directoryEntriesSeen"]
-        .as_u64()
-        .unwrap();
+    let entries_seen = listed["sources"]["directoryEntriesSeen"].as_u64().unwrap();
     assert!(
         entries_seen <= 16,
         "the walk must stop at the depth bound, not descend the whole tree: {entries_seen}"
@@ -903,14 +972,29 @@ fn folding_never_changes_the_parent_own_message_count() {
     let home = temp_root("fold-preserves-parent-count");
     let session_id = "cd2442dd-a04c-4503-8ce3-1d114047ce63";
     let project = claude_project(&home);
-    claude_conversation(&project, session_id, "Deploy the release checklist", "Release deployed");
+    claude_conversation(
+        &project,
+        session_id,
+        "Deploy the release checklist",
+        "Release deployed",
+    );
     claude_delegated(
         &project,
         session_id,
         "agent-a7975e289d9a63743",
         vec![
-            claude_sidechain_record(session_id, "agent-a7975e289d9a63743", "user", "Index the documentation"),
-            claude_sidechain_record(session_id, "agent-a7975e289d9a63743", "assistant", "Documentation indexed"),
+            claude_sidechain_record(
+                session_id,
+                "agent-a7975e289d9a63743",
+                "user",
+                "Index the documentation",
+            ),
+            claude_sidechain_record(
+                session_id,
+                "agent-a7975e289d9a63743",
+                "assistant",
+                "Documentation indexed",
+            ),
         ],
     );
 
@@ -936,7 +1020,9 @@ fn folding_never_changes_the_parent_own_message_count() {
         "the child's messages stay inside the card"
     );
     assert!(
-        thread.iter().all(|message| message["text"] != "Index the documentation"),
+        thread
+            .iter()
+            .all(|message| message["text"] != "Index the documentation"),
         "folding must not splice child messages into the parent thread"
     );
 }
@@ -954,7 +1040,12 @@ fn a_delegated_task_whose_whole_trace_is_tool_work_still_appears() {
     let home = temp_root("pure-tool-delegate-valid");
     let session_id = "cd2442dd-a04c-4503-8ce3-1d114047ce63";
     let project = claude_project(&home);
-    claude_conversation(&project, session_id, "Verify the transport profile", "Profile verified");
+    claude_conversation(
+        &project,
+        session_id,
+        "Verify the transport profile",
+        "Profile verified",
+    );
     claude_delegated(
         &project,
         session_id,
@@ -1064,7 +1155,10 @@ fn the_exact_read_is_narrowed_and_includes_delegated_files() {
         1,
         "delegated files of the requested conversation stay in scope"
     );
-    assert_eq!(cards[0]["cardTitle"], "Map the scan pipeline for the sales dashboard");
+    assert_eq!(
+        cards[0]["cardTitle"],
+        "Map the scan pipeline for the sales dashboard"
+    );
     assert!(
         exact["sources"]["skipped"]
             .as_array()

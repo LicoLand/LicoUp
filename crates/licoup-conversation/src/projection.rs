@@ -133,8 +133,7 @@ mod tests {
     #[test]
     fn projection_user_message_payload_contains_text_role_and_explicit_flags() {
         let capability = InteractionCapability::of(true, false);
-        let payload =
-            user_message_event_payload("Create in this project", "succeeded", capability);
+        let payload = user_message_event_payload("Create in this project", "succeeded", capability);
         let payload = payload.expect("non-empty text projects");
         assert_eq!(payload[PAYLOAD_USER_TEXT], "Create in this project");
         assert_eq!(payload[PAYLOAD_USER_ROLE], "user");

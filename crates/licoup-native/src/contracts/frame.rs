@@ -99,7 +99,11 @@ impl FrameDecoder {
 
 /// Bounded frame encoder with atomic write semantics: the frame is fully
 /// serialized by the caller and flushed as one bounded unit or not at all.
-pub fn write_frame(writer: &mut impl io::Write, frame: &[u8], max_frame_bytes: usize) -> io::Result<bool> {
+pub fn write_frame(
+    writer: &mut impl io::Write,
+    frame: &[u8],
+    max_frame_bytes: usize,
+) -> io::Result<bool> {
     if frame.len().saturating_add(1) > max_frame_bytes {
         return Ok(false);
     }

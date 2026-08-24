@@ -57,15 +57,18 @@ impl ColdRecoverableConversationStore for ConversationStore {
                         now_ms(),
                     ],
                 )?;
-                if changed == 0 {
-                    continue;
+                if changed > 0 {
+                    report.recovered_dispatches += 1;
+                    report.interrupted_turns += transaction.execute(
+                        "UPDATE direct_turns SET state=?2
+                         WHERE id=?1 AND state IN ('claimed','running')",
+                        params![dispatch_id, enum_wire(TurnState::Interrupted)?],
+                    )?;
                 }
-                report.recovered_dispatches += 1;
-                report.interrupted_turns += transaction.execute(
-                    "UPDATE direct_turns SET state=?2
-                     WHERE id=?1 AND state IN ('claimed','running')",
-                    params![dispatch_id, enum_wire(TurnState::Interrupted)?],
-                )?;
+                // A dispatch row repeated by the join (more than one unfinalized
+                // message event correlated to it) reports changed == 0 on its
+                // later rows; every joined event is still finalized exactly
+                // once through its own finalized=0 guard.
                 if let Some(event_id) = event_id {
                     let ordinal: i64 = transaction.query_row(
                         "SELECT COALESCE(MAX(ordinal), -1)+1 FROM event_parts WHERE event_id=?1",

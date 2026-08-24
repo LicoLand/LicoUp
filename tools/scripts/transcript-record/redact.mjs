@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
   allowedSources,
@@ -21,6 +21,7 @@ assertAdapterAndScenario(input.adapterId, input.scenario);
 if (!allowedSources.includes(input.provenance?.source) || input.provenance?.taskContent !== "synthetic-engineering-only") {
   throw new Error("transcript_provenance_invalid");
 }
+const repositoryRoot = realpathSync(resolve(import.meta.dirname, "../../.."));
 const document = deepRedact({
   schemaVersion: input.schemaVersion,
   adapterId: input.adapterId,
@@ -32,7 +33,7 @@ const document = deepRedact({
   },
   frames: replayFrames(input.adapterId, input.scenario),
   exit: { code: 0, signal: null },
-});
+}, repositoryRoot);
 document.provenance = {
   source: input.provenance.source,
   taskContent: "synthetic-engineering-only",

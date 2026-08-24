@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const ADAPTERS: [&str; 13] = [
     "antigravity",
@@ -43,9 +43,7 @@ fn skip_without_corpus(test: &str) -> bool {
     if corpus_available() {
         return false;
     }
-    eprintln!(
-        "skipping {test}: tests/replay-corpus is developer-local and absent on this machine"
-    );
+    eprintln!("skipping {test}: tests/replay-corpus is developer-local and absent on this machine");
     true
 }
 

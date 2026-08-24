@@ -7,9 +7,7 @@
 //! `licoup-conversation` rules ([`licoup_conversation::projection`]); the host
 //! only supplies its own capability facts.
 
-use licoup_conversation::projection::{
-    InteractionCapability, user_message_event_payload,
-};
+use licoup_conversation::projection::{InteractionCapability, user_message_event_payload};
 
 /// Event kind carrying the submitted-user-message projection. The generated
 /// delta envelope is vocabulary-open, so this is a stream-level event name,

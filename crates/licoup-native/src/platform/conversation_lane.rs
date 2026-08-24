@@ -12,11 +12,11 @@ use super::runtime_adapters::{self, RuntimeAdapter, RuntimeAdapterError};
 
 #[path = "../domain/client_conversation/settlement.rs"]
 mod settlement;
+use crate::domain::client_conversation::projection_delta;
 use settlement::{
     SettlementDelta, SettlementFailureReason, SettlementOutcome, SettlementSignal,
     TurnSettlementArbiter, send_state_wire, turn_state_wire,
 };
-use crate::domain::client_conversation::projection_delta;
 
 // lico-governed-orchestration:start
 #[cfg(test)]
