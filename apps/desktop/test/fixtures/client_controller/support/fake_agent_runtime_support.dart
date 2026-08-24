@@ -76,7 +76,8 @@ mixin FakeAgentRuntimeSupport
       // Only a contiguous token-chunk stream arrives as a burst; every other
       // stage change is separated by a transport gap so the stream consumer's
       // publish coalescing behaves as for a real native transport.
-      final chunkFollowsChunk = stageKind == 'agent.message.chunk' &&
+      final chunkFollowsChunk =
+          stageKind == 'agent.message.chunk' &&
           previousStageKind == 'agent.message.chunk';
       if (previousStageKind.isNotEmpty && !chunkFollowsChunk) {
         await Future<void>.delayed(const Duration(milliseconds: 37));
