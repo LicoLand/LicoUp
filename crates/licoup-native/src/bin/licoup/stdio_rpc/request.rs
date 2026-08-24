@@ -53,8 +53,9 @@ pub(crate) fn parse_stdio_rpc_request(
         },
         ConversationProtocolMethod::StateGet => {
             let failure = ClientStateFailure::new(ClientStateFailureCode::InvalidCollection);
-            let request = serde_json::from_value(command.params)
-                .map_err(|_| invalid_request_id(request_id, request_workflow_id, failure.code.as_str()))?;
+            let request = serde_json::from_value(command.params).map_err(|_| {
+                invalid_request_id(request_id, request_workflow_id, failure.code.as_str())
+            })?;
             StdioRpcMethod::StateGet {
                 request,
                 portable_data_dir,
@@ -76,8 +77,13 @@ pub(crate) fn parse_stdio_rpc_request(
                     )
                 })?;
             let document_failure = ClientStateFailure::new(ClientStateFailureCode::InvalidDocument);
-            let request = serde_json::from_value(command.params)
-                .map_err(|_| invalid_request_id(request_id, request_workflow_id, document_failure.code.as_str()))?;
+            let request = serde_json::from_value(command.params).map_err(|_| {
+                invalid_request_id(
+                    request_id,
+                    request_workflow_id,
+                    document_failure.code.as_str(),
+                )
+            })?;
             StdioRpcMethod::StateSet {
                 request,
                 portable_data_dir,
@@ -103,10 +109,12 @@ pub(crate) fn parse_stdio_rpc_request(
             params: command.params,
             portable_data_dir,
         },
-        ConversationProtocolMethod::ClientConversationExecute => StdioRpcMethod::ClientConversation {
-            params: command.params,
-            portable_data_dir,
-        },
+        ConversationProtocolMethod::ClientConversationExecute => {
+            StdioRpcMethod::ClientConversation {
+                params: command.params,
+                portable_data_dir,
+            }
+        }
         ConversationProtocolMethod::StrategyExecute => StdioRpcMethod::StrategyExecute {
             params: command.params,
             portable_data_dir,
@@ -117,7 +125,12 @@ pub(crate) fn parse_stdio_rpc_request(
         // reconstructed here inside the host boundary.
         ConversationProtocolMethod::TargetsScan => StdioRpcMethod::Execute {
             args: private_stdin_cli_args(
-                &["targets", "scan", "--include-accessible-environments", "true"],
+                &[
+                    "targets",
+                    "scan",
+                    "--include-accessible-environments",
+                    "true",
+                ],
                 None,
                 command.params,
             ),
@@ -175,11 +188,7 @@ fn invalid_request_id(
 /// `--stdin-json` JSON payload, and `params` becomes the trailing stdin JSON.
 /// This keeps the JSON payload out of the CLI argument array across the RPC
 /// wire while preserving the exact command shape the one-shot CLI path uses.
-fn private_stdin_cli_args(
-    argv: &[&str],
-    positional: Option<&str>,
-    params: Value,
-) -> Vec<String> {
+fn private_stdin_cli_args(argv: &[&str], positional: Option<&str>, params: Value) -> Vec<String> {
     let mut args: Vec<String> = argv.iter().map(|value| (*value).to_string()).collect();
     if let Some(positional_param) = positional {
         let value = params
@@ -190,9 +199,7 @@ fn private_stdin_cli_args(
         args.push(value.to_string());
     }
     args.push("--stdin-json".to_string());
-    args.push(
-        serde_json::to_string(&params).expect("validated structured params serialize"),
-    );
+    args.push(serde_json::to_string(&params).expect("validated structured params serialize"));
     args
 }
 
