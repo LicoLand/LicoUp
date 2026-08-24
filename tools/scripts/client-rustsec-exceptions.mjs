@@ -37,6 +37,8 @@ const TEMPORARY_EXCEPTIONS = Object.freeze([]);
 //   - jni 0.21 -> thiserror 1 / jni-sys 0.3 shim (0.22 rework requires a
 //     jni::GlobalRef -> refs::Global source migration, tracked separately)
 const TRACKED_DUPLICATE_GENERATIONS = Object.freeze({
+  bitflags:
+    "1.3.2 via inotify 0.9.6 (notify 6.1.1 Linux file-watching lane, Linux-target-only) vs 2.13.0 (nix, rusqlite 0.40, notify); converging requires a notify 7 source migration",
   "block-buffer": "digest 0.10 family (direct sha2 0.10/hkdf 0.12/hmac 0.12, ed25519-dalek 2, p256 via openmls rev) vs digest 0.11 family (x-wing via hpke-rs 0.7)",
   "const-oid": "der 0.7 (p256 via openmls rev) vs der 0.8 (ml-dsa via openmls_basic_credential)",
   cpufeatures: "sha2 0.10 line vs curve25519-dalek 5/chacha20 0.10/keccak (libcrux 0.0.10 and x-wing via hpke-rs 0.7)",
