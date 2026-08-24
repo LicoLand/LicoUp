@@ -900,22 +900,29 @@ impl ConversationService {
                 live: None,
             });
         };
+        // User-authored content stays exact in the stored Event. Assistant
+        // workflow guidance is composed into the wire text as harness-provided
+        // context: no adapter exposes a separate private-instruction channel,
+        // and the render layer collapses the marked block out of the message
+        // body.
+        let text = if let Some(instructions) = context.private_instructions() {
+            format!(
+                "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
+                instructions, context.source_content
+            )
+        } else {
+            context.source_content.clone()
+        };
         let mut params = json!({
             "agentId": context.agent_id,
             "agent": context.agent_id,
-            // User-authored content is exact. Assistant workflow guidance is
-            // a private, non-durable request field and never becomes a user
-            // or assistant message body.
-            "text": context.source_content,
+            "text": text,
             "streamEvents": true,
             "conversationId": context.turn.conversation_id,
             "membershipId": context.turn.membership_id,
             "causationId": context.turn.source_event_id,
             "dispatchId": context.turn.id,
         });
-        if let Some(instructions) = context.private_instructions() {
-            params["privateInstructions"] = json!(instructions);
-        }
         if let Some(session_id) = context.runtime_session_id.as_deref() {
             params["sessionId"] = json!(session_id);
         }
@@ -2777,11 +2784,12 @@ mod tests {
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_one);
-        assert_eq!(calls[0]["text"], "plain message without a mention");
-        let guidance = calls[0]["privateInstructions"].as_str().unwrap();
-        assert!(guidance.contains("Understand and complete the user's request."));
-        assert!(guidance.contains("use tools freely"));
-        assert!(!guidance.contains("plain message without a mention"));
+        let text = calls[0]["text"].as_str().unwrap();
+        assert!(text.starts_with("<skills_instructions>\n"));
+        assert!(text.contains("Understand and complete the user's request."));
+        assert!(text.contains("use tools freely"));
+        assert!(text.ends_with("plain message without a mention"));
+        assert!(calls[0].get("privateInstructions").is_none());
         assert!(calls[0].get("timeoutMs").is_none());
         assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["model"], "model-a");

@@ -28,6 +28,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_compos
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_image_attachments.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
@@ -724,9 +725,23 @@ class _ConversationWorkspaceBodyState
             ),
       framed: framed,
     );
+    final pendingApprovals = controller.secureMeshApprovalInbox
+        .where((item) => item.isPending)
+        .toList(growable: false);
+    final content = pendingApprovals.isEmpty
+        ? pane
+        : Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: SecureMeshApprovalCard(controller: controller),
+              ),
+              Expanded(child: pane),
+            ],
+          );
     return ConversationImageByteReaderScope(
       reader: controller.conversationImageByteReader,
-      child: pane,
+      child: content,
     );
   }
 
@@ -1119,7 +1134,7 @@ class _ConversationWorkspaceBodyState
     }
 
     if (groupSelected) {
-      return CanonicalGroupConversationPane(
+      final groupPane = CanonicalGroupConversationPane(
         controller: groupController,
         targets: widget.targets,
         onCopyText: controller.clientClipboardService.writeText,
@@ -1134,6 +1149,21 @@ class _ConversationWorkspaceBodyState
           controller,
           initialRevision: revision ?? '',
         ),
+      );
+      final groupPendingApprovals = controller.secureMeshApprovalInbox
+          .where((item) => item.isPending)
+          .toList(growable: false);
+      if (groupPendingApprovals.isEmpty) {
+        return groupPane;
+      }
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: SecureMeshApprovalCard(controller: controller),
+          ),
+          Expanded(child: groupPane),
+        ],
       );
     }
 
