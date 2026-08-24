@@ -86,6 +86,11 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Stable application facade. Feature behavior and component construction live
 /// in focused facade and assembly leaves.
+@Deprecated(
+  'Migrate gestures to events/EventSender and render domain streams from '
+  'projections/*ProjectionConsumer. This compatibility composition root '
+  'remains usable until its dependent displays migrate.',
+)
 class ClientController extends AgentConversationController
     with
         ConversationRefreshController,
