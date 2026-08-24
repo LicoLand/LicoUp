@@ -1,14 +1,14 @@
 use super::support::{
     completed_outcome, config, failed_effect, initialize, open_thread, start_turn,
 };
-use crate::platform::codex_app_server::protocol::CodexProtocol;
+use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
 #[test]
 fn matching_completion_uses_last_agent_message_and_thread_authority() {
-    let mut protocol = CodexProtocol::new(config(
+    let mut protocol = CodexParser::new(config(
         json!({"model": "explicit-model", "reasoningEffort": "high"}),
         "hello",
         "",
@@ -63,7 +63,7 @@ fn native_item_started_emits_redacted_processing_receipt() {
         sink_target.lock().unwrap().push(event);
     }));
     let _guard = StreamSinkGuard;
-    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
     start_turn(&mut protocol);
@@ -84,7 +84,11 @@ fn native_item_started_emits_redacted_processing_receipt() {
     let events = captured.lock().unwrap().clone();
     assert!(events.iter().any(|event| {
         event["event"] == "agent.turn.processing"
-            && event["payload"] == json!({"evidenceKind": "reasoning"})
+            && event["payload"]
+                == json!({
+                    "evidenceKind": "reasoning",
+                    "lifecyclePrefix": ["submitted", "accepted", "processing"]
+                })
     }));
     let encoded = serde_json::to_string(&events).unwrap();
     assert!(!encoded.contains("private-item-id"));
@@ -99,7 +103,7 @@ fn failed_turn_classifies_closed_codex_error_without_leaking_details() {
         sink_target.lock().unwrap().push(event);
     }));
     let _guard = StreamSinkGuard;
-    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
     start_turn(&mut protocol);
@@ -140,7 +144,7 @@ fn failed_turn_classifies_closed_codex_error_without_leaking_details() {
 
 #[test]
 fn interrupted_turn_is_not_completed() {
-    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
     start_turn(&mut protocol);

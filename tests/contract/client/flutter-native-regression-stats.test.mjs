@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 
 import {
   boundedFlutterTestConcurrency,
   createFlutterJsonStatsCollector,
   decorateFlutterTestCommand,
+  hasFlutterTestReporter,
   isCompatibleFlutterTestCommand,
+  withFlutterJsonReporter,
 } from "../../../tools/regression/client-regression-toolchain-stats/flutter.mjs";
 
 function flutterCommand(extraArgs = []) {
@@ -75,6 +78,22 @@ test("non-Flutter and non-test toolchain commands remain unsupported", () => {
   assert.equal(isCompatibleFlutterTestCommand({ program: "cargo", args: ["test"] }), false);
 });
 
+test("Flutter reporter arguments have one exact JSON authority", () => {
+  assert.equal(hasFlutterTestReporter(["test"]), false);
+  assert.equal(hasFlutterTestReporter(["test", "--reporter", "expanded"]), true);
+  assert.equal(hasFlutterTestReporter(["test", "-rcompact"]), true);
+  assert.deepEqual(withFlutterJsonReporter([
+    "test",
+    "--reporter",
+    "expanded",
+    "test/assistant_test.dart",
+  ]), [
+    "test",
+    "test/assistant_test.dart",
+    "--reporter=json",
+  ]);
+});
+
 test("JSON collector incrementally aggregates only protocol-backed numeric facts", () => {
   const collector = createFlutterJsonStatsCollector();
   const lines = [
@@ -140,4 +159,44 @@ test("oversized wrapper lines are discarded without retaining or parsing their c
   collector.push('{"type":"start","time":0,"protocolVersion":"0.1.1"}\n');
   collector.push('{"type":"done","time":1,"success":true}\n');
   assert.deepEqual(collector.finish().suiteCount, { status: "measured", value: 0 });
+});
+
+test("failure diagnostics retain only repository-relative, bounded, redacted facts", () => {
+  const repoRoot = path.resolve("fixture-repository");
+  const collector = createFlutterJsonStatsCollector({
+    repoRoot,
+    commandCwd: path.join(repoRoot, "apps/desktop"),
+  });
+  const testFile = path.join(repoRoot, "apps/desktop/test/safe_fixture_test.dart");
+  for (const event of [
+    { type: "start", time: 0, protocolVersion: "0.1.1", pid: 7 },
+    { type: "suite", time: 1, suite: { id: 2, path: testFile } },
+    {
+      type: "testStart",
+      time: 2,
+      test: {
+        id: 3,
+        suiteID: 2,
+        name: "widget assertion keeps Bearer synthetic-token private",
+        url: `file://${testFile}`,
+      },
+    },
+    {
+      type: "error",
+      time: 3,
+      testID: 3,
+      error: `Expected one widget at ${testFile}\nActual endpoint: https://runtime.invalid/private`,
+      stackTrace: `#0 ${testFile}:10:2`,
+      isFailure: true,
+    },
+    { type: "testDone", time: 4, testID: 3, result: "failure", hidden: false, skipped: false },
+    { type: "done", time: 5, success: false },
+  ]) collector.push(`${JSON.stringify(event)}\n`);
+
+  collector.finish();
+  assert.deepEqual(collector.failureDiagnostics(), [{
+    file: "apps/desktop/test/safe_fixture_test.dart",
+    name: "widget assertion keeps Bearer [redacted] private",
+    error: "Expected one widget at <local-path> | Actual endpoint: <endpoint> @ apps/desktop/test/safe_fixture_test.dart:10:2",
+  }]);
 });

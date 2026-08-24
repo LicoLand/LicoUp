@@ -99,6 +99,16 @@ void main() {
       ProblemCodeCatalog.wire('opencode_serve_protocol_write_failed'),
       'LU-NA-4205',
     );
+    expect(
+      ProblemCodeCatalog.wire('opencode_serve_message_failed'),
+      'LU-NA-4219',
+    );
+    expect(
+      ProblemCodeCatalog.wire('opencode_serve_control_failed'),
+      'LU-NA-4216',
+    );
+    expect(ProblemCodeCatalog.wire('opencode_serve_sse_closed'), 'LU-NA-4223');
+    expect(ProblemCodeCatalog.isMapped('opencode_serve_unavailable'), isFalse);
   });
 
   test('Pi model resolution failures have a native-agent problem code', () {

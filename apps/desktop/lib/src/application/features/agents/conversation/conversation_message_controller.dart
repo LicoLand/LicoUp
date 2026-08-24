@@ -22,7 +22,6 @@ const _releaseConversationAcceptanceMode =
     bool.fromEnvironment('LICO_AGENT_CONVERSATION_RELEASE_LIVE')
     ? 'dispatch-lane-unified-1'
     : '';
-const _liveReplyPublishInterval = Duration(milliseconds: 32);
 
 /// Sends one native turn and coordinates only the state transitions around it.
 mixin AgentConversationMessageController
@@ -103,29 +102,6 @@ mixin AgentConversationMessageController
         .trim();
     sendingConversationTurnId = (turn['turnId'] ?? '').toString().trim();
     final scopeKey = conversationComposerScopeKey;
-    final projectionTurnId = 'reattached:$handle';
-    var userText = '';
-    if (selected != null) {
-      for (final message in selected.messages.reversed) {
-        if (message.kind == AgentConversationMessageKind.user) {
-          userText = message.text;
-          break;
-        }
-      }
-    }
-    conversationStartLiveProjection(
-      scopeKey: scopeKey,
-      turnId: projectionTurnId,
-      userText: userText,
-    );
-    conversationUpsertLiveLifecycle(
-      scopeKey: scopeKey,
-      turnId: projectionTurnId,
-      stage: 'processing',
-      participantAgentId: agentId,
-      participantLabel: selectedConversationAgent?.label ?? agentId,
-    );
-    agentWorkspaceNotifyLiveConversationChanged();
     agentWorkspaceNotifyStateChanged();
     var attached = false;
     try {
@@ -142,26 +118,22 @@ mixin AgentConversationMessageController
           sendingConversationNativeSessionId = eventSession;
         }
         if (eventTurn.isNotEmpty) sendingConversationTurnId = eventTurn;
-        conversationApplyPersistentTurnEvent(
+        conversationApplyDelta(
           scopeKey: scopeKey,
-          turnId: projectionTurnId,
           event: event,
           participantAgentId: agentId,
           participantLabel: selectedConversationAgent?.label ?? agentId,
         );
-        if (event.kind == 'dispatch.turn.failed' ||
-            event.kind == 'agent.turn.failed') {
-          final error = event.payload['error'];
-          lastError = error is Map
-              ? (error['code'] ?? 'dispatch_failed').toString()
-              : (event.payload['code'] ?? 'dispatch_failed').toString();
+        final terminal = event.payload['terminalTransition'];
+        if (terminal is Map && terminal['kind'] == 'failed') {
+          lastError = (terminal['code'] ?? '').toString();
         }
-        agentWorkspaceNotifyLiveConversationChanged();
       }
-    } on AgentDispatchStreamException catch (error) {
-      lastError = error.failureCode;
+    } on AgentDispatchStreamException {
+      // Observer disconnect is detach. The persisted native terminal remains
+      // the only failure authority and is recovered by the normal reload.
     } on Object {
-      lastError = 'dispatch_reattach_failed';
+      // Same rule for an untyped transport closure: do not invent failure.
     } finally {
       _reattachingActiveConversationTurn = false;
       isSendingConversationMessage = false;
@@ -641,46 +613,7 @@ mixin AgentConversationMessageController
     sendingConversationNativeSessionId = queuedTurn.nativeSessionId;
     sendingConversationTurnId = '';
     _clearPersistentTurn();
-    _discardPendingLiveReply();
-    final liveTurnId =
-        'live-${queuedTurn.agent.target}-${DateTime.now().toUtc().microsecondsSinceEpoch}';
-    conversationStartLiveProjection(
-      scopeKey: queuedTurn.scopeKey,
-      turnId: liveTurnId,
-      userText: messageText,
-    );
-    var lifecycleStage = 'submitted';
-    void publishLifecycle(String stage) {
-      const stageRank = <String, int>{
-        'submitted': 0,
-        'accepted': 1,
-        'processing': 2,
-        'responding': 3,
-        'completed': 4,
-      };
-      if (agentWorkspaceDisposed || lifecycleStage == 'failed') return;
-      if (stage == 'failed') {
-        lifecycleStage = stage;
-      } else {
-        final nextRank = stageRank[stage];
-        final currentRank = stageRank[lifecycleStage];
-        if (nextRank == null ||
-            currentRank == null ||
-            nextRank <= currentRank) {
-          return;
-        }
-        lifecycleStage = stage;
-      }
-      conversationUpsertLiveLifecycle(
-        scopeKey: queuedTurn.scopeKey,
-        turnId: liveTurnId,
-        stage: stage,
-        participantAgentId: queuedTurn.agent.target,
-        participantLabel: queuedTurn.participantLabel,
-        participantRole: queuedTurn.participantRole,
-      );
-      agentWorkspaceNotifyLiveConversationChanged();
-    }
+    var firstTerminalFailureCode = '';
 
     statusCaption = 'Agent chat';
     agentWorkspaceNotifyActiveConversationChanged();
@@ -733,10 +666,10 @@ mixin AgentConversationMessageController
               reasoningEffort: queuedTurn.reasoningEffort,
               licoProfile: queuedTurn.licoProfile,
               acceptanceMode: _releaseConversationAcceptanceMode,
-              // Auto mode: skip native permission prompts so agent turns run
-              // without interaction (developer-mandated; approvals are surfaced
-              // honestly when the runtime still reports denials).
-              permissionMode: 'bypassPermissions',
+              // Native permission requests remain interactive. The shared
+              // one-shot route resumes the same turn after an explicit user
+              // decision; dispatch must never auto-allow them.
+              permissionMode: '',
               allowedTools: queuedTurn.allowedTools,
               runtimeConnection: agent.runtimeConnection,
             ),
@@ -756,63 +689,37 @@ mixin AgentConversationMessageController
             if (eventTurnId.isNotEmpty) {
               sendingConversationTurnId = eventTurnId;
             }
-            if (event.kind == 'dispatch.turn.bound' ||
-                event.kind == 'agent.turn.accepted') {
-              publishLifecycle('accepted');
-              continue;
-            }
-            if (event.kind == 'agent.turn.processing') {
-              final evidenceKind = (event.payload['evidenceKind'] ?? '')
-                  .toString()
-                  .trim();
-              publishLifecycle('processing');
-              // Stream evidence (reasoning / tool / plan) advances the
-              // blackboard with one operation per step; pure progress markers
-              // only advance the lifecycle stage.
-              if (evidenceKind == 'reasoning' ||
-                  evidenceKind == 'tool' ||
-                  evidenceKind == 'plan') {
-                final toolName = (event.payload['toolName'] ?? '')
+            conversationApplyDelta(
+              scopeKey: queuedTurn.scopeKey,
+              event: event,
+              participantAgentId: agent.target,
+              participantLabel: queuedTurn.participantLabel,
+              participantRole: queuedTurn.participantRole,
+            );
+            final terminalTransition = event.payload['terminalTransition'];
+            if (terminalTransition is Map) {
+              final terminalKind = (terminalTransition['kind'] ?? '')
+                  .toString();
+              if (terminalKind == 'failed') {
+                final code = (terminalTransition['code'] ?? '')
                     .toString()
                     .trim();
-                conversationAppendLiveProcessEvent(
-                  scopeKey: queuedTurn.scopeKey,
-                  turnId: liveTurnId,
-                  event: AgentDispatchEvent(
-                    kind: 'agent.evidence.$evidenceKind',
-                    sessionId: event.sessionId,
-                    turnId: event.turnId,
-                    payload: <String, dynamic>{
-                      'text': toolName.isNotEmpty ? toolName : evidenceKind,
-                    },
-                  ),
-                  participantAgentId: agent.target,
-                  participantLabel: queuedTurn.participantLabel,
-                  participantRole: queuedTurn.participantRole,
-                );
-                agentWorkspaceNotifyLiveConversationChanged();
+                if (firstTerminalFailureCode.isEmpty && code.isNotEmpty) {
+                  firstTerminalFailureCode = code;
+                }
               }
-              continue;
             }
-            if (event.kind.contains('reason') ||
-                event.kind.contains('tool') ||
-                event.kind.contains('plan')) {
-              publishLifecycle('processing');
+            if (event.kind == 'dispatch.turn.bound' ||
+                event.kind == 'agent.turn.accepted' ||
+                event.kind == 'agent.turn.processing') {
+              continue;
             }
             if (event.kind == 'agent.message.chunk' ||
                 event.kind == 'agent.message.completed') {
-              if (event.kind == 'agent.message.chunk') {
-                publishLifecycle('responding');
-              }
               final chunk = (event.payload['text'] ?? '').toString();
               if (chunk.isNotEmpty) {
                 final participantAgentId =
                     (event.payload['participantAgentId'] ?? agent.target)
-                        .toString()
-                        .trim();
-                final participantLabel =
-                    (event.payload['participantLabel'] ??
-                            queuedTurn.participantLabel)
                         .toString()
                         .trim();
                 final participantRole =
@@ -832,22 +739,8 @@ mixin AgentConversationMessageController
                 if (participantAgentId == agent.target) {
                   streamedText = participantText;
                 }
-                final participantTurnId = participantAgentId == agent.target
-                    ? liveTurnId
-                    : '$liveTurnId-participant-$participantAgentId';
-                _queueLiveReplyPublish(
-                  agentId: conversationOwnerAgentId,
-                  scopeKey: queuedTurn.scopeKey,
-                  turnId: participantTurnId,
-                  text: participantText,
-                  participantAgentId: participantAgentId,
-                  participantLabel: participantLabel,
-                  participantRole: participantRole,
-                  immediate: event.kind == 'agent.message.completed',
-                );
               }
             } else if (event.kind == 'permission.denied') {
-              _flushPendingLiveReply();
               final toolName = (event.payload['toolName'] ?? '')
                   .toString()
                   .trim();
@@ -857,17 +750,7 @@ mixin AgentConversationMessageController
                 pendingPermissionRetryText = queuedTurn.text;
                 pendingPermissionRetryAttachments = queuedTurn.attachments;
               }
-              conversationAppendLiveProcessEvent(
-                scopeKey: queuedTurn.scopeKey,
-                turnId: liveTurnId,
-                event: event,
-                participantAgentId: agent.target,
-                participantLabel: queuedTurn.participantLabel,
-                participantRole: queuedTurn.participantRole,
-              );
-              agentWorkspaceNotifyLiveConversationChanged();
             } else if (event.kind == 'agent.approval.needed') {
-              _flushPendingLiveReply();
               await conversationHandleNativeApprovalNeeded(
                 agentId: agent.target,
                 event: event,
@@ -878,13 +761,13 @@ mixin AgentConversationMessageController
               final ok = raw['ok'] == true;
               // Defer lifecycle `failed` until quota fallback is ruled out so a
               // later Daily Conversation capsule can still advance the turn.
-              if (ok) {
-                publishLifecycle('completed');
-              }
               final nested = raw['error'];
               final rawCode = nested is Map
                   ? (nested['code'] ?? '')
                   : (raw['code'] ?? '');
+              if (!ok && firstTerminalFailureCode.isEmpty) {
+                firstTerminalFailureCode = rawCode.toString().trim();
+              }
               turn = AgentDispatchTurnResult(
                 ok: ok,
                 sessionId: event.sessionId,
@@ -901,93 +784,10 @@ mixin AgentConversationMessageController
                 final terminalText = (raw['text'] ?? '').toString().trim();
                 if (terminalText.isNotEmpty) {
                   streamedText = terminalText;
-                  _queueLiveReplyPublish(
-                    agentId: conversationOwnerAgentId,
-                    scopeKey: queuedTurn.scopeKey,
-                    turnId: liveTurnId,
-                    text: streamedText,
-                    participantAgentId: agent.target,
-                    participantLabel: queuedTurn.participantLabel,
-                    participantRole: queuedTurn.participantRole,
-                    immediate: true,
-                  );
                 }
               }
-              if (!ok) {
-                // Surface the driver failure in the transcript; the outer loop
-                // may still walk Daily Conversation fallback capsules.
-                final failedTurn = turn;
-                final failureText = failedTurn.errorMessage.trim().isNotEmpty
-                    ? failedTurn.errorMessage.trim()
-                    : failedTurn.failureCode;
-                conversationAppendLiveProcessEvent(
-                  scopeKey: queuedTurn.scopeKey,
-                  turnId: liveTurnId,
-                  participantAgentId: agent.target,
-                  participantLabel: queuedTurn.participantLabel,
-                  participantRole: queuedTurn.participantRole,
-                  event: AgentDispatchEvent(
-                    kind: 'dispatch.turn.failed',
-                    sessionId: event.sessionId,
-                    turnId: event.turnId,
-                    payload: <String, dynamic>{
-                      'text': failedTurn.status.trim().isNotEmpty
-                          ? '$failureText (${failedTurn.status.trim()})'
-                          : failureText,
-                    },
-                  ),
-                );
-                agentWorkspaceNotifyLiveConversationChanged();
-              }
-            } else if (event.kind == 'agent.runtime.updating') {
-              // cursor-agent auto-update blocking the turn: one in-place card.
-              conversationUpsertLiveRuntimeUpdate(
-                scopeKey: queuedTurn.scopeKey,
-                turnId: liveTurnId,
-                phase: (event.payload['phase'] ?? '').toString(),
-                version: (event.payload['version'] ?? '').toString(),
-                participantAgentId: agent.target,
-                participantLabel: queuedTurn.participantLabel,
-                participantRole: queuedTurn.participantRole,
-              );
-              agentWorkspaceNotifyLiveConversationChanged();
-            } else if (event.kind == 'agent.runtime.update.completed') {
-              conversationUpsertLiveRuntimeUpdate(
-                scopeKey: queuedTurn.scopeKey,
-                turnId: liveTurnId,
-                version: (event.payload['version'] ?? '').toString(),
-                terminal: 'completed',
-                participantAgentId: agent.target,
-                participantLabel: queuedTurn.participantLabel,
-                participantRole: queuedTurn.participantRole,
-              );
-              agentWorkspaceNotifyLiveConversationChanged();
-            } else if (event.kind == 'agent.runtime.update.interrupted') {
-              conversationUpsertLiveRuntimeUpdate(
-                scopeKey: queuedTurn.scopeKey,
-                turnId: liveTurnId,
-                version: (event.payload['version'] ?? '').toString(),
-                terminal: 'interrupted',
-                hint: (event.payload['hint'] ?? '').toString(),
-                participantAgentId: agent.target,
-                participantLabel: queuedTurn.participantLabel,
-                participantRole: queuedTurn.participantRole,
-              );
-              agentWorkspaceNotifyLiveConversationChanged();
-            } else {
-              _flushPendingLiveReply();
-              conversationAppendLiveProcessEvent(
-                scopeKey: queuedTurn.scopeKey,
-                turnId: liveTurnId,
-                event: event,
-                participantAgentId: agent.target,
-                participantLabel: queuedTurn.participantLabel,
-                participantRole: queuedTurn.participantRole,
-              );
-              agentWorkspaceNotifyLiveConversationChanged();
             }
           }
-          _flushPendingLiveReply();
           result =
               (turn ??
                       AgentDispatchTurnResult(
@@ -1084,7 +884,6 @@ mixin AgentConversationMessageController
           }
         }
         if (result['ok'] != true) {
-          publishLifecycle('failed');
           final clientError = ConversationRuntimeResultPolicy.clientError(
             result,
           );
@@ -1111,7 +910,6 @@ mixin AgentConversationMessageController
           statusCaption = 'Agent chat';
           break;
         }
-        publishLifecycle('completed');
         if (sendThroughMobileRelay) {
           final receivedAt = DateTime.now().toUtc().toIso8601String();
           appendRelayConversationMessages(
@@ -1144,9 +942,9 @@ mixin AgentConversationMessageController
               await conversationCommitTurnBoundNativeReadback(
                 agentId: conversationOwnerAgentId,
                 nativeSessionId: returnedSessionId,
-                messages:
-                    liveConversationMessagesByScope[queuedTurn.scopeKey] ??
-                    const [],
+                messages: conversationStateHolder.messagesFor(
+                  queuedTurn.scopeKey,
+                ),
                 mergeWithSelectedSession: sessionId.isNotEmpty,
                 workingDirectory: workingDirectory,
                 sourcePath: selectedSession?.sourcePath.trim() ?? '',
@@ -1176,7 +974,6 @@ mixin AgentConversationMessageController
             conversationOwnerAgentId,
             queuedTurn.newConversationDraftToken,
           );
-          conversationClearLiveProjection(queuedTurn.scopeKey);
         }
         statusCaption = 'Agent chat';
         clearConversationComposerAttachmentsForScope(queuedTurn.scopeKey);
@@ -1184,8 +981,9 @@ mixin AgentConversationMessageController
         break;
       }
     } on AgentDispatchStreamException catch (error) {
-      publishLifecycle('failed');
-      lastError = 'native_agent_${error.failureCode}';
+      lastError = firstTerminalFailureCode.isNotEmpty
+          ? firstTerminalFailureCode
+          : 'native_agent_${error.failureCode}';
       recordConversationTabSendOutcome(
         agentId: queuedTurn.agent.target,
         ok: false,
@@ -1197,8 +995,9 @@ mixin AgentConversationMessageController
       );
       statusCaption = 'Agent chat';
     } catch (_) {
-      publishLifecycle('failed');
-      lastError = 'native_agent_transport_failed';
+      lastError = firstTerminalFailureCode.isNotEmpty
+          ? firstTerminalFailureCode
+          : 'native_agent_transport_failed';
       recordConversationTabSendOutcome(
         agentId: queuedTurn.agent.target,
         ok: false,
@@ -1210,7 +1009,6 @@ mixin AgentConversationMessageController
       );
       statusCaption = 'Agent chat';
     } finally {
-      _flushPendingLiveReply();
       isSendingConversationMessage = false;
       sendingConversationAgentId = '';
       sendingConversationSessionId = '';
@@ -1247,80 +1045,6 @@ mixin AgentConversationMessageController
         agentWorkspaceNotifyStateChanged();
       }
     }
-  }
-
-  void _queueLiveReplyPublish({
-    required String agentId,
-    required String turnId,
-    required String text,
-    required String scopeKey,
-    String participantAgentId = '',
-    String participantLabel = '',
-    String participantRole = '',
-    bool immediate = false,
-  }) {
-    if (pendingConversationLiveReplyText.isNotEmpty &&
-        (pendingConversationLiveReplyAgentId != agentId ||
-            pendingConversationLiveReplyTurnId != turnId)) {
-      _flushPendingLiveReply();
-    }
-    pendingConversationLiveReplyAgentId = agentId;
-    pendingConversationLiveReplyScopeKey = scopeKey;
-    pendingConversationLiveReplyTurnId = turnId;
-    pendingConversationLiveReplyText = text;
-    pendingConversationLiveReplyParticipantAgentId = participantAgentId;
-    pendingConversationLiveReplyParticipantLabel = participantLabel;
-    pendingConversationLiveReplyParticipantRole = participantRole;
-    if (immediate) {
-      _flushPendingLiveReply();
-      return;
-    }
-    if (conversationLiveReplyPublishTimer != null) return;
-    conversationLiveReplyPublishTimer = Timer(_liveReplyPublishInterval, () {
-      conversationLiveReplyPublishTimer = null;
-      _flushPendingLiveReply();
-    });
-  }
-
-  void _flushPendingLiveReply() {
-    conversationLiveReplyPublishTimer?.cancel();
-    conversationLiveReplyPublishTimer = null;
-    final agentId = pendingConversationLiveReplyAgentId;
-    final scopeKey = pendingConversationLiveReplyScopeKey;
-    final turnId = pendingConversationLiveReplyTurnId;
-    final text = pendingConversationLiveReplyText;
-    final participantAgentId = pendingConversationLiveReplyParticipantAgentId;
-    final participantLabel = pendingConversationLiveReplyParticipantLabel;
-    final participantRole = pendingConversationLiveReplyParticipantRole;
-    _discardPendingLiveReply();
-    if (agentWorkspaceDisposed ||
-        agentId.isEmpty ||
-        scopeKey.isEmpty ||
-        turnId.isEmpty ||
-        text.isEmpty) {
-      return;
-    }
-    conversationUpsertLiveReply(
-      scopeKey: scopeKey,
-      turnId: turnId,
-      text: text,
-      participantAgentId: participantAgentId,
-      participantLabel: participantLabel,
-      participantRole: participantRole,
-    );
-    agentWorkspaceNotifyLiveConversationChanged();
-  }
-
-  void _discardPendingLiveReply() {
-    conversationLiveReplyPublishTimer?.cancel();
-    conversationLiveReplyPublishTimer = null;
-    pendingConversationLiveReplyAgentId = '';
-    pendingConversationLiveReplyScopeKey = '';
-    pendingConversationLiveReplyTurnId = '';
-    pendingConversationLiveReplyText = '';
-    pendingConversationLiveReplyParticipantAgentId = '';
-    pendingConversationLiveReplyParticipantLabel = '';
-    pendingConversationLiveReplyParticipantRole = '';
   }
 
   void _scheduleNextConversationTurn() {

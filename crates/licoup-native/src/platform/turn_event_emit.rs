@@ -51,7 +51,10 @@ pub fn emit_agent_message_chunk(session_id: &str, turn_id: &str, text: &str) {
         "agent.message.chunk",
         session_id,
         turn_id,
-        json!({ "text": text }),
+        json!({
+            "text": text,
+            "lifecyclePrefix": ["submitted", "accepted", "processing", "responding"]
+        }),
     );
 }
 
@@ -64,7 +67,10 @@ pub fn emit_agent_message_completed(session_id: &str, turn_id: &str, text: &str)
         "agent.message.completed",
         session_id,
         turn_id,
-        json!({ "text": text }),
+        json!({
+            "text": text,
+            "lifecyclePrefix": ["submitted", "accepted", "processing", "responding", "completed"]
+        }),
     );
 }
 
@@ -84,7 +90,10 @@ pub fn emit_agent_processing(
         "progress" => "progress",
         _ => "activity",
     };
-    let mut payload = json!({ "evidenceKind": evidence_kind });
+    let mut payload = json!({
+        "evidenceKind": evidence_kind,
+        "lifecyclePrefix": ["submitted", "accepted", "processing"]
+    });
     if let Some(tool_name) = tool_name.filter(|name| !name.trim().is_empty()) {
         payload["toolName"] = json!(tool_name);
     }
@@ -158,7 +167,13 @@ mod tests {
         let events = captured.lock().unwrap().clone();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0]["event"], "agent.turn.processing");
-        assert_eq!(events[0]["payload"], json!({"evidenceKind": "activity"}));
+        assert_eq!(
+            events[0]["payload"],
+            json!({
+                "evidenceKind": "activity",
+                "lifecyclePrefix": ["submitted", "accepted", "processing"]
+            })
+        );
         assert!(!events[0].to_string().contains("provider-private-value"));
 
         captured.lock().unwrap().clear();
@@ -166,7 +181,11 @@ mod tests {
         let events = captured.lock().unwrap().clone();
         assert_eq!(
             events[0]["payload"],
-            json!({"evidenceKind": "tool", "toolName": "Bash"})
+            json!({
+                "evidenceKind": "tool",
+                "toolName": "Bash",
+                "lifecyclePrefix": ["submitted", "accepted", "processing"]
+            })
         );
     }
 

@@ -1,5 +1,4 @@
 use super::errors::ProtocolFailure;
-use serde_json::Value;
 use std::env;
 use std::fs;
 use std::io::Read;
@@ -143,9 +142,5 @@ pub(super) fn session_header_matches(path: &Path, session_id: &str) -> bool {
     let Ok(line) = std::str::from_utf8(&bytes[..newline]) else {
         return false;
     };
-    let Ok(value) = serde_json::from_str::<Value>(line.trim_end_matches('\r')) else {
-        return false;
-    };
-    value.get("type").and_then(Value::as_str) == Some("session")
-        && value.get("id").and_then(Value::as_str) == Some(session_id)
+    crate::platform::native_agent_parser::adapters::pi::session_header_has_id(line, session_id)
 }

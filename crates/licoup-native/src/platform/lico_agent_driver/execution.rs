@@ -2,6 +2,10 @@ use super::errors::ProtocolFailure;
 use super::model::{EffectiveSettings, RunResult};
 use crate::domain::lico_agent::AgentProfileKind;
 use crate::platform::file_security::{append_private_line, ensure_private_dir};
+use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use crate::platform::native_agent_parser::adapters::lico_agent::{
+    RpcEffect, RpcParser, encode_request,
+};
 use crate::platform::paths::portable_data_dir;
 use crate::platform::process_sandbox::lico_agent_plan_command;
 use crate::platform::process_supervisor::{SupervisedChild, join_bounded};
@@ -79,6 +83,20 @@ fn execute_with_handshake_bound(
     handshake_bound: Duration,
 ) -> RunResult {
     let started_at = timestamp();
+    if params
+        .get("privateInstructions")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "lico_agent_private_instructions_unsupported",
+                "Lico Agent RPC does not expose a separate private-instruction channel.",
+                "params/privateInstructions",
+            ),
+            started_at,
+        );
+    }
     let workspace = cwd
         .map(Path::to_path_buf)
         .or_else(|| {
@@ -223,7 +241,8 @@ fn execute_with_handshake_bound(
     // so only a non-zero window gets a concrete deadline.
     let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let mut output = String::new();
-    let mut events = Vec::new();
+    let mut saw_processing = false;
+    let mut controls = Vec::new();
     loop {
         if deadline.is_some_and(|deadline| Instant::now() > deadline) {
             let _ = child.terminate_tree();
@@ -236,29 +255,33 @@ fn execute_with_handshake_bound(
                 started_at,
             );
         }
-        let Some(event) = read_line_value(&mut reader) else {
+        let Some(effect) = read_effect(&mut reader) else {
             break;
         };
-        events.push(event.clone());
-        if let Some(delta) = event
-            .pointer("/assistantMessageEvent/delta")
-            .and_then(Value::as_str)
-        {
-            output.push_str(delta);
-        }
-        if event.get("type").and_then(Value::as_str) == Some("agent_end") {
-            break;
-        }
-        if event.get("type").and_then(Value::as_str) == Some("error") {
-            let _ = child.terminate_tree();
-            return RunResult::failed(
-                ProtocolFailure::new(
-                    "lico_agent_turn_failed",
-                    "Lico Agent reported an error.",
-                    "protocol/error",
-                ),
-                started_at,
-            );
+        match effect {
+            RpcEffect::Text { delta } => {
+                saw_processing = true;
+                output.push_str(&delta);
+            }
+            RpcEffect::Processing => saw_processing = true,
+            RpcEffect::Control { method } => {
+                saw_processing = true;
+                controls.push(method);
+            }
+            RpcEffect::Completed => break,
+            RpcEffect::Failed => {
+                let _ = child.terminate_tree();
+                return RunResult::failed(
+                    ProtocolFailure::new(
+                        "lico_agent_turn_failed",
+                        "Lico Agent reported an error.",
+                        "protocol/error",
+                    ),
+                    started_at,
+                );
+            }
+            RpcEffect::Ignored => {}
+            RpcEffect::Handshake { .. } => {}
         }
     }
     let _ = child.terminate_tree();
@@ -270,8 +293,13 @@ fn execute_with_handshake_bound(
     append_parent_transcript(&sid, prompt, &output, &workspace);
     RunResult {
         ok: true,
+        transitions:
+            crate::platform::native_agent_parser::adapters::lico_agent::success_transitions(
+                &output,
+                saw_processing,
+                &controls,
+            ),
         output,
-        events,
         error: None,
         session_id: sid.clone(),
         thread_id: sid,
@@ -374,26 +402,21 @@ fn resolve_plan_path(params: &Value) -> Option<PathBuf> {
 }
 
 fn write_line(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
-    let mut line = serde_json::to_string(value)?;
-    line.push('\n');
-    stdin.write_all(line.as_bytes())?;
+    let encoded = encode_request(value).map_err(std::io::Error::other)?;
+    stdin.write_all(&encoded)?;
     stdin.flush()
 }
 
-fn read_line_value(reader: &mut impl BufRead) -> Option<Value> {
+fn read_effect(reader: &mut impl BufRead) -> Option<RpcEffect> {
     let mut line = String::new();
     reader.read_line(&mut line).ok()?;
-    if line.trim().is_empty() {
-        return None;
-    }
-    serde_json::from_str(line.trim()).ok()
+    RpcParser.parse_line(line.as_bytes()).ok()
 }
 
-fn read_until(reader: &mut impl BufRead, pred: impl Fn(&Value) -> bool) -> Option<Value> {
+fn read_handshake(reader: &mut impl BufRead) -> Option<bool> {
     for _ in 0..32 {
-        let value = read_line_value(reader)?;
-        if pred(&value) {
-            return Some(value);
+        if let RpcEffect::Handshake { accepted } = read_effect(reader)? {
+            return Some(accepted);
         }
     }
     None
@@ -421,14 +444,12 @@ fn handshake<R: Read + Send + 'static>(
     bound: Duration,
 ) -> Result<BufReader<R>, HandshakeFailure> {
     let handle = thread::spawn(move || {
-        let response = read_until(&mut reader, |v| {
-            v.get("type").and_then(Value::as_str) == Some("response")
-        });
+        let response = read_handshake(&mut reader);
         (response, reader)
     });
     match join_bounded(handle, bound) {
-        Ok((Some(response), reader)) => {
-            if response.get("success").and_then(Value::as_bool) == Some(true) {
+        Ok((Some(accepted), reader)) => {
+            if accepted {
                 Ok(reader)
             } else {
                 Err(HandshakeFailure::Rejected)

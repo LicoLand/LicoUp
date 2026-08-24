@@ -1,12 +1,10 @@
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use std::process::Command;
-use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::SyncSender;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use super::bounds::{MAX_PROJECTED_EVENT_TEXT_BYTES, PROCESS_POLL_INTERVAL};
+use super::bounds::PROCESS_POLL_INTERVAL;
 use super::endpoint::ServeEndpoint;
 use super::executable;
 use super::http::{self, HttpFailure};
@@ -164,88 +162,6 @@ pub(in crate::platform) fn get_json(spec: ServeSpec, url: &str) -> Result<Value>
 pub(in crate::platform) fn post_json(spec: ServeSpec, url: &str, body: &Value) -> Result<Value> {
     http::post_json(url, body, Duration::from_secs(120))
         .map_err(|failure| http_error(spec, failure))
-}
-
-pub(in crate::platform) fn watch_session_events(
-    spec: ServeSpec,
-    attach_url: &str,
-    session_id: &str,
-    stop: &AtomicBool,
-    chunks: &SyncSender<String>,
-) {
-    let url = format!("{}/event", attach_url.trim_end_matches('/'));
-    watch_session_events_url(spec, &url, session_id, stop, chunks);
-}
-
-pub(in crate::platform) fn watch_session_events_url(
-    spec: ServeSpec,
-    url: &str,
-    session_id: &str,
-    stop: &AtomicBool,
-    chunks: &SyncSender<String>,
-) {
-    let mut projection = SessionEventProjection::default();
-    let _ = super::sse::watch_data(url, stop, |data| {
-        if let Some(text) = projection.observe(session_id, data) {
-            let _ = chunks.try_send(text);
-        }
-        true
-    });
-    let _ = spec;
-}
-
-/// Stateful session-event projection. OpenCode's SSE bus publishes part
-/// events for every message in the conversation, including the user's own
-/// prompt and the assistant's reasoning parts; only text parts of messages
-/// known to be assistant messages may surface as assistant chunks. Role
-/// knowledge comes from `message.updated` events, which the server always
-/// publishes before the parts of that message. Events whose message role is
-/// still unknown fail closed: they are dropped, never echoed, and the final
-/// POST response remains authoritative for the completed output.
-#[derive(Default)]
-pub(in crate::platform) struct SessionEventProjection {
-    assistant_messages: std::collections::HashSet<String>,
-}
-
-impl SessionEventProjection {
-    pub(in crate::platform) fn observe(&mut self, session_id: &str, data: &str) -> Option<String> {
-        let event = serde_json::from_str::<Value>(data).ok()?;
-        let event_type = event.get("type").and_then(Value::as_str)?;
-        let properties = event.get("properties")?;
-        if event_type == "message.updated" {
-            let info = properties.get("info")?;
-            let message_id = info.get("id").and_then(Value::as_str)?;
-            if info.get("role").and_then(Value::as_str) == Some("assistant") {
-                self.assistant_messages.insert(message_id.to_string());
-            }
-            return None;
-        }
-        if event_type != "message.part.updated" {
-            return None;
-        }
-        let event_session = properties
-            .get("sessionID")
-            .or_else(|| properties.get("sessionId"))
-            .and_then(Value::as_str)?;
-        if event_session != session_id {
-            return None;
-        }
-        let part = properties.get("part")?;
-        if part.get("type").and_then(Value::as_str) != Some("text") {
-            return None;
-        }
-        let message_id = part
-            .get("messageID")
-            .or_else(|| part.get("messageId"))
-            .and_then(Value::as_str)?;
-        if !self.assistant_messages.contains(message_id) {
-            return None;
-        }
-        part.get("text")
-            .and_then(Value::as_str)
-            .filter(|text| !text.is_empty() && text.len() <= MAX_PROJECTED_EVENT_TEXT_BYTES)
-            .map(str::to_string)
-    }
 }
 
 fn operate<F>(spec: ServeSpec, operation: F) -> Result<Value>

@@ -37,9 +37,9 @@ pub(in crate::platform) fn execute(
     let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     match execute_via_serve(&endpoint, &config, deadline) {
         Ok(outcome) => RunResult {
+            transitions: outcome.transitions,
             ok: true,
             output: outcome.output,
-            events: outcome.events,
             error: None,
             session_id: outcome.session_id,
             thread_id: outcome.thread_id,
@@ -62,14 +62,29 @@ fn failed(
     failure: super::super::acp_driver_runtime::ProtocolFailure,
     started_at: String,
 ) -> RunResult {
-    RunResult::failed(
-        KILO_CODE_DRIVER,
-        failure,
+    let failure = failure.namespaced(KILO_CODE_DRIVER);
+    let transitions =
+        crate::platform::native_agent_parser::adapters::kilo_code::failure_transitions(
+            &failure.code,
+            failure.stage,
+            failure.message,
+        );
+    RunResult {
+        ok: false,
+        output: String::new(),
+        transitions,
+        session_id: failure.session_id.clone().unwrap_or_default(),
+        thread_id: failure.thread_id.clone().unwrap_or_default(),
+        turn_id: failure.turn_id.clone().unwrap_or_default(),
+        turn_status: failure.turn_status.clone().unwrap_or_default(),
+        effective: Default::default(),
+        capabilities: CapabilityProbe::default(),
+        status_code: None,
+        stdout_truncated: false,
+        stderr_truncated: false,
         started_at,
-        None,
-        false,
-        false,
-        CapabilityProbe::default(),
-        Vec::new(),
-    )
+        runtime_protocol: KILO_CODE_DRIVER.runtime_protocol,
+        driver_id: KILO_CODE_DRIVER.agent_id,
+        error: Some(failure),
+    }
 }

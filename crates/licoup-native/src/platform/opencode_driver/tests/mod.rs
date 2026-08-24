@@ -5,13 +5,16 @@ mod support;
 
 use super::continuity::build_session_create_body;
 use super::serve_transport::{
-    build_serve_message_body, execute, remaining_turn_timeout, request_failure, wait_post_json,
+    FirstFailure, build_serve_message_body, endpoint_failure, execute, record_preterminal_failure,
+    remaining_turn_timeout, request_failure, sse_failure, turn_timeout_failure, wait_post_json,
     workspace_request_url,
 };
 use super::{OPENCODE_DRIVER, RUNTIME_PROTOCOL, capability_probe, serve_capabilities};
 use crate::platform::acp_driver_runtime::ProtocolConfig;
+use crate::platform::acp_driver_runtime::ProtocolFailure;
 use crate::platform::local_service::http::HttpFailure;
 use serde_json::json;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 use support::*;

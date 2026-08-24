@@ -33,7 +33,11 @@ impl ProtocolFailure {
         *self.0
     }
 
-    pub(super) fn new(code: &'static str, message: &'static str, stage: &'static str) -> Self {
+    pub(in crate::platform) fn new(
+        code: &'static str,
+        message: &'static str,
+        stage: &'static str,
+    ) -> Self {
         Self(Box::new(ProtocolFailurePayload {
             code,
             message,
@@ -47,7 +51,7 @@ impl ProtocolFailure {
         }))
     }
 
-    pub(super) fn with_session(mut self, session_id: Option<&str>) -> Self {
+    pub(in crate::platform) fn with_session(mut self, session_id: Option<&str>) -> Self {
         self.session_id = session_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -56,13 +60,13 @@ impl ProtocolFailure {
         self
     }
 
-    pub(super) fn with_turn(mut self, turn_id: &str) -> Self {
+    pub(in crate::platform) fn with_turn(mut self, turn_id: &str) -> Self {
         self.turn_id = (!turn_id.is_empty()).then(|| turn_id.to_string());
         self
     }
 }
 
-pub(super) fn supervisor_failure() -> ProtocolFailure {
+pub(in crate::platform) fn supervisor_failure() -> ProtocolFailure {
     ProtocolFailure::new(
         "claude_code_supervisor_unavailable",
         "Claude Code supervisor state is unavailable.",
@@ -70,7 +74,7 @@ pub(super) fn supervisor_failure() -> ProtocolFailure {
     )
 }
 
-pub(super) fn pipe_failure() -> ProtocolFailure {
+pub(in crate::platform) fn pipe_failure() -> ProtocolFailure {
     ProtocolFailure::new(
         "claude_code_pipe_failed",
         "Claude Code standard I/O is unavailable.",
@@ -78,7 +82,7 @@ pub(super) fn pipe_failure() -> ProtocolFailure {
     )
 }
 
-pub(super) fn requires_transport_reset(failure: &ProtocolFailure) -> bool {
+pub(in crate::platform) fn requires_transport_reset(failure: &ProtocolFailure) -> bool {
     matches!(
         failure.code,
         "claude_code_write_failed"

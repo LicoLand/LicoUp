@@ -23,6 +23,8 @@ mod lico_agent_driver;
 mod local_service;
 pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
+mod native_agent_interaction;
+mod native_agent_parser;
 mod openclaw_driver;
 mod opencode_driver;
 mod pi_driver;
@@ -65,11 +67,13 @@ pub mod secure_mesh_secret_store;
 pub mod subagent_mcp_ensure;
 pub mod url_security;
 
+pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;
 pub(crate) use codex_app_server::list_models as codex_app_server_model_catalog;
 pub use conversation_lane::{
     cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
 };
-pub use hermes_driver::resolve_parked_permission as hermes_resolve_parked_permission;
+pub use native_agent_interaction::resolve as resolve_native_agent_interaction;
+pub use native_agent_interaction::resolve_scoped as resolve_scoped_native_agent_interaction;
 pub use turn_event_emit::{
     StreamSinkGuard, clear_stream_sink, emit_agent_message_chunk, emit_agent_message_completed,
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,

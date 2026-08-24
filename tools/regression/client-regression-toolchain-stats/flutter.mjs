@@ -1,5 +1,8 @@
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { sanitizeError } from "../../scripts/lib/sanitize-error.mjs";
 
 const TOOLCHAIN_RUNNER = "tools/scripts/client-toolchain-runner.mjs";
 const FLUTTER_EXECUTABLES = new Set([
@@ -11,6 +14,9 @@ const FLUTTER_EXECUTABLES = new Set([
 const RESULT_VALUES = new Set(["success", "failure", "error"]);
 
 export const FLUTTER_JSON_REPORTER_LINE_LIMIT = 1024 * 1024;
+export const FLUTTER_FAILURE_DIAGNOSTIC_LIMIT = 32;
+
+const FLUTTER_DIAGNOSTIC_TEXT_LIMIT = 360;
 
 function measured(value) {
   return Object.freeze({ status: "measured", value });
@@ -59,6 +65,20 @@ function withoutValueOption(args, longName, shortName) {
   return output;
 }
 
+export function hasFlutterTestReporter(args) {
+  return args.some((value, index) =>
+    value === "--reporter" || value === "-r" ||
+    value.startsWith("--reporter=") ||
+    (value.startsWith("-r") && value.length > 2 && index > 0));
+}
+
+export function withFlutterJsonReporter(args) {
+  return [
+    ...withoutValueOption(args, "--reporter", "-r"),
+    "--reporter=json",
+  ];
+}
+
 export function boundedFlutterTestConcurrency(value, {
   availableParallelism = os.availableParallelism(),
 } = {}) {
@@ -83,11 +103,10 @@ export function decorateFlutterTestCommand(command, {
   const boundedConcurrency = boundedFlutterTestConcurrency(concurrency, {
     availableParallelism,
   });
-  let flutterArgs = withoutValueOption(parts.flutterArgs, "--reporter", "-r");
+  let flutterArgs = withFlutterJsonReporter(parts.flutterArgs);
   flutterArgs = withoutValueOption(flutterArgs, "--concurrency", "-j");
   flutterArgs = [
     ...flutterArgs,
-    "--reporter=json",
     `--concurrency=${boundedConcurrency}`,
   ];
 
@@ -131,11 +150,103 @@ function unavailableAggregate(reason) {
   });
 }
 
+function normalizeDiagnosticText(value, limit = FLUTTER_DIAGNOSTIC_TEXT_LIMIT) {
+  return sanitizeError(String(value ?? ""))
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, " ")
+    .replace(/\b(?:https?|wss?):\/\/[^\s<>"'`]+/giu, "<endpoint>")
+    .replace(/\b(?:localhost|(?:\d{1,3}\.){3}\d{1,3})(?::\d{1,5})?\b/giu, "<endpoint>")
+    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/gu, "[redacted-email]")
+    .replace(
+      /\b(authorization|token|secret|password|api[-_ ]?key|private[-_ ]?key)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|\S+)/giu,
+      "$1=[redacted]",
+    )
+    .replace(/~[\\/][^\s<>"'`]+/gu, "<local-path>")
+    .replace(/\/(?:[^\s<>"'`/]+\/)+[^\s<>"'`]*/gu, "<local-path>")
+    .replace(/[A-Za-z]:[\\/][^\s<>"'`]*/gu, "<local-path>")
+    .replace(/\b[A-Za-z0-9+/_=-]{48,}\b/gu, "[redacted-value]")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, limit);
+}
+
+function conciseFlutterError(value) {
+  const lines = String(value ?? "")
+    .split(/\r?\n/gu)
+    .map((line) => normalizeDiagnosticText(line))
+    .filter((line) => line && !/^#\d+\s/u.test(line));
+  return normalizeDiagnosticText(lines.slice(0, 3).join(" | ")) ||
+    "test_failed_without_safe_reporter_detail";
+}
+
+function repoRelativeTestPath(value, { repoRoot, commandCwd }) {
+  if (typeof value !== "string" || value.length === 0 || !repoRoot) return null;
+  let candidate = value;
+  try {
+    if (candidate.startsWith("file:")) candidate = fileURLToPath(candidate);
+  } catch {
+    return null;
+  }
+  if (!candidate.endsWith(".dart")) return null;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(candidate) &&
+      !/^[A-Za-z]:[\\/]/u.test(candidate)) return null;
+  const absolute = path.isAbsolute(candidate)
+    ? path.resolve(candidate)
+    : path.resolve(commandCwd || repoRoot, candidate);
+  const relative = path.relative(path.resolve(repoRoot), absolute);
+  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).join("/");
+}
+
+function repoPathFromReporterValue(value, context) {
+  const direct = repoRelativeTestPath(value, context);
+  if (direct) return direct;
+  if (typeof value !== "string") return null;
+  const root = path.resolve(context.repoRoot || "");
+  const rootIndex = root ? value.indexOf(root) : -1;
+  if (rootIndex >= 0) {
+    const dartEnd = value.indexOf(".dart", rootIndex);
+    if (dartEnd >= 0) {
+      const embedded = repoRelativeTestPath(value.slice(rootIndex, dartEnd + 5), context);
+      if (embedded) return embedded;
+    }
+  }
+  const relativeMatch = /(?:^|[\s("'`])((?:test|integration_test)\/[^\s<>"'`]+\.dart)\b/u
+    .exec(value);
+  return relativeMatch ? repoRelativeTestPath(relativeMatch[1], context) : null;
+}
+
+function reporterTestPath(test, suites, context) {
+  for (const value of [test?.url, test?.rootUrl, test?.root_url, test?.path, test?.name]) {
+    const relative = repoPathFromReporterValue(value, context);
+    if (relative) return relative;
+  }
+  const suiteId = test?.suiteID ?? test?.suiteId ?? test?.suite_id;
+  return suites.get(suiteId) || null;
+}
+
+function reporterStackLocation(value, context) {
+  if (typeof value !== "string") return "";
+  for (const line of value.split(/\r?\n/gu)) {
+    const file = repoPathFromReporterValue(line, context);
+    if (!file) continue;
+    const location = /\.dart(?::|\s+)(\d+):(\d+)/u.exec(line);
+    return location ? `${file}:${location[1]}:${location[2]}` : file;
+  }
+  return "";
+}
+
 export function createFlutterJsonStatsCollector({
   lineLimit = FLUTTER_JSON_REPORTER_LINE_LIMIT,
+  failureLimit = FLUTTER_FAILURE_DIAGNOSTIC_LIMIT,
+  repoRoot = null,
+  commandCwd = repoRoot,
 } = {}) {
   if (!Number.isInteger(lineLimit) || lineLimit < 1) {
     throw new Error("Flutter JSON reporter line limit must be a positive integer");
+  }
+  if (!Number.isInteger(failureLimit) || failureLimit < 1) {
+    throw new Error("Flutter failure diagnostic limit must be a positive integer");
   }
 
   let pending = "";
@@ -143,8 +254,12 @@ export function createFlutterJsonStatsCollector({
   let sawStart = false;
   let sawDone = false;
   const suiteIds = new Set();
+  const suitePaths = new Map();
   const testStarts = new Map();
+  const testDetails = new Map();
+  const testErrors = new Map();
   const completedTests = new Set();
+  const failures = [];
   let testCount = 0;
   let passedCount = 0;
   let failedCount = 0;
@@ -163,13 +278,31 @@ export function createFlutterJsonStatsCollector({
     }
     if (!sawStart) return;
     if (event.type === "suite") {
-      if (validNonNegativeInteger(event.suite?.id)) suiteIds.add(event.suite.id);
+      if (validNonNegativeInteger(event.suite?.id)) {
+        suiteIds.add(event.suite.id);
+        const relative = repoPathFromReporterValue(event.suite.path, { repoRoot, commandCwd });
+        if (relative) suitePaths.set(event.suite.id, relative);
+      }
       return;
     }
     if (event.type === "testStart") {
       if (validNonNegativeInteger(event.test?.id) && !testStarts.has(event.test.id)) {
         testStarts.set(event.test.id, event.time);
+        testDetails.set(event.test.id, {
+          file: reporterTestPath(event.test, suitePaths, { repoRoot, commandCwd }),
+          name: normalizeDiagnosticText(event.test.name, 240) || "unnamed_test",
+        });
       }
+      return;
+    }
+    if (event.type === "error" && validNonNegativeInteger(event.testID) &&
+        typeof event.error === "string") {
+      const errors = testErrors.get(event.testID) || [];
+      if (errors.length < 2) {
+        const location = reporterStackLocation(event.stackTrace, { repoRoot, commandCwd });
+        errors.push(`${conciseFlutterError(event.error)}${location ? ` @ ${location}` : ""}`);
+      }
+      testErrors.set(event.testID, errors);
       return;
     }
     if (event.type === "testDone") {
@@ -181,6 +314,18 @@ export function createFlutterJsonStatsCollector({
       completedTests.add(event.testID);
       const startedAt = testStarts.get(event.testID);
       testStarts.delete(event.testID);
+      const detail = testDetails.get(event.testID);
+      testDetails.delete(event.testID);
+      const errors = testErrors.get(event.testID) || [];
+      testErrors.delete(event.testID);
+      if (event.result !== "success" && failures.length < failureLimit) {
+        failures.push(Object.freeze({
+          file: detail?.file || "unknown_test_file",
+          name: detail?.name || "unnamed_test",
+          error: errors.join(" | ").slice(0, FLUTTER_DIAGNOSTIC_TEXT_LIMIT) ||
+            "test_failed_without_safe_reporter_detail",
+        }));
+      }
       if (event.hidden) return;
       testCount += 1;
       if (event.skipped) skippedCount += 1;
@@ -255,5 +400,7 @@ export function createFlutterJsonStatsCollector({
     });
   };
 
-  return Object.freeze({ push, finish });
+  const failureDiagnostics = () => Object.freeze([...failures]);
+
+  return Object.freeze({ push, finish, failureDiagnostics });
 }

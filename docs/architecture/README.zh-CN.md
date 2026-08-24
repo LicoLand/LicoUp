@@ -1,286 +1,340 @@
 # LicoUp 架构
 
-[English（规范版本）](README.md) · 简体中文（本地化） · [文档索引](../README.md) · [项目首页](../../README.zh-CN.md)
+| 关联文档 | 语言 / 路径 | 权威职责 |
+|:---|:---|:---|
+| **规范版本** | [English (Normative)](README.md) | 架构事实英文规范 |
+| **产品定义** | [PRODUCT.zh-CN.md](../../PRODUCT.zh-CN.md) | 长期产品目标、设计理念与产品承诺 |
+| **当前状态** | [STATUS.zh-CN.md](../STATUS.zh-CN.md) | 当前实现状态与发布证据 |
+| **兼容性矩阵** | [COMPATIBILITY.zh-CN.md](../COMPATIBILITY.zh-CN.md) | 平台与智能体支持度（由运行时适配器注册表投影） |
+| **领域词汇** | [CONTEXT.md](../../CONTEXT.md) | 统一领域词汇与定义 |
+| **文档索引** | [docs/README.md](../README.md) | 完整文档索引目录 |
 
-长期产品目标与边界由[产品定义](../../PRODUCT.zh-CN.md)负责，当前状态由
-[状态文档](../STATUS.zh-CN.md)负责。当前组件和依赖事实由 Rust/Flutter 模块树、
-`apps/desktop/packaging.modules.json` 以及
-`apps/desktop/scripts/client-architecture/` 下的架构验证器负责。本文件是这些来源的
-公开架构投影。
+长期产品目标与边界由 [PRODUCT.zh-CN.md](../../PRODUCT.zh-CN.md) 负责，当前状态由 [STATUS.zh-CN.md](../STATUS.zh-CN.md) 负责。当前组件和依赖事实由 Rust/Flutter 模块树、`apps/desktop/packaging.modules.json` 以及 `apps/desktop/scripts/client-architecture/` 下的架构验证器负责。本文件是这些来源的公开架构投影。
 
-LicoUp 是一个本地优先的客户端。Flutter 负责界面，Rust 负责原生客户端核心、
-本机及可访问虚拟机适配器、有界任务和[当前正在退役的端点保护预览](../STATUS.zh-CN.md)
-实现。稳定端点线路语义由 Lico Arc Protocol 而不是本客户端仓库负责。
+---
 
-## 设计理念
+## 安全与公开源码边界
 
-- **多元** — 通过适配器连接不同智能体和设备。
-- **互联** — 让本机工具与对端客户端使用清晰的连接流程。
-- **开放** — 源代码和客户端契约都可以检查和扩展。
-- **融合** — 用统一应用层隔离界面与具体适配器。
+[安全与数据边界](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) 负责详细机制；本入口保留以下跨文档不变量：
 
-## 组件
+- 兼容且不可信的通讯站只承担传输。发送端发出五字段 Lico Arc 信封；对端身份、新鲜性、重放拒绝与经认证的最终回执仍由端点判定。
+- 本地路径、日志、历史、用量记录、凭据和原始运行时数据留在设备上。只有已批准的受保护对端内容与协议所需的最小路由字段可跨越通讯站边界。
+- 当前平台密钥保管在可用时使用操作系统安全存储，否则明确使用仅内存保管。调用方参数和普通状态文件都不能证明用户已经批准；受保护效果需要平台持有的授权会话。
+- 客户端不接受通讯站或服务端提供的可执行加密补丁，也没有运行时加密补丁加载器。
 
-```mermaid
-flowchart TB
-    UI["Flutter 界面"] --> APP["应用层"]
-    APP --> CORE["Rust 原生客户端核心"]
-    CORE --> CONVERSATIONS["统一 Conversation 领域<br/>Membership · Event · Dispatch"]
-    CORE --> STRATEGIES["Adaptive Flywheel 策略领域<br/>不可变 Graph · 持久化运行"]
-    CONVERSATIONS --> STORE["带索引的 SQLite/WAL 客户端状态"]
-    CORE --> AGENTS["智能体适配器<br/>ACP · app-server · RPC · CLI"]
-    AGENTS --> VM["可访问的用户自有虚拟机<br/>OrbStack 发现 · OpenSSH stdio · ACP/Hermes Gateway"]
-    CORE --> MESH["正在退役的端点保护预览<br/>当前执行器"]
-    MESH --> ARC["Lico Arc 候选 adapter<br/>封闭五字段信封"]
-    ARC --> STATION["兼容通讯站<br/>不可信运输"]
-    STATION --> PEER["对端 LicoUp 客户端"]
-    KEYS["平台安全存储<br/>用户确认"] --> MESH
-    LINE["固定 Lico Arc Protocol Line<br/>未来必需的端点线路权威"] -. "治理合规执行" .-> MESH
-```
+Agent 对话继续由 Rust 宿主管理。新会话和原生续接会话在进程内保持可唤醒进度；活动轮次在适配器支持时使用原生 steer，否则只在同一精确会话的安全边界继续下一轮。观察者断开既不代表取消，也不代表终结。Subagent MCP 只使用规范 Conversation 与 Membership 身份寻址，原生续接位置始终保持私有。
 
-| 区域 | 职责 |
-| --- | --- |
-| Flutter 界面 | 导航、视图、用户选择和安全摘要 |
-| 应用层 | 客户端流程和与适配器无关的规则 |
-| Rust 原生核心 | 本地任务、协议、校验和加密 |
-| Conversation 领域 | 单聊/群聊、Human/Agent Membership、结构化 Event 与按 Membership 派发的唯一持久化权威；原生运行时位置保持私有 |
-| Adaptive Flywheel 策略领域 | 独立于 Conversation 历史的不可变包版本、JSON Graph 校验、绑定、准确授权、持久化运行归约与有界效果调度 |
-| 智能体适配器 | 转换受支持的本机接口及自动发现或明确配置的 OpenClaw/Hermes 虚拟机协议连接 |
-| 平台桥接 | 安全存储、用户确认和平台启动 |
-| 端点保护预览 | 当前 LicoUp 执行器、本地密钥/Provider 保管、对端信任、审批和正在退役的端点实现；它不是稳定协议权威 |
-| Lico Arc Protocol Line | 拥有线上可观测的 Pairwise Protection、Generic Message、Reliable Exchange、协商与 Transport Profile 语义 |
-| Lico Arc adapter | 严格候选外层信封 codec 与四项有界通讯站运输操作 |
+---
 
-## Conversation 权威分层
+## 水平分层与垂直领域切片
 
-长期「一个 Conversation」目标由[产品定义](../../PRODUCT.zh-CN.md)负责。已实现的
-单聊/群聊事实由
-`crates/licoup-native/src/domain/client_conversation/` 中的统一 Conversation
-存储负责。原生智能体历史、Adaptive Flywheel Graph 和 Assistant Profile/工作流状态是相邻权威，
-不是该 Conversation 的副本；本节也不取代它们各自的归属文档。
+LicoUp 的整体系统由 **水平平台分层（Horizontal Tiers）** 与 **垂直业务切片（Vertical Domain Slices）** 共同构成：
+
+### 1. 水平平台四层体系
+1. **第 1 层：Flutter 用户外观层（Flutter Presentation / Shell Layer）** — 纯用户外观与交互呈现，不承担核心业务处理逻辑（现有残留逻辑后续逐步下移剥离）。
+2. **第 2 层：Bridging Contract 桥接协议层（Bridging Contract / RPC Protocol Layer）** — 负责 Flutter 与 Rust 间结构化 RPC 交互（`licoup.stdio.v1` 方法帧及移动端 FFI Command），定义严格前后端契约，杜绝 CLI 参数数组穿透。
+3. **第 3 层：Rust 功能核心与基础设施层（Rust Functional Core & Infrastructure Layer）** — 内部清晰划分为：
+   - **Rust 业务领域（Domain Core）**：包含 `Canonical Conversation`（调度门与轮次宿主）、`Adaptive Flywheel`（策略 Graph 与路由决策）以及 `Agent Adapters`（注册表所列智能体协议与运行时调度）。
+   - **Rust 基础设施与对外交互层（Infrastructure & External Boundary）**：作为应用内外部世界的清晰交界线，包含 **数据库存储（SQLite WAL）**、**动态配置文件**、**密钥管理门面（叠加在原生层之上）**、**网络通信与传输** 以及 **PTY/TTY 伪终端与子进程管理** 五大底层对外模块。
+4. **第 4 层：Native 原生系统适配层（Native OS / System Adaptation Layer）** — 底层操作系统与平台专用脚本/API 适配（macOS Keychain/PTY/launchd；Windows WinCred/ConPTY/PowerShell；Linux Secret Service/XDG；Android JNI/Keystore/SAF；iOS Secure Enclave/FaceID 等）。
+
+### 2. 垂直业务切片（Vertical Slices）
+如 **Conversation（智能体对话）** 本身是一个端到端的垂直架构，纵向贯穿了 Flutter 界面交互、桥接协议、Rust 领域调度、底层数据库/网络/PTY 基础设施以及操作系统底层环境。
+
+稳定端点线路语义由 Lico Arc Protocol 而不是本客户端仓库负责。
+
+---
+
+## 四层架构组件全景图
 
 ```mermaid
 flowchart TB
-    Conv["统一 Conversation"]
-    Conv --> Principals["Principal：Human 或 Agent"]
-    Conv --> Memberships["Membership：权限与 active/left"]
-    Conv --> Events["Event 与 Part"]
-    Conv --> StrategyRef["strategyRevision：可选 Graph 绑定"]
-    Conv --> Dispatches["私有 ConversationDispatch"]
-    Conv --> Bindings["私有 RuntimeBinding"]
+    subgraph LAYER1["1. Flutter 用户外观层 (Presentation / Shell Layer)"]
+        UI["Flutter 视图 · 页面导航 · 手势交互 · 安全摘要展示<br/>(纯外观呈现，无核心业务处理逻辑)"]
+    end
+
+    subgraph LAYER2["2. Bridging Contract 桥接协议层 (RPC / FFI Contract Layer)"]
+        BRIDGE["licoup.stdio.v1 结构化方法帧 (桌面 RPC)<br/>平台 FFI Commands (移动端桥接) · 严格双向契约"]
+    end
+
+    subgraph LAYER3["3. Rust 功能核心与基础设施层 (Rust Functional Core & Infra)"]
+        subgraph DOMAIN_BOX["Rust 业务领域 (Domain Core)"]
+            CONVERSATIONS["Canonical Conversation 领域<br/>唯一持久聊天权威 · Membership · 调度门 · 轮次宿主"]
+            STRATEGIES["Adaptive Flywheel 策略领域<br/>不可变 Graph · 路由选择 · 持久化运行"]
+            AGENTS["智能体适配与运行时 (Agent Adapters)<br/>ACP · app-server · RPC · CLI · 注册表所列 Agent 驱动"]
+        end
+
+        subgraph INFRA_BOX["Rust 基础设施与对外交互层 (Infrastructure & Boundary Gateway)"]
+            DB_STORAGE["数据库存储 (SQLite / WAL 引擎 · 事务 · 索引)"]
+            DYNAMIC_CONFIG["动态配置文件系统 (热重载 · 清单管理 · 优先级合并)"]
+            SECRET_CUSTODY["密钥管理门面 (会话建钥 · 加解密抽象 · 叠加在原生层上)"]
+            NET_TRANSPORT["网络通信与传输 (HTTP/SSE 流 · SSH 隧道 · P2P 信封)"]
+            PTY_TRANSPORT["PTY / TTY 伪终端通道 (伪终端会话 · 窗口尺寸 · 进程监督)"]
+        end
+
+        CONVERSATIONS --> DB_STORAGE
+        STRATEGIES --> DB_STORAGE
+        AGENTS --> NET_TRANSPORT
+        AGENTS --> PTY_TRANSPORT
+        CONVERSATIONS --> SECRET_CUSTODY
+        AGENTS --> DYNAMIC_CONFIG
+    end
+
+    subgraph LAYER4["4. Native 原生系统适配层 (Native OS / System Adaptation Layer)"]
+        MACOS["macOS / Darwin<br/>Swift/ObjC · Keychain · LocalAuth · Launchd · POSIX PTY · Firmlink · OrbStack"]
+        WINDOWS["Windows / Win32<br/>PowerShell · MSVC · WinCred · ConPTY/NamedPipe · Registry · %APPDATA%"]
+        LINUX["Linux / Ubuntu<br/>GNU 工具链 · D-Bus Secret Service · XDG 规范 · Linux PTY · Signals"]
+        ANDROID["Android<br/>Kotlin/Java · JNI/FFI · Keystore · BiometricPrompt · SAF · Android Shell"]
+        IOS["iOS<br/>Swift · C-ABI FFI · Secure Enclave · FaceID/TouchID · Sandbox Container"]
+        COMMON_OS["跨平台系统工具<br/>OpenSSH 批量隧道 · 进程监督阶梯 (SIGTERM/KILL) · 环境变量脱敏与沙盒"]
+    end
+
+    LAYER1 --> LAYER2
+    LAYER2 --> LAYER3
+    SECRET_CUSTODY --> LAYER4
+    NET_TRANSPORT --> LAYER4
+    PTY_TRANSPORT --> LAYER4
+    DB_STORAGE --> LAYER4
+    DYNAMIC_CONFIG --> LAYER4
 ```
 
-| 权威 | 负责 | 关系 |
-| --- | --- | --- |
-| 统一 Conversation | 人机入口、Membership、有序 Event | 唯一持久化聊天存储。单聊与群聊是同一类型，差别只有 `isGroup` 和 Membership 数量 |
-| [原生历史目录](../protocols/semantic-conversation.md) | 只读适配器会话，汇编为 semantic conversation | 一对一 Agent 工作区的列表/回放，不是统一 `conversation.list`。原生位置只作为 Membership 上的私有 RuntimeBinding |
-| [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | 不可变 Graph 版本、绑定、授权、持久化运行归约 | 独立于 Conversation 历史。群可以绑定 `strategyRevision`；actor 效果作为 Membership Event 投影回来。Graph/run 不是第二份 transcript |
-| [下属智能体 MCP](../protocols/subagent-mcp.zh-CN.md) | Assistant 指定、Membership Profile 与 assistant 临时 Graph 生命周期 | Profile 事实投影具名既有权威；临时 Graph 绑定准确 Membership 并在任何效果之前预检。Adaptive Flywheel 仍是 Agent/model 路由选择权威 |
+---
 
-| 记录 | 含义 |
-| --- | --- |
-| Principal | 对等身份。`kind` 为人或智能体；智能体另有 `agentId` |
-| Membership | 该 Principal 在本 Conversation 中的席位。派发键是 `conversationId` + `membershipId` |
-| Event / EventPart | 唯一可见历史。Message、membership-changed、availability Event 携带正文、推理、工具、产物、诊断和元数据 Part。流式写入是向未 finalize 的 Event 追加 Part |
-| `strategyRevision` | Conversation 上可选的已授权 Flywheel Graph，不是 transcript |
-| ConversationDispatch | 按 Membership 作用域的私有智能体执行。原生路径不进入公开契约 |
-| RuntimeBinding | 绑在 Membership 上的私有适配器会话。对 UI、MCP 和导出不可见 |
+## 层次与模块职责边界
 
-寻址只选出 Membership，不是第二套协议。正文里的 `@mention`、策略 actor 槽、
-assistant 临时 Graph 绑定，以及下属智能体的 `conversationId + membershipId`，都只点名已有的
-Agent Membership。在该模型里，DirectTurn 是 ConversationDispatch 的 mention
-派发成因，不是第二套发送、执行或展示栈。
+| 层次 | 架构模块 | 职责边界 |
+|:---|:---|:---|
+| **第 1 层：Flutter 用户外观层** | Flutter 用户界面 (Shell / UI) | 负责页面渲染、导航、用户交互、外观呈现与安全摘要展示。不包含核心业务处理逻辑（现有少量残留逻辑后续逐步下移）。 |
+| **第 2 层：Bridging Contract 桥接协议层** | 前后端通信契约 (RPC / FFI) | 负责 Flutter 与 Rust 间双向通信契约。桌面端承载 `licoup.stdio.v1` 结构化方法帧，移动端承载 C-ABI FFI 命令；严格杜绝 CLI 参数数组穿透。 |
+| **第 3 层：Rust 业务领域 (Domain Core)** | 统一 Conversation 领域 | 单聊/群聊、Human/Agent Membership、结构化 Event 与按 Membership 派发的唯一持久化权威；原生运行时位置保持私有。 |
+| | Adaptive Flywheel 策略领域 | 独立于 Conversation 历史的不可变包版本、JSON Graph 校验、绑定、准确授权、持久化运行归约与有界效果调度。 |
+| | 智能体适配器与运行时 | 转换注册表所列的本机智能体接口（ACP、app-server、CLI、RPC）及虚拟机发现协议连接。 |
+| **第 3 层：Rust 基础设施 (Infrastructure)** | 数据库存储 (SQLite WAL) | 唯一数据持久化引擎，提供 ACID 事务、强类型迁移、复合索引检索。 |
+| | 动态配置文件系统 | 运行时配置解析、热重载/动态感知、确定性优先级合并（CLI > 环境变量 > 用户清单 > 系统默认）。 |
+| | 密钥管理门面 | 统一安全凭据与加解密门面，直接叠加在第 4 层原生密钥库（Keychain/WinCred/Keystore/Secure Enclave）之上。 |
+| | 网络通信与传输 | HTTP/SSE 流式客户端、系统原生 Batch SSH 隧道、P2P 加密信封传输与连接生命周期。 |
+| | PTY / TTY 伪终端通道 | 跨平台伪终端抽象、窗口尺寸同步、ANSI 序列流式捕获与进程退出监督阶梯（Grace $\to$ SIGTERM $\to$ SIGKILL）。 |
+| **第 4 层：Native 原生系统适配层** | macOS / iOS 适配 | Swift/ObjC 桥接、Keychain 安全存储、`LocalAuthentication` 生物认证、Launchd 自启动、APFS/Firmlink 路径规范化、OrbStack CLI 探测。 |
+| | Windows 适配 | PowerShell/Cmd 脚本安全包装、WinCred 凭据管理、ConPTY 伪控制台与命名管道、注册表自启动、宽字符环境。 |
+| | Linux / Ubuntu 适配 | GNU 工具链、D-Bus Secret Service（与 Ephemeral 内存回退）、XDG Base Directory/Autostart、POSIX PTY 与信号监督。 |
+| | Android 适配 | Kotlin/Java 宿主交互、`android_ffi.rs` 生命周期、Android Keystore、`BiometricPrompt`、SAF 存储与 Android Shell 交互。 |
+| | 通用系统工具与沙盒 | OpenSSH 批处理模式隧道、`process_supervisor.rs` 进程阶梯监督（Grace $\to$ SIGTERM $\to$ SIGKILL）、安全环境变量脱敏。 |
 
-派发只有一扇门。人类 Event 持久化之后，派发只需 Conversation 与 Event 身份：
-native 从已存储的 Event 正文解析被 mention 的 Membership，绑定的策略是同一扇门
-按绑定而非按正文寻址。派发完成权威是唯一写入终态 Event、派发状态与 mention turn
-状态的写入方；策略 run start 或 resume 在驱动线程启动之前注册入口 Membership
-turn，并在同一响应中返回该句柄，未曾运行的入口以带类型代码废弃。下属智能体委派把
-帧流写入同一 Conversation 派发作用域，并经同一权威完成结算。在未接入常驻宿主
-运行时构造的服务上，派发类与 run 类动作以带类型的传输拒绝立即失败，不会打开无人
-照管的 turn。
+---
 
-已删除的 `conversation_roles` 表不是当前存储。Adaptive Flywheel 是用户导入的
-Graph，不是 MCP Role 池，也不是 round-robin Role 飞轮。
+## Native 原生系统适配边界
 
-群面板渲染统一 Conversation Event。一对一 Agent 面板渲染原生目录加上实时
-PersistentTurn。共用气泡组件并不合并这两套权威。
+共享 Rust 功能核心和 Flutter 外观层保持跨平台中立。第 4 层「Native 原生系统适配层」负责不同操作系统与平台底层的专用脚本、API 与工具链对接：
 
-## 内置能力边界
+| 平台 / 工具域 | 原生系统适配具体职责 |
+|:---|:---|
+| **macOS (Darwin / Swift / Unix)** | 1. **安全与在场**：`Security.framework` (Keychain Services) 与 `LocalAuthentication.framework` (Touch ID / Apple Watch 授权)；<br>2. **守护与自启动**：`~/Library/LaunchAgents/` 下的 launchd plist 管理与 `launchctl bootstrap / bootout` 调度；<br>3. **终端与沙盒**：POSIX PTY (`openpty`, `termios`, `ioctl(TIOCSCTTY)`, `winsize`)、APFS Firmlink 系统卷与数据卷映射；<br>4. **虚拟机探测**：OrbStack 本地 Unix Domain Socket 探测与 `orb` CLI 发现。 |
+| **Windows (Win32 / PowerShell / MSVC)** | 1. **凭据与存储**：Windows Credential Manager (WinCred `CredReadW`/`CredWriteW`) 安全密钥保管；<br>2. **终端与控制台**：Windows Pseudo Console API (ConPTY: `CreatePseudoConsole`) 与 Windows Named Pipes 命名管道；<br>3. **启动与注册表**：Windows 注册表自启动键 (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) 与任务计划程序；<br>4. **脚本包装**：PowerShell / Cmd 脚本包装 (`Get-Command`, `.cmd`/`.ps1`)、参数安全转义与宽字符路径解析。 |
+| **Linux / Ubuntu (GNU / POSIX / D-Bus)** | 1. **密钥服务**：D-Bus Freedesktop Secret Service 规范（libsecret / GNOME Keyring / KWallet）及无环境时的内存临时存储（Ephemeral Store）；<br>2. **系统规范**：XDG Base Directory 规范（`$XDG_DATA_HOME`, `$XDG_CONFIG_HOME`）与 XDG Autostart (`~/.config/autostart/*.desktop`)；<br>3. **终端与进程**：Linux PTY (`forkpty`, `ptsname`, `grantpt`)、标准信号捕获与 `/proc` 进程树观测。 |
+| **Android (Kotlin / Java / Android Shell)** | 1. **宿主与生命周期**：`android_ffi.rs` JNI 桥接，响应 Android Activity/Service 的初始化、前后台切换与内存管理；<br>2. **硬件密钥与认证**：Android Keystore System 与 `BiometricPrompt` 硬件级指纹/人脸在场确认；<br>3. **存储与 Shell**：Storage Access Framework (SAF)、应用沙盒私有存储目录与 Android Toybox/Termux Shell 隔离交互。 |
+| **iOS (Swift / ObjC / C-ABI FFI)** | 1. **FFI 交互**：`ios_ffi.rs` C-ABI 内存安全桥接，管理 iOS 单进程受限运行环境下的运行时生命周期；<br>2. **硬件级存储与认证**：Apple Secure Enclave 硬件 Keychain 存取与 `LocalAuthentication` (Face ID / Touch ID)；<br>3. **沙盒与容器**：`NSApplicationSupportDirectory` 沙盒路径规范化与后台执行限制处理。 |
+| **跨平台通用系统工具** | 1. **网络隧道**：OpenSSH 批处理模式（`ssh -o BatchMode=yes -o StrictHostKeyChecking=yes`）无交互式安全隧道；<br>2. **进程监督**：`process_supervisor.rs` 监督阶梯（Grace Period $\to$ SIGTERM $\to$ SIGKILL）与环境变量安全脱敏白名单。 |
 
-默认客户端只包含下表中的基础能力和本地优先场景。每一行都有窄接口和专属回归模块；
-任何一个场景都不能直接访问另一个场景的存储或界面。
+---
 
-| 能力 | 独立职责 |
-| --- | --- |
-| Rust 任务队列 | 本机任务的有界多生产者 FIFO、背压、断开处理和工作线程生命周期 |
-| ACP 适配 | 智能体会话协商、原生继续对话、会话列出/加载、事件流、权限等待、取消和脱敏错误 |
-| MCP 适配 | 有界 MCP/JSON-RPC 校验、请求 ID 保持、响应转发，以及外部动作的一次性审批 |
-| 智能体发现 | 只并发探测 Agent 扫描路径清单中的命名二进制、配置和历史目录。不遍历 PATH、个人资料库根、照片/音乐库或网络宗卷。未使用智能体的发现和冷启动不会执行第三方 Agent 二进制。进入某个 Agent 的对话界面后会从它的 CLI 或命名存储刷新该 Agent 的原生模型目录。家目录只从环境变量读取；macOS firmlink 等价路径按同一规则分类。未使用智能体的探测对其他 App 容器只做词法分类，不去 stat。Token 用量在打开监测页之前不会扫描 |
-| 适配插件管理 | 用一个原生目录管理随附原生通道、随附 ACP 通道和明确可安装的 LicoUp 桥接；生命周期操作需要确认且只能修改 LicoUp 自有状态 |
-| 智能体对话 | 单聊与群聊共用统一 Conversation 模型；Human 与 Agent Principal 通过显式 Membership 参与。每个客户端数据根与所属 LicoUp 进程只有一个通过私有本机 IPC 服务的 CLI 宿主，它拥有所有打包适配器已接受的轮次，可跨越可替换观察者与 stdio 代理的生命周期，并在所属 LicoUp 进程退出时结束。新建与原生续接会话在该宿主中保留进程内、可唤醒的进度；活动轮次在支持时使用原生 steer，否则在准确会话的安全边界继续。可替换观察者使用 Conversation 作用域句柄和进程内游标重新附着；低于每个活动轮次 16 MiB 可丢弃缓存下界的内容从已提交 Conversation Event 准确重放。观察者断开不等于取消或 steer。原生会话是适配器拥有、私下绑定到 Membership 的执行细节。本地[下属智能体 MCP](../protocols/subagent-mcp.zh-CN.md)只按 `conversationId + membershipId` 调度，不暴露原生续接路径 |
-| 适应性飞轮 | 目录在 ZIP 导入之前保持为空。导入 ZIP 在根目录包含 `workflow.json`，并可带 `scripts/`；Graph 决定流水线或 Agent Loop。不可变版本拥有绑定与准确授权，持久化运行提供有界就绪前沿调度以及明确终态和恢复状态。不存在 Better Plan 安装动作，也不存在序号式 Conversation 兼容路径 |
-| 技能管理 | 只读发现本机已有技能、可恢复地移入系统废纸篓，并按时间窗口统计真实调用次数；不提供下载、安装、更新或同步通道 |
-| 对话管理 | 带索引的列表、精确读取、Event 分页与检索，以及有界的统一导入/导出；绝不改写第三方原生历史 |
-| Assistant 工作流 | 被指定的 Assistant 对每个用户目标负责到底：它直接完成，或准入一份带准确 Membership 绑定的有界 assistant 临时 Graph。MCP 绑定的 Agent 必须正是该活动指定 Membership。预检在任何效果之前返回带安全请求 pointer 的有序稳定诊断；运行期失败以 typed 终态结果返回 Assistant。群聊“自动适配”与一对一共用同一原生 Membership 通道；Adaptive Flywheel 与 Assistant 目录通过一次 Rust 选中 target batch 加载。持久化 Conversation 宿主仍是唯一的 run 与 turn 属主，Adaptive Flywheel 仍是唯一的 Agent/model route 选择权威 |
-| 用量统计 | 依据本机记录按智能体或模型聚合 Token；包含不可变历史日/模型汇总、当日事件明细、无路径 Graph run/command/Membership 汇总和精确覆盖率，使用 90 天扫描缓存，默认展示 30 天并支持 7/30/90 天窗口 |
-| 端点保护预览 | 当前配对、信任、对端消息/文件加密、防重放、端点认证结果与 Lico Arc 候选承载；该退役中实现不承诺未来兼容 |
+## 细分领域架构索引
 
-默认启动和
-导航不会加载可选协作。客户端必须通过独立操作导入可信签名公钥；该操作本身
-不能建立信任。显式启动前，客户端还会重新校验不可变的软件包来源以及固定、
-已签名且只监听 loopback 的外部运行器。
+为了保持四大架构分层的清晰性，各个细分功能领域拥有独立的架构与协议文档：
 
-工作流视图只消费一个安全的原生 ledger 投影。LicoUp 负责 Graph 准入、预检、持久化运行归约
-与用量记账，Adaptive Flywheel 负责 route 选择，Conversation Membership 负责 Agent dispatch。原生续接
-位置只作为私有适配器绑定。投影只保留安全 code、本地化 Graph 与 command 状态标签、
-Agent/model 标签、Membership id、数字 Token 计数以及精确或估算覆盖率；明确排除 prompt、reply、tool
-payload、摘要、压缩、cache 控件以及第二套客户端 context 模型。保留范围限定为活动工作流
-和最新二十份终态汇总。
+| 细分领域 | 所属层级 | 架构 / 协议文档 | 职责概述 |
+|:---|:---|:---|:---|
+| **前后端交互契约** | 第 2 层：桥接协议层 | [CLIENT-NATIVE-INTERACTION.md](CLIENT-NATIVE-INTERACTION.md) | `licoup.stdio.v1` 结构化方法帧与移动端 FFI 命令契约 |
+| **统一 Conversation 垂直领域** | 垂直切片 (第 1 ~ 4 层) | [CONVERSATION-DOMAIN.zh-CN.md](CONVERSATION-DOMAIN.zh-CN.md) | 前后端双向绑定、单聊基石与群聊协同封装、状态机驱动与端到端时序流 |
+| **智能体适配器与运行时架构** | 第 3 层：功能核心层 | [AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md](AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) | 由注册表推导的驱动分类、标准协议(ACP/RPC/PTY)与私有协议(Codex/OpenCode)归一化 |
+| **Rust 基础设施与对外交互层** | 第 3 层：基础设施与边界 | [RUST-INFRASTRUCTURE-LAYER.zh-CN.md](RUST-INFRASTRUCTURE-LAYER.zh-CN.md) | 数据库存储 (SQLite WAL)、动态配置、密钥管理、网络传输、PTY/TTY |
+| **Adaptive Flywheel 策略** | 第 3 层：功能核心层 | [ADAPTIVE-FLYWHEEL.zh-CN.md](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | 不可变 Graph 版本、路由决策与持久化运行归约 |
+| **下属智能体 MCP** | 第 3 层：功能核心层 | [subagent-mcp.zh-CN.md](../protocols/subagent-mcp.zh-CN.md) | Assistant 目标闭环、Profile 事实与临时 Graph 准入机制 |
+| **语义对话与历史编目** | 第 3 层：功能核心层 | [semantic-conversation.md](../protocols/semantic-conversation.md) | 注册表所列 Agent 协议转换、厂商历史目录发现与只读回放 |
+| **安全与数据边界** | 第 3 层：功能核心层 | [SECURITY-AND-DATA-BOUNDARY.zh-CN.md](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) | 虚拟机探测隔离、端点保护预览、平台密钥保管与数据零信任 |
+| **原生系统平台桥接** | 第 4 层：原生适配层 | `crates/licoup-native/src/platform/` | macOS、Windows、Linux、Android、iOS 底层 OS API 与工具链实现 |
 
-当前智能体与平台适配目标由[兼容性文档](../COMPATIBILITY.zh-CN.md)生成。
-通讯站线路与运营状态由[状态文档](../STATUS.zh-CN.md)记录。
-
-## 虚拟机发现与原生协议边界
-
-对于 OpenClaw 和 Hermes，桌面客户端通过有界命令枚举本机正在运行的 OrbStack
-虚拟机，并检查固定的官方及常见可执行文件位置；它不会读取虚拟机配置或历史。Rust
-会先校验虚拟机名和返回的绝对路径，再创建临时的 `machine@orb` 路由；自动发现的
-虚拟机路由不会进入发现缓存。扫描具有固定的时间、输出、虚拟机数量和并发上限。
-
-对于其他虚拟机，Flutter 收集主机名、可选端口/用户、虚拟机内程序以及绝对工作目录；
-Rust 校验封闭的连接结构，只把它保存在权威手动目标中。密码、私钥、命令片段、相对
-虚拟机目录和未知字段都会被拒绝。
-
-原生核心以 batch 模式启动平台系统 `ssh`，强制主机密钥校验，关闭 TTY、转发、本地
-命令、环境转发和连接复用。它只传入一条经过 shell 引号保护的固定虚拟机命令。
-OpenClaw 启动 ACP；Hermes 在可选 ACP 包通过固定能力检查时启动 ACP，否则自动发现
-会用安装器虚拟环境的 Python 启动 `tui_gateway.entry`。两种协议都通过 stdin/stdout
-交换有界 JSON-RPC。本机协作 MCP 描述不会发送到虚拟机。会话发现和回读使用所选协议
-的会话列出/加载操作；客户端不会扫描、挂载或复制虚拟机历史存储。选中该目标时，
-界面会持续显示 SSH 目标。
-
-## 平台适配边界
-
-共享 Rust 和 Flutter 层保持平台无关。各原生宿主只负责不能移植的平台动作：
-
-| 平台 | 原生适配器职责 |
-| --- | --- |
-| macOS | 应用发现、Keychain/用户在场桥接、打包和启动 |
-| Windows | 应用发现、Credential Manager 密钥保管、客户端授权会话、打包和启动 |
-| Ubuntu | 软件包/应用发现、Secret Service 或明确的仅内存密钥保管、打包和启动 |
-| Android | 软件包发现、Keystore/BiometricPrompt 桥接、Rust FFI 生命周期、安装和启动 |
-| iOS | 应用容器集成、Keychain/LocalAuthentication 桥接、Rust FFI 生命周期、安装和启动 |
-
-源码适配、普通构建、真机安全证据、GitHub Release 制品和应用商店发布是彼此独立的
-结论。当前[兼容性状态](../COMPATIBILITY.zh-CN.md)分别记录这些结论，绝不把
-模拟器或源码检查提升成真机或发布证明。
-调用方参数和普通状态文件都不能证明用户已经批准；受保护操作必须使用平台持有的
-授权会话。
-
-对于外部 MCP 效果，bridge 可以暂存准确预览，但不能执行交换或批准该预览。
-原生命令随后针对规范
-摘要请求一次新的平台用户在场确认，并在交换前原子消费匹配的短期预览，且只能
-消费一次。
-
-## 当前正在退役的端点保护预览分层
-
-当前正在退役的端点保护预览使用一个固定安全配置。本节只是该预览的实现清单，
-不定义 Lico Arc Profile，也不承诺未来线路兼容。完整固定 Lico Arc Protocol
-Line 替换它时，该预览将直接退役而不会保留兼容模式。当前每种算法只负责一个
-明确任务，安全性不以开启的算法数量衡量。
-
-```mermaid
-flowchart TB
-    ID["对端身份<br/>Ed25519 签名"] --> SETUP["会话建钥<br/>X25519 + ML-KEM-1024"]
-    SETUP --> DERIVE["密钥派生与棘轮<br/>HKDF-SHA256"]
-    DERIVE --> CONTENT["消息保护<br/>ChaCha20-Poly1305"]
-    CONTENT --> VERIFY["先校验再使用<br/>不回退明文"]
-```
-
-只有当不同算法承担不同职责，并且组合规则已经过检查时，协议才会组合它们。签名握手会
-固定本次会话使用的安全配置。派生密钥有清晰标签，不能把一个任务的密钥复用于另一个
-任务。任何安全检查缺失或失败，都不能开启明文通信。
-
-## 当前平台密钥保管
-
-当前客户端会先检查平台能力，再选择本机密钥存储。系统安全存储可用时使用系统存储，
-否则明确使用内存临时存储。内存密钥会在重启后丢失，因此客户端需要重新配对并创建新密钥。
-存储失败不会开启明文通信。
-
-当前平台适配器保护密封后的秘密数据。客户端还没有通用的外部加密提供者接口。
-客户端没有运行时加密补丁加载器。
-
-把同一份密封密钥数据移动到另一种本机存储，不会改变选中的线上 profile。私钥保管与
-本地 Provider 选择仍由 LicoUp 负责；线上可观测的 profile 与协商规则属于固定的
-Lico Arc Protocol Line。当前存储接口仍可以把密钥数据返回原生核心，因此不能把系统
-存储直接描述成所有协议密钥都由硬件保护或不可导出的证明。平台支持声明必须有当前
-测量证据。
-
-## 数据边界
-
-```mermaid
-sequenceDiagram
-    participant A as 客户端 A
-    participant R as 兼容且不可信的通讯站
-    participant B as 客户端 B
-    A->>A: 用户选择 B 并批准一次内容
-    A->>A: 为 B 加密
-    A->>R: 五字段 Lico Arc 信封
-    R->>B: 转发不透明受保护载体
-    B->>B: 认证、检查新鲜性/重放并解密
-```
-
-中转边界只是运输适配，不是客户端与服务端之间的信任关系。当前预览只与对端
-端点配对并协商；稳定实现则必须执行一条固定 Lico Arc Protocol Line 的
-Pairwise Protection 与协商语义。选择中转地址或使用它的投递接口，不代表
-LicoUp 与中转端配对，不会使中转端成为身份权威，也不会把任何安全决策委托给它。
-
-Lico Arc Protocol 拥有线上可观测的 Pairwise Protection、Generic Message、
-Reliable Exchange、协商与 Transport Profile 契约。LicoUp 拥有它们的本地执行、
-私钥、Provider 配置、明文、历史、备份、用户信任、审批和本地效果。当前正在
-退役的端点保护预览不是 Lico Arc Profile，也不会保留为未来兼容面。
-
-当前客户端自有 adapter 固定候选 `licoarc.relay.v1` 外层契约。公开对象准确
-包含 `contractVersion`、`envelopeId`、`mailboxId`、`ciphertext` 和
-`expiresAt`；客户端拒绝未知字段与不受支持版本。加密载体把这些路由字段绑定为
-认证数据，并把私有头与受保护内容保留在密文字段内。
-
-BadTower HTTP adapter 只有四项运输操作：租约一个 mailbox、发送一个信封、
-接收有界信封集合以及删除一个信封。该 adapter 是 LicoUp 自有实现边界，不是
-通讯站 SDK、协议权威或可信产品集成。一次有界本机验收已经用两套全新初始化
-端点，通过实际 BadTower 候选验证这条路径。准确验证与发布边界见
-[状态文档](../STATUS.zh-CN.md)。
-
-客户端把中转端的所有输出都视为攻击者可控输入。LicoUp 从不接受来自中转端
-的加密算法、密钥、信任根或安全策略。中转端报告的投递回执、租约、时间和
-队列状态都只是运输提示，不能证明对端身份、数据包新鲜性、未被重放、完整性
-或最终接收。LicoUp 依据端点持有的端到端状态作出这些判断；只有对端认证的
-协议状态能够支持最终接收结论时，客户端才接受最终回执。
-
-客户端遵守以下规则：
-
-- 本地路径、日志、历史、用量记录、凭据和原始运行时数据留在设备上。
-- 默认客户端场景不会把敏感运行时数据或用户内容明文发送给服务端。
-- 可选的外部 MCP 请求只能包含受保护一次性确认中展示的准确正文和文件。HTTPS 保护传输，
-  但指定的外部服务可以读取用户批准的内容。
-- 如果没有针对外部服务的准确确认，受保护内容离开客户端时必须是密文，并发给指定的
-  对端客户端，除非你选择了 Telegram 等外部通讯软件作为你的可信通道。
-- 发送端先加密，再进行网络传输；接收端先认证、校验，再使用内容。
-- 通讯站不在可信客户端边界内。客户端安全不依赖通讯站的存储策略或运营承诺。
-- 只有密文和最少路由字段可以跨越通讯站边界。私钥、本地信任与审批策略、协议定义的
-  新鲜性和防重放状态，以及经过认证的最终回执状态仍由端点持有。
-- 密钥保存在可用的系统安全存储中，或明确使用仅内存存储。平台支持时，使用受保护密钥需要用户确认。
-- 日志和测试报告只保留安全摘要，不保存原始用户内容。
+---
 
 ## 仓库结构
 
 | 路径 | 用途 |
-| --- | --- |
-| `apps/desktop/` | Flutter 桌面与移动客户端 |
-| `crates/licoup-native/` | Rust 客户端核心和命令 |
-| `packages/contracts/client/` | 客户端自有 Schema |
+|:---|:---|
+| `apps/desktop/` | Flutter 桌面与移动客户端（第 1 层与部分第 2 层） |
+| `crates/licoup-native/` | Rust 客户端核心、命令与平台桥接（第 3 层与第 4 层） |
+| `crates/licoup-conversation/` | （目标占位，尚非 workspace 成员）抽取后的 Conversation 领域 crate |
+| `crates/licoup-agent-runtime/` | （目标占位，尚非 workspace 成员）抽取后的 Agent Runtime 与 adapter crate |
+| `crates/licoup-platform-bridges/` | 原生平台 ABI 与句柄管理（第 4 层） |
+| `crates/licoup-endpoint-core/` | 端点身份、密钥保管与加密基础 |
+| `crates/licoup-protocol-bindings/` | 协议类型定义 |
+| `crates/licoup-client-state/` | 客户端状态管理契约 |
+| `crates/licoup-agent-adapters/` | 智能体适配器 trait 定义 |
+| `crates/lico-catalog-convergence/` | 目录收敛逻辑 |
+| `packages/contracts/client/` | 客户端自有 Schema（第 2 层） |
 | `tests/` | 使用合成数据的契约和边界测试 |
 | `tools/` | 可复用的构建与验证工具 |
 
 计划、临时脚本、本地技能、原始证据和运行时数据属于本地工作材料，不进入公开源码。
+
+---
+
+## 当前架构债务与迁移状态
+
+> 本节记录已知结构性问题与已批准的迁移路径。
+> 它与活跃代码库同步维护，并随迁移推进更新。
+
+### 已知结构性问题（截至 2026-08-24）
+
+| 问题 | 严重度 | 位置 | 影响 |
+|:---|:---|:---|:---|
+| **上帝对象 `ClientController`** | 关键 | `apps/desktop/lib/src/application/controller/` | 159 行构造函数、36 个参数；单个 `ChangeNotifier` 上 18 个 mixin（继承链共 24 个）；36 个 UI 文件依赖它。无法隔离测试。 |
+| **以 mixin 充当分解** | 高 | `application/controller/`、`application/features/agents/conversation/` | 应用全部 24 个 mixin 位于同一条继承链；共享 `this` 意味着没有封装。 |
+| **单体 Rust crate** | 高 | `crates/licoup-native/`（约 299K 行） | `domain/` 48 项、`core/` 52 项、`platform/` 85 项（72K 行）。编译慢、边界不清。最大文件：`client_conversation/store.rs`（6.6K 行）、`ffi/commands/mod.rs`（5.2K 行）。 |
+| **契约层膨胀** | 中 | `apps/desktop/lib/src/contracts/`（93 个文件, 15.7K 行） | 模型、接口、解析逻辑与生成代码混在同一层。 |
+| **巨型 Widget 文件** | 中 | `frontend/features/` | `canonical_group_conversation_pane.dart`（2603 行）、`agent_conversation_workspace.dart`（1390 行）。 |
+| **残留后端层** | 低 | `apps/desktop/lib/src/backend/`（2.1K 行） | 太薄，无法提供真正抽象；还会在 Dart 中伪造领域事件（`dispatch.lane.bound`）。 |
+| **手工 JSON-RPC 方法面** | 高 | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | 方法名在两侧手工重复（Rust 25 个 vs Dart 23 个；两个方法从 Dart 不可达）；codegen 只覆盖 FFI 数据类型，不覆盖 stdio 帧。Dart 部分调用按 argv 形状嗅探路由。 |
+
+### 目标架构（迁移终点）
+
+#### 基本原则：CLI 即产品，Flutter 是显示适配器
+
+Rust 原生宿主（`licoup-cli`）是**完整的语义客户端**，可独立于任何 UI 运行。
+它拥有全部会话状态、智能体运行时、持久化、授权与协议执行。Flutter 的唯一职责是
+**发送用户事件**并**忠实渲染投影状态**。Flutter 不包含任何业务逻辑。
+
+这一架构直接支撑产品的 IM 终局：今天处理本机智能体会话的同一个 Rust 宿主，
+未来也将通过 Lico Arc 处理来自远端对等端点的消息——Flutter 无需改动。
+
+精确的 L1-L6 接口规范见 [CONVERSATION-VERTICAL-CONTRACT.md](CONVERSATION-VERTICAL-CONTRACT.md)。
+
+#### Flutter 应用——薄显示壳（`apps/desktop/lib/src/`）
+
+```
+src/
+├── events/              # L1: 用户手势 → 类型化 ConversationCommand 映射
+├── projections/         # 投影流解码器（由 schema codegen 生成）
+├── display/             # L6: 纯渲染投影状态
+│   ├── conversation/    # 会话消息列表、composer、流式
+│   ├── agent_hub/       # 智能体发现与管理显示
+│   ├── settings/        # 设置面板显示
+│   ├── targets/         # 目标列表显示
+│   └── ...              # 其他显示面板
+├── protocol/            # L2: stdio 帧管理、连接状态
+└── shared/              # 可复用组件、主题、l10n
+```
+
+**关键决策：**
+- **无需状态管理框架**——Flutter 不管理状态。它消费 Rust 的 `Stream<Projection>`
+  并渲染。`StreamBuilder` + `ValueListenableBuilder` 已经足够。
+- **保留 stdio JSON-RPC**——CLI 进程独立性是核心产品特性（宿主可在 GUI 崩溃后存活）。
+  从共享 schema 增加 **codegen** 以强制类型安全。
+- **上帝控制器分解**——替换为薄事件发送器 + 按领域的投影流消费者。不是 24 个 mixin，
+  也不是 Riverpod providers——只是流。
+- **Flutter 无业务逻辑**——发送按钮禁用？从投影的 `TurnState` 读取。永不推断，
+  永不伪造。
+
+#### Rust Crate（目标分解）
+
+```
+crates/
+├── licoup-native/              # 宿主二进制 + FFI 入口
+│   ├── src/bin/                # licoup-cli、lico-gateway、lico-agent 等
+│   └── src/ffi/                # 移动平台 FFI（Android/iOS）
+├── licoup-conversation/        # L3: Conversation 领域（状态机、事件、投影）
+├── licoup-agent-runtime/       # L4+L5: 智能体适配器 + settlement 仲裁器
+├── licoup-endpoint-core/       # 端点身份、密钥派生、加密
+├── licoup-protocol-bindings/   # L2: 线协议类型 + 帧 codec
+├── licoup-client-state/        # 客户端状态管理（配额、持久化）
+├── licoup-platform-bridges/    # 系统桥接（Keychain、WinCred 等）
+├── licoup-agent-adapters/      # 智能体适配器 trait 定义
+└── lico-catalog-convergence/   # 目录管理
+```
+
+**关键决策：**
+- `licoup-conversation` 独占 L3：Conversation 状态机、Event store、投影发射。
+  与来源无关（本机与未来远端事件以同样方式处理）。
+- `licoup-agent-runtime` 独占 L4+L5：适配器调度、协议转换、settlement。
+  适配器**上报**信号；settlement **裁决**结果。
+- `licoup-native` 仍是组合这些 crate 的二进制宿主。
+- crate 边界强制：conversation 逻辑不能依赖适配器细节，适配器不能决定会话结果。
+
+### Flutter 渲染性能——维护要求
+
+LicoUp 是桌面级智能体会话客户端，含流式内容、实时状态更新与复杂布局。
+Flutter 渲染性能是一等架构关注点。
+
+#### 强制实践
+
+1. **先测量再优化**：始终在目标硬件上以 `--profile` 模式分析。用 Flutter DevTools
+   Timeline 视图定位真实瓶颈（build、layout 或 paint 阶段）。
+
+2. **最小化组件重建范围**：激进使用 `const` 构造器；把大组件拆成聚焦子组件，
+   只让数据相关的子树重建。把组件绑定到最窄的投影状态切片
+   （按领域投影使用 `ValueListenableBuilder` / `ListenableBuilder`），
+   只重建精确变更的状态切片。
+
+3. **保持 `build()` 廉价**：build 中无副作用、无 I/O、无重计算。每个 build 方法
+   目标 < 100 行。复杂布局拆成独立 Widget。
+
+4. **使用 `RepaintBoundary`**：隔离昂贵绘制区域（会话消息列表、流式内容区、
+   图表/用量面板），避免重绘级联。
+
+5. **长列表懒构建**：会话历史始终用 `ListView.builder` / `SliverList` + `itemBuilder`。
+   图片按显示尺寸解码（`cacheWidth`/`cacheHeight`）。
+
+6. **关键路径基准**：用 `flutter_driver` / `integration_test` + `Timeline.summary`
+   的集成测试跟踪帧构建时间、光栅化卡顿与启动耗时。
+
+#### 工具
+
+| 工具 | 用途 | 用法 |
+|:---|:---|:---|
+| **Flutter DevTools 性能视图** | 帧时间线、重建计数、CPU 火焰图 | `flutter run --profile` 后打开 DevTools |
+| **PerformanceOverlay widget** | 屏幕上实时显示 UI/GPU 线程帧时长 | 在 debug/profile 构建中启用 |
+| **DevTools Widget 重建跟踪器** | 识别不必要重建的组件 | 启用 "Track Widget Rebuilds" |
+| **DevTools 内存视图** | 堆分析、泄漏检测、快照对比 | 长会话期间持续监控 |
+| **`flutter test --profile`** | CI 性能回归 | 以帧预算合规性把关 PR 合并 |
+| **Impeller**（Flutter 3.x 起默认） | 硬件加速渲染引擎 | 默认启用；必要时用 `--enable-impeller` 分析 |
+
+#### 性能预算
+
+| 指标 | 目标 | 测量 |
+|:---|:---|:---|
+| 帧构建时间 | < 8ms（面向 120fps 显示器） | DevTools Timeline |
+| 帧光栅化时间 | < 8ms | DevTools Timeline |
+| 冷启动到首帧 | 目标硬件上 < 2s | integration_test Timeline |
+| 会话消息流式 | 逐 token 渲染零卡顿 | 手动 profile + DevTools |
+| 每帧组件重建数 | 典型交互 < 50 个组件 | DevTools 重建跟踪器 |
+
+#### 何时排查
+
+- DevTools 时间线中任何超过 16ms 的帧
+- 会话流式渲染出现可见卡顿
+- 导航动画跌破 60fps
+- 单次会话期间内存增长 > 50MB
+
+---
+
+### 迁移策略
+
+迁移方向已定（见上方关键决策与
+[CONVERSATION-VERTICAL-CONTRACT.md](CONVERSATION-VERTICAL-CONTRACT.md)）；
+详细排序、任务边界与进度放在本地计划工作区，而不是本文档。
+
+1. **协议 codegen 优先**——扩展现有 `schemas/client_bridge` 生成管线，
+   覆盖两侧的 stdio 方法帧、命令与状态增量。stdio JSON-RPC 保留：
+   CLI 进程独立性是产品特性。不引入 flutter_rust_bridge，不引入第二条线路。
+
+2. **功能抽取**（逐功能、先抽最弱耦合）——先迁移 `settings`，然后 `agent_hub`、
+   `skill_hub`、`targets`，最后 `conversation`（最复杂，放最后）。每次迁移：
+   抽取 events/projections → 把 widgets 移入 `display/` → 删除旧代码。
+   不引入状态管理框架：按领域投影消费者基于 `ChangeNotifier`/`Stream` 原语。
+
+3. **Rust crate 抽取**——把 `licoup-conversation` 与 `licoup-agent-runtime`
+   加入 workspace（当前是 workspace 外的占位目录），从 `licoup-native/src/domain/`
+   抽取 L3、从 `licoup-native/src/platform/` 抽取 L4+L5，把 `licoup-native`
+   缩减为二进制宿主 + FFI 外壳。
+
+旧目录树、架构验证器 allowlist 与目标树必须按已迁移功能原子切换；
+任何方向上的虚假"完成"声明都是缺陷。被取代的结构在同一变更中删除，
+绝不作为并行教义保留。

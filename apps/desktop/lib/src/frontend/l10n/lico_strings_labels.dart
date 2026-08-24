@@ -173,6 +173,7 @@ extension LicoStringsLabels on LicoStrings {
       'Mobile relay' => '移动中转',
       'Project archive' => '项目归档',
       'Ready' => '就绪',
+      'Runtime' => '运行时',
       'Secure Mesh' => '安全网格',
       'Settings' => '设置',
       'Skill Hub' => '技能中心',

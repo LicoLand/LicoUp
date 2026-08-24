@@ -3,7 +3,7 @@ use crate::platform::codex_app_server::limits::{
     INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome};
-use crate::platform::codex_app_server::protocol::CodexProtocol;
+use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -17,7 +17,7 @@ pub(super) fn config(params: Value, prompt: &str, session_id: &str) -> ProtocolC
     .unwrap()
 }
 
-pub(super) fn initialize(protocol: &mut CodexProtocol) -> Vec<ProtocolEffect> {
+pub(super) fn initialize(protocol: &mut CodexParser) -> Vec<ProtocolEffect> {
     protocol.handle_message(json!({
         "id": INITIALIZE_REQUEST_ID,
         "result": {
@@ -29,7 +29,7 @@ pub(super) fn initialize(protocol: &mut CodexProtocol) -> Vec<ProtocolEffect> {
     }))
 }
 
-pub(super) fn open_thread(protocol: &mut CodexProtocol) -> Vec<ProtocolEffect> {
+pub(super) fn open_thread(protocol: &mut CodexParser) -> Vec<ProtocolEffect> {
     protocol.handle_message(json!({
         "id": THREAD_REQUEST_ID,
         "result": {
@@ -47,7 +47,7 @@ pub(super) fn open_thread(protocol: &mut CodexProtocol) -> Vec<ProtocolEffect> {
     }))
 }
 
-pub(super) fn start_turn(protocol: &mut CodexProtocol) {
+pub(super) fn start_turn(protocol: &mut CodexParser) {
     let effects = protocol.handle_message(json!({
         "id": TURN_REQUEST_ID,
         "result": {
