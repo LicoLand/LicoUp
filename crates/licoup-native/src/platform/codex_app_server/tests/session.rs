@@ -1,5 +1,7 @@
 use super::support::{config, initialize, open_thread, sent_messages};
 use crate::platform::codex_app_server::config::ProtocolConfig;
+use crate::platform::codex_app_server::limits::THREAD_REQUEST_ID;
+use crate::platform::codex_app_server::model::ProtocolEffect;
 use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
 use serde_json::{Map, Value, json};
@@ -50,6 +52,50 @@ fn private_instructions_use_native_developer_channel_without_changing_prompt() {
     let turn_messages = sent_messages(open_thread(&mut protocol));
     assert_eq!(turn_messages[0]["params"]["input"][0]["text"], prompt);
     assert!(!turn_messages[0].to_string().contains(private));
+}
+
+#[test]
+fn stale_thread_resume_falls_back_to_thread_start_and_rebinds() {
+    let mut params = Map::new();
+    params.insert("sessionId".to_string(), json!("stale-thread-id"));
+    let mut protocol = CodexParser::new(config(Value::Object(params), "hello", "stale-thread-id"));
+    sent_messages(initialize(&mut protocol));
+
+    let effects = protocol.handle_message(json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {"code": -32000, "message": "thread not found: stale-thread-id"}
+    }));
+    let fallback = sent_messages(effects);
+    assert_eq!(fallback.len(), 1);
+    assert_eq!(fallback[0]["method"], "thread/start");
+    assert!(fallback[0]["params"].get("threadId").is_none());
+
+    let turn_messages = sent_messages(open_thread(&mut protocol));
+    assert_eq!(turn_messages.len(), 1);
+    assert_eq!(turn_messages[0]["method"], "turn/start");
+    assert_eq!(turn_messages[0]["params"]["threadId"], "thread-1");
+}
+
+#[test]
+fn resume_error_without_missing_marker_fails_loudly() {
+    let mut protocol = CodexParser::new(config(json!({}), "hello", "thread-9"));
+    sent_messages(initialize(&mut protocol));
+
+    let effects = protocol.handle_message(json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {"code": -32001, "message": "approval policy rejected"}
+    }));
+    let mut sends = 0;
+    let mut failure_code = None;
+    for effect in effects {
+        match effect {
+            ProtocolEffect::Send(_) => sends += 1,
+            ProtocolEffect::Fail(failure) => failure_code = Some(failure.code),
+            _ => {}
+        }
+    }
+    assert_eq!(sends, 0);
+    assert_eq!(failure_code.as_deref(), Some("codex_thread_open_failed"));
 }
 
 #[test]

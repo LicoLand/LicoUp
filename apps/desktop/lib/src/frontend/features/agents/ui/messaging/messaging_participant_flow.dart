@@ -260,6 +260,7 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
+    this.onCopyText,
   });
 
   /// Flow entries (after author grouping) shown before the user scrolls.
@@ -300,6 +301,10 @@ class MessagingParticipantFlow extends StatefulWidget {
   /// Optional owner for coordinating a floating child scroll surface with
   /// the transcript viewport.
   final ScrollController? scrollController;
+
+  /// Clipboard write routed through the platform boundary; message rows
+  /// expose an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
 
   @override
   State<MessagingParticipantFlow> createState() =>
@@ -506,6 +511,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               participantConversationIds: widget.participantConversationIds,
               primaryConversationId: widget.primaryConversationId,
             ),
+            onCopyText: widget.onCopyText,
           ),
         ),
       MessagingFlowProcess(:final item, :final active) => Padding(

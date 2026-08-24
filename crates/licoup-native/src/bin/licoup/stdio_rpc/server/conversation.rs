@@ -657,10 +657,22 @@ impl PersistentConversationRuntime {
 fn direct_turn_params(
     context: &licoup_native::domain::client_conversation::DirectTurnExecutionContext,
 ) -> Value {
+    // Assistant workflow guidance travels as harness-provided context inside
+    // the wire text. No adapter exposes a private-instruction channel, so the
+    // separate privateInstructions request field was un routable and every
+    // adapter failed closed on it.
+    let text = if let Some(instructions) = context.private_instructions() {
+        format!(
+            "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
+            instructions, context.source_content
+        )
+    } else {
+        context.source_content.clone()
+    };
     let mut params = json!({
         "agentId": context.agent_id,
         "agent": context.agent_id,
-        "text": context.source_content,
+        "text": text,
         "streamEvents": true,
         "timeoutMs": 0,
         "conversationId": context.turn.conversation_id,
@@ -668,9 +680,6 @@ fn direct_turn_params(
         "causationId": context.turn.source_event_id,
         "dispatchId": context.turn.id,
     });
-    if let Some(instructions) = context.private_instructions() {
-        params["privateInstructions"] = json!(instructions);
-    }
     for (key, value) in [
         ("sessionId", context.runtime_session_id.as_deref()),
         ("sourcePath", context.runtime_conversation_path.as_deref()),
@@ -1214,25 +1223,21 @@ mod tests {
         };
 
         let params = direct_turn_params(&context);
-        assert_eq!(params["text"], "exact user-authored text");
-        assert_eq!(
-            params["privateInstructions"].as_str(),
-            context.private_instructions()
-        );
-        assert!(
-            !params["text"]
-                .as_str()
-                .unwrap()
-                .contains(params["privateInstructions"].as_str().unwrap())
-        );
+        let text = params["text"].as_str().unwrap();
+        assert!(text.starts_with("<skills_instructions>\n"));
+        assert!(text.ends_with("exact user-authored text"));
+        let instructions = context.private_instructions().unwrap();
+        assert!(text.contains(instructions));
+        assert_eq!(params.get("privateInstructions"), None);
 
         let mut ordinary = context;
         ordinary.is_assistant = false;
-        assert!(
-            direct_turn_params(&ordinary)
-                .get("privateInstructions")
-                .is_none()
+        let ordinary_params = direct_turn_params(&ordinary);
+        assert_eq!(
+            ordinary_params["text"].as_str().unwrap(),
+            "exact user-authored text"
         );
+        assert!(ordinary_params.get("privateInstructions").is_none());
     }
 
     #[test]
