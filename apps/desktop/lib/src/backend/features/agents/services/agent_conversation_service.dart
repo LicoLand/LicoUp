@@ -587,6 +587,7 @@ class AgentConversationService implements AgentConversationLane {
       ..._bindDispatchFields(bind),
       ..._acceptanceDispatchFields(bind),
     };
+    var streamSessionId = sessionId.trim();
 
     await for (final line in runner.streamCliJsonLinesWithStdin([
       'agent',
@@ -598,6 +599,14 @@ class AgentConversationService implements AgentConversationLane {
       'true',
     ], jsonEncode(request))) {
       final eventName = (line['event'] ?? '').toString();
+      final lineSession = (line['sessionId'] ?? '').toString().trim();
+      // One native stream is one native turn: the first frame that declares
+      // the session binds it, and later frames that omit identity (driver
+      // chunk events) inherit the stream scope instead of fragmenting the
+      // projection across the requested session id.
+      if (lineSession.isNotEmpty) {
+        streamSessionId = lineSession;
+      }
       if (eventName == 'done' ||
           (line.containsKey('ok') &&
               (eventName.isEmpty || eventName == 'done'))) {
@@ -605,7 +614,7 @@ class AgentConversationService implements AgentConversationLane {
             (line['nativeSessionId'] ??
                     line['threadId'] ??
                     line['sessionId'] ??
-                    sessionId)
+                    streamSessionId)
                 .toString()
                 .trim();
         yield AgentDispatchEvent(
@@ -620,7 +629,9 @@ class AgentConversationService implements AgentConversationLane {
       }
       yield AgentDispatchEvent(
         kind: eventName.isEmpty ? 'dispatch.lane.event' : eventName,
-        sessionId: (line['sessionId'] ?? sessionId).toString(),
+        sessionId: streamSessionId.isEmpty
+            ? sessionId
+            : (line['sessionId'] ?? streamSessionId).toString(),
         turnId: (line['turnId'] ?? '').toString(),
         payload: line['payload'] is Map<String, dynamic>
             ? <String, dynamic>{

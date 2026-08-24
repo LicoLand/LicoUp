@@ -21,6 +21,7 @@ enum ConversationProjectionEventKind {
   turnStarted('dispatch.turn.started'),
   turnAccepted('agent.turn.accepted'),
   turnProcessing('agent.turn.processing'),
+  userMessageCreated('conversation.user.message'),
   messageChunk('agent.message.chunk'),
   messageCompleted('agent.message.completed'),
   turnCompleted('dispatch.turn.completed'),
@@ -203,6 +204,8 @@ final class ConversationStateHolder extends ChangeNotifier {
           participantLabel,
           participantRole,
         );
+      case ConversationProjectionEventKind.userMessageCreated:
+        _applyUserMessageDelta(scope.process, event);
       case ConversationProjectionEventKind.messageChunk ||
           ConversationProjectionEventKind.messageCompleted:
         _applyMessageDelta(
@@ -492,6 +495,29 @@ void _applyMessageDelta(
     participantAgentId: participantAgentId,
     participantLabel: participantLabel,
     participantRole: participantRole,
+  );
+}
+
+/// Mirrors the native submitted-user-message delta onto the blackboard. The
+/// text and role arrive from Rust; Flutter never synthesizes a user message
+/// outside this delta path.
+void _applyUserMessageDelta(
+  ConversationTurnProcessState state,
+  _ProjectedConversationEvent event,
+) {
+  _applyLifecyclePrefix(state, event.payload);
+  final text = _text(event.payload['text']);
+  if (text.isEmpty) return;
+  final identity = '${state.turnId}-user';
+  state.appendEvidence(
+    AgentConversationMessage(
+      id: identity,
+      role: 'user',
+      text: text,
+      createdAt: event.createdAt,
+      layer: AgentConversationSemanticLayer.thread,
+      stableIdentity: identity,
+    ),
   );
 }
 

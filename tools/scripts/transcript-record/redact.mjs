@@ -1,20 +1,40 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { assertAdapterAndScenario, deepRedact, parseJson, privacyFindings, redactionSecrets, schemaVersion, transcriptHash } from "./shared.mjs";
+import {
+  allowedSources,
+  assertAdapterAndScenario,
+  deepRedact,
+  parseJson,
+  privacyFindings,
+  redactionSecrets,
+  replayFrames,
+  schemaVersion,
+  transcriptHash,
+} from "./shared.mjs";
 
 const [inputArg, outputArg] = process.argv.slice(2);
 if (!inputArg || !outputArg) throw new Error("usage: redact.mjs <private-raw.json> <candidate.json>");
 const input = parseJson(resolve(inputArg));
 if (input.schemaVersion !== schemaVersion) throw new Error("transcript_schema_invalid");
 assertAdapterAndScenario(input.adapterId, input.scenario);
-if (input.provenance?.source !== "developer-run-real-agent-session" || input.provenance?.taskContent !== "synthetic-engineering-only") {
+if (!allowedSources.includes(input.provenance?.source) || input.provenance?.taskContent !== "synthetic-engineering-only") {
   throw new Error("transcript_provenance_invalid");
 }
-const workspace = input.invocation?.cwd;
-const document = deepRedact(input, workspace);
+const document = deepRedact({
+  schemaVersion: input.schemaVersion,
+  adapterId: input.adapterId,
+  scenario: input.scenario,
+  provenance: input.provenance,
+  invocation: {
+    interface: "native-history-catalog",
+    readOnly: true,
+  },
+  frames: replayFrames(input.adapterId, input.scenario),
+  exit: { code: 0, signal: null },
+});
 document.provenance = {
-  source: "developer-run-real-agent-session",
+  source: input.provenance.source,
   taskContent: "synthetic-engineering-only",
   redacted: true,
   humanReviewed: false,

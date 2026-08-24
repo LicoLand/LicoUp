@@ -5,6 +5,7 @@
 //! operation before it serves conversation work.
 
 pub mod client_conversation;
+pub mod projection;
 pub mod state_machine;
 pub mod store;
 
