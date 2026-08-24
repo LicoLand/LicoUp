@@ -1027,6 +1027,9 @@ extension LicoStringsLabels on LicoStrings {
   String get conversationId => isChinese ? '会话 ID' : 'Conversation ID';
   String get conversationIdCopied =>
       isChinese ? '会话 ID 已复制' : 'Conversation ID copied';
+  String get conversationCopyMessage => isChinese ? '复制消息' : 'Copy message';
+  String get conversationMessageCopied =>
+      isChinese ? '消息已复制' : 'Message copied';
   String get edit => isChinese ? '编辑' : 'Edit';
   String get llmGatewayLaunchAtLogin => isChinese ? '开机自启动' : 'Launch at login';
   String get llmGatewayLaunchAtLoginDisabled =>

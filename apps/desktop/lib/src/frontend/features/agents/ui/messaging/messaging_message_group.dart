@@ -11,6 +11,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
@@ -37,6 +38,7 @@ class MessagingMessageGroup extends StatelessWidget {
     required this.adapter,
     this.runtimeProfile,
     this.conversationId = '',
+    this.onCopyText,
   });
 
   final bool authorIsUser;
@@ -47,6 +49,10 @@ class MessagingMessageGroup extends StatelessWidget {
   final TargetCandidate target;
   final AgentRenderAdapter adapter;
   final AgentParticipantRuntimeProfile? runtimeProfile;
+
+  /// Clipboard write routed through the platform boundary; message rows
+  /// expose an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
 
   /// This author's native/local conversation id, revealed on message hover
   /// immediately before the timestamp (agent bubbles only).
@@ -157,6 +163,7 @@ class MessagingMessageGroup extends StatelessWidget {
             authorIsUser: authorIsUser,
             assistantStyle: isAssistant,
             conversationId: conversationId,
+            onCopyText: onCopyText,
           ),
           if (index != messages.length - 1)
             const SizedBox(height: LicoContentSpacing.compact),
@@ -195,6 +202,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     required this.authorIsUser,
     required this.assistantStyle,
     this.conversationId = '',
+    this.onCopyText,
   });
 
   final AgentConversationMessage message;
@@ -207,6 +215,10 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   final bool assistantStyle;
   final String conversationId;
 
+  /// Clipboard write routed through the platform boundary; the hover meta row
+  /// shows an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
+
   @override
   State<_MessagingGroupMessageRow> createState() =>
       _MessagingGroupMessageRowState();
@@ -217,6 +229,43 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
 
   DateTime? get _messageTime =>
       parseAgentConversationTimestamp(widget.message.createdAt);
+
+  Future<void> _copyMessageText(BuildContext context) async {
+    final write = widget.onCopyText;
+    if (write == null) return;
+    final text = widget.message.text.trim();
+    if (text.isEmpty) return;
+    await write(text);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      appleGlassSnackBar(
+        context: context,
+        message: LicoStrings.of(context).conversationMessageCopied,
+      ),
+    );
+  }
+
+  Widget _buildCopyAction(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Tooltip(
+      message: strings.conversationCopyMessage,
+      waitDuration: LicoMotion.tooltipWait,
+      child: InkWell(
+        key: const Key('messaging-message-copy-action'),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
+        onTap: () => _copyMessageText(context),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Icon(
+            Icons.copy_outlined,
+            size: 13,
+            color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildMessageColumn(BuildContext context, Widget bubble) {
     final colors = context.licoColors;
@@ -250,6 +299,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (conversationId.isNotEmpty) ...[
+                    const SizedBox(width: 6),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 220),
                       child: Tooltip(
@@ -329,6 +379,25 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             padding: bubblePadding,
             child: content,
           );
+    final copyOverlay = widget.onCopyText == null
+        ? bubble
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              bubble,
+              Positioned(
+                top: 4,
+                right: widget.authorIsUser ? 4 : null,
+                left: widget.authorIsUser ? null : 4,
+                child: AnimatedOpacity(
+                  opacity: _hovered ? 1 : 0,
+                  duration: context.motion(LicoMotion.micro),
+                  curve: LicoMotion.standard,
+                  child: _buildCopyAction(context),
+                ),
+              ),
+            ],
+          );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -341,12 +410,12 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                   constraints: BoxConstraints(
                     maxWidth: widget.adapter.userBubble.maxWidth,
                   ),
-                  child: _buildMessageColumn(context, bubble),
+                  child: _buildMessageColumn(context, copyOverlay),
                 ),
               )
             : Align(
                 alignment: Alignment.centerLeft,
-                child: _buildMessageColumn(context, bubble),
+                child: _buildMessageColumn(context, copyOverlay),
               ),
       ),
     );

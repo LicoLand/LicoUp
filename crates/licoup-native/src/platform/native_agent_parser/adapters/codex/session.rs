@@ -7,6 +7,29 @@ use crate::platform::codex_app_server::model::{
 };
 use serde_json::{Map, Value, json};
 
+/// A resume error means "retry as a fresh thread" only when the app-server
+/// reports the requested thread as missing; transient or policy errors must
+/// still fail loudly.
+fn resume_target_missing(message: &Value) -> bool {
+    let text = message
+        .get("error")
+        .map(|error| {
+            let code = error.get("code").map(|c| c.to_string()).unwrap_or_default();
+            let message = error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_lowercase();
+            format!("{code} {message}")
+        })
+        .unwrap_or_default();
+    text.contains("not found")
+        || text.contains("unknown thread")
+        || text.contains("no such")
+        || text.contains("does not exist")
+        || text.contains("missing thread")
+}
+
 impl CodexParser {
     pub(super) fn handle_initialize_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
@@ -69,6 +92,15 @@ impl CodexParser {
 
     pub(super) fn handle_thread_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
+            if self.config.is_resume() && resume_target_missing(message) {
+                // A stale persisted thread id (app-server restart, pruned
+                // rollout) must not kill the turn: fall back to a fresh
+                // thread/start once and rebind to the returned thread id.
+                // Other resume failures stay loud.
+                self.config.requested_session_id = String::new();
+                self.config.session_path = None;
+                return vec![ProtocolEffect::Send(self.thread_request())];
+            }
             self.phase = ProtocolPhase::Finished;
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "codex_thread_open_failed",
