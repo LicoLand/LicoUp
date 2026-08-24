@@ -175,17 +175,18 @@ fn resolve_approval_response(params: &Value) -> anyhow::Result<Value> {
         .and_then(Value::as_str)
         .unwrap_or_default();
     let allow = result.get("decision").and_then(Value::as_str) == Some("allow");
-    if agent_id != "hermes" || token.is_empty() {
+    if !matches!(agent_id, "hermes" | "claude-code") || token.is_empty() {
         return Ok(result);
     }
-    let adapter_resume = match crate::platform::hermes_resolve_parked_permission(token, allow) {
-        Ok(resume) => resume,
-        Err(code) => json!({
-            "ok": false,
-            "code": code,
-            "failClosed": true,
-        }),
-    };
+    let adapter_resume =
+        match crate::platform::resolve_native_agent_interaction_approval(token, allow) {
+            Ok(resume) => resume,
+            Err(code) => json!({
+                "ok": false,
+                "code": code,
+                "failClosed": true,
+            }),
+        };
     if let Some(object) = result.as_object_mut() {
         object.insert("adapterResume".to_string(), adapter_resume);
     }

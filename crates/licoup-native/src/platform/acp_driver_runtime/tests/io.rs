@@ -60,14 +60,14 @@ fn stdout_reader_reconstructs_fragmented_and_exact_boundary_frames() {
     input.extend_from_slice(&fragmented_frame);
 
     read_protocol_messages(BufReader::new(Cursor::new(input)), None, sender);
-    let first = match receiver.recv().unwrap() {
-        super::super::events::TransportEvent::Message(message) => message,
+    let first: Value = match receiver.recv().unwrap() {
+        super::super::events::TransportEvent::Frame(line) => serde_json::from_slice(&line).unwrap(),
         other => panic!("expected the exact-boundary frame, got {other:?}"),
     };
     assert_eq!(first["id"], 7);
     assert_eq!(first["text"].as_str().unwrap().len(), exact_pad);
-    let second = match receiver.recv().unwrap() {
-        super::super::events::TransportEvent::Message(message) => message,
+    let second: Value = match receiver.recv().unwrap() {
+        super::super::events::TransportEvent::Frame(line) => serde_json::from_slice(&line).unwrap(),
         other => panic!("expected the fragmented frame, got {other:?}"),
     };
     assert_eq!(second["id"], 8);
@@ -85,7 +85,9 @@ fn stdout_reader_blocks_at_capacity_and_delivers_every_message_in_order() {
     let reader = thread::spawn(move || read_protocol_messages(Cursor::new(input), None, sender));
     for id in 0..LINE_COUNT {
         let message = match receiver.recv_timeout(Duration::from_secs(2)) {
-            Ok(super::super::events::TransportEvent::Message(message)) => message,
+            Ok(super::super::events::TransportEvent::Frame(line)) => {
+                serde_json::from_slice::<Value>(&line).unwrap()
+            }
             other => panic!("expected message {id} in order, got {other:?}"),
         };
         assert_eq!(message["id"], id);

@@ -4,7 +4,7 @@ use super::http;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use url::Url;
 
@@ -19,10 +19,14 @@ pub(in crate::platform) enum ControlDisposition {
     TransportUnavailable,
 }
 
-#[derive(Clone, Debug)]
+pub(in crate::platform) type ControlFailureObserver =
+    Arc<dyn Fn(http::HttpFailure) + Send + Sync + 'static>;
+
+#[derive(Clone)]
 struct ActiveTurn {
     abort_url: String,
     generation: u64,
+    failure_observer: Option<ControlFailureObserver>,
 }
 
 pub(in crate::platform) struct ActiveTurnGuard {
@@ -41,6 +45,7 @@ pub(in crate::platform) fn register(
     driver_id: &str,
     attach_url: &str,
     session_id: &str,
+    failure_observer: Option<ControlFailureObserver>,
 ) -> Result<ActiveTurnGuard, ()> {
     if driver_id.is_empty()
         || driver_id.len() > 64
@@ -61,6 +66,7 @@ pub(in crate::platform) fn register(
         ActiveTurn {
             abort_url,
             generation,
+            failure_observer,
         },
     );
     Ok(ActiveTurnGuard { key, generation })
@@ -70,18 +76,23 @@ pub(in crate::platform) fn cancel(driver_id: &str, session_id: &str) -> ControlD
     if driver_id.is_empty() || session_id.is_empty() {
         return ControlDisposition::SessionUnavailable;
     }
-    let abort_url = active_turns().lock().ok().and_then(|turns| {
+    let active_turn = active_turns().lock().ok().and_then(|turns| {
         turns
             .get(&(driver_id.to_owned(), session_id.to_owned()))
-            .map(|turn| turn.abort_url.clone())
+            .cloned()
     });
-    let Some(abort_url) = abort_url else {
+    let Some(active_turn) = active_turn else {
         return ControlDisposition::NoActiveTurn;
     };
-    match http::post_json(&abort_url, &json!({}), CONTROL_TIMEOUT) {
+    match http::post_json(&active_turn.abort_url, &json!({}), CONTROL_TIMEOUT) {
         Ok(response) if accepted(&response) => ControlDisposition::Accepted,
         Ok(_) => ControlDisposition::NoActiveTurn,
-        Err(_) => ControlDisposition::TransportUnavailable,
+        Err(failure) => {
+            if let Some(observer) = active_turn.failure_observer {
+                observer(failure);
+            }
+            ControlDisposition::TransportUnavailable
+        }
     }
 }
 
@@ -182,6 +193,7 @@ mod tests {
             "test-serve-driver",
             &format!("http://{address}"),
             "session-1",
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -194,5 +206,45 @@ mod tests {
             cancel("test-serve-driver", "session-1"),
             ControlDisposition::NoActiveTurn
         );
+    }
+
+    #[test]
+    fn control_http_failure_is_projected_to_the_active_turn_owner() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let _ = read_complete_request(&mut stream);
+            stream
+                .write_all(
+                    b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                )
+                .unwrap();
+        });
+        let observed = Arc::new(Mutex::new(None));
+        let projected = Arc::clone(&observed);
+        let guard = register(
+            "test-failing-serve-driver",
+            &format!("http://{address}"),
+            "session-2",
+            Some(Arc::new(move |failure| {
+                *projected.lock().unwrap() = Some(failure);
+            })),
+        )
+        .unwrap();
+
+        assert_eq!(
+            cancel("test-failing-serve-driver", "session-2"),
+            ControlDisposition::TransportUnavailable
+        );
+        server.join().unwrap();
+        assert_eq!(
+            *observed.lock().unwrap(),
+            Some(http::HttpFailure::Status(500))
+        );
+        drop(guard);
     }
 }

@@ -12,6 +12,7 @@ void main() {
   test('stages advance monotonically and regressions are no-ops', () {
     final s = state();
     expect(s.stage, ConversationTurnProcessStage.submitted);
+    s.advanceStage('submitted');
     s.advanceStage('accepted');
     s.advanceStage('processing');
     s.advanceStage('processing');
@@ -36,11 +37,11 @@ void main() {
     expect(s.stage, ConversationTurnProcessStage.submitted);
   });
 
-  test('a coalesced later stage fills every required predecessor', () {
+  test('a singleton later stage does not invent missing predecessors', () {
     final s = state();
     s.advanceStage('processing');
     expect(s.stage, ConversationTurnProcessStage.processing);
-    expect(s.observedStages, ['submitted', 'accepted', 'processing']);
+    expect(s.observedStages, ['processing']);
   });
 
   test('failed is terminal', () {
@@ -51,7 +52,52 @@ void main() {
     s.advanceStage('processing');
     s.advanceStage('completed');
     expect(s.stage, ConversationTurnProcessStage.failed);
-    expect(s.observedStages, ['submitted', 'accepted']);
+    expect(s.observedStages, ['accepted']);
+  });
+
+  test('an explicit reply-backed success renders all five Rust stages', () {
+    final s = state();
+    for (final stage in [
+      'submitted',
+      'accepted',
+      'processing',
+      'responding',
+      'completed',
+    ]) {
+      s.advanceStage(stage);
+    }
+    s.setReplyText('complete reply', createdAt: '2026-08-07T00:00:01Z');
+
+    expect(s.stage, ConversationTurnProcessStage.completed);
+    expect(s.observedStages, [
+      'submitted',
+      'accepted',
+      'processing',
+      'responding',
+      'completed',
+    ]);
+    final lifecycle = s.projectedMessages(includeUser: false).first;
+    expect(
+      lifecycle.cardSubtitle,
+      'submitted,accepted,processing,responding,completed',
+    );
+    expect(s.projectedMessages(includeUser: false).last.text, 'complete reply');
+  });
+
+  test('failure locks the exact explicit Rust prefix', () {
+    final s = state();
+    for (final stage in ['submitted', 'accepted', 'processing']) {
+      s.advanceStage(stage);
+    }
+    s.advanceStage('failed');
+    s.advanceStage('responding');
+    s.advanceStage('completed');
+
+    expect(s.stage, ConversationTurnProcessStage.failed);
+    expect(s.observedStages, ['submitted', 'accepted', 'processing']);
+    final lifecycle = s.projectedMessages(includeUser: false).single;
+    expect(lifecycle.cardTitle, 'lifecycle.failed');
+    expect(lifecycle.cardSubtitle, 'submitted,accepted,processing');
   });
 
   test('evidence collapses consecutive identical steps', () {
@@ -103,7 +149,7 @@ void main() {
     final group = s.projectedMessages(includeUser: false);
     expect(group.any((message) => message.role == 'user'), isFalse);
     expect(group.first.cardType, 'lifecycle');
-    expect(group.first.cardSubtitle, 'submitted,accepted');
+    expect(group.first.cardSubtitle, 'accepted');
     expect(group.last.role, 'assistant');
     expect(group.last.text, 'hi');
     final oneToOne = s.projectedMessages();

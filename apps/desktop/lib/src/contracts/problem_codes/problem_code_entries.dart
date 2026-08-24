@@ -855,7 +855,7 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'hermes_acp_transport_capacity': ProblemCode(ProblemDomain.nativeAgent, 4039),
   'hermes_acp_turn_not_completed': ProblemCode(ProblemDomain.nativeAgent, 4040),
   'hermes_acp_write_failed': ProblemCode(ProblemDomain.nativeAgent, 4041),
-  'hermes_approval_park_disconnected': ProblemCode(
+  'native_interaction_transport_closed': ProblemCode(
     ProblemDomain.nativeAgent,
     4042,
   ),
@@ -1142,6 +1142,10 @@ const Map<String, ProblemCode> problemCodeEntries = {
     4141,
   ),
   'opencode_executable_missing': ProblemCode(ProblemDomain.nativeAgent, 4142),
+  'opencode_serve_executable_missing': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4142,
+  ),
   'opencode_serve_attach_probe_failed': ProblemCode(
     ProblemDomain.nativeAgent,
     4143,
@@ -1154,7 +1158,6 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'opencode_serve_start_failed': ProblemCode(ProblemDomain.nativeAgent, 4149),
   'opencode_serve_state_invalid': ProblemCode(ProblemDomain.nativeAgent, 4150),
   'opencode_serve_stop_failed': ProblemCode(ProblemDomain.nativeAgent, 4151),
-  'opencode_serve_unavailable': ProblemCode(ProblemDomain.nativeAgent, 4152),
   'opencode_serve_working_directory_invalid': ProblemCode(
     ProblemDomain.nativeAgent,
     4153,
@@ -1294,6 +1297,61 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'opencode_serve_session_busy': ProblemCode(ProblemDomain.nativeAgent, 4211),
   'opencode_serve_url_invalid': ProblemCode(ProblemDomain.nativeAgent, 4212),
   'pi_model_override_failed': ProblemCode(ProblemDomain.nativeAgent, 4213),
+  'opencode_serve_cleanup_failed': ProblemCode(ProblemDomain.nativeAgent, 4214),
+  'opencode_serve_control_capacity': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4215,
+  ),
+  'opencode_serve_control_failed': ProblemCode(ProblemDomain.nativeAgent, 4216),
+  'opencode_serve_deadline_exceeded': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4217,
+  ),
+  'opencode_serve_health_timeout': ProblemCode(ProblemDomain.nativeAgent, 4218),
+  'opencode_serve_message_failed': ProblemCode(ProblemDomain.nativeAgent, 4219),
+  'opencode_serve_session_failed': ProblemCode(ProblemDomain.nativeAgent, 4220),
+  'opencode_serve_session_invalid': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4221,
+  ),
+  'opencode_serve_sse_busy': ProblemCode(ProblemDomain.nativeAgent, 4222),
+  'opencode_serve_sse_closed': ProblemCode(ProblemDomain.nativeAgent, 4223),
+  'opencode_serve_sse_event_limit': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4224,
+  ),
+  'opencode_serve_sse_frame_too_large': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4225,
+  ),
+  'opencode_serve_sse_headers_too_large': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4226,
+  ),
+  'opencode_serve_sse_invalid_json': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4227,
+  ),
+  'opencode_serve_sse_invalid_utf8': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4228,
+  ),
+  'opencode_serve_sse_line_too_large': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4229,
+  ),
+  'opencode_serve_sse_request_failed': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4230,
+  ),
+  'opencode_serve_sse_unavailable': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4231,
+  ),
+  'opencode_serve_sse_url_invalid': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4232,
+  ),
   // LU-CB Catalog convergence
   'catalog_disabled': ProblemCode(ProblemDomain.catalog, 4700),
   'catalog_discovery_invalid': ProblemCode(ProblemDomain.catalog, 4701),

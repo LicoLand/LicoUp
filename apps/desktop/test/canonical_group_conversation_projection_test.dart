@@ -224,6 +224,58 @@ void main() {
     expect(session.messages[1].text, contains('failed/Unauthorized'));
   });
 
+  test('canonical group does not translate retired lifecycle aliases', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:agent',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:running', 0, 'metadata', '{"lifecycle":"running"}'),
+          _part('part:cancelled', 1, 'metadata', '{"lifecycle":"cancelled"}'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+    expect(session.messages.map((message) => message.cardType), [
+      'metadata',
+      'metadata',
+    ]);
+    expect(
+      session.messages.map((message) => message.cardTitle),
+      everyElement(isEmpty),
+    );
+  });
+
   test('canonical group history explains every non-message event', () {
     final conversation = ClientConversation.fromJson({
       'id': 'conversation:group',

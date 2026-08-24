@@ -596,19 +596,6 @@ mixin AgentConversationSessionController
     }
     conversationClearNativeSessionPending(agent.target);
     conversationPrimeNewConversationDraft();
-    final clearedScopes = conversationLiveScopeKeysForAgent(
-      agent.target,
-    ).toSet();
-    if (clearedScopes.isNotEmpty) {
-      conversationTurnProcessStateByScope = {
-        for (final entry in conversationTurnProcessStateByScope.entries)
-          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
-      };
-      liveConversationMessagesByScope = {
-        for (final entry in liveConversationMessagesByScope.entries)
-          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
-      };
-    }
     selectedConversationSessionId = '';
     beginNewConversationDraft(agent.target);
     lastError = '';

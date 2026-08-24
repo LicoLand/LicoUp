@@ -80,9 +80,7 @@ final class ConversationTurnProcessState {
   final String scopeKey;
 
   ConversationTurnProcessStage _stage = ConversationTurnProcessStage.submitted;
-  final List<String> _observedStages = [
-    ConversationTurnProcessStage.submitted.id,
-  ];
+  final List<String> _observedStages = [];
   final List<AgentConversationMessage> _evidence = [];
   final Map<String, _ConversationReply> _repliesByParticipant =
       <String, _ConversationReply>{};
@@ -130,20 +128,24 @@ final class ConversationTurnProcessState {
           createdAt: _createdAt,
           stableIdentity: '$turnId-user',
         ),
-      AgentConversationMessage(
-        id: '$turnId-lifecycle',
-        role: _stage == ConversationTurnProcessStage.failed ? 'error' : 'event',
-        text: _stage.id,
-        createdAt: _createdAt,
-        layer: AgentConversationSemanticLayer.execution,
-        cardType: 'lifecycle',
-        cardTitle: 'lifecycle.${_stage.id}',
-        cardSubtitle: _observedStages.join(','),
-        stableIdentity: '$turnId-lifecycle',
-        participantAgentId: _participantAgentId,
-        participantLabel: _participantLabel,
-        participantRole: _participantRole,
-      ),
+      if (_observedStages.isNotEmpty ||
+          _stage == ConversationTurnProcessStage.failed)
+        AgentConversationMessage(
+          id: '$turnId-lifecycle',
+          role: _stage == ConversationTurnProcessStage.failed
+              ? 'error'
+              : 'event',
+          text: _stage.id,
+          createdAt: _createdAt,
+          layer: AgentConversationSemanticLayer.execution,
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.${_stage.id}',
+          cardSubtitle: _observedStages.join(','),
+          stableIdentity: '$turnId-lifecycle',
+          participantAgentId: _participantAgentId,
+          participantLabel: _participantLabel,
+          participantRole: _participantRole,
+        ),
     ];
     final update = _runtimeUpdate;
     if (update != null) {
@@ -252,10 +254,8 @@ final class ConversationTurnProcessState {
     participantRole: reply.participantRole,
   );
 
-  /// Advance to a later lifecycle stage. Regressions are no-ops; `failed` is
-  /// terminal and locks the card. A later stage proves that every earlier
-  /// stage was crossed even when the transport coalesces their events, so the
-  /// observed prefix is filled monotonically instead of leaving visual holes.
+  /// Render one Rust-owned lifecycle transition. Regressions are no-ops and
+  /// `failed` is terminal; Flutter never invents missing predecessor stages.
   void advanceStage(String stage) {
     if (_stage == ConversationTurnProcessStage.failed) return;
     if (stage.trim().toLowerCase() == ConversationTurnProcessStage.failed.id) {
@@ -263,10 +263,8 @@ final class ConversationTurnProcessState {
       return;
     }
     final next = ConversationTurnProcessStage.of(stage);
-    if (next == null || next.index <= _stage.index) return;
-    for (var index = _stage.index + 1; index <= next.index; index++) {
-      _recordObservedStage(ConversationTurnProcessStage.values[index]);
-    }
+    if (next == null || next.index < _stage.index) return;
+    _recordObservedStage(next);
     _stage = next;
   }
 

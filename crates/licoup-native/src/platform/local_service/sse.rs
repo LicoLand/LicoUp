@@ -11,7 +11,7 @@ use super::concurrency::{BoundedGate, LimitFailure};
 use super::http::{self, HttpFailure};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum SseFailure {
+pub(in crate::platform) enum SseFailure {
     Busy,
     EventLimit,
     FrameTooLarge,
@@ -28,7 +28,11 @@ fn stream_gate() -> &'static BoundedGate {
     GATE.get_or_init(|| BoundedGate::new(MAX_SSE_STREAMS))
 }
 
-pub(super) fn watch_data<F>(url: &str, stop: &AtomicBool, on_data: F) -> Result<(), SseFailure>
+pub(in crate::platform) fn watch_data<F>(
+    url: &str,
+    stop: &AtomicBool,
+    on_data: F,
+) -> Result<(), SseFailure>
 where
     F: FnMut(&str) -> bool,
 {

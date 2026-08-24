@@ -3,6 +3,7 @@ compile_error!(
     "secure-mesh-acceptance-mock-kt is acceptance-only and cannot be compiled in a release profile"
 );
 
+pub mod contracts;
 pub mod core;
 pub mod domain;
 pub mod ffi;

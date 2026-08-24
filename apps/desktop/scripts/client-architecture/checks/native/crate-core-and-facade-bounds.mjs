@@ -1,7 +1,7 @@
 import path from "node:path";
 
 const rustCliRoot = "crates/licoup-native/src";
-const rustNativePublicModules = ["core", "domain", "ffi", "platform"];
+const rustNativePublicModules = ["contracts", "core", "domain", "ffi", "platform"];
 const rustNativePhysicalModuleDirs = [
   "crates/licoup-native/src/core",
   "crates/licoup-native/src/domain",

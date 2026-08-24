@@ -18,15 +18,20 @@ bool applyPersistentTurnProcessEvent({
   String participantRole = '',
 }) {
   final kind = event.kind.trim();
-  if (kind.isEmpty || kind == 'dispatch.turn.started') {
-    return false;
-  }
   state.recordParticipant(
     participantAgentId: agentId,
     participantLabel: participantLabel,
     participantRole: participantRole,
   );
-  if (kind == 'agent.message.chunk' || kind == 'agent.message.completed') {
+  final rawPrefix = event.payload['lifecyclePrefix'];
+  if (rawPrefix is List) {
+    for (final stage in rawPrefix) {
+      state.advanceStage(stage.toString());
+    }
+  }
+  final replyEvent =
+      kind == 'agent.message.chunk' || kind == 'agent.message.completed';
+  if (replyEvent) {
     final next = ConversationRuntimeResultPolicy.mergeProgressiveText(
       state.replyText,
       (event.payload['text'] ?? '').toString(),
@@ -35,36 +40,31 @@ bool applyPersistentTurnProcessEvent({
     if (next.isNotEmpty) {
       state.setReplyText(
         next,
-        createdAt: DateTime.now().toUtc().toIso8601String(),
+        createdAt: _eventCreatedAt(event),
         participantAgentId: agentId,
         participantLabel: participantLabel,
         participantRole: participantRole,
       );
-      state.advanceStage('responding');
     }
-    return false;
   }
-  if (kind == 'agent.turn.accepted') {
-    state.advanceStage('accepted');
-    return false;
+  final terminalTransition = event.payload['terminalTransition'];
+  if (terminalTransition is Map) {
+    final terminalKind = (terminalTransition['kind'] ?? '').toString();
+    if (terminalKind == 'failed') {
+      state.advanceStage('failed');
+      _appendPersistentTurnEvidence(state, event);
+      return true;
+    }
+    if (terminalKind == 'lifecycle' &&
+        terminalTransition['stage'] == 'completed') {
+      state.advanceStage('completed');
+      return true;
+    }
   }
-  if (kind == 'agent.turn.processing' || kind == 'dispatch.turn.bound') {
-    state.advanceStage('processing');
+  if (!replyEvent && kind.isNotEmpty && kind != 'dispatch.turn.started') {
+    _appendPersistentTurnEvidence(state, event);
   }
-  final terminal =
-      kind == 'dispatch.turn.completed' ||
-      kind == 'dispatch.turn.failed' ||
-      kind == 'agent.turn.completed' ||
-      kind == 'agent.turn.failed';
-  if (terminal) {
-    final failed = kind.contains('failed') || event.payload['ok'] == false;
-    state.advanceStage(failed ? 'failed' : 'completed');
-  }
-  if (kind == 'dispatch.turn.completed' || kind == 'agent.turn.completed') {
-    return true;
-  }
-  _appendPersistentTurnEvidence(state, event);
-  return terminal;
+  return false;
 }
 
 void _appendPersistentTurnEvidence(
@@ -78,6 +78,7 @@ void _appendPersistentTurnEvidence(
       (event.payload['text'] ??
               event.payload['summary'] ??
               event.payload['status'] ??
+              event.payload['toolName'] ??
               event.payload['evidenceKind'] ??
               kind)
           .toString()
@@ -98,7 +99,7 @@ void _appendPersistentTurnEvidence(
       id: messageId,
       role: role,
       text: rawText,
-      createdAt: DateTime.now().toUtc().toIso8601String(),
+      createdAt: _eventCreatedAt(event),
       layer: AgentConversationSemanticLayer.execution,
       cardType: diagnostic != null ? 'diagnostic' : role.replaceAll('_', '-'),
       cardTitle: kind,
@@ -110,17 +111,14 @@ void _appendPersistentTurnEvidence(
   );
 }
 
+String _eventCreatedAt(AgentDispatchEvent event) {
+  final value = event.payload['createdAt'];
+  return value is String ? value.trim() : '';
+}
+
 /// Only a successful terminal may advance the next Graph actor.
 bool persistentTurnAllowsNextActor(ConversationTurnProcessState state) {
   return state.stage == ConversationTurnProcessStage.completed;
-}
-
-void failPersistentTurnIfOpen(ConversationTurnProcessState state) {
-  if (state.stage == ConversationTurnProcessStage.completed ||
-      state.stage == ConversationTurnProcessStage.failed) {
-    return;
-  }
-  state.advanceStage('failed');
 }
 
 String? persistentTurnDiagnosticFailureCode(String content) {
@@ -135,23 +133,23 @@ String? persistentTurnDiagnosticFailureCode(String content) {
 }
 
 String? _persistentTurnDiagnosticText(AgentDispatchEvent event) {
-  final kind = event.kind.trim();
-  if (kind != 'dispatch.turn.failed' && kind != 'agent.turn.failed') {
-    return null;
-  }
-  final nested = event.payload['error'];
-  final source = nested is Map ? nested : event.payload;
-  final code = (source['code'] ?? event.payload['code'] ?? '')
-      .toString()
-      .trim();
-  final stage = (source['stage'] ?? 'turn/completed').toString().trim();
-  final turnStatus = (source['turnStatus'] ?? event.payload['turnStatus'] ?? '')
-      .toString()
-      .trim();
+  final terminal = event.payload['terminalTransition'];
+  if (terminal is! Map || terminal['kind'] != 'failed') return null;
+  final code = (terminal['code'] ?? '').toString().trim();
+  final stage = (terminal['stage'] ?? '').toString().trim();
+  final turnStatus =
+      (terminal['turnStatus'] ?? event.payload['turnStatus'] ?? '')
+          .toString()
+          .trim();
+  final nestedError = event.payload['error'];
+  final message = nestedError is Map
+      ? (nestedError['message'] ?? '').toString().trim()
+      : '';
   if (code.isEmpty && turnStatus.isEmpty) return null;
   return jsonEncode({
     if (code.isNotEmpty) 'code': code,
     if (stage.isNotEmpty) 'stage': stage,
     if (turnStatus.isNotEmpty) 'turnStatus': turnStatus,
+    if (message.isNotEmpty) 'message': message,
   });
 }

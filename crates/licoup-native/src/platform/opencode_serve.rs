@@ -8,9 +8,17 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::SyncSender;
 
 use super::local_service::{self, http::HttpFailure};
+use super::native_agent_parser::adapters::opencode::{ServeEventFailure, ServeEventParser};
 
 pub use super::local_service::ServeEndpoint;
 pub const DEFAULT_PORT: u16 = policy::DEFAULT_PORT;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum EventStreamFailure {
+    Closed,
+    Decode(ServeEventFailure),
+    Framing(super::local_service::sse::SseFailure),
+}
 
 pub fn ensure(params: &Value) -> Result<Value> {
     local_service::serve::ensure(policy::SPEC, params)
@@ -68,17 +76,30 @@ pub(super) fn watch_session_events_url(
     session_id: &str,
     stop: &AtomicBool,
     chunks: &SyncSender<String>,
-) {
-    local_service::serve::watch_session_events_url(policy::SPEC, url, session_id, stop, chunks)
-}
-
-#[cfg(test)]
-fn project_event(
-    projection: &mut local_service::serve::SessionEventProjection,
-    session_id: &str,
-    data: &str,
-) -> Option<String> {
-    projection.observe(session_id, data)
+) -> std::result::Result<(), EventStreamFailure> {
+    let mut parser = ServeEventParser::new(session_id);
+    let mut decode_failure = None;
+    let result = local_service::sse::watch_data(url, stop, |data| match parser.observe(data) {
+        Ok(Some(text)) => {
+            let _ = chunks.try_send(text);
+            true
+        }
+        Ok(None) => true,
+        Err(failure) => {
+            decode_failure = Some(failure);
+            false
+        }
+    });
+    if let Some(failure) = decode_failure {
+        return Err(EventStreamFailure::Decode(failure));
+    }
+    match result {
+        Ok(()) if !stop.load(std::sync::atomic::Ordering::Relaxed) => {
+            Err(EventStreamFailure::Closed)
+        }
+        Ok(()) => Ok(()),
+        Err(failure) => Err(EventStreamFailure::Framing(failure)),
+    }
 }
 
 #[cfg(test)]

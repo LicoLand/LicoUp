@@ -148,17 +148,14 @@ after any native interface change.
 
 ## Documentation rules
 
-- Use short sentences and common words.
-- Keep English as the normative public entry and link each maintained
-  Simplified Chinese localization back to it. Shared product facts in the two
-  root READMEs change together.
-- Use a small Mermaid diagram when a data flow is hard to explain in text.
-- Keep product text focused on diversity, connection, openness, integration,
-  and user control.
+- **Strict Single Source of Truth (SSOT)**: Every architectural model, protocol specification, feature mechanism, or platform rule must have exactly one authoritative owning document (see [ADR 0009](docs/adrs/0009-single-source-of-truth-documentation-architecture.md)). Other documents must reference that owner rather than duplicating or paraphrasing facts.
+- **Overview Document Modularity & Domain Indexing**: Top-level overview documents (architecture, protocols, functionalities) must remain concise and high-level, using structured Markdown tables to index and navigate to dedicated domain specifications.
+- **Tabular Document References**: Header cross-references (normative versions, localizations, governing product charters) must be presented in structured Markdown tables.
+- **Language & Synchronization**: Keep English as the normative public entry and link each maintained Simplified Chinese localization back to it. Shared product facts in the two root READMEs change together.
+- Use short sentences and common words. Use a small Mermaid diagram when a data flow is hard to explain in text.
+- Keep product text focused on diversity, connection, openness, integration, and user control. Design philosophy and product promises belong to `PRODUCT.md`.
 - Treat `README.md` as the public product page. Check every claim.
-- Keep structured plans under `docs/plans/`. Keep audit reports, temporary
-  proposals, and other one-off documents under `docs/reports/`. Both paths are
-  local only.
+- Keep structured plans under `docs/plans/`. Keep audit reports, temporary proposals, and other one-off documents under `docs/reports/`. Both paths are local only.
 - Do not add local skills or temporary scripts to the repository.
 
 ## Maintained model and cost tables
