@@ -94,6 +94,9 @@ nix = { version = "0.27", default-features = false, features = ["fs", "user", "s
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
+# Bench-only async runtime: production target builds without tokio; benches
+# drive the async backend lanes under criterion.
+tokio = { version = "1", features = ["rt", "sync", "macros"] }
 
 [[bench]]
 name = "native_backend"
