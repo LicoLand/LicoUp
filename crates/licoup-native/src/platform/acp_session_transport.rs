@@ -10,15 +10,16 @@ mod capabilities;
 mod command;
 mod continuity;
 pub(in crate::platform) mod errors;
+#[path = "native_agent_parser/adapters/hermes/framing.rs"]
 mod events;
 mod execution;
 mod io;
+#[path = "native_agent_parser/adapters/hermes/protocol.rs"]
 mod protocol;
 mod supervision;
 
-#[cfg(test)]
-pub(in crate::platform) use approval_store::parked_permissions;
-pub(in crate::platform) use approval_store::{register_park_and_inbox, resolve_parked_permission};
+pub(in crate::platform) use approval_store::register_park_and_inbox;
+pub use approval_store::resolve_interaction_approval;
 pub(in crate::platform) use capabilities::{
     AcpSessionDriverSpec, CapabilityProbe, EffectiveSettings, RunResult,
 };
@@ -30,8 +31,8 @@ pub(in crate::platform) use io::{drain_bounded, drain_stderr, read_bounded, writ
 
 #[cfg(test)]
 pub(in crate::platform) use capabilities::{
-    APPROVAL_POLL_INTERVAL, APPROVAL_WAIT_TIMEOUT, CONTROL_QUEUE_CAPACITY, MAX_PARKED_PERMISSIONS,
-    MAX_POOLED_TRANSPORTS, MAX_TRACKED_SESSIONS, PROCESS_POLL_INTERVAL,
+    APPROVAL_POLL_INTERVAL, CONTROL_QUEUE_CAPACITY, MAX_POOLED_TRANSPORTS, MAX_TRACKED_SESSIONS,
+    PROCESS_POLL_INTERVAL,
 };
 #[cfg(test)]
 pub(in crate::platform) use command::{LaunchSpec, ProtocolConfig};

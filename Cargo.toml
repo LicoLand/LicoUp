@@ -6,6 +6,8 @@ members = [
     "crates/licoup-endpoint-core",
     "crates/licoup-platform-bridges",
     "crates/licoup-agent-adapters",
+    "crates/licoup-agent-runtime",
+    "crates/licoup-conversation",
     "crates/licoup-native",
     "crates/trybuild",
 ]
@@ -16,6 +18,67 @@ version = "0.1.1"
 edition = "2024"
 repository = "https://github.com/LicoLand/LicoUp.git"
 license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+# One canonical version per shared dependency. Members reference these via
+# `workspace = true`; keep direct-dependency generations in one place.
+anyhow = "1.0"
+base64 = "0.22"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+command-group = "5.0.1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+env_logger = "0.11"
+flate2 = "1.0"
+fs2 = "0.4"
+hkdf = "0.12"
+hmac = "0.12"
+icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
+interprocess = "2.4"
+jni = "0.21"
+libc = "0.2"
+libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = [
+    "alloc",
+    "incremental",
+    "mlkem1024",
+] }
+libcrux-sha3 = "=0.0.10"
+libcrux-traits = "=0.0.8"
+log = "0.4"
+mime_guess = "2.0"
+notify = "6.1"
+openmls = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["openmls_rust_crypto"] }
+openmls_basic_credential = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_memory_storage = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["persistence"] }
+openmls_rust_crypto = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_traits = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+rand = "0.8"
+regex = "1.11"
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
+semver = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+subtle = "2.6"
+tar = "0.4"
+thiserror = "2.0"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+toml = "0.8"
+trash = "5.2"
+ureq = { version = "2.10", features = ["json"] }
+url = "2.5"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets", "zeroize"] }
+zeroize = "1.8"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+# RUSTSEC-2026-0173 (proc-macro-error2 unmaintained) resolution: hax-lib
+# 0.3.7 on crates.io still vendors proc-macro-error2, and no newer release
+# exists (verified 2026-08-24). Upstream removed the dependency in commit
+# 8f9cb576e58f6cc7e9ed249a7d4439b0f7ed0da7 (hacspec/hax, version stays
+# "=0.3.7"), so the crates.io source is patched to that pinned revision.
+# Revisit when hax publishes a release with the fix.
+[patch.crates-io]
+hax-lib = { git = "https://github.com/hacspec/hax.git", rev = "8f9cb576e58f6cc7e9ed249a7d4439b0f7ed0da7" }
 
 [profile.release]
 codegen-units = 1

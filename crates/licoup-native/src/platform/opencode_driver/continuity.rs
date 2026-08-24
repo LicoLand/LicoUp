@@ -1,5 +1,6 @@
 use super::super::acp_driver_runtime::{ProtocolConfig, ProtocolFailure};
 use super::super::opencode_serve::ServeEndpoint;
+use crate::platform::native_agent_parser::adapters::opencode as serve_parser;
 use serde_json::{Value, json};
 use std::time::Instant;
 
@@ -15,7 +16,7 @@ pub(super) fn open_serve_session(
             &config.cwd,
         )?;
         return match super::super::opencode_serve::get_json(&url) {
-            Ok(payload) if payload.get("id").and_then(Value::as_str).is_some() => {
+            Ok(payload) if serve_parser::session_id(&payload).is_some() => {
                 Ok(config.requested_session_id.clone())
             }
             Ok(_) => Err(ProtocolFailure::new(
@@ -48,10 +49,7 @@ pub(super) fn open_serve_session(
                     super::serve_transport::request_failure(failure, "session/new", None)
                 }
             })?;
-    created
-        .get("id")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
+    serve_parser::session_id(&created)
         .map(str::to_string)
         .ok_or_else(|| {
             ProtocolFailure::new(

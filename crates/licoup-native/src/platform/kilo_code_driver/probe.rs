@@ -2,7 +2,7 @@ use super::super::acp_driver_runtime::{CapabilityProbe, ProtocolFailure};
 use super::super::kilo_code_serve;
 use super::KILO_CODE_DRIVER;
 use super::projection::serve_capabilities;
-use serde_json::Value;
+use crate::platform::native_agent_parser::adapters::kilo_code as serve_parser;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -33,22 +33,24 @@ pub(in crate::platform) fn capability_probe(
     let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
     loop {
         match kilo_code_serve::get_json(&format!("{}/global/health", endpoint.attach_url)) {
-            Ok(payload)
-                if payload
-                    .get("healthy")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false) =>
-            {
-                kilo_code_serve::get_json(&format!("{}/session", endpoint.attach_url)).map_err(
-                    |_| {
-                        ProtocolFailure::new(
-                            "acp_initialize_invalid",
-                            "The ACP agent returned an invalid initialization response.",
-                            "serve/session",
-                        )
-                        .namespaced(KILO_CODE_DRIVER)
-                    },
-                )?;
+            Ok(payload) if serve_parser::health_ready(&payload) => {
+                let sessions =
+                    kilo_code_serve::get_json(&format!("{}/session", endpoint.attach_url))
+                        .map_err(|_| {
+                            ProtocolFailure::new(
+                                "acp_initialize_invalid",
+                                "The ACP agent returned an invalid initialization response.",
+                                "serve/session",
+                            )
+                            .namespaced(KILO_CODE_DRIVER)
+                        })?;
+                if !serve_parser::session_collection(&sessions) {
+                    return Err(ProtocolFailure::new(
+                        "kilo_code_serve_session_invalid",
+                        "The Kilo session endpoint returned an invalid response.",
+                        "serve/session",
+                    ));
+                }
                 return Ok(serve_capabilities());
             }
             _ if Instant::now() >= deadline => {

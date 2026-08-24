@@ -44,11 +44,16 @@ export async function checkRuntimeDriversAndLocalService(context, {
   const claudeCodeCommandSource = await readText(
     "crates/licoup-native/src/platform/claude_code_driver/command.rs"
   );
+  const claudeCodeParserSource = await readJoinedText([
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/events.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/state.rs"
+  ]);
   const claudeCodeEventsSource = await readText(
-    "crates/licoup-native/src/platform/claude_code_driver/events.rs"
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/events.rs"
   );
   const claudeCodeProtocolSource = await readText(
-    "crates/licoup-native/src/platform/claude_code_driver/protocol.rs"
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/state.rs"
   );
   const claudeCodeTransportSource = await readText(
     "crates/licoup-native/src/platform/claude_code_driver/transport.rs"
@@ -75,11 +80,16 @@ export async function checkRuntimeDriversAndLocalService(context, {
       claudeCodeDriverSource.includes("MAX_PROTOCOL_LINE_BYTES") &&
       claudeCodeDriverSource.includes("BoundedStdinWriter") &&
       claudeCodeDriverSource.includes("finish_protocol_transport") &&
-      claudeCodeDriverSource.includes("project_event") &&
       !claudeCodeDriverSource.includes('Command::new("sh")') &&
       !claudeCodeDriverSource.includes('Command::new("cmd")') &&
       !claudeCodeDriverSource.includes('Command::new("powershell")'),
-    "Claude Code split must retain fixed streaming input, exact live continuation, bounded IO, cleanup, and redacted events"
+    "Claude Code driver split must retain fixed streaming input, exact live continuation, bounded IO, and cleanup"
+  );
+  assert(
+    claudeCodeParserSource.includes("ClaudeCodeParser") &&
+      claudeCodeParserSource.includes("fn parse_line") &&
+      claudeCodeParserSource.includes("processing_evidence_kind"),
+    "Claude Code parser adapter must own the sole raw-frame ingress, turn state, and redacted event projection"
   );
   for (const dependency of [
     "command::",
@@ -132,9 +142,9 @@ export async function checkRuntimeDriversAndLocalService(context, {
   }
   assert(
     claudeCodeSupervisionSource.includes("Arc::downgrade") &&
-      !claudeCodeSupervisionSource.includes("TurnState") &&
-      !claudeCodeSupervisionSource.includes("project_event"),
-    "Claude Code live-session registry must remain independent of turn protocol and event projection"
+      !claudeCodeSupervisionSource.includes("ClaudeCodeParser") &&
+      !claudeCodeSupervisionSource.includes("processing_evidence_kind"),
+    "Claude Code live-session registry must remain independent of parser state and event projection"
   );
   assert(
     !claudeCodeDriverSource.includes("unsafe {") &&
@@ -163,8 +173,17 @@ export async function checkRuntimeDriversAndLocalService(context, {
   const openClawContinuitySource = await readText(
     "crates/licoup-native/src/platform/openclaw_driver/continuity.rs"
   );
+  const openClawParserSource = await readJoinedText([
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/codec.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs"
+  ]);
   const openClawEventsSource = await readText(
-    "crates/licoup-native/src/platform/openclaw_driver/events.rs"
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs"
+  );
+  const openClawProtocolSource = await readText(
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs"
   );
   const openClawSupervisionSource = await readText(
     "crates/licoup-native/src/platform/openclaw_driver/supervision.rs"
@@ -176,8 +195,17 @@ export async function checkRuntimeDriversAndLocalService(context, {
     !openClawDriverFacadeSource.includes("Command::new") &&
       !openClawDriverFacadeSource.includes("struct OpenClawProtocol") &&
       !openClawDriverFacadeSource.includes("include!(") &&
-      !openClawDriverFacadeSource.includes("#[path"),
-    "OpenClaw driver root must expose only ordinary modules and stable re-exports"
+      (openClawDriverFacadeSource.match(/#\[path/g) ?? []).length === 3 &&
+      openClawDriverFacadeSource.includes(
+        '#[path = "native_agent_parser/adapters/openclaw/codec.rs"]'
+      ) &&
+      openClawDriverFacadeSource.includes(
+        '#[path = "native_agent_parser/adapters/openclaw/events.rs"]'
+      ) &&
+      openClawDriverFacadeSource.includes(
+        '#[path = "native_agent_parser/adapters/openclaw/protocol.rs"]'
+      ),
+    "OpenClaw driver root must bind exactly its three parser-owned leaves and expose stable re-exports"
   );
   assert(
     openClawSupervisionSource.includes(
@@ -188,12 +216,17 @@ export async function checkRuntimeDriversAndLocalService(context, {
       openClawDriverSource.includes("BoundedStdinWriter") &&
       openClawDriverSource.includes("finish_protocol_transport") &&
       openClawDriverSource.includes("SessionBinding") &&
-      openClawDriverSource.includes("projected_event") &&
-      !openClawDriverSource.includes("update.payload().clone()") &&
       !openClawDriverSource.includes('Command::new("sh")') &&
       !openClawDriverSource.includes('Command::new("cmd")') &&
       !openClawDriverSource.includes('Command::new("powershell")'),
-    "OpenClaw split must retain fixed Gateway ACP, exact continuity, bounded IO, and redacted event boundaries"
+    "OpenClaw driver split must retain fixed Gateway ACP, exact continuity, bounded IO, and cleanup"
+  );
+  assert(
+    openClawParserSource.includes("struct OpenClawProtocol") &&
+      openClawParserSource.includes("fn handle_frame") &&
+      openClawParserSource.includes("projected_event") &&
+      !openClawParserSource.includes("update.payload().clone()"),
+    "OpenClaw parser adapter must own the sole raw-frame ingress, protocol state, and allowlisted event projection"
   );
   for (const dependency of [
     "continuity::",
@@ -225,6 +258,12 @@ export async function checkRuntimeDriversAndLocalService(context, {
     assert(
       !openClawEventsSource.includes(dependency),
       `OpenClaw event projection must not depend on ${dependency}`
+    );
+  }
+  for (const dependency of ["execution::", "io::", "supervision::", "transport::"]) {
+    assert(
+      !openClawProtocolSource.includes(dependency),
+      `OpenClaw parser protocol must not depend on ${dependency}`
     );
   }
   assert(
@@ -396,11 +435,11 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "Local HTTP and SSE must retain explicit body, header, line, frame, event, and concurrency bounds"
   );
   assert(
-    localServiceServeSource.includes("event_session != session_id") &&
-      localServiceServeSource.includes('event_type != "message.part.updated"') &&
+    !localServiceServeSource.includes("ServeEventParser") &&
+      !localServiceServeSource.includes('"message.part.updated"') &&
       !localServiceServeSource.includes('"state": service_state') &&
       !localServiceServeSource.includes('"stateDir"'),
-    "Local serve lifecycle must require exact-session events and never project raw local state"
+    "Local serve lifecycle must remain parser-neutral and never project raw local state"
   );
 
   return { localServiceSource };

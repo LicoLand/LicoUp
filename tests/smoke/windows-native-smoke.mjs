@@ -1,4 +1,25 @@
 #!/usr/bin/env node
+
+/**
+ * Windows native smoke (static + win32-native halves).
+ *
+ * CI home: the `windows-native-smoke` job in
+ * .github/workflows/client-regression.yml (nightly, non-gating). The static
+ * half (package-script portability, Windows file security) always runs; the
+ * native half (cargo build, `targets scan`, secret-store lifecycle + redaction)
+ * only executes on win32 runners.
+ *
+ * Placement choice (documented per CI-regression task): the file stays at
+ * tests/smoke/ instead of being relocated to local-only because
+ * tools/scripts/config/secure-mesh-windows-implementation.json references this
+ * exact path in its source checks, and verify-client-plan asserts that binding;
+ * moving it would break those checks. The Windows runner job is therefore the
+ * option that keeps per-PR gates green.
+ *
+ * Local-only usage: `npm run client:native:smoke:windows`. On non-Windows
+ * hosts the native half is skipped and the smoke still passes its static half.
+ */
+
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";

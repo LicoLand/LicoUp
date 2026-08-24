@@ -38,3 +38,23 @@ fn invalid_native_settings_fail_before_process_selection() {
         "claude_code_invalid_permission_mode"
     );
 }
+
+#[test]
+fn private_instructions_stay_separate_from_the_exact_prompt() {
+    let config = DriverConfig::from_params(
+        &json!({"privateInstructions": "synthetic private instruction"}),
+        "exact user prompt",
+        "",
+        None,
+    )
+    .unwrap();
+    assert_eq!(config.prompt, "exact user prompt");
+    assert_eq!(
+        config.private_instructions.as_deref(),
+        Some("synthetic private instruction")
+    );
+    assert_eq!(
+        config.stdin_message().unwrap()["message"]["content"][0]["text"],
+        "exact user prompt"
+    );
+}

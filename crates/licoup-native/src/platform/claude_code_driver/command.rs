@@ -7,7 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-pub(super) const FIXED_STREAM_ARGS: &[&str] = &[
+pub(in crate::platform) const FIXED_STREAM_ARGS: &[&str] = &[
     "--print",
     "--input-format",
     "stream-json",
@@ -20,23 +20,30 @@ pub(super) const FIXED_STREAM_ARGS: &[&str] = &[
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct LaunchIdentity {
-    pub(super) executable: String,
-    pub(super) cwd: Option<PathBuf>,
-    pub(super) model: Option<String>,
-    pub(super) reasoning_effort: Option<String>,
-    pub(super) permission_mode: Option<String>,
+pub(in crate::platform) struct LaunchIdentity {
+    pub(in crate::platform) executable: String,
+    pub(in crate::platform) cwd: Option<PathBuf>,
+    pub(in crate::platform) model: Option<String>,
+    pub(in crate::platform) reasoning_effort: Option<String>,
+    pub(in crate::platform) permission_mode: Option<String>,
     /// Comma-joined tool allowlist passed via `--allowedTools` so an approved
     /// retry does not re-trigger a permission denial.
-    pub(super) allowed_tools: Option<String>,
+    pub(in crate::platform) allowed_tools: Option<String>,
+    /// Product guidance carried through Claude Code's private system-prompt
+    /// channel. It is never inserted into the user message or transcript.
+    pub(in crate::platform) private_instructions: Option<String>,
     /// Native conversation to resume in a freshly launched process via
     /// `--resume`. Only set when no process-local live transport owns the
     /// session; the CLI loads the persisted transcript itself.
-    pub(super) resume_session_id: Option<String>,
+    pub(in crate::platform) resume_session_id: Option<String>,
 }
 
 impl LaunchIdentity {
-    pub(super) fn new(executable: &str, config: &DriverConfig, cwd: Option<&Path>) -> Self {
+    pub(in crate::platform) fn new(
+        executable: &str,
+        config: &DriverConfig,
+        cwd: Option<&Path>,
+    ) -> Self {
         Self {
             executable: executable.to_string(),
             cwd: cwd.map(Path::to_path_buf),
@@ -44,12 +51,13 @@ impl LaunchIdentity {
             reasoning_effort: config.reasoning_effort.clone(),
             permission_mode: config.permission_mode.clone(),
             allowed_tools: config.allowed_tools.clone(),
+            private_instructions: config.private_instructions.clone(),
             resume_session_id: (!config.requested_session_id.is_empty())
                 .then(|| config.requested_session_id.clone()),
         }
     }
 
-    pub(super) fn compatible_with(
+    pub(in crate::platform) fn compatible_with(
         &self,
         executable: &str,
         config: &DriverConfig,
@@ -73,9 +81,10 @@ impl LaunchIdentity {
                 .allowed_tools
                 .as_ref()
                 .is_none_or(|value| self.allowed_tools.as_ref() == Some(value))
+            && self.private_instructions == config.private_instructions
     }
 
-    pub(super) fn args(&self) -> Vec<String> {
+    pub(in crate::platform) fn args(&self) -> Vec<String> {
         let mut args = FIXED_STREAM_ARGS
             .iter()
             .map(|value| (*value).to_string())
@@ -95,10 +104,13 @@ impl LaunchIdentity {
         if let Some(allowed_tools) = self.allowed_tools.as_ref() {
             args.extend(["--allowedTools".to_string(), allowed_tools.clone()]);
         }
+        if let Some(instructions) = self.private_instructions.as_ref() {
+            args.extend(["--append-system-prompt".to_string(), instructions.clone()]);
+        }
         args
     }
 
-    pub(super) fn spawn(&self) -> io::Result<SupervisedChild> {
+    pub(in crate::platform) fn spawn(&self) -> io::Result<SupervisedChild> {
         let mut command = Command::new(&self.executable);
         command
             .args(self.args())
@@ -116,7 +128,7 @@ impl LaunchIdentity {
         SupervisedChild::spawn(&mut command)
     }
 
-    pub(super) fn effective(&self) -> EffectiveSettings {
+    pub(in crate::platform) fn effective(&self) -> EffectiveSettings {
         EffectiveSettings {
             cwd: self
                 .cwd
@@ -131,7 +143,7 @@ impl LaunchIdentity {
     }
 }
 
-pub(super) fn executable_augmented_path(
+pub(in crate::platform) fn executable_augmented_path(
     executable: &str,
     inherited: Option<&OsStr>,
 ) -> Option<OsString> {

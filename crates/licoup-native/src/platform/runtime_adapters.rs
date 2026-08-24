@@ -8,8 +8,15 @@ mod normalization;
 mod params;
 mod probe;
 #[cfg(test)]
-pub(crate) mod protocol_selector;
+pub(crate) mod protocol_selector {
+    pub use licoup_agent_runtime::protocol_selector::*;
+}
 mod registry;
+
+// Public host-neutral L4/L5 contracts. Concrete drivers remain composed in
+// this native host until their individually owned modules can move without
+// crossing concurrent ownership boundaries.
+pub use licoup_agent_runtime::{PersistentTurnRuntime, RuntimeDriver, RuntimeDriverRegistry};
 
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;

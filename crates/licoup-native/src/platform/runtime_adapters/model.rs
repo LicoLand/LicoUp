@@ -1,3 +1,4 @@
+use crate::platform::native_agent_parser::Transition;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -194,7 +195,7 @@ pub(super) struct NormalizedFailure {
 pub(super) struct NormalizedExecution {
     pub(super) ok: bool,
     pub(super) output: String,
-    pub(super) events: Vec<Value>,
+    pub(super) transitions: Vec<Transition>,
     pub(super) capabilities: Value,
     pub(super) error: Option<NormalizedFailure>,
     pub(super) session_id: String,

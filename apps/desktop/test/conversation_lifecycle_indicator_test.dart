@@ -16,6 +16,14 @@ void main() {
     () {
       final projection = projectConversationTurnLifecycle([
         const AgentConversationMessage(
+          id: 'submitted',
+          role: 'event',
+          text: 'submitted',
+          createdAt: '2026-08-19T00:00:00Z',
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.submitted',
+        ),
+        const AgentConversationMessage(
           id: 'accepted',
           role: 'event',
           text: 'accepted',
@@ -46,25 +54,55 @@ void main() {
     },
   );
 
-  test('a coalesced processing event implies a complete stage prefix', () {
+  test(
+    'Flutter does not invent a prefix from a coalesced processing event',
+    () {
+      final projection = projectConversationTurnLifecycle([
+        const AgentConversationMessage(
+          id: 'processing',
+          role: 'event',
+          text: 'processing',
+          createdAt: '2026-08-19T00:00:00Z',
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.processing',
+        ),
+      ]);
+
+      expect(projection, isNotNull);
+      expect(projection!.activeStep, 2);
+      expect(projection.observedStages, {
+        ConversationTurnLifecycleStage.processing,
+      });
+    },
+  );
+
+  test('lifecycle text and retired aliases are not stage authority', () {
     final projection = projectConversationTurnLifecycle([
       const AgentConversationMessage(
-        id: 'processing',
+        id: 'text-only',
         role: 'event',
-        text: 'processing',
+        text: 'completed',
         createdAt: '2026-08-19T00:00:00Z',
         cardType: 'lifecycle',
-        cardTitle: 'lifecycle.processing',
+      ),
+      const AgentConversationMessage(
+        id: 'running-alias',
+        role: 'event',
+        text: 'running',
+        createdAt: '2026-08-19T00:00:01Z',
+        cardType: 'lifecycle',
+        cardTitle: 'lifecycle.running',
+      ),
+      const AgentConversationMessage(
+        id: 'cancelled-alias',
+        role: 'event',
+        text: 'cancelled',
+        createdAt: '2026-08-19T00:00:02Z',
+        cardType: 'lifecycle',
+        cardTitle: 'lifecycle.cancelled',
       ),
     ]);
-
-    expect(projection, isNotNull);
-    expect(projection!.activeStep, 2);
-    expect(projection.observedStages, {
-      ConversationTurnLifecycleStage.submitted,
-      ConversationTurnLifecycleStage.accepted,
-      ConversationTurnLifecycleStage.processing,
-    });
+    expect(projection, isNull);
   });
 
   test('lifecycle projection ignores regressions and stops at failure', () {
@@ -131,6 +169,25 @@ void main() {
     );
   });
 
+  testWidgets('lifecycle rail paints only Rust-reported prefix stages', (
+    tester,
+  ) async {
+    await _pumpCard(
+      tester,
+      stage: 'processing',
+      observed: 'processing',
+      active: true,
+    );
+
+    final colors = tester
+        .element(find.byType(ConversationLifecycleSteps))
+        .licoColors;
+    expect(_stepColor(tester, 'Sent'), colors.line);
+    expect(_stepColor(tester, 'Received'), colors.line);
+    expect(_stepColor(tester, 'Working'), colors.text);
+    expect(find.text('1 of 5 stages observed'), findsOneWidget);
+  });
+
   testWidgets('completed process card collapses the lifecycle rail', (
     tester,
   ) async {
@@ -138,10 +195,13 @@ void main() {
       tester,
       stage: 'completed',
       observed: 'submitted,accepted,processing,responding,completed',
+      participantRole: 'subagent',
     );
 
     expect(find.text('Response complete'), findsOneWidget);
     expect(find.byKey(const Key('conversation-lifecycle-rail')), findsNothing);
+    expect(find.text('0 of 5 stages observed'), findsNothing);
+    expect(find.text('1 of 5 stages observed'), findsNothing);
   });
 
   testWidgets(
@@ -176,6 +236,49 @@ void main() {
       expect(_stepColor(tester, 'Working'), colors.line);
     },
   );
+
+  testWidgets(
+    'Assistant responding prefix and Subagent failure keep the rendered Rust prefix',
+    (tester) async {
+      await _pumpCard(
+        tester,
+        stage: 'responding',
+        observed: 'submitted,accepted,processing,responding',
+        active: true,
+        participantRole: 'assistant',
+      );
+
+      expect(find.textContaining('4 of 5 stages observed'), findsOneWidget);
+      expect(find.text('0 of 5 stages observed'), findsNothing);
+      expect(find.text('1 of 5 stages observed'), findsNothing);
+      final colors = tester
+          .element(find.byType(ConversationLifecycleSteps))
+          .licoColors;
+      expect(_stepColor(tester, 'Sent'), colors.text);
+      expect(_stepColor(tester, 'Replying'), colors.text);
+
+      await _pumpCard(
+        tester,
+        stage: 'failed',
+        observed: 'submitted,accepted,processing,responding',
+        participantRole: 'subagent',
+        extraEvents: const [
+          AgentConversationMessage(
+            id: 'observer-disconnected',
+            role: 'error',
+            text: 'Synthetic observer disconnected.',
+            createdAt: '2026-08-03T00:00:01Z',
+            cardType: 'diagnostic',
+            cardTitle: 'observer_disconnected',
+          ),
+        ],
+      );
+
+      expect(find.textContaining('4 of 5 stages observed'), findsOneWidget);
+      expect(_stepColor(tester, 'Replying'), colors.error);
+      expect(_stepColor(tester, 'Done'), colors.line);
+    },
+  );
 }
 
 Color? _stepColor(WidgetTester tester, String label) {
@@ -190,6 +293,8 @@ Future<void> _pumpCard(
   required String stage,
   required String observed,
   bool active = false,
+  String participantRole = '',
+  List<AgentConversationMessage> extraEvents = const [],
 }) async {
   final event = AgentConversationMessage(
     id: 'turn-lifecycle',
@@ -199,6 +304,7 @@ Future<void> _pumpCard(
     cardType: 'lifecycle',
     cardTitle: 'lifecycle.$stage',
     cardSubtitle: observed,
+    participantRole: participantRole,
   );
   await tester.pumpWidget(
     MaterialApp(
@@ -214,7 +320,7 @@ Future<void> _pumpCard(
         body: SizedBox(
           width: 720,
           child: ConversationProcessCard(
-            events: [event],
+            events: [event, ...extraEvents],
             adapter: AgentRenderAdapter.fallback(),
             detailsBuilder: buildAgentConversationEventDetails,
             active: active,

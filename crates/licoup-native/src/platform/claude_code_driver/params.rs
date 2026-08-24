@@ -1,22 +1,23 @@
 use super::errors::ProtocolFailure;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::io;
 use std::path::Path;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
-pub(super) struct DriverConfig {
-    pub(super) prompt: String,
-    pub(super) requested_session_id: String,
-    pub(super) model: Option<String>,
-    pub(super) reasoning_effort: Option<String>,
-    pub(super) permission_mode: Option<String>,
-    pub(super) allowed_tools: Option<String>,
-    pub(super) turn_id: String,
+pub(in crate::platform) struct DriverConfig {
+    pub(in crate::platform) prompt: String,
+    pub(in crate::platform) requested_session_id: String,
+    pub(in crate::platform) model: Option<String>,
+    pub(in crate::platform) reasoning_effort: Option<String>,
+    pub(in crate::platform) permission_mode: Option<String>,
+    pub(in crate::platform) allowed_tools: Option<String>,
+    pub(in crate::platform) private_instructions: Option<String>,
+    pub(in crate::platform) turn_id: String,
 }
 
 impl DriverConfig {
-    pub(super) fn from_params(
+    pub(in crate::platform) fn from_params(
         params: &Value,
         prompt: &str,
         session_id: &str,
@@ -29,6 +30,8 @@ impl DriverConfig {
                 "request/validate",
             ));
         }
+        let private_instructions =
+            text_param(params, &["privateInstructions", "private_instructions"]);
         let reasoning_effort = text_param(params, &["reasoningEffort", "reasoning_effort"]);
         if reasoning_effort.as_deref().is_some_and(|value| {
             !matches!(
@@ -97,21 +100,15 @@ impl DriverConfig {
             reasoning_effort,
             permission_mode,
             allowed_tools,
+            private_instructions,
             turn_id: Uuid::new_v4().to_string(),
         })
     }
 
-    pub(super) fn stdin_message(&self) -> io::Result<Value> {
+    pub(in crate::platform) fn stdin_message(&self) -> io::Result<Value> {
         // The prompt stays off argv entirely; a fresh-process resume passes
         // only the native session identifier via --resume (LaunchIdentity).
-        serde_json::to_value(json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [{"type": "text", "text": self.prompt}]
-            }
-        }))
-        .map_err(io::Error::other)
+        Ok(crate::platform::native_agent_parser::adapters::claude_code::user_message(&self.prompt))
     }
 }
 

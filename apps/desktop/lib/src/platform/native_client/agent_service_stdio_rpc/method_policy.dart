@@ -1,61 +1,25 @@
-const _conversationMethods = <String>{
-  'agent.conversation.open',
-  'agent.conversation.history',
-  'agent.conversation.cleanup',
-  'agent.conversation.capabilities',
-  'agent.conversation.cancel',
-  'agent.conversation.steer',
-  'agent.conversation.active',
-};
+import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 
-const _persistentConversationMethods = <String>{
-  'agent.conversation.cancel',
-  'agent.conversation.steer',
-  'agent.conversation.active',
-};
-
-const _clientMethods = <String>{
-  'catalog.status',
-  'catalog.invalidate',
-  'catalog.refresh',
-  'catalog.receipt',
-  'catalog.purge',
-  'catalog.reconnect',
-  'catalog.list',
-  'catalog.observe',
-  'state.get',
-  'state.set',
-  'client.conversation.execute',
-  'strategy.execute',
-};
+// Method classification is schema-derived: every wire name and every lane,
+// stream, control, and action-set decision below comes from the generated
+// conversation protocol registry. There is no hand-written method-name table
+// left on the Dart side.
 
 bool validStdioRpcStructuredMethod(String method) =>
-    _conversationMethods.contains(method) || _clientMethods.contains(method);
+    conversationProtocolMethodIsStructured(method);
 
 bool stdioRpcMethodUsesConversationLane(
   String method, [
   Map<String, dynamic>? params,
-]) {
-  if (method == 'strategy.execute') {
-    final action = params?['action']?.toString() ?? '';
-    return const {
-      'strategy.run.start',
-      'strategy.run.resume',
-      'strategy.run.retry',
-      'strategy.assistant.workflow.execute',
-    }.contains(action);
-  }
-  return _persistentConversationMethods.contains(method);
-}
+]) => conversationProtocolMethodUsesConversationLane(method, params);
 
 bool stdioRpcMethodIsUnboundedClientTurn(
   String method,
   Map<String, dynamic> params,
-) {
-  return method == 'client.conversation.execute' &&
-      params['action'] == 'conversation.dispatch.after-post';
-}
+) => conversationProtocolMethodIsUnbounded(method, params);
 
 bool stdioRpcMethodIsInFlightControl(String method) =>
-    method == 'agent.conversation.cancel' ||
-    method == 'agent.conversation.steer';
+    conversationProtocolMethodIsInFlightControl(method);
+
+bool stdioRpcMethodIsStream(String method) =>
+    conversationProtocolMethodIsStream(method);

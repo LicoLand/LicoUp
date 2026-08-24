@@ -49,13 +49,6 @@ fn restored_session_idless_optional_state_continues_on_the_requested_native_id()
     assert_eq!(protocol.config_options.len(), 1);
     assert_eq!(protocol.config_options[0]["id"], "pace");
 
-    let effects = protocol.handle_message(json!({
-        "jsonrpc": "2.0",
-        "id": PROMPT_REQUEST_ID,
-        "result": {"stopReason": "end_turn"}
-    }));
-    assert!(effects.is_empty());
-    assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
     assert!(
         protocol
             .handle_message(json!({
@@ -72,7 +65,11 @@ fn restored_session_idless_optional_state_continues_on_the_requested_native_id()
             .is_empty()
     );
 
-    let effects = protocol.finish_prompt_drain();
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "id": PROMPT_REQUEST_ID,
+        "result": {"stopReason": "end_turn"}
+    }));
     let ProtocolEffect::Complete(outcome) = &effects[0] else {
         panic!("expected ID-less restored-session completion")
     };
@@ -128,14 +125,6 @@ fn restored_session_matching_id_object_preserves_state_and_completes_exactly() {
 
     let effects = protocol.handle_message(json!({
         "jsonrpc": "2.0",
-        "id": PROMPT_REQUEST_ID,
-        "result": {"stopReason": "end_turn"}
-    }));
-    assert!(effects.is_empty());
-    assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
-
-    let effects = protocol.handle_message(json!({
-        "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
             "sessionId": "existing-native",
@@ -147,7 +136,11 @@ fn restored_session_matching_id_object_preserves_state_and_completes_exactly() {
     }));
     assert!(effects.is_empty());
 
-    let effects = protocol.finish_prompt_drain();
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "id": PROMPT_REQUEST_ID,
+        "result": {"stopReason": "end_turn"}
+    }));
     let ProtocolEffect::Complete(outcome) = &effects[0] else {
         panic!("expected restored-session completion")
     };

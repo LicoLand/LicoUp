@@ -1,19 +1,25 @@
-use serde_json::{Value, json};
-use std::collections::HashMap;
+use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
-use std::sync::{Arc, LazyLock, Mutex, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
+use super::native_agent_parser::Transition;
+use super::native_agent_parser::adapters::NativeLineParser;
+use super::native_agent_parser::adapters::deepseek_harness::{
+    FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
+    initialize_accepted, initialize_request, prompt_request, shutdown_request,
+};
+use super::native_agent_parser::adapters::driver_registry::{
+    registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
+};
 use super::process_supervisor::SupervisedChild;
 
 pub(super) const DRIVER_ID: &str = "deepseek-harness-sdk-jsonrpc";
 pub(super) const RUNTIME_PROTOCOL: &str = "deepseek-harness-sdk-stdio-jsonrpc";
 const MAX_TRANSPORTS: usize = 8;
-
-static TRANSPORTS: LazyLock<Mutex<HashMap<String, Arc<ManagedTransport>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+const REGISTRY_NAMESPACE: &str = "deepseek-harness-transport";
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct EffectiveSettings {
@@ -72,7 +78,7 @@ pub(super) struct ProtocolFailurePayload {
 pub(super) struct RunResult {
     pub(super) ok: bool,
     pub(super) output: String,
-    pub(super) events: Vec<Value>,
+    pub(super) transitions: Vec<Transition>,
     pub(super) error: Option<ProtocolFailure>,
     pub(super) session_id: String,
     pub(super) thread_id: String,
@@ -87,10 +93,16 @@ pub(super) struct RunResult {
 
 impl RunResult {
     fn failed(failure: ProtocolFailure, started_at: String) -> Self {
+        let transitions =
+            super::native_agent_parser::adapters::deepseek_harness::failure_transitions(
+                failure.code,
+                failure.stage,
+                failure.message,
+            );
         Self {
             ok: false,
             output: String::new(),
-            events: Vec::new(),
+            transitions,
             error: Some(failure),
             session_id: String::new(),
             thread_id: String::new(),
@@ -113,7 +125,7 @@ struct TransportConfig {
     model: String,
     max_tokens: Option<u64>,
     cordis_config: Option<PathBuf>,
-    output_limit: usize,
+    output_limit: Option<usize>,
     stderr_limit: usize,
 }
 
@@ -125,19 +137,8 @@ struct ManagedTransport {
 struct TransportState {
     child: SupervisedChild,
     stdin: ChildStdin,
-    receiver: mpsc::Receiver<std::result::Result<ProtocolFrame, FrameFailure>>,
+    receiver: mpsc::Receiver<std::result::Result<ProtocolFrame, FrameError>>,
     next_request_id: u64,
-}
-
-struct ProtocolFrame {
-    value: Value,
-    bytes: usize,
-}
-
-#[derive(Clone, Copy)]
-enum FrameFailure {
-    InvalidJson,
-    OutputLimit,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -158,6 +159,20 @@ pub(super) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
+    if params
+        .get("privateInstructions")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return RunResult::failed(
+            failure(
+                "deepseek_harness_private_instructions_unsupported",
+                "DeepSeek Harness SDK does not expose a separate private-instruction channel.",
+                "params/privateInstructions",
+            ),
+            started_at,
+        );
+    }
     let Some(cwd) = cwd.filter(|path| path.is_absolute()) else {
         return RunResult::failed(
             failure(
@@ -221,7 +236,7 @@ pub(super) fn execute(
             .and_then(Value::as_u64)
             .filter(|value| *value > 0),
         cordis_config,
-        output_limit: max_stdout.unwrap_or(64 * 1024 * 1024),
+        output_limit: max_stdout,
         stderr_limit: max_stderr,
     };
     let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
@@ -242,7 +257,7 @@ pub(super) fn execute(
             None => Err(transport_unavailable()),
         }
     };
-    let (turn_id, raw_events) = match outcome {
+    let parsed = match outcome {
         Ok(outcome) => outcome,
         Err(error) => {
             evict_transport(&session_id, &transport);
@@ -252,12 +267,12 @@ pub(super) fn execute(
     };
     RunResult {
         ok: true,
-        output: final_assistant_response(&raw_events),
-        events: project_protocol_frames(&raw_events),
+        transitions: parsed.transitions,
+        output: parsed.output,
         error: None,
         session_id: session_id.clone(),
         thread_id: session_id,
-        turn_id,
+        turn_id: parsed.turn_id,
         turn_status: "completed".to_string(),
         effective: EffectiveSettings {
             cwd: Some(config.cwd.to_string_lossy().into_owned()),
@@ -272,13 +287,7 @@ pub(super) fn execute(
 }
 
 pub(in crate::platform) fn cleanup_session(session_id: &str) -> CleanupDisposition {
-    let transport = {
-        let mut transports = match TRANSPORTS.lock() {
-            Ok(transports) => transports,
-            Err(_) => return CleanupDisposition::Unavailable,
-        };
-        transports.remove(session_id.trim())
-    };
+    let transport = registry_remove::<Arc<ManagedTransport>>(REGISTRY_NAMESPACE, session_id.trim());
     let Some(transport) = transport else {
         return CleanupDisposition::SessionUnavailable;
     };
@@ -294,8 +303,7 @@ fn transport_for_session(
     config: &TransportConfig,
     deadline: Option<Instant>,
 ) -> std::result::Result<Arc<ManagedTransport>, ProtocolFailure> {
-    let mut transports = TRANSPORTS.lock().map_err(|_| transport_unavailable())?;
-    if let Some(transport) = transports.get(session_id) {
+    if let Some(transport) = registry_get::<Arc<ManagedTransport>>(REGISTRY_NAMESPACE, session_id) {
         if transport.config != *config {
             return Err(failure(
                 "deepseek_harness_session_config_changed",
@@ -303,18 +311,38 @@ fn transport_for_session(
                 "session/config",
             ));
         }
-        return Ok(Arc::clone(transport));
-    }
-    if transports.len() >= MAX_TRANSPORTS {
-        return Err(failure(
-            "deepseek_harness_transport_capacity_exceeded",
-            "The bounded DeepSeek Harness transport pool is full.",
-            "process/capacity",
-        ));
+        return Ok(transport);
     }
     let transport = Arc::new(spawn_transport(config, deadline)?);
-    transports.insert(session_id.to_string(), Arc::clone(&transport));
-    Ok(transport)
+    let inserted = registry_insert_if_absent(
+        REGISTRY_NAMESPACE,
+        session_id,
+        Arc::clone(&transport),
+        MAX_TRANSPORTS,
+    );
+    match inserted {
+        Ok(Ok(())) => Ok(transport),
+        Ok(Err(existing)) => {
+            shutdown_transport(&transport);
+            if existing.config == *config {
+                Ok(existing)
+            } else {
+                Err(failure(
+                    "deepseek_harness_session_config_changed",
+                    "DeepSeek Harness cannot resume a session after its executable or initialization settings changed.",
+                    "session/config",
+                ))
+            }
+        }
+        Err(()) => {
+            shutdown_transport(&transport);
+            Err(failure(
+                "deepseek_harness_transport_capacity_exceeded",
+                "The bounded DeepSeek Harness transport pool is full.",
+                "process/capacity",
+            ))
+        }
+    }
 }
 
 fn spawn_transport(
@@ -371,12 +399,12 @@ fn spawn_transport(
             }
         }
     });
-    let mut initialize_params = json!({"cwd": config.cwd.to_string_lossy(), "provider": config.provider, "model": config.model});
-    if let Some(max_tokens) = config.max_tokens {
-        initialize_params["maxTokens"] = json!(max_tokens);
-    }
-    let initialize =
-        json!({"jsonrpc":"2.0","id":"initialize","method":"initialize","params":initialize_params});
+    let initialize = initialize_request(
+        &config.cwd.to_string_lossy(),
+        &config.provider,
+        &config.model,
+        config.max_tokens,
+    );
     if write_frame(&mut stdin, &initialize).is_err() {
         let _ = child.terminate_tree();
         return Err(failure(
@@ -389,12 +417,8 @@ fn spawn_transport(
         let Some(Ok(frame)) = next_frame(&receiver, deadline) else {
             break false;
         };
-        let frame = frame.value;
-        if frame.get("id") == Some(&json!("initialize")) {
-            break frame
-                .pointer("/result/serverInfo/name")
-                .and_then(Value::as_str)
-                == Some("deepseek-harness-sdk-runtime");
+        if let Some(accepted) = initialize_accepted(&frame) {
+            break accepted;
         }
     };
     if !initialized {
@@ -420,12 +444,15 @@ fn execute_turn(
     state: &mut TransportState,
     prompt: &str,
     session_id: &str,
-    output_limit: usize,
+    output_limit: Option<usize>,
     deadline: Option<Instant>,
-) -> std::result::Result<(String, Vec<Value>), ProtocolFailure> {
+) -> std::result::Result<
+    super::native_agent_parser::adapters::deepseek_harness::TurnResult,
+    ProtocolFailure,
+> {
     let request_id = format!("prompt-{}", state.next_request_id);
     state.next_request_id = state.next_request_id.saturating_add(1);
-    let request = json!({"jsonrpc":"2.0","id":request_id,"method":"session/prompt","params":{"sessionId":session_id,"contentBlocks":[{"type":"text","text":prompt}]}});
+    let request = prompt_request(&request_id, session_id, prompt);
     write_frame(&mut state.stdin, &request).map_err(|_| {
         failure(
             "deepseek_harness_prompt_failed",
@@ -433,80 +460,31 @@ fn execute_turn(
             "protocol/prompt",
         )
     })?;
-    let mut message_id = None;
-    let mut buffered = Vec::new();
-    let mut attributed = Vec::new();
-    let mut receipt_seen = false;
+    let mut parser = TurnParser::new(&request_id, session_id);
     let mut output_bytes = 0usize;
     loop {
         let frame = next_frame(&state.receiver, deadline).ok_or_else(turn_incomplete)??;
-        output_bytes = output_bytes.saturating_add(frame.bytes);
-        if output_bytes > output_limit {
+        output_bytes = output_bytes.saturating_add(frame.wire_bytes());
+        if output_limit.is_some_and(|limit| output_bytes > limit) {
             return Err(output_limit_exceeded());
         }
-        let frame = frame.value;
-        if frame.get("id") == Some(&json!(request_id)) {
-            message_id = frame
-                .pointer("/result/messageId")
-                .and_then(Value::as_str)
-                .map(str::to_string);
-            let Some(id) = message_id.as_deref() else {
-                return Err(turn_incomplete());
-            };
-            if let Some(index) = buffered
-                .iter()
-                .position(|frame| is_inbox_receipt(frame, id))
-            {
-                receipt_seen = true;
-                attributed.extend(buffered.drain(index..));
-                if attributed.iter().skip(1).any(is_idle_status) {
-                    break;
-                }
-            }
-            continue;
-        }
-        if frame.pointer("/params/sessionId").and_then(Value::as_str) != Some(session_id) {
-            continue;
-        }
-        if !matches!(
-            frame.get("method").and_then(Value::as_str),
-            Some("session.event" | "session.status")
-        ) {
-            continue;
-        }
-        if receipt_seen {
-            let terminal = is_idle_status(&frame);
-            attributed.push(frame);
-            if terminal {
-                break;
-            }
-        } else if let Some(id) = message_id.as_deref() {
-            if is_inbox_receipt(&frame, id) {
-                receipt_seen = true;
-                attributed.push(frame);
-            }
-        } else {
-            buffered.push(frame);
+        match parser.ingest(frame) {
+            Ok(Some(result)) => return Ok(result),
+            Ok(None) => {}
+            Err(TurnParseError::Incomplete) => return Err(turn_incomplete()),
         }
     }
-    let Some(message_id) = message_id else {
-        return Err(turn_incomplete());
-    };
-    if !receipt_seen {
-        return Err(turn_incomplete());
-    }
-    Ok((message_id, attributed))
 }
 
 /// Read one newline-delimited frame without allowing `read_line` to allocate
 /// past the protocol cap. An oversized frame terminates its transport.
 fn read_protocol_frame(
     reader: &mut impl BufRead,
-    limit: usize,
-) -> std::result::Result<Option<ProtocolFrame>, FrameFailure> {
-    let mut bytes = Vec::with_capacity(limit.min(8192));
+    limit: Option<usize>,
+) -> std::result::Result<Option<ProtocolFrame>, FrameError> {
+    let mut bytes = Vec::with_capacity(limit.unwrap_or(8192).min(8192));
     loop {
-        let available = reader.fill_buf().map_err(|_| FrameFailure::InvalidJson)?;
+        let available = reader.fill_buf().map_err(|_| FrameError::InvalidJson)?;
         if available.is_empty() {
             if bytes.is_empty() {
                 return Ok(None);
@@ -517,8 +495,8 @@ fn read_protocol_frame(
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |index| index + 1);
-        if bytes.len().saturating_add(take) > limit {
-            return Err(FrameFailure::OutputLimit);
+        if limit.is_some_and(|limit| bytes.len().saturating_add(take) > limit) {
+            return Err(FrameError::OutputLimit);
         }
         bytes.extend_from_slice(&available[..take]);
         reader.consume(take);
@@ -532,21 +510,17 @@ fn read_protocol_frame(
     {
         bytes.pop();
     }
-    let value = serde_json::from_slice(&bytes).map_err(|_| FrameFailure::InvalidJson)?;
-    Ok(Some(ProtocolFrame {
-        value,
-        bytes: bytes.len().saturating_add(1),
-    }))
+    FrameParser.parse_line(&bytes).map(Some)
 }
 
 fn write_frame(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
-    serde_json::to_writer(&mut *stdin, value)?;
-    stdin.write_all(b"\n")?;
+    let encoded = encode_request(value).map_err(std::io::Error::other)?;
+    stdin.write_all(&encoded)?;
     stdin.flush()
 }
 
 fn next_frame(
-    receiver: &mpsc::Receiver<std::result::Result<ProtocolFrame, FrameFailure>>,
+    receiver: &mpsc::Receiver<std::result::Result<ProtocolFrame, FrameError>>,
     deadline: Option<Instant>,
 ) -> Option<std::result::Result<ProtocolFrame, ProtocolFailure>> {
     let result = match deadline {
@@ -556,91 +530,19 @@ fn next_frame(
         None => receiver.recv().ok(),
     }?;
     Some(result.map_err(|kind| match kind {
-        FrameFailure::InvalidJson => failure(
+        FrameError::InvalidJson => failure(
             "deepseek_harness_invalid_json",
             "DeepSeek Harness emitted an invalid protocol frame.",
             "protocol/output",
         ),
-        FrameFailure::OutputLimit => output_limit_exceeded(),
+        FrameError::OutputLimit => output_limit_exceeded(),
     }))
 }
 
-fn is_inbox_receipt(frame: &Value, message_id: &str) -> bool {
-    frame.get("method").and_then(Value::as_str) == Some("session.event")
-        && frame.pointer("/params/event/type").and_then(Value::as_str)
-            == Some("agent/inbox/spliced")
-        && frame
-            .pointer("/params/event/data/inserted")
-            .and_then(Value::as_array)
-            .is_some_and(|messages| {
-                messages
-                    .iter()
-                    .any(|message| message.get("id").and_then(Value::as_str) == Some(message_id))
-            })
-}
-
-fn is_idle_status(frame: &Value) -> bool {
-    frame.get("method").and_then(Value::as_str) == Some("session.status")
-        && frame.pointer("/params/status").and_then(Value::as_str) == Some("idle")
-}
-
-fn final_assistant_response(frames: &[Value]) -> String {
-    let Some(event) = frames.iter().rev().find_map(|frame| {
-        let event = frame.pointer("/params/event")?;
-        (event.get("type").and_then(Value::as_str) == Some("assistant/message")).then_some(event)
-    }) else {
-        return String::new();
-    };
-    event
-        .pointer("/data/message/content")
-        .or_else(|| event.pointer("/data/content"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
-        .filter_map(|block| block.get("text").and_then(Value::as_str))
-        .collect()
-}
-
-fn project_protocol_frames(frames: &[Value]) -> Vec<Value> {
-    frames
-        .iter()
-        .filter_map(|frame| {
-            let session_id = frame.pointer("/params/sessionId").and_then(Value::as_str)?;
-            match frame.get("method").and_then(Value::as_str)? {
-                "session.status" => {
-                    let status = frame.pointer("/params/status").and_then(Value::as_str)?;
-                    matches!(status, "idle" | "busy" | "running").then(|| {
-                        json!({"method":"session.status","params":{"sessionId":session_id,"status":status}})
-                    })
-                }
-                "session.event" => {
-                    let event = frame.pointer("/params/event")?;
-                    let kind = event.get("type").and_then(Value::as_str)?;
-                    let projected = if kind == "assistant/message" {
-                        json!({
-                            "type": kind,
-                            "data": {"content": [{"type":"text","text": final_assistant_response(std::slice::from_ref(frame))}]}
-                        })
-                    } else {
-                        json!({"type": kind})
-                    };
-                    Some(json!({"method":"session.event","params":{"sessionId":session_id,"event":projected}}))
-                }
-                _ => None,
-            }
-        })
-        .collect()
-}
-
 fn evict_transport(session_id: &str, expected: &Arc<ManagedTransport>) {
-    if let Ok(mut transports) = TRANSPORTS.lock()
-        && transports
-            .get(session_id)
-            .is_some_and(|current| Arc::ptr_eq(current, expected))
-    {
-        transports.remove(session_id);
-    }
+    registry_remove_if::<Arc<ManagedTransport>>(REGISTRY_NAMESPACE, session_id, |current| {
+        Arc::ptr_eq(current, expected)
+    });
 }
 
 fn shutdown_transport(transport: &ManagedTransport) -> bool {
@@ -650,11 +552,7 @@ fn shutdown_transport(transport: &ManagedTransport) -> bool {
     let Some(mut state) = state.take() else {
         return true;
     };
-    let wrote = write_frame(
-        &mut state.stdin,
-        &json!({"jsonrpc":"2.0","id":"shutdown","method":"shutdown"}),
-    )
-    .is_ok();
+    let wrote = write_frame(&mut state.stdin, &shutdown_request()).is_ok();
     drop(state.stdin);
     let terminated = state
         .child
@@ -697,24 +595,27 @@ fn timestamp() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
-    fn message_receipt_search_is_exact_and_recursive() {
-        let frame = json!({"method":"session.event","params":{"event":{"type":"agent/inbox/spliced","data":{"inserted":[{"id":"message-1"}]}}}});
-        assert!(is_inbox_receipt(&frame, "message-1"));
-        assert!(!is_inbox_receipt(&frame, "message"));
-    }
-
-    #[test]
-    fn assistant_projection_ignores_user_and_tool_events() {
-        let frames = vec![
-            json!({"params":{"event":{"type":"tool/result","data":{"text":"private"}}}}),
-            json!({"params":{"event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"ok"}]}}}}}),
-        ];
-        assert_eq!(final_assistant_response(&frames), "ok");
+    fn private_instructions_fail_before_process_launch() {
+        let result = execute(
+            "definitely-not-a-real-deepseek-harness",
+            &json!({"model":"test","privateInstructions":"private sentinel"}),
+            "exact user prompt",
+            "session",
+            Some(std::env::temp_dir().as_path()),
+            1_000,
+            None,
+            1_024,
+        );
+        assert_eq!(
+            result.error.as_ref().map(|error| error.code),
+            Some("deepseek_harness_private_instructions_unsupported")
+        );
     }
 
     #[test]
@@ -722,8 +623,8 @@ mod tests {
         let input = format!("{{\"value\":\"{}\"}}\n", "x".repeat(128));
         let mut reader = BufReader::new(input.as_bytes());
         assert!(matches!(
-            read_protocol_frame(&mut reader, 32),
-            Err(FrameFailure::OutputLimit)
+            read_protocol_frame(&mut reader, Some(32)),
+            Err(FrameError::OutputLimit)
         ));
     }
 

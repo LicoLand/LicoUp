@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn failed_result_projects_bound_ids_and_no_runtime_events() {
+fn failed_result_projects_bound_ids_and_parser_failure_transition() {
     let failure = ProtocolFailure::new("static", "Static failure.", "test")
         .with_session(Some("native-session"))
         .with_turn("turn-1");
@@ -10,7 +10,10 @@ fn failed_result_projects_bound_ids_and_no_runtime_events() {
     assert_eq!(result.session_id, "native-session");
     assert_eq!(result.thread_id, "native-session");
     assert_eq!(result.turn_id, "turn-1");
-    assert!(result.events.is_empty());
+    assert!(matches!(
+        result.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Failed { code, .. }) if code == "static"
+    ));
     assert_eq!(result.effective.cwd, EffectiveSettings::default().cwd);
 }
 
