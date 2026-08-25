@@ -2092,6 +2092,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
                 value_kind: Text,
                 required: true,
             },
+            value_option("stdin-json", Json, false),
         ],
         constraints: &[],
     });
@@ -2428,6 +2429,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
                 value_kind: Text,
                 required: true,
             },
+            value_option("stdin-json", Json, false),
         ],
         "llm-gateway service status"
         | "llm-gateway service initialize"
