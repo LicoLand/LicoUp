@@ -185,8 +185,20 @@ test("Claude Code product controls and parity use one persistent stdio RPC owner
     read("tests/product-e2e/cli/agent-conversations/support/parity/results.mjs"),
     read("tests/product-e2e/cli/agent-conversations/support/parity/evidence.mjs"),
   ]);
-  for (const operation of ["open", "send", "history", "cleanup", "capabilities", "cancel"]) {
-    assert.ok(request.includes(`agent.conversation.${operation}`));
+  const operationVariants = {
+    open: "AgentConversationOpen",
+    send: "AgentConversationSend",
+    history: "AgentConversationHistory",
+    cleanup: "AgentConversationCleanup",
+    capabilities: "AgentConversationCapabilities",
+    cancel: "AgentConversationCancel",
+  };
+  assert.ok(request.includes('strip_prefix("agent.conversation.")'));
+  for (const [operation, variant] of Object.entries(operationVariants)) {
+    assert.ok(
+      request.includes(`ConversationProtocolMethod::${variant}`),
+      `missing persistent conversation operation: ${operation}`,
+    );
   }
   assert.ok(server.includes("PersistentConversationRuntime"));
   assert.ok(processIo.includes("executeStructured"));

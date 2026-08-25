@@ -294,9 +294,10 @@ pub(super) fn collect_kilo_models_from_state_value(
                 .and_then(sanitize_option_name)
                 .into_iter()
                 .collect::<BTreeSet<_>>();
+            let selector = kilo_qualified_selector(&model_id, provider_id.as_deref());
             add_model_catalog_entry_with_provider(
                 entries,
-                &model_id,
+                &selector,
                 None,
                 provider_id.as_deref(),
                 None,
@@ -346,15 +347,27 @@ pub(super) fn collect_kilo_model_ref(
         .or_else(|| object.get("provider"))
         .and_then(Value::as_str)
         .and_then(sanitize_option_name);
+    let selector = kilo_qualified_selector(&model_id, provider_id.as_deref());
     add_model_catalog_entry_with_provider(
         entries,
-        &model_id,
+        &selector,
         model_display_name_from_object(object, &model_id).as_deref(),
         provider_id.as_deref(),
         provider_name.as_deref(),
         source,
         efforts,
     );
+}
+
+fn kilo_qualified_selector(model_id: &str, provider_id: Option<&str>) -> String {
+    let Some(provider_id) = provider_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return model_id.to_string();
+    };
+    if model_id.starts_with(&format!("{provider_id}/")) {
+        model_id.to_string()
+    } else {
+        format!("{provider_id}/{model_id}")
+    }
 }
 
 pub(super) fn kilo_provider_and_model_id_from_selection_key(

@@ -33,6 +33,7 @@ class AgentConversationMessageList extends StatefulWidget {
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
+    this.onCopyText,
   });
 
   final bool loading;
@@ -40,6 +41,10 @@ class AgentConversationMessageList extends StatefulWidget {
   final TargetCandidate target;
   final bool turnActive;
   final List<AgentConversationMessage> liveMessages;
+
+  /// Clipboard write routed through the platform boundary (client clipboard
+  /// service); message rows expose an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
 
   /// How messages render: the shared document transcript or the messaging
   /// participant flow.
@@ -152,7 +157,7 @@ class AgentConversationMessageListState
         _timelineSessionIdentity == sessionIdentity) {
       return false;
     }
-    if (_reuseTimelineForStreamedTail(session, sessionIdentity)) {
+    if (_reuseTimelineForStreamedText(session, sessionIdentity)) {
       return true;
     }
 
@@ -202,19 +207,21 @@ class AgentConversationMessageListState
     return true;
   }
 
-  /// Reuse the built timeline while a reply streams in.
+  /// Reuse the built timeline while replies stream in.
   ///
-  /// A streamed turn republishes the live list every few frames, and only the
-  /// text of its last message changes. Rebuilding the whole timeline each time
-  /// re-derives every item, every storage key, and the whole key index for a
-  /// conversation that can hold hundreds of messages, which is work proportional
-  /// to history length on every frame of every reply. Timeline identity is
-  /// derived from message id, timestamp, role, and card type — never from text —
-  /// so the tail item can be swapped in place and every key stays stable.
+  /// A streamed turn republishes the live list every few frames, and usually
+  /// only text changes: with multiple concurrent group turns the changed
+  /// message may sit anywhere in the live list, not just at the tail. A full
+  /// rebuild re-derives every item, every storage key, and the whole key index
+  /// for a conversation that can hold hundreds of messages, which is work
+  /// proportional to history length on every frame of every reply. Timeline
+  /// identity is derived from message id, timestamp, role, and card type —
+  /// never from text — so a changed message item can be swapped in place and
+  /// every key stays stable.
   ///
-  /// Returns false whenever anything but the last live message text differs, so
+  /// Returns false whenever anything but message text revisions differs, so
   /// the full rebuild stays the only path that can change structure.
-  bool _reuseTimelineForStreamedTail(
+  bool _reuseTimelineForStreamedText(
     AgentConversationSession? session,
     String sessionIdentity,
   ) {
@@ -224,39 +231,53 @@ class AgentConversationMessageListState
     }
     final previous = _timelineLiveMessages;
     final next = widget.liveMessages;
-    if (previous == null ||
-        previous.isEmpty ||
-        previous.length != next.length) {
+    if (previous == null || previous.length != next.length) {
       return false;
     }
-    for (var index = 0; index < previous.length - 1; index += 1) {
-      if (!identical(previous[index], next[index])) {
+    final changedIndices = <int>[];
+    for (var index = 0; index < next.length; index += 1) {
+      if (identical(previous[index], next[index])) continue;
+      if (!_isStreamedTextRevision(previous[index], next[index])) {
         return false;
       }
+      changedIndices.add(index);
     }
-    final previousTail = previous.last;
-    final nextTail = next.last;
-    if (identical(previousTail, nextTail)) {
-      return false;
-    }
-    if (!_isStreamedTextRevision(previousTail, nextTail)) {
-      return false;
-    }
-    // The tail item must already be the last timeline item; the list is stored
-    // reversed for the reverse-scrolling viewport, so that is index 0.
-    if (_timelineItems.isEmpty) {
-      return false;
-    }
-    final head = _timelineItems.first;
-    if (head is! ConversationMessageTimelineItem ||
-        !identical(head.message, previousTail)) {
-      return false;
+    if (changedIndices.isEmpty) {
+      // The wrapper list was replaced (for example by an immutable copy made
+      // while assembling pane state) but every message object is identical:
+      // adopt the new reference and skip the rebuild entirely.
+      _timelineLiveMessages = next;
+      return true;
     }
     final items = List<ConversationTimelineItem>.of(_timelineItems);
-    items[0] = ConversationMessageTimelineItem(head.storageKey, nextTail);
-    _timelineItems = List.unmodifiable(items);
+    for (final changed in changedIndices) {
+      final previousMessage = previous[changed];
+      final itemIndex = _timelineIndexOfMessage(items, previousMessage);
+      if (itemIndex < 0) return false;
+      final item = items[itemIndex];
+      if (item is! ConversationMessageTimelineItem) return false;
+      items[itemIndex] = ConversationMessageTimelineItem(
+        item.storageKey,
+        next[changed],
+      );
+    }
+    _timelineItems = List<ConversationTimelineItem>.unmodifiable(items);
     _timelineLiveMessages = next;
     return true;
+  }
+
+  int _timelineIndexOfMessage(
+    List<ConversationTimelineItem> items,
+    AgentConversationMessage message,
+  ) {
+    for (var index = 0; index < items.length; index += 1) {
+      final item = items[index];
+      if (item is ConversationMessageTimelineItem &&
+          identical(item.message, message)) {
+        return index;
+      }
+    }
+    return -1;
   }
 
   /// Whether two versions of one live message differ only in streamed content.
@@ -333,6 +354,7 @@ class AgentConversationMessageListState
               preferPeerAgents: false,
               topOverlayInset: widget.topOverlayInset,
               bottomOverlayInset: widget.bottomOverlayInset,
+              onCopyText: widget.onCopyText,
             ),
           );
         }

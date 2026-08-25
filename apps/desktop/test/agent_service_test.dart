@@ -664,6 +664,11 @@ done
         ['rpc stdio'],
       );
     },
+    // Six sequential subprocess RPC round-trips share the default 30-second
+    // package:test harness budget; under full-suite load, process spawn and
+    // pipe scheduling alone can exceed it. This widens only the test harness
+    // budget; product RPC timeouts and behavior are untouched.
+    timeout: const Timeout(Duration(seconds: 90)),
   );
 
   test('macOS conversation RPC fails closed on out-of-order frames', () async {

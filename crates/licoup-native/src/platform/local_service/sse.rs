@@ -40,9 +40,12 @@ where
     let _permit = stream_gate()
         .acquire(CONCURRENCY_WAIT)
         .map_err(map_limit_failure)?;
+    // SSE is a long-lived stream that idles between events; a short read
+    // timeout kills a healthy idle stream. A `timeout_read` is intentionally
+    // not configured. Only the connect is time-boxed —
+    // liveness after that comes from server heartbeats and the stop flag.
     let response = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(2))
-        .timeout_read(Duration::from_secs(1))
         .build()
         .get(url.as_str())
         .call()

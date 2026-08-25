@@ -368,13 +368,15 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "OpenCode driver root must expose only ordinary modules and stable re-exports"
   );
   assert(
-    openCodeServeTransportSource.includes("ensure_attach_endpoint") &&
+    openCodeServeTransportSource.includes("ensure_attachment") &&
+      !openCodeServeTransportSource.includes("ensure_attach_endpoint") &&
       openCodeServeTransportSource.includes("watch_session_events") &&
       openCodeServeTransportSource.includes("open_serve_session") &&
       !openCodeServeTransportSource.includes("AcpProtocol") &&
       openCodeContinuitySource.includes("ProtocolConfig") &&
       openCodeContinuitySource.includes("open_serve_session") &&
-      openCodeProbeSource.includes("ensure_attach_endpoint") &&
+      openCodeProbeSource.includes("ensure_attachment") &&
+      !openCodeProbeSource.includes("ensure_attach_endpoint") &&
       openCodeProbeSource.includes("serve_capabilities") &&
       !openCodeServeTransportSource.includes("execute_acp") &&
       !openCodeProbeSource.includes("execute_acp"),

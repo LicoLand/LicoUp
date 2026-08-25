@@ -35,10 +35,32 @@ pub(in crate::platform) struct ActiveTurnGuard {
 }
 
 static ACTIVE_TURNS: OnceLock<Mutex<HashMap<(String, String), ActiveTurn>>> = OnceLock::new();
+static ENDPOINT_LEASES: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 fn active_turns() -> &'static Mutex<HashMap<(String, String), ActiveTurn>> {
     ACTIVE_TURNS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn endpoint_leases() -> &'static Mutex<HashMap<String, usize>> {
+    ENDPOINT_LEASES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(in crate::platform) struct EndpointLease {
+    attach_url: String,
+}
+
+pub(in crate::platform) fn pin_endpoint(attach_url: &str) -> Result<EndpointLease, ()> {
+    let attach_url = attach_url.trim_end_matches('/').to_string();
+    if attach_url.is_empty() || attach_url.len() > 2048 {
+        return Err(());
+    }
+    let mut leases = endpoint_leases().lock().map_err(|_| ())?;
+    if leases.len() >= MAX_ACTIVE_TURNS && !leases.contains_key(&attach_url) {
+        return Err(());
+    }
+    *leases.entry(attach_url.clone()).or_default() += 1;
+    Ok(EndpointLease { attach_url })
 }
 
 pub(in crate::platform) fn register(
@@ -92,6 +114,35 @@ pub(in crate::platform) fn cancel(driver_id: &str, session_id: &str) -> ControlD
                 observer(failure);
             }
             ControlDisposition::TransportUnavailable
+        }
+    }
+}
+
+pub(in crate::platform) fn endpoint_has_active_turn(attach_url: &str) -> bool {
+    let normalized = attach_url.trim_end_matches('/');
+    if endpoint_leases()
+        .lock()
+        .is_ok_and(|leases| leases.get(normalized).copied().unwrap_or(0) > 0)
+    {
+        return true;
+    }
+    let prefix = format!("{normalized}/session/");
+    active_turns().lock().is_ok_and(|turns| {
+        turns
+            .values()
+            .any(|turn| turn.abort_url.starts_with(&prefix))
+    })
+}
+
+impl Drop for EndpointLease {
+    fn drop(&mut self) {
+        if let Ok(mut leases) = endpoint_leases().lock()
+            && let Some(count) = leases.get_mut(&self.attach_url)
+        {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                leases.remove(&self.attach_url);
+            }
         }
     }
 }

@@ -171,6 +171,140 @@ void main() {
     });
   });
 
+  group('patchMessagingFlowStreamedMessages', () {
+    test(
+      'patches only the newest group and preserves older entry identity',
+      () {
+        // Newest-first timeline order, matching the message-list cache.
+        final previousItems = [
+          _messageItem('k-new', 'assistant', 'partial', _at(10, 2)),
+          _messageItem('k-mid', 'user', 'question', _at(10, 1)),
+          _messageItem('k-old', 'assistant', 'earlier answer', _at(10, 0)),
+        ];
+        final base = buildMessagingFlowEntries(
+          previousItems.reversed.toList(),
+        ).reversed.toList();
+
+        final revised = ConversationMessageTimelineItem(
+          'k-new',
+          AgentConversationMessage(
+            id: 'k-new',
+            role: 'assistant',
+            text: 'partial plus more',
+            createdAt: _at(10, 2),
+          ),
+        );
+        final nextItems = [revised, previousItems[1], previousItems[2]];
+
+        final patched = patchMessagingFlowStreamedMessages(
+          previousItems: previousItems,
+          nextItems: nextItems,
+          previousEntries: base,
+        );
+
+        expect(patched, isNotNull);
+        expect(patched!.length, base.length);
+        // The newest group is the only replaced entry; every older entry keeps
+        // object identity so the list view does not rebuild them.
+        for (var index = 1; index < patched.length; index += 1) {
+          expect(identical(patched[index], base[index]), isTrue);
+        }
+        final newest = patched.first as MessagingFlowMessageGroup;
+        expect(newest.messages.last.text, 'partial plus more');
+        // The day divider and older groups were never re-derived.
+        expect(identical(patched.first, base.first), isFalse);
+      },
+    );
+
+    test('patches a mid-list streamed text revision (multi-agent turns)', () {
+      // With two concurrent turns, the changed reply is not the newest item;
+      // the patch must still apply because only text advanced.
+      final previousItems = [
+        _messageItem('k-b', 'assistant', 'partial B', _at(10, 2)),
+        _messageItem('k-a', 'assistant', 'partial A', _at(10, 1)),
+      ];
+      final base = buildMessagingFlowEntries(
+        previousItems.reversed.toList(),
+      ).reversed.toList();
+
+      final nextItems = [
+        previousItems[0],
+        ConversationMessageTimelineItem(
+          'k-a',
+          AgentConversationMessage(
+            id: 'k-a',
+            role: 'assistant',
+            text: 'partial A and more',
+            createdAt: _at(10, 1),
+          ),
+        ),
+      ];
+
+      final patched = patchMessagingFlowStreamedMessages(
+        previousItems: previousItems,
+        nextItems: nextItems,
+        previousEntries: base,
+      );
+
+      expect(patched, isNotNull);
+      expect(patched!.length, base.length);
+      final updated = patched.whereType<MessagingFlowMessageGroup>().firstWhere(
+        (group) => group.messages.any((m) => m.id == 'k-a'),
+      );
+      expect(
+        updated.messages.firstWhere((m) => m.id == 'k-a').text,
+        'partial A and more',
+      );
+    });
+
+    test('rejects structural changes so the caller rebuilds', () {
+      final previousItems = [
+        _messageItem('k-new', 'assistant', 'partial', _at(10, 2)),
+        _messageItem('k-old', 'user', 'question', _at(10, 1)),
+      ];
+      final base = buildMessagingFlowEntries(
+        previousItems.reversed.toList(),
+      ).reversed.toList();
+
+      // Length change (a new message arrived) is structural.
+      final grown = [
+        _messageItem('k-newest', 'user', 'follow-up', _at(10, 3)),
+        ...previousItems,
+      ];
+      expect(
+        patchMessagingFlowStreamedMessages(
+          previousItems: previousItems,
+          nextItems: grown,
+          previousEntries: base,
+        ),
+        isNull,
+      );
+
+      // A role change at the same key is structural even though the list
+      // length and storage keys stay the same.
+      final roleChanged = [
+        previousItems[0],
+        ConversationMessageTimelineItem(
+          'k-old',
+          AgentConversationMessage(
+            id: 'k-old',
+            role: 'assistant',
+            text: 'question',
+            createdAt: _at(10, 1),
+          ),
+        ),
+      ];
+      expect(
+        patchMessagingFlowStreamedMessages(
+          previousItems: previousItems,
+          nextItems: roleChanged,
+          previousEntries: base,
+        ),
+        isNull,
+      );
+    });
+  });
+
   testWidgets('flow renders group headers, agent badge, and day dividers', (
     tester,
   ) async {
@@ -543,6 +677,59 @@ void main() {
     expect(decoration.color, isNot(themeColors.brandSurface));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'streamed newest message text updates in place without losing order',
+    (tester) async {
+      final first = _messageItem('k1', 'assistant', 'he', _at(10, 0, 0));
+      final second = _messageItem('k2', 'user', 'question', _at(10, 0, 1));
+      // Newest first: the streamed assistant reply is the first item (index 0).
+      final newestFirst = [first, second];
+      await _pumpFlow(tester, newestFirst);
+      expect(find.text('he'), findsOneWidget);
+
+      // A streamed update replaces the newest item content (same identity key,
+      // new message object, same list identity). The flow must re-derive the
+      // newest entry and render the new text.
+      final updated = ConversationMessageTimelineItem(
+        'k1',
+        AgentConversationMessage(
+          id: 'k1',
+          role: 'assistant',
+          text: 'hello world',
+          createdAt: '2026-08-24T02:00:00.000Z',
+          stableIdentity: 'k1',
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: SizedBox(
+              width: 800,
+              height: 600,
+              child: MessagingParticipantFlow(
+                items: [updated, second],
+                adapter: AgentRenderAdapter.fallback(),
+                target: _flowTarget('codex', 'Codex'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('hello world'), findsOneWidget);
+      expect(find.text('he'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('long transcripts page in as the user scrolls to the top', (
     tester,

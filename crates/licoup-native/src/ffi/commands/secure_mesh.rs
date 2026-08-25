@@ -19,6 +19,11 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
                 admitted.option_text("pending-operation-id"),
             ),
             ("decision", admitted.option_text("decision")),
+            (
+                "respondingEndpointId",
+                admitted.option_text("responding-endpoint-id"),
+            ),
+            ("responseNonce", admitted.option_text("response-nonce")),
         ],
         &[
             ("payload", admitted.option_json("payload")),
@@ -344,6 +349,50 @@ mod tests {
             rejected["execution"]["errorCode"],
             "high_risk_sender_rejected"
         );
+    }
+
+    #[test]
+    fn secure_mesh_approval_respond_cli_admits_bound_response_fields() {
+        let pending_operation_id = format!("approval-cli-{}", uuid::Uuid::new_v4());
+        let responding_endpoint_id = "endpoint-cli-responder";
+        let response_nonce = "nonce-cli-response";
+        crate::core::secure_mesh_approval::evaluate_approval_request_json(&json!({
+            "pendingOperationId": pending_operation_id,
+            "requesterAgentId": "codex",
+            "targetClientId": "local-client",
+            "originEndpointId": "endpoint-cli-origin",
+            "riskLevel": "local_effect",
+            "displaySummary": "Approve a bounded CLI operation",
+            "adapterCallbackTokenRef": "callback-cli-response",
+            "adapterStyle": "callback",
+            "expiresAt": "2099-01-01T00:00:00Z",
+            "responseNonce": response_nonce,
+            "requestedTools": ["fs.read"],
+            "trustedEndpointIds": [responding_endpoint_id],
+        }))
+        .unwrap();
+
+        let result = super::super::execute_cli(vec![
+            "secure-mesh".into(),
+            "approval".into(),
+            "respond".into(),
+            "--pending-operation-id".into(),
+            pending_operation_id,
+            "--decision".into(),
+            "allow".into(),
+            "--responding-endpoint-id".into(),
+            responding_endpoint_id.into(),
+            "--response-nonce".into(),
+            response_nonce.into(),
+        ])
+        .unwrap();
+        let value = expect_json(result, "secure mesh approval respond");
+
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["response"]["responseNonceBound"], true);
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains(responding_endpoint_id));
+        assert!(!serialized.contains(response_nonce));
     }
 
     #[test]
