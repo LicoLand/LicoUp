@@ -407,6 +407,11 @@ fn whole_assistant_messages_stream_progress_chunks() {
 fn permission_request_suspends_the_turn_until_external_approval() {
     let _serial = process_local_test_guard();
     let (directory, executable) = compile_fake_claude("lico-claude-approval");
+    // A freshly compiled unsigned binary pays a one-time cold-launch policy
+    // scan that can exceed the first turn's deliberate 500ms deadline; warm
+    // the binary once so that deadline measures the turn, never the OS scan.
+    let warm_up = Command::new(&executable).arg("--version").output().unwrap();
+    assert!(warm_up.status.success());
     let executable_text = executable.to_string_lossy().to_string();
     let params = json!({
         "model": "fake-model",

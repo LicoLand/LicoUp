@@ -19,8 +19,8 @@ pub(super) enum EventStreamFailure {
     Framing(super::local_service::sse::SseFailure),
 }
 
-pub fn ensure_attach_endpoint(executable: &str) -> Result<ServeEndpoint> {
-    local_service::serve::ensure_attach_endpoint(policy::SPEC, executable)
+pub(super) fn ensure_attachment(executable: &str) -> Result<local_service::ServeAttachment> {
+    local_service::serve::ensure_attachment(policy::SPEC, executable)
 }
 
 pub(super) fn get_json(url: &str) -> Result<Value> {

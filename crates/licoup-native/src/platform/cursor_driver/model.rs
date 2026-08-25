@@ -13,6 +13,7 @@ pub(super) const TURN_ARGS: &[&str] = &[
     "stream-json",
     "--trust",
     "--force",
+    "--stream-partial-output",
 ];
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub(in crate::platform) const MAX_SESSION_ID_LEN: usize = 128;

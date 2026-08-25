@@ -90,14 +90,33 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
             && event["sessionId"].as_str() == Some(first.session_id.as_str())
     }));
     // The NDJSON stream arrives through the pty transport (unix): the raw-mode
-    // slave keeps `\n`-only line endings, so the parsed chunks must surface
-    // the assistant text intact.
-    assert!(events.iter().any(|event| {
-        event["event"] == "agent.message.chunk"
-            && event["payload"]["text"]
-                .as_str()
-                .is_some_and(|text| text.contains("first response"))
-    }));
+    // slave keeps `\n`-only line endings, so the progressive assistant
+    // fragments must surface intact, once each, and concatenate exactly to the
+    // cumulative reply for both the new and the resumed turn. The resumed turn
+    // keeps the same session id, so ordering, not session id, splits the
+    // per-turn fragments.
+    let chunks: Vec<String> = events
+        .iter()
+        .filter_map(|event| {
+            (event["event"] == "agent.message.chunk").then(|| {
+                event["payload"]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+        })
+        .collect();
+    assert_eq!(
+        chunks,
+        vec![
+            "first".to_owned(),
+            " response".to_owned(),
+            "second".to_owned(),
+            " response".to_owned()
+        ]
+    );
+    assert_eq!(chunks[..2].concat(), first.output);
+    assert_eq!(chunks[2..].concat(), second.output);
     assert_eq!(RUNTIME_PROTOCOL, "cursor-agent-cli-v1");
     assert_eq!(DRIVER_ID, "cursor-cli");
     assert_eq!(

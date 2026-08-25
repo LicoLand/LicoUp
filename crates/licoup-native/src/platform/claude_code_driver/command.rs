@@ -25,6 +25,11 @@ pub(in crate::platform) struct LaunchIdentity {
     pub(in crate::platform) cwd: Option<PathBuf>,
     pub(in crate::platform) model: Option<String>,
     pub(in crate::platform) reasoning_effort: Option<String>,
+    /// Vendor permission mode mapped to `--permission-mode`. The launch
+    /// default (bypassPermissions, the vendor YOLO mode) is resolved here,
+    /// before argv and effective settings are projected, so compatibility,
+    /// effective settings, fresh sessions, and resumed sessions all observe
+    /// one value; an explicit supported selection is retained unchanged.
     pub(in crate::platform) permission_mode: Option<String>,
     /// Comma-joined tool allowlist passed via `--allowedTools` so an approved
     /// retry does not re-trigger a permission denial.
@@ -44,12 +49,21 @@ impl LaunchIdentity {
         config: &DriverConfig,
         cwd: Option<&Path>,
     ) -> Self {
+        // Explicit selections stay authoritative; an omitted mode resolves to
+        // the vendor YOLO default before the launch mapping, so the identity
+        // is pinned to one value for compatibility and effective settings.
+        let permission_mode = Some(
+            config
+                .permission_mode
+                .clone()
+                .unwrap_or_else(|| "bypassPermissions".to_string()),
+        );
         Self {
             executable: executable.to_string(),
             cwd: cwd.map(Path::to_path_buf),
             model: config.model.clone(),
             reasoning_effort: config.reasoning_effort.clone(),
-            permission_mode: config.permission_mode.clone(),
+            permission_mode,
             allowed_tools: config.allowed_tools.clone(),
             private_instructions: config.private_instructions.clone(),
             resume_session_id: (!config.requested_session_id.is_empty())
@@ -73,6 +87,10 @@ impl LaunchIdentity {
                 .reasoning_effort
                 .as_ref()
                 .is_none_or(|value| self.reasoning_effort.as_ref() == Some(value))
+            // An omitted permission mode leaves the launch default to the
+            // identity, so it never contradicts the pinned launch mode (the
+            // vendor YOLO default or an explicit selection); only an explicit
+            // switch triggers a fresh launcher.
             && config
                 .permission_mode
                 .as_ref()

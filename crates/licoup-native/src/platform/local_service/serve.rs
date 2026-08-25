@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::bounds::PROCESS_POLL_INTERVAL;
 use super::endpoint::ServeEndpoint;
+use super::endpoint::{ServeAttachment, ServeReadiness};
 use super::executable;
 use super::http::{self, HttpFailure};
 use super::params;
@@ -35,6 +36,8 @@ pub(in crate::platform) struct ServeSpec {
     pub(in crate::platform) default_host: &'static str,
     pub(in crate::platform) health_path: &'static str,
     pub(in crate::platform) session_probe_path: &'static str,
+    pub(in crate::platform) config_path: &'static str,
+    pub(in crate::platform) provider_path: &'static str,
     pub(in crate::platform) state_dir: &'static str,
     pub(in crate::platform) state_schema_version: &'static str,
     pub(in crate::platform) default_health_timeout_ms: u64,
@@ -42,6 +45,8 @@ pub(in crate::platform) struct ServeSpec {
     pub(in crate::platform) executable_environment: &'static [&'static str],
     pub(in crate::platform) default_executable: &'static str,
     pub(in crate::platform) configure_command: fn(&mut Command, &str, u16),
+    pub(in crate::platform) parse_readiness:
+        fn(&Value, &Value, &Value, &Value) -> Option<ServeReadiness>,
     pub(in crate::platform) errors: ServeErrorCodes,
 }
 
@@ -59,15 +64,22 @@ pub(in crate::platform) fn start(spec: ServeSpec, params: &Value) -> Result<Valu
 
 pub(in crate::platform) fn restart(spec: ServeSpec, params: &Value) -> Result<Value> {
     operate(spec, |paths| {
-        process::stop(paths, spec.errors.stop_failed)?;
+        let service_state = state::read_json(&paths.state_path, spec.errors.invalid_state)?;
+        if service_state.get("owned").and_then(Value::as_bool) == Some(true) {
+            process::stop(paths, spec.errors.stop_failed)?;
+        }
         start_with_paths(spec, params, paths, false, &CommandServeRunner)
     })
 }
 
 pub(in crate::platform) fn stop(spec: ServeSpec) -> Result<Value> {
     operate(spec, |paths| {
-        let stopped = process::stop(paths, spec.errors.stop_failed)?;
         let mut service_state = state::read_json(&paths.state_path, spec.errors.invalid_state)?;
+        let stopped = if service_state.get("owned").and_then(Value::as_bool) == Some(true) {
+            process::stop(paths, spec.errors.stop_failed)?
+        } else {
+            json!({"ok": true, "status": "not-owned", "stopped": false})
+        };
         service_state["status"] = json!("stopped");
         service_state["running"] = json!(false);
         service_state["updatedAtUnix"] = json!(unix_seconds());
@@ -125,6 +137,56 @@ pub(in crate::platform) fn ensure_attach_endpoint(
     Ok(endpoint)
 }
 
+pub(in crate::platform) fn ensure_attachment(
+    spec: ServeSpec,
+    executable: &str,
+) -> Result<ServeAttachment> {
+    operate(spec, |paths| {
+        let result = start_with_paths(
+            spec,
+            &json!({
+                "executable": executable,
+                "binary": executable,
+                "host": spec.default_host,
+                "port": spec.default_port
+            }),
+            paths,
+            true,
+            &CommandServeRunner,
+        )?;
+        if result.get("ok").and_then(Value::as_bool) != Some(true)
+            || result.get("healthy").and_then(Value::as_bool) != Some(true)
+        {
+            return Err(anyhow!(
+                result
+                    .get("errorCode")
+                    .and_then(Value::as_str)
+                    .unwrap_or(spec.errors.health_failed)
+                    .to_string()
+            ));
+        }
+        let endpoint = ServeEndpoint::new(
+            result
+                .get("host")
+                .and_then(Value::as_str)
+                .unwrap_or(spec.default_host),
+            result
+                .get("port")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok())
+                .unwrap_or(spec.default_port),
+        );
+        let readiness = probe_ready(spec, &endpoint.attach_url, Duration::from_secs(5))?;
+        let lease = super::turn_control::pin_endpoint(&endpoint.attach_url)
+            .map_err(|_| anyhow!(spec.errors.attach_probe_failed))?;
+        Ok(ServeAttachment {
+            endpoint,
+            catalog: readiness.catalog,
+            _lease: lease,
+        })
+    })
+}
+
 pub(in crate::platform) fn select_available_port(spec: ServeSpec, preferred: u16) -> Result<u16> {
     port::select(
         preferred,
@@ -164,9 +226,9 @@ pub(in crate::platform) fn post_json(spec: ServeSpec, url: &str, body: &Value) -
         .map_err(|failure| http_error(spec, failure))
 }
 
-fn operate<F>(spec: ServeSpec, operation: F) -> Result<Value>
+fn operate<T, F>(spec: ServeSpec, operation: F) -> Result<T>
 where
-    F: FnOnce(&ServicePaths) -> Result<Value>,
+    F: FnOnce(&ServicePaths) -> Result<T>,
 {
     let paths = ServicePaths::resolve(spec.state_dir, "serve.pid")?;
     let _lock = OperationLock::acquire(&paths.lock_path)?;
@@ -183,10 +245,15 @@ fn status_with_paths(spec: ServeSpec, paths: &ServicePaths) -> Result<Value> {
         .filter(|value| !value.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| ServeEndpoint::new(spec.default_host, spec.default_port).attach_url);
-    let health = one_health_check(spec, &attach_url).ok();
-    let healthy = health_is_ready(health.as_ref());
-    let adopted = healthy && !pid_alive;
-    let running = pid_alive || healthy;
+    let owned = service_state.get("owned").and_then(Value::as_bool) == Some(true);
+    let health = owned
+        .then(|| one_health_check(spec, &attach_url))
+        .transpose()
+        .ok()
+        .flatten();
+    let healthy = owned && pid_alive && health_is_ready(health.as_ref());
+    let adopted = false;
+    let running = owned && pid_alive;
     if !running
         && service_state
             .get("running")
@@ -195,13 +262,6 @@ fn status_with_paths(spec: ServeSpec, paths: &ServicePaths) -> Result<Value> {
     {
         service_state["status"] = json!("stopped");
         service_state["running"] = json!(false);
-        service_state["updatedAtUnix"] = json!(unix_seconds());
-        state::write_json(&paths.state_path, &service_state)?;
-    } else if adopted {
-        service_state["status"] = json!("running");
-        service_state["running"] = json!(true);
-        service_state["adopted"] = json!(true);
-        service_state["attachUrl"] = json!(attach_url);
         service_state["updatedAtUnix"] = json!(unix_seconds());
         state::write_json(&paths.state_path, &service_state)?;
     }
@@ -230,12 +290,7 @@ fn status_with_paths(spec: ServeSpec, paths: &ServicePaths) -> Result<Value> {
         "port": service_state.get("port").cloned().unwrap_or_else(|| json!(spec.default_port)),
         "preferredPort": service_state.get("preferredPort").cloned().unwrap_or_else(|| json!(spec.default_port)),
         "portConflict": service_state.get("portConflict").cloned().unwrap_or(json!(false)),
-        "executableAvailable": executable::available(
-            service_state
-                .get("executable")
-                .and_then(Value::as_str)
-                .unwrap_or(spec.default_executable)
-        ),
+        "executableAvailable": executable::available(spec.default_executable),
         "errorCode": service_state.get("errorCode").cloned().unwrap_or(Value::Null),
         "health": health.unwrap_or_else(|| json!({"healthy": false}))
     }))
@@ -248,7 +303,6 @@ fn start_with_paths(
     reuse_healthy: bool,
     runner: &dyn ServeRunner,
 ) -> Result<Value> {
-    let had_existing_state = paths.state_path.exists();
     let preferred =
         params::u16_value(params_value, &["port", "preferredPort"]).unwrap_or(spec.default_port);
     let host = params::text(params_value, &["host", "hostname"])
@@ -264,78 +318,81 @@ fn start_with_paths(
         spec.executable_environment,
         spec.default_executable,
     );
+    let resolved_executable = executable::resolve_file(&executable);
     let preferred_endpoint = ServeEndpoint::new(&host, preferred);
+    let existing_state = state::read_json(&paths.state_path, spec.errors.invalid_state)?;
+    let mut draining =
+        cleanup_draining_generations(existing_state.get("draining").and_then(Value::as_array));
+    let mut preserve_current = false;
 
     if reuse_healthy {
-        if let Ok(health) =
-            probe_ready(spec, &preferred_endpoint.attach_url, Duration::from_secs(5))
+        let owned = existing_state.get("owned").and_then(Value::as_bool) == Some(true);
+        let current_pid = existing_state
+            .get("pid")
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|pid| process::alive(Some(*pid)));
+        let attach_url = existing_state
+            .get("attachUrl")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let readiness = (!attach_url.is_empty())
+            .then(|| probe_ready(spec, &attach_url, Duration::from_secs(5)))
+            .transpose()
+            .ok()
+            .flatten();
+        if owned
+            && current_pid.is_some()
+            && let (Some(selected), Some(readiness)) =
+                (resolved_executable.as_ref(), readiness.as_ref())
+            && launch_identity_matches(&existing_state, selected, &readiness.version)
         {
-            return persist_reused_endpoint(
-                spec,
-                paths,
-                &preferred_endpoint,
-                preferred,
-                &executable,
-                health,
-                false,
-            );
-        }
-        let existing = status_with_paths(spec, paths)?;
-        if had_existing_state && existing.get("healthy").and_then(Value::as_bool) == Some(true) {
-            let attach_url = existing
-                .get("attachUrl")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if !attach_url.is_empty()
-                && let Ok(health) = probe_ready(spec, attach_url, Duration::from_secs(5))
-            {
-                let port = existing
+            let endpoint = ServeEndpoint::new(
+                existing_state
+                    .get("host")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&host),
+                existing_state
                     .get("port")
                     .and_then(Value::as_u64)
                     .and_then(|value| u16::try_from(value).ok())
-                    .unwrap_or(preferred);
-                let endpoint = ServeEndpoint::new(
-                    existing
-                        .get("host")
-                        .and_then(Value::as_str)
-                        .unwrap_or(&host),
-                    port,
-                );
-                return persist_reused_endpoint(
-                    spec,
-                    paths,
-                    &endpoint,
-                    preferred,
-                    &executable,
-                    health,
-                    existing
-                        .get("adopted")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                );
-            }
-        }
-        if existing.get("running").and_then(Value::as_bool) == Some(true)
-            && existing.get("healthy").and_then(Value::as_bool) != Some(true)
-            && existing.get("adopted").and_then(Value::as_bool) != Some(true)
-        {
-            process::stop(paths, spec.errors.stop_failed)?;
-        }
-    }
-
-    if !executable::available(&executable) {
-        if let Ok(health) =
-            probe_ready(spec, &preferred_endpoint.attach_url, Duration::from_secs(5))
-        {
+                    .unwrap_or(preferred),
+            );
             return persist_reused_endpoint(
                 spec,
                 paths,
-                &preferred_endpoint,
+                &endpoint,
                 preferred,
-                &executable,
-                health,
-                true,
+                readiness.health.clone(),
+                &existing_state,
+                draining,
             );
+        }
+        if owned && current_pid.is_some() {
+            let active = !attach_url.is_empty()
+                && super::turn_control::endpoint_has_active_turn(&attach_url);
+            if active {
+                draining.push(generation_from_state(&existing_state));
+                preserve_current = true;
+            } else if let Some(pid) = current_pid {
+                process::terminate_owned(pid);
+                let _ = state::remove_pid(&paths.pid_path);
+            }
+        }
+    }
+
+    let Some(resolved_executable) = resolved_executable else {
+        if preserve_current {
+            return Ok(transient_failure(
+                spec,
+                &host,
+                preferred,
+                &preferred_endpoint,
+                spec.errors.executable_missing,
+                false,
+                false,
+            ));
         }
         return persist_failure(
             spec,
@@ -350,23 +407,21 @@ fn start_with_paths(
             false,
             false,
         );
-    }
+    };
 
     let selected = match select_available_port(spec, preferred) {
         Ok(port) => port,
         Err(_) => {
-            if let Ok(health) =
-                probe_ready(spec, &preferred_endpoint.attach_url, Duration::from_secs(5))
-            {
-                return persist_reused_endpoint(
+            if preserve_current {
+                return Ok(transient_failure(
                     spec,
-                    paths,
-                    &preferred_endpoint,
+                    &host,
                     preferred,
-                    &executable,
-                    health,
+                    &preferred_endpoint,
+                    spec.errors.port_exhausted,
                     true,
-                );
+                    true,
+                ));
             }
             return persist_failure(
                 spec,
@@ -389,7 +444,12 @@ fn start_with_paths(
         params::u64_value(params_value, &["healthTimeoutMs"])
             .unwrap_or(spec.default_health_timeout_ms),
     );
-    let pid = match runner.spawn(&executable, &host, selected, spec.configure_command) {
+    let pid = match runner.spawn(
+        &resolved_executable.path,
+        &host,
+        selected,
+        spec.configure_command,
+    ) {
         Ok(pid) => pid,
         Err(failure) => {
             let missing = failure == SpawnFailure::Missing;
@@ -398,6 +458,17 @@ fn start_with_paths(
             } else {
                 spec.errors.start_failed
             };
+            if preserve_current {
+                return Ok(transient_failure(
+                    spec,
+                    &host,
+                    preferred,
+                    &endpoint,
+                    code,
+                    port_conflict,
+                    !missing,
+                ));
+            }
             return persist_failure(
                 spec,
                 paths,
@@ -413,13 +484,8 @@ fn start_with_paths(
             );
         }
     };
-    if state::write_pid(&paths.pid_path, pid).is_err() {
-        process::terminate_owned(pid);
-        return Err(anyhow!(spec.errors.start_failed));
-    }
-
     match wait_for_ready(spec, &endpoint.attach_url, timeout) {
-        Ok(health) => {
+        Ok(readiness) => {
             let service_state = json!({
                 "schemaVersion": spec.state_schema_version,
                 "status": "running",
@@ -430,11 +496,18 @@ fn start_with_paths(
                 "attachUrl": endpoint.attach_url,
                 "portConflict": port_conflict,
                 "pid": pid,
-                "executable": executable,
+                "owned": true,
+                "launchIdentity": {
+                    "file": resolved_executable.private_file_identity,
+                    "version": readiness.version,
+                },
+                "draining": draining,
                 "updatedAtUnix": unix_seconds()
             });
-            if state::write_json(&paths.state_path, &service_state).is_err() {
-                let _ = process::stop(paths, spec.errors.stop_failed);
+            if state::write_json(&paths.state_path, &service_state).is_err()
+                || state::write_pid(&paths.pid_path, pid).is_err()
+            {
+                process::terminate_owned(pid);
                 return Err(anyhow!(spec.errors.start_failed));
             }
             Ok(json!({
@@ -450,11 +523,22 @@ fn start_with_paths(
                 "attachUrl": endpoint.attach_url,
                 "portConflict": port_conflict,
                 "executableAvailable": true,
-                "health": health
+                "health": readiness.health
             }))
         }
         Err(_) => {
-            let _ = process::stop(paths, spec.errors.stop_failed);
+            process::terminate_owned(pid);
+            if preserve_current {
+                return Ok(transient_failure(
+                    spec,
+                    &host,
+                    preferred,
+                    &endpoint,
+                    spec.errors.health_failed,
+                    port_conflict,
+                    true,
+                ));
+            }
             persist_failure(
                 spec,
                 paths,
@@ -520,30 +604,25 @@ fn persist_reused_endpoint(
     paths: &ServicePaths,
     endpoint: &ServeEndpoint,
     preferred: u16,
-    executable: &str,
     health: Value,
-    adopted: bool,
+    existing_state: &Value,
+    draining: Vec<Value>,
 ) -> Result<Value> {
     let port_conflict = endpoint.port != preferred;
-    let service_state = json!({
-        "schemaVersion": spec.state_schema_version,
-        "status": "running",
-        "running": true,
-        "preferredPort": preferred,
-        "host": endpoint.host,
-        "port": endpoint.port,
-        "attachUrl": endpoint.attach_url,
-        "portConflict": port_conflict,
-        "adopted": adopted,
-        "executable": executable,
-        "updatedAtUnix": unix_seconds()
-    });
+    let mut service_state = existing_state.clone();
+    service_state["schemaVersion"] = json!(spec.state_schema_version);
+    service_state["status"] = json!("running");
+    service_state["running"] = json!(true);
+    service_state["preferredPort"] = json!(preferred);
+    service_state["portConflict"] = json!(port_conflict);
+    service_state["draining"] = json!(draining);
+    service_state["updatedAtUnix"] = json!(unix_seconds());
     state::write_json(&paths.state_path, &service_state)?;
     Ok(json!({
         "ok": true,
         "status": "running",
         "reused": true,
-        "adopted": adopted,
+        "adopted": false,
         "running": true,
         "healthy": true,
         "pid": state::read_pid(&paths.pid_path)?.unwrap_or(0),
@@ -552,15 +631,116 @@ fn persist_reused_endpoint(
         "preferredPort": preferred,
         "attachUrl": endpoint.attach_url,
         "portConflict": port_conflict,
-        "executableAvailable": executable::available(executable),
+        "executableAvailable": true,
         "health": health
     }))
 }
 
+fn launch_identity_matches(
+    state: &Value,
+    executable: &executable::ResolvedExecutable,
+    health_version: &str,
+) -> bool {
+    state
+        .pointer("/launchIdentity/file")
+        .and_then(Value::as_str)
+        == Some(executable.private_file_identity.as_str())
+        && state
+            .pointer("/launchIdentity/version")
+            .and_then(Value::as_str)
+            == Some(health_version)
+}
+
+#[cfg(test)]
+pub(super) fn launch_identity_matches_for_test(
+    state: &Value,
+    executable: &executable::ResolvedExecutable,
+    health_version: &str,
+) -> bool {
+    launch_identity_matches(state, executable, health_version)
+}
+
+#[cfg(test)]
+pub(super) fn start_with_paths_for_test(
+    spec: ServeSpec,
+    params_value: &Value,
+    paths: &ServicePaths,
+    reuse_healthy: bool,
+    runner: &dyn ServeRunner,
+) -> Result<Value> {
+    start_with_paths(spec, params_value, paths, reuse_healthy, runner)
+}
+
+#[cfg(test)]
+pub(super) fn probe_ready_for_test(
+    spec: ServeSpec,
+    attach_url: &str,
+    timeout: Duration,
+) -> Result<ServeReadiness> {
+    probe_ready(spec, attach_url, timeout)
+}
+
+fn generation_from_state(state: &Value) -> Value {
+    json!({
+        "pid": state.get("pid").cloned().unwrap_or(Value::Null),
+        "host": state.get("host").cloned().unwrap_or(Value::Null),
+        "port": state.get("port").cloned().unwrap_or(Value::Null),
+        "attachUrl": state.get("attachUrl").cloned().unwrap_or(Value::Null),
+        "launchIdentity": state.get("launchIdentity").cloned().unwrap_or(Value::Null),
+    })
+}
+
+fn cleanup_draining_generations(existing: Option<&Vec<Value>>) -> Vec<Value> {
+    let mut retained = Vec::new();
+    for generation in existing.into_iter().flatten() {
+        let pid = generation
+            .get("pid")
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok());
+        let attach_url = generation
+            .get("attachUrl")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !process::alive(pid) {
+            continue;
+        }
+        if !attach_url.is_empty() && super::turn_control::endpoint_has_active_turn(attach_url) {
+            retained.push(generation.clone());
+        } else if let Some(pid) = pid {
+            process::terminate_owned(pid);
+        }
+    }
+    retained
+}
+
+fn transient_failure(
+    _spec: ServeSpec,
+    host: &str,
+    selected: u16,
+    endpoint: &ServeEndpoint,
+    error_code: &'static str,
+    port_conflict: bool,
+    executable_available: bool,
+) -> Value {
+    json!({
+        "ok": false,
+        "status": "blocked",
+        "running": false,
+        "healthy": false,
+        "errorCode": error_code,
+        "host": host,
+        "port": selected,
+        "preferredPort": selected,
+        "attachUrl": endpoint.attach_url,
+        "portConflict": port_conflict,
+        "executableAvailable": executable_available,
+    })
+}
+
 fn status_for_remote(spec: ServeSpec, attach_url: &str) -> Result<Value> {
     let trimmed = attach_url.trim().trim_end_matches('/');
-    let health = probe_ready(spec, trimmed, Duration::from_secs(5)).ok();
-    let healthy = health_is_ready(health.as_ref());
+    let readiness = probe_ready(spec, trimmed, Duration::from_secs(5)).ok();
+    let healthy = readiness.is_some();
     Ok(json!({
         "ok": healthy,
         "status": if healthy { "running" } else { "blocked" },
@@ -568,12 +748,12 @@ fn status_for_remote(spec: ServeSpec, attach_url: &str) -> Result<Value> {
         "healthy": healthy,
         "attachUrl": trimmed,
         "remote": true,
-        "health": health.unwrap_or_else(|| json!({"healthy": false})),
+        "health": readiness.map(|value| value.health).unwrap_or_else(|| json!({"healthy": false})),
         "errorCode": if healthy { Value::Null } else { json!(spec.errors.health_failed) }
     }))
 }
 
-fn wait_for_ready(spec: ServeSpec, attach_url: &str, timeout: Duration) -> Result<Value> {
+fn wait_for_ready(spec: ServeSpec, attach_url: &str, timeout: Duration) -> Result<ServeReadiness> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -585,12 +765,9 @@ fn wait_for_ready(spec: ServeSpec, attach_url: &str, timeout: Duration) -> Resul
     Err(anyhow!(spec.errors.health_failed))
 }
 
-fn probe_ready(spec: ServeSpec, attach_url: &str, timeout: Duration) -> Result<Value> {
+fn probe_ready(spec: ServeSpec, attach_url: &str, timeout: Duration) -> Result<ServeReadiness> {
     let deadline = Instant::now() + timeout;
     let health = one_health_check_with_timeout(spec, attach_url, timeout)?;
-    if !health_is_ready(Some(&health)) {
-        return Err(anyhow!(spec.errors.health_failed));
-    }
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() {
         return Err(anyhow!(spec.errors.attach_probe_failed));
@@ -600,9 +777,28 @@ fn probe_ready(spec: ServeSpec, attach_url: &str, timeout: Duration) -> Result<V
         attach_url.trim_end_matches('/'),
         spec.session_probe_path
     );
-    http::get_json(&sessions_url, remaining)
+    let sessions = http::get_json(&sessions_url, remaining)
         .map_err(|_| anyhow!(spec.errors.attach_probe_failed))?;
-    Ok(health)
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(anyhow!(spec.errors.attach_probe_failed));
+    }
+    let config = http::get_json(
+        &format!("{}{}", attach_url.trim_end_matches('/'), spec.config_path),
+        remaining,
+    )
+    .map_err(|_| anyhow!(spec.errors.attach_probe_failed))?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(anyhow!(spec.errors.attach_probe_failed));
+    }
+    let providers = http::get_json(
+        &format!("{}{}", attach_url.trim_end_matches('/'), spec.provider_path),
+        remaining,
+    )
+    .map_err(|_| anyhow!(spec.errors.attach_probe_failed))?;
+    (spec.parse_readiness)(&health, &sessions, &config, &providers)
+        .ok_or_else(|| anyhow!(spec.errors.attach_probe_failed))
 }
 
 fn one_health_check(spec: ServeSpec, attach_url: &str) -> Result<Value> {
@@ -616,12 +812,7 @@ fn one_health_check_with_timeout(
 ) -> Result<Value> {
     let url = format!("{}{}", attach_url.trim_end_matches('/'), spec.health_path);
     let payload = http::get_json(&url, timeout).map_err(|failure| http_error(spec, failure))?;
-    Ok(json!({
-        "healthy": payload
-            .get("healthy")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-    }))
+    Ok(payload)
 }
 
 fn health_is_ready(payload: Option<&Value>) -> bool {
