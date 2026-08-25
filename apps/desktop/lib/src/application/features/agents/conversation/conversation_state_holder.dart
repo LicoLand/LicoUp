@@ -132,6 +132,21 @@ final class ConversationStateHolder extends ChangeNotifier {
 
   Iterable<String> get scopeKeys => _scopes.keys;
 
+  /// Removes one scope's projection state and publishes immediately.
+  ///
+  /// Turn scopes are ephemeral for surfaces that detach finished turns (for
+  /// example the canonical group pane): once a turn settles, the canonical
+  /// readback owns the completed reply, so the live scope must leave the
+  /// projection before the reload lands. One-to-one workspaces keep their
+  /// conversation scopes for the workspace lifetime and never call this.
+  void removeScope(String scopeKey) {
+    if (_disposed) return;
+    if (_scopes.remove(scopeKey.trim()) == null) return;
+    _publishTimer?.cancel();
+    _publishTimer = null;
+    notifyListeners();
+  }
+
   /// Applies one generated, sequence-bound delta to one conversation scope.
   /// Returns false when the delta has no renderable state consequence.
   bool applyDelta(

@@ -2794,11 +2794,16 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         ],
         "secure-mesh approval request"
         | "secure-mesh approval fanout"
-        | "secure-mesh approval respond"
         | "secure-mesh approval inbox"
         | "secure-mesh approval adapter-capability" => &[
             value_option("pending-operation-id", Text, false),
             value_option("decision", Text, false),
+        ],
+        "secure-mesh approval respond" => &[
+            value_option("pending-operation-id", Text, true),
+            value_option("decision", Text, true),
+            value_option("responding-endpoint-id", Text, true),
+            value_option("response-nonce", Text, true),
         ],
         _ => &[],
     };

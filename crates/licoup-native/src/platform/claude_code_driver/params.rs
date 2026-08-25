@@ -10,6 +10,11 @@ pub(in crate::platform) struct DriverConfig {
     pub(in crate::platform) requested_session_id: String,
     pub(in crate::platform) model: Option<String>,
     pub(in crate::platform) reasoning_effort: Option<String>,
+    /// Vendor permission mode requested by the caller, or None when the turn
+    /// leaves it to the launch default. LaunchIdentity resolves the default
+    /// (bypassPermissions, the vendor YOLO mode) before argv and effective
+    /// settings are projected, so an unspecified turn remains compatible with
+    /// any live process while an explicit supported value stays authoritative.
     pub(in crate::platform) permission_mode: Option<String>,
     pub(in crate::platform) allowed_tools: Option<String>,
     pub(in crate::platform) private_instructions: Option<String>,
@@ -93,6 +98,11 @@ impl DriverConfig {
                 "request/validate",
             ));
         }
+        // An omitted permission mode is not an explicit selection: LaunchIdentity
+        // resolves the launch default (bypassPermissions, the vendor YOLO mode)
+        // before argv and effective settings are projected, keeping process
+        // continuation compatible while fresh and resumed launches still start
+        // in YOLO. Unsupported values fail validation here, before launch.
         Ok(Self {
             prompt: prompt.to_string(),
             requested_session_id: session_id.trim().to_string(),

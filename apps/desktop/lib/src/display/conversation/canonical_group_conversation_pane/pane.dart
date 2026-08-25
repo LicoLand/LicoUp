@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
 import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
@@ -13,6 +13,7 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
+import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/header.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/projection.dart';
@@ -70,14 +71,30 @@ class _CanonicalGroupConversationPaneState
   int _strategyProjectionGeneration = 0;
   final Map<String, StreamSubscription<AgentDispatchEvent>> _turnSubscriptions =
       {};
-  final Map<String, ConversationTurnProcessState> _processByHandle = {};
+  final Map<String, String> _participantAgentIdByHandle = {};
+  final Map<String, String> _participantRoleByHandle = {};
   final Set<String> _finishingHandles = {};
   String _attachedConversationId = '';
+
+  /// Shared 32 ms-coalesced turn projection channel, identical to the 1:1
+  /// live path: every PersistentTurn event becomes a generated
+  /// [ConversationDeltaEvent] and lands in this holder, which publishes at most
+  /// once per display interval. The pane renders from its projections and keeps
+  /// no per-chunk projection state of its own.
+  final ConversationStateHolder _turnStates = ConversationStateHolder();
+
+  AgentConversationSession? _cachedSession;
+  ClientConversation? _cachedSessionConversation;
+  List<ClientConversationEvent>? _cachedSessionEvents;
+  String _cachedSessionLocale = '';
+  List<AgentConversationMessage>? _cachedLiveMessages;
+  List<List<AgentConversationMessage>>? _cachedLiveParts;
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onConversationChanged);
+    _turnStates.addListener(_onTurnProjectionChanged);
     unawaited(_loadAuthorizedStrategies());
     if (widget.controller.selectedConversation != null) {
       unawaited(_ensureConversationHost());
@@ -107,10 +124,21 @@ class _CanonicalGroupConversationPaneState
   @override
   void dispose() {
     widget.controller.removeListener(_onConversationChanged);
+    _turnStates.removeListener(_onTurnProjectionChanged);
     _detachLiveTurns();
+    _turnStates.dispose();
     _messageScrollController.dispose();
     super.dispose();
   }
+
+  /// One holder publish per 32 ms window (or an immediate terminal publish)
+  /// drives exactly one pane rebuild; streamed chunks no longer repaint at
+  /// frame rate.
+  void _onTurnProjectionChanged() {
+    if (mounted) setState(() {});
+  }
+
+  String _scopeKeyFor(String handle) => '$_attachedConversationId\u0000$handle';
 
   void _onConversationChanged() {
     if (!mounted) return;
@@ -377,17 +405,17 @@ class _CanonicalGroupConversationPaneState
       return strings.assistantNeedsConfigurationStatus;
     }
     if (!_assistantActive(conversation)) return strings.assistantPausedStatus;
-    final subagents = _processByHandle.values
-        .where((state) => state.participantRole.trim() != 'assistant')
-        .map((state) => state.participantAgentId.trim())
+    final subagents = _participantRoleByHandle.entries
+        .where((entry) => entry.value.trim() != 'assistant')
+        .map((entry) => _participantAgentIdByHandle[entry.key]?.trim() ?? '')
         .where((agentId) => agentId.isNotEmpty)
         .toSet();
     if (subagents.isNotEmpty) {
       return strings.assistantCoordinatingStatus(subagents.length);
     }
     final assistantWorking =
-        _processByHandle.values.any(
-          (state) => state.participantRole.trim() == 'assistant',
+        _participantRoleByHandle.values.any(
+          (role) => role.trim() == 'assistant',
         ) ||
         widget.controller.dispatchPending;
     return assistantWorking
@@ -395,11 +423,71 @@ class _CanonicalGroupConversationPaneState
         : strings.assistantReadyStatus;
   }
 
-  List<AgentConversationMessage> get _liveMessages =>
-      List<AgentConversationMessage>.unmodifiable([
-        for (final state in _processByHandle.values)
-          ...state.projectedMessages(includeUser: false),
-      ]);
+  /// Live turn projections in attach order. Each scope's list is memoized by
+  /// the shared holder, so unchanged turns keep identical lists and the
+  /// message-list timeline cache only ever sees one changed entry.
+  List<AgentConversationMessage> get _liveMessages {
+    if (_turnSubscriptions.isEmpty) {
+      _cachedLiveParts = null;
+      _cachedLiveMessages = List<AgentConversationMessage>.empty(
+        growable: false,
+      );
+      return _cachedLiveMessages!;
+    }
+    final parts = <List<AgentConversationMessage>>[
+      for (final handle in _turnSubscriptions.keys)
+        _turnStates.projectionFor(_scopeKeyFor(handle)).messages,
+    ];
+    final previousParts = _cachedLiveParts;
+    final previousMerged = _cachedLiveMessages;
+    if (previousParts != null &&
+        previousMerged != null &&
+        previousParts.length == parts.length) {
+      var unchanged = true;
+      for (var index = 0; index < parts.length; index += 1) {
+        if (!identical(previousParts[index], parts[index])) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return previousMerged;
+    }
+    final merged = List<AgentConversationMessage>.unmodifiable([
+      for (final part in parts) ...part,
+    ]);
+    _cachedLiveParts = parts;
+    _cachedLiveMessages = merged;
+    return merged;
+  }
+
+  /// Canonical projection with identity caching. Only event references and the
+  /// conversation identity enter the cache key: a rebuild that republishes the
+  /// same event list reuses the session and every message object, so the
+  /// message-list timeline cache keeps its in-place tail-swap fast path instead
+  /// of rebuilding the timeline on every streamed chunk.
+  AgentConversationSession _canonicalSession(
+    ClientConversation conversation,
+    LicoStrings strings,
+  ) {
+    final events = widget.controller.events;
+    final cached = _cachedSession;
+    if (cached != null &&
+        identical(_cachedSessionConversation, conversation) &&
+        identical(_cachedSessionEvents, events) &&
+        _cachedSessionLocale == strings.locale.languageCode) {
+      return cached;
+    }
+    final session = canonicalGroupConversationSession(
+      conversation,
+      events,
+      strings,
+    );
+    _cachedSession = session;
+    _cachedSessionConversation = conversation;
+    _cachedSessionEvents = events;
+    _cachedSessionLocale = strings.locale.languageCode;
+    return session;
+  }
 
   Widget _groupFailureCapsule(ClientConversationController controller) {
     return CanonicalGroupFailureCapsule(
@@ -411,9 +499,7 @@ class _CanonicalGroupConversationPaneState
   }
 
   bool get _turnActive =>
-      _turnSubscriptions.isNotEmpty ||
-      _processByHandle.isNotEmpty ||
-      widget.controller.dispatchPending;
+      _turnSubscriptions.isNotEmpty || widget.controller.dispatchPending;
 
   Future<void> _ensureConversationHost() async {
     final gateway = widget.persistentGateway;
@@ -432,8 +518,12 @@ class _CanonicalGroupConversationPaneState
     for (final subscription in _turnSubscriptions.values) {
       unawaited(subscription.cancel());
     }
+    for (final handle in _turnSubscriptions.keys) {
+      _turnStates.removeScope(_scopeKeyFor(handle));
+    }
     _turnSubscriptions.clear();
-    _processByHandle.clear();
+    _participantAgentIdByHandle.clear();
+    _participantRoleByHandle.clear();
     _finishingHandles.clear();
     _attachedConversationId = '';
   }
@@ -483,13 +573,6 @@ class _CanonicalGroupConversationPaneState
       if (handle.isEmpty || participant == null) continue;
       liveHandles.add(handle);
       if (_turnSubscriptions.containsKey(handle)) continue;
-      _ensureLiveProcess(
-        handle: handle,
-        agentId: participant.agentId,
-        participantLabel: participant.label,
-        participantRole: participant.role,
-        userText: '',
-      );
       _listenTurn(
         gateway,
         handle: handle,
@@ -511,39 +594,10 @@ class _CanonicalGroupConversationPaneState
           .toList(growable: false);
       for (final handle in stale) {
         unawaited(_turnSubscriptions.remove(handle)?.cancel());
-        _processByHandle.remove(handle);
+        _removeLiveTurn(handle);
       }
     }
     if (mounted) setState(() {});
-  }
-
-  void _ensureLiveProcess({
-    required String handle,
-    required String agentId,
-    required String participantLabel,
-    required String participantRole,
-    required String userText,
-  }) {
-    final existing = _processByHandle[handle];
-    if (existing != null) {
-      existing.recordParticipant(
-        participantAgentId: agentId,
-        participantLabel: participantLabel,
-        participantRole: participantRole,
-      );
-      return;
-    }
-    final state = ConversationTurnProcessState(
-      turnId: 'live-$handle',
-      userText: userText,
-      createdAt: DateTime.now().toUtc().toIso8601String(),
-    );
-    state.recordParticipant(
-      participantAgentId: agentId,
-      participantLabel: participantLabel,
-      participantRole: participantRole,
-    );
-    _processByHandle[handle] = state;
   }
 
   void _listenTurn(
@@ -555,13 +609,9 @@ class _CanonicalGroupConversationPaneState
     required String participantRole,
     required int afterCursor,
   }) {
-    _ensureLiveProcess(
-      handle: handle,
-      agentId: agentId,
-      participantLabel: participantLabel,
-      participantRole: participantRole,
-      userText: '',
-    );
+    _participantAgentIdByHandle[handle] = agentId;
+    _participantRoleByHandle[handle] = participantRole;
+    final scopeKey = _scopeKeyFor(handle);
     _turnSubscriptions[handle] = gateway
         .attachActiveTurn(
           turnHandle: handle,
@@ -574,16 +624,25 @@ class _CanonicalGroupConversationPaneState
                 widget.controller.selectedConversationId != conversationId) {
               return;
             }
-            final state = _processByHandle[handle];
-            if (state == null) return;
-            final terminal = applyPersistentTurnProcessEvent(
-              state: state,
-              event: event,
-              agentId: agentId,
+            final terminal = persistentTurnEventIsTerminal(event);
+            // One generated delta enters the shared holder; the holder owns
+            // the blackboard mutation, the 32 ms publish coalescing, and the
+            // immediate terminal publish. The scope's turn id is pinned to the
+            // dispatch handle because one attach stream always serves one turn,
+            // and individual frames may carry heterogeneous native turn ids.
+            _turnStates.applyDelta(
+              ConversationDeltaEvent(<String, dynamic>{
+                'event': event.kind,
+                'sessionId': event.sessionId,
+                'turnId': 'live-$handle',
+                'turnHandle': handle,
+                'payload': event.payload,
+              }),
+              scopeKey: scopeKey,
+              participantAgentId: agentId,
               participantLabel: participantLabel,
               participantRole: participantRole,
             );
-            if (mounted) setState(() {});
             if (terminal) {
               unawaited(_finishTurn(handle));
             }
@@ -592,6 +651,12 @@ class _CanonicalGroupConversationPaneState
           onError: (Object _) => unawaited(_handleTurnObserverFailure(handle)),
           cancelOnError: false,
         );
+  }
+
+  void _removeLiveTurn(String handle) {
+    _turnStates.removeScope(_scopeKeyFor(handle));
+    _participantAgentIdByHandle.remove(handle);
+    _participantRoleByHandle.remove(handle);
   }
 
   Future<void> _handleTurnObserverFailure(String handle) async {
@@ -604,7 +669,7 @@ class _CanonicalGroupConversationPaneState
       await widget.controller.reloadSelected();
       if (!mounted) return;
       _surfacePersistedDispatchFailure();
-      _processByHandle.remove(handle);
+      _removeLiveTurn(handle);
       if (_turnSubscriptions.isEmpty) {
         widget.controller.settleLiveDispatch();
       }
@@ -617,7 +682,7 @@ class _CanonicalGroupConversationPaneState
   Future<void> _finishTurn(String handle) async {
     if (!_finishingHandles.add(handle)) return;
     unawaited(_turnSubscriptions.remove(handle)?.cancel());
-    _processByHandle.remove(handle);
+    _removeLiveTurn(handle);
     if (mounted) setState(() {});
     try {
       await widget.controller.reloadSelected();
@@ -625,7 +690,7 @@ class _CanonicalGroupConversationPaneState
       if (widget.controller.dispatchPending) {
         await _attachLiveTurns(waitForChange: true);
         if (!mounted) return;
-        if (_turnSubscriptions.isNotEmpty || _processByHandle.isNotEmpty) {
+        if (_turnSubscriptions.isNotEmpty) {
           return;
         }
       }
@@ -660,18 +725,6 @@ class _CanonicalGroupConversationPaneState
           _assistantActive(conversation),
     );
     if (!posted) return false;
-    for (final turn in widget.controller.liveTurns) {
-      final handle = (turn['turnHandle'] ?? '').toString().trim();
-      final participant = _activeTurnParticipant(turn);
-      if (handle.isEmpty || participant == null) continue;
-      _ensureLiveProcess(
-        handle: handle,
-        agentId: participant.agentId,
-        participantLabel: participant.label,
-        participantRole: participant.role,
-        userText: text,
-      );
-    }
     if (mounted) setState(() {});
     unawaited(_attachLiveTurns(postedTurns: widget.controller.liveTurns));
     return true;
@@ -788,11 +841,7 @@ class _CanonicalGroupConversationPaneState
       [...participantTargets, ...widget.targets],
       controller.recentParticipantAgentIds,
     );
-    final session = canonicalGroupConversationSession(
-      conversation,
-      controller.events,
-      strings,
-    );
+    final session = _canonicalSession(conversation, strings);
     final primaryTarget = participantTargets.first;
     final state = AgentConversationPaneState(
       target: primaryTarget,

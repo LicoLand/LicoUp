@@ -87,6 +87,7 @@ pub(in crate::platform) enum ProtocolEffect {
 pub(in crate::platform) enum ProtocolPhase {
     AwaitInitialize,
     AwaitThread,
+    AwaitThreadUnarchive,
     AwaitTurnStart,
     AwaitTurnCompleted,
     Finished,

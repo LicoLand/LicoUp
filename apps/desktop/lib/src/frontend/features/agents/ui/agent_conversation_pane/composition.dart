@@ -177,6 +177,7 @@ class AgentConversationActivePane extends StatelessWidget {
             participantRuntimeProfiles: state.participantRuntimeProfiles,
             topOverlayInset: headerOverlayInset,
             bottomOverlayInset: composerOverlayInset,
+            onCopyText: actions.onCopyText,
           );
     final messages = RepaintBoundary(
       key: const Key('conversation-streaming-repaint-boundary'),

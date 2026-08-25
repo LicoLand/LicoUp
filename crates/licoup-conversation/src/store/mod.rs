@@ -6276,6 +6276,19 @@ mod tests {
             .map(|part| part.content.as_str())
             .collect::<String>();
         assert_eq!(text, "Hello");
+        // Canonical Event Parts stay intact: each chunk keeps its own part
+        // identity and ordinal instead of being folded into one aggregate
+        // part at readback time.
+        let text_parts: Vec<_> = event
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Text)
+            .collect();
+        assert_eq!(text_parts.len(), 2);
+        assert_eq!(text_parts[0].content, "Hel");
+        assert_eq!(text_parts[1].content, "lo");
+        assert!(text_parts[0].ordinal < text_parts[1].ordinal);
+        assert_ne!(text_parts[0].id, text_parts[1].id);
     }
 
     #[test]
