@@ -1,7 +1,11 @@
 use super::*;
 use serde_json::json;
 use std::fs;
+#[cfg(unix)]
+use std::io::Write;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -356,6 +360,398 @@ fn execute_with_zero_timeout_runs_to_completion() {
 }
 
 #[cfg(unix)]
+#[test]
+fn execute_resume_binds_exact_requested_conversation() {
+    let _environment_guard = environment_lock();
+    let portable = std::env::temp_dir().join(format!(
+        "lico-agy-portable-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&portable).unwrap();
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    let requested = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let fixture =
+        FakeExecutable::with_receipt_style("resume", true, ReceiptStyle::Direct, requested);
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let result = execute(
+        fixture.executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "hello-from-lico",
+        requested,
+        Some(&workspace),
+        5_000,
+        Some(8_192),
+        8_192,
+    );
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    assert!(result.ok, "{:?}", result.error);
+    assert_eq!(result.session_id, requested);
+}
+
+#[cfg(unix)]
+#[test]
+fn execute_resume_rejects_receipt_drift() {
+    let _environment_guard = environment_lock();
+    let portable = std::env::temp_dir().join(format!(
+        "lico-agy-portable-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&portable).unwrap();
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    let requested = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let fixture =
+        FakeExecutable::with_receipt_style("drift", true, ReceiptStyle::Direct, DEFAULT_RECEIPT_ID);
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let result = execute(
+        fixture.executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "hello-from-lico",
+        requested,
+        Some(&workspace),
+        5_000,
+        Some(8_192),
+        8_192,
+    );
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    assert!(!result.ok);
+    assert_eq!(result.error.unwrap().code, "antigravity_cli_session_drift");
+}
+
+#[cfg(unix)]
+#[test]
+fn execute_reads_legacy_wrapped_receipt_for_compatibility() {
+    let _environment_guard = environment_lock();
+    let portable = std::env::temp_dir().join(format!(
+        "lico-agy-portable-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&portable).unwrap();
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    let fixture = FakeExecutable::with_receipt_style(
+        "wrapped",
+        true,
+        ReceiptStyle::Wrapped,
+        DEFAULT_RECEIPT_ID,
+    );
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let result = execute(
+        fixture.executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "hello-from-lico",
+        "",
+        Some(&workspace),
+        5_000,
+        Some(8_192),
+        8_192,
+    );
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    assert!(result.ok, "{:?}", result.error);
+    assert_eq!(result.session_id, DEFAULT_RECEIPT_ID);
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_script_encodes_one_direct_object_from_stdin() {
+    let _environment_guard = environment_lock();
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-hook-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    ensure_hook_bridge().unwrap();
+    let script = gemini
+        .join("lico-up-antigravity")
+        .join("session-receipt-hook.sh");
+    let receipt = gemini.join("receipt.json");
+    run_hook_script(
+        &script,
+        &receipt,
+        r#"{"conversationId":"11111111-2222-3333-4444-555555555555","transcriptPath":"/workspace/transcript","cwd":"/workspace"}"#,
+        None,
+    );
+    let text = fs::read_to_string(&receipt).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&text).unwrap(),
+        json!({"conversationId": DEFAULT_RECEIPT_ID}),
+        "the hook must write one direct JSON object, not a wrapped payload"
+    );
+    let hooks_json = fs::read_to_string(gemini.join("hooks.json")).unwrap();
+    let hook_entry = hooks_json
+        .split("lico-up-antigravity-session")
+        .nth(1)
+        .expect("hook namespace registered");
+    assert!(
+        hook_entry.contains("\"Stop\""),
+        "only Stop must be installed"
+    );
+    assert!(!hook_entry.contains("SessionStart"));
+
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_script_uses_vendor_environment_identifier_as_fallback() {
+    let _environment_guard = environment_lock();
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-hook-env-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    ensure_hook_bridge().unwrap();
+    let script = gemini
+        .join("lico-up-antigravity")
+        .join("session-receipt-hook.sh");
+    let receipt = gemini.join("receipt.json");
+    run_hook_script(
+        &script,
+        &receipt,
+        r#"{"transcriptPath":"/workspace/transcript","cwd":"/workspace"}"#,
+        Some(DEFAULT_RECEIPT_ID),
+    );
+    let text = fs::read_to_string(&receipt).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&text).unwrap(),
+        json!({"conversationId": DEFAULT_RECEIPT_ID})
+    );
+
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_script_preserves_vendor_first_receipt_when_input_carries_no_id() {
+    let _environment_guard = environment_lock();
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-hook-order-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    ensure_hook_bridge().unwrap();
+    let script = gemini
+        .join("lico-up-antigravity")
+        .join("session-receipt-hook.sh");
+    let receipt = gemini.join("receipt.json");
+    // The vendor/another Stop-hook writer ran first with an accepted alias key.
+    fs::write(
+        &receipt,
+        r#"{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}"#,
+    )
+    .unwrap();
+    run_hook_script(
+        &script,
+        &receipt,
+        r#"{"transcriptPath":"/workspace/transcript","cwd":"/workspace"}"#,
+        None,
+    );
+    let text = fs::read_to_string(&receipt).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&text).unwrap(),
+        json!({"conversationId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}),
+        "the LicoUp hook must not erase a vendor receipt written first"
+    );
+    assert_eq!(
+        crate::platform::native_agent_parser::adapters::antigravity::parse_hook_receipt(&text)
+            .as_deref(),
+        Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+    );
+
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+}
+
+#[cfg(unix)]
+fn run_hook_script(script: &Path, receipt: &Path, stdin_text: &str, environment_id: Option<&str>) {
+    let mut command = Command::new(script);
+    command
+        .env("LICO_ANTIGRAVITY_SESSION_RECEIPT", receipt)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null());
+    match environment_id {
+        Some(environment_id) => {
+            command.env("ANTIGRAVITY_CONVERSATION_ID", environment_id);
+        }
+        None => {
+            command.env_remove("ANTIGRAVITY_CONVERSATION_ID");
+        }
+    }
+    let mut child = command.spawn().unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin_text.as_bytes())
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+}
+
+#[cfg(unix)]
+const DEFAULT_RECEIPT_ID: &str = "11111111-2222-3333-4444-555555555555";
+
+#[cfg(unix)]
+#[derive(Clone, Copy)]
+enum ReceiptStyle {
+    /// One direct JSON object `{"conversationId": "<id>"}` — the format the
+    /// vendor CLI and the installed LicoUp Stop-hook write today.
+    Direct,
+    /// Legacy LicoUp hook wrapper (`hookPayload` + `environmentConversationId`),
+    /// retained as a compatible input only.
+    Wrapped,
+}
+
+#[cfg(unix)]
+impl ReceiptStyle {
+    fn writer_body(self, receipt_id: &str) -> String {
+        match self {
+            ReceiptStyle::Direct => format!(
+                r#"import json, sys
+json.dump({{"conversationId": "{receipt_id}"}}, open(sys.argv[1], "w"))
+"#
+            ),
+            ReceiptStyle::Wrapped => format!(
+                r#"import json, sys
+json.dump({{"hookPayload": json.dumps({{"conversationId": "{receipt_id}"}}), "environmentConversationId": ""}}, open(sys.argv[1], "w"))
+"#
+            ),
+        }
+    }
+}
+
+#[cfg(unix)]
 struct FakeExecutable {
     root: PathBuf,
     executable: PathBuf,
@@ -364,6 +760,20 @@ struct FakeExecutable {
 #[cfg(unix)]
 impl FakeExecutable {
     fn new(label: &str, emit_receipt: bool) -> Self {
+        Self::with_receipt_style(
+            label,
+            emit_receipt,
+            ReceiptStyle::Direct,
+            DEFAULT_RECEIPT_ID,
+        )
+    }
+
+    fn with_receipt_style(
+        label: &str,
+        emit_receipt: bool,
+        style: ReceiptStyle,
+        receipt_id: &str,
+    ) -> Self {
         use std::os::unix::fs::PermissionsExt;
 
         let nonce = SystemTime::now()
@@ -377,7 +787,9 @@ impl FakeExecutable {
         fs::create_dir_all(&root).unwrap();
         let executable = root.join("fake-agy");
         let script = if emit_receipt {
-            r#"#!/bin/sh
+            let writer = style.writer_body(receipt_id);
+            format!(
+                r#"#!/bin/sh
 set -eu
 for arg in "$@"; do
   case "$arg" in
@@ -391,19 +803,20 @@ for arg in "$@"; do
       ;;
   esac
 done
-receipt="${LICO_ANTIGRAVITY_SESSION_RECEIPT:?}"
+receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
 python3 - "$receipt" <<'PY'
-import json, os, sys
-json.dump({"hookPayload": json.dumps({"conversationId": "11111111-2222-3333-4444-555555555555"}), "environmentConversationId": ""}, open(sys.argv[1], "w"))
+{writer}
 PY
 printf '%s\n' 'PONG'
 exit 0
 "#
+            )
         } else {
             r#"#!/bin/sh
 printf '%s\n' "$@"
 exit 0
 "#
+            .to_string()
         };
         fs::write(&executable, script).unwrap();
         let mut permissions = fs::metadata(&executable).unwrap().permissions();
@@ -428,7 +841,9 @@ exit 0
         ));
         fs::create_dir_all(&root).unwrap();
         let executable = root.join("fake-agy");
-        let script = r#"#!/bin/sh
+        let writer = ReceiptStyle::Direct.writer_body(DEFAULT_RECEIPT_ID);
+        let script = format!(
+            r#"#!/bin/sh
 set -eu
 for arg in "$@"; do
   case "$arg" in
@@ -442,16 +857,16 @@ for arg in "$@"; do
       ;;
   esac
 done
-receipt="${LICO_ANTIGRAVITY_SESSION_RECEIPT:?}"
+receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
 python3 - "$receipt" <<'PY'
-import json, sys
-json.dump({"hookPayload": json.dumps({"conversationId": "11111111-2222-3333-4444-555555555555"}), "environmentConversationId": ""}, open(sys.argv[1], "w"))
+{writer}
 PY
 printf '%s\n' 'first'
 sleep 0.4
 printf '%s\n' 'second'
 exit 0
-"#;
+"#
+        );
         fs::write(&executable, script).unwrap();
         let mut permissions = fs::metadata(&executable).unwrap().permissions();
         permissions.set_mode(0o700);
@@ -494,6 +909,7 @@ impl AuthFakeExecutable {
         let executable = root.join("fake-agy");
         let print_marker = root.join("print-invocations.log");
         let login_flag = root.join("login-complete.flag");
+        let writer = ReceiptStyle::Direct.writer_body(DEFAULT_RECEIPT_ID);
         let script = format!(
             r#"#!/bin/sh
 set -eu
@@ -521,8 +937,7 @@ for arg in "$@"; do
       fi
       if [ -n "${{LICO_ANTIGRAVITY_SESSION_RECEIPT:-}}" ]; then
         python3 - "$LICO_ANTIGRAVITY_SESSION_RECEIPT" <<'PY'
-import json, sys
-json.dump({{"hookPayload": json.dumps({{"conversationId": "11111111-2222-3333-4444-555555555555"}}), "environmentConversationId": ""}}, open(sys.argv[1], "w"))
+{writer}
 PY
       fi
       printf '%s\n' 'PONG'
@@ -540,8 +955,7 @@ PY
 done
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
 python3 - "$receipt" <<'PY'
-import json, sys
-json.dump({{"hookPayload": json.dumps({{"conversationId": "11111111-2222-3333-4444-555555555555"}}), "environmentConversationId": ""}}, open(sys.argv[1], "w"))
+{writer}
 PY
 printf '%s\n' 'PONG'
 exit 0

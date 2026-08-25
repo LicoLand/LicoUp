@@ -60,28 +60,74 @@ fn native_agent_parser_reconciles_delta_and_cumulative_text_once() {
 }
 
 #[test]
-fn cursor_parser_keeps_one_lossless_text_unit_across_stale_snapshots() {
+fn cursor_parser_streams_only_assistant_frames_and_completes_with_cumulative_result() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    let init = parser
+        .parse_line(br#"{"type":"system","subtype":"init","apiKeySource":"synthetic","cwd":"/tmp","session_id":"synthetic-session","model":"fake-model","permissionMode":"default"}"#)
+        .unwrap();
+    assert!(init.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Accepted { session_id, turn_id }
+            if session_id == "synthetic-session" && turn_id == "cursor-turn"
+    )));
+    // The user prompt echo is an acknowledgement and must never output.
+    let echo = parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"exact user prompt"}]}}"#)
+        .unwrap();
+    assert!(
+        echo.iter()
+            .all(|effect| !matches!(effect, CursorEffect::Text { .. }))
+    );
+    let first = parser
+        .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","timestamp_ms":1,"message":{"role":"assistant","content":[{"type":"text","text":"hello "}]}}"#)
+        .unwrap();
+    assert!(first.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Text { text, .. } if text == "hello "
+    )));
+    let second = parser
+        .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","timestamp_ms":2,"message":{"role":"assistant","content":[{"type":"text","text":"world"}]}}"#)
+        .unwrap();
+    assert!(second.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Text { text, .. } if text == "world"
+    )));
+    // The cumulative result repeats the streamed fragments exactly: no extra
+    // suffix, and completion carries the full cumulative reply with the
+    // request-id transport turn id.
+    let terminal = parser
+        .parse_line(br#"{"type":"result","subtype":"success","is_error":false,"session_id":"synthetic-session","request_id":"req-1","result":"hello world"}"#)
+        .unwrap();
+    assert!(
+        terminal
+            .iter()
+            .all(|effect| !matches!(effect, CursorEffect::Text { .. }))
+    );
+    assert!(terminal.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Complete(outcome)
+            if outcome.output == "hello world" && outcome.turn_id == "req-1"
+    )));
+}
+
+#[test]
+fn cursor_parser_terminal_result_appends_missing_suffix() {
     use crate::platform::cursor_driver::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
     let first = parser
-        .parse_line(br#"{"type":"content_block_delta","delta":{"text":"hello"}}"#)
+        .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#)
         .unwrap();
     assert!(first.iter().any(|effect| matches!(
         effect,
         CursorEffect::Text { text, .. } if text == "hello"
     )));
-    let stale = parser
-        .parse_line(br#"{"type":"assistant","message":{"content":[{"type":"text","text":"hel"}]}}"#)
-        .unwrap();
-    assert!(
-        !stale
-            .iter()
-            .any(|effect| matches!(effect, CursorEffect::Text { .. }))
-    );
     let terminal = parser
-        .parse_line(br#"{"type":"result","subtype":"success","result":"hello world"}"#)
+        .parse_line(br#"{"type":"result","subtype":"success","is_error":false,"session_id":"synthetic-session","result":"hello world"}"#)
         .unwrap();
     assert!(terminal.iter().any(|effect| matches!(
         effect,
@@ -91,6 +137,26 @@ fn cursor_parser_keeps_one_lossless_text_unit_across_stale_snapshots() {
         effect,
         CursorEffect::Complete(outcome) if outcome.output == "hello world"
     )));
+}
+
+#[test]
+fn cursor_parser_terminal_result_rejects_true_divergence() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{
+        CursorParseFailure, CursorParser,
+    };
+
+    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"text","text":"hello"},{"type":"text","text":" world"}]}}"#)
+        .unwrap();
+    let divergent = parser.parse_line(
+        br#"{"type":"result","subtype":"success","is_error":false,"session_id":"synthetic-session","result":"a different answer"}"#,
+    );
+    assert!(matches!(
+        divergent,
+        Err(CursorParseFailure::TextSnapshotDiverged)
+    ));
 }
 
 #[test]

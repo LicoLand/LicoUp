@@ -344,9 +344,15 @@ mixin AgentConversationMessageController
     // selected local agent that means session cwd → draft → historical cwd →
     // target → client-owned fallback.
     final workingDirectory = selectedConversationWorkingDirectory;
+    final explicitlySelectedModel = selectedConversationModel;
+    final selectedModel =
+        const {'kilo-code', 'opencode'}.contains(agent.target) &&
+            explicitlySelectedModel.isEmpty
+        ? (agent.modelCatalog['defaultModel'] ?? '').toString().trim()
+        : explicitlySelectedModel;
     final model = (modelOverride ?? '').trim().isNotEmpty
         ? modelOverride!.trim()
-        : selectedConversationModel;
+        : selectedModel;
     final reasoningEffort = (reasoningEffortOverride ?? '').trim().isNotEmpty
         ? reasoningEffortOverride!.trim()
         : selectedConversationReasoningEffort;

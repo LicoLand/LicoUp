@@ -45,7 +45,8 @@ fn main() {
     }
     // Configuration switches (model, effort, permission mode, allowlist) must
     // not reject the launch: the fixture accepts the bounded value sets the
-    // driver may legitimately pass.
+    // driver may legitimately pass. The permission-mode set matches the driver
+    // contract, including the vendor YOLO default (bypassPermissions).
     let mut value_arguments = remaining.clone();
     for key in [
         "--model",
@@ -59,10 +60,21 @@ fn main() {
                 .get(position + 1)
                 .cloned()
                 .unwrap_or_default();
-            let allowed = if matches!(key, "--allowedTools" | "--append-system-prompt") {
-                !value.is_empty()
-            } else {
-                ["fake-model", "fake-model-2", "high", "max", "plan"].contains(&value.as_str())
+            let allowed = match key {
+                "--allowedTools" | "--append-system-prompt" => !value.is_empty(),
+                "--model" => ["fake-model", "fake-model-2"].contains(&value.as_str()),
+                "--effort" => ["high", "max"].contains(&value.as_str()),
+                "--permission-mode" => [
+                    "default",
+                    "manual",
+                    "acceptEdits",
+                    "plan",
+                    "auto",
+                    "dontAsk",
+                    "bypassPermissions",
+                ]
+                .contains(&value.as_str()),
+                _ => true,
             };
             if !allowed {
                 std::process::exit(2);
@@ -85,6 +97,7 @@ fn main() {
                 .map(|value| value.to_string_lossy().into_owned())
         })
         .unwrap_or_default();
+    let resumed_process = resume_session.is_some();
     let session_id = if let Some(requested) = resume_session {
         // Unknown conversations fail closed like the real CLI.
         if requested.contains("missing") {
@@ -257,10 +270,15 @@ fn main() {
             std::fs::write("fake-claude-descendant.pid", child.id().to_string()).unwrap();
             retained_descendant = Some(child);
         }
-        if !is_cancel_turn
-            && !is_auth_turn
-            && !is_steer_turn
-            && !line.contains(&format!("fake-claude-private-prompt-{turns}"))
+        // A freshly launched process starts its stdin at turn 1, so the exact
+        // per-turn synthetic prompt is deterministic there. A resumed fresh
+        // process may carry any conversation turn (a launch-configuration
+        // change, such as the default YOLO mode, releases the old process and
+        // resumes the same conversation), so the per-process turn index does
+        // not apply; the prompt must still never carry the session identifier.
+        let prompt_is_this_process_turn =
+            resumed_process || line.contains(&format!("fake-claude-private-prompt-{turns}"));
+        if !is_cancel_turn && !is_auth_turn && !is_steer_turn && !prompt_is_this_process_turn
             || line.contains("fake-claude-session")
         {
             std::process::exit(3);
@@ -327,7 +345,13 @@ fn main() {
         let output = if line.contains("fake-claude-utf8-output") {
             "多字节🙂".to_string()
         } else {
-            format!("fake Claude final answer {turns}")
+            // The synthetic answer matches the prompt's own turn suffix, so a
+            // resumed fresh process answers the same way for any conversation
+            // turn (the reply is per prompt, not per process stdin line).
+            format!(
+                "fake Claude final answer {}",
+                prompt_turn_suffix(&line).unwrap_or(turns)
+            )
         };
         send(
             &mut stdout,
@@ -357,6 +381,17 @@ fn main() {
         }
         std::fs::write("fake-claude-child.closed", "closed").unwrap();
     }
+}
+
+fn prompt_turn_suffix(line: &str) -> Option<usize> {
+    let prefix = "fake-claude-private-prompt-";
+    let start = line.find(prefix)? + prefix.len();
+    line.get(start..)?
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
 }
 
 fn send(stdout: &mut impl Write, message: &str) {

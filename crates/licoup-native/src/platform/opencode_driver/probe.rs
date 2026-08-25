@@ -23,8 +23,9 @@ pub(in crate::platform) fn capability_probe(
         )
         .namespaced(OPENCODE_DRIVER));
     }
-    let endpoint = super::super::opencode_serve::ensure_attach_endpoint(executable)
+    let attachment = super::super::opencode_serve::ensure_attachment(executable)
         .map_err(|error| super::serve_transport::endpoint_failure(&error.to_string()))?;
+    let endpoint = &attachment.endpoint;
     let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
     let session_url = super::serve_transport::workspace_request_url(
         &endpoint.attach_url,

@@ -2,6 +2,8 @@ use super::{AdapterContract, LifecycleStage, Transition, TransitionReducer};
 use serde_json::Value;
 use std::collections::HashSet;
 
+use crate::platform::local_service::{ServeModel, ServeModelCatalog, ServeReadiness};
+
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("opencode", "http-sse");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,6 +92,138 @@ pub(in crate::platform) fn session_id(frame: &Value) -> Option<&str> {
 
 pub(in crate::platform) fn session_collection(frame: &Value) -> bool {
     frame.as_array().is_some()
+}
+
+pub(in crate::platform) fn readiness(
+    health: &Value,
+    sessions: &Value,
+    config: &Value,
+    providers: &Value,
+) -> Option<ServeReadiness> {
+    if !health_ready(health) || !session_collection(sessions) {
+        return None;
+    }
+    let version = health.get("version")?.as_str()?.trim();
+    if version.is_empty() {
+        return None;
+    }
+    let provider_rows = providers
+        .get("all")
+        .or_else(|| providers.get("providers"))?
+        .as_array()?;
+    let mut models = Vec::<ServeModel>::new();
+    let mut provider_order = Vec::<String>::new();
+    for provider in provider_rows {
+        let Some(provider_id) = provider
+            .get("id")
+            .or_else(|| provider.get("providerID"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        provider_order.push(provider_id.to_string());
+        if let Some(rows) = provider.get("models").and_then(Value::as_object) {
+            for model_id in rows.keys().map(String::as_str) {
+                push_model(&mut models, provider_id, model_id);
+            }
+        } else if let Some(rows) = provider.get("models").and_then(Value::as_array) {
+            for row in rows {
+                if let Some(model_id) = row
+                    .get("id")
+                    .or_else(|| row.get("modelID"))
+                    .and_then(Value::as_str)
+                {
+                    push_model(&mut models, provider_id, model_id);
+                }
+            }
+        }
+    }
+    let defaults = providers.get("default").and_then(Value::as_object);
+    let configured = configured_model(config, &models, &provider_order);
+    let current = configured.or_else(|| {
+        provider_order.iter().find_map(|provider_id| {
+            let model_id = defaults?.get(provider_id)?.as_str()?.trim();
+            (!model_id.is_empty()).then(|| ServeModel {
+                provider_id: provider_id.clone(),
+                model_id: model_id.to_string(),
+            })
+        })
+    })?;
+    push_model(&mut models, &current.provider_id, &current.model_id);
+    Some(ServeReadiness {
+        version: version.to_string(),
+        catalog: ServeModelCatalog { current, models },
+        health: serde_json::json!({"healthy": true, "version": version}),
+    })
+}
+
+fn configured_model(
+    config: &Value,
+    models: &[ServeModel],
+    provider_order: &[String],
+) -> Option<ServeModel> {
+    let value = config.get("model")?;
+    if let Some(object) = value.as_object() {
+        let provider_id = object
+            .get("providerID")
+            .or_else(|| object.get("providerId"))?
+            .as_str()?
+            .trim();
+        let model_id = object
+            .get("modelID")
+            .or_else(|| object.get("modelId"))?
+            .as_str()?
+            .trim();
+        return (!provider_id.is_empty() && !model_id.is_empty()).then(|| ServeModel {
+            provider_id: provider_id.to_string(),
+            model_id: model_id.to_string(),
+        });
+    }
+    let selector = value.as_str()?.trim();
+    if let Some(exact) = models.iter().find(|model| model.selector() == selector) {
+        return Some(exact.clone());
+    }
+    let model_id_matches = models
+        .iter()
+        .filter(|model| model.model_id == selector)
+        .collect::<Vec<_>>();
+    if model_id_matches.len() == 1 {
+        return Some(model_id_matches[0].clone());
+    }
+    if let Some(current_provider_match) = provider_order.iter().find_map(|provider| {
+        model_id_matches
+            .iter()
+            .find(|model| model.provider_id == *provider)
+            .copied()
+    }) {
+        return Some(current_provider_match.clone());
+    }
+    if let Some((provider_id, model_id)) = selector.split_once('/') {
+        return (!provider_id.is_empty() && !model_id.is_empty()).then(|| ServeModel {
+            provider_id: provider_id.to_string(),
+            model_id: model_id.to_string(),
+        });
+    }
+    None
+}
+
+fn push_model(models: &mut Vec<ServeModel>, provider_id: &str, model_id: &str) {
+    let provider_id = provider_id.trim();
+    let model_id = model_id.trim();
+    if provider_id.is_empty() || model_id.is_empty() {
+        return;
+    }
+    if !models
+        .iter()
+        .any(|model| model.provider_id == provider_id && model.model_id == model_id)
+    {
+        models.push(ServeModel {
+            provider_id: provider_id.to_string(),
+            model_id: model_id.to_string(),
+        });
+    }
 }
 
 pub(in crate::platform) fn message(frame: &Value) -> Option<ServeMessage> {
@@ -258,5 +392,35 @@ mod tests {
             failed.last(),
             Some(Transition::Failed { code, .. }) if code == "code"
         ));
+    }
+
+    #[test]
+    fn readiness_uses_config_then_provider_order_and_never_session_models() {
+        let providers = json!({
+            "all": [
+                {"id": "anthropic", "models": {"claude-current": {}}},
+                {"id": "openai", "models": {"gpt-current": {}}}
+            ],
+            "default": {"anthropic": "claude-current", "openai": "gpt-current"}
+        });
+        let configured = readiness(
+            &json!({"healthy": true, "version": "2.0.0"}),
+            &json!([{"id": "old", "model": "stale-session-model"}]),
+            &json!({"model": "openai/gpt-current"}),
+            &providers,
+        )
+        .unwrap();
+        assert_eq!(configured.catalog.current.selector(), "openai/gpt-current");
+        let defaulted = readiness(
+            &json!({"healthy": true, "version": "2.0.0"}),
+            &json!([]),
+            &json!({}),
+            &providers,
+        )
+        .unwrap();
+        assert_eq!(
+            defaulted.catalog.current.selector(),
+            "anthropic/claude-current"
+        );
     }
 }

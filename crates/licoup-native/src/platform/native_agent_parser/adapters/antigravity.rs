@@ -16,6 +16,14 @@ pub(in crate::platform) fn valid_session_id(session_id: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
 }
 
+/// Recovers the native conversation identifier from a session receipt.
+///
+/// The primary input is the direct vendor receipt: a single JSON object with a
+/// top-level `conversationId` (or an accepted alias) that the Antigravity CLI,
+/// its official Stop-hook writer, or the LicoUp hook bridge writes. The wrapped
+/// vendor payload and the vendor environment identifier are retained only as
+/// compatible inputs for receipts produced by earlier writer layouts, so any
+/// compatible writer order resolves to the same conversation.
 pub(in crate::platform) fn parse_hook_receipt(text: &str) -> Option<String> {
     let envelope: Value = serde_json::from_str(text).ok()?;
     let payload = envelope
@@ -23,16 +31,8 @@ pub(in crate::platform) fn parse_hook_receipt(text: &str) -> Option<String> {
         .and_then(Value::as_str)
         .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
     [
-        payload.as_ref().and_then(|value| {
-            [
-                "conversationId",
-                "conversation_id",
-                "sessionId",
-                "session_id",
-            ]
-            .into_iter()
-            .find_map(|key| value.get(key).and_then(Value::as_str))
-        }),
+        conversation_identifier(&envelope),
+        payload.as_ref().and_then(conversation_identifier),
         envelope
             .get("environmentConversationId")
             .and_then(Value::as_str),
@@ -43,6 +43,19 @@ pub(in crate::platform) fn parse_hook_receipt(text: &str) -> Option<String> {
     .filter(|value| valid_session_id(value))
     .map(str::to_owned)
     .next()
+}
+
+/// The vendor conversation identifier key set accepted at the top level of a
+/// direct receipt and inside the retained wrapped payload.
+fn conversation_identifier(value: &Value) -> Option<&str> {
+    [
+        "conversationId",
+        "conversation_id",
+        "sessionId",
+        "session_id",
+    ]
+    .into_iter()
+    .find_map(|key| value.get(key).and_then(Value::as_str))
 }
 
 pub(in crate::platform) struct PtyOutputParser {
@@ -229,6 +242,86 @@ mod tests {
             success.transitions.last(),
             Some(&Transition::Lifecycle(LifecycleStage::Completed))
         );
+    }
+
+    #[test]
+    fn hook_receipt_parser_accepts_direct_vendor_receipt_with_aliases() {
+        let direct = r#"{"conversationId":"11111111-2222-3333-4444-555555555555"}"#;
+        assert_eq!(
+            parse_hook_receipt(direct).as_deref(),
+            Some("11111111-2222-3333-4444-555555555555")
+        );
+        for alias in ["conversation_id", "sessionId", "session_id"] {
+            let receipt = format!(r#"{{"{alias}":"11111111-2222-3333-4444-555555555555"}}"#);
+            assert_eq!(
+                parse_hook_receipt(&receipt).as_deref(),
+                Some("11111111-2222-3333-4444-555555555555"),
+                "alias {alias} must be accepted at the top level"
+            );
+        }
+    }
+
+    #[test]
+    fn hook_receipt_parser_retains_wrapped_and_environment_compatibility() {
+        let wrapped = r#"{"hookPayload":"{\"conversationId\":\"11111111-2222-3333-4444-555555555555\"}","environmentConversationId":""}"#;
+        assert_eq!(
+            parse_hook_receipt(wrapped).as_deref(),
+            Some("11111111-2222-3333-4444-555555555555")
+        );
+        let env_only = r#"{"hookPayload":"","environmentConversationId":"11111111-2222-3333-4444-555555555555"}"#;
+        assert_eq!(
+            parse_hook_receipt(env_only).as_deref(),
+            Some("11111111-2222-3333-4444-555555555555")
+        );
+        // A direct vendor receipt is primary even when an environment fallback
+        // disagrees, so writer order never changes the recovered conversation.
+        let direct = r#"{"conversationId":"11111111-2222-3333-4444-555555555555","environmentConversationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}"#;
+        assert_eq!(
+            parse_hook_receipt(direct).as_deref(),
+            Some("11111111-2222-3333-4444-555555555555")
+        );
+    }
+
+    #[test]
+    fn hook_receipt_parser_rejects_malformed_identifiers() {
+        for receipt in [
+            r#"{"conversationId":""}"#,
+            r#"{"conversationId":"short"}"#,
+            r#"{"conversationId":"11111111-2222-3333-4444-5555555555!5"}"#,
+            r#"{"conversationId":42}"#,
+            r#"{"hookPayload":"not-json"}"#,
+            "not json at all",
+        ] {
+            assert_eq!(parse_hook_receipt(receipt), None, "receipt: {receipt:?}");
+        }
+    }
+
+    #[test]
+    fn resume_binds_exact_identity_and_rejects_drift() {
+        let requested = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let received =
+            parse_hook_receipt(&format!(r#"{{"conversationId":"{requested}"}}"#)).unwrap();
+        let success = classify_terminal(TerminalFacts {
+            requested_session: requested,
+            receipt_session: Some(&received),
+            output: "ok",
+            timed_out: false,
+            exit_success: true,
+        })
+        .unwrap();
+        assert_eq!(success.session_id, requested);
+        let drifted_id = "11111111-2222-3333-4444-555555555555";
+        let drifted_receipt =
+            parse_hook_receipt(&format!(r#"{{"conversationId":"{drifted_id}"}}"#)).unwrap();
+        let drifted = classify_terminal(TerminalFacts {
+            requested_session: requested,
+            receipt_session: Some(&drifted_receipt),
+            output: "ok",
+            timed_out: false,
+            exit_success: true,
+        })
+        .unwrap_err();
+        assert_eq!(drifted.code, "antigravity_cli_session_drift");
     }
 
     #[test]

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 const HOOK_SCRIPT_NAME: &str = "session-receipt-hook.sh";
 
-pub(super) fn ensure_hook_bridge() -> Result<(), ProtocolFailure> {
+pub(in crate::platform) fn ensure_hook_bridge() -> Result<(), ProtocolFailure> {
     let script_path = hook_script_path()?;
     write_hook_script(&script_path)?;
     install_global_hook(&script_path)?;
@@ -194,16 +194,40 @@ fn write_hook_script(path: &Path) -> Result<(), ProtocolFailure> {
         r#"#!/bin/sh
 set -eu
 out="{receipt_expansion}"
-python3 - "$out" <<'PY'
+payload="$(cat)"
+python3 - "$out" "$payload" <<'PY'
 import json, os, sys
 out = sys.argv[1]
-raw = sys.stdin.read()
-payload = {{
-    "hookPayload": raw,
-    "environmentConversationId": os.environ.get("ANTIGRAVITY_CONVERSATION_ID") or "",
-}}
+raw = sys.argv[2]
+data = {{}}
+try:
+    data = json.loads(raw) if raw.strip() else {{}}
+except Exception:
+    data = {{}}
+conversation_id = ""
+if isinstance(data, dict):
+    for key in ("conversationId", "conversation_id", "sessionId", "session_id"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            conversation_id = value.strip()
+            break
+if not conversation_id:
+    conversation_id = (os.environ.get("ANTIGRAVITY_CONVERSATION_ID") or "").strip()
+if not conversation_id:
+    # Same-turn writer-order safety: a vendor direct receipt can already exist
+    # on this path, so never erase it when the hook input carries no id.
+    try:
+        previous = json.load(open(out, encoding="utf-8"))
+        if isinstance(previous, dict):
+            for key in ("conversationId", "conversation_id", "sessionId", "session_id"):
+                value = previous.get(key)
+                if isinstance(value, str) and value.strip():
+                    conversation_id = value.strip()
+                    break
+    except Exception:
+        pass
 with open(out, "w", encoding="utf-8") as handle:
-    json.dump(payload, handle)
+    json.dump({{"conversationId": conversation_id}}, handle)
 os.chmod(out, 0o600)
 print("{{}}")
 PY

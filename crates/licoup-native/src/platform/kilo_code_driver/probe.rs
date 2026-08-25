@@ -28,8 +28,9 @@ pub(in crate::platform) fn capability_probe(
     if executable.trim().is_empty() {
         return Err(unavailable_failure());
     }
-    let endpoint = kilo_code_serve::ensure_attach_endpoint(executable)
+    let attachment = kilo_code_serve::ensure_attachment(executable)
         .map_err(|error| endpoint_failure(&error.to_string()))?;
+    let endpoint = &attachment.endpoint;
     let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
     loop {
         match kilo_code_serve::get_json(&format!("{}/global/health", endpoint.attach_url)) {
