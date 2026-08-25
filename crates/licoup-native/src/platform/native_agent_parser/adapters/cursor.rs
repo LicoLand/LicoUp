@@ -148,8 +148,14 @@ impl NativeLineParser for CursorParser {
         if let Some(id) = session_id(&message) {
             self.observed_session = id.to_owned();
         }
-        if self.turn_id.is_empty() {
-            self.turn_id = native_turn_id(&message).to_owned();
+        // The real protocol carries `request_id` on frames, never `uuid`. The
+        // first frame with an explicit transport id wins; the synthetic
+        // default only stands in while nothing better has arrived.
+        let frame_turn_id = native_turn_id(&message);
+        if self.turn_id.is_empty()
+            || (self.turn_id == "cursor-turn" && frame_turn_id != "cursor-turn")
+        {
+            self.turn_id = frame_turn_id.to_owned();
         }
         if !self.accepted {
             effects.push(CursorEffect::Accepted {
@@ -159,30 +165,23 @@ impl NativeLineParser for CursorParser {
             self.accepted = true;
         }
         update_effective(&message, &mut self.effective);
-        if let Some(delta) = delta_text(&message) {
-            let suffix = self
-                .text
-                .observe("assistant", TextForm::Delta(delta))
-                .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
-            if !suffix.is_empty() {
-                effects.push(CursorEffect::Text {
-                    session_id: self.observed_session.clone(),
-                    turn_id: self.turn_id.clone(),
-                    text: suffix,
-                });
-            }
-        }
-        if let Some(snapshot) = assistant_text(&message).filter(|text| !text.is_empty()) {
-            let suffix = self
-                .text
-                .observe("assistant", TextForm::Cumulative(&snapshot))
-                .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
-            if !suffix.is_empty() {
-                effects.push(CursorEffect::Text {
-                    session_id: self.observed_session.clone(),
-                    turn_id: self.turn_id.clone(),
-                    text: suffix,
-                });
+        // Only assistant message frames contribute incremental text. User
+        // prompt echoes are acknowledgements (never output), and text blocks
+        // on assistant frames are deltas: the streamed fragment is a
+        // continuation, not a snapshot of the whole reply.
+        if is_assistant_frame(&message) {
+            if let Some(delta) = assistant_delta(&message) {
+                let suffix = self
+                    .text
+                    .observe("assistant", TextForm::Delta(&delta))
+                    .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
+                if !suffix.is_empty() {
+                    effects.push(CursorEffect::Text {
+                        session_id: self.observed_session.clone(),
+                        turn_id: self.turn_id.clone(),
+                        text: suffix,
+                    });
+                }
             }
         }
         let terminal = terminal_result(&message).map(str::to_owned);
@@ -191,11 +190,20 @@ impl NativeLineParser for CursorParser {
             return Err(CursorParseFailure::TurnFailed);
         }
         if let Some(result) = terminal {
-            if !result.is_empty() && self.text.observed("assistant").is_none() {
-                let _ = self
-                    .text
-                    .observe("assistant", TextForm::Cumulative(&result))
-                    .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
+            // The successful result text is cumulative terminal authority:
+            // reconcile it against every streamed fragment in one unit. The
+            // reconciler appends a missing suffix, accepts an exact repeat
+            // (emitting nothing), and rejects true divergence.
+            let suffix = self
+                .text
+                .observe("assistant", TextForm::Cumulative(&result))
+                .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
+            if !suffix.is_empty() {
+                effects.push(CursorEffect::Text {
+                    session_id: self.observed_session.clone(),
+                    turn_id: self.turn_id.clone(),
+                    text: suffix,
+                });
             }
             let output = self
                 .text
@@ -239,6 +247,7 @@ fn native_turn_id(message: &Value) -> &str {
     message
         .get("uuid")
         .or_else(|| message.get("turn_id"))
+        .or_else(|| message.get("request_id"))
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .unwrap_or("cursor-turn")
@@ -252,42 +261,21 @@ fn session_id(message: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
-fn assistant_text(message: &Value) -> Option<String> {
-    message
-        .pointer("/message/content")
-        .and_then(Value::as_array)
-        .and_then(|blocks| {
-            blocks.iter().find_map(|block| {
-                (block.get("type").and_then(Value::as_str) == Some("text"))
-                    .then(|| block.get("text").and_then(Value::as_str))
-                    .flatten()
-                    .map(str::to_owned)
-            })
-        })
-        .or_else(|| {
-            message
-                .get("result")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
-        .or_else(|| {
-            message
-                .pointer("/content/text")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
+fn is_assistant_frame(message: &Value) -> bool {
+    message.get("type").and_then(Value::as_str) == Some("assistant")
+        && message.pointer("/message/role").and_then(Value::as_str) == Some("assistant")
 }
 
-fn delta_text(message: &Value) -> Option<&str> {
-    message
-        .pointer("/event/delta/text")
-        .and_then(Value::as_str)
-        .or_else(|| message.pointer("/delta/text").and_then(Value::as_str))
-        .or_else(|| {
-            (message.get("type").and_then(Value::as_str) == Some("content_block_delta"))
-                .then(|| message.pointer("/delta/text").and_then(Value::as_str))
-                .flatten()
-        })
+fn assistant_delta(message: &Value) -> Option<String> {
+    let blocks = message
+        .pointer("/message/content")
+        .and_then(Value::as_array)?;
+    let text = blocks
+        .iter()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|block| block.get("text").and_then(Value::as_str))
+        .collect::<String>();
+    (!text.is_empty()).then_some(text)
 }
 
 fn terminal_result(message: &Value) -> Option<&str> {

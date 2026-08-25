@@ -1,12 +1,49 @@
-use super::support::{config, initialize, open_thread, sent_messages};
+use super::support::{
+    completed_outcome, config, failed_effect, initialize, open_thread, sent_messages, start_turn,
+};
 use crate::platform::codex_app_server::config::ProtocolConfig;
-use crate::platform::codex_app_server::limits::THREAD_REQUEST_ID;
+use crate::platform::codex_app_server::limits::{THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID};
 use crate::platform::codex_app_server::model::ProtocolEffect;
 use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
 use serde_json::{Map, Value, json};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+
+fn resume_protocol(thread_id: &str) -> CodexParser {
+    let mut protocol = CodexParser::new(config(json!({}), "hello", thread_id));
+    let messages = sent_messages(initialize(&mut protocol));
+    assert_eq!(messages[1]["method"], "thread/resume");
+    assert_eq!(messages[1]["params"]["threadId"], thread_id);
+    protocol
+}
+
+fn thread_open_response(thread_id: &str) -> Value {
+    json!({
+        "id": THREAD_REQUEST_ID,
+        "result": {
+            "thread": {"id": thread_id, "cwd": "/workspace/project"},
+            "cwd": "/workspace/project"
+        }
+    })
+}
+
+fn complete_current_turn(protocol: &mut CodexParser, thread_id: &str) {
+    start_turn(protocol);
+    let outcome = completed_outcome(protocol.handle_message(json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": thread_id,
+            "turn": {
+                "id": "turn-1",
+                "status": "completed",
+                "items": [{"id": "agent-1", "type": "agentMessage", "text": "done"}]
+            }
+        }
+    })));
+    assert_eq!(outcome.session_id, thread_id);
+    assert_eq!(outcome.thread_id, thread_id);
+}
 
 #[test]
 fn new_thread_sends_prompt_only_in_turn_start_stdio_message() {
@@ -55,47 +92,208 @@ fn private_instructions_use_native_developer_channel_without_changing_prompt() {
 }
 
 #[test]
-fn stale_thread_resume_falls_back_to_thread_start_and_rebinds() {
-    let mut params = Map::new();
-    params.insert("sessionId".to_string(), json!("stale-thread-id"));
-    let mut protocol = CodexParser::new(config(Value::Object(params), "hello", "stale-thread-id"));
-    sent_messages(initialize(&mut protocol));
+fn archived_thread_unarchives_then_resumes_the_same_native_identity() {
+    let thread_id = "archived-thread-id";
+    let mut protocol = resume_protocol(thread_id);
 
     let effects = protocol.handle_message(json!({
         "id": THREAD_REQUEST_ID,
-        "error": {"code": -32000, "message": "thread not found: stale-thread-id"}
+        "error": {
+            "code": -32600,
+            "message": "session archived-thread-id is archived"
+        }
     }));
-    let fallback = sent_messages(effects);
+    let unarchive = sent_messages(effects);
+    assert_eq!(unarchive.len(), 1);
+    assert_eq!(unarchive[0]["id"], THREAD_UNARCHIVE_REQUEST_ID);
+    assert_eq!(unarchive[0]["method"], "thread/unarchive");
+    assert_eq!(unarchive[0]["params"]["threadId"], thread_id);
+
+    let resumed = sent_messages(protocol.handle_message(json!({
+        "id": THREAD_UNARCHIVE_REQUEST_ID,
+        "result": {"thread": {"id": thread_id}}
+    })));
+    assert_eq!(resumed.len(), 1);
+    assert_eq!(resumed[0]["method"], "thread/resume");
+    assert_eq!(resumed[0]["params"]["threadId"], thread_id);
+
+    let turn_messages = sent_messages(protocol.handle_message(thread_open_response(thread_id)));
+    assert_eq!(turn_messages.len(), 1);
+    assert_eq!(turn_messages[0]["method"], "turn/start");
+    assert_eq!(turn_messages[0]["params"]["threadId"], thread_id);
+    complete_current_turn(&mut protocol, thread_id);
+}
+
+#[test]
+fn exact_missing_rollout_starts_once_and_reports_the_replacement_identity() {
+    let stale_thread_id = "stale-thread-id";
+    let replacement_thread_id = "replacement-thread-id";
+    let mut protocol = resume_protocol(stale_thread_id);
+
+    let fallback = sent_messages(protocol.handle_message(json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {
+            "code": -32600,
+            "message": "no rollout found for thread id stale-thread-id"
+        }
+    })));
     assert_eq!(fallback.len(), 1);
     assert_eq!(fallback[0]["method"], "thread/start");
     assert!(fallback[0]["params"].get("threadId").is_none());
 
-    let turn_messages = sent_messages(open_thread(&mut protocol));
+    let turn_messages =
+        sent_messages(protocol.handle_message(thread_open_response(replacement_thread_id)));
     assert_eq!(turn_messages.len(), 1);
     assert_eq!(turn_messages[0]["method"], "turn/start");
-    assert_eq!(turn_messages[0]["params"]["threadId"], "thread-1");
+    assert_eq!(
+        turn_messages[0]["params"]["threadId"],
+        replacement_thread_id
+    );
+    complete_current_turn(&mut protocol, replacement_thread_id);
 }
 
 #[test]
-fn resume_error_without_missing_marker_fails_loudly() {
-    let mut protocol = CodexParser::new(config(json!({}), "hello", "thread-9"));
-    sent_messages(initialize(&mut protocol));
+fn unrelated_resume_errors_never_trigger_recovery_requests() {
+    for error_message in [
+        "thread not found: existing-thread-id",
+        "unknown thread existing-thread-id",
+        "no such thread existing-thread-id",
+        "thread existing-thread-id does not exist",
+        "missing thread existing-thread-id",
+        "no rollout found for thread id existing-thread-id; retry later",
+        "session another-thread is archived. Run `codex unarchive another-thread` to unarchive it first.",
+        "approval policy rejected",
+    ] {
+        let mut protocol = resume_protocol("existing-thread-id");
+        let effects = protocol.handle_message(json!({
+            "id": THREAD_REQUEST_ID,
+            "error": {"code": -32001, "message": error_message}
+        }));
+        assert!(
+            sent_messages(effects).is_empty(),
+            "unexpected recovery for {error_message}"
+        );
+
+        let mut protocol = resume_protocol("existing-thread-id");
+        let failure = failed_effect(protocol.handle_message(json!({
+            "id": THREAD_REQUEST_ID,
+            "error": {"code": -32001, "message": error_message}
+        })));
+        assert_eq!(failure.code, "codex_thread_open_failed");
+        assert_eq!(failure.stage, "thread/resume");
+        assert_eq!(failure.session_id.as_deref(), Some("existing-thread-id"));
+        assert_eq!(failure.thread_id.as_deref(), Some("existing-thread-id"));
+    }
+}
+
+#[test]
+fn rejected_unarchive_keeps_the_binding_and_sends_no_extra_request() {
+    let mut protocol = resume_protocol("archived-thread-id");
+    sent_messages(protocol.handle_message(json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {
+            "code": -32600,
+            "message": "session archived-thread-id is archived. Run `codex unarchive archived-thread-id` to unarchive it first."
+        }
+    })));
 
     let effects = protocol.handle_message(json!({
-        "id": THREAD_REQUEST_ID,
-        "error": {"code": -32001, "message": "approval policy rejected"}
+        "id": THREAD_UNARCHIVE_REQUEST_ID,
+        "error": {"code": -32601, "message": "Method not found"}
     }));
-    let mut sends = 0;
-    let mut failure_code = None;
-    for effect in effects {
-        match effect {
-            ProtocolEffect::Send(_) => sends += 1,
-            ProtocolEffect::Fail(failure) => failure_code = Some(failure.code),
-            _ => {}
+    assert!(sent_messages(effects).is_empty());
+
+    let mut protocol = resume_protocol("archived-thread-id");
+    sent_messages(protocol.handle_message(json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {
+            "code": -32600,
+            "message": "session archived-thread-id is archived. Run `codex unarchive archived-thread-id` to unarchive it first."
         }
-    }
+    })));
+    let failure = failed_effect(protocol.handle_message(json!({
+        "id": THREAD_UNARCHIVE_REQUEST_ID,
+        "error": {"code": -32601, "message": "Method not found"}
+    })));
+    assert_eq!(failure.code, "codex_thread_unarchive_failed");
+    assert_eq!(failure.stage, "thread/unarchive");
+    assert_eq!(failure.session_id.as_deref(), Some("archived-thread-id"));
+    assert_eq!(failure.thread_id.as_deref(), Some("archived-thread-id"));
+}
+
+#[test]
+fn mismatched_unarchive_identity_fails_without_resume_or_start() {
+    let mut protocol = resume_protocol("archived-thread-id");
+    sent_messages(protocol.handle_message(json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {
+            "code": -32600,
+            "message": "session archived-thread-id is archived. Run `codex unarchive archived-thread-id` to unarchive it first."
+        }
+    })));
+
+    let effects = protocol.handle_message(json!({
+        "id": THREAD_UNARCHIVE_REQUEST_ID,
+        "result": {"thread": {"id": "different-thread-id"}}
+    }));
+    let sends = effects
+        .iter()
+        .filter(|effect| matches!(effect, ProtocolEffect::Send(_)))
+        .count();
     assert_eq!(sends, 0);
-    assert_eq!(failure_code.as_deref(), Some("codex_thread_open_failed"));
+    let failure = failed_effect(effects);
+    assert_eq!(failure.code, "codex_thread_unarchive_identity_mismatch");
+    assert_eq!(failure.stage, "thread/unarchive");
+}
+
+#[test]
+fn archived_resume_recovery_is_attempted_only_once() {
+    let thread_id = "archived-thread-id";
+    let archived_error = json!({
+        "id": THREAD_REQUEST_ID,
+        "error": {
+            "code": -32600,
+            "message": "session archived-thread-id is archived"
+        }
+    });
+    let mut protocol = resume_protocol(thread_id);
+    assert_eq!(
+        sent_messages(protocol.handle_message(archived_error.clone()))[0]["method"],
+        "thread/unarchive"
+    );
+    assert_eq!(
+        sent_messages(protocol.handle_message(json!({
+            "id": THREAD_UNARCHIVE_REQUEST_ID,
+            "result": {"thread": {"id": thread_id}}
+        })))[0]["method"],
+        "thread/resume"
+    );
+
+    let effects = protocol.handle_message(archived_error);
+    let sends = effects
+        .iter()
+        .filter(|effect| matches!(effect, ProtocolEffect::Send(_)))
+        .count();
+    assert_eq!(sends, 0);
+    let failure = failed_effect(effects);
+    assert_eq!(failure.code, "codex_thread_open_failed");
+    assert_eq!(failure.stage, "thread/resume");
+}
+
+#[test]
+fn resumed_thread_must_return_the_requested_native_identity() {
+    let mut protocol = resume_protocol("requested-thread-id");
+    let effects = protocol.handle_message(thread_open_response("different-thread-id"));
+    let sends = effects
+        .iter()
+        .filter(|effect| matches!(effect, ProtocolEffect::Send(_)))
+        .count();
+    assert_eq!(sends, 0);
+    let failure = failed_effect(effects);
+    assert_eq!(failure.code, "codex_thread_resume_identity_mismatch");
+    assert_eq!(failure.stage, "thread/resume");
+    assert_eq!(failure.session_id.as_deref(), Some("requested-thread-id"));
+    assert_eq!(failure.thread_id.as_deref(), Some("requested-thread-id"));
 }
 
 #[test]

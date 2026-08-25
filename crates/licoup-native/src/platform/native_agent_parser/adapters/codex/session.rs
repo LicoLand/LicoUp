@@ -1,33 +1,31 @@
 use super::CodexParser;
 use super::helpers::response_is_error;
 use crate::platform::codex_app_server::config::spark_default_reasoning_effort;
-use crate::platform::codex_app_server::limits::{THREAD_REQUEST_ID, TURN_REQUEST_ID};
+use crate::platform::codex_app_server::limits::{
+    THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
+};
 use crate::platform::codex_app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
 };
 use serde_json::{Map, Value, json};
 
-/// A resume error means "retry as a fresh thread" only when the app-server
-/// reports the requested thread as missing; transient or policy errors must
-/// still fail loudly.
-fn resume_target_missing(message: &Value) -> bool {
-    let text = message
-        .get("error")
-        .map(|error| {
-            let code = error.get("code").map(|c| c.to_string()).unwrap_or_default();
-            let message = error
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_lowercase();
-            format!("{code} {message}")
-        })
-        .unwrap_or_default();
-    text.contains("not found")
-        || text.contains("unknown thread")
-        || text.contains("no such")
-        || text.contains("does not exist")
-        || text.contains("missing thread")
+fn response_error_message(message: &Value) -> Option<&str> {
+    message.get("error")?.get("message")?.as_str()
+}
+
+fn resume_target_is_archived(message: &Value, thread_id: &str) -> bool {
+    response_error_message(message).is_some_and(|error| {
+        error == format!("session {thread_id} is archived")
+            || error
+                == format!(
+                    "session {thread_id} is archived. Run `codex unarchive {thread_id}` to unarchive it first."
+                )
+    })
+}
+
+fn resume_rollout_is_missing(message: &Value, thread_id: &str) -> bool {
+    response_error_message(message)
+        .is_some_and(|error| error == format!("no rollout found for thread id {thread_id}"))
 }
 
 impl CodexParser {
@@ -90,26 +88,52 @@ impl CodexParser {
         })
     }
 
+    fn thread_unarchive_request(&self) -> Value {
+        json!({
+            "id": THREAD_UNARCHIVE_REQUEST_ID,
+            "method": "thread/unarchive",
+            "params": {"threadId": self.config.requested_session_id}
+        })
+    }
+
+    fn requested_thread_failure(&self, mut failure: ProtocolFailure) -> ProtocolFailure {
+        if !self.config.requested_session_id.is_empty() {
+            failure.session_id = Some(self.config.requested_session_id.clone());
+            failure.thread_id = Some(self.config.requested_session_id.clone());
+        }
+        failure
+    }
+
     pub(super) fn handle_thread_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
-            if self.config.is_resume() && resume_target_missing(message) {
-                // A stale persisted thread id (app-server restart, pruned
-                // rollout) must not kill the turn: fall back to a fresh
-                // thread/start once and rebind to the returned thread id.
-                // Other resume failures stay loud.
-                self.config.requested_session_id = String::new();
-                self.config.session_path = None;
-                return vec![ProtocolEffect::Send(self.thread_request())];
+            if self.config.is_resume() {
+                let requested_thread_id = self.config.requested_session_id.clone();
+                if !self.unarchive_attempted
+                    && resume_target_is_archived(message, &requested_thread_id)
+                {
+                    self.unarchive_attempted = true;
+                    self.phase = ProtocolPhase::AwaitThreadUnarchive;
+                    return vec![ProtocolEffect::Send(self.thread_unarchive_request())];
+                }
+                if resume_rollout_is_missing(message, &requested_thread_id) {
+                    // Only the vendor's exact absent-rollout response permits
+                    // one fresh thread/start and an honest replacement binding.
+                    self.config.requested_session_id.clear();
+                    self.config.session_path = None;
+                    return vec![ProtocolEffect::Send(self.thread_request())];
+                }
             }
             self.phase = ProtocolPhase::Finished;
-            return vec![ProtocolEffect::Fail(ProtocolFailure::new(
-                "codex_thread_open_failed",
-                "Codex could not open the requested conversation.",
-                if self.config.is_resume() {
-                    "thread/resume"
-                } else {
-                    "thread/start"
-                },
+            return vec![ProtocolEffect::Fail(self.requested_thread_failure(
+                ProtocolFailure::new(
+                    "codex_thread_open_failed",
+                    "Codex could not open the requested conversation.",
+                    if self.config.is_resume() {
+                        "thread/resume"
+                    } else {
+                        "thread/start"
+                    },
+                ),
             ))];
         }
         let Some(result) = message.get("result") else {
@@ -140,6 +164,16 @@ impl CodexParser {
                 "thread/open",
             ))];
         };
+        if self.config.is_resume() && thread_id != self.config.requested_session_id {
+            self.phase = ProtocolPhase::Finished;
+            return vec![ProtocolEffect::Fail(self.requested_thread_failure(
+                ProtocolFailure::new(
+                    "codex_thread_resume_identity_mismatch",
+                    "Codex resumed a different conversation than the one requested.",
+                    "thread/resume",
+                ),
+            ))];
+        }
 
         self.thread_id = Some(thread_id.to_string());
         // Native continuation authority is the app-server thread id. A
@@ -159,6 +193,42 @@ impl CodexParser {
 
         self.phase = ProtocolPhase::AwaitTurnStart;
         vec![ProtocolEffect::Send(self.turn_start_request(thread_id))]
+    }
+
+    pub(super) fn handle_thread_unarchive_response(
+        &mut self,
+        message: &Value,
+    ) -> Vec<ProtocolEffect> {
+        if response_is_error(message) {
+            self.phase = ProtocolPhase::Finished;
+            return vec![ProtocolEffect::Fail(self.requested_thread_failure(
+                ProtocolFailure::new(
+                    "codex_thread_unarchive_failed",
+                    "Codex could not restore the archived conversation.",
+                    "thread/unarchive",
+                ),
+            ))];
+        }
+
+        let returned_thread_id = message
+            .get("result")
+            .and_then(|result| result.get("thread"))
+            .and_then(|thread| thread.get("id"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty());
+        if returned_thread_id != Some(self.config.requested_session_id.as_str()) {
+            self.phase = ProtocolPhase::Finished;
+            return vec![ProtocolEffect::Fail(self.requested_thread_failure(
+                ProtocolFailure::new(
+                    "codex_thread_unarchive_identity_mismatch",
+                    "Codex restored a different conversation than the one requested.",
+                    "thread/unarchive",
+                ),
+            ))];
+        }
+
+        self.phase = ProtocolPhase::AwaitThread;
+        vec![ProtocolEffect::Send(self.thread_request())]
     }
 
     fn turn_start_request(&self, thread_id: &str) -> Value {
