@@ -5,6 +5,20 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
+/// Whether one PersistentTurn event carries a terminal transition.
+///
+/// The observer's turn state machine owns this rule; callers that need the
+/// same terminal signal before applying an event (for example to detach a
+/// stream) share this predicate instead of re-deriving it from payload shape.
+bool persistentTurnEventIsTerminal(AgentDispatchEvent event) {
+  final terminalTransition = event.payload['terminalTransition'];
+  if (terminalTransition is! Map) return false;
+  final terminalKind = (terminalTransition['kind'] ?? '').toString();
+  if (terminalKind == 'failed') return true;
+  return terminalKind == 'lifecycle' &&
+      terminalTransition['stage'] == 'completed';
+}
+
 /// Applies one PersistentTurn event to the shared turn blackboard used by
 /// one-to-one and Canonical Conversation observers.
 ///

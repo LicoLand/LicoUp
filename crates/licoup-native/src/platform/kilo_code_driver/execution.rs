@@ -20,7 +20,7 @@ pub(in crate::platform) fn execute(
 ) -> RunResult {
     let _ = (max_stdout, max_stderr);
     let started_at = timestamp();
-    let config = match ServeTurnConfig::from_params(params, prompt, session_id, cwd) {
+    let mut config = match ServeTurnConfig::from_params(params, prompt, session_id, cwd) {
         Ok(config) => config,
         Err(failure) => return failed(failure, started_at),
     };
@@ -28,14 +28,25 @@ pub(in crate::platform) fn execute(
         return failed(unavailable_failure(), started_at);
     }
 
-    let endpoint = match kilo_code_serve::ensure_attach_endpoint(executable) {
-        Ok(endpoint) => endpoint,
+    let attachment = match kilo_code_serve::ensure_attachment(executable) {
+        Ok(attachment) => attachment,
         Err(error) => return failed(endpoint_failure(&error.to_string()), started_at),
     };
+    let Some(model) = attachment.catalog.resolve(config.model.as_deref()) else {
+        return failed(
+            super::super::acp_driver_runtime::ProtocolFailure::new(
+                "kilo_code_serve_model_unavailable",
+                "The selected Kilo model is not available from the current provider catalog.",
+                "serve/model",
+            ),
+            started_at,
+        );
+    };
+    config.model = Some(model.selector());
     // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
     // so only a non-zero window gets a concrete deadline.
     let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
-    match execute_via_serve(&endpoint, &config, deadline) {
+    match execute_via_serve(&attachment.endpoint, &config, deadline) {
         Ok(outcome) => RunResult {
             transitions: outcome.transitions,
             ok: true,

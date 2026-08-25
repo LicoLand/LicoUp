@@ -14,6 +14,7 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
@@ -868,7 +869,7 @@ void main() {
         find.byKey(const Key('agent-conversation-composer-send')),
       );
       await tester.pump();
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
 
       expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
       expect(persistent.attachedHandles, ['dispatch:live']);
@@ -922,12 +923,92 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
 
     expect(persistent.attachedHandles, ['dispatch:existing']);
     expect(persistent.attachedAfterCursors, [0]);
     expect(find.text('streaming token'), findsOneWidget);
   });
+
+  testWidgets(
+    'chunk burst renders once after the coalesced publish window and keeps '
+    'projection caches stable across repaint-only rebuilds',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ];
+      final persistent = _BurstGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        runner: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      expect(persistent.attachedHandles, ['dispatch:live']);
+
+      // The 12-chunk burst lands in one microtask; the coalesced publish fires
+      // after the 32 ms window, so the complete text appears in one step
+      // instead of a per-chunk repaint cascade.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(find.textContaining('burst-11'), findsOneWidget);
+
+      final flowFinder = find.byType(MessagingParticipantFlow);
+      expect(flowFinder, findsOneWidget);
+      final itemsAfterBurst = tester
+          .widget<MessagingParticipantFlow>(flowFinder)
+          .items;
+
+      // Rebuilds with no new content must reuse the timeline instead of
+      // re-projecting history: the message list keeps list identity.
+      await tester.pump();
+      await tester.pump();
+      final itemsAfterIdleRebuilds = tester
+          .widget<MessagingParticipantFlow>(flowFinder)
+          .items;
+      expect(identical(itemsAfterBurst, itemsAfterIdleRebuilds), isTrue);
+
+      // Typing in the composer must not re-project the message history either.
+      await tester.enterText(find.byType(TextField), 'still typing');
+      await tester.pump();
+      final itemsAfterDraft = tester
+          .widget<MessagingParticipantFlow>(flowFinder)
+          .items;
+      expect(identical(itemsAfterBurst, itemsAfterDraft), isTrue);
+    },
+  );
 
   testWidgets('observer loss detaches without inventing a turn failure', (
     tester,
@@ -1578,5 +1659,41 @@ final class _PersistentGateway implements PersistentAgentConversationGateway {
   }) async {
     cancelCount += 1;
     return const AgentDispatchCancelResult(ok: true);
+  }
+}
+
+/// Emits a burst of chunk events carrying a responding lifecycle prefix when a
+/// turn attaches, so tests can exercise the coalesced publish window.
+final class _BurstGateway extends _PersistentGateway {
+  int burstSize = 12;
+
+  @override
+  Stream<AgentDispatchEvent> attachActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    int afterCursor = 0,
+  }) {
+    attachedHandles.add(turnHandle);
+    attachedAfterCursors.add(afterCursor);
+    scheduleMicrotask(() {
+      if (_chunks.isClosed) return;
+      for (var index = 0; index < burstSize; index += 1) {
+        _chunks.add(
+          AgentDispatchEvent(
+            kind: 'agent.message.chunk',
+            payload: {
+              'text': 'burst-$index',
+              'lifecyclePrefix': const [
+                'submitted',
+                'accepted',
+                'processing',
+                'responding',
+              ],
+            },
+          ),
+        );
+      }
+    });
+    return _chunks.stream;
   }
 }

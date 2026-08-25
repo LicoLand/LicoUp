@@ -44,6 +44,10 @@ pub fn ensure_attach_endpoint(executable: &str) -> Result<ServeEndpoint> {
     local_service::serve::ensure_attach_endpoint(policy::SPEC, executable)
 }
 
+pub(super) fn ensure_attachment(executable: &str) -> Result<local_service::ServeAttachment> {
+    local_service::serve::ensure_attachment(policy::SPEC, executable)
+}
+
 pub fn select_available_port(preferred: u16) -> Result<u16> {
     local_service::serve::select_available_port(policy::SPEC, preferred)
 }

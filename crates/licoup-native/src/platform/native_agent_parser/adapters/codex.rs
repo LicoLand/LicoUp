@@ -7,7 +7,7 @@ use self::helpers::request_id_matches;
 use super::{AdapterContract, NativeLineParser};
 use crate::platform::codex_app_server::config::ProtocolConfig;
 use crate::platform::codex_app_server::limits::{
-    INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
+    INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
@@ -57,6 +57,7 @@ pub(in crate::platform) struct CodexParser {
     turn_id: Option<String>,
     effective: EffectiveSettings,
     completed_items: Vec<Value>,
+    unarchive_attempted: bool,
 }
 
 pub(in crate::platform) enum CodexEffect {
@@ -110,6 +111,7 @@ impl CodexParser {
             turn_id: None,
             effective: EffectiveSettings::default(),
             completed_items: Vec::new(),
+            unarchive_attempted: false,
         }
     }
 
@@ -140,6 +142,11 @@ impl CodexParser {
             }
             ProtocolPhase::AwaitThread if request_id_matches(&message, THREAD_REQUEST_ID) => {
                 self.handle_thread_response(&message)
+            }
+            ProtocolPhase::AwaitThreadUnarchive
+                if request_id_matches(&message, THREAD_UNARCHIVE_REQUEST_ID) =>
+            {
+                self.handle_thread_unarchive_response(&message)
             }
             ProtocolPhase::AwaitTurnStart if request_id_matches(&message, TURN_REQUEST_ID) => {
                 self.handle_turn_start_response(&message)

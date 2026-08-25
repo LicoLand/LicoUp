@@ -58,3 +58,45 @@ fn private_instructions_stay_separate_from_the_exact_prompt() {
         "exact user prompt"
     );
 }
+
+#[test]
+fn omitted_permission_mode_defers_to_the_launch_default() {
+    // An omitted mode is not an explicit selection at the config level: the
+    // LaunchIdentity launch default (bypassPermissions, the vendor YOLO mode)
+    // resolves it before argv and effective settings are projected, which
+    // keeps process continuation compatible while a fresh or resumed launch
+    // still starts in YOLO.
+    let fresh = config(json!({}), "hello", "");
+    assert_eq!(fresh.permission_mode.as_deref(), None);
+    let resumed = config(json!({}), "hello", "native-session");
+    assert_eq!(resumed.permission_mode.as_deref(), None);
+}
+
+#[test]
+fn explicit_permission_modes_override_the_yolo_default() {
+    let cases = [
+        (json!({"permissionMode": "plan"}), "plan"),
+        (json!({"permissionMode": "default"}), "default"),
+        (json!({"permissionMode": "manual"}), "manual"),
+        (json!({"permissionMode": "acceptEdits"}), "acceptEdits"),
+        (json!({"permissionMode": "auto"}), "auto"),
+        (json!({"permissionMode": "dontAsk"}), "dontAsk"),
+        (
+            json!({"permissionMode": "bypassPermissions"}),
+            "bypassPermissions",
+        ),
+        (json!({"permissionMode": "on-request"}), "default"),
+        (json!({"permissionMode": "never"}), "dontAsk"),
+        (json!({"permission_mode": "never"}), "dontAsk"),
+        (json!({"approvalPolicy": "on-request"}), "default"),
+        (json!({"approval_policy": "never"}), "dontAsk"),
+    ];
+    for (params, expected) in cases {
+        let config = config(params, "hello", "");
+        assert_eq!(
+            config.permission_mode.as_deref(),
+            Some(expected),
+            "explicit {expected} must stay authoritative"
+        );
+    }
+}
