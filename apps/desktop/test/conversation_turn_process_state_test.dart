@@ -156,6 +156,61 @@ void main() {
     expect(oneToOne.first.role, 'user');
     expect(oneToOne.first.text, 'build it');
   });
+
+  test('projection variants cache independently and never serve stale data', () {
+    final s = state();
+    s.recordParticipant(
+      participantAgentId: 'codex',
+      participantLabel: 'Codex',
+      participantRole: 'member',
+    );
+    // Populate the with-user variant at revision 0.
+    final withUser = s.projectedMessages();
+    expect(withUser.first.text, 'build it');
+    s.setReplyText('first', createdAt: '2026-08-07T00:00:01Z');
+    // Populate the without-user variant at revision 1; this must not make the
+    // with-user cache claim revision 1 while still holding revision-0 content.
+    final withoutUser = s.projectedMessages(includeUser: false);
+    expect(withoutUser.any((message) => message.role == 'user'), isFalse);
+    expect(withoutUser.last.text, 'first');
+
+    s.setReplyText('second', createdAt: '2026-08-07T00:00:01Z');
+    final withUserAgain = s.projectedMessages();
+    expect(withUserAgain.last.text, 'second');
+    expect(withUserAgain.first.role, 'user');
+
+    // Unmutated reads return the identical list instance so timeline caches
+    // can keep their identity-based fast path.
+    expect(identical(s.projectedMessages(), withUserAgain), isTrue);
+    expect(
+      identical(s.projectedMessages(includeUser: false), withoutUser),
+      isFalse,
+    );
+  });
+
+  test('projection cache invalidates on stage and evidence mutations', () {
+    final s = state();
+    s.setReplyText('draft', createdAt: '2026-08-07T00:00:01Z');
+    final before = s.projectedMessages();
+    expect(identical(s.projectedMessages(), before), isTrue);
+
+    s.advanceStage('accepted');
+    final afterStage = s.projectedMessages();
+    expect(identical(afterStage, before), isFalse);
+    expect(
+      afterStage.any((message) => message.cardType == 'lifecycle'),
+      isTrue,
+    );
+
+    s.appendEvidence(_evidence('e1', 'reasoning', 'thinking'));
+    final afterEvidence = s.projectedMessages();
+    expect(identical(afterEvidence, afterStage), isFalse);
+    expect(afterEvidence.any((message) => message.id == 'e1'), isTrue);
+
+    // Duplicate evidence is not a mutation and must not invalidate the cache.
+    s.appendEvidence(_evidence('e1', 'reasoning', 'thinking'));
+    expect(identical(s.projectedMessages(), afterEvidence), isTrue);
+  });
 }
 
 AgentConversationMessage _evidence(String id, String cardType, String text) =>
