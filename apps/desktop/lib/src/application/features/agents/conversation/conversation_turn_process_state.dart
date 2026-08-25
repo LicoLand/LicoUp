@@ -89,6 +89,26 @@ final class ConversationTurnProcessState {
   String _participantRole = '';
   AgentConversationMessage? _runtimeUpdate;
 
+  List<AgentConversationMessage>? _projectedWithUser;
+  List<AgentConversationMessage>? _projectedWithoutUser;
+  int _projectionRevision = 0;
+  int _projectedWithUserRevision = -1;
+  int _projectedWithoutUserRevision = -1;
+
+  /// Slot-level message caches. The projection must return identical message
+  /// objects for slots whose content did not change, otherwise the timeline
+  /// tail-swap fast path (which compares item identity) can never engage and
+  /// every streamed chunk rebuilds the whole list.
+  AgentConversationMessage? _userMessage;
+  AgentConversationMessage? _lifecycleMessage;
+  String _lifecycleMessageKey = '';
+  final Map<String, AgentConversationMessage> _replyMessages = {};
+
+  /// Monotonic revision incremented on every blackboard mutation. The group
+  /// pane uses it to keep the outer live-message list identity stable while
+  /// chunks arrive, so the message-list timeline cache keeps its fast path.
+  int get projectionRevision => _projectionRevision;
+
   ConversationTurnProcessStage get stage => _stage;
 
   String get createdAt => _createdAt;
@@ -118,34 +138,45 @@ final class ConversationTurnProcessState {
 
   /// Live timeline projection of this blackboard. Group observers omit the
   /// user message because Canonical Conversation already owns that Event.
+  ///
+  /// Each projection variant is memoized at its own revision: a streamed chunk
+  /// re-derives exactly once per blackboard mutation, while a publish without
+  /// content change reuses the identical message list so the timeline cache
+  /// keeps its in-place fast path.
   List<AgentConversationMessage> projectedMessages({bool includeUser = true}) {
+    if (includeUser) {
+      final cached = _projectedWithUser;
+      if (cached != null && _projectedWithUserRevision == _projectionRevision) {
+        return cached;
+      }
+      final projected = List<AgentConversationMessage>.unmodifiable(
+        _buildProjectedMessages(includeUser: true),
+      );
+      _projectedWithUser = projected;
+      _projectedWithUserRevision = _projectionRevision;
+      return projected;
+    }
+    final cached = _projectedWithoutUser;
+    if (cached != null &&
+        _projectedWithoutUserRevision == _projectionRevision) {
+      return cached;
+    }
+    final projected = List<AgentConversationMessage>.unmodifiable(
+      _buildProjectedMessages(includeUser: false),
+    );
+    _projectedWithoutUser = projected;
+    _projectedWithoutUserRevision = _projectionRevision;
+    return projected;
+  }
+
+  List<AgentConversationMessage> _buildProjectedMessages({
+    required bool includeUser,
+  }) {
     final messages = <AgentConversationMessage>[
-      if (includeUser)
-        AgentConversationMessage(
-          id: '$turnId-user',
-          role: 'user',
-          text: userText,
-          createdAt: _createdAt,
-          stableIdentity: '$turnId-user',
-        ),
+      if (includeUser) _userMessageFor(),
       if (_observedStages.isNotEmpty ||
           _stage == ConversationTurnProcessStage.failed)
-        AgentConversationMessage(
-          id: '$turnId-lifecycle',
-          role: _stage == ConversationTurnProcessStage.failed
-              ? 'error'
-              : 'event',
-          text: _stage.id,
-          createdAt: _createdAt,
-          layer: AgentConversationSemanticLayer.execution,
-          cardType: 'lifecycle',
-          cardTitle: 'lifecycle.${_stage.id}',
-          cardSubtitle: _observedStages.join(','),
-          stableIdentity: '$turnId-lifecycle',
-          participantAgentId: _participantAgentId,
-          participantLabel: _participantLabel,
-          participantRole: _participantRole,
-        ),
+        _lifecycleMessageFor(),
     ];
     final update = _runtimeUpdate;
     if (update != null) {
@@ -153,24 +184,79 @@ final class ConversationTurnProcessState {
     }
     messages.addAll(_evidence);
     for (final reply in replies) {
-      final primary = isPrimaryReplyKey(reply.key);
-      final participantIdentity = primary
-          ? '$turnId-assistant'
-          : '$turnId-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
-      messages.add(
-        AgentConversationMessage(
-          id: participantIdentity,
-          role: 'assistant',
-          text: reply.text,
-          createdAt: reply.createdAt.isEmpty ? _createdAt : reply.createdAt,
-          stableIdentity: participantIdentity,
-          participantAgentId: reply.participantAgentId,
-          participantLabel: reply.participantLabel,
-          participantRole: reply.participantRole,
-        ),
-      );
+      messages.add(_replyMessageFor(reply));
     }
-    return List<AgentConversationMessage>.unmodifiable(messages);
+    return messages;
+  }
+
+  AgentConversationMessage _userMessageFor() {
+    return _userMessage ??= AgentConversationMessage(
+      id: '$turnId-user',
+      role: 'user',
+      text: userText,
+      createdAt: _createdAt,
+      stableIdentity: '$turnId-user',
+    );
+  }
+
+  AgentConversationMessage _lifecycleMessageFor() {
+    final key = [
+      _stage.id,
+      _observedStages.join(','),
+      _participantAgentId,
+      _participantLabel,
+      _participantRole,
+    ].join('\u0001');
+    final cached = _lifecycleMessage;
+    if (cached != null && _lifecycleMessageKey == key) return cached;
+    final message = AgentConversationMessage(
+      id: '$turnId-lifecycle',
+      role: _stage == ConversationTurnProcessStage.failed ? 'error' : 'event',
+      text: _stage.id,
+      createdAt: _createdAt,
+      layer: AgentConversationSemanticLayer.execution,
+      cardType: 'lifecycle',
+      cardTitle: 'lifecycle.${_stage.id}',
+      cardSubtitle: _observedStages.join(','),
+      stableIdentity: '$turnId-lifecycle',
+      participantAgentId: _participantAgentId,
+      participantLabel: _participantLabel,
+      participantRole: _participantRole,
+    );
+    _lifecycleMessage = message;
+    _lifecycleMessageKey = key;
+    return message;
+  }
+
+  AgentConversationMessage _replyMessageFor(
+    ConversationParticipantReply reply,
+  ) {
+    final primary = isPrimaryReplyKey(reply.key);
+    final participantIdentity = primary
+        ? '$turnId-assistant'
+        : '$turnId-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
+    final cached = _replyMessages[reply.key];
+    if (cached != null &&
+        cached.text == reply.text &&
+        cached.createdAt ==
+            (reply.createdAt.isEmpty ? _createdAt : reply.createdAt) &&
+        cached.participantAgentId == reply.participantAgentId &&
+        cached.participantLabel == reply.participantLabel &&
+        cached.participantRole == reply.participantRole) {
+      return cached;
+    }
+    final message = AgentConversationMessage(
+      id: participantIdentity,
+      role: 'assistant',
+      text: reply.text,
+      createdAt: reply.createdAt.isEmpty ? _createdAt : reply.createdAt,
+      stableIdentity: participantIdentity,
+      participantAgentId: reply.participantAgentId,
+      participantLabel: reply.participantLabel,
+      participantRole: reply.participantRole,
+    );
+    _replyMessages[reply.key] = message;
+    return message;
   }
 
   /// The blackboard slot of the turn's own participant. The lifecycle card
@@ -260,12 +346,14 @@ final class ConversationTurnProcessState {
     if (_stage == ConversationTurnProcessStage.failed) return;
     if (stage.trim().toLowerCase() == ConversationTurnProcessStage.failed.id) {
       _stage = ConversationTurnProcessStage.failed;
+      _markProjectionDirty();
       return;
     }
     final next = ConversationTurnProcessStage.of(stage);
     if (next == null || next.index < _stage.index) return;
-    _recordObservedStage(next);
+    final changed = _recordObservedStage(next);
     _stage = next;
+    if (changed) _markProjectionDirty();
   }
 
   void recordParticipant({
@@ -273,9 +361,21 @@ final class ConversationTurnProcessState {
     String participantLabel = '',
     String participantRole = '',
   }) {
-    if (participantAgentId.isNotEmpty) _participantAgentId = participantAgentId;
-    if (participantLabel.isNotEmpty) _participantLabel = participantLabel;
-    if (participantRole.isNotEmpty) _participantRole = participantRole;
+    var changed = false;
+    if (participantAgentId.isNotEmpty &&
+        participantAgentId != _participantAgentId) {
+      _participantAgentId = participantAgentId;
+      changed = true;
+    }
+    if (participantLabel.isNotEmpty && participantLabel != _participantLabel) {
+      _participantLabel = participantLabel;
+      changed = true;
+    }
+    if (participantRole.isNotEmpty && participantRole != _participantRole) {
+      _participantRole = participantRole;
+      changed = true;
+    }
+    if (changed) _markProjectionDirty();
   }
 
   /// Append one evidence operation. Consecutive entries with the same message
@@ -290,6 +390,7 @@ final class ConversationTurnProcessState {
       return;
     }
     _evidence.add(message);
+    _markProjectionDirty();
   }
 
   /// Update one participant reply in place. [participantKey] is the blackboard
@@ -306,10 +407,14 @@ final class ConversationTurnProcessState {
     final key = participantKey.isEmpty ? _primaryReplyKey : participantKey;
     final existing = _repliesByParticipant[key];
     if (existing != null) {
+      final textChanged = existing.text != text;
+      final createdAtChanged =
+          text.trim().isNotEmpty && existing.createdAt.isEmpty;
       existing.text = text;
-      if (text.trim().isNotEmpty && existing.createdAt.isEmpty) {
+      if (createdAtChanged) {
         existing.createdAt = createdAt;
       }
+      if (textChanged || createdAtChanged) _markProjectionDirty();
       return;
     }
     _repliesByParticipant[key] =
@@ -320,6 +425,7 @@ final class ConversationTurnProcessState {
           ..participantAgentId = participantAgentId
           ..participantLabel = participantLabel
           ..participantRole = participantRole;
+    _markProjectionDirty();
   }
 
   /// The in-place runtime-update card (for example cursor-agent auto-update
@@ -327,11 +433,18 @@ final class ConversationTurnProcessState {
   /// and must survive re-projection.
   void setRuntimeUpdate(AgentConversationMessage message) {
     _runtimeUpdate = message;
+    _markProjectionDirty();
   }
 
-  void _recordObservedStage(ConversationTurnProcessStage stage) {
-    if (!_observedStages.contains(stage.id)) {
-      _observedStages.add(stage.id);
+  void _markProjectionDirty() {
+    _projectionRevision += 1;
+  }
+
+  bool _recordObservedStage(ConversationTurnProcessStage stage) {
+    if (_observedStages.contains(stage.id)) {
+      return false;
     }
+    _observedStages.add(stage.id);
+    return true;
   }
 }
