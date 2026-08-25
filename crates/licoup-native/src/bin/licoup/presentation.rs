@@ -65,7 +65,8 @@ pub(super) fn print_usage() {
   licoup secure-mesh device-trust evaluate --identity JSON [--previous-identity JSON] [--trust-state verified|cross_signed|unverified|key_changed|revoked]  # caller state is advisory and cannot authorize
   licoup secure-mesh file route --manifest JSON
   licoup secure-mesh file receive-destination --manifest JSON --approved-root PATH [--conflict-policy fail_if_exists|rename|overwrite_after_confirm]
-  licoup secure-mesh approval request|fanout|respond|inbox|adapter-capability [--pending-operation-id ID] [--decision allow|deny]
+  licoup secure-mesh approval request|fanout|inbox|adapter-capability [--pending-operation-id ID] [--decision allow|deny]
+  licoup secure-mesh approval respond --pending-operation-id ID --decision allow|deny --responding-endpoint-id ID --response-nonce NONCE
   licoup secure-mesh file receive-confirmation --manifest JSON --approved-root PATH --user-confirmed true|false"
     );
 }
