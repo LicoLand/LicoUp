@@ -24,7 +24,7 @@ use super::io::{
     MAX_PROTOCOL_LINE_BYTES, TransportEvent, drain_stderr, read_bounded, read_protocol_messages,
 };
 use super::model::{
-    BoundedTranscript, CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
+    CapabilityProbe, CompleteTranscript, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
     TransportLifecycle,
 };
 use super::params::DriverConfig;

@@ -600,13 +600,17 @@ final class ClientConversationController extends ChangeNotifier {
   }
 
   /// Reloads the selected transcript so streamed group events can appear
-  /// while a strategy actor is still running.
-  Future<void> reloadSelected() async {
-    if (_disposed || _selectedConversationId.isEmpty) return;
+  /// while a strategy actor is still running. Returns whether a complete
+  /// selected snapshot was applied; callers retain live state on failure.
+  Future<bool> reloadSelected() async {
+    if (_disposed || _selectedConversationId.isEmpty) return false;
     try {
       await _loadSelected();
       if (!_disposed) _notifyListeners();
-    } catch (_) {}
+      return !_disposed;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _loadSelected() async {

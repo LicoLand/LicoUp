@@ -16,6 +16,8 @@ final class AgentConversationPaneState {
     required this.loading,
     this.recentSessionsHasMore = false,
     this.recentSessionsLoadingMore = false,
+    this.messagePageLoading = false,
+    this.messagePageError = '',
     required this.turnActive,
     this.inputEnabled = true,
     this.cancelEnabled = false,
@@ -72,6 +74,8 @@ final class AgentConversationPaneState {
   final bool loading;
   final bool recentSessionsHasMore;
   final bool recentSessionsLoadingMore;
+  final bool messagePageLoading;
+  final String messagePageError;
   final bool turnActive;
   final bool inputEnabled;
   final bool cancelEnabled;
@@ -120,6 +124,7 @@ final class AgentConversationPaneActions {
     required this.onSelectSession,
     this.onNewConversation,
     this.onLoadMoreRecentSessions,
+    this.onLoadEarlierMessages,
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
@@ -139,6 +144,7 @@ final class AgentConversationPaneActions {
   final ValueChanged<String> onSelectSession;
   final VoidCallback? onNewConversation;
   final VoidCallback? onLoadMoreRecentSessions;
+  final Future<void> Function()? onLoadEarlierMessages;
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;

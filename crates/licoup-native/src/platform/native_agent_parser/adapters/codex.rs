@@ -1,7 +1,7 @@
 mod control;
 mod events;
 mod helpers;
-mod session;
+pub(in crate::platform) mod session;
 
 use self::helpers::request_id_matches;
 use super::{AdapterContract, NativeLineParser};
@@ -14,6 +14,7 @@ use crate::platform::codex_app_server::model::{
 };
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::io;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("codex", "stdio-jsonrpc");
@@ -57,6 +58,8 @@ pub(in crate::platform) struct CodexParser {
     turn_id: Option<String>,
     effective: EffectiveSettings,
     completed_items: Vec<Value>,
+    observed_processing_items: HashSet<String>,
+    unidentified_processing_items: usize,
     unarchive_attempted: bool,
 }
 
@@ -111,6 +114,8 @@ impl CodexParser {
             turn_id: None,
             effective: EffectiveSettings::default(),
             completed_items: Vec::new(),
+            observed_processing_items: HashSet::new(),
+            unidentified_processing_items: 0,
             unarchive_attempted: false,
         }
     }

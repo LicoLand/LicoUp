@@ -8,11 +8,11 @@ use super::normalization::{
 use super::params::{
     AttachmentShapeFailure, LocalImageInput, MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE,
     MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, binary_param, bounded_output_param, codex_binary_param,
-    message_param, optional_output_param, parse_attachments, text_param, u64_param,
+    message_param, optional_output_param, parse_attachments, text_param, timeout_param,
 };
 use super::{
-    DEFAULT_MAX_STDERR_BYTES, DEFAULT_TIMEOUT_MS, MAX_MESSAGE_BYTES, MAX_TIMEOUT_MS,
-    MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError, runtime_driver_profile,
+    DEFAULT_MAX_STDERR_BYTES, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
+    runtime_driver_profile,
 };
 use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
@@ -106,6 +106,9 @@ fn verify_attachment_signature(path: &Path, media_type: &str) -> Result<(), Runt
 }
 
 pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
+    if params.get("command").is_some() || params.get("args").is_some() {
+        return Err(RuntimeAdapterError::LegacyLaunchConfiguration);
+    }
     let agent_id = text_param(params, &["agent", "agentId", "target"])
         .filter(|value| !value.is_empty())
         .ok_or(RuntimeAdapterError::AgentIdentifierMissing)?;
@@ -113,9 +116,6 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
     let text = message_param(params, &["text", "message", "prompt"]).unwrap_or_default();
     if text.trim().is_empty() && attachments.is_empty() {
         return Err(RuntimeAdapterError::MessageMissing);
-    }
-    if text.len() > MAX_MESSAGE_BYTES {
-        return Err(RuntimeAdapterError::MessageInputLimit);
     }
     let adapter =
         adapter_for_agent(&agent_id).ok_or_else(|| RuntimeAdapterError::UnsupportedAdapter {
@@ -157,17 +157,20 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         _ => Cow::Borrowed(params),
     };
     let params = params.as_ref();
-    let timeout_ms = u64_param(params, "timeoutMs", DEFAULT_TIMEOUT_MS);
-    // timeoutMs 0 opts out of any turn deadline: the agent runs until the turn
-    // completes, however long that takes. A non-zero value stays bounded by the
-    // configured window.
-    let timeout_ms = if timeout_ms == 0 {
-        0
-    } else {
-        timeout_ms.clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
-    };
-    let max_stdout = optional_output_param(params, "maxStdoutBytes");
-    let max_stderr = bounded_output_param(params, "maxStderrBytes", DEFAULT_MAX_STDERR_BYTES);
+    // Omission and zero mean no deadline. Every explicit non-zero setting is
+    // either preserved byte-for-byte as the driver window or rejected before
+    // process launch; dispatch never silently clamps a caller request.
+    let timeout_ms = timeout_param(params, "timeoutMs", MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
+        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
+    let max_stdout = optional_output_param(params, "maxStdoutBytes").map_err(|_| {
+        RuntimeAdapterError::InvalidRuntimeSetting {
+            field: "maxStdoutBytes",
+        }
+    })?;
+    let max_stderr = bounded_output_param(params, "maxStderrBytes", DEFAULT_MAX_STDERR_BYTES)
+        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting {
+            field: "maxStderrBytes",
+        })?;
     let requested_executable = if adapter == RuntimeAdapter::Codex {
         codex_binary_param(params)
     } else {

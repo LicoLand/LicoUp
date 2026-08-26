@@ -143,21 +143,23 @@ test("Claude Code split contains no production unsafe or hidden compatibility in
   assert.equal(joined.includes("#[path"), false);
 });
 
-test("Claude Code process-local lifecycle and transcript have one bounded supervisor authority", async () => {
+test("Claude Code process-local lifecycle and transcript have one complete supervisor authority", async () => {
   const source = await sources();
   for (const token of [
     "TransportLifecycle",
     "Live",
     "Closing",
     "Closed",
-    "BoundedTranscript",
-    "VecDeque",
+    "CompleteTranscript",
+    "project_backward_page",
   ]) {
     assert.ok(
       source["model.rs"].includes(token),
       `missing process-local model token: ${token}`,
     );
   }
+  assert.equal(source["model.rs"].includes("BoundedTranscript"), false);
+  assert.equal(source["model.rs"].includes("VecDeque"), false);
   for (const symbol of ["cleanup_session", "clear_all_for_test"]) {
     assert.ok(
       source["supervision.rs"].includes(symbol),

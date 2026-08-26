@@ -472,6 +472,13 @@ fn execute_turn(
             Ok(Some(result)) => return Ok(result),
             Ok(None) => {}
             Err(TurnParseError::Incomplete) => return Err(turn_incomplete()),
+            Err(TurnParseError::SessionMismatch) => {
+                return Err(failure(
+                    "deepseek_harness_session_mismatch",
+                    "DeepSeek Harness returned protocol activity for a different session.",
+                    "protocol/session",
+                ));
+            }
         }
     }
 }
@@ -640,7 +647,7 @@ mod tests {
 while IFS= read -r line; do
  case "$line" in
   *'"method":"initialize"'*) printf 'initialize %s\n' "$$" >> '{}'; printf '%s\n' '{{"jsonrpc":"2.0","id":"initialize","result":{{"serverInfo":{{"name":"deepseek-harness-sdk-runtime"}}}}}}' ;;
-  *'"method":"session/prompt"'*) count=$(grep -c '^prompt ' '{}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); printf 'prompt %s %s\n' "$$" "$count" >> '{}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"messageId":"%s"}}}}\n' "$request_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"process-%s-turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$$" "$count"; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id" ;;
+  *'"method":"session/prompt"'*) count=$(grep -c '^prompt ' '{}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); printf 'prompt %s %s\n' "$$" "$count" >> '{}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"sessionId":"%s","messageId":"%s"}}}}\n' "$request_id" "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"process-%s-turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$$" "$count"; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id" ;;
   *'"method":"shutdown"'*) printf 'shutdown %s\n' "$$" >> '{}'; exit 0 ;;
  esac
 done

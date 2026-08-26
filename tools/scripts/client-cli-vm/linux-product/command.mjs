@@ -64,7 +64,7 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     "printf '%s\\n' '{\"step\":\"source_manifest_verified_before_build\"}'",
     "npm run client:get >/dev/null 2>&1",
     "printf '%s\\n' '{\"step\":\"dependencies_ready\"}'",
-    "npm run client:build:linux >/dev/null 2>&1",
+    "npm run client:build -- --platform linux >/dev/null 2>&1",
     "printf '%s\\n' '{\"step\":\"linux_bundle_built\"}'",
     `node -e ${quoteShellArg(generateValidationKey)} "$LICO_LINUX_VERIFICATION_SIGNING_KEY_PATH" >/dev/null 2>&1`,
     "npm run client:verify:linux-bundle-carrier >/dev/null 2>&1",

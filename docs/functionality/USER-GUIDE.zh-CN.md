@@ -20,11 +20,14 @@ npm run client:get
 npm run client:run:macos
 npm run client:run:android
 npm run client:run:ios
-npm run client:build:macos
-npm run client:build:linux
-npm run client:build:windows
-npm run client:build:android
+npm run client:build -- --platform macos
+npm run client:build -- --platform linux
+npm run client:build -- --platform windows
+npm run client:build -- --platform android
 ```
+
+这个唯一构建入口会自动回收空闲的编译产物和临时 Flutter 构建缓存，同时保留可运行及
+可打包产物供安装流程使用，包括 macOS Applications 安装流程。
 
 存在构建命令，不代表对应平台已经完整支持。
 

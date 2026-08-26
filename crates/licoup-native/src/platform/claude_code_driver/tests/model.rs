@@ -31,53 +31,51 @@ fn transport_lifecycle_is_monotonic_and_single_claimed() {
 }
 
 #[test]
-fn transcript_evicts_fifo_by_turn_and_byte_limits_and_clears() {
-    let mut transcript = BoundedTranscript::new(2, 18);
-    transcript.record_success("turn-1", "123456");
-    transcript.record_success("turn-2", "abcdef");
-    transcript.record_success("turn-3", "uvwxyz");
+fn transcript_keeps_every_turn_beyond_former_limits_and_pages_backward() {
+    let mut transcript = CompleteTranscript::new();
+    let oversized_output = "x".repeat(1024 * 1024 + 1);
+    transcript.record_success(
+        "turn-00",
+        "prompt-00",
+        vec![json!({"kind":"processing","evidenceKind":"tool"})],
+        &oversized_output,
+    );
+    for index in 1..70 {
+        transcript.record_success(
+            &format!("turn-{index:02}"),
+            &format!("prompt-{index:02}"),
+            vec![json!({"kind":"processing","evidenceKind":"progress"})],
+            &format!("output-{index:02}"),
+        );
+    }
 
-    let projection = transcript.project();
-    assert_eq!(projection.len(), 2);
-    assert_eq!(projection[0]["turnId"], "turn-2");
-    assert_eq!(projection[1]["turnId"], "turn-3");
-    assert_eq!(transcript.byte_count(), "abcdefuvwxyz".len());
+    assert_eq!(transcript.turn_count(), 70);
+    let (latest, next_before) = transcript.project_backward_page(None, 50);
+    assert_eq!(latest.len(), 50);
+    assert_eq!(latest[0]["turnId"], "turn-20");
+    assert_eq!(latest[49]["turnId"], "turn-69");
+    assert_eq!(next_before, Some(20));
 
-    transcript.record_success("turn-oversized", "this entry exceeds the whole byte budget");
-    assert!(transcript.project().is_empty());
-    assert_eq!(transcript.byte_count(), 0);
+    let (earlier, next_before) = transcript.project_backward_page(next_before, 100);
+    assert_eq!(earlier.len(), 20);
+    assert_eq!(earlier[0]["turnId"], "turn-00");
+    assert_eq!(earlier[0]["prompt"], "prompt-00");
+    assert_eq!(earlier[0]["events"][0]["evidenceKind"], "tool");
+    assert_eq!(earlier[0]["output"], oversized_output);
+    assert_eq!(next_before, None);
 
-    transcript.record_success("turn-4", "bounded");
     transcript.clear();
-    assert!(transcript.project().is_empty());
+    assert_eq!(transcript.turn_count(), 0);
     assert_eq!(transcript.byte_count(), 0);
 }
 
 #[test]
-fn transcript_counts_utf8_bytes_and_keeps_the_latest_valid_fifo_suffix() {
-    let first = "甲🙂";
-    let second = "乙🙂";
-    let third = "éé";
-    assert_eq!(first.as_bytes().len(), 7);
-    assert_ne!(first.as_bytes().len(), first.chars().count());
-
-    let mut transcript = BoundedTranscript::new(8, 13);
-    transcript.record_success("turn-first", first);
-    transcript.record_success("turn-second", second);
-
-    let after_first_eviction = transcript.project();
-    assert_eq!(after_first_eviction.len(), 1);
-    assert_eq!(after_first_eviction[0]["turnId"], "turn-second");
-    assert_eq!(after_first_eviction[0]["output"], second);
-    assert_eq!(transcript.byte_count(), second.as_bytes().len());
-
-    transcript.record_success("turn-third", third);
-    let retained_suffix = transcript.project();
-    assert_eq!(retained_suffix.len(), 2);
-    assert_eq!(retained_suffix[0]["turnId"], "turn-second");
-    assert_eq!(retained_suffix[1]["turnId"], "turn-third");
-    assert_eq!(
-        transcript.byte_count(),
-        second.as_bytes().len() + third.as_bytes().len()
-    );
+fn transcript_counts_complete_utf8_assistant_output_bytes() {
+    let output = "甲🙂";
+    let mut transcript = CompleteTranscript::new();
+    transcript.record_success("turn", "提示", Vec::new(), output);
+    assert_eq!(transcript.byte_count(), output.len());
+    let (page, next_before) = transcript.project_backward_page(None, 50);
+    assert_eq!(page[0]["output"], output);
+    assert_eq!(next_before, None);
 }

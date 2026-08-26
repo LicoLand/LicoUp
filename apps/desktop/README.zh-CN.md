@@ -124,11 +124,14 @@ npm run client:gate:release-policy  # 仅发布策略改动
 
 ```bash
 npm run client:package:plan
-npm run client:build:macos
-npm run client:build:windows
-npm run client:build:linux
-npm run client:build:android
+npm run client:build -- --platform macos
+npm run client:build -- --platform windows
+npm run client:build -- --platform linux
+npm run client:build -- --platform android
 ```
+
+`client:build` 是唯一构建入口。它会自动清理空闲的编译产物和临时 Flutter 构建缓存，
+但不会删除安装流程所需的可运行或已打包产物。
 
 macOS、Windows、Ubuntu、Android 和 iOS 的构建、普通验证、GitHub Release 以及各平台
 商店发布是互相独立的声明。缺少某个商店的发布身份或签名条件，只阻断该渠道，不阻断

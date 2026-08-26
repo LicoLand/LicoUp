@@ -42,11 +42,15 @@ Platform build commands produce runnable client build output:
 
 ```bash
 npm run client:package:plan
-npm run client:build:macos
-npm run client:build:windows
-npm run client:build:linux
-npm run client:build:android
+npm run client:build -- --platform macos
+npm run client:build -- --platform windows
+npm run client:build -- --platform linux
+npm run client:build -- --platform android
 ```
+
+`client:build` is the only client build entry. It removes inactive compiler
+output and temporary Flutter build caches after every build while preserving
+the staged runnable/package output used by platform installers.
 
 To plan one or several exact native release packages, use the shared selector:
 

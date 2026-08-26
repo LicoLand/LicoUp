@@ -1,7 +1,7 @@
 use super::test_support::*;
 
 #[test]
-fn native_history_merges_delegated_subagent_prompt_sessions() {
+fn prompt_wording_does_not_classify_a_main_conversation_as_delegated() {
     let dir = temp_dir("native-subagent-prompt");
     fs::write(
         dir.join("project.jsonl"),
@@ -22,27 +22,23 @@ fn native_history_merges_delegated_subagent_prompt_sessions() {
     .unwrap();
 
     let sessions = listed["sessions"].as_array().unwrap();
-    assert_eq!(sessions.len(), 1);
-    assert_eq!(sessions[0]["nativeSessionId"], "real-session");
-    assert_eq!(sessions[0]["title"], "Why are history titles unreadable?");
-    let messages = sessions[0]["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 3);
-    assert_eq!(messages[1]["role"], "subagent");
-    assert_eq!(messages[1]["cardType"], "subagent");
-    assert_eq!(messages[1]["cardTitle"], "A1: Old-path Migration Batch");
-    assert_eq!(
-        messages[1]["messages"][0]["text"],
-        "I need to find old-path files in the LicoMesh repo."
+    assert_eq!(sessions.len(), 2);
+    let shaped = sessions
+        .iter()
+        .find(|session| session["nativeSessionId"] == "subagent-session")
+        .expect("prompt-shaped main conversation remains visible");
+    assert!(
+        shaped["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| {
+                message["role"] == "user"
+                    && message["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("You are A1"))
+            })
     );
-    assert!(!messages.iter().any(|message| {
-        message["text"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("You are A1")
-    }));
-    assert!(looks_like_delegated_agent_prompt(
-        "You are discovery worker round-05/worker-03 for a Codex Security Deep Security Scan. You are not the coordinator."
-    ));
 }
 
 #[test]

@@ -83,6 +83,7 @@ pub(in crate::platform) fn shutdown_request() -> Value {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum TurnParseError {
     Incomplete,
+    SessionMismatch,
 }
 
 #[derive(Debug)]
@@ -118,6 +119,14 @@ impl TurnParser {
         frame: ProtocolFrame,
     ) -> Result<Option<TurnResult>, TurnParseError> {
         if frame.value.get("id").and_then(Value::as_str) == Some(self.request_id.as_str()) {
+            if frame
+                .value
+                .pointer("/result/sessionId")
+                .and_then(Value::as_str)
+                != Some(self.session_id.as_str())
+            {
+                return Err(TurnParseError::SessionMismatch);
+            }
             let Some(message_id) = frame
                 .value
                 .pointer("/result/messageId")
@@ -140,17 +149,19 @@ impl TurnParser {
             }
             return Ok(None);
         }
+        if !matches!(
+            frame.value.get("method").and_then(Value::as_str),
+            Some("session.event" | "session.status")
+        ) {
+            return Ok(None);
+        }
         if frame
             .value
             .pointer("/params/sessionId")
             .and_then(Value::as_str)
-            != Some(&self.session_id)
-            || !matches!(
-                frame.value.get("method").and_then(Value::as_str),
-                Some("session.event" | "session.status")
-            )
+            != Some(self.session_id.as_str())
         {
-            return Ok(None);
+            return Err(TurnParseError::SessionMismatch);
         }
         if self.receipt_seen {
             let terminal = is_idle_status(&frame);
@@ -285,7 +296,7 @@ mod tests {
         assert!(
             parser
                 .ingest(frame(
-                    json!({"id":"prompt-1","result":{"messageId":"message-1"}})
+                    json!({"id":"prompt-1","result":{"sessionId":"session-1","messageId":"message-1"}})
                 ))
                 .unwrap()
                 .is_none()
@@ -299,6 +310,31 @@ mod tests {
         assert_eq!(
             result.transitions.last(),
             Some(&Transition::Lifecycle(LifecycleStage::Completed))
+        );
+    }
+
+    #[test]
+    fn parser_rejects_matching_response_or_event_bound_to_another_session() {
+        let mut response_parser = TurnParser::new("prompt-1", "session-1");
+        assert_eq!(
+            response_parser
+                .ingest(frame(json!({
+                    "id":"prompt-1",
+                    "result":{"sessionId":"other-session","messageId":"message-1"}
+                })))
+                .unwrap_err(),
+            TurnParseError::SessionMismatch
+        );
+
+        let mut event_parser = TurnParser::new("prompt-1", "session-1");
+        assert_eq!(
+            event_parser
+                .ingest(frame(json!({
+                    "method":"session.event",
+                    "params":{"sessionId":"other-session","event":{"type":"assistant/message"}}
+                })))
+                .unwrap_err(),
+            TurnParseError::SessionMismatch
         );
     }
 }

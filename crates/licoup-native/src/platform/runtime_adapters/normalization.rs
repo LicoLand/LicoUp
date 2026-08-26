@@ -39,11 +39,15 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
             ) || transition.get("stage").and_then(Value::as_str) == Some("completed")
         })
         .cloned();
-    let native_session_id = if adapter == RuntimeAdapter::Codex {
+    let verified_native_session_id = if adapter == RuntimeAdapter::Codex {
         execution.thread_id.clone()
     } else {
         execution.session_id.clone()
     };
+    let native_session_id = execution
+        .ok
+        .then_some(verified_native_session_id)
+        .filter(|value| !value.trim().is_empty());
     let error = execution.error.as_ref().map(|failure| {
         json!({
             "code": failure.code,
@@ -62,17 +66,31 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         .as_ref()
         .map(|failure| failure.message.clone())
         .unwrap_or_default();
-    let effective = json!({
-        "cwd": execution.effective.cwd,
-        "model": execution.effective.model,
-        "reasoningEffort": execution.effective.reasoning_effort,
-        "permissionMode": execution.effective.permission_mode,
-        "mode": execution.effective.mode,
-        "runtimeAgent": execution.effective.runtime_agent,
-        "allowAll": execution.effective.allow_all,
-        "sandbox": execution.effective.sandbox,
-        "approvalPolicy": execution.effective.approval_policy
-    });
+    let effective = if native_session_id.is_some() {
+        json!({
+            "cwd": execution.effective.cwd,
+            "model": execution.effective.model,
+            "reasoningEffort": execution.effective.reasoning_effort,
+            "permissionMode": execution.effective.permission_mode,
+            "mode": execution.effective.mode,
+            "runtimeAgent": execution.effective.runtime_agent,
+            "allowAll": execution.effective.allow_all,
+            "sandbox": execution.effective.sandbox,
+            "approvalPolicy": execution.effective.approval_policy
+        })
+    } else {
+        json!({
+            "cwd": null,
+            "model": null,
+            "reasoningEffort": null,
+            "permissionMode": null,
+            "mode": null,
+            "runtimeAgent": null,
+            "allowAll": null,
+            "sandbox": null,
+            "approvalPolicy": null
+        })
+    };
     json!({
         "ok": execution.ok,
         "schemaVersion": RUNTIME_SCHEMA_VERSION,

@@ -43,3 +43,27 @@ fn new_session_without_gateway_key_is_not_reported_as_resumable() {
         .unwrap_err();
     assert_eq!(failure.code, "openclaw_acp_native_session_id_missing");
 }
+
+#[test]
+fn resume_without_returned_protocol_identity_fails_before_prompt() {
+    let config = config(json!({}), "hello", "native-session");
+    let mut binding = SessionBinding::new(&config);
+    let failure = binding
+        .reconcile_open_response(&config, None, "session/load")
+        .unwrap_err();
+    assert_eq!(failure.code, "openclaw_acp_session_id_missing");
+}
+
+#[test]
+fn resume_with_different_returned_protocol_identity_fails_before_prompt() {
+    let config = config(json!({}), "hello", "native-session");
+    let mut binding = SessionBinding::new(&config);
+    let failure = binding
+        .reconcile_open_response(
+            &config,
+            Some("different-session".to_string()),
+            "session/load",
+        )
+        .unwrap_err();
+    assert_eq!(failure.code, "openclaw_acp_session_mismatch");
+}

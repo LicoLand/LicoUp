@@ -71,6 +71,8 @@ class _CanonicalGroupConversationPaneState
   int _strategyProjectionGeneration = 0;
   final Map<String, StreamSubscription<AgentDispatchEvent>> _turnSubscriptions =
       {};
+  final Set<String> _visibleTurnHandles = <String>{};
+  final Map<String, int> _turnCursorByHandle = <String, int>{};
   final Map<String, String> _participantAgentIdByHandle = {};
   final Map<String, String> _participantRoleByHandle = {};
   final Set<String> _finishingHandles = {};
@@ -142,6 +144,7 @@ class _CanonicalGroupConversationPaneState
 
   void _onConversationChanged() {
     if (!mounted) return;
+    _pruneDurablySettledLiveTurns();
     setState(() {});
     unawaited(_syncStrategyFromConversation());
     final conversationId = widget.controller.selectedConversationId;
@@ -406,6 +409,7 @@ class _CanonicalGroupConversationPaneState
     }
     if (!_assistantActive(conversation)) return strings.assistantPausedStatus;
     final subagents = _participantRoleByHandle.entries
+        .where((entry) => _turnSubscriptions.containsKey(entry.key))
         .where((entry) => entry.value.trim() != 'assistant')
         .map((entry) => _participantAgentIdByHandle[entry.key]?.trim() ?? '')
         .where((agentId) => agentId.isNotEmpty)
@@ -414,8 +418,8 @@ class _CanonicalGroupConversationPaneState
       return strings.assistantCoordinatingStatus(subagents.length);
     }
     final assistantWorking =
-        _participantRoleByHandle.values.any(
-          (role) => role.trim() == 'assistant',
+        _turnSubscriptions.keys.any(
+          (handle) => _participantRoleByHandle[handle]?.trim() == 'assistant',
         ) ||
         widget.controller.dispatchPending;
     return assistantWorking
@@ -427,7 +431,7 @@ class _CanonicalGroupConversationPaneState
   /// the shared holder, so unchanged turns keep identical lists and the
   /// message-list timeline cache only ever sees one changed entry.
   List<AgentConversationMessage> get _liveMessages {
-    if (_turnSubscriptions.isEmpty) {
+    if (_visibleTurnHandles.isEmpty) {
       _cachedLiveParts = null;
       _cachedLiveMessages = List<AgentConversationMessage>.empty(
         growable: false,
@@ -435,7 +439,7 @@ class _CanonicalGroupConversationPaneState
       return _cachedLiveMessages!;
     }
     final parts = <List<AgentConversationMessage>>[
-      for (final handle in _turnSubscriptions.keys)
+      for (final handle in _visibleTurnHandles)
         _turnStates.projectionFor(_scopeKeyFor(handle)).messages,
     ];
     final previousParts = _cachedLiveParts;
@@ -518,10 +522,12 @@ class _CanonicalGroupConversationPaneState
     for (final subscription in _turnSubscriptions.values) {
       unawaited(subscription.cancel());
     }
-    for (final handle in _turnSubscriptions.keys) {
+    for (final handle in _visibleTurnHandles) {
       _turnStates.removeScope(_scopeKeyFor(handle));
     }
     _turnSubscriptions.clear();
+    _visibleTurnHandles.clear();
+    _turnCursorByHandle.clear();
     _participantAgentIdByHandle.clear();
     _participantRoleByHandle.clear();
     _finishingHandles.clear();
@@ -546,7 +552,6 @@ class _CanonicalGroupConversationPaneState
     List<Map<String, dynamic>> turns = List<Map<String, dynamic>>.from(
       postedTurns,
     );
-    var authoritativeSnapshot = false;
     try {
       final discovered = await gateway.activeTurns(
         agentId: '',
@@ -555,7 +560,6 @@ class _CanonicalGroupConversationPaneState
             ? const Duration(seconds: 2)
             : Duration.zero,
       );
-      authoritativeSnapshot = true;
       if (discovered.isNotEmpty) {
         turns = _mergeLiveTurns(turns, discovered);
       }
@@ -566,13 +570,12 @@ class _CanonicalGroupConversationPaneState
         widget.controller.selectedConversationId != conversationId) {
       return;
     }
-    final liveHandles = <String>{};
     for (final turn in turns) {
       final handle = (turn['turnHandle'] ?? '').toString().trim();
-      final participant = _activeTurnParticipant(turn);
-      if (handle.isEmpty || participant == null) continue;
-      liveHandles.add(handle);
+      if (handle.isEmpty) continue;
       if (_turnSubscriptions.containsKey(handle)) continue;
+      final participant = _activeTurnParticipant(turn);
+      if (participant == null) continue;
       _listenTurn(
         gateway,
         handle: handle,
@@ -582,21 +585,13 @@ class _CanonicalGroupConversationPaneState
         agentId: participant.agentId,
         participantLabel: participant.label,
         participantRole: participant.role,
-        // `highWater` is the host's cursor, not this observer's cursor. A new
-        // pane has seen no process frames and must rebuild from canonical
-        // cursor zero; the transport owns cursor-safe reconnects thereafter.
-        afterCursor: 0,
+        // New panes replay from zero. A detached observer resumes after the
+        // last frame already applied to its retained live projection.
+        afterCursor: _turnCursorByHandle[handle] ?? 0,
       );
     }
-    if (authoritativeSnapshot) {
-      final stale = _turnSubscriptions.keys
-          .where((handle) => !liveHandles.contains(handle))
-          .toList(growable: false);
-      for (final handle in stale) {
-        unawaited(_turnSubscriptions.remove(handle)?.cancel());
-        _removeLiveTurn(handle);
-      }
-    }
+    // Discovery is additive. Only the attached stream's terminal/error owns
+    // detachment; a transient active-turn snapshot must never cancel work.
     if (mounted) setState(() {});
   }
 
@@ -609,6 +604,7 @@ class _CanonicalGroupConversationPaneState
     required String participantRole,
     required int afterCursor,
   }) {
+    _visibleTurnHandles.add(handle);
     _participantAgentIdByHandle[handle] = agentId;
     _participantRoleByHandle[handle] = participantRole;
     final scopeKey = _scopeKeyFor(handle);
@@ -625,6 +621,10 @@ class _CanonicalGroupConversationPaneState
               return;
             }
             final terminal = persistentTurnEventIsTerminal(event);
+            final cursor = event.payload['cursor'];
+            if (cursor is int && cursor > (_turnCursorByHandle[handle] ?? 0)) {
+              _turnCursorByHandle[handle] = cursor;
+            }
             // One generated delta enters the shared holder; the holder owns
             // the blackboard mutation, the 32 ms publish coalescing, and the
             // immediate terminal publish. The scope's turn id is pinned to the
@@ -654,6 +654,8 @@ class _CanonicalGroupConversationPaneState
   }
 
   void _removeLiveTurn(String handle) {
+    _visibleTurnHandles.remove(handle);
+    _turnCursorByHandle.remove(handle);
     _turnStates.removeScope(_scopeKeyFor(handle));
     _participantAgentIdByHandle.remove(handle);
     _participantRoleByHandle.remove(handle);
@@ -661,15 +663,21 @@ class _CanonicalGroupConversationPaneState
 
   Future<void> _handleTurnObserverFailure(String handle) async {
     if (!_finishingHandles.add(handle)) return;
+    final conversationId = widget.controller.selectedConversationId;
     final subscription = _turnSubscriptions.remove(handle);
     if (subscription != null) unawaited(subscription.cancel());
     try {
       // Reload the durable Conversation before changing its live projection.
       // Observer loss is detach and carries no lifecycle or failure authority.
-      await widget.controller.reloadSelected();
+      final reloaded = await widget.controller.reloadSelected();
+      if (!mounted ||
+          widget.controller.selectedConversationId != conversationId) {
+        return;
+      }
+      if (reloaded) _pruneDurablySettledLiveTurns();
+      await _attachLiveTurns(waitForChange: true);
       if (!mounted) return;
-      _surfacePersistedDispatchFailure();
-      _removeLiveTurn(handle);
+      if (reloaded) _surfacePersistedDispatchFailure();
       if (_turnSubscriptions.isEmpty) {
         widget.controller.settleLiveDispatch();
       }
@@ -681,12 +689,12 @@ class _CanonicalGroupConversationPaneState
 
   Future<void> _finishTurn(String handle) async {
     if (!_finishingHandles.add(handle)) return;
-    unawaited(_turnSubscriptions.remove(handle)?.cancel());
-    _removeLiveTurn(handle);
-    if (mounted) setState(() {});
+    final subscription = _turnSubscriptions.remove(handle);
+    if (subscription != null) unawaited(subscription.cancel());
     try {
-      await widget.controller.reloadSelected();
+      final reloaded = await _reloadSelectedForHandoff(handle);
       if (!mounted) return;
+      if (reloaded) _removeLiveTurn(handle);
       if (widget.controller.dispatchPending) {
         await _attachLiveTurns(waitForChange: true);
         if (!mounted) return;
@@ -694,13 +702,61 @@ class _CanonicalGroupConversationPaneState
           return;
         }
       }
-      _surfacePersistedDispatchFailure();
+      if (reloaded) _surfacePersistedDispatchFailure();
       widget.controller.settleLiveDispatch();
       if (mounted) setState(() {});
     } finally {
       _finishingHandles.remove(handle);
     }
   }
+
+  Future<bool> _reloadSelectedForHandoff(String handle) async {
+    final conversationId = widget.controller.selectedConversationId;
+    for (final delay in const <Duration>[
+      Duration.zero,
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+    ]) {
+      if (delay != Duration.zero) await Future<void>.delayed(delay);
+      if (!mounted ||
+          widget.controller.selectedConversationId != conversationId) {
+        return false;
+      }
+      final reloaded = await widget.controller.reloadSelected();
+      if (!mounted ||
+          widget.controller.selectedConversationId != conversationId) {
+        return false;
+      }
+      if (reloaded && _durablySettled(handle)) return true;
+    }
+    return false;
+  }
+
+  void _pruneDurablySettledLiveTurns() {
+    if (_visibleTurnHandles.isEmpty) return;
+    final settledHandles = widget.controller.events
+        .where(
+          (event) => event.finalized && event.correlationId.trim().isNotEmpty,
+        )
+        .map((event) => event.correlationId.trim())
+        .toSet();
+    if (settledHandles.isEmpty) return;
+    final settledLiveHandles = _visibleTurnHandles
+        .where(
+          (handle) =>
+              !_turnSubscriptions.containsKey(handle) &&
+              settledHandles.contains(handle),
+        )
+        .toList(growable: false);
+    for (final handle in settledLiveHandles) {
+      _removeLiveTurn(handle);
+    }
+  }
+
+  bool _durablySettled(String handle) => widget.controller.events.any(
+    (event) => event.finalized && event.correlationId.trim() == handle,
+  );
 
   void _surfacePersistedDispatchFailure() {
     if (widget.controller.failureCode.isNotEmpty) return;

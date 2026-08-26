@@ -184,6 +184,8 @@ pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecut
             "limit",
             "offset",
             "sessionId",
+            "messageBefore",
+            "messageLimit",
             "runtimeConnection",
             "workingDirectory",
         ] {

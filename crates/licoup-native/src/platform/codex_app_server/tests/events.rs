@@ -96,6 +96,77 @@ fn native_item_started_emits_redacted_processing_receipt() {
 }
 
 #[test]
+fn native_item_started_and_completed_emit_one_processing_receipt() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+    let item = json!({"id": "reasoning-1", "type": "reasoning", "summary": []});
+
+    for method in ["item/started", "item/completed"] {
+        protocol.handle_message(json!({
+            "method": method,
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "item": item.clone()
+            }
+        }));
+    }
+
+    let events = captured.lock().unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["event"] == "agent.turn.processing")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn idless_completed_item_emits_once_with_or_without_started_receipt() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+    let item = json!({"type": "reasoning", "summary": []});
+
+    for method in ["item/started", "item/completed", "item/completed"] {
+        protocol.handle_message(json!({
+            "method": method,
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "item": item.clone()
+            }
+        }));
+    }
+
+    assert_eq!(
+        captured
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| event["event"] == "agent.turn.processing")
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn failed_turn_classifies_closed_codex_error_without_leaking_details() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
