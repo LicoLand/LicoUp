@@ -96,6 +96,7 @@ pub(in crate::platform) struct CursorOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum CursorParseFailure {
     InvalidJson,
+    IdentityMismatch,
     TextSnapshotDiverged,
     TurnFailed,
 }
@@ -146,6 +147,14 @@ impl NativeLineParser for CursorParser {
             serde_json::from_slice(&trimmed).map_err(|_| CursorParseFailure::InvalidJson)?;
         let mut effects = Vec::new();
         if let Some(id) = session_id(&message) {
+            // The turn was launched bound to the requested (or freshly
+            // created) native id. Any explicit stream identity must equal that
+            // bound id before this frame contributes an accepted, chunk, or
+            // terminal effect: a different or drifted conversation is never
+            // silently relabeled.
+            if id != self.requested_session {
+                return Err(CursorParseFailure::IdentityMismatch);
+            }
             self.observed_session = id.to_owned();
         }
         // The real protocol carries `request_id` on frames, never `uuid`. The

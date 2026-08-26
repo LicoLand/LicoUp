@@ -22,7 +22,7 @@
 //! | a_stale_recorded_directory_is_provenance_only                         | I6        |
 //! | a_delegate_claiming_the_parent_identity_is_identified_as_the_child    | I3/I4     |
 //! | the_richest_source_wins_and_metadata_carries_over_from_discarded_copies| I2       |
-//! | the_catalog_walk_is_bounded                                           | I10       |
+//! | the_catalog_walk_is_complete_and_iterative                             | I10       |
 //! | folding_never_changes_the_parent_own_message_count                    | I4/I10    |
 //! | a_delegated_task_whose_whole_trace_is_tool_work_still_appears         | I4        |
 //! | an_unrecognized_schema_falls_back_to_file_extraction_instead_of_none  | I9/I11    |
@@ -920,42 +920,89 @@ fn the_richest_source_wins_and_metadata_carries_over_from_discarded_copies() {
 }
 
 // ---------------------------------------------------------------------------
-// Invariant: every scan and walk is bounded.
+// Invariant: the catalog walk is complete and iterative.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn the_catalog_walk_is_bounded() {
+fn the_catalog_walk_is_complete_and_iterative() {
     // Kimi Code keeps a `state.json` per session directory; the catalog walks
-    // named files to a fixed depth. A store with nested bookkeeping must not
-    // be traversed forever: `state.json` beyond the depth bound is not seen,
-    // and the catalog reports the entries it did see.
-    let home = temp_root("bounded-walk");
+    // the complete session tree iteratively. A session nested beyond the
+    // retired depth terminal is still Agent-owned history: it is catalogued
+    // with its recorded identity, hydrates its own content, and the scan
+    // reports every file and directory entry the full tree actually has.
+    let home = temp_root("complete-walk");
     let sessions = home.join(".kimi-code/sessions");
-    let visible = sessions.join("wd-0/proj-a");
-    kimi_state(&visible, "Visible fixture");
-    kimi_wire(&visible, "Kimi bounded prompt");
-    // Seven nested directories: the walk stops at depth 8, so this state.json
-    // is never read.
+    let shallow = sessions.join("wd-0/proj-a");
+    kimi_state(&shallow, "Shallow fixture");
+    kimi_wire(&shallow, "Kimi shallow prompt");
+    // Eight nested directories: past every retired depth bound, the walk must
+    // still descend, catalogue the recorded identity, and stream its content.
     let deep = sessions.join("deep-0/d1/d2/d3/d4/d5/d6/d7");
-    fs::create_dir_all(&deep).unwrap();
-    fs::write(
-        deep.join("state.json"),
-        json!({"title": "Too deep"}).to_string(),
-    )
-    .unwrap();
+    kimi_state(&deep, "Deep fixture");
+    kimi_wire(&deep, "Kimi deep prompt");
 
     let listed = browse(&home, "kimi-code");
+    let mut ids = session_ids(&listed);
+    ids.sort();
     assert_eq!(
-        session_ids(&listed),
-        vec!["proj-a".to_string()],
-        "sessions beyond the walk bound must not be catalogued"
+        ids,
+        vec!["d7".to_string(), "proj-a".to_string()],
+        "every session directory in the complete tree is catalogued by its recorded identity"
     );
-    assert_eq!(listed["sources"]["filesSeen"], 1);
-    let entries_seen = listed["sources"]["directoryEntriesSeen"].as_u64().unwrap();
+    let rows = listed["sessions"].as_array().unwrap();
+    let shallow_row = rows
+        .iter()
+        .find(|row| row["nativeSessionId"] == "proj-a")
+        .unwrap();
+    assert_eq!(shallow_row["title"], "Shallow fixture");
     assert!(
-        entries_seen <= 16,
-        "the walk must stop at the depth bound, not descend the whole tree: {entries_seen}"
+        shallow_row["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"] == "Kimi shallow prompt"),
+        "the shallow session hydrates its wire content"
     );
+    let deep_row = rows
+        .iter()
+        .find(|row| row["nativeSessionId"] == "d7")
+        .unwrap();
+    assert_eq!(deep_row["title"], "Deep fixture");
+    assert_eq!(deep_row["workingDirectory"], "/workspace/kimi");
+    assert!(
+        deep_row["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"] == "Kimi deep prompt"),
+        "a session beyond the retired depth terminal still hydrates its content"
+    );
+    assert_eq!(
+        listed["sources"]["filesSeen"], 2,
+        "both session state files are seen"
+    );
+    let entries_seen = listed["sources"]["directoryEntriesSeen"].as_u64().unwrap();
+    assert_eq!(
+        entries_seen,
+        count_tree_entries(&sessions),
+        "the walk covers the complete tree with no depth terminal"
+    );
+}
+
+/// Independent count of every directory entry under `root`, used to prove the
+/// catalog walk observed the complete tree rather than stopping at a bound.
+fn count_tree_entries(root: &Path) -> u64 {
+    let mut count = 0_u64;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory).unwrap().flatten() {
+            count += 1;
+            if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                pending.push(entry.path());
+            }
+        }
+    }
+    count
 }
 
 // ---------------------------------------------------------------------------

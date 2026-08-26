@@ -84,6 +84,16 @@ fn run_turn(args: &[String]) {
         .filter(|value| !value.is_empty())
         .expect("session id");
     let prompt = args.last().expect("prompt");
+    // Test hook: the turn stream reports a different native conversation than
+    // the one the driver launched. Gated on a prompt marker and an explicit
+    // env var so no other fake invocation is affected.
+    let observed_session = if env::var("LICO_FAKE_CURSOR_AGENT_DRIFT_SESSION_ID").is_ok()
+        && prompt.contains("__lico_drift__")
+    {
+        "drifted-cursor-session".to_string()
+    } else {
+        session_id.clone()
+    };
     // Test hook: hold the turn open until the update-watcher fixture has
     // observed its completion transition. The wait is bounded so a broken
     // fixture cannot strand the test process.
@@ -115,16 +125,16 @@ fn run_turn(args: &[String]) {
     // progressive assistant fragments, then the cumulative result.
     emit(&format!(
         r#"{{"type":"system","subtype":"init","apiKeySource":"synthetic","cwd":"/tmp","session_id":{},"model":"fake-model","permissionMode":"default"}}"#,
-        json_string(session_id)
+        json_string(&observed_session)
     ));
     emit(&format!(
         r#"{{"type":"user","session_id":{},"message":{{"role":"user","content":[{{"type":"text","text":{}}}]}}}}"#,
-        json_string(session_id),
+        json_string(&observed_session),
         json_string(prompt)
     ));
     emit(&format!(
         r#"{{"type":"assistant","session_id":{},"timestamp_ms":1,"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
-        json_string(session_id),
+        json_string(&observed_session),
         json_string(&first_fragment)
     ));
     // Test hook: crash after the partial chunk, before any terminal result.
@@ -137,12 +147,12 @@ fn run_turn(args: &[String]) {
     }
     emit(&format!(
         r#"{{"type":"assistant","session_id":{},"timestamp_ms":2,"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
-        json_string(session_id),
+        json_string(&observed_session),
         json_string(&second_fragment)
     ));
     emit(&format!(
         r#"{{"type":"result","subtype":"success","is_error":false,"session_id":{},"request_id":"req-{}","result":{}}}"#,
-        json_string(session_id),
+        json_string(&observed_session),
         session_id,
         json_string(reply)
     ));

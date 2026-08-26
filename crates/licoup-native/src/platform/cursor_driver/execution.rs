@@ -548,6 +548,11 @@ fn consume_turn_stream(
                                 "Cursor Agent CLI returned invalid stream-json output.",
                                 "turn/read",
                             ),
+                            CursorParseFailure::IdentityMismatch => (
+                                "cursor_cli_session_identity_mismatch",
+                                "Cursor Agent CLI returned a different conversation than the one requested.",
+                                "turn/read",
+                            ),
                             CursorParseFailure::TextSnapshotDiverged => (
                                 "cursor_cli_text_snapshot_diverged",
                                 "Cursor Agent CLI returned a divergent assistant snapshot.",

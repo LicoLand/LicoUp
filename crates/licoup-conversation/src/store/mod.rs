@@ -879,9 +879,52 @@ impl ConversationStore {
                 params![scope.event_id],
                 |row| row.get(0),
             )?;
-            for part in runtime_semantic_parts(frame) {
+            let completed_snapshot = frame.get("event").and_then(Value::as_str)
+                == Some("agent.message.completed");
+            let message_unit_marker = frame
+                .pointer("/payload/messageUnit")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(|value| serde_json::json!({"messageUnit": value}).to_string());
+            for mut part in runtime_semantic_parts(frame) {
+                if completed_snapshot && part.kind == EventPartKind::Text {
+                    let visible_text: String = if let Some(marker) = message_unit_marker.as_deref() {
+                        transaction.query_row(
+                            "SELECT COALESCE(GROUP_CONCAT(content, ''), '') FROM (
+                               SELECT content FROM event_parts
+                               WHERE event_id=?1 AND kind='text'
+                                 AND ordinal > COALESCE((
+                                   SELECT MAX(ordinal) FROM event_parts
+                                   WHERE event_id=?1 AND kind='metadata' AND content=?2
+                                 ), -1)
+                               ORDER BY ordinal
+                             )",
+                            params![scope.event_id, marker],
+                            |row| row.get(0),
+                        )?
+                    } else {
+                        transaction.query_row(
+                            "SELECT COALESCE(GROUP_CONCAT(content, ''), '') FROM (
+                               SELECT content FROM event_parts
+                               WHERE event_id=?1 AND kind='text' ORDER BY ordinal
+                             )",
+                            params![scope.event_id],
+                            |row| row.get(0),
+                        )?
+                    };
+                    if !visible_text.is_empty() {
+                        let Some(missing_suffix) = part.content.strip_prefix(&visible_text) else {
+                            continue;
+                        };
+                        if missing_suffix.is_empty() {
+                            continue;
+                        }
+                        part.content = missing_suffix.to_owned();
+                    }
+                }
                 if part.kind == EventPartKind::Metadata
-                    && part.content.contains("\"lifecycle\"")
+                    && (part.content.contains("\"lifecycle\"")
+                        || part.content.contains("\"messageUnit\""))
                     && transaction
                         .query_row(
                             "SELECT 1 FROM event_parts
@@ -1064,33 +1107,45 @@ impl ConversationStore {
                 params![scope.event_id],
                 |row| row.get(0),
             )?;
-            let has_text: bool = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM event_parts WHERE event_id=?1 AND kind='text')",
+            let visible_text: String = transaction.query_row(
+                "SELECT COALESCE(GROUP_CONCAT(content, ''), '') FROM (
+                   SELECT content FROM event_parts
+                   WHERE event_id=?1 AND kind='text' ORDER BY ordinal
+                 )",
                 params![scope.event_id],
                 |row| row.get(0),
             )?;
-            if state == DispatchState::Completed && !has_text {
+            if state == DispatchState::Completed {
                 if let Some(output) = terminal
                     .get("output")
                     .and_then(Value::as_str)
                     .filter(|output| !output.is_empty())
                 {
-                    insert_runtime_event_part(
-                        &transaction,
-                        &scope.conversation_id,
-                        &scope.event_id,
-                        ordinal,
-                        &NewEventPart {
-                            id: String::new(),
-                            kind: EventPartKind::Text,
-                            content: output.to_owned(),
-                        },
-                        None,
-                        now,
-                    )?;
-                    ordinal += 1;
+                    let missing_suffix = if visible_text.is_empty() {
+                        Some(output)
+                    } else {
+                        output
+                            .strip_prefix(&visible_text)
+                            .filter(|suffix| !suffix.is_empty())
+                    };
+                    if let Some(missing_suffix) = missing_suffix {
+                        insert_runtime_event_part(
+                            &transaction,
+                            &scope.conversation_id,
+                            &scope.event_id,
+                            ordinal,
+                            &NewEventPart {
+                                id: String::new(),
+                                kind: EventPartKind::Text,
+                                content: missing_suffix.to_owned(),
+                            },
+                            None,
+                            now,
+                        )?;
+                        ordinal += 1;
+                    }
                 }
-            } else if state != DispatchState::Completed {
+            } else {
                 insert_runtime_event_part(
                     &transaction,
                     &scope.conversation_id,
@@ -4456,6 +4511,17 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
         )],
         _ => Vec::new(),
     };
+    if matches!(event, "agent.message.chunk" | "agent.message.completed")
+        && let Some(message_unit) = payload
+            .get("messageUnit")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+    {
+        parts.push((
+            EventPartKind::Metadata,
+            serde_json::json!({"messageUnit": message_unit}).to_string(),
+        ));
+    }
     parts.extend(semantic_parts);
     parts
         .into_iter()
@@ -6246,7 +6312,7 @@ mod tests {
                     "event": "agent.message.chunk",
                     "sessionId": "session-1",
                     "turnId": "turn-1",
-                    "payload": {"text": "Hel"}
+                    "payload": {"messageUnit": "1", "text": "Hel"}
                 }),
             )
             .unwrap();
@@ -6258,8 +6324,52 @@ mod tests {
                     "event": "agent.message.chunk",
                     "sessionId": "session-1",
                     "turnId": "turn-1",
-                    "payload": {"text": "lo"}
+                    "payload": {"messageUnit": "1", "text": "l"}
                 }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                3,
+                &serde_json::json!({
+                    "event": "agent.message.completed",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"messageUnit": "1", "text": "Hello"}
+                }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                4,
+                &serde_json::json!({
+                    "event": "agent.message.chunk",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"messageUnit": "2", "text": "Wor"}
+                }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                5,
+                &serde_json::json!({
+                    "event": "agent.message.completed",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"messageUnit": "2", "text": "World"}
+                }),
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "World"}),
+                DispatchState::Completed,
+                None,
             )
             .unwrap();
         let event = store
@@ -6275,7 +6385,7 @@ mod tests {
             .filter(|part| part.kind == EventPartKind::Text)
             .map(|part| part.content.as_str())
             .collect::<String>();
-        assert_eq!(text, "Hello");
+        assert_eq!(text, "HelloWorld");
         // Canonical Event Parts stay intact: each chunk keeps its own part
         // identity and ordinal instead of being folded into one aggregate
         // part at readback time.
@@ -6284,11 +6394,95 @@ mod tests {
             .iter()
             .filter(|part| part.kind == EventPartKind::Text)
             .collect();
-        assert_eq!(text_parts.len(), 2);
+        assert_eq!(text_parts.len(), 5);
         assert_eq!(text_parts[0].content, "Hel");
-        assert_eq!(text_parts[1].content, "lo");
+        assert_eq!(text_parts[1].content, "l");
+        assert_eq!(text_parts[2].content, "o");
+        assert_eq!(text_parts[3].content, "Wor");
+        assert_eq!(text_parts[4].content, "ld");
         assert!(text_parts[0].ordinal < text_parts[1].ordinal);
         assert_ne!(text_parts[0].id, text_parts[1].id);
+        assert_eq!(
+            event
+                .parts
+                .iter()
+                .filter(|part| part.content == r#"{"messageUnit":"1"}"#)
+                .count(),
+            1
+        );
+        assert_eq!(
+            event
+                .parts
+                .iter()
+                .filter(|part| part.content == r#"{"messageUnit":"2"}"#)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn completed_snapshot_falls_back_to_terminal_output_without_chunks() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:one".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "One".into(),
+                    agent_id: Some("one".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                "one",
+                "",
+                "hello",
+                Some(&conversation.id),
+                Some(&agent.id),
+                Some("event:user"),
+                None,
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "agent.message.completed",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"text": "Complete"}
+                }),
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({}),
+                DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        let event = store
+            .page_events(&conversation.id, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|candidate| candidate.id == scope.event_id)
+            .unwrap();
+        let text_parts: Vec<_> = event
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Text)
+            .collect();
+        assert_eq!(text_parts.len(), 1);
+        assert_eq!(text_parts[0].content, "Complete");
     }
 
     #[test]

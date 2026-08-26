@@ -861,8 +861,8 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
     }))
 }
 
-/// Return only the bounded transcript owned by the exact live process-local
-/// Claude transport. No filesystem history discovery is performed.
+/// Return a backward page from the complete transcript owned by the exact live
+/// process-local Claude transport. No filesystem history discovery is performed.
 pub fn process_local_history(params: &Value) -> Result<Value> {
     let agent_id = agent_id_param(params)?;
     let adapter = adapter_or_err(&agent_id)?;
@@ -879,7 +879,27 @@ pub fn process_local_history(params: &Value) -> Result<Value> {
     let session_id = runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("history requires an exact native session identifier"))?;
-    let Some(mut history) = super::claude_code_driver::history(&session_id) else {
+    let before = params
+        .get("before")
+        .map(|value| {
+            value
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| anyhow!("history before cursor must be an unsigned integer"))
+        })
+        .transpose()?;
+    let limit = params
+        .get("limit")
+        .map(|value| {
+            value
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .filter(|value| (1..=100).contains(value))
+                .ok_or_else(|| anyhow!("history page limit must be between 1 and 100"))
+        })
+        .transpose()?
+        .unwrap_or(50);
+    let Some(mut history) = super::claude_code_driver::history(&session_id, before, limit) else {
         return Ok(json!({
             "ok": false,
             "error": {

@@ -116,9 +116,8 @@ npm run client:release:verify -- \
 文件、符号链接、陈旧包元数据、摘要不匹配和校验和不匹配。
 
 `build` 会先执行目标的完整原生配方，再原子暂存整个所选集合。通用或远程
-macOS 直发会直接失败；获得明确授权的本机操作方先运行
-`client:verify:macos-distribution:preflight`，再运行
-`client:build:macos:platform-channel`。该协调器强制 Developer ID、Hardened Runtime、
+macOS 直发会直接失败；获得明确授权的本机操作方使用 Apple Release 所拥有的
+`client:release:macos` 入口。该协调器强制 Developer ID、Hardened Runtime、
 安全时间戳、公证、票据装订和 Gatekeeper 验收。Android 直发要求受保护
 的 APK 签名输入。缺少平台权威时，会在替换任何标准包叶子前失败。
 

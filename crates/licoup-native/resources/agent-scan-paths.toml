@@ -189,11 +189,13 @@ binaries = [
   { path = "{home}/.claude/local" },
   { path = "{home}/.claude/local/node_modules/.bin" },
 ]
-config = [{ path = "{home}/.claude/settings.json" }]
+config = [
+  { path = "{home}/.claude/settings.json" },
+  { path = "{home}/.claude.json" },
+]
 detection = [{ path = "{home}/.claude" }]
 history = [
   { path = "{home}/.claude/projects", kind = "claude-project-transcripts" },
-  { path = "{home}/.claude.json", kind = "claude-global-state" },
 ]
 
 [[agents]]

@@ -46,8 +46,16 @@ bool applyPersistentTurnProcessEvent({
   final replyEvent =
       kind == 'agent.message.chunk' || kind == 'agent.message.completed';
   if (replyEvent) {
+    final messageUnit = (event.payload['messageUnit'] ?? '').toString().trim();
+    final participantKey = state.participantReplyKey(
+      turnId: state.turnId,
+      participantAgentId: agentId,
+      participantRole: participantRole,
+      messageUnit: messageUnit,
+    );
+    if (participantKey == null) return false;
     final next = ConversationRuntimeResultPolicy.mergeProgressiveText(
-      state.replyText,
+      state.replyTextFor(participantKey),
       (event.payload['text'] ?? '').toString(),
       completed: kind == 'agent.message.completed',
     );
@@ -58,6 +66,8 @@ bool applyPersistentTurnProcessEvent({
         participantAgentId: agentId,
         participantLabel: participantLabel,
         participantRole: participantRole,
+        participantKey: participantKey,
+        messageUnit: messageUnit,
       );
     }
   }

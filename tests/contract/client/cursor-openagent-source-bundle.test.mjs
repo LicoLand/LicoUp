@@ -72,21 +72,23 @@ test("parser leaves are bounded and use an explicit acyclic dependency direction
   }
 });
 
-test("SQLite codec owns read-only access and bounded field, value, and row projection", async () => {
+test("SQLite codec owns read-only access and complete field, value, and row projection", async () => {
   const source = (await sources())["codec.rs"];
   for (const token of [
     "SQLITE_OPEN_READ_ONLY",
     "SQLITE_OPEN_URI",
     "SQLITE_OPEN_NO_MUTEX",
-    "MAX_SQLITE_FIELDS_PER_ROW",
-    "MAX_SQLITE_FIELD_NAME_BYTES",
-    "MAX_SQLITE_VALUE_BYTES",
-    "MAX_SQLITE_ROW_BYTES",
-    "checked_add",
     "sqlite_row_fields",
     "sqlite_value_text",
   ]) {
     assert.ok(source.includes(token), `missing SQLite codec boundary: ${token}`);
+  }
+  for (const retired of [
+    "MAX_SQLITE_FIELDS_PER_ROW",
+    "MAX_SQLITE_VALUE_BYTES",
+    "MAX_SQLITE_ROW_BYTES",
+  ]) {
+    assert.equal(source.includes(retired), false);
   }
   assert.equal(source.includes("SQLITE_OPEN_READ_WRITE"), false);
   assert.equal(source.includes("SQLITE_OPEN_CREATE"), false);
@@ -128,13 +130,19 @@ test("OpenAgent precise parsing and generic fallback retain independent row poli
   }
   for (const token of [
     "parse_generic_sqlite_sessions",
-    "MAX_SQLITE_ROWS_PER_TABLE",
-    "ARCHIVE_SQLITE_PAGE_ROWS",
-    "LIMIT {} OFFSET {}",
+    'SELECT * FROM',
+    "rows.next()",
     "sqlite_row_fields",
     "sqlite_row_may_hold_history",
   ]) {
     assert.ok(source["fallback.rs"].includes(token), `missing fallback boundary: ${token}`);
+  }
+  for (const retired of [
+    "MAX_SQLITE_ROWS_PER_TABLE",
+    "ARCHIVE_SQLITE_PAGE_ROWS",
+    "LIMIT {} OFFSET {}",
+  ]) {
+    assert.equal(source["fallback.rs"].includes(retired), false);
   }
 });
 

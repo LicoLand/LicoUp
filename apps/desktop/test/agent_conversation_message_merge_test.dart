@@ -4,6 +4,123 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeli
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('exact message pages merge chronologically without overlap', () {
+    AgentConversationSession page(int start, int end, int total) =>
+        AgentConversationSession.fromJson({
+          'id': 'projection',
+          'agentId': 'codex',
+          'nativeSessionId': 'native-page-session',
+          'sourceMessageCount': total,
+          'messages': [
+            for (var index = start; index < end; index += 1)
+              {
+                'id': 'message-$index',
+                'role': 'assistant',
+                'text': 'message $index',
+              },
+          ],
+          'messagePage': {
+            'start': start,
+            'endExclusive': end,
+            'returned': end - start,
+            'total': total,
+            'hasEarlier': start > 0,
+            if (start > 0) 'nextBefore': 'message-$start',
+          },
+        });
+
+    var accumulated = page(203, 253, 253);
+    accumulated = accumulated.mergeExactMessagePage(page(153, 203, 253));
+    accumulated = accumulated.mergeExactMessagePage(page(53, 153, 253));
+    accumulated = accumulated.mergeExactMessagePage(page(0, 53, 253));
+
+    expect(accumulated.messages, hasLength(253));
+    expect(accumulated.messages.first.id, 'message-0');
+    expect(accumulated.messages.last.id, 'message-252');
+    expect(accumulated.messagePage.hasEarlier, isFalse);
+    expect(accumulated.messagePage.start, 0);
+  });
+
+  test('exact message page rejects conflicting stable identity overlap', () {
+    AgentConversationSession page(String text) =>
+        AgentConversationSession.fromJson({
+          'id': 'projection',
+          'agentId': 'codex',
+          'nativeSessionId': 'native-page-session',
+          'sourceMessageCount': 1,
+          'messages': [
+            {'id': 'message-0', 'role': 'assistant', 'text': text},
+          ],
+          'messagePage': {
+            'start': 0,
+            'endExclusive': 1,
+            'returned': 1,
+            'total': 1,
+            'hasEarlier': false,
+          },
+        });
+
+    expect(
+      () => page('first').mergeExactMessagePage(page('different')),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('empty browse placeholder adopts the first exact page', () {
+    // Remote browse rows legitimately carry zeroed page facts and no preview
+    // messages; opening the session must adopt the exact page instead of
+    // measuring a gap against the placeholder.
+    final placeholder = AgentConversationSession.fromJson({
+      'id': 'projection',
+      'agentId': 'openclaw',
+      'nativeSessionId': 'remote-native-session',
+      'sourceMessageCount': 0,
+      'messages': <Map<String, dynamic>>[],
+      'messagePage': {
+        'start': 0,
+        'endExclusive': 0,
+        'returned': 0,
+        'total': 0,
+        'hasEarlier': false,
+      },
+    });
+    AgentConversationSession exactPage() => AgentConversationSession.fromJson({
+      'id': 'projection',
+      'agentId': 'openclaw',
+      'nativeSessionId': 'remote-native-session',
+      'sourceMessageCount': 120,
+      'messages': [
+        for (var index = 70; index < 120; index += 1)
+          {
+            'id': 'message-$index',
+            'role': 'assistant',
+            'text': 'message $index',
+          },
+      ],
+      'messagePage': {
+        'start': 70,
+        'endExclusive': 120,
+        'returned': 50,
+        'total': 120,
+        'hasEarlier': true,
+        'nextBefore': 'message-70',
+      },
+    });
+
+    for (final allowRevisions in [true, false]) {
+      final merged = placeholder.mergeExactMessagePage(
+        exactPage(),
+        allowMessageRevisions: allowRevisions,
+      );
+      expect(merged.messages, hasLength(50));
+      expect(merged.messages.first.id, 'message-70');
+      expect(merged.messagePage.start, 70);
+      expect(merged.messagePage.total, 120);
+      expect(merged.messagePage.hasEarlier, isTrue);
+      expect(merged.messagePage.nextBefore, 'message-70');
+    }
+  });
+
   test(
     'completed live turn is hidden once readback contains the same suffix',
     () {

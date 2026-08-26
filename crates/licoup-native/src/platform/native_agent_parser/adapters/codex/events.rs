@@ -36,7 +36,7 @@ impl CodexParser {
             return;
         }
         if let Some(item) = params.get("item") {
-            self.emit_processing_item(item);
+            self.emit_processing_item_once(item, false);
             self.completed_items.push(item.clone());
             if item.get("type").and_then(Value::as_str) == Some("agentMessage")
                 && let Some(text) = item.get("text").and_then(Value::as_str)
@@ -50,7 +50,7 @@ impl CodexParser {
         }
     }
 
-    fn observe_processing_item(&self, message: &Value) {
+    fn observe_processing_item(&mut self, message: &Value) {
         if self.phase != ProtocolPhase::AwaitTurnCompleted {
             return;
         }
@@ -61,8 +61,23 @@ impl CodexParser {
             return;
         }
         if let Some(item) = params.get("item") {
-            self.emit_processing_item(item);
+            self.emit_processing_item_once(item, true);
         }
+    }
+
+    fn emit_processing_item_once(&mut self, item: &Value, emit_without_identity: bool) {
+        let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+        if item_id.is_empty() {
+            if emit_without_identity {
+                self.unidentified_processing_items += 1;
+            } else if self.unidentified_processing_items > 0 {
+                self.unidentified_processing_items -= 1;
+                return;
+            }
+        } else if !self.observed_processing_items.insert(item_id.to_owned()) {
+            return;
+        }
+        self.emit_processing_item(item);
     }
 
     fn emit_processing_item(&self, item: &Value) {

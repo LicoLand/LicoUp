@@ -1,4 +1,5 @@
 use super::model::ProtocolFailure;
+use crate::platform::native_agent_parser::adapters::codex::session::rollout_record_identity;
 use serde_json::Value;
 use std::path::Path;
 
@@ -37,19 +38,7 @@ impl ProtocolConfig {
         cwd: Option<&Path>,
     ) -> Result<Self, ProtocolFailure> {
         let session_path = text_param(params, &["sessionPath", "sourcePath"]);
-        let requested_session_id = if session_id.trim().is_empty() && session_path.is_some() {
-            thread_id_from_session_path(session_path.as_deref().unwrap_or_default())
-                .unwrap_or_default()
-        } else {
-            session_id.trim().to_string()
-        };
-        if session_path.is_some() && requested_session_id.is_empty() {
-            return Err(ProtocolFailure::new(
-                "codex_invalid_resume_target",
-                "Codex could not identify the existing conversation to resume.",
-                "thread/resume",
-            ));
-        }
+        let requested_session_id = resolve_resume_identity(session_path.as_deref(), session_id)?;
 
         let sandbox = params
             .get("sandbox")
@@ -175,22 +164,35 @@ fn text_param(params: &Value, keys: &[&str]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn thread_id_from_session_path(path: &str) -> Option<String> {
-    let stem = Path::new(path).file_stem()?.to_str()?;
-    stem.split(|character: char| !character.is_ascii_hexdigit() && character != '-')
-        .flat_map(|part| part.as_bytes().windows(36))
-        .filter_map(|window| std::str::from_utf8(window).ok())
-        .find(|candidate| looks_like_uuid(candidate))
-        .map(str::to_string)
-}
-
-fn looks_like_uuid(value: &str) -> bool {
-    value.len() == 36
-        && value
-            .chars()
-            .enumerate()
-            .all(|(index, character)| match index {
-                8 | 13 | 18 | 23 => character == '-',
-                _ => character.is_ascii_hexdigit(),
-            })
+fn resolve_resume_identity(
+    session_path: Option<&str>,
+    requested_session_id: &str,
+) -> Result<String, ProtocolFailure> {
+    let requested_session_id = requested_session_id.trim();
+    let Some(session_path) = session_path else {
+        return Ok(requested_session_id.to_string());
+    };
+    let recorded_session_id = rollout_record_identity(Path::new(session_path)).map_err(|_| {
+        let mut failure = ProtocolFailure::new(
+            "codex_invalid_resume_target",
+            "Codex could not read an authoritative conversation identity from the supplied rollout.",
+            "thread/resume",
+        );
+        if !requested_session_id.is_empty() {
+            failure.session_id = Some(requested_session_id.to_string());
+            failure.thread_id = Some(requested_session_id.to_string());
+        }
+        failure
+    })?;
+    if !requested_session_id.is_empty() && requested_session_id != recorded_session_id {
+        let mut failure = ProtocolFailure::new(
+            "codex_resume_source_identity_mismatch",
+            "The supplied Codex rollout belongs to a different conversation.",
+            "thread/resume",
+        );
+        failure.session_id = Some(requested_session_id.to_string());
+        failure.thread_id = Some(requested_session_id.to_string());
+        return Err(failure);
+    }
+    Ok(recorded_session_id)
 }

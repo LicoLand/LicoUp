@@ -63,6 +63,7 @@ mixin AgentConversationSessionStateController
     // Native catalog cwd wins over a locally baked agent-workspace path when
     // a newer turn-bound projection otherwise shadows the project directory.
     next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
+    next = _conversationRetainAccumulatedMessagePages(previous, next);
     _conversationPromoteNativeTitles(agentId, page.sessions, next);
     final projectedLive = conversationStateHolder.messagesFor(
       conversationComposerScopeKey,
@@ -643,6 +644,14 @@ mixin AgentConversationSessionStateController
       messages: List<AgentConversationMessage>.unmodifiable(mergedMessages),
       messageCount: mergedMessages.length,
       sourceMessageCount: mergedMessages.length,
+      messagePage: AgentConversationMessagePage(
+        start: 0,
+        endExclusive: mergedMessages.length,
+        returned: mergedMessages.length,
+        total: mergedMessages.length,
+        hasEarlier: false,
+        nextBefore: '',
+      ),
       workingDirectory: _conversationTurnWorkingDirectory(
         requested: workingDirectory,
         previous: previous?.workingDirectory ?? '',
@@ -725,6 +734,38 @@ mixin AgentConversationSessionStateController
     return changed
         ? List<AgentConversationSession>.unmodifiable(recovered)
         : sessions;
+  }
+
+  List<AgentConversationSession> _conversationRetainAccumulatedMessagePages(
+    List<AgentConversationSession> previous,
+    List<AgentConversationSession> incoming,
+  ) {
+    if (previous.isEmpty || incoming.isEmpty) return incoming;
+    final previousByNativeId = <String, AgentConversationSession>{
+      for (final session in previous)
+        if (session.nativeSessionId.trim().isNotEmpty)
+          session.nativeSessionId.trim(): session,
+    };
+    var changed = false;
+    final retained = incoming
+        .map((session) {
+          final accumulated =
+              previousByNativeId[session.nativeSessionId.trim()];
+          if (accumulated == null ||
+              accumulated.messages.isEmpty ||
+              accumulated.messagePage.total == 0 ||
+              session.messagePage.total == 0 ||
+              (accumulated.messagePage.start >= session.messagePage.start &&
+                  accumulated.messages.length <= session.messages.length)) {
+            return session;
+          }
+          changed = true;
+          return accumulated.retainExactMessagesAcrossPreview(session);
+        })
+        .toList(growable: false);
+    return changed
+        ? List<AgentConversationSession>.unmodifiable(retained)
+        : incoming;
   }
 }
 

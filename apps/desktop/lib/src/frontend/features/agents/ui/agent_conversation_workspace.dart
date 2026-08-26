@@ -587,6 +587,9 @@ class _ConversationWorkspaceBodyState
       recentSessionsHasMore: controller.selectedConversationSessionsHasMore,
       recentSessionsLoadingMore:
           controller.isLoadingMoreSelectedConversationSessions,
+      messagePageLoading:
+          controller.isLoadingEarlierSelectedConversationMessages,
+      messagePageError: controller.selectedConversationMessagePageError,
       turnActive: projection.turnState.active,
       inputEnabled: composerEnabled,
       cancelEnabled: projection.turnState.cancelEnabled ?? false,
@@ -653,6 +656,7 @@ class _ConversationWorkspaceBodyState
       onNewConversation: controller.startNewConversationSession,
       onLoadMoreRecentSessions: () =>
           unawaited(controller.loadMoreConversationSessions(target.target)),
+      onLoadEarlierMessages: controller.loadEarlierConversationMessages,
       onUnblockSend: onUnblockSend,
       onChooseWorkingDirectory: workingDirectorySelectable
           ? () => unawaited(

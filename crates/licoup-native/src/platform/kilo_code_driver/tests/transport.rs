@@ -144,6 +144,64 @@ fn exact_resume_does_not_relabel_terminal_http_output_as_streaming() {
     server.join().unwrap();
 }
 
+#[test]
+fn resume_rejects_different_returned_identity_before_any_message_post() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let request = read_request_headers(&mut stream);
+        assert!(request.contains("GET /session/existing-kilo-native"));
+        write_json_response(
+            &mut stream,
+            br#"{"id":"different-kilo-native","title":"t"}"#,
+        );
+        // A mismatched load is a terminal failure: no message POST may follow.
+        thread::sleep(Duration::from_millis(200));
+        listener.set_nonblocking(true).unwrap();
+        assert!(matches!(
+            listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+    });
+    let endpoint = kilo_code_serve::ServeEndpoint::new("127.0.0.1", port);
+    let config = test_config("private-kilo-resume-prompt", "existing-kilo-native");
+    let failure = match execute_via_serve(&endpoint, &config, None) {
+        Ok(_) => panic!("a different returned identity must fail"),
+        Err(failure) => failure,
+    };
+    assert_eq!(failure.code, "acp_session_id_mismatch");
+    assert_eq!(failure.session_id.as_deref(), Some("existing-kilo-native"));
+    server.join().unwrap();
+}
+
+#[test]
+fn resume_rejects_missing_returned_identity_before_any_message_post() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let request = read_request_headers(&mut stream);
+        assert!(request.contains("GET /session/existing-kilo-native"));
+        write_json_response(&mut stream, br#"{"title":"without id"}"#);
+        thread::sleep(Duration::from_millis(200));
+        listener.set_nonblocking(true).unwrap();
+        assert!(matches!(
+            listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+    });
+    let endpoint = kilo_code_serve::ServeEndpoint::new("127.0.0.1", port);
+    let config = test_config("private-kilo-resume-prompt", "existing-kilo-native");
+    let failure = match execute_via_serve(&endpoint, &config, None) {
+        Ok(_) => panic!("a missing returned identity must fail"),
+        Err(failure) => failure,
+    };
+    assert_eq!(failure.code, "acp_native_session_not_found");
+    assert_eq!(failure.session_id.as_deref(), Some("existing-kilo-native"));
+    server.join().unwrap();
+}
+
 fn read_request_headers(stream: &mut std::net::TcpStream) -> String {
     let mut request = Vec::new();
     let mut buffer = [0u8; 4096];
