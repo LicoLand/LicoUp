@@ -159,6 +159,92 @@ fn pty_controls_are_isolated_before_strict_ndjson_decoding() {
 }
 
 #[test]
+fn stream_identity_must_equal_the_bound_session_before_any_effect() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{
+        CursorEffect, CursorParseFailure, CursorParser,
+    };
+
+    // Frames without an explicit identity stay bound to the launched session.
+    let mut parser = CursorParser::new("bound-session", EffectiveSettings::default());
+    let accepted = parser
+        .parse_line(br#"{"type":"system","subtype":"init","cwd":"/tmp","model":"fake-model"}"#)
+        .unwrap();
+    assert!(accepted.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Accepted { session_id, .. } if session_id == "bound-session"
+    )));
+
+    // A repeated exact identity stays stable across every frame.
+    let exact = parser
+        .parse_line(br#"{"type":"assistant","session_id":"bound-session","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}"#)
+        .unwrap();
+    assert!(exact.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Text { session_id, text, .. }
+            if session_id == "bound-session" && text == "ok"
+    )));
+
+    // A changed identity is rejected before the frame exposes any accepted,
+    // chunk, or terminal effect.
+    let drifted = parser.parse_line(
+        br#"{"type":"assistant","session_id":"drifted-session","message":{"role":"assistant","content":[{"type":"text","text":"wrong"}]}}"#,
+    );
+    assert!(matches!(drifted, Err(CursorParseFailure::IdentityMismatch)));
+}
+
+#[test]
+fn mismatched_stream_identity_fails_and_never_completes_a_turn() {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let (dir, executable) = compile_fake_cursor(stamp);
+    let _guard = env_lock();
+    unsafe {
+        std::env::set_var("LICO_FAKE_CURSOR_AGENT_DRIFT_SESSION_ID", "1");
+    }
+
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = super::super::turn_event_emit::StreamSinkGuard;
+
+    let result = cursor_driver::execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "private first prompt __lico_drift__",
+        "",
+        Some(dir.as_path()),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    unsafe {
+        std::env::remove_var("LICO_FAKE_CURSOR_AGENT_DRIFT_SESSION_ID");
+    }
+    drop(_guard);
+    let _ = fs::remove_dir_all(dir);
+    assert!(
+        !result.ok,
+        "a drifted stream identity must not report success: {:?}",
+        result.error
+    );
+    assert_eq!(
+        result.error.as_ref().map(|error| error.code),
+        Some("cursor_cli_session_identity_mismatch")
+    );
+    // The wrong conversation was never exposed as accepted, chunked, or
+    // completed output.
+    let events = captured.lock().unwrap().clone();
+    assert!(!events.iter().any(|event| {
+        event["event"] == "agent.message.chunk" || event["event"] == "agent.message.completed"
+    }));
+}
+
+#[test]
 fn private_instructions_fail_before_process_launch() {
     let result = cursor_driver::execute(
         "definitely-not-a-real-cursor-agent",

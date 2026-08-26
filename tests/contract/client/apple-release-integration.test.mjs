@@ -18,6 +18,14 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(config.apple.target, "macos-direct-arm64");
   assert.equal(config.github.repository, "LicoLand/LicoUp");
   assert.deepEqual(config.gates[0], ["npm", "ci"]);
+  assert.deepEqual(config.build?.command, [
+    "npm",
+    "run",
+    "client:build",
+    "--",
+    "--platform",
+    "macos",
+  ]);
   assert.deepEqual(config.update?.command, [
     "node",
     "tools/scripts/client-update-manifest.mjs",

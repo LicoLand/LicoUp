@@ -1,3 +1,4 @@
+use super::super::continuity::open_serve_session;
 use super::*;
 
 #[test]
@@ -250,4 +251,141 @@ fn serve_request_timeout_uses_the_remaining_turn_budget_and_zero_has_no_deadline
         .unwrap();
     assert!(remaining > Duration::from_secs(1));
     assert!(remaining <= Duration::from_secs(2));
+}
+
+#[test]
+fn resume_load_returns_only_the_exact_requested_native_session() {
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let request = read_request(&mut stream);
+        assert!(request.contains("GET /session/expected-open-native"));
+        write_json_response(&mut stream, br#"{"id":"expected-open-native","title":"t"}"#);
+        stream.flush().unwrap();
+    });
+    let config = ProtocolConfig::from_params(
+        &json!({}),
+        "private opencode prompt",
+        "expected-open-native",
+        Some(absolute_test_cwd().as_path()),
+    )
+    .unwrap();
+    let endpoint = crate::platform::opencode_serve::ServeEndpoint::new("127.0.0.1", port);
+    let session = open_serve_session(&endpoint, &config, None).expect("exact load must succeed");
+    assert_eq!(session, "expected-open-native");
+    server.join().unwrap();
+}
+
+#[test]
+fn resume_load_rejects_a_different_returned_identity_without_a_message_post() {
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let request = read_request(&mut stream);
+        assert!(request.contains("GET /session/expected-open-native"));
+        write_json_response(
+            &mut stream,
+            br#"{"id":"different-open-native","title":"t"}"#,
+        );
+        stream.flush().unwrap();
+        // A mismatched load is a terminal failure: no message POST may follow.
+        std::thread::sleep(Duration::from_millis(200));
+        listener.set_nonblocking(true).unwrap();
+        assert!(matches!(
+            listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+    });
+    let config = ProtocolConfig::from_params(
+        &json!({}),
+        "private opencode prompt",
+        "expected-open-native",
+        Some(absolute_test_cwd().as_path()),
+    )
+    .unwrap();
+    let endpoint = crate::platform::opencode_serve::ServeEndpoint::new("127.0.0.1", port);
+    let failure = open_serve_session(&endpoint, &config, None)
+        .expect_err("a different returned identity must fail");
+    assert_eq!(failure.code, "acp_session_id_mismatch");
+    assert_eq!(failure.session_id.as_deref(), Some("expected-open-native"));
+    server.join().unwrap();
+}
+
+#[test]
+fn resume_load_rejects_a_response_without_a_native_session_id() {
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let request = read_request(&mut stream);
+        assert!(request.contains("GET /session/expected-open-native"));
+        write_json_response(&mut stream, br#"{"title":"without id"}"#);
+        stream.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        listener.set_nonblocking(true).unwrap();
+        assert!(matches!(
+            listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+    });
+    let config = ProtocolConfig::from_params(
+        &json!({}),
+        "private opencode prompt",
+        "expected-open-native",
+        Some(absolute_test_cwd().as_path()),
+    )
+    .unwrap();
+    let endpoint = crate::platform::opencode_serve::ServeEndpoint::new("127.0.0.1", port);
+    let failure = open_serve_session(&endpoint, &config, None)
+        .expect_err("a missing returned identity must fail");
+    assert_eq!(failure.code, "acp_native_session_not_found");
+    assert_eq!(failure.session_id.as_deref(), Some("expected-open-native"));
+    server.join().unwrap();
+}
+
+fn read_request(stream: &mut std::net::TcpStream) -> String {
+    let mut request = Vec::new();
+    let mut buffer = [0u8; 4096];
+    loop {
+        match std::io::Read::read(stream, &mut buffer) {
+            Ok(0) => break,
+            Ok(count) => {
+                request.extend_from_slice(&buffer[..count]);
+                if request
+                    .windows(4)
+                    .position(|part| part == b"\r\n\r\n")
+                    .is_some()
+                {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&request).into_owned()
+}
+
+fn write_json_response(stream: &mut std::net::TcpStream, body: &[u8]) {
+    use std::io::Write;
+    stream
+        .write_all(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                std::str::from_utf8(body).unwrap()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
 }

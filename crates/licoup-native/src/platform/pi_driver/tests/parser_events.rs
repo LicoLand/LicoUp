@@ -39,7 +39,18 @@ fn processing_evidence_distinguishes_reasoning_tools_and_terminal_events() {
             "type": "message_update",
             "assistantMessageEvent": {"type": "thinking_delta"}
         })),
+        None
+    );
+    assert_eq!(
+        processing_evidence_kind(&json!({
+            "type": "message_update",
+            "assistantMessageEvent": {"type": "thinking_start"}
+        })),
         Some("reasoning")
+    );
+    assert_eq!(
+        processing_evidence_kind(&json!({"type": "tool_execution_end"})),
+        None
     );
     assert_eq!(
         processing_evidence_kind(&json!({"type": "agent_settled"})),

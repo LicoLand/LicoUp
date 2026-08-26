@@ -72,7 +72,7 @@ function main() {
     "npm run client:analyze",
     "npm run client:test",
     "npm run client:native:test",
-    "npm run client:build:linux",
+    "npm run client:build -- --platform linux",
     "npm run client:linux:smoke",
     `LICO_GUI_ARTIFACT_DIR=${containerArtifacts} npm run client:linux:gui-smoke`,
   ].join(" && ");

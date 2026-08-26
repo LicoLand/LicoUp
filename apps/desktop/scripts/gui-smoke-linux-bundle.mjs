@@ -17,7 +17,7 @@ function findLinuxBundle() {
     }
   }
   if (candidates.length === 0) {
-    throw new Error("No Linux bundle found. Run npm run client:build:linux first.");
+    throw new Error("No Linux bundle found. Run npm run client:build -- --platform linux first.");
   }
   candidates.sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
   return candidates[0];

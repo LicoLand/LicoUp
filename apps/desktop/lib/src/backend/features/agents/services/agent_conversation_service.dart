@@ -43,7 +43,8 @@ Map<String, dynamic> _bindDispatchFields(AgentDispatchBind bind) {
     if (bind.licoProfile.trim().isNotEmpty)
       'licoProfile': bind.licoProfile.trim(),
     if (bind.runtimeConnection.isNotEmpty)
-      'runtimeConnection': bind.runtimeConnection,
+      if (bind.runtimeConnection.isNotEmpty)
+        'runtimeConnection': bind.runtimeConnection,
   };
 }
 
@@ -390,9 +391,44 @@ class AgentConversationService implements AgentConversationLane {
     int? limit,
     int offset = 0,
     AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _loadSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: limit,
+    offset: offset,
+    bind: bind,
+  );
+
+  Future<List<AgentConversationSession>> loadSessionMessagePage({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _loadSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: 1,
+    messageBefore: messageBefore,
+    messageLimit: messageLimit,
+    bind: bind,
+  );
+
+  Future<List<AgentConversationSession>> _loadSessions({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    String sessionId = '',
+    int? limit,
+    int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     final arguments = ['conversations', 'list', '--agent', agentId];
-    final output = bind.runtimeConnection.isNotEmpty
+    final output = bind.runtimeConnection.isNotEmpty || messageLimit != null
         ? await agentService.runCliWithStdin(
             [...arguments, '--stdin-json', 'true'],
             jsonEncode(
@@ -401,6 +437,8 @@ class AgentConversationService implements AgentConversationLane {
                 sessionId: sessionId,
                 limit: limit,
                 offset: offset,
+                messageBefore: messageBefore,
+                messageLimit: messageLimit,
                 bind: bind,
               ),
             ),
@@ -412,6 +450,10 @@ class AgentConversationService implements AgentConversationLane {
               sessionId.trim(),
             ],
             ..._paginationArgs(limit: limit, offset: offset),
+            ..._messagePaginationArgs(
+              messageBefore: messageBefore,
+              messageLimit: messageLimit,
+            ),
           ]);
     return _sessionsFromOutput(output);
   }
@@ -423,9 +465,44 @@ class AgentConversationService implements AgentConversationLane {
     int? limit,
     int offset = 0,
     AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _streamSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: limit,
+    offset: offset,
+    bind: bind,
+  );
+
+  Stream<AgentConversationSession> streamSessionMessagePage({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _streamSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: 1,
+    messageBefore: messageBefore,
+    messageLimit: messageLimit,
+    bind: bind,
+  );
+
+  Stream<AgentConversationSession> _streamSessions({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    String sessionId = '',
+    int? limit,
+    int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     final arguments = ['conversations', 'stream', '--agent', agentId];
-    final events = bind.runtimeConnection.isNotEmpty
+    final events = bind.runtimeConnection.isNotEmpty || messageLimit != null
         ? agentService.streamCliJsonLinesWithStdin(
             [...arguments, '--stdin-json', 'true'],
             jsonEncode(
@@ -434,6 +511,8 @@ class AgentConversationService implements AgentConversationLane {
                 sessionId: sessionId,
                 limit: limit,
                 offset: offset,
+                messageBefore: messageBefore,
+                messageLimit: messageLimit,
                 bind: bind,
               ),
             ),
@@ -445,6 +524,10 @@ class AgentConversationService implements AgentConversationLane {
               sessionId.trim(),
             ],
             ..._paginationArgs(limit: limit, offset: offset),
+            ..._messagePaginationArgs(
+              messageBefore: messageBefore,
+              messageLimit: messageLimit,
+            ),
           ]);
     await for (final event in events) {
       final eventName = (event['event'] ?? '').toString();
@@ -860,7 +943,11 @@ class AgentConversationService implements AgentConversationLane {
           .where((session) => session.id.isNotEmpty)
           .toList();
     }
-    return const [];
+    final error = output['error'];
+    final code = error is Map
+        ? (error['code'] ?? 'native_history_load_failed').toString()
+        : (output['code'] ?? 'native_history_load_failed').toString();
+    throw FormatException(code);
   }
 
   List<String> _paginationArgs({int? limit, int offset = 0}) {
@@ -870,11 +957,26 @@ class AgentConversationService implements AgentConversationLane {
     ];
   }
 
+  List<String> _messagePaginationArgs({
+    required String messageBefore,
+    required int? messageLimit,
+  }) {
+    return [
+      if (messageBefore.trim().isNotEmpty) ...[
+        '--message-before',
+        messageBefore.trim(),
+      ],
+      if (messageLimit != null) ...['--message-limit', '$messageLimit'],
+    ];
+  }
+
   Map<String, dynamic> _remoteHistoryRequest({
     required String agentId,
     required String sessionId,
     required int? limit,
     required int offset,
+    required String messageBefore,
+    required int? messageLimit,
     required AgentDispatchBind bind,
   }) {
     return <String, dynamic>{
@@ -882,9 +984,15 @@ class AgentConversationService implements AgentConversationLane {
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
       'limit': ?limit,
       if (offset > 0) 'offset': offset,
+      if (messageBefore.trim().isNotEmpty)
+        'messageBefore': messageBefore.trim(),
+      'messageLimit': ?messageLimit,
       if (bind.workingDirectory.trim().isNotEmpty)
         'workingDirectory': bind.workingDirectory.trim(),
-      'runtimeConnection': bind.runtimeConnection,
+      // An empty connection map is still a non-null JSON value; sending it
+      // would route a local exact-page read into the remote VM history path.
+      if (bind.runtimeConnection.isNotEmpty)
+        'runtimeConnection': bind.runtimeConnection,
     };
   }
 }

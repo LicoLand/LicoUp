@@ -73,6 +73,29 @@ fn omitted_permission_mode_defers_to_the_launch_default() {
 }
 
 #[test]
+fn allowed_tools_beyond_the_native_bound_fail_instead_of_truncating() {
+    let tools = (0..65)
+        .map(|index| format!("tool-{index}"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        DriverConfig::from_params(&json!({"allowedTools": tools}), "hello", "", None,)
+            .unwrap_err()
+            .code,
+        "claude_code_allowed_tools_unsupported"
+    );
+
+    let tools = (0..64)
+        .map(|index| format!("tool-{index}"))
+        .collect::<Vec<_>>();
+    let config = DriverConfig::from_params(&json!({"allowedTools": tools}), "hello", "", None)
+        .expect("the admitted bound itself stays executable");
+    assert_eq!(
+        config.allowed_tools.as_deref(),
+        Some(tools.join(",").as_str())
+    );
+}
+
+#[test]
 fn explicit_permission_modes_override_the_yolo_default() {
     let cases = [
         (json!({"permissionMode": "plan"}), "plan"),

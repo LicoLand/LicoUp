@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn resume_uses_load_when_advertised_and_keeps_native_id() {
+fn resume_uses_load_when_advertised_and_requires_returned_native_id() {
     let mut protocol = new_protocol(json!({}), "next", "existing-native");
     let effects = protocol.handle_message(initialize_response(true, true));
     let ProtocolEffect::Send(request) = &effects[0] else {
@@ -11,14 +11,14 @@ fn resume_uses_load_when_advertised_and_keeps_native_id() {
     assert_eq!(request["params"]["sessionId"], "existing-native");
     let effects = protocol.handle_message(json!({
         "jsonrpc": "2.0", "id": SESSION_REQUEST_ID,
-        "result": null
+        "result": {"sessionId": "existing-native"}
     }));
     assert!(matches!(effects[0], ProtocolEffect::Send(_)));
     assert_eq!(protocol.session_id.as_deref(), Some("existing-native"));
 }
 
 #[test]
-fn restored_session_idless_optional_state_continues_on_the_requested_native_id() {
+fn restored_session_without_returned_identity_fails_before_prompt() {
     let mut protocol = new_protocol(json!({}), "next", "existing-native");
     let effects = protocol.handle_message(initialize_response(true, true));
     let ProtocolEffect::Send(load) = &effects[0] else {
@@ -40,43 +40,26 @@ fn restored_session_idless_optional_state_continues_on_the_requested_native_id()
             }]
         }
     }));
-    let ProtocolEffect::Send(prompt) = &effects[0] else {
-        panic!("expected prompt on the requested restored session")
+    let ProtocolEffect::Fail(failure) = &effects[0] else {
+        panic!("expected missing returned identity failure")
     };
-    assert_eq!(prompt["method"], "session/prompt");
-    assert_eq!(prompt["params"]["sessionId"], "existing-native");
-    assert_eq!(protocol.session_id.as_deref(), Some("existing-native"));
-    assert_eq!(protocol.config_options.len(), 1);
-    assert_eq!(protocol.config_options[0]["id"], "pace");
-
-    assert!(
-        protocol
-            .handle_message(json!({
-                "jsonrpc": "2.0",
-                "method": "session/update",
-                "params": {
-                    "sessionId": "existing-native",
-                    "update": {
-                        "sessionUpdate": "agent_message_chunk",
-                        "content": {"type": "text", "text": "continued-idless"}
-                    }
-                }
-            }))
-            .is_empty()
-    );
-
-    let effects = protocol.handle_message(json!({
-        "jsonrpc": "2.0",
-        "id": PROMPT_REQUEST_ID,
-        "result": {"stopReason": "end_turn"}
-    }));
-    let ProtocolEffect::Complete(outcome) = &effects[0] else {
-        panic!("expected ID-less restored-session completion")
-    };
-    assert_eq!(outcome.session_id, "existing-native");
-    assert_eq!(outcome.thread_id, "existing-native");
-    assert_eq!(outcome.output, "continued-idless");
+    assert_eq!(failure.code, "acp_session_id_missing");
+    assert_eq!(failure.session_id.as_deref(), Some("existing-native"));
     assert_eq!(protocol.phase, ProtocolPhase::Finished);
+}
+
+#[test]
+fn direct_reconciliation_rejects_missing_resume_identity() {
+    let config = ProtocolConfig::from_params(
+        &json!({}),
+        "next",
+        "expected-native",
+        Some(absolute_test_cwd().as_path()),
+    )
+    .unwrap();
+    let failure = reconcile_acp_session_id(&config, AcpSessionPlan::Resume, None).unwrap_err();
+    assert_eq!(failure.code, "acp_session_id_missing");
+    assert_eq!(failure.session_id.as_deref(), Some("expected-native"));
 }
 
 #[test]

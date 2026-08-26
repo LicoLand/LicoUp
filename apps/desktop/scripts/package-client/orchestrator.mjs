@@ -114,7 +114,7 @@ export function packageClient(
     emit(packageSuccessRecord(result, options));
     return result;
   } finally {
-    cleanupFlutterBuildCache(options, flutterBuildAttempted);
+    cleanupFlutterBuildCache(flutterBuildAttempted);
   }
 }
 

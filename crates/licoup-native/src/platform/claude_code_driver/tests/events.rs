@@ -23,7 +23,28 @@ fn processing_evidence_uses_native_thinking_and_tool_blocks_only() {
                 "delta": {"type": "thinking_delta", "thinking": "private"}
             }
         })),
+        None
+    );
+    assert_eq!(
+        processing_evidence_kind(&json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "content_block": {"type": "thinking"}
+            }
+        })),
         Some("reasoning")
+    );
+    assert_eq!(
+        processing_evidence_kind(&json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "content_block": {"type": "thinking"},
+                "delta": {"type": "thinking_delta", "thinking": "private"}
+            }
+        })),
+        None
     );
     assert_eq!(
         processing_evidence_kind(&json!({

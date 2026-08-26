@@ -163,7 +163,13 @@ pub(in crate::platform) fn execute(
                 stderr_truncated,
             );
         }
-        record_success(&managed, &outcome.turn_id, &outcome.output);
+        record_success(
+            &managed,
+            &outcome.turn_id,
+            &config.prompt,
+            outcome.events,
+            &outcome.output,
+        );
         let transitions =
             crate::platform::native_agent_parser::adapters::claude_code::completed_transitions(
                 &outcome.output,

@@ -734,7 +734,7 @@ mixin AgentConversationMessageController
                         .toString()
                         .trim();
                 final participantKey =
-                    '$participantAgentId\u0000$participantRole';
+                    '$participantAgentId\u0000$participantRole\u0000${(event.payload['messageUnit'] ?? '').toString().trim()}';
                 final participantText =
                     ConversationRuntimeResultPolicy.mergeProgressiveText(
                       streamedTextByParticipant[participantKey] ?? '',

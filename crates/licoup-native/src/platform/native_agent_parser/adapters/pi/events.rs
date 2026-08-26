@@ -24,14 +24,14 @@ pub(in crate::platform) fn sanitized_event(message: &Value) -> Option<Value> {
 
 pub(in crate::platform) fn processing_evidence_kind(message: &Value) -> Option<&'static str> {
     match message.get("type").and_then(Value::as_str)? {
-        "tool_execution_start" | "tool_execution_update" | "tool_execution_end" => Some("tool"),
+        "tool_execution_start" => Some("tool"),
         "agent_start" | "turn_start" | "message_start" | "compaction_start"
         | "auto_retry_start" | "queue_update" => Some("progress"),
         "message_update"
             if message
                 .pointer("/assistantMessageEvent/type")
                 .and_then(Value::as_str)
-                .is_some_and(|kind| kind.contains("thinking")) =>
+                == Some("thinking_start") =>
         {
             Some("reasoning")
         }

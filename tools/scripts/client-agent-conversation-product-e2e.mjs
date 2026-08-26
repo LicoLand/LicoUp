@@ -231,7 +231,9 @@ function selfTest() {
       "STEER_PROMPT",
     ].join("_"))
     && runnerSource.includes("const secondPrompt = acceptancePrompt(secondExpected);");
-  const sourceBound = runnerSource.includes('spawnSync("npm", ["run", "client:build:macos"]')
+  const sourceBound = runnerSource.includes(
+    '["run", "client:build", "--", "--platform", "macos"]',
+  )
     && runnerSource.includes("LICO_AGENT_CONVERSATION_RELEASE_LIVE")
     && liveSource.includes("ClientController()")
     && liveSource.includes("initializeController: false")
@@ -317,13 +319,17 @@ function bundleDigest(appBundle) {
 }
 
 function buildPackagedReleaseApplication() {
-  const execution = spawnSync("npm", ["run", "client:build:macos"], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, LICO_AGENT_CONVERSATION_RELEASE_LIVE: "1" },
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: 30 * 60 * 1000,
-  });
+  const execution = spawnSync(
+    "npm",
+    ["run", "client:build", "--", "--platform", "macos"],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, LICO_AGENT_CONVERSATION_RELEASE_LIVE: "1" },
+      maxBuffer: 8 * 1024 * 1024,
+      timeout: 30 * 60 * 1000,
+    },
+  );
   if (execution.status !== 0) {
     if (execution.error?.code === "ETIMEDOUT") fail("release_app_build_timeout");
     const safeBuildErrors = new Set([

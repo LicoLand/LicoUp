@@ -63,7 +63,7 @@ export function runScriptSelfTest() {
     }
   }
   for (const token of [
-    "client:build:linux",
+    "client:build -- --platform linux",
     "client:verify:linux-bundle-carrier",
     "client-secure-mesh-linux-vm-package-receipt.mjs",
     "client-secure-mesh-linux-node-matrix.mjs",

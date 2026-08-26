@@ -93,7 +93,6 @@ export function parsePackageClientArgs(
     profile: null,
     skipFlutterBuild: false,
     skipNativeBuild: false,
-    keepFlutterBuildCache: environment.LICO_KEEP_FLUTTER_BUILD_CACHE === "1",
     install: false,
     installDir: "",
     dryRun: false,
@@ -125,8 +124,6 @@ export function parsePackageClientArgs(
       options.skipFlutterBuild = true;
     } else if (arg === "--skip-native-build") {
       options.skipNativeBuild = true;
-    } else if (arg === "--keep-flutter-build-cache") {
-      options.keepFlutterBuildCache = true;
     } else if (arg === "--install") {
       options.install = true;
     } else if (arg === "--install-dir" && next) {

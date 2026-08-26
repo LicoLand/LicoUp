@@ -64,7 +64,9 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
         [
             "byteCount",
             "continuityScope",
+            "hasMore",
             "nativeSessionId",
+            "nextBefore",
             "ok",
             "turnCount",
             "turns"
@@ -80,7 +82,7 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
                 .keys()
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>(),
-            ["output", "turnId"]
+            ["events", "output", "prompt", "turnId"]
                 .into_iter()
                 .map(str::to_string)
                 .collect()
@@ -90,6 +92,16 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     assert_eq!(history["turns"][1]["turnId"], second.turn_id);
     assert_eq!(history["turns"][0]["output"], "fake Claude final answer 1");
     assert_eq!(history["turns"][1]["output"], "fake Claude final answer 2");
+    assert_eq!(
+        history["turns"][0]["prompt"],
+        "fake-claude-private-prompt-1"
+    );
+    assert_eq!(
+        history["turns"][1]["prompt"],
+        "fake-claude-private-prompt-2"
+    );
+    assert_eq!(history["hasMore"], false);
+    assert!(history["nextBefore"].is_null());
     let projected_bytes = history["turns"]
         .as_array()
         .unwrap()
@@ -396,6 +408,115 @@ fn whole_assistant_messages_stream_progress_chunks() {
         chunks.contains(&"Final round answer".to_string()),
         "final round text never chunked: {chunks:?}"
     );
+    assert_eq!(
+        cleanup_session(&turn.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn whole_assistant_messages_keep_distinct_units_without_replayed_text() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-segmented-assistant");
+    let executable_text = executable.to_string_lossy().to_string();
+    let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
+    crate::platform::install_stream_sink(Box::new(move |event| {
+        events.lock().unwrap().push(event);
+    }));
+    let params = json!({
+        "model": "fake-model",
+        "reasoningEffort": "high",
+        "permissionMode": "plan"
+    });
+    let turn = execute(
+        &executable_text,
+        &params,
+        "fake-claude-segmented-assistant-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    crate::platform::clear_stream_sink();
+    assert!(turn.ok, "segmented assistant turn failed: {:?}", turn.error);
+    let events = captured.lock().unwrap();
+    let chunks = events
+        .iter()
+        .filter(|event| event["event"] == "agent.message.chunk")
+        .map(|event| {
+            (
+                event["payload"]["messageUnit"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                event["payload"]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        chunks,
+        vec![
+            ("1".to_owned(), "第一段".to_owned()),
+            ("2".to_owned(), "第二段".to_owned()),
+            ("3".to_owned(), "第三段".to_owned()),
+        ]
+    );
+    let completed = events
+        .iter()
+        .find(|event| event["event"] == "agent.message.completed")
+        .expect("completed message event");
+    assert_eq!(completed["payload"]["messageUnit"], "3");
+    assert_eq!(completed["payload"]["text"], "第三段");
+    drop(events);
+    assert_eq!(
+        cleanup_session(&turn.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn terminal_only_final_message_gets_its_own_unit() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-terminal-segment");
+    let executable_text = executable.to_string_lossy().to_string();
+    let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
+    crate::platform::install_stream_sink(Box::new(move |event| {
+        events.lock().unwrap().push(event);
+    }));
+    let turn = execute(
+        &executable_text,
+        &json!({"model": "fake-model", "permissionMode": "plan"}),
+        "fake-claude-terminal-segment-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    crate::platform::clear_stream_sink();
+    assert!(turn.ok, "terminal segment turn failed: {:?}", turn.error);
+    let events = captured.lock().unwrap();
+    let chunk = events
+        .iter()
+        .find(|event| event["event"] == "agent.message.chunk")
+        .expect("first segment chunk");
+    assert_eq!(chunk["payload"]["messageUnit"], "1");
+    assert_eq!(chunk["payload"]["text"], "First segment");
+    let completed = events
+        .iter()
+        .find(|event| event["event"] == "agent.message.completed")
+        .expect("terminal segment completed");
+    assert_eq!(completed["payload"]["messageUnit"], "2");
+    assert_eq!(completed["payload"]["text"], "Final segment");
+    drop(events);
     assert_eq!(
         cleanup_session(&turn.session_id),
         ControlDisposition::Accepted
