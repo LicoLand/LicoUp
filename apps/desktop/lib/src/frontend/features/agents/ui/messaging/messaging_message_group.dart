@@ -8,16 +8,16 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// One author group in the messaging participant flow: a header row with the
@@ -63,6 +63,9 @@ class MessagingMessageGroup extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final isAssistant = participantRole.trim().toLowerCase() == 'assistant';
+    final bubbleGlowKey = authorIsUser
+        ? ''
+        : messagingAgentBubbleGlowKey(participantTarget ?? target);
     final authorName = authorIsUser
         ? strings.you
         : participantLabel.trim().isNotEmpty
@@ -161,7 +164,7 @@ class MessagingMessageGroup extends StatelessWidget {
             message: messages[index],
             adapter: adapter,
             authorIsUser: authorIsUser,
-            assistantStyle: isAssistant,
+            agentKey: bubbleGlowKey,
             conversationId: conversationId,
             onCopyText: onCopyText,
           ),
@@ -200,7 +203,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     required this.message,
     required this.adapter,
     required this.authorIsUser,
-    required this.assistantStyle,
+    this.agentKey = '',
     this.conversationId = '',
     this.onCopyText,
   });
@@ -212,7 +215,10 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   /// bubble is why the surface did not read like a chat client: there was no
   /// visual cue for who is speaking beyond the avatar.
   final bool authorIsUser;
-  final bool assistantStyle;
+
+  /// Rim-light palette key for agent bubbles (the speaking agent's brand hue);
+  /// empty selects the shared white light.
+  final String agentKey;
   final String conversationId;
 
   /// Clipboard write routed through the platform boundary; the hover meta row
@@ -367,16 +373,12 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             hovered: _hovered,
             child: content,
           )
-        : LicoSurface(
+        : MessagingAgentBubble(
             key: const Key('messaging-message-bubble'),
-            tone: widget.assistantStyle
-                ? LicoSurfaceTone.accent
-                : LicoSurfaceTone.neutral,
-            elevation: LicoElevation.flat,
-            radius: LicoRadius.composerField,
-            bordered: widget.assistantStyle,
-            hovered: _hovered,
+            borderRadius: bubbleRadius,
             padding: bubblePadding,
+            hovered: _hovered,
+            agentKey: widget.agentKey,
             child: content,
           );
     final copyOverlay = widget.onCopyText == null

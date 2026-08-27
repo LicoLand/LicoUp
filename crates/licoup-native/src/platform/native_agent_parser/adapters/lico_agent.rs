@@ -6,12 +6,21 @@ pub(super) const CONTRACT: AdapterContract = AdapterContract::new("lico-agent", 
 
 #[derive(Debug)]
 pub(in crate::platform) enum RpcEffect {
-    Handshake { accepted: bool },
-    Text { delta: String },
+    Handshake {
+        accepted: bool,
+        session_id: Option<String>,
+    },
+    Text {
+        delta: String,
+    },
     Processing,
-    Control { method: String },
+    Control {
+        method: String,
+    },
     Completed,
-    Failed,
+    Failed {
+        code: Option<String>,
+    },
     Ignored,
 }
 
@@ -45,6 +54,10 @@ impl NativeLineParser for RpcParser {
         if event.get("type").and_then(Value::as_str) == Some("response") {
             return Ok(RpcEffect::Handshake {
                 accepted: event.get("success").and_then(Value::as_bool) == Some(true),
+                session_id: event
+                    .pointer("/data/sessionId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
             });
         }
         if let Some(delta) = event
@@ -61,7 +74,12 @@ impl NativeLineParser for RpcParser {
                 method: "agent.interaction".to_owned(),
             }),
             Some("agent_end") => Ok(RpcEffect::Completed),
-            Some("error") => Ok(RpcEffect::Failed),
+            Some("error") => Ok(RpcEffect::Failed {
+                code: event
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            }),
             _ => Ok(RpcEffect::Ignored),
         }
     }
@@ -124,7 +142,26 @@ mod tests {
     fn jsonl_parser_owns_handshake_text_and_terminal_classification() {
         assert!(matches!(
             RpcParser.parse_line(br#"{"type":"response","success":true}"#),
-            Ok(RpcEffect::Handshake { accepted: true })
+            Ok(RpcEffect::Handshake {
+                accepted: true,
+                session_id: None
+            })
+        ));
+        assert!(matches!(
+            RpcParser.parse_line(
+                br#"{"type":"response","success":true,"data":{"sessionId":"native-1"}}"#
+            ),
+            Ok(RpcEffect::Handshake {
+                accepted: true,
+                session_id: Some(session_id)
+            }) if session_id == "native-1"
+        ));
+        assert!(matches!(
+            RpcParser.parse_line(
+                br#"{"type":"error","code":"lico_agent_transcript_persist_failed"}"#
+            ),
+            Ok(RpcEffect::Failed { code: Some(code) })
+                if code == "lico_agent_transcript_persist_failed"
         ));
         assert!(matches!(
             RpcParser.parse_line(br#"{"assistantMessageEvent":{"delta":"hello"}}"#),

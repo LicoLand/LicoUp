@@ -23,7 +23,12 @@ pub(super) fn matches_current_ids(
 pub(super) fn final_agent_message(items: &[Value]) -> Option<String> {
     items.iter().rev().find_map(|item| {
         (item.get("type").and_then(Value::as_str) == Some("agentMessage"))
-            .then(|| item.get("text").and_then(Value::as_str).map(str::to_string))
+            .then(|| {
+                item.get("text")
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.trim().is_empty())
+                    .map(str::to_string)
+            })
             .flatten()
     })
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
@@ -154,12 +155,20 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
             route.method.wireName.startsWith('agent.conversation.')
             ? route.method.wireName.substring('agent.conversation.'.length)
             : route.method.wireName;
-        yield* _stdioRpcTransport.streamConversation({
-          ..._routeStdinParams(route, args, stdinText),
-          // The default conversation exchange operation is 'send'; only
-          // non-default operations need an explicit operation marker.
-          if (operation != 'send') '_rpcOperation': operation,
-        });
+        try {
+          await for (final event in _stdioRpcTransport.streamConversation({
+            ..._routeStdinParams(route, args, stdinText),
+            // The default conversation exchange operation is 'send'; only
+            // non-default operations need an explicit operation marker.
+            if (operation != 'send') '_rpcOperation': operation,
+          })) {
+            yield event;
+          }
+        } on LicoClientRpcException catch (error) {
+          throw AgentDispatchStreamException(error.code);
+        } on Object {
+          throw const AgentDispatchStreamException('transport_failed');
+        }
         return;
       }
     }

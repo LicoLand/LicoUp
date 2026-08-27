@@ -147,36 +147,54 @@ pub(super) fn message_param(params: &Value, keys: &[&str]) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(super) fn u64_param(params: &Value, key: &str, fallback: u64) -> u64 {
-    params
-        .get(key)
-        .and_then(|value| {
-            value
-                .as_u64()
-                .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
-        })
-        .unwrap_or(fallback)
+fn optional_u64_param(params: &Value, key: &str) -> Result<Option<u64>, ()> {
+    let Some(value) = params.get(key) else {
+        return Ok(None);
+    };
+    value
+        .as_u64()
+        .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
+        .map(Some)
+        .ok_or(())
+}
+
+pub(super) fn timeout_param(
+    params: &Value,
+    key: &str,
+    minimum: u64,
+    maximum: u64,
+) -> Result<u64, ()> {
+    let Some(value) = optional_u64_param(params, key)? else {
+        return Ok(0);
+    };
+    if value == 0 || (minimum..=maximum).contains(&value) {
+        Ok(value)
+    } else {
+        Err(())
+    }
 }
 
 /// An explicitly configured output budget. Absent means the client imposes
 /// no limit: LicoUp waits for the agent to finish and streams whatever it
 /// produces. Explicit values stay bounded by the public contract ceiling.
-pub(super) fn optional_output_param(params: &Value, key: &str) -> Option<usize> {
-    params.get(key).and_then(|value| {
-        let parsed = value
-            .as_u64()
-            .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))?;
-        usize::try_from(parsed)
-            .unwrap_or(MAX_OUTPUT_BYTES)
-            .clamp(1, MAX_OUTPUT_BYTES)
-            .into()
-    })
+pub(super) fn optional_output_param(params: &Value, key: &str) -> Result<Option<usize>, ()> {
+    let Some(parsed) = optional_u64_param(params, key)? else {
+        return Ok(None);
+    };
+    let parsed = usize::try_from(parsed).map_err(|_| ())?;
+    if (1..=MAX_OUTPUT_BYTES).contains(&parsed) {
+        Ok(Some(parsed))
+    } else {
+        Err(())
+    }
 }
 
-pub(super) fn bounded_output_param(params: &Value, key: &str, fallback: usize) -> usize {
-    usize::try_from(u64_param(params, key, fallback as u64))
-        .unwrap_or(MAX_OUTPUT_BYTES)
-        .clamp(1, MAX_OUTPUT_BYTES)
+pub(super) fn bounded_output_param(
+    params: &Value,
+    key: &str,
+    fallback: usize,
+) -> Result<usize, ()> {
+    optional_output_param(params, key).map(|value| value.unwrap_or(fallback))
 }
 
 pub(super) fn timestamp() -> String {
@@ -200,14 +218,14 @@ mod tests {
                 &json!({"maxStdoutBytes": MAX_OUTPUT_BYTES}),
                 "maxStdoutBytes",
             ),
-            Some(MAX_OUTPUT_BYTES)
+            Ok(Some(MAX_OUTPUT_BYTES))
         );
-        assert_eq!(
+        assert!(
             optional_output_param(
                 &json!({"maxStdoutBytes": MAX_OUTPUT_BYTES as u64 + 1}),
                 "maxStdoutBytes",
-            ),
-            Some(MAX_OUTPUT_BYTES)
+            )
+            .is_err()
         );
     }
 
@@ -215,8 +233,23 @@ mod tests {
     fn absent_output_budget_means_unbounded() {
         assert_eq!(
             optional_output_param(&json!({}), "maxStdoutBytes"),
-            None,
+            Ok(None),
             "the client must not limit agent output when no explicit budget is set"
         );
+    }
+
+    #[test]
+    fn timeout_and_output_values_are_exact_or_rejected() {
+        assert_eq!(timeout_param(&json!({}), "timeoutMs", 1_000, 10_000), Ok(0));
+        assert_eq!(
+            timeout_param(&json!({"timeoutMs": 0}), "timeoutMs", 1_000, 10_000),
+            Ok(0)
+        );
+        assert_eq!(
+            timeout_param(&json!({"timeoutMs": 4_321}), "timeoutMs", 1_000, 10_000),
+            Ok(4_321)
+        );
+        assert!(timeout_param(&json!({"timeoutMs": 999}), "timeoutMs", 1_000, 10_000).is_err());
+        assert!(optional_output_param(&json!({"maxStdoutBytes": 0}), "maxStdoutBytes").is_err());
     }
 }

@@ -150,6 +150,9 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       ConversationLifecyclePhase.resumed;
   bool conversationViewFocused = true;
   final Set<String> conversationSessionLoadMoreTargets = <String>{};
+  final Set<String> conversationMessagePageLoadingKeys = <String>{};
+  Map<String, String> conversationMessagePageErrors = const {};
+  Map<String, int> conversationMessagePageContinuationCounts = const {};
   Map<String, int> conversationSessionLoadMoreCountsByAgent = const {};
   Map<String, String> _selectedConversationSessionIdsByAgent = const {};
 
@@ -456,6 +459,22 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   bool get isLoadingConversations => agentWorkspaceMobileRuntime
       ? conversationMobileLoading
       : conversationSessionLoadingTargets.contains(selectedConversationAgentId);
+
+  String get selectedConversationMessagePageKey {
+    final session = selectedConversationSession;
+    if (session == null) return '';
+    final nativeId = session.nativeSessionId.trim();
+    if (nativeId.isEmpty) return '';
+    return '${session.agentId.trim()}\u0000$nativeId';
+  }
+
+  bool get isLoadingEarlierSelectedConversationMessages =>
+      conversationMessagePageLoadingKeys.contains(
+        selectedConversationMessagePageKey,
+      );
+
+  String get selectedConversationMessagePageError =>
+      conversationMessagePageErrors[selectedConversationMessagePageKey] ?? '';
 
   int get queuedConversationTurnCount => conversationTurnQueue.length;
 

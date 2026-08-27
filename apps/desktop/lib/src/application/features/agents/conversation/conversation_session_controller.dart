@@ -85,6 +85,7 @@ mixin AgentConversationSessionController
         sessionId: sessionId,
         offset: 0,
         pageSize: 1,
+        messageLimit: 50,
       );
       AgentConversationSession? refreshed;
       for (final session in page.sessions) {
@@ -102,6 +103,19 @@ mixin AgentConversationSessionController
         return;
       }
       final previous = conversationSessionsByAgent[agentId] ?? const [];
+      final refreshedNativeSessionId = refreshed.nativeSessionId.trim();
+      final previousExact = previous
+          .where(
+            (session) =>
+                session.nativeSessionId.trim() == refreshedNativeSessionId,
+          )
+          .firstOrNull;
+      if (previousExact != null && previousExact.messages.isNotEmpty) {
+        refreshed = previousExact.mergeExactMessagePage(
+          refreshed,
+          allowMessageRevisions: true,
+        );
+      }
       final next = insertConversationSessionByUpdatedAt(previous, refreshed);
       if (conversationSessionListsEquivalent(previous, next)) {
         return;
@@ -134,6 +148,8 @@ mixin AgentConversationSessionController
     String sessionId = '',
     required int offset,
     required int pageSize,
+    String messageBefore = '',
+    int? messageLimit,
     ConversationSessionProgressCallback? onProgress,
   }) async {
     final bind = _historyBindFor(agentId);
@@ -152,6 +168,8 @@ mixin AgentConversationSessionController
         sessionId: resolvedSessionId,
         limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
         offset: offset,
+        messageBefore: messageBefore,
+        messageLimit: messageLimit,
         bind: bind,
       )) {
         final identity = session.nativeSessionId.trim().isNotEmpty
@@ -183,10 +201,12 @@ mixin AgentConversationSessionController
       final streamed = sortConversationSessionsByUpdatedAt(
         streamedByIdentity.values.toList(growable: false),
       );
-      return ConversationSessionPage(
-        sessions: streamed.take(pageSize).toList(growable: false),
-        hasMore: hasMore,
+      final sessions = streamed.take(pageSize).toList(growable: false);
+      _validateExactConversationPage(
+        requestedSessionId: resolvedSessionId,
+        sessions: sessions,
       );
+      return ConversationSessionPage(sessions: sessions, hasMore: hasMore);
     } catch (_) {
       final loaded = sortConversationSessionsByUpdatedAt(
         await conversationGateway.loadSessions(
@@ -194,11 +214,18 @@ mixin AgentConversationSessionController
           sessionId: resolvedSessionId,
           limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
           offset: offset,
+          messageBefore: messageBefore,
+          messageLimit: messageLimit,
           bind: bind,
         ),
       );
+      final sessions = loaded.take(pageSize).toList(growable: false);
+      _validateExactConversationPage(
+        requestedSessionId: resolvedSessionId,
+        sessions: sessions,
+      );
       return ConversationSessionPage(
-        sessions: loaded.take(pageSize).toList(growable: false),
+        sessions: sessions,
         hasMore: sessionId.isEmpty && loaded.length > pageSize,
       );
     }
@@ -413,6 +440,123 @@ mixin AgentConversationSessionController
     conversationAttentionContextChanged();
     agentWorkspaceRecordCurrentAgentView();
     ensureConversationInterfaceModelCatalog();
+    unawaited(_loadSelectedConversationMessagePage(earlier: false));
+  }
+
+  Future<void> loadEarlierConversationMessages() =>
+      _loadSelectedConversationMessagePage(earlier: true);
+
+  Future<void> _loadSelectedConversationMessagePage({
+    required bool earlier,
+  }) async {
+    if (agentWorkspaceDisposed) return;
+    final agentId = selectedConversationAgentId.trim();
+    final selected = selectedConversationSession;
+    final nativeSessionId = selected?.nativeSessionId.trim() ?? '';
+    if (agentId.isEmpty || selected == null || nativeSessionId.isEmpty) return;
+    if (earlier && !selected.messagePage.hasEarlier) return;
+    final key = '$agentId\u0000$nativeSessionId';
+    if (!conversationMessagePageLoadingKeys.add(key)) return;
+    conversationMessagePageErrors = {
+      for (final entry in conversationMessagePageErrors.entries)
+        if (entry.key != key) entry.key: entry.value,
+    };
+    agentWorkspaceNotifyStateChanged();
+    final completedContinuations =
+        conversationMessagePageContinuationCounts[key] ?? 0;
+    final messageLimit = earlier && completedContinuations > 0 ? 100 : 50;
+    final messageBefore = earlier ? selected.messagePage.nextBefore : '';
+    try {
+      final AgentConversationSession incoming;
+      if (agentWorkspaceMobileRuntime) {
+        final described = await describeMobileConversationSession(
+          agentId,
+          nativeSessionId,
+          messageBefore: messageBefore,
+          messageLimit: messageLimit,
+        );
+        if (described == null) {
+          throw const FormatException('native_history_session_not_found');
+        }
+        incoming = described;
+      } else {
+        final page = await readConversationSessionPage(
+          agentId,
+          sessionId: nativeSessionId,
+          offset: 0,
+          pageSize: 1,
+          messageBefore: messageBefore,
+          messageLimit: messageLimit,
+        );
+        incoming = page.sessions.single;
+      }
+      if (agentWorkspaceDisposed ||
+          selectedConversationAgentId.trim() != agentId ||
+          selectedConversationSession?.nativeSessionId.trim() !=
+              nativeSessionId) {
+        return;
+      }
+      final current = selectedConversationSession!;
+      final merged = earlier
+          ? current.mergeExactMessagePage(incoming)
+          : (current.messagePage.start < incoming.messagePage.start ||
+                current.messages.length > incoming.messages.length)
+          ? current.mergeExactMessagePage(incoming, allowMessageRevisions: true)
+          : incoming;
+      _replaceConversationSession(agentId, merged);
+      if (earlier) {
+        conversationMessagePageContinuationCounts = {
+          ...conversationMessagePageContinuationCounts,
+          key: completedContinuations + 1,
+        };
+      }
+      lastError = '';
+    } on Object catch (error) {
+      if (agentWorkspaceDisposed) return;
+      final code = _conversationMessagePageErrorCode(error);
+      conversationMessagePageErrors = {
+        ...conversationMessagePageErrors,
+        key: code,
+      };
+      lastError = code;
+      agentWorkspaceSetLocalizedStatusMessage(
+        '原生历史消息页读取失败：$code',
+        'Native history message page failed: $code',
+      );
+      statusCaption = 'Agent chat';
+    } finally {
+      conversationMessagePageLoadingKeys.remove(key);
+      if (!agentWorkspaceDisposed) {
+        agentWorkspaceNotifyConversationStructureChanged();
+        agentWorkspaceNotifyStateChanged();
+      }
+    }
+  }
+
+  void _replaceConversationSession(
+    String agentId,
+    AgentConversationSession replacement,
+  ) {
+    final previous = conversationSessionsByAgent[agentId] ?? const [];
+    final next = <AgentConversationSession>[
+      for (final session in previous)
+        if (session.nativeSessionId.trim() ==
+            replacement.nativeSessionId.trim())
+          replacement
+        else
+          session,
+    ];
+    if (!next.any(
+      (session) =>
+          session.nativeSessionId.trim() == replacement.nativeSessionId.trim(),
+    )) {
+      next.add(replacement);
+    }
+    conversationSessionsByAgent = {
+      ...conversationSessionsByAgent,
+      agentId: List<AgentConversationSession>.unmodifiable(next),
+    };
+    selectedConversationSessionId = replacement.id;
   }
 
   String get selectedConversationWorkingDirectory {
@@ -863,6 +1007,27 @@ mixin AgentConversationSessionController
     return null;
   }
 
+  void _validateExactConversationPage({
+    required String requestedSessionId,
+    required List<AgentConversationSession> sessions,
+  }) {
+    final requested = requestedSessionId.trim();
+    if (requested.isEmpty) return;
+    if (sessions.isEmpty) {
+      throw const FormatException('native_history_session_not_found');
+    }
+    if (sessions.length != 1) {
+      throw const FormatException('native_history_session_ambiguous');
+    }
+    final returned = sessions.single.nativeSessionId.trim();
+    if (returned.isEmpty) {
+      throw const FormatException('native_history_session_identity_missing');
+    }
+    if (returned != requested) {
+      throw const FormatException('native_history_session_identity_mismatch');
+    }
+  }
+
   /// Conversation-interface entry: load this Agent's native model catalog.
   /// Unused-agent discovery still omits CLI and other-app named stores.
   void ensureConversationInterfaceModelCatalog([String? agentId]) =>
@@ -881,6 +1046,25 @@ mixin AgentConversationSessionController
     }
     agentWorkspaceEnsureSelectedAgentModelCatalog(id, forceEntry: forceEntry);
   }
+}
+
+String _conversationMessagePageErrorCode(Object error) {
+  final raw = error is FormatException ? error.message : error.toString();
+  const known = <String>{
+    'native_history_session_not_found',
+    'native_history_session_ambiguous',
+    'native_history_session_identity_missing',
+    'native_history_session_identity_mismatch',
+    'native_history_message_page_invalid',
+    'native_history_message_page_gap',
+    'native_history_message_page_overlap',
+    'native_history_message_identity_duplicate',
+    'native_history_message_total_mismatch',
+  };
+  for (final code in known) {
+    if (raw.contains(code)) return code;
+  }
+  return 'native_history_message_page_failed';
 }
 
 bool _validLocalConversationWorkingDirectory(String value) {

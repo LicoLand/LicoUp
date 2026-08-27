@@ -77,6 +77,35 @@ test("active compiler output is protected and released output is reclaimable", (
   assert.equal(testArtifactStatus({ repoRoot }).cleaned, 1);
 });
 
+test("compiler cleanup preserves packaged and installed clients", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const installedRoot = mkdtempSync(path.join(os.tmpdir(), "licoup-installed-test-"));
+  t.after(() => rmSync(installedRoot, { force: true, recursive: true }));
+  const targetPath = "build/crates/licoup-native/target";
+  const compiledFile = materialize(repoRoot, `${targetPath}/release/licoup`);
+  const runnableFile = materialize(
+    repoRoot,
+    "build/apps/desktop/runnable/macos/release/LicoUp.app/Contents/MacOS/licoup",
+  );
+  const installedFile = materialize(
+    installedRoot,
+    "LicoUp.app/Contents/MacOS/licoup",
+  );
+  const lease = acquireTestArtifactLease({
+    repoRoot,
+    scope: "client-build",
+    targetPath,
+  });
+  lease.release();
+
+  const result = pruneReclaimableTestArtifacts({ repoRoot });
+
+  assert.equal(result.removed, 1);
+  assert.equal(existsSync(compiledFile), false);
+  assert.equal(existsSync(runnableFile), true);
+  assert.equal(existsSync(installedFile), true);
+});
+
 test("all concurrent leases must finish before output becomes reclaimable", (t) => {
   const repoRoot = temporaryRepository(t);
   const targetPath = "build/native/target";

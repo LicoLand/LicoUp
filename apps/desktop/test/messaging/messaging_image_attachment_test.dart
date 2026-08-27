@@ -23,21 +23,22 @@ void main() {
         'not-a-map',
       ]);
 
-      expect(images, hasLength(2));
+      expect(images, hasLength(3));
       expect(images[0].mediaType, 'image/png');
       expect(images[0].dataBase64, _onePixelPngBase64);
       expect(images[0].name, 'shot');
       expect(images[1].filePath, '/fixture-root/screenshot.png');
       expect(images[1].mediaType, 'image/png');
+      expect(images[2].dataBase64, 'x' * 6000001);
     });
 
-    test('caps attachments per message and sanitizes names', () {
+    test('retains every attachment and sanitizes names', () {
       final images = parseAgentConversationImageAttachments([
         for (var index = 0; index < 6; index++)
           {'data': _onePixelPngBase64, 'name': '[Image #${index + 1}]'},
       ]);
 
-      expect(images, hasLength(4));
+      expect(images, hasLength(6));
       for (final image in images) {
         expect(image.name, isEmpty);
       }

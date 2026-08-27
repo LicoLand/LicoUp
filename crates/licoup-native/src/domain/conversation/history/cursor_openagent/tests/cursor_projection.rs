@@ -99,3 +99,26 @@ fn cursor_composer_context_occupancy_is_not_token_consumption() {
     });
     assert!(crate::domain::conversation::usage::extract_token_usage(&config).is_none());
 }
+
+#[test]
+fn cursor_attachment_only_user_bubble_remains_visible() {
+    let attachment = json!({
+        "type": "file",
+        "name": "synthetic.txt",
+        "mimeType": "text/plain"
+    });
+    let message = cursor_message_from_bubble(
+        &json!({
+            "type": 1,
+            "text": "",
+            "attachments": [attachment.clone()]
+        }),
+        "cursor-auto",
+        Path::new("fixture/state.vscdb"),
+        7,
+    )
+    .expect("attachment-only bubble");
+    assert_eq!(message["role"], "user");
+    assert_eq!(message["text"], "");
+    assert_eq!(message["attachments"], json!([attachment]));
+}

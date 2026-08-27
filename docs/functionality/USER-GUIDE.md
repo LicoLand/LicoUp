@@ -21,11 +21,15 @@ Common launch and build commands are:
 npm run client:run:macos
 npm run client:run:android
 npm run client:run:ios
-npm run client:build:macos
-npm run client:build:linux
-npm run client:build:windows
-npm run client:build:android
+npm run client:build -- --platform macos
+npm run client:build -- --platform linux
+npm run client:build -- --platform windows
+npm run client:build -- --platform android
 ```
+
+The single build entry automatically reclaims inactive compiler output and
+temporary Flutter build caches. Runnable and packaged output remains available
+for installation, including the macOS Applications workflow.
 
 A command being present does not mean that its platform is fully supported.
 

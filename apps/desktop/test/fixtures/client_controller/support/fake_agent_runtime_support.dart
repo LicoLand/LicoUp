@@ -28,6 +28,25 @@ mixin FakeAgentRuntimeSupport
     List<String> args,
     String stdinText,
   ) async* {
+    if (args.length >= 2 && args[0] == 'conversations' && args[1] == 'stream') {
+      cliCalls = [...cliCalls, List<String>.from(args)];
+      conversationStreamCalls++;
+      final decoded = jsonDecode(stdinText);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('conversation stream stdin must be a JSON object');
+      }
+      recordConversationStdinRequest(decoded);
+      final gate = conversationStreamGates[(decoded['agent'] ?? '').toString()];
+      if (gate != null) {
+        await gate.future;
+      }
+      for (final session in fakeConversationSessionRequestPage(decoded)) {
+        await Future<void>.delayed(Duration.zero);
+        yield {'event': 'session', 'ok': true, 'session': session};
+      }
+      yield {'event': 'done', 'ok': true};
+      return;
+    }
     if (runtimeMessageRpcErrorCode.isNotEmpty) {
       throw LicoClientRpcException(runtimeMessageRpcErrorCode);
     }
@@ -131,6 +150,18 @@ mixin FakeAgentRuntimeSupport
     String stdinText,
   ) async {
     cliCalls = [...cliCalls, List<String>.from(args)];
+    if (args.length >= 2 && args[0] == 'conversations' && args[1] == 'list') {
+      final decoded = jsonDecode(stdinText);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('conversation list stdin must be a JSON object');
+      }
+      recordConversationStdinRequest(decoded);
+      conversationListCalls++;
+      return {
+        'ok': true,
+        'sessions': fakeConversationSessionRequestPage(decoded),
+      };
+    }
     if (args.length >= 3 &&
         args[0] == 'agent' &&
         args[1] == 'conversation' &&

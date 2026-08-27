@@ -29,7 +29,7 @@ const forbiddenSourceTokens = Object.freeze([
   "apt-get",
   "gradlew",
   "cargo install",
-  "client:build:",
+  "npm run client:build",
   "client:package:",
   "client:install:",
   "client:run:",
@@ -259,7 +259,7 @@ function validateCiTopology() {
     assertIncludes(required, token, `required CI reducer is missing: ${token}`);
   }
   for (const forbidden of [
-    "client:build:",
+    "npm run client:build",
     "client:archive:",
     "client:package:",
     "client:install:",
@@ -292,7 +292,7 @@ function validatePromotionTopology() {
     'test "$HEAD_BRANCH" = nightly',
     'test "$(uname -m)" = arm64',
     "LICO_CLIENT_RELEASE_TARGETS: macos-arm64",
-    "npm run client:build:macos",
+    "npm run client:build -- --platform macos",
     "npm run client:install:macos -- --launch-installed --verify-stable",
   ]) {
     assertIncludes(stable, token, `stable promotion is missing: ${token}`);
@@ -311,7 +311,7 @@ function validatePromotionTopology() {
     "stable required check must route on the README classifier");
   assertExcludes(stable, "readme-fast-path.mjs verify",
     "Stable client must not repeat the Auditor privacy scan");
-  if ((stableRequired.match(/npm run client:build:macos/gmu) || []).length !== 1) {
+  if ((stableRequired.match(/npm run client:build -- --platform macos/gmu) || []).length !== 1) {
     fail("stable promotion must build exactly once");
   }
   if ((stableRequired.match(/npm run client:install:macos/gmu) || []).length !== 1) {
@@ -319,7 +319,7 @@ function validatePromotionTopology() {
   }
   const stableOrder = [
     "uses: actions/checkout@",
-    "run: npm run client:build:macos",
+    "run: npm run client:build -- --platform macos",
     "run: npm run client:install:macos -- --launch-installed --verify-stable",
   ].map((token) => stableRequired.indexOf(token));
   if (stableOrder.some((index) => index < 0) ||
@@ -375,7 +375,7 @@ function validatePromotionTopology() {
     fail("release promotion must guard before its ordered Node-only policy checks");
   }
   for (const token of [
-    "\n  push:", "workflow_dispatch:", "client:build:", "client:package:",
+    "\n  push:", "workflow_dispatch:", "npm run client:build", "client:package:",
     "client:archive:", "client:install:", "client:run:", "client:verify:",
     "client:release:", "flutter-action", "rust-toolchain", "actions/setup-java",
     "actions/upload-artifact", "actions/download-artifact", "npm publish", "gh release",
@@ -447,6 +447,9 @@ function validateDelegatedApplePublicationTopology() {
       !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
       config.apple?.target !== "macos-direct-arm64" ||
       config.github?.repository !== "LicoLand/LicoUp" ||
+      JSON.stringify(config.build?.command) !== JSON.stringify([
+        "npm", "run", "client:build", "--", "--platform", "macos",
+      ]) ||
       !Array.isArray(config.update?.command) || config.update.command.length === 0 ||
       artifacts.length !== 5 ||
       roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||

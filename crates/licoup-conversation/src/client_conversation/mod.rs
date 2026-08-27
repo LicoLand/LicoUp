@@ -11,7 +11,7 @@ pub const MAX_PROFILE_CAPABILITIES: usize = 32;
 pub const MAX_PROFILE_SKILLS: usize = 32;
 pub const MAX_PROFILE_FIELD_BYTES: usize = 128;
 pub const ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID: &str = "assistant-workflow-authoring";
-const ASSISTANT_WORKFLOW_AUTHORING_PROMPT: &str = "Understand and complete the user's request. Work directly, use tools freely, run an existing workflow, or write one—whichever helps most. Keep going until it is done.";
+const ASSISTANT_WORKFLOW_AUTHORING_PROMPT: &str = "Respond directly to the user's request. Use tools only when the current request requires them. Do not start, resume, or invent unrelated work. Finish the requested response and return it.";
 
 pub(crate) fn assistant_workflow_authoring_prompt() -> &'static str {
     ASSISTANT_WORKFLOW_AUTHORING_PROMPT

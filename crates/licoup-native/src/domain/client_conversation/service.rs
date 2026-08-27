@@ -2786,8 +2786,10 @@ mod tests {
         assert_eq!(calls[0]["membershipId"], agent_one);
         let text = calls[0]["text"].as_str().unwrap();
         assert!(text.starts_with("<skills_instructions>\n"));
-        assert!(text.contains("Understand and complete the user's request."));
-        assert!(text.contains("use tools freely"));
+        assert!(text.contains("Respond directly to the user's request."));
+        assert!(text.contains("Use tools only when the current request requires them."));
+        assert!(text.contains("Do not start, resume, or invent unrelated work."));
+        assert!(!text.contains("use tools freely"));
         assert!(text.ends_with("plain message without a mention"));
         assert!(calls[0].get("privateInstructions").is_none());
         assert!(calls[0].get("timeoutMs").is_none());

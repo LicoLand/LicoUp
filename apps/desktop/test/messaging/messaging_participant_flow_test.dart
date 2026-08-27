@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,13 +12,14 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_messag
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
 
 void main() {
   group('buildMessagingFlowEntries', () {
@@ -414,26 +417,49 @@ void main() {
       );
       expect(find.text('worker-model · High'), findsOneWidget);
 
-      final assistantSurface = tester.widget<LicoSurface>(
+      // Agent-side bubbles share one edge-lit veil: light on the rim, never
+      // a solid accentSurface fill.
+      final assistantBubble = tester.widget<MessagingAgentBubble>(
         find
             .ancestor(
               of: find.text('assistant answer', findRichText: true),
-              matching: find.byType(LicoSurface),
+              matching: find.byType(MessagingAgentBubble),
             )
             .first,
       );
-      final subagentSurface = tester.widget<LicoSurface>(
+      final subagentBubble = tester.widget<MessagingAgentBubble>(
         find
             .ancestor(
               of: find.text('subagent answer', findRichText: true),
-              matching: find.byType(LicoSurface),
+              matching: find.byType(MessagingAgentBubble),
             )
             .first,
       );
-      expect(assistantSurface.tone, LicoSurfaceTone.accent);
-      expect(assistantSurface.bordered, isTrue);
-      expect(subagentSurface.tone, LicoSurfaceTone.neutral);
-      expect(subagentSurface.bordered, isFalse);
+      expect(assistantBubble.hovered, isFalse);
+      expect(subagentBubble.hovered, isFalse);
+
+      BoxDecoration bubbleDecoration(MessagingAgentBubble bubble) {
+        final animated = tester.widget<AnimatedContainer>(
+          find.descendant(
+            of: find.byWidget(bubble),
+            matching: find.byType(AnimatedContainer),
+          ),
+        );
+        return animated.decoration! as BoxDecoration;
+      }
+
+      final themeColors = Theme.of(
+        tester.element(find.byWidget(assistantBubble)),
+      ).extension<LicoThemeColors>()!;
+      final expectedVeil = MessagingDesktopMetrics.agentBubbleVeilFill(
+        isDark: themeColors.isDark,
+      );
+      for (final bubble in [assistantBubble, subagentBubble]) {
+        final decoration = bubbleDecoration(bubble);
+        expect(decoration.color, expectedVeil);
+        expect(decoration.color, isNot(equals(themeColors.accentSurface)));
+        expect(decoration.gradient, isNull);
+      }
     },
   );
 
@@ -674,6 +700,8 @@ void main() {
       ),
     );
     final decoration = animated.decoration! as BoxDecoration;
+    expect(decoration.color, Colors.transparent);
+    expect(decoration.gradient, isNull);
     expect(decoration.color, isNot(themeColors.brandSurface));
     expect(tester.takeException(), isNull);
   });
@@ -731,9 +759,9 @@ void main() {
     },
   );
 
-  testWidgets('long transcripts page in as the user scrolls to the top', (
-    tester,
-  ) async {
+  testWidgets('long transcripts keep every lazy list row', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
     final chronological = [
       for (var index = 0; index < 120; index++)
         _messageItem(
@@ -743,7 +771,11 @@ void main() {
           _at(1, 0, index),
         ),
     ];
-    await _pumpFlow(tester, chronological.reversed.toList());
+    await _pumpFlow(
+      tester,
+      chronological.reversed.toList(),
+      scrollController: controller,
+    );
 
     int listItemCount() =>
         (tester.widget<ListView>(find.byType(ListView)).childrenDelegate
@@ -751,21 +783,46 @@ void main() {
             .estimatedChildCount ??
         0;
 
-    // The newest window renders first; older entries are not in the list yet.
+    // Every row belongs to the lazy delegate, while only the viewport builds.
     expect(find.text('message-119', findRichText: true), findsOneWidget);
-    expect(listItemCount(), 50);
+    expect(listItemCount(), 121);
+    expect(find.text('message-0', findRichText: true), findsNothing);
 
-    // Scrolling to the top loads earlier pages; one long scroll can pull
-    // several pages, and reaching the new top again loads the rest.
-    await tester.drag(find.byType(ListView), const Offset(0, 12000));
-    await tester.pumpAndSettle();
-    expect(listItemCount(), greaterThan(50));
-
-    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    // Scrolling builds the oldest retained row without changing the delegate.
+    controller.jumpTo(controller.position.maxScrollExtent);
     await tester.pumpAndSettle();
     expect(listItemCount(), 121);
     expect(find.text('message-0', findRichText: true), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('oldest edge requests one native message page', (tester) async {
+    final pending = Completer<void>();
+    var calls = 0;
+    final chronological = [
+      for (var index = 0; index < 80; index++)
+        _messageItem(
+          'page-$index',
+          index.isEven ? 'user' : 'assistant',
+          'page-message-$index',
+          _at(1, 0, index),
+        ),
+    ];
+    await _pumpFlow(
+      tester,
+      chronological.reversed.toList(),
+      hasEarlier: true,
+      onLoadEarlier: () {
+        calls += 1;
+        return pending.future;
+      },
+    );
+
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    await tester.pump();
+    expect(calls, 1);
+    pending.complete();
+    await tester.pump();
   });
 
   testWidgets(
@@ -816,7 +873,7 @@ void main() {
     },
   );
 
-  testWidgets('subagent cards inside the paging window appear on scroll', (
+  testWidgets('subagent cards in the lazy history appear on scroll', (
     tester,
   ) async {
     final chronological = <ConversationTimelineItem>[
@@ -827,7 +884,7 @@ void main() {
           'message-$index',
           _at(1, 0, index),
         ),
-      // A delegated card sits near the start, well outside the first window.
+      // A delegated card sits near the start, outside the initial viewport.
       ConversationMessageTimelineItem(
         'k-card',
         AgentConversationMessage(
@@ -849,10 +906,10 @@ void main() {
     ];
     await _pumpFlow(tester, chronological.reversed.toList());
 
-    // The card is outside the initial window: not built yet.
+    // The card is outside the initial viewport: not built yet.
     expect(find.byType(AgentConversationSubagentCardBlock), findsNothing);
 
-    // Scrolling to the top loads it.
+    // Scrolling to the top builds it from the complete lazy delegate.
     await tester.drag(find.byType(ListView), const Offset(0, 12000));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView), const Offset(0, 12000));
@@ -1055,6 +1112,8 @@ Future<void> _pumpFlow(
   List<TargetCandidate> participantTargets = const [],
   Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
       const {},
+  bool hasEarlier = false,
+  Future<void> Function()? onLoadEarlier,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -1085,6 +1144,8 @@ Future<void> _pumpFlow(
             participantTargets: participantTargets,
             participantRuntimeProfiles: participantRuntimeProfiles,
             scrollController: scrollController,
+            hasEarlier: hasEarlier,
+            onLoadEarlier: onLoadEarlier,
           ),
         ),
       ),

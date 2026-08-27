@@ -8,6 +8,42 @@ use crate::platform::codex_app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
 };
 use serde_json::{Map, Value, json};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::platform) enum RolloutIdentityError {
+    Unavailable,
+    Missing,
+}
+
+/// Resolve the native identity from the rollout record itself. A source path is
+/// only a locator: its file name never authorizes a resume.
+pub(in crate::platform) fn rollout_record_identity(
+    path: &Path,
+) -> Result<String, RolloutIdentityError> {
+    let file = File::open(path).map_err(|_| RolloutIdentityError::Unavailable)?;
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|_| RolloutIdentityError::Unavailable)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value =
+            serde_json::from_str(&line).map_err(|_| RolloutIdentityError::Unavailable)?;
+        if value.get("type").and_then(Value::as_str) != Some("session_meta") {
+            continue;
+        }
+        return value
+            .pointer("/payload/id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|identity| !identity.is_empty())
+            .map(str::to_string)
+            .ok_or(RolloutIdentityError::Missing);
+    }
+    Err(RolloutIdentityError::Missing)
+}
 
 fn response_error_message(message: &Value) -> Option<&str> {
     message.get("error")?.get("message")?.as_str()
@@ -21,11 +57,6 @@ fn resume_target_is_archived(message: &Value, thread_id: &str) -> bool {
                     "session {thread_id} is archived. Run `codex unarchive {thread_id}` to unarchive it first."
                 )
     })
-}
-
-fn resume_rollout_is_missing(message: &Value, thread_id: &str) -> bool {
-    response_error_message(message)
-        .is_some_and(|error| error == format!("no rollout found for thread id {thread_id}"))
 }
 
 impl CodexParser {
@@ -114,13 +145,6 @@ impl CodexParser {
                     self.unarchive_attempted = true;
                     self.phase = ProtocolPhase::AwaitThreadUnarchive;
                     return vec![ProtocolEffect::Send(self.thread_unarchive_request())];
-                }
-                if resume_rollout_is_missing(message, &requested_thread_id) {
-                    // Only the vendor's exact absent-rollout response permits
-                    // one fresh thread/start and an honest replacement binding.
-                    self.config.requested_session_id.clear();
-                    self.config.session_path = None;
-                    return vec![ProtocolEffect::Send(self.thread_request())];
                 }
             }
             self.phase = ProtocolPhase::Finished;

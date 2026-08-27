@@ -23,6 +23,9 @@ class AgentConversationMessageList extends StatefulWidget {
     required this.loading,
     required this.session,
     required this.target,
+    this.messagePageLoading = false,
+    this.messagePageError = '',
+    this.onLoadEarlier,
     this.turnActive = false,
     this.liveMessages = const [],
     this.messageStyle = AgentsMessageStyle.documentTranscript,
@@ -39,6 +42,9 @@ class AgentConversationMessageList extends StatefulWidget {
   final bool loading;
   final AgentConversationSession? session;
   final TargetCandidate target;
+  final bool messagePageLoading;
+  final String messagePageError;
+  final Future<void> Function()? onLoadEarlier;
   final bool turnActive;
   final List<AgentConversationMessage> liveMessages;
 
@@ -88,20 +94,12 @@ class AgentConversationMessageListState
   List<AgentSemanticArtifactRef> _artifacts = const [];
   int _footerCount = 0;
 
-  /// Flow entries (after author grouping) shown before the user scrolls.
-  static const int _initialEntryWindow = 50;
-
-  /// Flow entries added each time the user scrolls to the top of the loaded
-  /// history.
-  static const int _earlierEntryPage = 50;
-
   /// Distance from the top of the loaded history that starts loading the
   /// earlier page.
   static const double _earlierPageLeadIn = 120;
 
-  int _visibleItemCount = 0;
-  bool _loadingEarlier = false;
   int _timelineTotal = 0;
+  bool _pageRequestInFlight = false;
   String _activeProcessStorageKey = '';
   bool _hasMessages = false;
 
@@ -152,6 +150,10 @@ class AgentConversationMessageListState
       session?.id ?? '',
       session?.nativeSessionId ?? '',
     ].join('|');
+    if (_timelineSessionIdentity.isNotEmpty &&
+        _timelineSessionIdentity != sessionIdentity) {
+      _pageRequestInFlight = false;
+    }
     if (identical(_timelineSession, session) &&
         identical(_timelineLiveMessages, widget.liveMessages) &&
         _timelineSessionIdentity == sessionIdentity) {
@@ -168,8 +170,6 @@ class AgentConversationMessageListState
     final timelineItems = buildConversationTimelineItems(
       messages,
       sessionIdentity,
-      historyTruncated: session?.historyTruncated ?? false,
-      messageTreeTruncated: session?.messageTreeTruncated ?? false,
     ).reversed.toList(growable: false);
     final artifacts = session?.artifacts ?? const <AgentSemanticArtifactRef>[];
     final hasDiagnostics = session?.hasDiagnostics ?? false;
@@ -196,8 +196,6 @@ class AgentConversationMessageListState
         .toRadixString(16);
     _timelineItems = timelineItems;
     _timelineTotal = timelineItems.length + footerCount;
-    _visibleItemCount = _timelineTotal.clamp(0, _initialEntryWindow);
-    _loadingEarlier = false;
     _timelineIndexByStorageKey = Map<String, int>.unmodifiable(
       indexByStorageKey,
     );
@@ -315,7 +313,7 @@ class AgentConversationMessageListState
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    if (widget.loading && !_hasMessages) {
+    if ((widget.loading || widget.messagePageLoading) && !_hasMessages) {
       return const Center(child: CircularProgressIndicator());
     }
     if (!_hasMessages) {
@@ -354,13 +352,18 @@ class AgentConversationMessageListState
               preferPeerAgents: false,
               topOverlayInset: widget.topOverlayInset,
               bottomOverlayInset: widget.bottomOverlayInset,
+              messagePageLoading: widget.messagePageLoading,
+              messagePageError: widget.messagePageError,
+              hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
+              onLoadEarlier: widget.onLoadEarlier,
               onCopyText: widget.onCopyText,
             ),
           );
         }
-        final itemCount = _visibleItemCount;
-        final showLoadingIndicator =
-            _loadingEarlier && itemCount < _timelineTotal;
+        final showPageRow =
+            (widget.session?.messagePage.hasEarlier ?? false) ||
+            widget.messagePageLoading ||
+            widget.messagePageError.isNotEmpty;
         return SelectionArea(
           child: NotificationListener<ScrollNotification>(
             onNotification: _loadEarlierOnScroll,
@@ -384,18 +387,13 @@ class AgentConversationMessageListState
                 }
                 return null;
               },
-              itemCount: itemCount + (showLoadingIndicator ? 1 : 0),
+              itemCount: _timelineTotal + (showPageRow ? 1 : 0),
               itemBuilder: (context, index) {
-                if (showLoadingIndicator && index == itemCount) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    child: Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
+                if (showPageRow && index == _timelineTotal) {
+                  return _ConversationEarlierPageRow(
+                    loading: widget.messagePageLoading,
+                    errorCode: widget.messagePageError,
+                    onRetry: widget.onLoadEarlier,
                   );
                 }
                 return _buildConsoleRow(context, adapter, index);
@@ -408,29 +406,25 @@ class AgentConversationMessageListState
   }
 
   bool _loadEarlierOnScroll(ScrollNotification notification) {
-    if (notification.depth != 0 || _loadingEarlier) {
+    if (notification.depth != 0 ||
+        widget.messagePageLoading ||
+        _pageRequestInFlight) {
       return false;
     }
     final metrics = notification.metrics;
-    if (_visibleItemCount >= _timelineTotal) {
+    if (!(widget.session?.messagePage.hasEarlier ?? false)) {
       return false;
     }
     if (metrics.pixels < metrics.maxScrollExtent - _earlierPageLeadIn) {
       return false;
     }
-    setState(() => _loadingEarlier = true);
-    Future<void>.delayed(const Duration(milliseconds: 180), () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _visibleItemCount = (_visibleItemCount + _earlierEntryPage).clamp(
-          0,
-          _timelineTotal,
-        );
-        _loadingEarlier = false;
+    final request = widget.onLoadEarlier;
+    if (request != null) {
+      _pageRequestInFlight = true;
+      request().whenComplete(() {
+        if (mounted) _pageRequestInFlight = false;
       });
-    });
+    }
     return false;
   }
 
@@ -520,6 +514,46 @@ class AgentConversationMessageListState
             : 0,
       ),
       child: RepaintBoundary(child: content),
+    );
+  }
+}
+
+final class _ConversationEarlierPageRow extends StatelessWidget {
+  const _ConversationEarlierPageRow({
+    required this.loading,
+    required this.errorCode,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final String errorCode;
+  final Future<void> Function()? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (errorCode.isEmpty) return const SizedBox(height: 1);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: TextButton.icon(
+          key: const Key('conversation-message-page-retry'),
+          onPressed: onRetry == null ? null : () => onRetry!.call(),
+          icon: const Icon(Icons.refresh_rounded, size: 17),
+          label: Text('History page failed: $errorCode'),
+        ),
+      ),
     );
   }
 }

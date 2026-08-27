@@ -17,7 +17,7 @@ pub(super) use errors::ProtocolFailure;
 pub(super) use execution::execute;
 #[allow(unused_imports)]
 pub(super) use model::{
-    BoundedTranscript, CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
+    CapabilityProbe, CompleteTranscript, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
     TransportLifecycle,
 };
 pub(super) use probe::probe;

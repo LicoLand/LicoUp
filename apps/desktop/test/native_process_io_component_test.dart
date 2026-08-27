@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -74,6 +75,30 @@ void main() {
       expect(context.startCount, 0);
     },
   );
+
+  test('persistent conversation preserves a typed failure code', () async {
+    final processIo = BoundedNativeProcessIo(
+      processContext: _FakeProcessContext(),
+      commandExecutor: _StaticExecutor(const {}),
+      stdioRpcTransport: _FailingStdioTransport(),
+      persistentStdioRpcEnabled: true,
+    );
+
+    await expectLater(
+      processIo.streamCliJsonLinesWithStdin(const [
+        'agent',
+        'conversation',
+        'send',
+      ], '{"agent":"codex","text":"synthetic"}').toList(),
+      throwsA(
+        isA<AgentDispatchStreamException>().having(
+          (error) => error.failureCode,
+          'failureCode',
+          'invalid_response',
+        ),
+      ),
+    );
+  });
 
   test(
     'persistent conversation controls share the same structured RPC transport',
@@ -367,6 +392,15 @@ class _FakeStdioTransport implements NativeStdioRpcTransport {
   ) async* {
     conversationRequest = Map<String, dynamic>.unmodifiable(request);
     yield const {'event': 'done'};
+  }
+}
+
+final class _FailingStdioTransport extends _FakeStdioTransport {
+  @override
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
+  ) async* {
+    throw const LicoClientRpcException('invalid_response');
   }
 }
 
