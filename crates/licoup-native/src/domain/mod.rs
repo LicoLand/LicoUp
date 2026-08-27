@@ -19,7 +19,6 @@ pub mod lico_agent;
 pub mod llm_api_key_vault;
 pub mod llm_gateway;
 pub mod llm_gateway_agent_config;
-pub mod llm_gateway_default_catalog;
 pub(crate) mod llm_gateway_stream;
 pub mod mcp_adapter;
 pub mod mobile_relay;
