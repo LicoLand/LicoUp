@@ -221,14 +221,13 @@ final class _AdaptiveFlywheelDialogState
       );
     }
     final models = agentOrchestrationCommanderModels(target);
-    final model = models.contains(preferredModel)
-        ? preferredModel
+    final persistedModel = preferredModel.trim();
+    final model = persistedModel.isNotEmpty
+        ? persistedModel
         : (models.isEmpty ? '' : models.first);
-    final efforts = model.isEmpty
-        ? const <String>[]
-        : agentOrchestrationReasoningEffortsForModel(target, model);
-    final effort = efforts.contains(preferredReasoningEffort)
-        ? preferredReasoningEffort
+    final persistedEffort = preferredReasoningEffort.trim();
+    final effort = persistedEffort.isNotEmpty
+        ? persistedEffort
         : agentOrchestrationDefaultReasoningEffortForModel(target, model);
     return DailyConversationAgentAssignment(
       agentId: agentId,

@@ -376,7 +376,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             children: [
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+                  padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
                   child: Actions(
                     actions: widget.onPasteImage == null
                         ? const <Type, Action<Intent>>{}

@@ -66,6 +66,7 @@ fn terminal_transitions(unit_id: &str, output: &str) -> Vec<Transition> {
 
 pub(in crate::platform) struct CursorParser {
     requested_session: String,
+    expected_prompt: String,
     observed_session: String,
     turn_id: String,
     effective: EffectiveSettings,
@@ -98,13 +99,20 @@ pub(in crate::platform) enum CursorParseFailure {
     InvalidJson,
     IdentityMismatch,
     TextSnapshotDiverged,
+    PromptAcknowledgementMissing,
+    PromptAcknowledgementMismatch,
     TurnFailed,
 }
 
 impl CursorParser {
-    pub(in crate::platform) fn new(requested_session: &str, effective: EffectiveSettings) -> Self {
+    pub(in crate::platform) fn new(
+        requested_session: &str,
+        expected_prompt: &str,
+        effective: EffectiveSettings,
+    ) -> Self {
         Self {
             requested_session: requested_session.to_owned(),
+            expected_prompt: expected_prompt.to_owned(),
             observed_session: requested_session.to_owned(),
             turn_id: String::new(),
             effective,
@@ -166,23 +174,44 @@ impl NativeLineParser for CursorParser {
         {
             self.turn_id = frame_turn_id.to_owned();
         }
-        if !self.accepted {
+        update_effective(&message, &mut self.effective);
+        if !self.accepted && is_user_frame(&message) {
+            let acknowledged = user_prompt_text(&message)
+                .filter(|text| text == &self.expected_prompt)
+                .is_some();
+            if !acknowledged {
+                return Err(CursorParseFailure::PromptAcknowledgementMismatch);
+            }
             effects.push(CursorEffect::Accepted {
                 session_id: self.observed_session.clone(),
                 turn_id: self.turn_id.clone(),
             });
             self.accepted = true;
         }
-        update_effective(&message, &mut self.effective);
-        // Only assistant message frames contribute incremental text. User
-        // prompt echoes are acknowledgements (never output), and text blocks
-        // on assistant frames are deltas: the streamed fragment is a
-        // continuation, not a snapshot of the whole reply.
+        let terminal = terminal_result(&message).map(str::to_owned);
+        let terminal_failed = terminal.is_some() && is_error_result(&message);
+        if terminal_failed {
+            return Err(CursorParseFailure::TurnFailed);
+        }
+        // A system/init frame proves only that the process started. Delivery
+        // belongs exclusively to Cursor's exact user prompt echo. Never show
+        // assistant output or success for an unacknowledged input.
+        if !self.accepted && (is_assistant_frame(&message) || terminal.is_some()) {
+            return Err(CursorParseFailure::PromptAcknowledgementMissing);
+        }
         if is_assistant_frame(&message) {
-            if let Some(delta) = assistant_delta(&message) {
+            if let Some(text) = assistant_text(&message) {
+                // Current Cursor stream-json marks partial deltas with a
+                // timestamp and then emits one timestamp-free cumulative
+                // assistant snapshot before the result frame.
+                let form = if message.get("timestamp_ms").is_some() {
+                    TextForm::Delta(&text)
+                } else {
+                    TextForm::Cumulative(&text)
+                };
                 let suffix = self
                     .text
-                    .observe("assistant", TextForm::Delta(&delta))
+                    .observe("assistant", form)
                     .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
                 if !suffix.is_empty() {
                     effects.push(CursorEffect::Text {
@@ -192,11 +221,6 @@ impl NativeLineParser for CursorParser {
                     });
                 }
             }
-        }
-        let terminal = terminal_result(&message).map(str::to_owned);
-        let terminal_failed = terminal.is_some() && is_error_result(&message);
-        if terminal_failed {
-            return Err(CursorParseFailure::TurnFailed);
         }
         if let Some(result) = terminal {
             // The successful result text is cumulative terminal authority:
@@ -236,11 +260,16 @@ fn update_effective(message: &Value, effective: &mut EffectiveSettings) {
     if !is_init {
         return;
     }
-    if let Some(model) = message
-        .get("model")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
+    if effective.model.as_deref().is_none_or(str::is_empty)
+        && let Some(model) = message
+            .get("model")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
     {
+        // Cursor reports a display label (for example `Composer 2.5`) even
+        // when the launch selector was the stable slug (`composer-2.5`). Keep
+        // an explicit request authoritative so validation compares one
+        // selector namespace; use the init value only for default-model turns.
         effective.model = Some(model.to_owned());
     }
     if let Some(mode) = message
@@ -275,7 +304,20 @@ fn is_assistant_frame(message: &Value) -> bool {
         && message.pointer("/message/role").and_then(Value::as_str) == Some("assistant")
 }
 
-fn assistant_delta(message: &Value) -> Option<String> {
+fn is_user_frame(message: &Value) -> bool {
+    message.get("type").and_then(Value::as_str) == Some("user")
+        && message.pointer("/message/role").and_then(Value::as_str) == Some("user")
+}
+
+fn user_prompt_text(message: &Value) -> Option<String> {
+    text_blocks(message)
+}
+
+fn assistant_text(message: &Value) -> Option<String> {
+    text_blocks(message)
+}
+
+fn text_blocks(message: &Value) -> Option<String> {
     let blocks = message
         .pointer("/message/content")
         .and_then(Value::as_array)?;

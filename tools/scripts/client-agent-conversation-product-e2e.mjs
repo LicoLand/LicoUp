@@ -222,19 +222,20 @@ function selfTest() {
       rejects.push(true);
     }
   }
+  const directLiveSource = liveSource.split(
+    "Future<void> _runGroupAssistant",
+  )[0];
   const oneConversationTwoMessagesBound =
-    occurrenceCount(liveSource, "controller.startNewConversationSession();") === 1
-    && occurrenceCount(liveSource, "await _submitComposer(") === 2
-    && !liveSource.includes(".steer(")
+    occurrenceCount(directLiveSource, "controller.startNewConversationSession();") === 1
+    && occurrenceCount(directLiveSource, "await _submitComposer(") === 2
+    && !directLiveSource.includes(".steer(")
     && !runnerSource.includes([
       "LICO_AGENT_CONVERSATION_PRODUCT",
       "STEER_PROMPT",
     ].join("_"))
     && runnerSource.includes("const secondPrompt = acceptancePrompt(secondExpected);");
-  const sourceBound = runnerSource.includes(
-    '["run", "client:build", "--", "--platform", "macos"]',
-  )
-    && runnerSource.includes("LICO_AGENT_CONVERSATION_RELEASE_LIVE")
+  const sourceBound = runnerSource.includes('"client:build"')
+    && runnerSource.includes('"--agent-conversation-release-live"')
     && liveSource.includes("ClientController()")
     && liveSource.includes("initializeController: false")
     && liveSource.includes("initializeWithOptions(runBackgroundSteps: false)")
@@ -245,7 +246,12 @@ function selfTest() {
     && liveSource.includes("exact native-session readback")
     && liveSource.includes("assistantReplies.contains(firstExpected)")
     && liveSource.includes("assistantReplies.contains(secondExpected)")
+    && liveSource.includes("LICO_AGENT_CONVERSATION_PRODUCT_GROUP_ASSISTANT")
+    && liveSource.includes("_verifyAssistantControl(")
+    && liveSource.includes("updateMembershipProfileIntent(")
+    && liveSource.includes("_groupReplyExists(")
     && mainSource.includes("runAgentConversationReleaseLive")
+    && packageSource.includes("agentConversationReleaseLive")
     && packageSource.includes("LICO_AGENT_CONVERSATION_RELEASE_LIVE=true")
     && widgetSource.includes("createAcceptanceController")
     && fixtureSource.includes("AcceptanceConversationService")
@@ -321,11 +327,18 @@ function bundleDigest(appBundle) {
 function buildPackagedReleaseApplication() {
   const execution = spawnSync(
     "npm",
-    ["run", "client:build", "--", "--platform", "macos"],
+    [
+      "run",
+      "client:build",
+      "--",
+      "--platform",
+      "macos",
+      "--agent-conversation-release-live",
+    ],
     {
       cwd: root,
       encoding: "utf8",
-      env: { ...process.env, LICO_AGENT_CONVERSATION_RELEASE_LIVE: "1" },
+      env: process.env,
       maxBuffer: 8 * 1024 * 1024,
       timeout: 30 * 60 * 1000,
     },
