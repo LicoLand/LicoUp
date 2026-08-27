@@ -1,10 +1,12 @@
 use super::super::cursor_driver::{self, ControlDisposition, DRIVER_ID, RUNTIME_PROTOCOL};
+use super::io::{TransportEvent, read_protocol_messages};
 use serde_json::json;
 use std::fs;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The fake agent reads process-global env vars, so the tests that steer it
@@ -31,6 +33,35 @@ fn wait_for_captured_event(
         assert!(Instant::now() < deadline, "timed out waiting for {label}");
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+#[test]
+fn complete_json_tail_without_newline_is_delivered_before_close() {
+    let input = br#"{"type":"result","subtype":"success","result":"ok"}"#;
+    let (sender, receiver) = mpsc::channel();
+    read_protocol_messages(Cursor::new(input), sender);
+    let TransportEvent::Line(line) = receiver.recv().unwrap() else {
+        panic!("complete JSON tail must be delivered as a protocol line");
+    };
+    assert!(serde_json::from_slice::<serde_json::Value>(&line).is_ok());
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::StdoutClosed
+    ));
+}
+
+#[test]
+fn partial_json_tail_remains_an_unterminated_protocol_failure() {
+    let (sender, receiver) = mpsc::channel();
+    read_protocol_messages(Cursor::new(br#"{"type":"result""#), sender);
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::UnterminatedLine
+    ));
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::StdoutClosed
+    ));
 }
 
 #[test]
@@ -89,6 +120,37 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
         event["event"] == "agent.turn.accepted"
             && event["sessionId"].as_str() == Some(first.session_id.as_str())
     }));
+    let accepted_positions = events
+        .iter()
+        .enumerate()
+        .filter_map(|(index, event)| {
+            (event["event"] == "agent.turn.accepted"
+                && event["sessionId"].as_str() == Some(first.session_id.as_str()))
+            .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    let processing_positions = events
+        .iter()
+        .enumerate()
+        .filter_map(|(index, event)| {
+            (event["event"] == "agent.turn.processing"
+                && event["sessionId"].as_str() == Some(first.session_id.as_str()))
+            .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(accepted_positions.len(), 2);
+    assert_eq!(processing_positions.len(), 2);
+    assert!(
+        accepted_positions
+            .iter()
+            .zip(&processing_positions)
+            .all(|(accepted, processing)| accepted < processing),
+        "native accepted must precede native processing: {events:?}"
+    );
+    assert!(processing_positions.iter().all(|position| {
+        events[*position]["payload"]["lifecyclePrefix"]
+            == json!(["submitted", "accepted", "processing"])
+    }));
     // The NDJSON stream arrives through the pty transport (unix): the raw-mode
     // slave keeps `\n`-only line endings, so the progressive assistant
     // fragments must surface intact, once each, and concatenate exactly to the
@@ -143,7 +205,11 @@ fn pty_controls_are_isolated_before_strict_ndjson_decoding() {
     let isolated = isolate_pty_protocol_line(
         b"\x1b[?25l{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"ok\"}\x1b[0m\r\n",
     );
-    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    let acknowledged = isolate_pty_protocol_line(
+        br#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#,
+    );
+    assert!(parser.parse_line(&acknowledged).is_ok());
     assert!(parser.parse_line(&isolated).is_ok());
 
     let prose = isolate_pty_protocol_line(b"diagnostic prose\r\n");
@@ -166,9 +232,17 @@ fn stream_identity_must_equal_the_bound_session_before_any_effect() {
     };
 
     // Frames without an explicit identity stay bound to the launched session.
-    let mut parser = CursorParser::new("bound-session", EffectiveSettings::default());
-    let accepted = parser
+    let mut parser = CursorParser::new(
+        "bound-session",
+        "exact prompt",
+        EffectiveSettings::default(),
+    );
+    let initialized = parser
         .parse_line(br#"{"type":"system","subtype":"init","cwd":"/tmp","model":"fake-model"}"#)
+        .unwrap();
+    assert!(initialized.is_empty());
+    let accepted = parser
+        .parse_line(br#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"exact prompt"}]}}"#)
         .unwrap();
     assert!(accepted.iter().any(|effect| matches!(
         effect,

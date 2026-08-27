@@ -620,6 +620,7 @@ mixin AgentConversationMessageController
     sendingConversationTurnId = '';
     _clearPersistentTurn();
     var firstTerminalFailureCode = '';
+    var failureStage = 'prepare';
 
     statusCaption = 'Agent chat';
     agentWorkspaceNotifyActiveConversationChanged();
@@ -660,6 +661,7 @@ mixin AgentConversationMessageController
           var streamedText = '';
           final streamedTextByParticipant = <String, String>{};
           AgentDispatchTurnResult? turn;
+          failureStage = 'stream';
           await for (final event in conversationGateway.sendStreaming(
             agentId: agent.target,
             text: messageText,
@@ -686,6 +688,7 @@ mixin AgentConversationMessageController
             // Returning here would cancel the Dart subscription and close the
             // transport that carries the already accepted Agent work.
             if (agentWorkspaceDisposed) continue;
+            failureStage = 'projection';
             _capturePersistentTurn(event);
             final eventSessionId = event.sessionId.trim();
             final eventTurnId = event.turnId.trim();
@@ -793,7 +796,9 @@ mixin AgentConversationMessageController
                 }
               }
             }
+            failureStage = 'stream';
           }
+          failureStage = 'result';
           result =
               (turn ??
                       AgentDispatchTurnResult(
@@ -944,6 +949,7 @@ mixin AgentConversationMessageController
           // The streamed turn is authoritative for immediate interaction. Keep
           // it selected and usable, then reconcile provider history in the
           // background once the runtime has finished persisting its transcript.
+          failureStage = 'readback';
           final projectionSaved =
               await conversationCommitTurnBoundNativeReadback(
                 agentId: conversationOwnerAgentId,
@@ -1000,9 +1006,11 @@ mixin AgentConversationMessageController
         'The send did not complete. Your input was preserved.',
       );
       statusCaption = 'Agent chat';
-    } catch (_) {
+    } catch (error) {
       lastError = firstTerminalFailureCode.isNotEmpty
           ? firstTerminalFailureCode
+          : _releaseConversationAcceptanceMode.isNotEmpty
+          ? _releaseTurnDiagnostic(failureStage, error)
           : 'native_agent_transport_failed';
       recordConversationTabSendOutcome(
         agentId: queuedTurn.agent.target,
@@ -1084,4 +1092,18 @@ mixin AgentConversationMessageController
   String runtimeAdapterFailureCode(Map<String, dynamic> result) {
     return ConversationRuntimeResultPolicy.surfacedFailureCode(result);
   }
+}
+
+String _releaseTurnDiagnostic(String stage, Object error) {
+  final safeStage = switch (stage) {
+    'prepare' || 'stream' || 'projection' || 'result' || 'readback' => stage,
+    _ => 'unknown',
+  };
+  final kind = switch (error) {
+    FormatException() => 'format',
+    StateError() => 'state',
+    ArgumentError() => 'argument',
+    _ => 'exception',
+  };
+  return 'release_ui_turn_${safeStage}_$kind';
 }

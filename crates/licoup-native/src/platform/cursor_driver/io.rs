@@ -24,7 +24,18 @@ pub(super) fn read_protocol_messages<R: BufRead>(mut reader: R, sender: Sender<T
         };
         if available.is_empty() {
             if !line.is_empty() {
-                let _ = sender.send(TransportEvent::UnterminatedLine);
+                let clean = isolate_pty_protocol_line(&line);
+                if clean.iter().all(|byte| byte.is_ascii_whitespace()) {
+                    // Ignore a final PTY-only whitespace tail.
+                } else if serde_json::from_slice::<serde_json::Value>(&clean).is_ok() {
+                    // EOF is an unambiguous boundary for one complete JSON
+                    // value even when the CLI omitted the final NDJSON newline.
+                    if sender.send(TransportEvent::Line(clean)).is_err() {
+                        return;
+                    }
+                } else {
+                    let _ = sender.send(TransportEvent::UnterminatedLine);
+                }
             }
             let _ = sender.send(TransportEvent::StdoutClosed);
             return;
