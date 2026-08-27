@@ -39,7 +39,10 @@
     "command": [
       "npm",
       "run",
-      "client:build:macos"
+      "client:build",
+      "--",
+      "--platform",
+      "macos"
     ],
     "app": "build/apps/desktop/runnable/macos/release/LicoUp.app",
     "materials": [

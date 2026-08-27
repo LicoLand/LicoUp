@@ -125,31 +125,26 @@ fn archived_thread_unarchives_then_resumes_the_same_native_identity() {
 }
 
 #[test]
-fn exact_missing_rollout_starts_once_and_reports_the_replacement_identity() {
+fn exact_missing_rollout_fails_without_starting_a_replacement_thread() {
     let stale_thread_id = "stale-thread-id";
-    let replacement_thread_id = "replacement-thread-id";
     let mut protocol = resume_protocol(stale_thread_id);
 
-    let fallback = sent_messages(protocol.handle_message(json!({
+    let effects = protocol.handle_message(json!({
         "id": THREAD_REQUEST_ID,
         "error": {
             "code": -32600,
             "message": "no rollout found for thread id stale-thread-id"
         }
-    })));
-    assert_eq!(fallback.len(), 1);
-    assert_eq!(fallback[0]["method"], "thread/start");
-    assert!(fallback[0]["params"].get("threadId").is_none());
-
-    let turn_messages =
-        sent_messages(protocol.handle_message(thread_open_response(replacement_thread_id)));
-    assert_eq!(turn_messages.len(), 1);
-    assert_eq!(turn_messages[0]["method"], "turn/start");
-    assert_eq!(
-        turn_messages[0]["params"]["threadId"],
-        replacement_thread_id
+    }));
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, ProtocolEffect::Send(_)))
     );
-    complete_current_turn(&mut protocol, replacement_thread_id);
+    let failure = failed_effect(effects);
+    assert_eq!(failure.code, "codex_thread_open_failed");
+    assert_eq!(failure.stage, "thread/resume");
+    assert_eq!(failure.session_id.as_deref(), Some(stale_thread_id));
 }
 
 #[test]
@@ -297,23 +292,27 @@ fn resumed_thread_must_return_the_requested_native_identity() {
 }
 
 #[test]
-fn resume_accepts_session_path_aliases_and_extracts_thread_id() {
+fn resume_accepts_session_path_aliases_only_with_record_identity() {
+    let dir = std::env::temp_dir().join(format!("codex-session-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("rollout-filename-identity.jsonl");
+    std::fs::write(
+        &path,
+        r#"{"type":"session_meta","payload":{"id":"record-identity"}}
+"#,
+    )
+    .unwrap();
     for key in ["sessionPath", "sourcePath"] {
         let mut params = Map::new();
-        params.insert(
-            key.to_string(),
-            json!("/sessions/rollout-2026-01-01-01234567-89ab-cdef-0123-456789abcdef.jsonl"),
-        );
+        params.insert(key.to_string(), json!(path));
         let mut protocol = CodexParser::new(config(Value::Object(params), "hello", ""));
         let thread_messages = sent_messages(initialize(&mut protocol));
         let resume = &thread_messages[1];
         assert_eq!(resume["method"], "thread/resume");
-        assert_eq!(
-            resume["params"]["threadId"],
-            "01234567-89ab-cdef-0123-456789abcdef"
-        );
+        assert_eq!(resume["params"]["threadId"], "record-identity");
         assert!(resume["params"]["path"].as_str().is_some());
     }
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

@@ -1,4 +1,6 @@
-use super::events::{partial_text_delta, processing_evidence_kind, processing_tool_name};
+use super::events::{
+    partial_text_delta, processing_evidence_kind, processing_tool_name, transcript_event,
+};
 use crate::platform::claude_code_driver::command::LaunchIdentity;
 use crate::platform::claude_code_driver::errors::ProtocolFailure;
 use crate::platform::claude_code_driver::model::EffectiveSettings;
@@ -11,6 +13,7 @@ pub(in crate::platform) struct ProtocolFinishReport {
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) turn_id: String,
     pub(in crate::platform) effective: EffectiveSettings,
+    pub(in crate::platform) events: Vec<Value>,
 }
 
 pub(in crate::platform) struct ClaudeCodeParser<'a> {
@@ -19,6 +22,20 @@ pub(in crate::platform) struct ClaudeCodeParser<'a> {
     pub(in crate::platform) observed_session_id: Option<String>,
     pub(super) effective: EffectiveSettings,
     started_emitted: bool,
+    next_message_unit: u64,
+    pending_native_message_id: String,
+    active_message: Option<ClaudeMessageUnit>,
+    visible_text: String,
+    transcript_events: Vec<Value>,
+}
+
+struct ClaudeMessageUnit {
+    unit: String,
+    native_id: String,
+    snapshot: String,
+    visible: String,
+    from_stream: bool,
+    assistant_snapshot_seen: bool,
 }
 
 impl<'a> ClaudeCodeParser<'a> {
@@ -33,6 +50,11 @@ impl<'a> ClaudeCodeParser<'a> {
             observed_session_id: None,
             effective: identity.effective(),
             started_emitted: false,
+            next_message_unit: 0,
+            pending_native_message_id: String::new(),
+            active_message: None,
+            visible_text: String::new(),
+            transcript_events: Vec::new(),
         }
     }
 
@@ -47,6 +69,9 @@ impl<'a> ClaudeCodeParser<'a> {
             .filter(|value| !value.is_empty())
         {
             self.record_session(session_id)?;
+        }
+        if let Some(event) = transcript_event(&message) {
+            self.transcript_events.push(event);
         }
         if message.get("type").and_then(Value::as_str) == Some("system")
             && message.get("subtype").and_then(Value::as_str) == Some("permission_denied")
@@ -83,14 +108,23 @@ impl<'a> ClaudeCodeParser<'a> {
             self.effective.approval_policy =
                 self.effective.permission_mode.clone().map(Value::String);
         }
+        if message.pointer("/event/type").and_then(Value::as_str) == Some("message_start") {
+            self.pending_native_message_id = message
+                .pointer("/event/message/id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+        }
         if let Some(text) = partial_text_delta(&message) {
-            crate::platform::turn_event_emit::emit_agent_message_chunk(
+            let (message_unit, suffix) = self.observe_text_delta(text);
+            crate::platform::turn_event_emit::emit_agent_message_chunk_for_unit(
                 self.observed_session_id
                     .as_deref()
                     .or(self.expected_session_id.as_deref())
                     .unwrap_or_default(),
                 &self.config.turn_id,
-                text,
+                &message_unit,
+                &suffix,
             );
         }
         // Real Claude Code 2.x print streams deliver whole assistant messages
@@ -99,27 +133,19 @@ impl<'a> ClaudeCodeParser<'a> {
         // Surface every text block as a chunk so the client renders progress
         // turn by turn instead of waiting for the final result.
         if message.get("type").and_then(Value::as_str) == Some("assistant")
-            && let Some(blocks) = message
-                .pointer("/message/content")
-                .and_then(Value::as_array)
+            && let Some(snapshot) = assistant_text_snapshot(&message)
+            && let Some((message_unit, suffix)) =
+                self.observe_assistant_snapshot(&message, &snapshot)
         {
-            for block in blocks {
-                if block.get("type").and_then(Value::as_str) == Some("text")
-                    && let Some(text) = block
-                        .get("text")
-                        .and_then(Value::as_str)
-                        .filter(|text| !text.trim().is_empty())
-                {
-                    crate::platform::turn_event_emit::emit_agent_message_chunk(
-                        self.observed_session_id
-                            .as_deref()
-                            .or(self.expected_session_id.as_deref())
-                            .unwrap_or_default(),
-                        &self.config.turn_id,
-                        text,
-                    );
-                }
-            }
+            crate::platform::turn_event_emit::emit_agent_message_chunk_for_unit(
+                self.observed_session_id
+                    .as_deref()
+                    .or(self.expected_session_id.as_deref())
+                    .unwrap_or_default(),
+                &self.config.turn_id,
+                &message_unit,
+                &suffix,
+            );
         }
         if let Some(evidence_kind) = processing_evidence_kind(&message) {
             crate::platform::turn_event_emit::emit_agent_processing(
@@ -174,7 +200,7 @@ impl<'a> ClaudeCodeParser<'a> {
         Ok(())
     }
 
-    fn finish(&self, terminal: Value) -> Result<ProtocolFinishReport, ProtocolFailure> {
+    fn finish(&mut self, terminal: Value) -> Result<ProtocolFinishReport, ProtocolFailure> {
         let session_id = self
             .observed_session_id
             .clone()
@@ -279,10 +305,12 @@ impl<'a> ClaudeCodeParser<'a> {
                 )
                 .with_session(Some(&session_id))
             })?;
-        crate::platform::turn_event_emit::emit_agent_message_completed(
+        let (message_unit, visible_output) = self.complete_message(output);
+        crate::platform::turn_event_emit::emit_agent_message_completed_for_unit(
             &session_id,
             &self.config.turn_id,
-            output,
+            &message_unit,
+            &visible_output,
         );
         crate::platform::turn_event_emit::emit_turn_event(
             "dispatch.turn.completed",
@@ -295,7 +323,129 @@ impl<'a> ClaudeCodeParser<'a> {
             session_id,
             turn_id: self.config.turn_id.clone(),
             effective: self.effective.clone(),
+            events: std::mem::take(&mut self.transcript_events),
         })
+    }
+
+    fn observe_text_delta(&mut self, text: &str) -> (String, String) {
+        let start_new = self.active_message.as_ref().is_none_or(|active| {
+            !self.pending_native_message_id.is_empty()
+                && active.native_id != self.pending_native_message_id
+        });
+        if start_new {
+            let native_id = std::mem::take(&mut self.pending_native_message_id);
+            let unit = self.allocate_message_unit();
+            self.active_message = Some(ClaudeMessageUnit {
+                unit,
+                native_id,
+                snapshot: String::new(),
+                visible: String::new(),
+                from_stream: true,
+                assistant_snapshot_seen: false,
+            });
+        }
+        let active = self.active_message.as_mut().expect("message unit exists");
+        active.snapshot.push_str(text);
+        active.visible.push_str(text);
+        self.visible_text.push_str(text);
+        (active.unit.clone(), text.to_owned())
+    }
+
+    fn observe_assistant_snapshot(
+        &mut self,
+        message: &Value,
+        snapshot: &str,
+    ) -> Option<(String, String)> {
+        let native_id = assistant_message_identity(message);
+        let continues_active = self.active_message.as_ref().is_some_and(|active| {
+            (!native_id.is_empty() && active.native_id == native_id)
+                || (active.from_stream && !active.assistant_snapshot_seen)
+        });
+        if continues_active {
+            let active = self.active_message.as_mut().expect("message unit exists");
+            active.assistant_snapshot_seen = true;
+            if active.native_id.is_empty() {
+                active.native_id = native_id;
+            }
+            if snapshot.starts_with(&active.snapshot) {
+                let suffix = snapshot[active.snapshot.len()..].to_owned();
+                active.snapshot.clear();
+                active.snapshot.push_str(snapshot);
+                active.visible.push_str(&suffix);
+                self.visible_text.push_str(&suffix);
+                return (!suffix.is_empty()).then(|| (active.unit.clone(), suffix));
+            }
+            if active.snapshot.starts_with(snapshot) {
+                return None;
+            }
+            // A whole-message echo that disagrees with already streamed deltas
+            // is not another delta. The terminal result remains authoritative.
+            return None;
+        }
+
+        let suffix = novel_text_suffix(&self.visible_text, snapshot).to_owned();
+        let unit = self.allocate_message_unit();
+        self.active_message = Some(ClaudeMessageUnit {
+            unit: unit.clone(),
+            native_id,
+            snapshot: snapshot.to_owned(),
+            visible: suffix.clone(),
+            from_stream: false,
+            assistant_snapshot_seen: true,
+        });
+        self.visible_text.push_str(&suffix);
+        (!suffix.is_empty()).then_some((unit, suffix))
+    }
+
+    fn complete_message(&mut self, output: &str) -> (String, String) {
+        if self.active_message.is_none() {
+            let suffix = novel_text_suffix(&self.visible_text, output).to_owned();
+            let unit = self.allocate_message_unit();
+            self.visible_text.push_str(&suffix);
+            self.active_message = Some(ClaudeMessageUnit {
+                unit,
+                native_id: String::new(),
+                snapshot: output.to_owned(),
+                visible: suffix,
+                from_stream: false,
+                assistant_snapshot_seen: true,
+            });
+        }
+        let starts_active = self
+            .active_message
+            .as_ref()
+            .is_some_and(|active| output.starts_with(&active.snapshot));
+        let stale_active = self
+            .active_message
+            .as_ref()
+            .is_some_and(|active| active.snapshot.starts_with(output));
+        if !starts_active && !stale_active {
+            let suffix = novel_text_suffix(&self.visible_text, output).to_owned();
+            let unit = self.allocate_message_unit();
+            self.visible_text.push_str(&suffix);
+            self.active_message = Some(ClaudeMessageUnit {
+                unit,
+                native_id: String::new(),
+                snapshot: output.to_owned(),
+                visible: suffix,
+                from_stream: false,
+                assistant_snapshot_seen: true,
+            });
+        }
+        let active = self.active_message.as_mut().expect("message unit exists");
+        if output.starts_with(&active.snapshot) {
+            let suffix = &output[active.snapshot.len()..];
+            active.snapshot.clear();
+            active.snapshot.push_str(output);
+            active.visible.push_str(suffix);
+            self.visible_text.push_str(suffix);
+        }
+        (active.unit.clone(), active.visible.clone())
+    }
+
+    fn allocate_message_unit(&mut self) -> String {
+        self.next_message_unit += 1;
+        self.next_message_unit.to_string()
     }
 
     pub(in crate::platform) fn failure(
@@ -312,4 +462,40 @@ impl<'a> ClaudeCodeParser<'a> {
             )
             .with_turn(&self.config.turn_id)
     }
+}
+
+fn assistant_text_snapshot(message: &Value) -> Option<String> {
+    let text = message
+        .pointer("/message/content")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|block| block.get("text").and_then(Value::as_str))
+        .collect::<String>();
+    (!text.trim().is_empty()).then_some(text)
+}
+
+fn assistant_message_identity(message: &Value) -> String {
+    message
+        .pointer("/message/id")
+        .or_else(|| message.get("uuid"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn novel_text_suffix<'a>(observed: &str, incoming: &'a str) -> &'a str {
+    if incoming.starts_with(observed) {
+        return &incoming[observed.len()..];
+    }
+    let max_overlap = observed.len().min(incoming.len());
+    for overlap in (0..=max_overlap).rev() {
+        if observed.is_char_boundary(observed.len() - overlap)
+            && incoming.is_char_boundary(overlap)
+            && incoming.starts_with(&observed[observed.len() - overlap..])
+        {
+            return &incoming[overlap..];
+        }
+    }
+    incoming
 }

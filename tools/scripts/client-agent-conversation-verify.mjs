@@ -317,7 +317,13 @@ async function main() {
     // The P-10 application is an acceptance-only Release artifact. Restore a
     // normal Release build before handoff so it cannot be mistaken for the
     // ordinary GitHub Release/package artifact.
-    checks.ordinaryReleaseRebuild = run("npm", ["run", "client:build:macos"]);
+    checks.ordinaryReleaseRebuild = run("npm", [
+      "run",
+      "client:build",
+      "--",
+      "--platform",
+      "macos",
+    ]);
   }
 
   const staticPassed = Object.values(checks).every((check) => check.status === "passed");

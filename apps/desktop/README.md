@@ -157,11 +157,15 @@ module-specific regression entry points.
 
 ```bash
 npm run client:package:plan
-npm run client:build:macos
-npm run client:build:windows
-npm run client:build:linux
-npm run client:build:android
+npm run client:build -- --platform macos
+npm run client:build -- --platform windows
+npm run client:build -- --platform linux
+npm run client:build -- --platform android
 ```
+
+`client:build` is the only build entry. It automatically removes inactive
+compiler output and temporary Flutter build caches without removing runnable
+or packaged output needed by installers.
 
 Builds for macOS, Windows, Ubuntu, Android, and iOS; ordinary verification;
 GitHub Release; and each platform store are independent claims. Missing

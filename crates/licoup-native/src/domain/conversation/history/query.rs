@@ -181,6 +181,7 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     let adapter = adapter_for_agent(&agent_id)
         .ok_or_else(|| anyhow!("unsupported native history adapter: {}", agent_id))?;
     let scan_config = HistoryScanConfig::from_params(params);
+    validate_message_page_request(params, &scan_config)?;
     if browse_catalog_applies(params, &scan_config) {
         return super::catalog::conversation_list_from_catalog(
             adapter,
@@ -206,6 +207,8 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     let mut skipped = discovery.skipped;
     let files_seen = discovery.files_seen;
     let directory_entries_seen = discovery.directory_entries_seen;
+    let requested = scan_config.single_session_id();
+    let mut mismatched_exact_hydration = false;
     for candidate in discovery.candidates {
         let metadata = match fs::metadata(&candidate.path) {
             Ok(metadata) => metadata,
@@ -218,13 +221,22 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
                 continue;
             }
         };
-        sessions.extend(parse_history_file(
+        let parsed = parse_history_file(
             adapter,
             &candidate.path,
             &candidate.source_kind,
             &metadata,
             scan_config.clone(),
-        ));
+        );
+        if let Some(requested) = requested
+            && exact_hydration_locator_matches(&candidate.path, requested)
+            && parsed.iter().any(|session| {
+                session.get("nativeSessionId").and_then(Value::as_str) != Some(requested)
+            })
+        {
+            mismatched_exact_hydration = true;
+        }
+        sessions.extend(parsed);
     }
     if adapter == HistoryAdapter::Codex {
         let observation = CodexRuntimeObservation::capture();
@@ -238,22 +250,37 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     if adapter == HistoryAdapter::Codex {
         super::catalog::apply_codex_spawn_lineage(params, &mut sessions);
     }
-    // Cursor keeps one conversation in three stores, and both Cursor and Claude
-    // Code can yield a second copy of one conversation from records that carry no
-    // session field. Collapsing the copies before the delegated-task merge keeps
-    // every task attached to the conversation the user opens instead of scattering
-    // them across copies a later dedupe discards.
-    if matches!(
-        adapter,
-        HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode | HistoryAdapter::Codex
-    ) {
-        sessions = collapse_sessions_by_native_identity(sessions);
+    if matches!(adapter, HistoryAdapter::OpenCode | HistoryAdapter::KiloCode) {
+        super::catalog::apply_openagent_parent_lineage(adapter, params, &mut sessions);
     }
+    // Native identity owns dedupe for every adapter. Collapse before lineage so
+    // delegated work attaches to the richest copy rather than a source-path copy
+    // that a later pass would discard.
+    sessions = collapse_sessions_by_native_identity(sessions);
+    let observed_native_ids = sessions
+        .iter()
+        .filter_map(|session| session.get("nativeSessionId").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
     let mut sessions = dedupe_history_sessions(finalize_history_sessions(sessions, &scan_config));
     sort_sessions_by_updated_at(&mut sessions);
+    if let Some(requested) = scan_config.single_session_id() {
+        ensure_exact_session_identity(
+            requested,
+            &observed_native_ids,
+            &sessions,
+            mismatched_exact_hydration,
+        )?;
+        apply_exact_message_page(&mut sessions[0], params)?;
+    }
     let total_sessions = sessions.len();
-    let has_more = scan_config.page.has_more(total_sessions);
-    let sessions = paged_history_sessions(sessions, &scan_config.page);
+    let exact = scan_config.has_single_session_filter();
+    let has_more = !exact && scan_config.page.has_more(total_sessions);
+    let sessions = if exact {
+        sessions
+    } else {
+        paged_history_sessions(sessions, &scan_config.page)
+    };
     let returned_sessions = sessions.len();
 
     Ok(json!({
@@ -282,8 +309,137 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     }))
 }
 
+/// Whether a single-record hydration unit was selected by the requested
+/// identity. The parsed record still owns native identity; this locator is used
+/// only to distinguish a missing conversation from a selected unit that
+/// returned a different identity.
+fn exact_hydration_locator_matches(path: &Path, requested: &str) -> bool {
+    path.components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|component| component == requested)
+        || path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem == requested || stem.ends_with(&format!("-{requested}")))
+}
+
+fn validate_message_page_request(params: &Value, scan_config: &HistoryScanConfig) -> Result<()> {
+    let has_message_page_parameter =
+        params.get("messageBefore").is_some() || params.get("messageLimit").is_some();
+    if has_message_page_parameter && !scan_config.has_single_session_filter() {
+        return Err(anyhow!(
+            "native_history_message_page_requires_exact_session"
+        ));
+    }
+    if let Some(raw) = params.get("messageBefore")
+        && raw
+            .as_str()
+            .map(str::trim)
+            .is_none_or(|value| value.is_empty())
+    {
+        return Err(anyhow!("native_history_message_before_invalid"));
+    }
+    if let Some(raw) = params.get("messageLimit") {
+        let Some(limit) = raw
+            .as_u64()
+            .or_else(|| raw.as_str().and_then(|value| value.parse::<u64>().ok()))
+        else {
+            return Err(anyhow!("native_history_message_limit_invalid"));
+        };
+        if !(1..=100).contains(&limit) {
+            return Err(anyhow!("native_history_message_limit_invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_exact_session_identity(
+    requested: &str,
+    observed_native_ids: &BTreeSet<String>,
+    sessions: &[Value],
+    mismatched_exact_hydration: bool,
+) -> Result<()> {
+    if !observed_native_ids.contains(requested) {
+        return if mismatched_exact_hydration {
+            Err(anyhow!("native_history_session_identity_mismatch"))
+        } else {
+            Err(anyhow!("native_history_session_not_found"))
+        };
+    }
+    if sessions.len() != 1 {
+        return Err(anyhow!("native_history_session_not_found"));
+    }
+    let returned = sessions[0]
+        .get("nativeSessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if returned != requested {
+        return Err(anyhow!("native_history_session_identity_mismatch"));
+    }
+    Ok(())
+}
+
+fn apply_exact_message_page(session: &mut Value, params: &Value) -> Result<()> {
+    let object = session
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("native_history_session_invalid"))?;
+    let messages = object
+        .get("messages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("native_history_session_invalid"))?;
+    let mut positions = std::collections::BTreeMap::<String, usize>::new();
+    for (index, message) in messages.iter().enumerate() {
+        let id = message
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| anyhow!("native_history_message_identity_missing"))?;
+        if positions.insert(id.to_string(), index).is_some() {
+            return Err(anyhow!("native_history_message_identity_duplicate"));
+        }
+    }
+    let total = messages.len();
+    let message_before = text_param(params, &["messageBefore"])
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let end = match message_before.as_deref() {
+        Some(anchor) => positions
+            .get(anchor)
+            .copied()
+            .ok_or_else(|| anyhow!("native_history_message_continuation_stale"))?,
+        None => total,
+    };
+    let limit = number_param(params, "messageLimit")
+        .map(|value| value as usize)
+        .unwrap_or(50);
+    let start = end.saturating_sub(limit);
+    let page = messages[start..end].to_vec();
+    let next_before = (start > 0)
+        .then(|| page.first())
+        .flatten()
+        .and_then(|message| message.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    object.insert("messages".to_string(), Value::Array(page));
+    object.insert("messageCount".to_string(), json!(total));
+    object.insert("sourceMessageCount".to_string(), json!(total));
+    object.insert(
+        "messagePage".to_string(),
+        json!({
+            "start": start,
+            "endExclusive": end,
+            "returned": end.saturating_sub(start),
+            "total": total,
+            "hasEarlier": start > 0,
+            "nextBefore": next_before
+        }),
+    );
+    Ok(())
+}
+
 /// Browse-mode lists (no search terms, no explicit session selection, no root
-/// override, no archive discovery) load through the tiered metadata catalog
+/// override, no archive discovery) load through the complete metadata catalog
 /// instead of parsing every history file up front.
 ///
 /// The Flutter client consumes `conversations stream`, not `list`. Stream must

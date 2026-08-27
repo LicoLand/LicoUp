@@ -166,6 +166,9 @@ class AgentConversationActivePane extends StatelessWidget {
         : AgentConversationMessageList(
             scrollController: messageScrollController,
             loading: state.loading,
+            messagePageLoading: state.messagePageLoading,
+            messagePageError: state.messagePageError,
+            onLoadEarlier: actions.onLoadEarlierMessages,
             session: state.session,
             target: state.target,
             turnActive: state.turnActive,

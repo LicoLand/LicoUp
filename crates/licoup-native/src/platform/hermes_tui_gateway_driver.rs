@@ -15,7 +15,6 @@ use conversation_state_machine::{
     TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState,
 };
 
-const MAX_EVENTS: usize = 4_096;
 const MAX_IDENTIFIER_BYTES: usize = 512;
 
 pub(in crate::platform) fn execute(
@@ -44,7 +43,13 @@ pub(in crate::platform) fn execute(
             );
         }
     };
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    // `timeoutMs: 0` opts out of any turn deadline: the gateway is waited on
+    // until its native terminal signal, however long the turn takes.
+    let deadline = if timeout_ms == 0 {
+        None
+    } else {
+        Some(Instant::now() + Duration::from_millis(timeout_ms))
+    };
     let run = run_turn(&mut client, &config, deadline, max_stdout);
     let cleanup = client.finish();
     if let Err(failure) = cleanup {
@@ -159,7 +164,7 @@ struct GatewayOutcome {
 fn run_turn(
     client: &mut GatewayClient,
     config: &GatewayConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
     max_output_bytes: Option<usize>,
 ) -> Result<GatewayOutcome, ProtocolFailure> {
     client
@@ -261,7 +266,7 @@ struct OpenedSession {
 fn open_session(
     client: &mut GatewayClient,
     config: &GatewayConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<OpenedSession, ProtocolFailure> {
     let result = if config.requested_session_id.is_empty() {
         let mut params = Map::from_iter([
@@ -436,9 +441,10 @@ impl TurnObservation {
                 }
             }
             "tool.start" | "tool.progress" | "tool.complete" => {
-                if self.events.len() >= MAX_EVENTS {
-                    return Err(GatewayFailure::OutputLimit);
-                }
+                // Tool events are part of the conversation projection and stay
+                // unbounded by default: with no caller output request they run
+                // until the native terminal signal. An explicit caller bound is
+                // still enforced as the named protocol output-limit failure.
                 let payload = event_payload(message).unwrap_or(&Value::Null);
                 self.events.push(json!({
                     "type": event,
@@ -771,7 +777,7 @@ sleep 30
         let failure = match run_turn(
             &mut client,
             &config,
-            started + Duration::from_millis(600),
+            Some(started + Duration::from_millis(600)),
             Some(64 * 1024),
         ) {
             Ok(_) => panic!("a silent gateway must not complete the turn"),
@@ -823,7 +829,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":3,"result":{{"closed":true}}}}'
             let outcome = run_turn(
                 &mut client,
                 &config,
-                Instant::now() + Duration::from_secs(2),
+                Some(Instant::now() + Duration::from_secs(2)),
                 Some(64 * 1024),
             )
             .unwrap();
@@ -831,6 +837,156 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":3,"result":{{"closed":true}}}}'
             assert_eq!(outcome.session_id, "durable-1");
             assert_eq!(outcome.output, "hello");
             assert_eq!(outcome.model.as_deref(), Some("test-model"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hermes_zero_timeout_and_default_event_projection_are_unbounded() {
+        let script = r#"
+printf '%s\n' '{"jsonrpc":"2.0","method":"event","params":{"type":"gateway.ready","payload":{}}}'
+IFS= read -r request
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"session_id":"live-1","stored_session_id":"durable-1","messages":[],"info":{"cwd":"/workspace"}}}'
+IFS= read -r request
+printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"status":"streaming"}}'
+sleep 0.3
+i=0
+while [ "$i" -lt 4200 ]; do
+  printf '%s\n' '{"jsonrpc":"2.0","method":"event","params":{"type":"tool.start","session_id":"live-1","payload":{"name":"shell","tool_id":"opaque-tool-id"}}}'
+  i=$((i + 1))
+done
+printf '%s\n' '{"jsonrpc":"2.0","method":"event","params":{"type":"message.delta","session_id":"live-1","payload":{"text":"done"}}}'
+printf '%s\n' '{"jsonrpc":"2.0","method":"event","params":{"type":"message.complete","session_id":"live-1","payload":{"text":"done","status":"complete"}}}'
+IFS= read -r request
+printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"closed":true}}'
+"#;
+        let mut command = Command::new("sh");
+        command.args(["-c", script]);
+        let mut client = GatewayClient::connect_test_command(command, None, 64 * 1024).unwrap();
+        let config = GatewayConfig {
+            prompt: "test prompt".to_string(),
+            requested_session_id: String::new(),
+            cwd: "/workspace".to_string(),
+            model: None,
+            turn_id: "turn-1".to_string(),
+        };
+        // None deadline means no turn deadline: the delayed gate, 4,200 tool
+        // events, and complete message must all survive the default projection.
+        let outcome = run_turn(&mut client, &config, None, None).unwrap();
+        client.finish().unwrap();
+        assert_eq!(outcome.session_id, "durable-1");
+        assert_eq!(outcome.output, "done");
+        assert_eq!(
+            outcome.events.len(),
+            4_200,
+            "every tool event must survive the default projection"
+        );
+        assert!(
+            outcome
+                .events
+                .iter()
+                .all(|event| event["type"] == "tool.start"),
+            "only tool events are projected: {}",
+            outcome.events.len()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_output_bound_keeps_the_named_failure() {
+        let script = r#"
+printf '%s\n' '{"jsonrpc":"2.0","method":"event","params":{"type":"gateway.ready","payload":{}}}'
+IFS= read -r request
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"session_id":"live-1","stored_session_id":"durable-1","messages":[],"info":{"cwd":"/workspace"}}}'
+IFS= read -r request
+printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"status":"streaming"}}'
+payload=$(python3 -c 'print("x" * 70000)')
+printf '%s\n' "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"message.delta\",\"session_id\":\"live-1\",\"payload\":{\"text\":\"$payload\"}}}"
+printf '%s\n' '{"jsonrpc":"2.0","method":"event","params":{"type":"message.complete","session_id":"live-1","payload":{"text":"done","status":"complete"}}}'
+IFS= read -r request
+"#;
+        let mut command = Command::new("sh");
+        command.args(["-c", script]);
+        let mut client =
+            GatewayClient::connect_test_command(command, Some(64 * 1024), 64 * 1024).unwrap();
+        let config = GatewayConfig {
+            prompt: "test prompt".to_string(),
+            requested_session_id: String::new(),
+            cwd: "/workspace".to_string(),
+            model: None,
+            turn_id: "turn-1".to_string(),
+        };
+        let failure = match run_turn(
+            &mut client,
+            &config,
+            Some(Instant::now() + Duration::from_secs(5)),
+            Some(64 * 1024),
+        ) {
+            Ok(_) => panic!("an explicit output bound must stay a visible failure"),
+            Err(failure) => failure,
+        };
+        assert_eq!(failure.code, "hermes_gateway_protocol_output_limit");
+        client.finish().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resume_identity_missing_or_drifted_fails_before_prompt() {
+        let log_path = std::env::temp_dir().join(format!(
+            "lico-hermes-tui-received-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        for (requested, open_result, expected_code) in [
+            (
+                "",
+                r#"{"session_id":"live-1","messages":[],"info":{"cwd":"/workspace"}}"#,
+                "hermes_gateway_durable_session_id_missing",
+            ),
+            (
+                "durable-1",
+                r#"{"session_id":"live-1","resumed":"durable-2","messages":[],"info":{"cwd":"/workspace"}}"#,
+                "hermes_gateway_session_identity_mismatch",
+            ),
+        ] {
+            let script = format!(
+                r#"
+printf '%s\n' '{{"jsonrpc":"2.0","method":"event","params":{{"type":"gateway.ready","payload":{{}}}}}}'
+IFS= read -r request
+printf '%s' "$request" > "$RECEIPT_LOG"
+printf '%s\n' '{{"jsonrpc":"2.0","id":1,"result":{open_result}}}'
+IFS= read -r request
+printf '%s' "$request" >> "$RECEIPT_LOG"
+"#
+            );
+            let mut command = Command::new("sh");
+            command.args(["-c", &script]).env("RECEIPT_LOG", &log_path);
+            let mut client =
+                GatewayClient::connect_test_command(command, Some(64 * 1024), 64 * 1024).unwrap();
+            let config = GatewayConfig {
+                prompt: "test prompt".to_string(),
+                requested_session_id: requested.to_string(),
+                cwd: "/workspace".to_string(),
+                model: None,
+                turn_id: "turn-1".to_string(),
+            };
+            let failure = match run_turn(
+                &mut client,
+                &config,
+                Some(Instant::now() + Duration::from_secs(2)),
+                Some(64 * 1024),
+            ) {
+                Ok(_) => panic!("an invalid binding must fail before prompt"),
+                Err(failure) => failure,
+            };
+            assert_eq!(failure.code, expected_code);
+            client.finish().unwrap();
+            let received = std::fs::read_to_string(&log_path).unwrap();
+            assert!(
+                !received.contains("prompt.submit"),
+                "no prompt may be submitted after an invalid binding: {received}"
+            );
+            let _ = std::fs::remove_file(&log_path);
         }
     }
 }

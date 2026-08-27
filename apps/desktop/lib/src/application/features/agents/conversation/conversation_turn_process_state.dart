@@ -33,6 +33,7 @@ final class ConversationParticipantReply {
     required this.participantAgentId,
     required this.participantLabel,
     required this.participantRole,
+    required this.messageUnit,
   });
 
   /// Stable blackboard slot key (`agentId\0role`) of this reply.
@@ -42,6 +43,7 @@ final class ConversationParticipantReply {
   final String participantAgentId;
   final String participantLabel;
   final String participantRole;
+  final String messageUnit;
 }
 
 final class _ConversationReply {
@@ -52,6 +54,7 @@ final class _ConversationReply {
   String participantAgentId = '';
   String participantLabel = '';
   String participantRole = '';
+  String messageUnit = '';
 }
 
 /// The blackboard for one in-flight turn.
@@ -124,6 +127,9 @@ final class ConversationTurnProcessState {
       List<AgentConversationMessage>.unmodifiable(_evidence);
 
   String get replyText => _repliesByParticipant[_primaryReplyKey]?.text ?? '';
+
+  String replyTextFor(String participantKey) =>
+      _repliesByParticipant[participantKey]?.text ?? '';
 
   String get replyCreatedAt =>
       _repliesByParticipant[_primaryReplyKey]?.createdAt ?? '';
@@ -232,9 +238,12 @@ final class ConversationTurnProcessState {
     ConversationParticipantReply reply,
   ) {
     final primary = isPrimaryReplyKey(reply.key);
-    final participantIdentity = primary
+    final participantIdentityBase = primary
         ? '$turnId-assistant'
         : '$turnId-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
+    final participantIdentity = reply.messageUnit.isEmpty
+        ? participantIdentityBase
+        : '$participantIdentityBase-message-${reply.messageUnit}';
     final cached = _replyMessages[reply.key];
     if (cached != null &&
         cached.text == reply.text &&
@@ -284,6 +293,7 @@ final class ConversationTurnProcessState {
     required String turnId,
     required String participantAgentId,
     required String participantRole,
+    String messageUnit = '',
   }) {
     final agentId = participantAgentId.trim();
     final role = participantRole.trim();
@@ -293,21 +303,26 @@ final class ConversationTurnProcessState {
           ? agentId
           : _participantAgentId.trim();
       final resolvedRole = role.isNotEmpty ? role : _participantRole.trim();
-      if (resolvedAgentId.isEmpty && resolvedRole.isEmpty) return '';
-      return '$resolvedAgentId\u0000$resolvedRole';
+      if (resolvedAgentId.isEmpty && resolvedRole.isEmpty) {
+        return messageUnit.isEmpty ? '' : '\u0000\u0000$messageUnit';
+      }
+      final base = '$resolvedAgentId\u0000$resolvedRole';
+      return messageUnit.isEmpty ? base : '$base\u0000$messageUnit';
     }
     final participantPrefix = '${this.turnId}-participant-';
     if (turnId.startsWith(participantPrefix)) {
       // Orchestration stream peer reply: `-participant-<agentId>`.
       final id = turnId.substring(participantPrefix.length).trim();
       if (id.isEmpty) return null;
-      return '$id\u0000${role.isNotEmpty ? role : 'peer-agent'}';
+      final base = '$id\u0000${role.isNotEmpty ? role : 'peer-agent'}';
+      return messageUnit.isEmpty ? base : '$base\u0000$messageUnit';
     }
     final handoffPrefix = '${this.turnId}-handoff-';
     if (turnId.startsWith(handoffPrefix)) {
       // LicoUp-owned subagent handoff bubble projected onto this turn.
       if (agentId.isEmpty) return null;
-      return '$agentId\u0000${role.isNotEmpty ? role : 'peer-agent'}';
+      final base = '$agentId\u0000${role.isNotEmpty ? role : 'peer-agent'}';
+      return messageUnit.isEmpty ? base : '$base\u0000$messageUnit';
     }
     return null;
   }
@@ -338,6 +353,7 @@ final class ConversationTurnProcessState {
     participantAgentId: reply.participantAgentId,
     participantLabel: reply.participantLabel,
     participantRole: reply.participantRole,
+    messageUnit: reply.messageUnit,
   );
 
   /// Render one Rust-owned lifecycle transition. Regressions are no-ops and
@@ -360,6 +376,7 @@ final class ConversationTurnProcessState {
     String participantAgentId = '',
     String participantLabel = '',
     String participantRole = '',
+    String messageUnit = '',
   }) {
     var changed = false;
     if (participantAgentId.isNotEmpty &&
@@ -403,6 +420,7 @@ final class ConversationTurnProcessState {
     String participantAgentId = '',
     String participantLabel = '',
     String participantRole = '',
+    String messageUnit = '',
   }) {
     final key = participantKey.isEmpty ? _primaryReplyKey : participantKey;
     final existing = _repliesByParticipant[key];
@@ -411,6 +429,7 @@ final class ConversationTurnProcessState {
       final createdAtChanged =
           text.trim().isNotEmpty && existing.createdAt.isEmpty;
       existing.text = text;
+      existing.messageUnit = messageUnit;
       if (createdAtChanged) {
         existing.createdAt = createdAt;
       }
@@ -424,7 +443,8 @@ final class ConversationTurnProcessState {
           )
           ..participantAgentId = participantAgentId
           ..participantLabel = participantLabel
-          ..participantRole = participantRole;
+          ..participantRole = participantRole
+          ..messageUnit = messageUnit;
     _markProjectionDirty();
   }
 

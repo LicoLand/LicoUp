@@ -75,11 +75,23 @@ impl DriverConfig {
                     .filter_map(Value::as_str)
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
-                    .take(64)
                     .collect::<Vec<_>>()
-                    .join(",")
             })
-            .filter(|joined| !joined.is_empty());
+            .filter(|values| !values.is_empty())
+            .map(|values| {
+                // A bound the native contract keeps must reject explicitly;
+                // a silent prefix would execute a different allowlist than the
+                // one the caller authorized.
+                if values.len() > 64 {
+                    return Err(ProtocolFailure::new(
+                        "claude_code_allowed_tools_unsupported",
+                        "Claude Code accepts at most 64 allowed tools in one launch; the requested allowlist cannot be executed and is not reported as applied.",
+                        "request/validate",
+                    ));
+                }
+                Ok(values.join(","))
+            })
+            .transpose()?;
         if permission_mode.as_deref().is_some_and(|value| {
             !matches!(
                 value,

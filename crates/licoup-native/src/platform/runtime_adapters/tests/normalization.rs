@@ -79,3 +79,35 @@ fn non_codex_response_uses_session_id_as_native_continuity_id() {
     assert_eq!(response["sessionId"], "native-session-1");
     assert_eq!(response["threadId"], "diagnostic-thread-1");
 }
+
+#[test]
+fn failed_outcome_does_not_echo_requested_identity_or_unverified_settings() {
+    let response = execution_response(
+        RuntimeAdapter::Pi,
+        NormalizedExecution {
+            ok: false,
+            output: String::new(),
+            transitions: Vec::new(),
+            capabilities: json!({}),
+            error: None,
+            session_id: "caller-requested-session".to_string(),
+            thread_id: "caller-requested-session".to_string(),
+            turn_id: String::new(),
+            turn_status: "failed".to_string(),
+            effective: NormalizedEffectiveSettings {
+                model: Some("unverified-model".to_string()),
+                ..NormalizedEffectiveSettings::default()
+            },
+            status_code: None,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            started_at: "1".to_string(),
+            runtime_protocol: crate::platform::pi_driver::RUNTIME_PROTOCOL,
+            driver_id: "pi-rpc",
+        },
+    );
+
+    assert!(response["nativeSessionId"].is_null());
+    assert!(response["sessionId"].is_null());
+    assert!(response["effective"]["model"].is_null());
+}

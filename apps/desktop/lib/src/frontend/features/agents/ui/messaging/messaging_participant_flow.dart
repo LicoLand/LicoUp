@@ -241,9 +241,8 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
 /// and day dividers separate local days. The same timeline data the console
 /// transcript renders, projected into a chat surface.
 ///
-/// Long transcripts load in pages: the newest [initialEntryWindow] flow
-/// entries render first and scrolling to the top pulls in earlier entries,
-/// so exploring history is progressive instead of truncated.
+/// Long transcripts remain lazy through [ListView.builder]. Reaching the
+/// oldest loaded edge asks the controller for the next native message page.
 class MessagingParticipantFlow extends StatefulWidget {
   const MessagingParticipantFlow({
     super.key,
@@ -261,14 +260,11 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.bottomOverlayInset = 0,
     this.scrollController,
     this.onCopyText,
+    this.messagePageLoading = false,
+    this.messagePageError = '',
+    this.hasEarlier = false,
+    this.onLoadEarlier,
   });
-
-  /// Flow entries (after author grouping) shown before the user scrolls.
-  static const int initialEntryWindow = 50;
-
-  /// Flow entries added each time the user scrolls to the top of the loaded
-  /// history.
-  static const int earlierEntryPage = 50;
 
   /// Distance from the top of the loaded history that starts loading the
   /// earlier page, so the request finishes before the user hits the edge.
@@ -305,6 +301,10 @@ class MessagingParticipantFlow extends StatefulWidget {
   /// Clipboard write routed through the platform boundary; message rows
   /// expose an explicit copy action when present.
   final Future<void> Function(String)? onCopyText;
+  final bool messagePageLoading;
+  final String messagePageError;
+  final bool hasEarlier;
+  final Future<void> Function()? onLoadEarlier;
 
   @override
   State<MessagingParticipantFlow> createState() =>
@@ -425,11 +425,11 @@ MessagingFlowEntry _patchedMessageEntry(
 }
 
 class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
-  late int _visibleEntryCount;
   ScrollController? _ownedScrollController;
   bool _atLatest = true;
   List<MessagingFlowEntry>? _cachedEntries;
   List<ConversationTimelineItem>? _cachedItems;
+  bool _pageRequestInFlight = false;
 
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
   /// as still "at latest" so the control does not flicker.
@@ -441,7 +441,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   void initState() {
     super.initState();
-    _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
     if (widget.scrollController == null) {
       _ownedScrollController = ScrollController();
     }
@@ -454,8 +453,8 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.sessionKey != widget.sessionKey) {
       // A different conversation starts from its own newest window.
-      _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
       _atLatest = true;
+      _pageRequestInFlight = false;
     }
     if (oldWidget.activeProcessStorageKey != widget.activeProcessStorageKey ||
         oldWidget.preferPeerAgents != widget.preferPeerAgents) {
@@ -516,19 +515,22 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       return false;
     }
     final metrics = notification.metrics;
-    final total = _displayEntries.length;
-    if (_visibleEntryCount >= total) {
+    if (!widget.hasEarlier ||
+        widget.messagePageLoading ||
+        _pageRequestInFlight) {
       return false;
     }
     if (metrics.pixels <
         metrics.maxScrollExtent - MessagingParticipantFlow.earlierPageLeadIn) {
       return false;
     }
-    setState(() {
-      _visibleEntryCount =
-          (_visibleEntryCount + MessagingParticipantFlow.earlierEntryPage)
-              .clamp(0, total);
-    });
+    final request = widget.onLoadEarlier;
+    if (request != null) {
+      _pageRequestInFlight = true;
+      request().whenComplete(() {
+        if (mounted) _pageRequestInFlight = false;
+      });
+    }
     return false;
   }
 
@@ -567,7 +569,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   Widget build(BuildContext context) {
     final displayEntries = _displayEntries;
-    final visibleEntries = displayEntries.take(_visibleEntryCount).toList();
     // Conversation text must be selectable and copyable. Selection is hosted at
     // the scroll level so a drag can span several messages; it only reaches the
     // rows the list has built, which is why individual messages also expose an
@@ -593,9 +594,22 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
                     widget.adapter.assistantVerticalPadding +
                     widget.bottomOverlayInset,
               ),
-              itemCount: visibleEntries.length,
+              itemCount:
+                  displayEntries.length +
+                  ((widget.hasEarlier ||
+                          widget.messagePageLoading ||
+                          widget.messagePageError.isNotEmpty)
+                      ? 1
+                      : 0),
               itemBuilder: (context, index) {
-                final entry = visibleEntries[index];
+                if (index == displayEntries.length) {
+                  return _MessagingEarlierPageRow(
+                    loading: widget.messagePageLoading,
+                    errorCode: widget.messagePageError,
+                    onRetry: widget.onLoadEarlier,
+                  );
+                }
+                final entry = displayEntries[index];
                 // A streamed reply changes one entry per frame. Without a
                 // repaint boundary per entry the whole visible flow
                 // repaints with it.
@@ -702,6 +716,43 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         ),
       ),
     };
+  }
+}
+
+final class _MessagingEarlierPageRow extends StatelessWidget {
+  const _MessagingEarlierPageRow({
+    required this.loading,
+    required this.errorCode,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final String errorCode;
+  final Future<void> Function()? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (errorCode.isEmpty) return const SizedBox(height: 1);
+    return Center(
+      child: TextButton.icon(
+        key: const Key('messaging-message-page-retry'),
+        onPressed: onRetry == null ? null : () => onRetry!.call(),
+        icon: const Icon(Icons.refresh_rounded, size: 17),
+        label: Text('History page failed: $errorCode'),
+      ),
+    );
   }
 }
 

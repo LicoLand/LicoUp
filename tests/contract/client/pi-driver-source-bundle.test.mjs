@@ -91,21 +91,22 @@ test("Pi keeps the official fixed RPC JSONL lane without shell fallback", async 
   }
 });
 
-test("Pi exact-session resolution remains bounded and fails closed", async () => {
+test("Pi exact-session resolution is complete and header parsing fails closed", async () => {
   const source = await sources();
   const activeControl = source["driver/active_control.rs"];
   const sessions = source["driver/sessions.rs"];
   const protocol = source["parser/protocol.rs"];
   for (const token of [
-    "MAX_SESSION_SCAN_FILES",
-    "MAX_HEADER_BYTES",
+    "MAX_SESSION_HEADER_BYTES",
     "resolve_session_path_in_roots",
     "session_roots_from_sources",
     "pi_session_identity_ambiguous",
     "pi_session_not_found",
+    "pi_session_header_line_too_large",
   ]) {
     assert.ok(sessions.includes(token), `missing Pi session boundary: ${token}`);
   }
+  assert.equal(sessions.includes("MAX_SESSION_SCAN_FILES"), false);
   for (const token of [
     "switch_session",
     "pi_session_identity_mismatch",

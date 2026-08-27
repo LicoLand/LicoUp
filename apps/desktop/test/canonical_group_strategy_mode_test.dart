@@ -1010,6 +1010,130 @@ void main() {
     },
   );
 
+  testWidgets(
+    'terminal handoff keeps the live reply until durable readback arrives',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final persistent = _PersistentGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        runner: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(find.text('streaming token'), findsOneWidget);
+
+      final reloadBarrier = Completer<void>();
+      conversationRunner
+        ..persistedEvents = [_completedConversationEvent()]
+        ..nextGetBarrier = reloadBarrier;
+      persistent.completeObserver();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+
+      // The attach stream has ended, but the live scope remains visible while
+      // the two durable Conversation RPCs are still in flight.
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isTrue);
+
+      reloadBarrier.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isFalse);
+    },
+  );
+
+  testWidgets(
+    'terminal handoff retains live reply until finalized readback is available',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final persistent = _PersistentGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        runner: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+
+      conversationRunner.getFailuresRemaining = 2;
+      persistent.completeObserver();
+      await tester.pumpAndSettle();
+
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isFalse);
+    },
+  );
+
   testWidgets('observer loss detaches without inventing a turn failure', (
     tester,
   ) async {
@@ -1061,6 +1185,108 @@ void main() {
     expect(controller.failureCode, isEmpty);
     expect(controller.dispatchPending, isFalse);
     expect(persistent.cancelCount, 0);
+  });
+
+  testWidgets('observer loss reattaches an active turn after its last cursor', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner();
+    final persistent = _PersistentGateway(
+      active: const [
+        {
+          'turnHandle': 'dispatch:existing',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ],
+    );
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(runner: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPane(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(persistent.attachedAfterCursors, [0]);
+
+    persistent.failObserver();
+    for (
+      var attempt = 0;
+      attempt < 20 && persistent.attachedAfterCursors.length < 2;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(persistent.attachedHandles, [
+      'dispatch:existing',
+      'dispatch:existing',
+    ]);
+    expect(persistent.attachedAfterCursors, [0, 1]);
+    expect(find.text('streaming token'), findsOneWidget);
+  });
+
+  testWidgets('single active group turn exposes an explicit stop operation', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner();
+    final persistent = _PersistentGateway(
+      active: const [
+        {
+          'turnHandle': 'dispatch:existing',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ],
+    );
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(runner: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPane(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+    expect(persistent.cancelCount, 1);
   });
 
   testWidgets('observer loss reloads and preserves exact persisted failure', (
@@ -1385,6 +1611,8 @@ final class _GroupConversationRunner implements AgentCommandRunner {
   bool dispatchPending = false;
   List<Map<String, dynamic>> postTurns = const [];
   List<Map<String, dynamic>> persistedEvents = const [];
+  Completer<void>? nextGetBarrier;
+  int getFailuresRemaining = 0;
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -1400,6 +1628,15 @@ final class _GroupConversationRunner implements AgentCommandRunner {
     }
     if (action == 'conversation.dispatch.after-post') {
       await dispatchBarrier?.future;
+    }
+    if (action == 'conversation.get') {
+      if (getFailuresRemaining > 0) {
+        getFailuresRemaining -= 1;
+        throw StateError('conversation get unavailable');
+      }
+      final barrier = nextGetBarrier;
+      nextGetBarrier = null;
+      await barrier?.future;
     }
     if (action == 'conversation.membership.add') {
       final principal = Map<String, dynamic>.from(request['principal'] as Map);
@@ -1556,6 +1793,7 @@ Map<String, dynamic> _failedConversationEvent() => {
   'conversationId': 'conversation:group',
   'sequence': 1,
   'authorMembershipId': 'membership:codex',
+  'correlationId': 'dispatch:live',
   'kind': 'message',
   'createdAtUnixMs': 3,
   'finalized': true,
@@ -1566,6 +1804,27 @@ Map<String, dynamic> _failedConversationEvent() => {
       'ordinal': 0,
       'kind': 'diagnostic',
       'content': '{"code":"exact_native_failure","stage":"native/turn"}',
+      'createdAtUnixMs': 3,
+    },
+  ],
+};
+
+Map<String, dynamic> _completedConversationEvent() => {
+  'id': 'event:completed',
+  'conversationId': 'conversation:group',
+  'sequence': 1,
+  'authorMembershipId': 'membership:codex',
+  'correlationId': 'dispatch:live',
+  'kind': 'message',
+  'createdAtUnixMs': 3,
+  'finalized': true,
+  'parts': [
+    {
+      'id': 'part:reply',
+      'eventId': 'event:completed',
+      'ordinal': 0,
+      'kind': 'text',
+      'content': 'streaming token',
       'createdAtUnixMs': 3,
     },
   ],
@@ -1610,6 +1869,18 @@ final class _PersistentGateway implements PersistentAgentConversationGateway {
     _chunks.addError(const AgentDispatchStreamException('transport_failed'));
   }
 
+  void completeObserver() {
+    _chunks.add(
+      const AgentDispatchEvent(
+        kind: 'dispatch.turn.completed',
+        payload: {
+          'ok': true,
+          'terminalTransition': {'kind': 'lifecycle', 'stage': 'completed'},
+        },
+      ),
+    );
+  }
+
   void dispose() {
     unawaited(_chunks.close());
   }
@@ -1638,7 +1909,7 @@ final class _PersistentGateway implements PersistentAgentConversationGateway {
       _chunks.add(
         const AgentDispatchEvent(
           kind: 'agent.message.chunk',
-          payload: {'text': 'streaming token'},
+          payload: {'text': 'streaming token', 'cursor': 1},
         ),
       );
     });

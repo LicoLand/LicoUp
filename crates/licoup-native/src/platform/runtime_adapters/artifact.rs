@@ -60,6 +60,7 @@ pub(super) fn runtime_executable(
         if requested == adapter.default_binary()
             && let Some(discovered) =
                 crate::domain::targets::available_runtime_executable(adapter.id())
+                    .or_else(|| crate::domain::targets::agent_cli_executable(adapter.id()))
         {
             return discovered
                 .to_str()

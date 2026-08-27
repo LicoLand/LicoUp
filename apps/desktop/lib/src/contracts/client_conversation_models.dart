@@ -217,6 +217,8 @@ final class ClientConversationEvent {
     required this.sequence,
     required this.authorMembershipId,
     required this.kind,
+    this.causationId = '',
+    this.correlationId = '',
     required this.createdAtUnixMs,
     required this.finalized,
     required this.parts,
@@ -229,6 +231,8 @@ final class ClientConversationEvent {
         sequence: _integer(json['sequence']),
         authorMembershipId: (json['authorMembershipId'] ?? '').toString(),
         kind: ConversationEventKind.fromWire(json['kind']),
+        causationId: (json['causationId'] ?? '').toString(),
+        correlationId: (json['correlationId'] ?? '').toString(),
         createdAtUnixMs: _integer(json['createdAtUnixMs']),
         finalized: json['finalized'] == true,
         parts: _maps(
@@ -241,6 +245,8 @@ final class ClientConversationEvent {
   final int sequence;
   final String authorMembershipId;
   final ConversationEventKind kind;
+  final String causationId;
+  final String correlationId;
   final int createdAtUnixMs;
   final bool finalized;
   final List<ClientConversationEventPart> parts;

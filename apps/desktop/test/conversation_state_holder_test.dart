@@ -88,6 +88,49 @@ void main() {
     expect(holder.messagesFor('scope-1').last.text, 'partial done');
   });
 
+  testWidgets('distinct message units render as distinct assistant bubbles', (
+    tester,
+  ) async {
+    final holder = ConversationStateHolder();
+    addTearDown(holder.dispose);
+    for (final event in [
+      _delta('agent.message.chunk', {
+        'messageUnit': '1',
+        'text': '第一段',
+        'lifecyclePrefix': _respondingPrefix,
+      }),
+      _delta('agent.message.chunk', {
+        'messageUnit': '2',
+        'text': '第二',
+        'lifecyclePrefix': _respondingPrefix,
+      }),
+      _delta('agent.message.chunk', {
+        'messageUnit': '2',
+        'text': '段',
+        'lifecyclePrefix': _respondingPrefix,
+      }),
+      _delta('agent.message.completed', const {
+        'messageUnit': '2',
+        'text': '第二段',
+        'terminalTransition': {'kind': 'lifecycle', 'stage': 'completed'},
+      }),
+    ]) {
+      holder.applyDelta(
+        event,
+        scopeKey: 'scope-1',
+        participantAgentId: 'claude-code',
+        participantLabel: 'Claude Code',
+      );
+    }
+
+    final replies = holder
+        .messagesFor('scope-1')
+        .where((message) => message.role == 'assistant')
+        .toList();
+    expect(replies.map((message) => message.text), ['第一段', '第二段']);
+    expect(replies[0].stableIdentity, isNot(replies[1].stableIdentity));
+  });
+
   testWidgets('events without an active phase publish immediately', (
     tester,
   ) async {

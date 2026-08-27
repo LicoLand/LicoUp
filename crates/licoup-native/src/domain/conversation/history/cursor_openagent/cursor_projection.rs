@@ -28,13 +28,14 @@ pub(super) fn cursor_message_from_bubble(
     .unwrap_or_default();
     let model = cursor_bubble_model(bubble).unwrap_or_else(|| fallback_model.to_string());
     let usage = cursor_bubble_usage(bubble, &model);
+    let attachments = cursor_bubble_attachments(bubble);
     let has_usage = usage
         .as_ref()
         .and_then(|value| value.get("totalTokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0)
         > 0;
-    if text.trim().is_empty() && !has_usage {
+    if text.trim().is_empty() && !has_usage && attachments.is_empty() {
         return None;
     }
     let mut message = json!({
@@ -51,7 +52,31 @@ pub(super) fn cursor_message_from_bubble(
         object.insert("usage".to_string(), usage);
         object.insert("usageScope".to_string(), json!("request-response"));
     }
+    if !attachments.is_empty()
+        && let Some(object) = message.as_object_mut()
+    {
+        object.insert("attachments".to_string(), Value::Array(attachments));
+    }
     Some(message)
+}
+
+fn cursor_bubble_attachments(bubble: &Value) -> Vec<Value> {
+    [
+        "attachments",
+        "attachedFiles",
+        "attachedFileCodeChunks",
+        "fileSelections",
+        "images",
+        "imageAttachments",
+    ]
+    .iter()
+    .filter_map(|key| bubble.get(*key))
+    .flat_map(|value| match value {
+        Value::Array(items) => items.clone(),
+        Value::Null => Vec::new(),
+        other => vec![other.clone()],
+    })
+    .collect()
 }
 
 pub(super) fn cursor_bubble_role(bubble: &Value) -> Option<&'static str> {

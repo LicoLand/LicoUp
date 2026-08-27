@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 pub(in crate::platform) fn partial_text_delta(message: &Value) -> Option<&str> {
     (message.get("type").and_then(Value::as_str) == Some("stream_event"))
@@ -34,12 +34,13 @@ pub(in crate::platform) fn processing_evidence_kind(message: &Value) -> Option<&
         let block_type = message
             .pointer("/event/content_block/type")
             .and_then(Value::as_str);
-        let delta_type = message.pointer("/event/delta/type").and_then(Value::as_str);
-        if matches!(block_type, Some("tool_use" | "server_tool_use")) {
+        if event_type == Some("content_block_start")
+            && matches!(block_type, Some("tool_use" | "server_tool_use"))
+        {
             return Some("tool");
         }
-        if matches!(block_type, Some("thinking" | "redacted_thinking"))
-            || matches!(delta_type, Some("thinking_delta" | "signature_delta"))
+        if event_type == Some("content_block_start")
+            && matches!(block_type, Some("thinking" | "redacted_thinking"))
         {
             return Some("reasoning");
         }
@@ -69,4 +70,26 @@ pub(super) fn processing_tool_name(message: &Value) -> Option<&str> {
         }
     }
     None
+}
+
+/// Retain only the structured evidence needed to replay a process-local turn.
+/// Raw tool input, reasoning text, local paths, and vendor frames never enter
+/// the transcript projection.
+pub(super) fn transcript_event(message: &Value) -> Option<Value> {
+    if message.get("type").and_then(Value::as_str) == Some("system")
+        && message.get("subtype").and_then(Value::as_str) == Some("permission_denied")
+    {
+        return Some(json!({"kind": "permissionDenied"}));
+    }
+    let evidence_kind = processing_evidence_kind(message)?;
+    let mut event = json!({
+        "kind": "processing",
+        "evidenceKind": evidence_kind,
+    });
+    if let Some(tool_name) = processing_tool_name(message)
+        && let Some(object) = event.as_object_mut()
+    {
+        object.insert("toolName".to_string(), json!(tool_name));
+    }
+    Some(event)
 }

@@ -161,6 +161,8 @@ export const REGRESSION_MODULES = Object.freeze([
       summary: "Leased build outputs, fail-closed reclaim markers, and download-cache isolation",
       inputs: [
         "package.json",
+        "tools/scripts/client-build.mjs",
+        "tests/contract/client/client-build.test.mjs",
         "tools/scripts/cargo-client.mjs",
         "tools/scripts/client-test-artifacts.mjs",
         "tools/scripts/client-android-native-tests.mjs",
