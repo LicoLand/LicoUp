@@ -48,7 +48,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/llm_api_key_vault.rs",
         "crates/licoup-native/src/domain/llm_gateway.rs",
         "crates/licoup-native/src/domain/llm_gateway_agent_config.rs",
-        "crates/licoup-native/src/domain/llm_gateway_default_catalog.rs",
         "crates/licoup-native/src/domain/llm_gateway_stream.rs",
       ],
       command: rustLayer("domain::llm_"),
