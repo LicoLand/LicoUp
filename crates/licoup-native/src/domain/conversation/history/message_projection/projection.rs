@@ -9,8 +9,8 @@ use super::generated_context::{
     generated_control_text, strip_generated_context_blocks,
 };
 use super::semantic::{
-    HistoryMessageKind, delegated_subagent_prompt_title, humanize_history_semantic,
-    normalize_history_message_semantic, structured_name,
+    HistoryMessageKind, humanize_history_semantic, normalize_history_message_semantic,
+    structured_name,
 };
 use super::structured_privacy::{
     sanitize_structured_event_text, sanitize_structured_label, structured_event_text,
@@ -225,35 +225,6 @@ pub(in crate::domain::conversation::history) fn native_message_timestamp() -> St
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
-}
-
-pub(in crate::domain::conversation::history) fn delegated_subagent_prompt_message(
-    adapter: HistoryAdapter,
-    path: &Path,
-    index: usize,
-    role: &str,
-    text: &str,
-    created_at: Option<String>,
-) -> Option<Value> {
-    if !matches!(role, "user" | "human") {
-        return None;
-    }
-    let prompt = extract_user_authored_text(text);
-    if !super::semantic::looks_like_delegated_agent_prompt(&prompt) {
-        return None;
-    }
-    let title = delegated_subagent_prompt_title(&prompt)
-        .filter(|title| !title.trim().is_empty())
-        .unwrap_or_else(|| "Subagent task".to_string());
-    Some(json!({
-        "id": message_id(adapter.id(), path, index),
-        "role": "subagent_prompt",
-        "text": title.clone(),
-        "createdAt": created_at.unwrap_or_default(),
-        "sourcePath": display_path(path),
-        "subagentPrompt": true,
-        "subagentTitle": title
-    }))
 }
 
 pub(in crate::domain::conversation::history) fn clean_native_message_text(

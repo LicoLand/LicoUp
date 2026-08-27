@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:licoup/src/projections/conversation/canonical_group_event_metadata_parser.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -141,19 +143,29 @@ AgentConversationSession canonicalGroupConversationSession(
         : (author != null && author.id == conversation.assistantMembershipId
               ? 'assistant'
               : 'member');
+    final correlationId = event.correlationId.trim();
+    final turnIdentity = correlationId.isEmpty ? '' : 'live-$correlationId';
+    var processIndex = 0;
     final textChunks = <String>[];
+    var completedSnapshotPending = false;
+    var completedSnapshotBase = '';
+    var insideMessageUnit = false;
     var textCreatedAt = event.createdAtUnixMs;
     var textFlush = 0;
     void flushText() {
       if (textChunks.isEmpty) return;
+      final text = textChunks.join();
+      final identity = textFlush == 0
+          ? event.id
+          : '${event.id}:text:$textFlush';
       messages.add(
         AgentConversationMessage(
-          id: textFlush == 0 ? event.id : '${event.id}:text:$textFlush',
+          id: identity,
           role: user ? 'user' : 'assistant',
-          text: textChunks.join(),
+          text: text,
           createdAt: _iso(textCreatedAt),
           layer: AgentConversationSemanticLayer.thread,
-          stableIdentity: event.id,
+          stableIdentity: identity,
           participantAgentId: user
               ? ''
               : author?.principal.agentId.trim() ?? '',
@@ -164,19 +176,43 @@ AgentConversationSession canonicalGroupConversationSession(
         ),
       );
       textChunks.clear();
+      completedSnapshotPending = false;
       textFlush += 1;
     }
 
     for (final eventPart in event.parts) {
       if (eventPart.kind == ConversationEventPartKind.text) {
+        if (completedSnapshotPending &&
+            eventPart.content == completedSnapshotBase) {
+          completedSnapshotPending = false;
+          continue;
+        }
+        completedSnapshotPending = false;
         if (textChunks.isEmpty && eventPart.createdAtUnixMs != 0) {
           textCreatedAt = eventPart.createdAtUnixMs;
         }
         textChunks.add(eventPart.content);
         continue;
       }
-      flushText();
+      if (_canonicalMessageUnit(eventPart) != null) {
+        flushText();
+        completedSnapshotPending = false;
+        insideMessageUnit = true;
+        continue;
+      }
       final presentation = _canonicalGroupPartPresentation(eventPart);
+      if (!insideMessageUnit && presentation.cardType != 'lifecycle') {
+        flushText();
+      }
+      if (presentation.cardTitle == 'lifecycle.completed') {
+        completedSnapshotPending = true;
+        completedSnapshotBase = textChunks.join();
+      }
+      final stableIdentity = turnIdentity.isEmpty
+          ? event.id
+          : presentation.cardType == 'lifecycle'
+          ? '$turnIdentity-lifecycle'
+          : '$turnIdentity-process-${processIndex++}';
       messages.add(
         AgentConversationMessage(
           id: eventPart.id.isEmpty
@@ -192,7 +228,7 @@ AgentConversationSession canonicalGroupConversationSession(
           layer: AgentConversationSemanticLayer.execution,
           cardType: presentation.cardType,
           cardTitle: presentation.cardTitle,
-          stableIdentity: event.id,
+          stableIdentity: stableIdentity,
           participantAgentId: user
               ? ''
               : author?.principal.agentId.trim() ?? '',
@@ -225,6 +261,18 @@ AgentConversationSession canonicalGroupConversationSession(
     sourceMessageCount: conversation.eventCount,
     historyTruncated: conversation.eventCount > events.length,
   );
+}
+
+String? _canonicalMessageUnit(ClientConversationEventPart part) {
+  if (part.kind != ConversationEventPartKind.metadata) return null;
+  try {
+    final decoded = jsonDecode(part.content);
+    if (decoded is! Map) return null;
+    final value = (decoded['messageUnit'] ?? '').toString().trim();
+    return value.isEmpty ? null : value;
+  } catch (_) {
+    return null;
+  }
 }
 
 ({String cardType, String cardTitle, String text})

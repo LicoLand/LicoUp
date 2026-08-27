@@ -16,15 +16,14 @@ pub(super) fn open_serve_session(
             &config.cwd,
         )?;
         return match super::super::opencode_serve::get_json(&url) {
-            Ok(payload) if serve_parser::session_id(&payload).is_some() => {
-                Ok(config.requested_session_id.clone())
-            }
-            Ok(_) => Err(ProtocolFailure::new(
-                "acp_native_session_not_found",
-                "The requested native conversation does not exist in the ACP agent.",
-                "session/load",
-            )
-            .with_session(Some(&config.requested_session_id))),
+            Ok(payload) => match serve_parser::session_id(&payload) {
+                Some(id) if id == config.requested_session_id => Ok(id.to_string()),
+                // A returned different identity is an exact-lookup mismatch:
+                // the HTTP session for the requested id must not be replaced
+                // by another native conversation.
+                Some(_) => Err(load_identity_mismatch(&config.requested_session_id)),
+                None => Err(load_session_not_found(&config.requested_session_id)),
+            },
             Err(failure) => Err(super::serve_transport::request_failure(
                 failure,
                 "session/load",
@@ -62,4 +61,22 @@ pub(super) fn open_serve_session(
 
 pub(super) fn build_session_create_body() -> Value {
     json!({})
+}
+
+fn load_session_not_found(requested_session_id: &str) -> ProtocolFailure {
+    ProtocolFailure::new(
+        "acp_native_session_not_found",
+        "The requested native conversation does not exist in the ACP agent.",
+        "session/load",
+    )
+    .with_session(Some(requested_session_id))
+}
+
+fn load_identity_mismatch(requested_session_id: &str) -> ProtocolFailure {
+    ProtocolFailure::new(
+        "acp_session_id_mismatch",
+        "The ACP agent returned a different conversation than the one requested.",
+        "session/load",
+    )
+    .with_session(Some(requested_session_id))
 }

@@ -36,6 +36,14 @@ test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
   assert.match(manifest, /"Pictures"/u);
   assert.match(manifest, /"Music"/u);
   assert.match(manifest, /id = "cursor"/u);
+  const claudeManifest = (manifest.split('id = "claude-code"')[1] ?? "").split(
+    "[[agents]]",
+  )[0] ?? "";
+  assert.match(claudeManifest, /config = \[[\s\S]*\.claude\.json/u);
+  assert.doesNotMatch(
+    claudeManifest.split("history =")[1] ?? "",
+    /\.claude\.json/u,
+  );
   assert.match(scanPaths, /include_str!\("\.\.\/\.\.\/\.\.\/resources\/agent-scan-paths\.toml"\)/u);
   assert.match(scanPaths, /fn admitted_scan_path/u);
   assert.doesNotMatch(binaries, /env::var_os\("PATH"\)/u);

@@ -270,6 +270,8 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       kind: "packaging",
       summary: "Canonical client package plan, module manifest, and source binding",
       inputs: [
+        "tools/scripts/client-build.mjs",
+        "tests/contract/client/client-build.test.mjs",
         "apps/desktop/packaging.modules.json",
         "apps/desktop/scripts/package-client.mjs",
         "apps/desktop/scripts/package-client-self-test.mjs",
@@ -378,7 +380,6 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       summary: "Linux bundle verification carrier and tar resource bounds",
       inputs: [
         "apps/desktop/scripts/build-linux-verification-carrier.mjs",
-        "apps/desktop/scripts/build-linux-bundle.mjs",
         "apps/desktop/scripts/gui-smoke-linux-bundle.mjs",
         "apps/desktop/scripts/smoke-linux-bundle.mjs",
         "apps/desktop/scripts/verify-ubuntu-client.mjs",

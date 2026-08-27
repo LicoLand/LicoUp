@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::fs;
 #[cfg(unix)]
 use std::io::Write;
@@ -535,6 +535,202 @@ fn execute_reads_legacy_wrapped_receipt_for_compatibility() {
 
 #[cfg(unix)]
 #[test]
+fn antigravity_effective_settings_match_executed_command() {
+    let _environment_guard = environment_lock();
+    let portable = std::env::temp_dir().join(format!(
+        "lico-agy-effective-portable-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-effective-gemini-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&portable).unwrap();
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+    let previous_capture = std::env::var_os("ARGV_CAPTURE_PATH");
+
+    let row = |label: &str| -> (ArgvCapturingExecutable, PathBuf) {
+        let fixture = ArgvCapturingExecutable::new(label, DEFAULT_RECEIPT_ID);
+        let workspace = fixture.root.join("workspace");
+        fs::create_dir_all(&workspace).unwrap();
+        unsafe {
+            std::env::set_var("ARGV_CAPTURE_PATH", &fixture.argv_path);
+        }
+        (fixture, workspace)
+    };
+    let launch =
+        |fixture: &ArgvCapturingExecutable, workspace: &Path, params: &Value, session_id: &str| {
+            execute(
+                fixture.executable_str(),
+                params,
+                "hello-from-lico",
+                session_id,
+                Some(workspace),
+                5_000,
+                Some(8_192),
+                8_192,
+            )
+        };
+    let assert_token = |argv: &[String], token: &str| {
+        assert!(
+            argv.iter().any(|arg| arg == token),
+            "argv {argv:?} must contain {token:?}"
+        );
+    };
+    let assert_absent = |argv: &[String], prefix: &str| {
+        assert!(
+            !argv.iter().any(|arg| arg.starts_with(prefix)),
+            "argv {argv:?} must not contain a {prefix:?} token"
+        );
+    };
+
+    // Omitted policy: the actual dangerous-skip launch remains the default and
+    // the effective report names exactly that execution.
+    let (fixture, workspace) = row("omitted");
+    let result = launch(&fixture, &workspace, &json!({}), "");
+    assert!(result.ok, "{:?}", result.error);
+    let argv = fixture.captured_argv();
+    assert_token(&argv, "--print=hello-from-lico");
+    assert_token(&argv, "--dangerously-skip-permissions");
+    assert_token(&argv, &format!("--add-dir={}", workspace.display()));
+    assert_absent(&argv, "--model=");
+    assert_absent(&argv, "--effort=");
+    assert_absent(&argv, "--sandbox");
+    assert_absent(&argv, "--conversation=");
+    assert_eq!(
+        result.effective.permission_mode.as_deref(),
+        Some("dangerously-skip-permissions")
+    );
+    assert_eq!(result.effective.approval_policy, None);
+    assert_eq!(result.effective.sandbox, Some(json!(false)));
+    assert_eq!(result.effective.model, None);
+    assert_eq!(result.effective.reasoning_effort, None);
+    assert_eq!(
+        result.effective.cwd.as_deref(),
+        Some(workspace.to_str().unwrap())
+    );
+
+    // The dangerous-skip alias and every other supported option map one-to-one
+    // onto executed argv and the effective projection.
+    let (fixture, workspace) = row("explicit");
+    let result = launch(
+        &fixture,
+        &workspace,
+        &json!({
+            "permissionMode": "dangerously-skip-permissions",
+            "approvalPolicy": "dangerously-skip-permissions",
+            "model": "gemini-2.5-pro",
+            "reasoningEffort": "high",
+            "sandbox": true
+        }),
+        "",
+    );
+    assert!(result.ok, "{:?}", result.error);
+    let argv = fixture.captured_argv();
+    assert_token(&argv, "--dangerously-skip-permissions");
+    assert_token(&argv, "--model=gemini-2.5-pro");
+    assert_token(&argv, "--effort=high");
+    assert_token(&argv, "--sandbox");
+    assert_eq!(
+        result.effective.permission_mode.as_deref(),
+        Some("dangerously-skip-permissions")
+    );
+    assert_eq!(
+        result.effective.approval_policy,
+        Some(json!("dangerously-skip-permissions"))
+    );
+    assert_eq!(result.effective.sandbox, Some(json!(true)));
+    assert_eq!(result.effective.model.as_deref(), Some("gemini-2.5-pro"));
+    assert_eq!(result.effective.reasoning_effort.as_deref(), Some("high"));
+
+    // Unsupported approval policies fail before any process starts.
+    for (label, params) in [
+        ("unsupported-manual", json!({"approvalPolicy": "manual"})),
+        ("unsupported-safe", json!({"permissionMode": "safe"})),
+        ("unsupported-auto", json!({"approvalPolicy": "auto"})),
+    ] {
+        let (fixture, workspace) = row(label);
+        let result = launch(&fixture, &workspace, &params, "");
+        assert!(!result.ok, "{label} must be rejected");
+        assert_eq!(
+            result.error.unwrap().code,
+            "antigravity_permission_policy_unsupported",
+            "{label}"
+        );
+        assert!(
+            !fixture.launched(),
+            "{label} must fail before the CLI is launched"
+        );
+    }
+
+    // A non-boolean sandbox choice is also rejected rather than silently
+    // dropped while a different execution is reported.
+    let (fixture, workspace) = row("sandbox-string");
+    let result = launch(&fixture, &workspace, &json!({"sandbox": "browser"}), "");
+    assert!(!result.ok);
+    assert_eq!(
+        result.error.unwrap().code,
+        "antigravity_sandbox_unsupported"
+    );
+    assert!(!fixture.launched());
+
+    // Resume identity maps into exactly one --conversation in argv and stays
+    // the returned durable identity.
+    let resume_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let fixture = ArgvCapturingExecutable::new("resume", resume_id);
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    unsafe {
+        std::env::set_var("ARGV_CAPTURE_PATH", &fixture.argv_path);
+    }
+    let result = launch(
+        &fixture,
+        &workspace,
+        &json!({"model": "gemini-test"}),
+        resume_id,
+    );
+    assert!(result.ok, "{:?}", result.error);
+    let argv = fixture.captured_argv();
+    assert_token(&argv, &format!("--conversation={resume_id}"));
+    assert_token(&argv, "--model=gemini-test");
+    assert_eq!(result.session_id, resume_id);
+
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    if let Some(value) = previous_capture {
+        unsafe {
+            std::env::set_var("ARGV_CAPTURE_PATH", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("ARGV_CAPTURE_PATH");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn hook_script_encodes_one_direct_object_from_stdin() {
     let _environment_guard = environment_lock();
     let gemini = std::env::temp_dir().join(format!(
@@ -877,6 +1073,95 @@ exit 0
 
 #[cfg(unix)]
 impl Drop for FakeExecutable {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+#[cfg(unix)]
+struct ArgvCapturingExecutable {
+    root: PathBuf,
+    executable: PathBuf,
+    argv_path: PathBuf,
+}
+
+#[cfg(unix)]
+impl ArgvCapturingExecutable {
+    /// An authorized fake that records every launcher argument and writes a
+    /// direct hook receipt with `receipt_id` before printing PONG.
+    fn new(label: &str, receipt_id: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "lico-antigravity-argv-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("fake-agy");
+        let argv_path = root.join("argv.log");
+        let writer = ReceiptStyle::Direct.writer_body(receipt_id);
+        let script = format!(
+            r#"#!/bin/sh
+set -eu
+for arg in "$@"; do
+  case "$arg" in
+    --help)
+      printf '%s\n' '--print --conversation --model --effort --dangerously-skip-permissions'
+      exit 0
+      ;;
+    --version)
+      printf '%s\n' '1.1.5'
+      exit 0
+      ;;
+    models)
+      exit 0
+      ;;
+  esac
+done
+printf '%s\n' "$@" > "$ARGV_CAPTURE_PATH"
+receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
+python3 - "$receipt" <<'PY'
+{writer}
+PY
+printf '%s\n' 'PONG'
+exit 0
+"#,
+            writer = writer,
+        );
+        fs::write(&executable, script).unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        Self {
+            root,
+            executable,
+            argv_path,
+        }
+    }
+
+    fn executable_str(&self) -> &str {
+        self.executable.to_str().unwrap()
+    }
+
+    fn captured_argv(&self) -> Vec<String> {
+        fs::read_to_string(&self.argv_path)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn launched(&self) -> bool {
+        self.argv_path.exists()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ArgvCapturingExecutable {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
     }

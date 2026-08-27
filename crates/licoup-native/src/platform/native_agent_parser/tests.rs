@@ -64,16 +64,17 @@ fn cursor_parser_streams_only_assistant_frames_and_completes_with_cumulative_res
     use crate::platform::cursor_driver::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
-    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    let mut parser = CursorParser::new(
+        "synthetic-session",
+        "exact user prompt",
+        EffectiveSettings::default(),
+    );
     let init = parser
         .parse_line(br#"{"type":"system","subtype":"init","apiKeySource":"synthetic","cwd":"/tmp","session_id":"synthetic-session","model":"fake-model","permissionMode":"default"}"#)
         .unwrap();
-    assert!(init.iter().any(|effect| matches!(
-        effect,
-        CursorEffect::Accepted { session_id, turn_id }
-            if session_id == "synthetic-session" && turn_id == "cursor-turn"
-    )));
-    // The user prompt echo is an acknowledgement and must never output.
+    assert!(init.is_empty());
+    // Only the exact user prompt echo acknowledges native delivery, and it
+    // must never become assistant output.
     let echo = parser
         .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"exact user prompt"}]}}"#)
         .unwrap();
@@ -81,6 +82,11 @@ fn cursor_parser_streams_only_assistant_frames_and_completes_with_cumulative_res
         echo.iter()
             .all(|effect| !matches!(effect, CursorEffect::Text { .. }))
     );
+    assert!(echo.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Accepted { session_id, turn_id }
+            if session_id == "synthetic-session" && turn_id == "cursor-turn"
+    )));
     let first = parser
         .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","timestamp_ms":1,"message":{"role":"assistant","content":[{"type":"text","text":"hello "}]}}"#)
         .unwrap();
@@ -118,7 +124,10 @@ fn cursor_parser_terminal_result_appends_missing_suffix() {
     use crate::platform::cursor_driver::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
-    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
     let first = parser
         .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#)
         .unwrap();
@@ -146,7 +155,10 @@ fn cursor_parser_terminal_result_rejects_true_divergence() {
         CursorParseFailure, CursorParser,
     };
 
-    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
     parser
         .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"text","text":"hello"},{"type":"text","text":" world"}]}}"#)
         .unwrap();
@@ -164,13 +176,73 @@ fn cursor_parser_accepts_an_explicit_empty_success_result() {
     use crate::platform::cursor_driver::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
-    let mut parser = CursorParser::new("synthetic-session", EffectiveSettings::default());
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
     let effects = parser
         .parse_line(br#"{"type":"result","subtype":"success","result":""}"#)
         .unwrap();
     assert!(effects.iter().any(|effect| matches!(
         effect,
         CursorEffect::Complete(outcome) if outcome.output.is_empty()
+    )));
+}
+
+#[test]
+fn cursor_parser_rejects_missing_or_different_prompt_acknowledgement() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{
+        CursorParseFailure, CursorParser,
+    };
+
+    let mut mismatched = CursorParser::new(
+        "synthetic-session",
+        "expected prompt",
+        EffectiveSettings::default(),
+    );
+    assert!(matches!(
+        mismatched.parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"different prompt"}]}}"#),
+        Err(CursorParseFailure::PromptAcknowledgementMismatch)
+    ));
+
+    let mut missing = CursorParser::new(
+        "synthetic-session",
+        "expected prompt",
+        EffectiveSettings::default(),
+    );
+    assert!(matches!(
+        missing.parse_line(br#"{"type":"assistant","session_id":"synthetic-session","timestamp_ms":1,"message":{"role":"assistant","content":[{"type":"text","text":"reply"}]}}"#),
+        Err(CursorParseFailure::PromptAcknowledgementMissing)
+    ));
+}
+
+#[test]
+fn cursor_parser_preserves_an_explicit_model_selector_over_the_init_label() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new(
+        "synthetic-session",
+        "prompt",
+        EffectiveSettings {
+            model: Some("composer-2.5".to_owned()),
+            ..EffectiveSettings::default()
+        },
+    );
+    parser
+        .parse_line(br#"{"type":"system","subtype":"init","session_id":"synthetic-session","model":"Composer 2.5"}"#)
+        .unwrap();
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let completed = parser
+        .parse_line(br#"{"type":"result","subtype":"success","session_id":"synthetic-session","result":"ok"}"#)
+        .unwrap();
+    assert!(completed.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Complete(outcome)
+            if outcome.effective.model.as_deref() == Some("composer-2.5")
     )));
 }
 

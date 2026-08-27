@@ -153,7 +153,7 @@ async function assertExistingWindowsBundleIfPresent() {
   const runnableRoot = path.join(repoRoot, "build", "apps", "desktop", "runnable", "windows", "release");
   const bundleRoot = path.join(repoRoot, "build", "apps", "desktop", "bundles", "windows", "release", "bundle");
   if (!(await fileExists(path.join(runnableRoot, "licoup.exe")))) {
-    console.log("windows bundle artifact check skipped; run npm run client:build:windows first");
+    console.log("windows bundle artifact check skipped; run npm run client:build -- --platform windows first");
     return;
   }
   for (const root of [runnableRoot, bundleRoot]) {

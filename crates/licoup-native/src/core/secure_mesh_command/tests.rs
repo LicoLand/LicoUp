@@ -43,6 +43,8 @@ fn agent_sessions_describe_params_require_session_identity() {
     raw["targetBinding"]["targetAgentId"] = json!("codex");
     raw["body"] = json!({
         "nativeSessionId": "codex-native-exact",
+        "messageBefore": "message-50",
+        "messageLimit": 100,
     });
     let payload = SecureCommandPayload::from_value(&raw).unwrap();
     let params = agent_sessions_describe_params(&payload).unwrap();
@@ -50,6 +52,8 @@ fn agent_sessions_describe_params_require_session_identity() {
     assert_eq!(params["sessionId"], "codex-native-exact");
     assert_eq!(params["limit"], 1);
     assert_eq!(params["offset"], 0);
+    assert_eq!(params["messageBefore"], "message-50");
+    assert_eq!(params["messageLimit"], 100);
 
     raw["body"] = json!({});
     let missing = SecureCommandPayload::from_value(&raw).unwrap();

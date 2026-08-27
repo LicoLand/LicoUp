@@ -133,6 +133,63 @@ fn main() {
         let is_auth_turn = line.contains("fake-claude-auth-prompt");
         let is_steer_turn = line.contains("fake-claude-steer-prompt");
         let is_whole_assistant_turn = line.contains("fake-claude-whole-assistant-prompt");
+        let is_segmented_assistant_turn = line.contains("fake-claude-segmented-assistant-prompt");
+        let is_terminal_only_segment_turn =
+            line.contains("fake-claude-terminal-segment-prompt");
+        if is_terminal_only_segment_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"First segment"}}]}} ,"session_id":"{session_id}","uuid":"msg-a"}}"#
+                ),
+            );
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"Final segment","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
+        if is_segmented_assistant_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            for (uuid, text) in [
+                ("msg-a", "第一段"),
+                ("msg-a", "第一段"),
+                ("msg-b", "第一段第二段"),
+                ("msg-b", "第一段第二段"),
+                ("msg-c", "第二段第三段"),
+            ] {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"{text}"}}]}} ,"session_id":"{session_id}","uuid":"{uuid}"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"第二段第三段","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
         if is_whole_assistant_turn {
             if turns == 1 {
                 send(

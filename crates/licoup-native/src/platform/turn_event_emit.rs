@@ -44,34 +44,54 @@ pub fn emit_turn_event(kind: &str, session_id: &str, turn_id: &str, payload: Val
 
 /// Emit an agent message chunk for real-time display.
 pub fn emit_agent_message_chunk(session_id: &str, turn_id: &str, text: &str) {
+    emit_agent_message_chunk_for_unit(session_id, turn_id, "", text);
+}
+
+/// Emit one chunk for a stable adapter-owned message unit. The unit is a
+/// redacted local ordinal, never a provider message identifier.
+pub fn emit_agent_message_chunk_for_unit(
+    session_id: &str,
+    turn_id: &str,
+    message_unit: &str,
+    text: &str,
+) {
     if text.is_empty() {
         return;
     }
-    emit_turn_event(
-        "agent.message.chunk",
-        session_id,
-        turn_id,
-        json!({
-            "text": text,
-            "lifecyclePrefix": ["submitted", "accepted", "processing", "responding"]
-        }),
-    );
+    let mut payload = json!({
+        "text": text,
+        "lifecyclePrefix": ["submitted", "accepted", "processing", "responding"]
+    });
+    if !message_unit.is_empty() {
+        payload["messageUnit"] = json!(message_unit);
+    }
+    emit_turn_event("agent.message.chunk", session_id, turn_id, payload);
 }
 
 /// Emit a completed agent message item (Codex item/completed path).
 pub fn emit_agent_message_completed(session_id: &str, turn_id: &str, text: &str) {
+    emit_agent_message_completed_for_unit(session_id, turn_id, "", text);
+}
+
+/// Complete one adapter-owned message unit without merging it into an earlier
+/// assistant message from the same turn.
+pub fn emit_agent_message_completed_for_unit(
+    session_id: &str,
+    turn_id: &str,
+    message_unit: &str,
+    text: &str,
+) {
     if text.is_empty() {
         return;
     }
-    emit_turn_event(
-        "agent.message.completed",
-        session_id,
-        turn_id,
-        json!({
-            "text": text,
-            "lifecyclePrefix": ["submitted", "accepted", "processing", "responding", "completed"]
-        }),
-    );
+    let mut payload = json!({
+        "text": text,
+        "lifecyclePrefix": ["submitted", "accepted", "processing", "responding", "completed"]
+    });
+    if !message_unit.is_empty() {
+        payload["messageUnit"] = json!(message_unit);
+    }
+    emit_turn_event("agent.message.completed", session_id, turn_id, payload);
 }
 
 /// Emit a redacted native-work receipt. The evidence kind is a fixed adapter

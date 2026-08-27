@@ -482,19 +482,17 @@ void _applyMessageDelta(
   final participantRole = _text(event.payload['participantRole']).isEmpty
       ? fallbackRole
       : _text(event.payload['participantRole']);
+  final messageUnit = _text(event.payload['messageUnit']);
   final participantKey = state.participantReplyKey(
     turnId: state.turnId,
     participantAgentId: participantAgentId,
     participantRole: participantRole,
+    messageUnit: messageUnit,
   );
   if (participantKey == null) return;
-  final previous = state.replies
-      .where((reply) => reply.key == participantKey)
-      .map((reply) => reply.text)
-      .firstOrNull;
   final merged = ConversationRuntimeResultPolicy.mergeProgressiveText(
-    previous ?? '',
-    _text(event.payload['text']),
+    state.replyTextFor(participantKey),
+    (event.payload['text'] ?? '').toString(),
     completed: event.kind == ConversationProjectionEventKind.messageCompleted,
   );
   final visible = visibleConversationMessageText(
@@ -510,6 +508,7 @@ void _applyMessageDelta(
     participantAgentId: participantAgentId,
     participantLabel: participantLabel,
     participantRole: participantRole,
+    messageUnit: messageUnit,
   );
 }
 
