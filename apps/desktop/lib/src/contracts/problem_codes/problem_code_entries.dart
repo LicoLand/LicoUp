@@ -19,7 +19,7 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 /// - LU-PL 3500-3599 Adapter plugins (11 assigned)
 /// - LU-AR 3600-3699 Conversation archive / snapshots (3 assigned)
 /// - LU-AW 3700-3899 Subagent MCP and Assistant workflow facade (11 assigned)
-/// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (313 assigned)
+/// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (339 assigned)
 /// - LU-CB 4700-4799 Catalog convergence (16 assigned)
 /// - LU-MC 4800-4899 MCP transfer (6 assigned)
 /// - LU-OC 4900-5199 Optional collaboration plugins (64 assigned)
@@ -792,11 +792,32 @@ const Map<String, ProblemCode> problemCodeEntries = {
   ),
   'cursor_cli_empty_prompt': ProblemCode(ProblemDomain.nativeAgent, 4007),
   'cursor_cli_invalid_json': ProblemCode(ProblemDomain.nativeAgent, 4008),
+  'cursor_cli_private_instructions_unsupported': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4233,
+  ),
   'cursor_cli_output_limit': ProblemCode(ProblemDomain.nativeAgent, 4009),
+  'cursor_cli_prompt_acknowledgement_missing': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4237,
+  ),
+  'cursor_cli_prompt_acknowledgement_mismatch': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4238,
+  ),
   'cursor_cli_read_failed': ProblemCode(ProblemDomain.nativeAgent, 4010),
+  'cursor_cli_session_identity_mismatch': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4234,
+  ),
   'cursor_cli_start_failed': ProblemCode(ProblemDomain.nativeAgent, 4011),
+  'cursor_cli_text_snapshot_diverged': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4235,
+  ),
   'cursor_cli_timeout': ProblemCode(ProblemDomain.nativeAgent, 4012),
   'cursor_cli_turn_failed': ProblemCode(ProblemDomain.nativeAgent, 4013),
+  'cursor_cli_unterminated_json': ProblemCode(ProblemDomain.nativeAgent, 4236),
   'cursor_cli_workspace_unavailable': ProblemCode(
     ProblemDomain.nativeAgent,
     4014,

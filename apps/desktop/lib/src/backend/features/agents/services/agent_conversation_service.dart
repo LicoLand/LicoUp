@@ -111,6 +111,24 @@ class AgentConversationService implements AgentConversationLane {
       if (eventName == 'done' ||
           (line.containsKey('ok') &&
               (eventName.isEmpty || eventName == 'done'))) {
+        final payload = Map<String, dynamic>.from(line);
+        if (line['ok'] != true && payload['terminalTransition'] is! Map) {
+          final nested = line['error'];
+          final error = nested is Map
+              ? Map<String, dynamic>.from(nested)
+              : const <String, dynamic>{};
+          final code = (error['code'] ?? 'conversation_dispatch_failed')
+              .toString()
+              .trim();
+          final stage = (error['stage'] ?? 'conversation/dispatch')
+              .toString()
+              .trim();
+          payload['terminalTransition'] = <String, dynamic>{
+            'kind': 'failed',
+            'code': code.isEmpty ? 'conversation_dispatch_failed' : code,
+            'stage': stage.isEmpty ? 'conversation/dispatch' : stage,
+          };
+        }
         yield AgentDispatchEvent(
           kind: line['ok'] == true
               ? 'dispatch.turn.completed'
@@ -118,7 +136,7 @@ class AgentConversationService implements AgentConversationLane {
           sessionId: (line['nativeSessionId'] ?? line['sessionId'] ?? '')
               .toString(),
           turnId: (line['turnId'] ?? '').toString(),
-          payload: Map<String, dynamic>.from(line),
+          payload: payload,
         );
         continue;
       }

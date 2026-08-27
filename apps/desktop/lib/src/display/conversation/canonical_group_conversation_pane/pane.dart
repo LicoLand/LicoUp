@@ -77,6 +77,7 @@ class _CanonicalGroupConversationPaneState
   final Map<String, String> _participantRoleByHandle = {};
   final Set<String> _finishingHandles = {};
   String _attachedConversationId = '';
+  bool _cancelPending = false;
 
   /// Shared 32 ms-coalesced turn projection channel, identical to the 1:1
   /// live path: every PersistentTurn event becomes a generated
@@ -532,6 +533,7 @@ class _CanonicalGroupConversationPaneState
     _participantRoleByHandle.clear();
     _finishingHandles.clear();
     _attachedConversationId = '';
+    _cancelPending = false;
   }
 
   Future<void> _attachLiveTurns({
@@ -786,6 +788,35 @@ class _CanonicalGroupConversationPaneState
     return true;
   }
 
+  Future<void> _cancelVisibleTurn() async {
+    final gateway = widget.persistentGateway;
+    final conversationId = widget.controller.selectedConversationId;
+    if (gateway == null ||
+        conversationId.isEmpty ||
+        _turnSubscriptions.length != 1 ||
+        _cancelPending) {
+      return;
+    }
+    final handle = _turnSubscriptions.keys.single;
+    setState(() => _cancelPending = true);
+    final result = await gateway.cancelActiveTurn(
+      turnHandle: handle,
+      conversationId: conversationId,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _cancelPending = false);
+    if (widget.controller.selectedConversationId != conversationId) return;
+    if (!result.ok) {
+      final code = result.failureCode.trim();
+      widget.controller.surfaceFailure(
+        'turn/cancel',
+        code.isEmpty ? 'dispatch_cancel_failed' : code,
+      );
+    }
+  }
+
   List<Map<String, dynamic>> _mergeLiveTurns(
     List<Map<String, dynamic>> posted,
     List<Map<String, dynamic>> discovered,
@@ -907,6 +938,7 @@ class _CanonicalGroupConversationPaneState
       loading: controller.loading,
       turnActive: _turnActive,
       composerBusy: controller.sending || _turnActive,
+      cancelEnabled: _turnSubscriptions.length == 1 && !_cancelPending,
       preparingNewConversation: false,
       composerEnabled: conversation.localOwnerMembership != null,
       sendGateReasonCode: '',
@@ -959,6 +991,7 @@ class _CanonicalGroupConversationPaneState
       onReasoningEffortChanged: (_) {},
       onDraftChanged: controller.updateDraft,
       onSend: _sendComposerMessage,
+      onCancel: _cancelVisibleTurn,
       onSelectSession: (_) {},
       onCopyText: widget.onCopyText,
     );

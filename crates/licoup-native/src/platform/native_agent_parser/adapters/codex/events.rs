@@ -189,13 +189,16 @@ impl CodexParser {
             failure.turn_status = Some(turn_status);
             return vec![ProtocolEffect::Fail(failure)];
         }
-        crate::platform::turn_event_emit::emit_turn_event(
-            "dispatch.turn.completed",
-            self.thread_id.as_deref().unwrap_or_default(),
-            self.turn_id.as_deref().unwrap_or_default(),
-            serde_json::json!({ "turnStatus": "completed" }),
-        );
         let Some(output) = final_message else {
+            crate::platform::turn_event_emit::emit_turn_event(
+                "dispatch.turn.failed",
+                self.thread_id.as_deref().unwrap_or_default(),
+                self.turn_id.as_deref().unwrap_or_default(),
+                serde_json::json!({
+                    "turnStatus": status,
+                    "code": "codex_final_message_missing",
+                }),
+            );
             let mut failure = self.contextualize(ProtocolFailure::new(
                 "codex_final_message_missing",
                 "Codex completed the turn without a final agent message.",
@@ -204,6 +207,12 @@ impl CodexParser {
             failure.turn_status = Some(status);
             return vec![ProtocolEffect::Fail(failure)];
         };
+        crate::platform::turn_event_emit::emit_turn_event(
+            "dispatch.turn.completed",
+            self.thread_id.as_deref().unwrap_or_default(),
+            self.turn_id.as_deref().unwrap_or_default(),
+            serde_json::json!({ "turnStatus": "completed" }),
+        );
 
         vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
             output,
@@ -216,29 +225,52 @@ impl CodexParser {
     }
 }
 
-const CLOSED_CODEX_ERROR_CLASSES: &[&str] = &[
-    "Unauthorized",
-    "UsageLimitExceeded",
-    "UsageNotIncluded",
-    "ContextWindowExceeded",
-    "BadRequest",
-    "SandboxError",
-    "InternalServerError",
-    "ResponseStreamConnectionError",
-    "ResponseTooManyFailedAttempts",
-    "ResponseStreamInterrupted",
-];
-
 fn closed_codex_error_class(turn: &Value) -> Option<&'static str> {
     let info = turn.get("error")?.get("codexErrorInfo")?;
-    let raw = info
+    if let Some(class) = info
         .as_str()
         .or_else(|| info.get("type").and_then(Value::as_str))
-        .unwrap_or("");
-    CLOSED_CODEX_ERROR_CLASSES
-        .iter()
-        .copied()
-        .find(|class| *class == raw)
+        .and_then(canonical_codex_error_class)
+    {
+        return Some(class);
+    }
+    info.as_object()?
+        .keys()
+        .find_map(|key| canonical_codex_error_class(key))
+}
+
+fn canonical_codex_error_class(raw: &str) -> Option<&'static str> {
+    match raw {
+        "Unauthorized" | "unauthorized" => Some("Unauthorized"),
+        "UsageLimitExceeded" | "usageLimitExceeded" => Some("UsageLimitExceeded"),
+        "UsageNotIncluded" | "usageNotIncluded" => Some("UsageNotIncluded"),
+        "ContextWindowExceeded" | "contextWindowExceeded" => Some("ContextWindowExceeded"),
+        "BadRequest" | "badRequest" => Some("BadRequest"),
+        "SandboxError" | "sandboxError" => Some("SandboxError"),
+        "InternalServerError" | "internalServerError" => Some("InternalServerError"),
+        "ServerOverloaded" | "serverOverloaded" => Some("ServerOverloaded"),
+        "SessionBudgetExceeded" | "sessionBudgetExceeded" => Some("SessionBudgetExceeded"),
+        "CyberPolicy" | "cyberPolicy" => Some("CyberPolicy"),
+        "MisalignmentPolicyViolation" | "misalignmentPolicyViolation" => {
+            Some("MisalignmentPolicyViolation")
+        }
+        "ThreadRollbackFailed" | "threadRollbackFailed" => Some("ThreadRollbackFailed"),
+        "ResponseStreamConnectionError"
+        | "responseStreamConnectionError"
+        | "ResponseStreamConnectionFailed"
+        | "responseStreamConnectionFailed" => Some("ResponseStreamConnectionFailed"),
+        "ResponseTooManyFailedAttempts" | "responseTooManyFailedAttempts" => {
+            Some("ResponseTooManyFailedAttempts")
+        }
+        "ResponseStreamInterrupted"
+        | "responseStreamInterrupted"
+        | "ResponseStreamDisconnected"
+        | "responseStreamDisconnected" => Some("ResponseStreamDisconnected"),
+        "HttpConnectionFailed" | "httpConnectionFailed" => Some("HttpConnectionFailed"),
+        "ActiveTurnNotSteerable" | "activeTurnNotSteerable" => Some("ActiveTurnNotSteerable"),
+        "Other" | "other" => Some("Other"),
+        _ => None,
+    }
 }
 
 fn turn_failure(status: &str, class: Option<&str>) -> (&'static str, &'static str) {
@@ -251,11 +283,21 @@ fn turn_failure(status: &str, class: Option<&str>) -> (&'static str, &'static st
         (_, Some("BadRequest")) => "Codex rejected the turn as a bad request.",
         (_, Some("SandboxError")) => "Codex sandbox rejected the turn.",
         (_, Some("InternalServerError")) => "Codex reported an internal server error.",
-        (_, Some("ResponseStreamConnectionError")) => "Codex lost the response stream.",
+        (_, Some("ServerOverloaded")) => "Codex is temporarily overloaded.",
+        (_, Some("SessionBudgetExceeded")) => "Codex session budget was exceeded.",
+        (_, Some("CyberPolicy" | "MisalignmentPolicyViolation")) => {
+            "Codex rejected the turn under its policy."
+        }
+        (_, Some("ThreadRollbackFailed")) => "Codex could not roll back the thread.",
+        (_, Some("ResponseStreamConnectionFailed")) => {
+            "Codex could not establish the response stream."
+        }
         (_, Some("ResponseTooManyFailedAttempts")) => {
             "Codex stopped after too many failed attempts."
         }
-        (_, Some("ResponseStreamInterrupted")) => "Codex response stream was interrupted.",
+        (_, Some("ResponseStreamDisconnected")) => "Codex response stream disconnected.",
+        (_, Some("HttpConnectionFailed")) => "Codex HTTP connection failed.",
+        (_, Some("ActiveTurnNotSteerable")) => "Codex could not steer the active turn.",
         _ => "Codex did not complete the requested turn.",
     };
     ("codex_turn_not_completed", message)

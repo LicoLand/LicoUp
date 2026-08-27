@@ -1244,6 +1244,51 @@ void main() {
     expect(find.text('streaming token'), findsOneWidget);
   });
 
+  testWidgets('single active group turn exposes an explicit stop operation', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner();
+    final persistent = _PersistentGateway(
+      active: const [
+        {
+          'turnHandle': 'dispatch:existing',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ],
+    );
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(runner: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPane(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+    expect(persistent.cancelCount, 1);
+  });
+
   testWidgets('observer loss reloads and preserves exact persisted failure', (
     tester,
   ) async {

@@ -6,7 +6,7 @@ use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
 };
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
-use crate::platform::turn_event_emit::emit_turn_event;
+use crate::platform::turn_event_emit::{emit_agent_processing, emit_turn_event};
 use serde_json::Value;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -345,6 +345,7 @@ fn run_turn(
     let (outcome, failure, stdout_truncated) = consume_turn_stream(
         &receiver,
         session_id,
+        prompt,
         &workspace,
         params,
         deadline,
@@ -490,6 +491,7 @@ fn initial_effective_settings(params: &Value, workspace: &Path) -> super::model:
 fn consume_turn_stream(
     receiver: &mpsc::Receiver<TransportEvent>,
     requested_session: &str,
+    expected_prompt: &str,
     workspace: &Path,
     params: &Value,
     deadline: Option<Instant>,
@@ -502,6 +504,7 @@ fn consume_turn_stream(
 
     let mut parser = CursorParser::new(
         requested_session,
+        expected_prompt,
         initial_effective_settings(params, workspace),
     );
     let mut stdout_bytes = 0usize;
@@ -558,6 +561,16 @@ fn consume_turn_stream(
                                 "Cursor Agent CLI returned a divergent assistant snapshot.",
                                 "turn/read",
                             ),
+                            CursorParseFailure::PromptAcknowledgementMissing => (
+                                "cursor_cli_prompt_acknowledgement_missing",
+                                "Cursor Agent CLI produced output before acknowledging the exact prompt.",
+                                "turn/deliver",
+                            ),
+                            CursorParseFailure::PromptAcknowledgementMismatch => (
+                                "cursor_cli_prompt_acknowledgement_mismatch",
+                                "Cursor Agent CLI acknowledged different prompt content.",
+                                "turn/deliver",
+                            ),
                             CursorParseFailure::TurnFailed => (
                                 "cursor_cli_turn_failed",
                                 "Cursor Agent CLI reported a failed turn result.",
@@ -586,6 +599,14 @@ fn consume_turn_stream(
                                 &turn_id,
                                 serde_json::json!({"evidenceKind": "native-event"}),
                             );
+                            // Cursor's first valid native frame proves that
+                            // the launched CLI crossed its init/receipt
+                            // boundary. Unlike tool-bearing adapters, Cursor
+                            // may emit no separate work event before its first
+                            // assistant chunk, so project that native activity
+                            // explicitly instead of leaving resumed turns at
+                            // accepted for the whole model wait.
+                            emit_agent_processing(&session_id, &turn_id, "activity", None);
                         }
                         CursorEffect::Text {
                             session_id,

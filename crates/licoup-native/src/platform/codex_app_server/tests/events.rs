@@ -231,3 +231,81 @@ fn interrupted_turn_is_not_completed() {
     assert_eq!(failure.turn_status.as_deref(), Some("interrupted"));
     assert_eq!(failure.message, "Codex interrupted the requested turn.");
 }
+
+#[test]
+fn failed_turn_classifies_current_codex_error_shapes() {
+    let cases = [
+        (
+            json!("serverOverloaded"),
+            "failed/ServerOverloaded",
+            "Codex is temporarily overloaded.",
+        ),
+        (
+            json!({"responseStreamDisconnected": {"httpStatusCode": 502}}),
+            "failed/ResponseStreamDisconnected",
+            "Codex response stream disconnected.",
+        ),
+    ];
+    for (error_info, expected_status, expected_message) in cases {
+        let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+        initialize(&mut protocol);
+        open_thread(&mut protocol);
+        start_turn(&mut protocol);
+        let failure = failed_effect(protocol.handle_message(json!({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "items": [],
+                    "error": {
+                        "message": "private fixture detail",
+                        "codexErrorInfo": error_info,
+                    }
+                }
+            }
+        })));
+        assert_eq!(failure.code, "codex_turn_not_completed");
+        assert_eq!(failure.turn_status.as_deref(), Some(expected_status));
+        assert_eq!(failure.message, expected_message);
+        assert!(!format!("{failure:?}").contains("private fixture detail"));
+    }
+}
+
+#[test]
+fn missing_final_message_fails_without_a_completed_lifecycle_event() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+
+    let failure = failed_effect(protocol.handle_message(json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turn": {
+                "id": "turn-1",
+                "status": "completed",
+                "items": [{"type": "agentMessage", "text": "  "}],
+            }
+        }
+    })));
+    assert_eq!(failure.code, "codex_final_message_missing");
+    let events = captured.lock().unwrap();
+    assert!(events.iter().any(|event| {
+        event["event"] == "dispatch.turn.failed"
+            && event["payload"]["code"] == "codex_final_message_missing"
+    }));
+    assert!(
+        !events
+            .iter()
+            .any(|event| event["event"] == "dispatch.turn.completed")
+    );
+}

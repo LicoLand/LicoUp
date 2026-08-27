@@ -115,6 +115,33 @@ void main() {
     expect(ProblemCodeCatalog.wire('pi_model_override_failed'), 'LU-NA-4213');
   });
 
+  test('Cursor strict protocol failures have native-agent problem codes', () {
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_private_instructions_unsupported'),
+      'LU-NA-4233',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_session_identity_mismatch'),
+      'LU-NA-4234',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_text_snapshot_diverged'),
+      'LU-NA-4235',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_unterminated_json'),
+      'LU-NA-4236',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_prompt_acknowledgement_missing'),
+      'LU-NA-4237',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_prompt_acknowledgement_mismatch'),
+      'LU-NA-4238',
+    );
+  });
+
   test('copy payload includes both problem code and occurrence id', () {
     final blob = ProblemCodeCopy.copyableDetail(
       legacyCode: 'transport_failed',

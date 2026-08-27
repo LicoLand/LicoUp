@@ -99,8 +99,7 @@ fn run_turn(args: &[String]) {
     // fixture cannot strand the test process.
     if let Ok(release_path) = env::var("LICO_FAKE_CURSOR_AGENT_UPDATE_RELEASE_PATH") {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-        while !std::path::Path::new(&release_path).is_file()
-            && std::time::Instant::now() < deadline
+        while !std::path::Path::new(&release_path).is_file() && std::time::Instant::now() < deadline
         {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
@@ -149,6 +148,13 @@ fn run_turn(args: &[String]) {
         r#"{{"type":"assistant","session_id":{},"timestamp_ms":2,"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
         json_string(&observed_session),
         json_string(&second_fragment)
+    ));
+    // Current Cursor emits one timestamp-free cumulative assistant snapshot
+    // after the timestamped partial deltas and before the cumulative result.
+    emit(&format!(
+        r#"{{"type":"assistant","session_id":{},"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
+        json_string(&observed_session),
+        json_string(reply)
     ));
     emit(&format!(
         r#"{{"type":"result","subtype":"success","is_error":false,"session_id":{},"request_id":"req-{}","result":{}}}"#,

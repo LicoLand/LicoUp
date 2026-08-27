@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
 void main() {
   test('target candidate parses target adapter scan shape', () {
@@ -695,9 +696,9 @@ done
         'send',
       ], '{"agent":"claude-code","text":"one"}').toList(),
       throwsA(
-        isA<LicoClientRpcException>().having(
-          (error) => error.code,
-          'code',
+        isA<AgentDispatchStreamException>().having(
+          (error) => error.failureCode,
+          'failureCode',
           'invalid_response',
         ),
       ),
@@ -772,9 +773,9 @@ fi
           'send',
         ], '{"agent":"claude-code","text":"one"}').toList(),
         throwsA(
-          isA<LicoClientRpcException>().having(
-            (error) => error.code,
-            'code',
+          isA<AgentDispatchStreamException>().having(
+            (error) => error.failureCode,
+            'failureCode',
             'transport_failed',
           ),
         ),
