@@ -57,7 +57,7 @@ export function buildFlutterApp(options) {
   });
   runFlutterPubGet(stagedRoot, flutterEnv, options);
   const args = ["build", options.platform, `--${options.mode}`, "--no-pub"];
-  if (process.env.LICO_AGENT_CONVERSATION_RELEASE_LIVE === "1") {
+  if (options.agentConversationReleaseLive === true) {
     args.push("--dart-define=LICO_AGENT_CONVERSATION_RELEASE_LIVE=true");
   }
   if (options.mode === "release") {

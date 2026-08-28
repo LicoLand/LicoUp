@@ -91,6 +91,7 @@ export function parsePackageClientArgs(
     enabledOverrides: [],
     disabledOverrides: [],
     profile: null,
+    agentConversationReleaseLive: false,
     skipFlutterBuild: false,
     skipNativeBuild: false,
     install: false,
@@ -122,6 +123,8 @@ export function parsePackageClientArgs(
       index += 1;
     } else if (arg === "--skip-flutter-build") {
       options.skipFlutterBuild = true;
+    } else if (arg === "--agent-conversation-release-live") {
+      options.agentConversationReleaseLive = true;
     } else if (arg === "--skip-native-build") {
       options.skipNativeBuild = true;
     } else if (arg === "--install") {

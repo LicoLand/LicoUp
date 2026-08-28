@@ -235,12 +235,22 @@ const canonicalConfig = JSON.parse(readFileSync(
 validatePackagingConfig(canonicalConfig);
 if (process.platform === "darwin" && process.arch === "arm64") {
   const macosArm64Options = parsePackageClientArgs(
-    ["--platform", "macos", "--mode", "release"],
+    [
+      "--platform",
+      "macos",
+      "--mode",
+      "release",
+      "--agent-conversation-release-live",
+    ],
     {},
   );
   requireValue(
     macosArm64Options.platform === "macos",
     "macos_arm64_packaging_policy_rejected",
+  );
+  requireValue(
+    macosArm64Options.agentConversationReleaseLive === true,
+    "agent_conversation_release_live_option_not_preserved",
   );
 } else {
   expectRejected(
