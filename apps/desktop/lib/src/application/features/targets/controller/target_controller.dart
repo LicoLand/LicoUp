@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/features/targets/controller/target_scan_coordinator.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
+import 'package:licoup/src/application/features/targets/policy/target_scan_reducer.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 
@@ -37,6 +39,7 @@ class TargetController extends ChangeNotifier {
     required bool Function() shouldLoadSelectedConversation,
     required TargetStatusSink onStatus,
   }) : _gateway = gateway,
+       _scanCoordinator = TargetScanCoordinator(gateway),
        _snapshotRepository = snapshotRepository,
        _tabOrderRepository = tabOrderRepository,
        _portableData = portableData,
@@ -49,6 +52,7 @@ class TargetController extends ChangeNotifier {
        _onStatus = onStatus;
 
   final TargetManagementGateway _gateway;
+  final TargetScanCoordinator _scanCoordinator;
   final TargetSnapshotRepository _snapshotRepository;
   final TargetTabOrderRepository _tabOrderRepository;
   final Object _portableData;
@@ -72,7 +76,6 @@ class TargetController extends ChangeNotifier {
   bool _refreshing = false;
   Completer<void>? _refreshCompletion;
   Future<void>? _queuedForcedScan;
-  final Map<String, Future<TargetCandidate?>> _targetProbeFlights = {};
   final Set<String> _nativeModelCatalogRefreshedIds = {};
   final Set<String> _nativeModelCatalogInFlightIds = {};
   final Set<String> _cachedTargetIds = {};
@@ -289,47 +292,29 @@ class TargetController extends ChangeNotifier {
         if (showProgress) _emitScanComplete();
         return;
       }
-      final knownIds = _targets.map((target) => target.target).toSet();
-      final batch = await _gateway.scanTargetsBatch(ids);
-      final slots = {for (final slot in batch.slots) slot.targetId: slot};
-      final probes = [
-        for (final id in ids)
-          _TargetProbeResult(
-            targetId: id,
-            candidate: slots[id]?.candidate,
-            failed: slots[id]?.failed ?? true,
-          ),
-      ];
+      final request = TargetScanRequest(targetIds: ids);
+      final batch = await _scanCoordinator.scan(request);
       if (!_isCurrentScan(generation)) return;
-      var discovered = 0;
-      var failures = 0;
-      var nextTargets = _targets;
-      for (final probe in probes) {
-        if (probe.failed) {
-          failures += 1;
-          continue;
-        }
-        _markCachedTargetVerified(probe.targetId);
-        if (probe.candidate != null && !knownIds.contains(probe.targetId)) {
-          discovered += 1;
-        }
-        nextTargets = TargetPolicy.mergeProbe(
-          nextTargets,
-          probe.targetId,
-          probe.candidate,
-          replaceModelCatalog: false,
-        );
+      final reduction = TargetScanReducer.reduce(
+        currentTargets: _targets,
+        requestedTargetIds: request.targetIds,
+        batch: batch,
+        replaceModelCatalog: false,
+      );
+      for (final slot in reduction.successfulSlots) {
+        _markCachedTargetVerified(slot.targetId);
       }
-      if (!_sameTargets(_targets, nextTargets)) {
-        _targets = List.unmodifiable(nextTargets);
+      if (!_sameTargets(_targets, reduction.targets)) {
+        _targets = reduction.targets;
       }
       _onTargetsSettled();
       await _persistCache();
       if (!_isCurrentScan(generation)) return;
+      final failures = reduction.failedTargetIds.length;
       if (failures == 0) {
         _cachedTargetsNeedRefresh = false;
       }
-      if (failures == ids.length && _targets.isEmpty) {
+      if (failures == request.targetIds.length && _targets.isEmpty) {
         if (reportErrors) {
           _lastErrorCode = 'target_scan_failed';
           _onStatus(
@@ -345,9 +330,10 @@ class TargetController extends ChangeNotifier {
       if (showProgress) {
         _onStatus(
           TargetStatusUpdate(
-            chinese: '已扫描 ${_targets.length} 个目标适配器（本次新发现 $discovered）。',
+            chinese:
+                '已扫描 ${_targets.length} 个目标适配器（本次新发现 ${reduction.discoveredCount}）。',
             english:
-                'Scanned ${_targets.length} target adapters ($discovered newly found).',
+                'Scanned ${_targets.length} target adapters (${reduction.discoveredCount} newly found).',
           ),
         );
       }
@@ -459,32 +445,32 @@ class TargetController extends ChangeNotifier {
       if (id.isNotEmpty && seen.add(id)) ids.add(id);
     }
     if (ids.isEmpty) return;
+    final request = TargetScanRequest(
+      targetIds: ids,
+      enableAgentCliModelLookup: true,
+    );
     final TargetScanBatch batch;
     try {
-      batch = await _gateway.scanTargetsBatch(
-        ids,
-        enableAgentCliModelLookup: true,
-      );
+      batch = await _scanCoordinator.scan(request);
     } catch (_) {
       return;
     }
-    var next = _targets;
-    for (final slot in batch.slots) {
-      if (slot.failed) continue;
-      next = TargetPolicy.mergeProbe(
-        next,
-        slot.targetId,
-        slot.candidate,
-        replaceModelCatalog: true,
-      );
+    if (_disposed) return;
+    final reduction = TargetScanReducer.reduce(
+      currentTargets: _targets,
+      requestedTargetIds: request.targetIds,
+      batch: batch,
+      replaceModelCatalog: true,
+    );
+    for (final slot in reduction.successfulSlots) {
       final candidate = slot.candidate;
       if (candidate != null &&
           TargetPolicy.hasSelectedAgentModelCatalog(candidate)) {
         _nativeModelCatalogRefreshedIds.add(slot.targetId);
       }
     }
-    if (_sameTargets(_targets, next)) return;
-    _targets = List.unmodifiable(next);
+    if (_sameTargets(_targets, reduction.targets)) return;
+    _targets = reduction.targets;
     _onTargetsSettled();
     notifyListeners();
     await _persistCache();
@@ -563,31 +549,18 @@ class TargetController extends ChangeNotifier {
     String targetId, {
     bool enableAgentCliModelLookup = false,
   }) {
-    final flightKey = enableAgentCliModelLookup
-        ? '$targetId:native-catalog'
-        : targetId;
-    final existing = _targetProbeFlights[flightKey];
-    if (existing != null) return existing;
-    late final Future<TargetCandidate?> probe;
-    probe = _gateway
-        .scanTargetsBatch([
-          targetId,
-        ], enableAgentCliModelLookup: enableAgentCliModelLookup)
-        .then((batch) {
-          for (final slot in batch.slots) {
-            if (slot.targetId == targetId && !slot.failed) {
-              return slot.candidate;
-            }
-          }
-          return null;
-        })
-        .whenComplete(() {
-          if (identical(_targetProbeFlights[flightKey], probe)) {
-            _targetProbeFlights.remove(flightKey);
-          }
-        });
-    _targetProbeFlights[flightKey] = probe;
-    return probe;
+    final request = TargetScanRequest(
+      targetIds: [targetId],
+      enableAgentCliModelLookup: enableAgentCliModelLookup,
+    );
+    return _scanCoordinator.scan(request).then((batch) {
+      for (final slot in batch.slots) {
+        if (slot.targetId == targetId && !slot.failed) {
+          return slot.candidate;
+        }
+      }
+      return null;
+    });
   }
 
   void _markCachedTargetVerified(String targetId) {
@@ -815,21 +788,8 @@ class TargetController extends ChangeNotifier {
       refreshCompletion.complete();
     }
     _queuedForcedScan = null;
-    _targetProbeFlights.clear();
     _cachedTargetIds.clear();
     isScanning = false;
     super.dispose();
   }
-}
-
-final class _TargetProbeResult {
-  const _TargetProbeResult({
-    required this.targetId,
-    this.candidate,
-    this.failed = false,
-  });
-
-  final String targetId;
-  final TargetCandidate? candidate;
-  final bool failed;
 }
