@@ -47,42 +47,24 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.text,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
                   ),
-                  if (conversation.pinned) ...[
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.push_pin_rounded,
-                      size: 13,
-                      color: colors.textMuted,
-                    ),
-                  ],
-                ],
-              ),
-              Text(
-                strings.groupConversationMemberCount(
-                  conversation.activeMemberships.length,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textMuted, fontSize: 11.5),
               ),
+              if (conversation.pinned) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.push_pin_rounded, size: 13, color: colors.textMuted),
+              ],
             ],
           ),
         ),
@@ -103,10 +85,9 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
         ),
       );
     }
-    final identityRadius = BorderRadius.circular(
-      MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
-    );
-    final controlRadius = BorderRadius.circular(999);
+    // True stadium on both capsules: 999 clamps to half the capsule height,
+    // so the ends are full semicircles at any content height.
+    final capsuleRadius = BorderRadius.circular(999);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
@@ -120,7 +101,7 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
           children: [
             Expanded(
               child: MessagingConversationOverlayGlass(
-                borderRadius: identityRadius,
+                borderRadius: capsuleRadius,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal:
@@ -139,7 +120,7 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
               aspectRatio: 1,
               child: MessagingConversationOverlayGlass(
                 key: const Key('canonical-group-roster-toggle-capsule'),
-                borderRadius: controlRadius,
+                borderRadius: capsuleRadius,
                 child: Center(child: rosterToggle),
               ),
             ),
