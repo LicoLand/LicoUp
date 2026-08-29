@@ -18,8 +18,8 @@ pub use profile_snapshot::{
     production_snapshot_authority, project_profile_snapshot, project_profile_snapshots,
     rank_candidates,
 };
-pub use service::ConversationService;
 pub(crate) use service::route_receipt;
+pub use service::{ConversationService, dispatch_attachments_param};
 
 /// Product-owned private dispatch guidance remains composed by the native host
 /// and is never written into Conversation Event text.

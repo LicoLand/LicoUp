@@ -114,6 +114,7 @@ enum ConversationEventPartKind {
   artifact("artifact"),
   diagnostic("diagnostic"),
   metadata("metadata"),
+  image("image"),
   unknown('');
 
   const ConversationEventPartKind(this.wireName);

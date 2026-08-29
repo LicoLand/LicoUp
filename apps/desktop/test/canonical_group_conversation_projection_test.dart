@@ -119,6 +119,132 @@ void main() {
     },
   );
 
+  test('posted image parts project as typed message attachments', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 30,
+      'eventCount': 3,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+      ],
+    });
+    Map<String, dynamic> imagePart(
+      String eventId,
+      String partId,
+      int ordinal,
+      String content,
+    ) => {
+      'id': partId,
+      'eventId': eventId,
+      'ordinal': ordinal,
+      'kind': 'image',
+      'content': content,
+      'createdAtUnixMs': 10,
+    };
+    final events = [
+      // A text-plus-image post: the image lands on the text message.
+      ClientConversationEvent.fromJson({
+        'id': 'event:with-text',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          {
+            'id': 'part:with-text',
+            'eventId': 'event:with-text',
+            'ordinal': 0,
+            'kind': 'text',
+            'content': 'see the mockup',
+            'createdAtUnixMs': 10,
+          },
+          imagePart(
+            'event:with-text',
+            'part:mockup',
+            1,
+            '{"path":"fixtures/mockup.png","name":"mockup.png",'
+                '"mediaType":"image/png","byteSize":12}',
+          ),
+        ],
+      }),
+      // An image-only post: no text part, the images stand alone.
+      ClientConversationEvent.fromJson({
+        'id': 'event:image-only',
+        'conversationId': conversation.id,
+        'sequence': 2,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 20,
+        'finalized': true,
+        'parts': [
+          imagePart(
+            'event:image-only',
+            'part:only',
+            0,
+            '{"path":"fixtures/only.png","name":"only.png",'
+                '"mediaType":"image/png","byteSize":7}',
+          ),
+        ],
+      }),
+      // Unreadable attachment metadata tolerates the generic card fallback.
+      ClientConversationEvent.fromJson({
+        'id': 'event:malformed-image',
+        'conversationId': conversation.id,
+        'sequence': 3,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 30,
+        'finalized': true,
+        'parts': [
+          imagePart('event:malformed-image', 'part:broken', 0, 'not-json'),
+        ],
+      }),
+    ];
+
+    final session = canonicalGroupConversationSession(
+      conversation,
+      events,
+      LicoStrings.forLocale(const Locale('en')),
+    );
+
+    expect(session.messages, hasLength(3));
+    final withText = session.messages[0];
+    expect(withText.role, 'user');
+    expect(withText.text, 'see the mockup');
+    expect(withText.images, hasLength(1));
+    expect(withText.images.single.filePath, 'fixtures/mockup.png');
+    expect(withText.images.single.name, 'mockup.png');
+    expect(withText.images.single.mediaType, 'image/png');
+
+    final imageOnly = session.messages[1];
+    expect(imageOnly.role, 'user');
+    expect(imageOnly.text, '');
+    expect(imageOnly.images.single.filePath, 'fixtures/only.png');
+
+    // The malformed part keeps the honest generic trace instead of
+    // vanishing, and no well-formed image leaks its raw metadata JSON.
+    final fallback = session.messages[2];
+    expect(fallback.cardType, 'event');
+    expect(fallback.text, 'not-json');
+    expect(
+      session.messages.where((message) => message.text.contains('byteSize')),
+      isEmpty,
+    );
+  });
+
   test('canonical group merges streamed text parts on one event', () {
     final conversation = ClientConversation.fromJson({
       'id': 'conversation:group',
@@ -729,8 +855,9 @@ void main() {
       find.byKey(const Key('canonical-group-header-avatar')),
     );
     expect((headerAvatar.decoration! as BoxDecoration).color, Colors.black);
-    expect(find.text('Codex'), findsOneWidget);
-    expect(find.text('Claude'), findsOneWidget);
+    // Member names live in tooltips only — the capsule shows bare avatars.
+    expect(find.text('Codex'), findsNothing);
+    expect(find.text('Claude'), findsNothing);
     expect(find.text('Claude Code'), findsNothing);
     expect(
       tester
