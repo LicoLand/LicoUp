@@ -38,6 +38,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     required this.onReasoningEffortChanged,
     required this.onDraftChanged,
     required this.onSend,
+    this.onSlashNewConversation,
     this.onCancel,
     this.defaultModel = '',
     this.defaultReasoningEffort = '',
@@ -69,6 +70,16 @@ class RuntimeMessageComposer extends StatefulWidget {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final Future<void> Function()? onCancel;
+
+  /// Optional handler for the exact slash-new command submitted alone
+  /// (trimmed). When set, submitting that command clears the field, runs this
+  /// handler, and never reaches [onSend]. Hosts that pass nothing keep the
+  /// ordinary posting behavior.
+  final VoidCallback? onSlashNewConversation;
+
+  /// The exact command text [onSlashNewConversation] intercepts when
+  /// submitted alone (trimmed).
+  static const String slashNewCommand = '/new';
   final String defaultModel;
   final String defaultReasoningEffort;
 
@@ -339,6 +350,13 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   Future<void> _submit() async {
     final text = _controller.text.trim();
     if ((text.isEmpty && !widget.hasAttachments) || !widget.enabled) {
+      return;
+    }
+    final onSlashNewConversation = widget.onSlashNewConversation;
+    if (onSlashNewConversation != null &&
+        text == RuntimeMessageComposer.slashNewCommand) {
+      _controller.clear();
+      onSlashNewConversation();
       return;
     }
     _controller.clear();

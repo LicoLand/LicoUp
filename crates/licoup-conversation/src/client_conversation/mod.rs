@@ -254,6 +254,34 @@ pub enum EventPartKind {
     Artifact,
     Diagnostic,
     Metadata,
+    Image,
+}
+
+/// Attachment metadata carried by one image Event Part. The part content is
+/// this value's JSON encoding, exactly like Metadata and Diagnostic parts
+/// carry structured JSON in their content; the byte size is recorded from the
+/// local file at admission time, never from a caller declaration.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageAttachment {
+    pub path: String,
+    pub name: String,
+    pub media_type: String,
+    pub byte_size: u64,
+}
+
+impl ImageAttachment {
+    /// Canonical content encoding for one image Event Part.
+    pub fn part_content(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_owned())
+    }
+
+    /// Decode the attachment metadata from one image part's content. Returns
+    /// None for malformed content so readers tolerate a part they cannot
+    /// interpret instead of failing the whole event read.
+    pub fn from_part_content(content: &str) -> Option<Self> {
+        serde_json::from_str(content).ok()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -280,6 +308,16 @@ pub struct EventPart {
     pub kind: EventPartKind,
     pub content: String,
     pub created_at_unix_ms: i64,
+}
+
+impl EventPart {
+    /// The decoded attachment metadata when this part is an image part with a
+    /// well-formed content encoding; None for every other part.
+    pub fn image_attachment(&self) -> Option<ImageAttachment> {
+        (self.kind == EventPartKind::Image)
+            .then(|| ImageAttachment::from_part_content(&self.content))
+            .flatten()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -404,5 +442,71 @@ impl<'de> Deserialize<'de> for TurnState {
             "cancelled" => Ok(Self::Cancelled),
             _ => Err(de::Error::custom("invalid turn state")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn image_part(content: String) -> EventPart {
+        EventPart {
+            id: "part:1".to_owned(),
+            event_id: "event:1".to_owned(),
+            ordinal: 1,
+            kind: EventPartKind::Image,
+            content,
+            created_at_unix_ms: 1,
+        }
+    }
+
+    #[test]
+    fn image_part_content_round_trips_attachment_metadata() {
+        let attachment = ImageAttachment {
+            path: "fixtures/mockup.png".to_owned(),
+            name: "mockup.png".to_owned(),
+            media_type: "image/png".to_owned(),
+            byte_size: 12,
+        };
+        let content = attachment.part_content();
+        assert_eq!(
+            ImageAttachment::from_part_content(&content).as_ref(),
+            Some(&attachment)
+        );
+        let part = image_part(content);
+        assert_eq!(part.image_attachment().as_ref(), Some(&attachment));
+    }
+
+    #[test]
+    fn image_part_wire_kind_is_kebab_case_image() {
+        assert_eq!(
+            serde_json::to_value(EventPartKind::Image).unwrap(),
+            serde_json::json!("image")
+        );
+        assert_eq!(
+            serde_json::from_value::<EventPartKind>(serde_json::json!("image")).unwrap(),
+            EventPartKind::Image
+        );
+    }
+
+    #[test]
+    fn image_part_attachment_decodes_only_for_well_formed_image_parts() {
+        let mut text_part = image_part(
+            ImageAttachment {
+                path: "fixtures/a.png".to_owned(),
+                name: "a.png".to_owned(),
+                media_type: "image/png".to_owned(),
+                byte_size: 1,
+            }
+            .part_content(),
+        );
+        text_part.kind = EventPartKind::Text;
+        assert_eq!(text_part.image_attachment(), None);
+
+        let malformed = image_part("not json".to_owned());
+        assert_eq!(malformed.image_attachment(), None);
+
+        let missing_fields = image_part(r#"{"path":"fixtures/a.png"}"#.to_owned());
+        assert_eq!(missing_fields.image_attachment(), None);
     }
 }

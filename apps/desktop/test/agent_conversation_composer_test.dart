@@ -332,6 +332,230 @@ void main() {
     );
   });
 
+  testWidgets('slash-new command with a handler runs it and never sends', (
+    tester,
+  ) async {
+    var handlerCount = 0;
+    var sendCount = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            sendCount += 1;
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(handlerCount, 1);
+    expect(sendCount, 0);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+  });
+
+  testWidgets('slash-new command intercepts the keyboard submit too', (
+    tester,
+  ) async {
+    var handlerCount = 0;
+    var sendCount = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            sendCount += 1;
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(handlerCount, 1);
+    expect(sendCount, 0);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+  });
+
+  testWidgets('slash-new with a trailing argument posts verbatim', (
+    tester,
+  ) async {
+    var handlerCount = 0;
+    final submissions = <String>[];
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new continue');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(handlerCount, 0);
+    expect(submissions, ['/new continue']);
+  });
+
+  testWidgets('slash-new uppercase variant posts verbatim', (tester) async {
+    var handlerCount = 0;
+    final submissions = <String>[];
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/NEW');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(handlerCount, 0);
+    expect(submissions, ['/NEW']);
+  });
+
+  testWidgets('slash-new without a handler posts verbatim', (tester) async {
+    final submissions = <String>[];
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(submissions, ['/new']);
+  });
+
+  testWidgets(
+    'disabled composer holding the slash-new command ignores submit',
+    (tester) async {
+      var handlerCount = 0;
+      var sendCount = 0;
+      await tester.pumpWidget(
+        _ComposerTestApp(
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '/new',
+            busy: false,
+            enabled: false,
+            modelOptions: const [],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: (_) {},
+            onReasoningEffortChanged: (_) {},
+            onDraftChanged: (_) {},
+            onSend: (text) async {
+              sendCount += 1;
+              return true;
+            },
+            onSlashNewConversation: () => handlerCount += 1,
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      expect(handlerCount, 0);
+      expect(sendCount, 0);
+    },
+  );
+
   testWidgets('composer embeds the runtime settings bar by default', (
     tester,
   ) async {

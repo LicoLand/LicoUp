@@ -19,5 +19,5 @@ pub use store::{
     ColdRecoverableConversationStore, ColdRecoveryReport, ConversationRepository,
     ConversationRuntimeScope, ConversationStore, DEFAULT_CONVERSATION_POOL_SIZE,
     DEFAULT_EVENT_PAGE_SIZE, DirectTurnExecutionContext, DispatchRepository, EventRepository,
-    MAX_EVENT_PAGE_SIZE, NewEventPart, StoreError, StoreResult,
+    ImageAttachmentReference, MAX_EVENT_PAGE_SIZE, NewEventPart, StoreError, StoreResult,
 };
