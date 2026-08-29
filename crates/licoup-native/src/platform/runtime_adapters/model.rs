@@ -72,6 +72,20 @@ pub(super) struct LifecycleEvidence {
 pub(super) struct NativeCapabilityDocument {
     pub(super) schema_version: String,
     pub(super) agents: Vec<NativeCapabilityEntry>,
+    /// Quota-capability flags naming the agents that have a provider quota
+    /// source. Additive metadata consumed by the provider-quota domain; the
+    /// capability-kind allowlist is unchanged by these flags.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(super) quota_sources: Vec<NativeCapabilityQuotaSource>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[allow(dead_code)]
+pub(super) struct NativeCapabilityQuotaSource {
+    pub(super) agent_id: String,
+    pub(super) provider: String,
 }
 
 #[derive(Debug, Deserialize)]
