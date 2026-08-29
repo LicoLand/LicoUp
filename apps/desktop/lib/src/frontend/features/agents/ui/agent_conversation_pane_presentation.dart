@@ -51,6 +51,7 @@ final class AgentConversationPaneState {
     this.recentSessionsCached = false,
     this.composerFlywheel,
     this.composerLeading,
+    this.composerFieldLeading,
     bool? composerBusy,
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
@@ -110,6 +111,10 @@ final class AgentConversationPaneState {
   final bool recentSessionsCached;
   final Widget? composerFlywheel;
   final Widget? composerLeading;
+
+  /// Compact control rendered inside the composer field capsule, left of the
+  /// text input (the group assistant toggle lives there).
+  final Widget? composerFieldLeading;
   final bool composerBusy;
 }
 
