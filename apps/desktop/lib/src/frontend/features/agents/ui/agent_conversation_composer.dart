@@ -136,6 +136,11 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   final ScrollController _mentionScrollController = ScrollController();
   late final _ComposerPasteAction _pasteAction;
 
+  /// Field height readback target for the capsule morph; the public field key
+  /// stays a plain [ValueKey] for tests.
+  final GlobalKey _fieldSizeKey = GlobalKey();
+  bool _multilineEstimate = false;
+
   @override
   void initState() {
     super.initState();
@@ -205,6 +210,36 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final mentionChanged = _syncMentionQuery();
     if (!mounted || (next == _hasText && !mentionChanged)) return;
     setState(() => _hasText = next);
+  }
+
+  /// The field's laid-out height drives the capsule morph: one text line of
+  /// interior is a stadium; anything taller (wrapped or hard-broken draft)
+  /// becomes the rounded rectangle. Size notifications arrive mid-layout, so
+  /// the readback runs post-frame.
+  void _onFieldSizeNotification() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = _fieldSizeKey.currentContext?.size;
+      if (size == null) return;
+      final multiline = size.height > _singleLineFieldExtent(context) + 0.5;
+      if (multiline == _multilineEstimate) return;
+      setState(() => _multilineEstimate = multiline);
+    });
+  }
+
+  /// The field's exact single-line height: outer insets plus the taller of
+  /// the control row (send/leading extent) and one padded text line.
+  double _singleLineFieldExtent(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyLarge ?? const TextStyle();
+    final painter = TextPainter(
+      text: TextSpan(text: 'Ag', style: style),
+      textDirection: Directionality.of(context),
+    )..layout();
+    return LicoRadius.composerInset * 2 +
+        math.max(
+          LicoIconButtonSize.medium.extent,
+          painter.height + 10, // text row vertical padding (5 + 5)
+        );
   }
 
   bool _syncMentionQuery() {
@@ -383,92 +418,127 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final interactive = widget.enabled;
     final canSend = interactive && (_hasText || widget.hasAttachments);
     final canCancel = widget.cancelEnabled && widget.onCancel != null;
-    final fieldRadius = BorderRadius.circular(
-      widget.floatingMatteCapsule
-          ? MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius
-          : LicoRadius.composerField,
-    );
     final fieldBody = Padding(
       padding: const EdgeInsets.all(LicoRadius.composerInset),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (widget.fieldLeading != null) ...[widget.fieldLeading!],
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
-                  child: Actions(
-                    actions: widget.onPasteImage == null
-                        ? const <Type, Action<Intent>>{}
-                        : <Type, Action<Intent>>{PasteTextIntent: _pasteAction},
-                    child: Focus(
-                      onKeyEvent: _handleMentionKey,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        minLines: 1,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _submit(),
-                        enabled: interactive,
-                        style: theme.textTheme.bodyLarge,
-                        decoration: InputDecoration(
-                          hintText: interactive
-                              ? strings.messageTarget(widget.targetLabel)
-                              : null,
-                          hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                            color: colors.textDisabled,
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // The in-field control pins to the first text line: while the
+                // capsule grows upward into a rounded rectangle, it stays at
+                // the interior top-left instead of sinking with the baseline.
+                if (widget.fieldLeading != null)
+                  SizedBox(
+                    height: double.infinity,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: widget.fieldLeading!,
+                    ),
+                  ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
+                    child: Actions(
+                      actions: widget.onPasteImage == null
+                          ? const <Type, Action<Intent>>{}
+                          : <Type, Action<Intent>>{
+                              PasteTextIntent: _pasteAction,
+                            },
+                      child: Focus(
+                        onKeyEvent: _handleMentionKey,
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          minLines: 1,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _submit(),
+                          enabled: interactive,
+                          style: theme.textTheme.bodyLarge,
+                          decoration: InputDecoration(
+                            hintText: interactive
+                                ? strings.messageTarget(widget.targetLabel)
+                                : null,
+                            hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                              color: colors.textDisabled,
+                            ),
+                            isDense: true,
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
                           ),
-                          isDense: true,
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: LicoContentSpacing.compact),
-              _ComposerSendButton(
-                canSend: canSend,
-                canCancel: canCancel,
-                busy: widget.busy,
-                onTap: canCancel
-                    ? () => widget.onCancel?.call()
-                    : canSend
-                    ? _submit
-                    : null,
-                tooltip: canCancel ? strings.cancel : strings.send,
-              ),
-            ],
+                const SizedBox(width: LicoContentSpacing.compact),
+                _ComposerSendButton(
+                  canSend: canSend,
+                  canCancel: canCancel,
+                  busy: widget.busy,
+                  onTap: canCancel
+                      ? () => widget.onCancel?.call()
+                      : canSend
+                      ? _submit
+                      : null,
+                  tooltip: canCancel ? strings.cancel : strings.send,
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
-    final field = widget.floatingMatteCapsule
-        ? Material(
-            key: const Key('agent-conversation-composer-field'),
-            color: Colors.transparent,
-            child: MessagingConversationOverlayGlass(
-              borderRadius: fieldRadius,
-              focused: _focused && interactive,
-              child: fieldBody,
+    // Telegram-style growth: the floating capsule is a stadium on one line
+    // and morphs into a rounded rectangle as the draft grows the field
+    // upward; the laid-out field height decides (see _onFieldSizeNotification).
+    final field = NotificationListener<SizeChangedLayoutNotification>(
+      key: const Key('agent-conversation-composer-field'),
+      onNotification: (_) {
+        _onFieldSizeNotification();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(
+        child: TweenAnimationBuilder<BorderRadius>(
+          key: _fieldSizeKey,
+          tween: Tween(
+            end: BorderRadius.circular(
+              widget.floatingMatteCapsule && !_multilineEstimate
+                  ? MessagingDesktopMetrics
+                        .conversationComposerCapsuleCornerRadius
+                  : LicoRadius.composerField,
             ),
-          )
-        : AppleGlassSurface(
-            key: const Key('agent-conversation-composer-field'),
-            borderRadius: fieldRadius,
-            focused: _focused && interactive,
-            child: fieldBody,
-          );
+          ),
+          duration: LicoMotion.micro,
+          curve: Curves.easeOut,
+          builder: (context, radius, child) {
+            return widget.floatingMatteCapsule
+                ? Material(
+                    color: Colors.transparent,
+                    child: MessagingConversationOverlayGlass(
+                      borderRadius: radius,
+                      focused: _focused && interactive,
+                      child: child!,
+                    ),
+                  )
+                : AppleGlassSurface(
+                    borderRadius: radius,
+                    focused: _focused && interactive,
+                    child: child!,
+                  );
+          },
+          child: fieldBody,
+        ),
+      ),
+    );
     final mentionSuggestions = _mentionSuggestions;
     return Padding(
       padding: mobileClient
