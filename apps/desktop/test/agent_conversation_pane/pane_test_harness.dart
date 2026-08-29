@@ -57,12 +57,15 @@ AgentConversationPaneActions paneTestActions({
   VoidCallback? onChooseWorkingDirectory,
   VoidCallback? onUnblockSend,
   ValueChanged<String>? onModelChanged,
+  Future<bool> Function(String)? onSend,
+  VoidCallback? onNewConversation,
 }) => AgentConversationPaneActions(
   onModelChanged: onModelChanged ?? (_) {},
   onReasoningEffortChanged: (_) {},
   onDraftChanged: (_) {},
-  onSend: (_) async => true,
+  onSend: onSend ?? (_) async => true,
   onSelectSession: (_) {},
+  onNewConversation: onNewConversation,
   onUnblockSend: onUnblockSend,
   onChooseWorkingDirectory: onChooseWorkingDirectory,
 );

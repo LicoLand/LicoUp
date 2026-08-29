@@ -1,6 +1,10 @@
 use super::{
-    ConversationStore, DirectTurn, MembershipAccess, MembershipStatus, NewEventPart, Principal,
-    PrincipalKind, migrate_legacy_state,
+    ConversationStore, DirectTurn, ImageAttachment, ImageAttachmentReference, MembershipAccess,
+    MembershipStatus, NewEventPart, Principal, PrincipalKind, migrate_legacy_state,
+};
+use crate::platform::runtime_adapters::{
+    MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
+    attachment_media_type_supported,
 };
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
@@ -337,12 +341,22 @@ impl ConversationService {
             "conversation.message.post" => {
                 let conversation_id = required_string(object, "conversationId")?;
                 let author = object.get("authorMembershipId").and_then(Value::as_str);
-                let content = required_string(object, "content")?;
+                let attachments = admit_post_attachments(object.get("attachments"))?;
+                // The text stays required unless admitted attachments carry the
+                // post: an image-only group message posts empty content.
+                let content = object
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("invalid_request"))?;
+                if content.trim().is_empty() && attachments.is_empty() {
+                    return Err(anyhow!("invalid_request"));
+                }
                 self.persist_posted_message(
                     conversation_id,
                     author,
                     content,
                     object.get("correlationId").and_then(Value::as_str),
+                    &attachments,
                 )
             }
             "conversation.dispatch.after-post" => {
@@ -433,13 +447,15 @@ impl ConversationService {
         author: Option<&str>,
         content: &str,
         correlation_id: Option<&str>,
+        attachments: &[ImageAttachment],
     ) -> Result<Value> {
-        let (event, _) = self.store.post_message_with_mentions(
+        let (event, _) = self.store.post_message_with_attachments(
             conversation_id,
             author,
             content,
             correlation_id,
             &[],
+            attachments,
         )?;
         Ok(json!({
             "event": {"id": event.id, "state": "finalized"},
@@ -923,6 +939,9 @@ impl ConversationService {
             "causationId": context.turn.source_event_id,
             "dispatchId": context.turn.id,
         });
+        if !context.source_attachments.is_empty() {
+            params["attachments"] = dispatch_attachments_param(&context.source_attachments);
+        }
         if let Some(session_id) = context.runtime_session_id.as_deref() {
             params["sessionId"] = json!(session_id);
         }
@@ -1165,6 +1184,101 @@ fn safe_failure_field<'a>(value: &'a Value, key: &str, fallback: &'a str) -> &'a
         .unwrap_or(fallback)
 }
 
+/// Admit the optional `attachments` array of one `conversation.message.post`
+/// request. The shape is the shared local-image shape of the 1:1 lane
+/// (`id`, `name`, `mediaType`, `path`; the caller id is accepted and ignored —
+/// the stored Event Part identity becomes the dispatch reference). Admission
+/// validates image-only media types, the existing count and size limits, and
+/// reads each file's real byte size from the filesystem; every failure
+/// rejects the whole post before any Event is persisted.
+fn admit_post_attachments(raw: Option<&Value>) -> Result<Vec<ImageAttachment>> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    if raw.is_null() {
+        return Ok(Vec::new());
+    }
+    let items = raw
+        .as_array()
+        .ok_or_else(|| anyhow!("attachment_invalid"))?;
+    if items.len() > MAX_IMAGE_ATTACHMENTS {
+        return Err(anyhow!("attachment_limit_exceeded"));
+    }
+    let mut total_bytes: u64 = 0;
+    let mut admitted = Vec::with_capacity(items.len());
+    for item in items {
+        let object = item
+            .as_object()
+            .ok_or_else(|| anyhow!("attachment_invalid"))?;
+        if object
+            .keys()
+            .any(|key| !matches!(key.as_str(), "id" | "name" | "mediaType" | "path"))
+        {
+            return Err(anyhow!("attachment_invalid"));
+        }
+        let name = required_attachment_string(object, "name")?;
+        let media_type = required_attachment_string(object, "mediaType")?;
+        let path = required_attachment_string(object, "path")?;
+        if !attachment_media_type_supported(&media_type) {
+            return Err(anyhow!("attachment_media_unsupported"));
+        }
+        if path.contains("://") {
+            return Err(anyhow!("attachment_remote_unsupported"));
+        }
+        let metadata =
+            std::fs::symlink_metadata(&path).map_err(|_| anyhow!("attachment_unavailable"))?;
+        if !metadata.file_type().is_file() {
+            return Err(anyhow!("attachment_invalid"));
+        }
+        let byte_size = metadata.len();
+        total_bytes = total_bytes.saturating_add(byte_size);
+        if byte_size > MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE
+            || total_bytes > MAX_IMAGE_ATTACHMENT_BYTES_TOTAL
+        {
+            return Err(anyhow!("attachment_size_exceeded"));
+        }
+        admitted.push(ImageAttachment {
+            path,
+            name,
+            media_type,
+            byte_size,
+        });
+    }
+    Ok(admitted)
+}
+
+fn required_attachment_string(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow!("attachment_invalid"))
+}
+
+/// The shared local-image wire shape admitted by the runtime-adapter
+/// attachment lane. The durable Event Part identity is the reference id;
+/// byte size stays in the canonical record and is never sent to adapters.
+pub fn dispatch_attachments_param(references: &[ImageAttachmentReference]) -> Value {
+    Value::Array(
+        references
+            .iter()
+            .map(|reference| {
+                json!({
+                    "id": reference.part_id,
+                    "name": reference.attachment.name,
+                    "mediaType": reference.attachment.media_type,
+                    "path": reference.attachment.path,
+                })
+            })
+            .collect(),
+    )
+}
+
 fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) -> Result<()> {
     let allowed: &[&str] = match action {
         "conversation.create" => &["action", "title", "owner", "members"],
@@ -1210,6 +1324,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
             "content",
             "correlationId",
             "mentionedMembershipIds",
+            "attachments",
         ],
         "conversation.dispatch.after-post" => &["action", "conversationId", "eventId"],
         "conversation.event.part.append" => &["action", "eventId", "part"],
@@ -1344,6 +1459,41 @@ mod tests {
         })
     }
 
+    /// One real local image file so post admission can stat it and adapter
+    /// admission can verify its signature.
+    struct ImageFixture {
+        directory: std::path::PathBuf,
+        png: std::path::PathBuf,
+    }
+
+    impl ImageFixture {
+        const PNG_BYTES: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0];
+
+        fn new() -> Self {
+            let directory =
+                std::env::temp_dir().join(format!("lico-post-attachment-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&directory).unwrap();
+            let png = directory.join("synthetic.png");
+            std::fs::write(&png, Self::PNG_BYTES).unwrap();
+            Self { directory, png }
+        }
+
+        fn attachment(&self) -> Value {
+            json!({
+                "id": "sel-1",
+                "name": "synthetic.png",
+                "mediaType": "image/png",
+                "path": self.png.to_string_lossy(),
+            })
+        }
+    }
+
+    impl Drop for ImageFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
+
     /// Persist one human message, then dispatch it by identity alone. The
     /// dispatch request carries no content and no client-computed mentions.
     fn persist_then_dispatch(service: &ConversationService, request: Value) -> Value {
@@ -1392,6 +1542,450 @@ mod tests {
         assert_eq!(
             events.last().unwrap().parts[0].content,
             "hello without a host"
+        );
+    }
+
+    /// AC-013: one admitted image attachment persists as an image Event Part
+    /// carrying the attachment metadata, with the byte size read from the
+    /// real file, and the projected Event exposes it to Dart.
+    #[test]
+    fn message_post_with_image_attachments_persists_image_parts() {
+        let fixture = ImageFixture::new();
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "see the mockup",
+                "attachments": [fixture.attachment()],
+            }))
+            .unwrap();
+        assert_eq!(posted["event"]["state"], "finalized");
+
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        let event = events
+            .iter()
+            .find(|event| event.id == posted["event"]["id"])
+            .unwrap();
+        assert_eq!(event.parts.len(), 2);
+        let text = &event.parts[0];
+        assert_eq!(text.kind, super::super::EventPartKind::Text);
+        assert_eq!(text.content, "see the mockup");
+        let image = &event.parts[1];
+        assert_eq!(image.kind, super::super::EventPartKind::Image);
+        let attachment = image.image_attachment().unwrap();
+        assert_eq!(attachment.path, fixture.png.to_string_lossy());
+        assert_eq!(attachment.name, "synthetic.png");
+        assert_eq!(attachment.media_type, "image/png");
+        assert_eq!(attachment.byte_size, ImageFixture::PNG_BYTES.len() as u64);
+
+        // The projected message exposes the attachment to Dart.
+        let projected = serde_json::to_value(event).unwrap();
+        let parts = projected["parts"].as_array().unwrap();
+        let image_json = parts
+            .iter()
+            .find(|part| part["kind"] == json!("image"))
+            .unwrap();
+        let content: Value = serde_json::from_str(image_json["content"].as_str().unwrap()).unwrap();
+        assert_eq!(content["mediaType"], "image/png");
+        assert_eq!(content["name"], "synthetic.png");
+        assert_eq!(content["path"], json!(fixture.png.to_string_lossy()));
+        assert_eq!(
+            content["byteSize"],
+            json!(ImageFixture::PNG_BYTES.len() as u64)
+        );
+    }
+
+    /// Dishonest attachment posts reject with a stable code before any Event
+    /// is persisted: no partial writes, no fabricated metadata.
+    #[test]
+    fn message_post_rejects_invalid_attachments_without_persisting() {
+        let fixture = ImageFixture::new();
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let before = service
+            .store()
+            .page_events(&conversation_id, None, 50)
+            .unwrap()
+            .events
+            .len();
+        let path = fixture.png.to_string_lossy().into_owned();
+        let missing = fixture.directory.join("missing.png");
+        let cases: Vec<(Value, &str)> = vec![
+            (json!({"path": path}), "attachment_invalid"),
+            (
+                json!([{"name": "a.png", "mediaType": "image/png"}]),
+                "attachment_invalid",
+            ),
+            (
+                json!([{"name": "a.png", "mediaType": "image/png", "path": path, "byteSize": 1}]),
+                "attachment_invalid",
+            ),
+            (
+                json!([{"name": "a.pdf", "mediaType": "application/pdf", "path": path}]),
+                "attachment_media_unsupported",
+            ),
+            (
+                json!([{"name": "a.png", "mediaType": "image/png", "path": "https://example.test/a.png"}]),
+                "attachment_remote_unsupported",
+            ),
+            (
+                json!([{"name": "a.png", "mediaType": "image/png", "path": missing.to_string_lossy()}]),
+                "attachment_unavailable",
+            ),
+            (
+                json!([
+                    {"name": "1.png", "mediaType": "image/png", "path": path},
+                    {"name": "2.png", "mediaType": "image/png", "path": path},
+                    {"name": "3.png", "mediaType": "image/png", "path": path},
+                    {"name": "4.png", "mediaType": "image/png", "path": path},
+                    {"name": "5.png", "mediaType": "image/png", "path": path},
+                ]),
+                "attachment_limit_exceeded",
+            ),
+        ];
+        for (attachments, expected) in cases {
+            let error = service
+                .execute(json!({
+                    "action": "conversation.message.post",
+                    "conversationId": conversation_id,
+                    "authorMembershipId": owner_id,
+                    "content": "must not persist",
+                    "attachments": attachments,
+                }))
+                .expect_err("dishonest attachment post must reject");
+            assert_eq!(error.to_string(), expected);
+        }
+        let after = service
+            .store()
+            .page_events(&conversation_id, None, 50)
+            .unwrap()
+            .events
+            .len();
+        assert_eq!(before, after, "rejected posts must not persist events");
+    }
+
+    /// Fake-adapter end-to-end: a group post carrying one image attachment
+    /// persists the image part and dispatches the member turn with the
+    /// attachment reference in the shared adapter wire shape.
+    #[test]
+    fn group_dispatch_carries_attachment_references_to_member_turn_params() {
+        let fixture = ImageFixture::new();
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let recorded = Arc::clone(&calls);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(move |params| {
+            recorded.lock().unwrap().push(params.clone());
+            Ok(accepted_receipt(params))
+        });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One look at this mockup",
+                "attachments": [fixture.attachment()],
+            }),
+        );
+
+        assert_eq!(posted["directTurns"][0]["state"], "running");
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        let event = events
+            .iter()
+            .find(|event| event.id == posted["event"]["id"])
+            .unwrap();
+        let image_part = event
+            .parts
+            .iter()
+            .find(|part| part.kind == super::super::EventPartKind::Image)
+            .unwrap();
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["membershipId"], agent_id);
+        assert_eq!(calls[0]["text"], "@One look at this mockup");
+        let attachments = calls[0]["attachments"].as_array().unwrap();
+        assert_eq!(attachments.len(), 1);
+        // The durable Event Part identity is the dispatch reference id.
+        assert_eq!(attachments[0]["id"], json!(image_part.id));
+        assert_eq!(attachments[0]["name"], "synthetic.png");
+        assert_eq!(attachments[0]["mediaType"], "image/png");
+        assert_eq!(attachments[0]["path"], json!(fixture.png.to_string_lossy()));
+        assert!(
+            attachments[0].get("byteSize").is_none(),
+            "byte size stays in the canonical record"
+        );
+    }
+
+    /// An image-only group post admits empty content, persists only the image
+    /// Event Part, and still dispatches to the designated Assistant — the
+    /// default dispatch target when no mention exists. The wire text is the
+    /// composed Assistant guidance with an empty user-authored portion, and
+    /// the turn params carry the attachment reference.
+    #[test]
+    fn image_only_group_post_persists_and_dispatches_to_the_assistant() {
+        let fixture = ImageFixture::new();
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let recorded = Arc::clone(&calls);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(move |params| {
+            recorded.lock().unwrap().push(params.clone());
+            Ok(accepted_receipt(params))
+        });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let conversation_revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": conversation_revision,
+                "membershipId": agent_id,
+            }))
+            .unwrap();
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "",
+                "attachments": [fixture.attachment()],
+            }),
+        );
+
+        assert_eq!(posted["directTurns"][0]["state"], "running");
+        let events = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        let event = events
+            .iter()
+            .find(|event| event.id == posted["event"]["id"])
+            .unwrap();
+        // No empty text part pollutes the record: the image part stands alone.
+        assert_eq!(event.parts.len(), 1);
+        assert_eq!(event.parts[0].kind, super::super::EventPartKind::Image);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["membershipId"], agent_id);
+        let text = calls[0]["text"].as_str().unwrap();
+        assert!(
+            text.starts_with("<skills_instructions>")
+                && text.ends_with("</skills_instructions>\n\n"),
+            "the Assistant guidance composes around an empty user text: {text}"
+        );
+        let attachments = calls[0]["attachments"].as_array().unwrap();
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0]["id"], json!(event.parts[0].id));
+        assert_eq!(attachments[0]["path"], json!(fixture.png.to_string_lossy()));
+    }
+
+    /// The text-only admission rule is unchanged: empty content without
+    /// attachments still rejects before anything persists.
+    #[test]
+    fn message_post_still_rejects_empty_content_without_attachments() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let before = service
+            .store()
+            .page_events(&conversation_id, None, 50)
+            .unwrap()
+            .events
+            .len();
+        for request in [
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "",
+            }),
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "   ",
+            }),
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "",
+                "attachments": [],
+            }),
+        ] {
+            let error = service
+                .execute(request)
+                .expect_err("empty content without attachments must reject");
+            assert_eq!(error.to_string(), "invalid_request");
+        }
+        let after = service
+            .store()
+            .page_events(&conversation_id, None, 50)
+            .unwrap()
+            .events
+            .len();
+        assert_eq!(before, after, "rejected posts must not persist events");
+    }
+
+    /// AC-014: with one image-capable member and one text-only member, the
+    /// capable member's turn carries the attachment reference through the
+    /// existing adapter admission while the text-only member rejects honestly
+    /// before launch — no partial dispatch, no silent drop.
+    #[cfg(unix)]
+    #[test]
+    fn text_only_member_rejects_attachments_before_launch() {
+        use crate::platform::runtime_adapters::{RuntimeAdapterError, send_message};
+
+        let fixture = ImageFixture::new();
+        type Recorded = (
+            String,
+            Value,
+            std::result::Result<Value, RuntimeAdapterError>,
+        );
+        let calls = Arc::new(Mutex::new(Vec::<Recorded>::new()));
+        let recorded = Arc::clone(&calls);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(move |params| {
+            let agent = params["agentId"].as_str().unwrap_or_default().to_owned();
+            // Route through the real 1:1 adapter admission; /bin/sh stands in
+            // for the image-capable adapter binary exactly like the adapter
+            // dispatch tests do.
+            let mut admitted = params.clone();
+            admitted["binaryPath"] = json!("/bin/sh");
+            let result = send_message(&admitted);
+            recorded
+                .lock()
+                .unwrap()
+                .push((agent, params.clone(), result.clone()));
+            result
+        });
+        let group = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Mixed capability",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [
+                    {"principal": {"id": "agent:codex", "kind": "agent", "displayName": "Codex", "agentId": "codex"}, "access": "member"},
+                    {"principal": {"id": "agent:claude", "kind": "agent", "displayName": "Claude", "agentId": "claude-code"}, "access": "member"}
+                ]
+            }))
+            .unwrap();
+        let memberships = group["memberships"].as_array().unwrap();
+        let membership_of = |agent: &str| {
+            memberships
+                .iter()
+                .find(|membership| membership["principal"]["agentId"] == json!(agent))
+                .unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        let codex_membership = membership_of("codex");
+        let claude_membership = membership_of("claude-code");
+        let owner_id = memberships
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "human")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let conversation_id = group["id"].as_str().unwrap().to_owned();
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@Codex @Claude review this screenshot",
+                "attachments": [fixture.attachment()],
+            }),
+        );
+
+        // Both member turns were attempted with the attachment reference.
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        for (_, params, _) in calls.iter() {
+            let attachments = params["attachments"].as_array().unwrap();
+            assert_eq!(attachments.len(), 1);
+            assert_eq!(attachments[0]["path"], json!(fixture.png.to_string_lossy()));
+            assert_eq!(attachments[0]["mediaType"], "image/png");
+        }
+        // The image-capable member passed admission and reached its driver
+        // (the shell fixture fails at the Codex protocol stage, proving a
+        // process was actually launched).
+        let codex_call = calls.iter().find(|(agent, _, _)| agent == "codex").unwrap();
+        let codex_result = codex_call.2.as_ref().expect("codex send dispatched");
+        assert_eq!(codex_result["ok"], false);
+        let code = codex_result["error"]["code"].as_str().unwrap_or_default();
+        assert!(
+            code.starts_with("codex_"),
+            "expected a Codex protocol failure, got {code}"
+        );
+        // The text-only member rejected honestly before launch.
+        let claude_call = calls
+            .iter()
+            .find(|(agent, _, _)| agent == "claude-code")
+            .unwrap();
+        assert_eq!(
+            claude_call.2,
+            Err(RuntimeAdapterError::AttachmentUnsupportedForAdapter {
+                agent_label: "claude-code".to_owned()
+            })
+        );
+        drop(calls);
+
+        // Turn receipts report the honest per-member outcome.
+        let receipts = posted["directTurns"].as_array().unwrap();
+        assert_eq!(receipts.len(), 2);
+        let state_of = |membership_id: &str| {
+            receipts
+                .iter()
+                .find(|receipt| {
+                    service
+                        .store()
+                        .direct_turn(receipt["id"].as_str().unwrap())
+                        .unwrap()
+                        .membership_id
+                        == membership_id
+                })
+                .unwrap()["state"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!(state_of(&codex_membership), "running");
+        assert_eq!(state_of(&claude_membership), "failed");
+        assert_eq!(
+            posted["strategyError"]["code"],
+            "conversation_dispatch_failed"
         );
     }
 

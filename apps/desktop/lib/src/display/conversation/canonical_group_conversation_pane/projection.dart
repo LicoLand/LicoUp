@@ -147,6 +147,11 @@ AgentConversationSession canonicalGroupConversationSession(
     final turnIdentity = correlationId.isEmpty ? '' : 'live-$correlationId';
     var processIndex = 0;
     final textChunks = <String>[];
+    // Posted image Event Parts collect here and land on the flushed text
+    // message as typed attachments — the same message shape the pending
+    // composer draft renders. An image-only post flushes no text, so its
+    // images close the event as a standalone message instead.
+    final pendingImages = <AgentConversationImageAttachment>[];
     var completedSnapshotPending = false;
     var completedSnapshotBase = '';
     var insideMessageUnit = false;
@@ -166,6 +171,9 @@ AgentConversationSession canonicalGroupConversationSession(
           createdAt: _iso(textCreatedAt),
           layer: AgentConversationSemanticLayer.thread,
           stableIdentity: identity,
+          images: List<AgentConversationImageAttachment>.unmodifiable(
+            pendingImages,
+          ),
           participantAgentId: user
               ? ''
               : author?.principal.agentId.trim() ?? '',
@@ -176,11 +184,21 @@ AgentConversationSession canonicalGroupConversationSession(
         ),
       );
       textChunks.clear();
+      pendingImages.clear();
       completedSnapshotPending = false;
       textFlush += 1;
     }
 
     for (final eventPart in event.parts) {
+      if (eventPart.kind == ConversationEventPartKind.image) {
+        final attachment = _canonicalGroupImageAttachment(eventPart);
+        if (attachment != null) {
+          pendingImages.add(attachment);
+          continue;
+        }
+        // Unreadable attachment metadata keeps the generic card fallback so
+        // the part still surfaces instead of vanishing.
+      }
       if (eventPart.kind == ConversationEventPartKind.text) {
         if (completedSnapshotPending &&
             eventPart.content == completedSnapshotBase) {
@@ -240,6 +258,29 @@ AgentConversationSession canonicalGroupConversationSession(
       );
     }
     flushText();
+    if (pendingImages.isNotEmpty) {
+      messages.add(
+        AgentConversationMessage(
+          id: event.id,
+          role: user ? 'user' : 'assistant',
+          text: '',
+          createdAt: _iso(event.createdAtUnixMs),
+          layer: AgentConversationSemanticLayer.thread,
+          stableIdentity: event.id,
+          images: List<AgentConversationImageAttachment>.unmodifiable(
+            pendingImages,
+          ),
+          participantAgentId: user
+              ? ''
+              : author?.principal.agentId.trim() ?? '',
+          participantLabel: user
+              ? ''
+              : author?.principal.displayName.trim() ?? '',
+          participantRole: participantRole,
+        ),
+      );
+      pendingImages.clear();
+    }
   }
   return AgentConversationSession(
     id: conversation.id,
@@ -275,6 +316,27 @@ String? _canonicalMessageUnit(ClientConversationEventPart part) {
   }
 }
 
+/// Decode one image Event Part's content into the typed message attachment.
+/// Returns null for malformed content so the caller keeps the generic card
+/// fallback, mirroring the store's tolerant reader.
+AgentConversationImageAttachment? _canonicalGroupImageAttachment(
+  ClientConversationEventPart part,
+) {
+  try {
+    final decoded = jsonDecode(part.content);
+    if (decoded is! Map) return null;
+    final path = (decoded['path'] ?? '').toString().trim();
+    if (path.isEmpty) return null;
+    return AgentConversationImageAttachment(
+      mediaType: (decoded['mediaType'] ?? '').toString().trim(),
+      filePath: path,
+      name: (decoded['name'] ?? '').toString().trim(),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
 ({String cardType, String cardTitle, String text})
 _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
   final lifecycleStage = CanonicalGroupEventMetadataParser.lifecycleStage(
@@ -295,6 +357,9 @@ _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
     ConversationEventPartKind.artifact => 'artifact',
     ConversationEventPartKind.diagnostic => 'diagnostic',
     ConversationEventPartKind.metadata => 'metadata',
+    // Well-formed image parts never reach this switch: the parts loop
+    // collects them onto the message's typed attachments first.
+    ConversationEventPartKind.image => 'event',
     ConversationEventPartKind.unknown => 'event',
   };
   return (cardType: cardType, cardTitle: '', text: eventPart.content);
