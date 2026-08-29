@@ -8,7 +8,7 @@ use super::persistence::{
     RetainedProviderState, client_state_store, load_retained, persist_provider,
 };
 use super::scheduler::{self, RefreshGate};
-use super::{antigravity, codex, cursor, redaction};
+use super::{antigravity, codex, cursor, kimi_code, redaction};
 use crate::domain::conversation::parameters::text_param;
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -42,6 +42,12 @@ impl QuotaSource for antigravity::AntigravitySource {
     }
 }
 
+impl QuotaSource for kimi_code::KimiCodeSource {
+    fn fetch(&self, now: OffsetDateTime) -> Result<ProviderQuotaSnapshot, QuotaFetchError> {
+        self.fetch_snapshot(now)
+    }
+}
+
 pub(super) type SourceRegistry = BTreeMap<QuotaProvider, Box<dyn QuotaSource>>;
 
 fn production_sources(params: &Value) -> SourceRegistry {
@@ -57,6 +63,10 @@ fn production_sources(params: &Value) -> SourceRegistry {
     sources.insert(
         QuotaProvider::Antigravity,
         Box::new(antigravity::AntigravitySource::production()) as Box<dyn QuotaSource>,
+    );
+    sources.insert(
+        QuotaProvider::KimiCode,
+        Box::new(kimi_code::KimiCodeSource::production(params)) as Box<dyn QuotaSource>,
     );
     sources
 }

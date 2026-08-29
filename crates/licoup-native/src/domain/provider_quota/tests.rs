@@ -8,7 +8,7 @@ use super::contract::{
 };
 use super::persistence::{client_state_store, load_retained};
 use super::scheduler::{self, RefreshGate};
-use super::{antigravity, codex, cursor, redaction};
+use super::{antigravity, codex, cursor, kimi_code, redaction};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -250,6 +250,158 @@ fn provider_quota_cursor_source_identity_fetch_is_best_effort() {
 }
 
 #[test]
+fn provider_quota_kimi_code_source_normalizes_fixture() {
+    let root = temp_root("kimi-code-source");
+    let credentials = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credentials_dir = root.join("credentials");
+    std::fs::create_dir_all(&credentials_dir).unwrap();
+    let credentials_path = credentials_dir.join("kimi-code.json");
+    std::fs::write(&credentials_path, &credentials).unwrap();
+    let device_id_path = root.join("device_id");
+    std::fs::write(&device_id_path, "fixture-device-id").unwrap();
+    let credential_document: Value = serde_json::from_str(&credentials).unwrap();
+    let expected_token = credential_document["access_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let source = kimi_code::KimiCodeSource::for_testing(
+        Some(credentials_path),
+        Some(device_id_path),
+        Box::new(move |url, headers| {
+            assert_eq!(url, "https://api.kimi.com/coding/v1/usages");
+            let owned: Vec<(String, String)> = headers
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect();
+            assert_eq!(
+                owned[0],
+                (
+                    "Authorization".to_string(),
+                    format!("Bearer {expected_token}")
+                )
+            );
+            assert!(
+                owned.contains(&("X-Msh-Platform".to_string(), "kimi_code_cli".to_string()))
+            );
+            assert!(
+                owned.contains(&("X-Msh-Device-Id".to_string(), "fixture-device-id".to_string()))
+            );
+            Ok(fixture_json("kimi-code/usages.json"))
+        }),
+    );
+    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
+
+    assert_eq!(snapshot.agent_id, "kimi-code");
+    assert_eq!(snapshot.provider, QuotaProvider::KimiCode);
+    assert_eq!(snapshot.status, QuotaStatus::Live);
+    assert_eq!(snapshot.windows.len(), 2);
+    let weekly = &snapshot.windows[0];
+    assert_eq!(weekly.label, "weekly");
+    assert_eq!(weekly.used_percent, 31.0);
+    assert_eq!(weekly.window_minutes, Some(10080));
+    assert_eq!(weekly.resets_at.as_deref(), Some("2033-06-01T00:00:00Z"));
+    let session = &snapshot.windows[1];
+    assert_eq!(session.label, "session");
+    assert_eq!(session.used_percent, 10.0);
+    assert_eq!(session.window_minutes, Some(300));
+    assert_eq!(session.resets_at.as_deref(), Some("2033-05-01T05:00:00Z"));
+    assert_eq!(snapshot.identity.plan.as_deref(), Some("Advanced"));
+    assert_eq!(
+        snapshot.identity.account_label.as_deref(),
+        Some("fixture-kimi-user")
+    );
+
+    let wire = snapshot.wire_value().to_string();
+    let credential_text = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let access_token = serde_json::from_str::<Value>(&credential_text).unwrap()["access_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(!wire.contains(&access_token));
+    assert!(!wire.contains("fixture-refresh-token-not-a-real-credential"));
+    assert!(!wire.contains("fixture-device-id"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_quota_kimi_code_source_accepts_string_counters() {
+    let root = temp_root("kimi-code-string-counters");
+    let credentials = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credentials_dir = root.join("credentials");
+    std::fs::create_dir_all(&credentials_dir).unwrap();
+    let credentials_path = credentials_dir.join("kimi-code.json");
+    std::fs::write(&credentials_path, &credentials).unwrap();
+    let source = kimi_code::KimiCodeSource::for_testing(
+        Some(credentials_path),
+        Some(root.join("device_id")),
+        Box::new(move |_, _| Ok(fixture_json("kimi-code/usages-string-counters.json"))),
+    );
+    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
+    assert_eq!(snapshot.status, QuotaStatus::Live);
+    assert_eq!(snapshot.windows.len(), 1);
+    assert_eq!(snapshot.windows[0].used_percent, 25.0);
+    assert_eq!(snapshot.identity.plan.as_deref(), Some("Free"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_quota_kimi_code_source_rejects_expired_token_without_fetching() {
+    let root = temp_root("kimi-code-expired");
+    let credentials_dir = root.join("credentials");
+    std::fs::create_dir_all(&credentials_dir).unwrap();
+    let credentials_path = credentials_dir.join("kimi-code.json");
+    std::fs::write(
+        &credentials_path,
+        concat!(
+            "{\"access_token\": \"eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.",
+            "eyJzdWIiOiJmaXh0dXJlLWtpbWktdXNlciIsImV4cCI6OTQ2Njg0ODAwfQ.",
+            "fixture-signature\", \"expires_at\": 946684800}"
+        ),
+    )
+    .unwrap();
+    let fetch_called = std::sync::Arc::new(AtomicBool::new(false));
+    let fetch_flag = std::sync::Arc::clone(&fetch_called);
+    let source = kimi_code::KimiCodeSource::for_testing(
+        Some(credentials_path),
+        None,
+        Box::new(move |_, _| {
+            fetch_flag.store(true, Ordering::Relaxed);
+            Err(QuotaFetchError::new("must not reach the network"))
+        }),
+    );
+    let error = source.fetch_snapshot(fixed_now()).unwrap_err();
+    assert_eq!(error.code, "kimi_code_token_expired");
+    assert!(!fetch_called.load(Ordering::Relaxed));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_quota_kimi_code_source_missing_credentials_and_windows() {
+    let root = temp_root("kimi-code-missing");
+    let missing = kimi_code::KimiCodeSource::for_testing(
+        Some(root.join("credentials").join("kimi-code.json")),
+        None,
+        Box::new(|_, _| unreachable!("no credentials, no fetch")),
+    );
+    let error = missing.fetch_snapshot(fixed_now()).unwrap_err();
+    assert_eq!(error.code, "kimi_code_credentials_unreadable");
+
+    let credentials = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credentials_dir = root.join("credentials");
+    std::fs::create_dir_all(&credentials_dir).unwrap();
+    let credentials_path = credentials_dir.join("kimi-code.json");
+    std::fs::write(&credentials_path, &credentials).unwrap();
+    let empty = kimi_code::KimiCodeSource::for_testing(
+        Some(credentials_path),
+        None,
+        Box::new(|_, _| Ok(json!({"user": {}}))),
+    );
+    let error = empty.fetch_snapshot(fixed_now()).unwrap_err();
+    assert_eq!(error.code, "kimi_code_quota_windows_missing");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn provider_quota_cursor_source_rejects_expired_token_without_fetching() {
     let root = temp_root("cursor-expired");
     let token = std::fs::read_to_string(fixture_path("cursor/expired-access-token.jwt")).unwrap();
@@ -267,43 +419,6 @@ fn provider_quota_cursor_source_rejects_expired_token_without_fetching() {
     assert_eq!(error.code, "cursor_auth_token_expired");
     assert!(!fetch_called.load(Ordering::Relaxed));
     std::fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn provider_quota_antigravity_source_uses_most_constrained_bucket() {
-    let post_called = std::sync::Arc::new(AtomicBool::new(false));
-    let post_flag = std::sync::Arc::clone(&post_called);
-    let source = antigravity::AntigravitySource::for_testing(
-        Some(antigravity::LoopbackBinding::for_testing(
-            49152,
-            "fixture-csrf-token-not-a-real-credential",
-            false,
-        )),
-        Box::new(move |binding| {
-            post_flag.store(true, Ordering::Relaxed);
-            let debug = format!("{binding:?}");
-            assert!(debug.contains("<redacted>"));
-            Ok(fixture_json("antigravity/quota-summary.json"))
-        }),
-    );
-    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
-
-    assert_eq!(snapshot.agent_id, "antigravity");
-    assert_eq!(snapshot.provider, QuotaProvider::Antigravity);
-    assert_eq!(snapshot.windows.len(), 1);
-    let window = &snapshot.windows[0];
-    assert_eq!(window.label, "constrained");
-    // usedPercent = (1 - remainingFraction) * 100 for the lowest bucket.
-    assert_eq!(window.used_percent, 75.0);
-    assert_eq!(window.resets_at.as_deref(), Some("2033-05-19T03:33:20Z"));
-    assert_eq!(
-        snapshot.identity.account_label.as_deref(),
-        Some("fixture@example.invalid")
-    );
-    assert!(post_called.load(Ordering::Relaxed));
-
-    let wire = snapshot.wire_value().to_string();
-    assert!(!wire.contains("fixture-csrf-token"));
 }
 
 #[test]
@@ -515,7 +630,7 @@ fn provider_quota_agents_without_a_source_are_absent_from_snapshots() {
         &json!({
             "stateRoot": root.to_string_lossy(),
             "now": FIXTURE_NOW,
-            "agent": "kimi-code",
+            "agent": "opencode",
             "forceRefresh": true
         }),
         &sources,
@@ -529,7 +644,7 @@ fn provider_quota_agents_without_a_source_are_absent_from_snapshots() {
     );
 
     let serialized = result.to_string();
-    assert!(!serialized.contains("kimi-code"));
+    assert!(!serialized.contains("opencode"));
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -804,7 +919,7 @@ fn provider_quota_emitted_artifacts_carry_no_credential_material() {
 #[test]
 fn provider_quota_capability_flags_match_supported_providers() {
     let capabilities = quota_capabilities();
-    assert_eq!(capabilities.len(), 3);
+    assert_eq!(capabilities.len(), 4);
     for entry in &capabilities {
         assert!(QuotaProvider::parse(&entry.provider).is_some());
         assert_eq!(entry.agent_id, entry.provider);

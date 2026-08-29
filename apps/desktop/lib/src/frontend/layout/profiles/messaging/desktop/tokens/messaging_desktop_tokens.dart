@@ -112,6 +112,15 @@ abstract final class MessagingDesktopMetrics {
   /// Stale snapshots paint the same arc dimmed at this alpha (of 255).
   static const int groupRosterQuotaRingStaleAlpha = 96;
 
+  /// Hover quota-card progress bar: a full-width stadium track with a
+  /// severity-colored fill, one per quota window.
+  static const double quotaCardBarHeight = 6;
+  static const double quotaCardBarGapAbove = 3;
+  static const double quotaCardBarGapBelow = 3;
+
+  /// Stale snapshots paint the bar fill dimmed at this alpha (of 255).
+  static const int quotaCardBarStaleAlpha = 96;
+
   static const double groupRosterMemberGap = 5;
   static const double groupRosterVerticalInset = 5;
   static const double groupRosterMaxVisibleExtent =

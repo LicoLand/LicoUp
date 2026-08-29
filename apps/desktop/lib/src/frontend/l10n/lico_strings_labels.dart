@@ -563,6 +563,8 @@ extension LicoStringsLabels on LicoStrings {
       : 'Group conversation failed · $failureRef';
   String quotaUsageCardTitle(String provider) =>
       isChinese ? '$provider 配额用量' : '$provider quota usage';
+  String quotaWindowUsedPercent(int percent) =>
+      isChinese ? '已用 $percent%' : '$percent% Used';
   String quotaWindowResetCountdown(String duration) =>
       isChinese ? '$duration后重置' : 'Resets in $duration';
   String quotaSnapshotCapturedAgo(String duration) =>

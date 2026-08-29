@@ -25,6 +25,10 @@ pub(super) enum QuotaProvider {
     Antigravity,
     Codex,
     Cursor,
+    /// The Kimi Code CLI agent id is hyphenated; the wire value overrides the
+    /// lowercase serde default.
+    #[serde(rename = "kimi-code", alias = "kimicode")]
+    KimiCode,
 }
 
 impl QuotaProvider {
@@ -33,6 +37,7 @@ impl QuotaProvider {
             Self::Antigravity => "antigravity",
             Self::Codex => "codex",
             Self::Cursor => "cursor",
+            Self::KimiCode => "kimi-code",
         }
     }
 
@@ -46,6 +51,7 @@ impl QuotaProvider {
             "antigravity" => Some(Self::Antigravity),
             "codex" => Some(Self::Codex),
             "cursor" => Some(Self::Cursor),
+            "kimi-code" | "kimicode" => Some(Self::KimiCode),
             _ => None,
         }
     }
@@ -57,6 +63,7 @@ pub(super) const QUOTA_PROVIDERS: &[QuotaProvider] = &[
     QuotaProvider::Antigravity,
     QuotaProvider::Codex,
     QuotaProvider::Cursor,
+    QuotaProvider::KimiCode,
 ];
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

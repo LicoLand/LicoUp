@@ -207,14 +207,22 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Every window's percentage and a ticked reset countdown per window.
+      // Every window's percentage, progress bar, and a ticked reset
+      // countdown per window.
       expect(
-        find.descendant(of: cardFinder, matching: find.text('187%')),
+        find.descendant(of: cardFinder, matching: find.text('187% Used')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: cardFinder, matching: find.text('63%')),
+        find.descendant(of: cardFinder, matching: find.text('63% Used')),
         findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: cardFinder,
+          matching: find.byKey(const Key('messaging-quota-window-bar')),
+        ),
+        findsNWidgets(2),
       );
       expect(
         find.descendant(of: cardFinder, matching: find.text('5h limit')),
@@ -330,8 +338,12 @@ void main() {
 
       expect(find.text('Codex quota usage'), findsOneWidget);
       expect(find.text('work@example.com · Pro'), findsOneWidget);
-      expect(find.text('82%'), findsOneWidget);
-      expect(find.text('41%'), findsOneWidget);
+      expect(find.text('82% Used'), findsOneWidget);
+      expect(find.text('41% Used'), findsOneWidget);
+      expect(
+        find.byKey(const Key('messaging-quota-window-bar')),
+        findsNWidgets(2),
+      );
       // Countdown ticked from resetsAt; resetDescription is only the fallback
       // for the window without a timestamp.
       expect(find.text('Resets in 2h 14m'), findsOneWidget);

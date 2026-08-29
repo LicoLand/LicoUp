@@ -93,7 +93,11 @@ class _MessagingQuotaUsageCardState extends State<MessagingQuotaUsageCard> {
               ],
               const SizedBox(height: 8),
               for (var index = 0; index < snapshot.windows.length; index++) ...[
-                _QuotaWindowRow(window: snapshot.windows[index], now: now),
+                _QuotaWindowRow(
+                  window: snapshot.windows[index],
+                  now: now,
+                  isStale: snapshot.isStale,
+                ),
                 if (index < snapshot.windows.length - 1)
                   const SizedBox(height: 8),
               ],
@@ -120,10 +124,15 @@ class _MessagingQuotaUsageCardState extends State<MessagingQuotaUsageCard> {
 }
 
 class _QuotaWindowRow extends StatelessWidget {
-  const _QuotaWindowRow({required this.window, required this.now});
+  const _QuotaWindowRow({
+    required this.window,
+    required this.now,
+    required this.isStale,
+  });
 
   final ProviderQuotaWindow window;
   final DateTime now;
+  final bool isStale;
 
   @override
   Widget build(BuildContext context) {
@@ -140,42 +149,90 @@ class _QuotaWindowRow extends StatelessWidget {
             formatQuotaDuration(strings, remaining),
           )
         : window.resetDescription;
+    // Section layout follows the CodexBar usage card one to one: window
+    // label, full-width stadium progress bar, then a row with the used
+    // percentage on the left and the reset countdown on the right.
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          window.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: colors.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: MessagingDesktopMetrics.quotaCardBarGapAbove),
+        _QuotaWindowBar(usedPercent: window.usedPercent, isStale: isStale),
+        const SizedBox(height: MessagingDesktopMetrics.quotaCardBarGapBelow),
         Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Flexible(
-              child: Text(
-                window.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textSecondary, fontSize: 12),
-              ),
-            ),
-            const SizedBox(width: 16),
             Text(
-              '${window.usedPercent.round()}%',
+              strings.quotaWindowUsedPercent(window.usedPercent.round()),
               style: TextStyle(
                 color: colors.text,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (resetText.isNotEmpty) ...[
+              const SizedBox(width: 16),
+              Flexible(
+                child: Text(
+                  resetText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: colors.textMuted, fontSize: 11.5),
+                ),
+              ),
+            ],
           ],
         ),
-        if (resetText.isNotEmpty) ...[
-          const SizedBox(height: 1),
-          Text(
-            resetText,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.textMuted, fontSize: 11.5),
-          ),
-        ],
       ],
+    );
+  }
+}
+
+/// One window's linear usage bar: a stadium track with the used fraction
+/// filled in the severity color — accent under 50% used, warning from 50%,
+/// error from 90% (CodexBar's 50%/10% headroom ladder, reimplemented) —
+/// dimmed for stale snapshots.
+class _QuotaWindowBar extends StatelessWidget {
+  const _QuotaWindowBar({required this.usedPercent, required this.isStale});
+
+  final double usedPercent;
+  final bool isStale;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final base = usedPercent >= 90
+        ? colors.error
+        : usedPercent >= 50
+        ? colors.warning
+        : colors.accent;
+    final fill = isStale
+        ? base.withAlpha(MessagingDesktopMetrics.quotaCardBarStaleAlpha)
+        : base;
+    return ClipRRect(
+      key: const Key('messaging-quota-window-bar'),
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        width: double.infinity,
+        height: MessagingDesktopMetrics.quotaCardBarHeight,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(color: colors.lineStrong),
+            FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: (usedPercent / 100).clamp(0.0, 1.0),
+              child: Container(color: fill),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
