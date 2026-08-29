@@ -58,6 +58,7 @@ class MessagingContactList extends StatefulWidget {
     this.onPrefetchSessions,
     this.isPinned,
     this.onTogglePinned,
+    this.priorityAgentId = '',
     this.scanning = false,
     this.loading = false,
     this.activeDestination = ClientSection.agents,
@@ -97,6 +98,10 @@ class MessagingContactList extends StatefulWidget {
   final ValueChanged<String>? onPrefetchSessions;
   final bool Function(String targetId)? isPinned;
   final ValueChanged<String>? onTogglePinned;
+
+  /// The group assistant's agent id while the sidebar shows a group's member
+  /// conversations: its latest thread pins to the top of the list.
+  final String priorityAgentId;
   final bool scanning;
   final bool loading;
 
@@ -367,6 +372,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
         earlierExpanded: _earlierExpanded,
         showAgentIcons: widget.showConversationAgentIcons,
         runningFor: widget.runningFor,
+        priorityAgentId: widget.priorityAgentId,
         onToggleEarlier: () =>
             setState(() => _earlierExpanded = !_earlierExpanded),
         onSelectSession: widget.onSelectSession ?? (_, _) {},
