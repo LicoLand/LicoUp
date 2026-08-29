@@ -53,3 +53,10 @@ pub(super) fn jwt_expiry_epoch_seconds(token: &str) -> Option<i64> {
     exp.as_i64()
         .or_else(|| exp.as_f64().map(|value| value as i64))
 }
+
+/// JWT string claim (for example `sub` or `email`) used to derive session
+/// material and identity labels from the user's own local token.
+pub(super) fn jwt_string_claim(token: &str, claim: &str) -> Option<String> {
+    let payload = decode_jwt_payload(token)?;
+    payload.get(claim)?.as_str().map(str::to_owned)
+}
