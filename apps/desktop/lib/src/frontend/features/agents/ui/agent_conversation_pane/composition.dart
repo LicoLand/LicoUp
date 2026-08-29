@@ -84,6 +84,7 @@ class AgentConversationActivePane extends StatelessWidget {
           .toList(growable: false),
       mentionLabels: state.composerMentionLabels,
       leading: state.composerLeading,
+      fieldLeading: state.composerFieldLeading,
     );
     final sendUnavailable = state.composerEnabled
         ? null

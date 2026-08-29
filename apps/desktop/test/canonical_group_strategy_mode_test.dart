@@ -18,13 +18,14 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_parti
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
   testWidgets(
-    'group strategy picker lists authorized revisions, starts on first send, and X does not cancel',
+    'strategy activation persists across remounts, the capsule opens only the editor, and posts stay ordinary',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -71,6 +72,8 @@ void main() {
         findsOneWidget,
       );
 
+      // No hover list: hovering shows nothing, and tapping opens the
+      // orchestration editor directly (nothing selected yet → null revision).
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       addTearDown(mouse.removePointer);
       await mouse.addPointer(location: Offset.zero);
@@ -78,35 +81,18 @@ void main() {
       await tester.pump();
       expect(
         find.byKey(const Key('canonical-group-strategy-picker-panel')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('Automatic adaptation'), findsOneWidget);
-      expect(find.text('Authorized Graph'), findsOneWidget);
-      expect(find.text('Pending Graph'), findsNothing);
-      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
-      final option = find.byKey(
-        const Key('canonical-group-strategy-option-rev-auth'),
-      );
-      expect(tester.getSize(option).height, 32);
-      expect(
-        find.byKey(const Key('canonical-group-strategy-edit-rev-auth')),
-        findsOneWidget,
-      );
+      expect(find.text('Automatic adaptation'), findsNothing);
+      expect(find.text('Authorized Graph'), findsNothing);
 
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-edit-rev-auth')),
-      );
+      await tester.tap(picker);
       await tester.pumpAndSettle();
-      expect(openedRevisions, <String?>['rev-auth']);
+      expect(openedRevisions, <String?>[null]);
 
-      await mouse.moveTo(const Offset(1, 1));
-      await tester.pump(const Duration(milliseconds: 220));
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
-
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-option-rev-auth')),
-      );
+      // Activate the strategy through the durable controller path (the same
+      // path the orchestration editor uses).
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
       await tester.pumpAndSettle();
 
       expectAssistantIdentityLabel('Codex');
@@ -163,39 +149,11 @@ void main() {
         strategyWritesBeforeRemount,
       );
 
-      final entry = tester.getRect(
-        find.byKey(const Key('canonical-group-assistant-control')),
-      );
-      final field = tester.getRect(
-        find.byKey(const Key('agent-conversation-composer-field')),
-      );
-      expect(entry.height, closeTo(field.height, 0.5));
-      expect(entry.top, closeTo(field.top, 0.5));
-      expect(entry.bottom, closeTo(field.bottom, 0.5));
-
-      await mouse.moveTo(const Offset(1, 1));
-      await tester.pump(const Duration(milliseconds: 220));
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
-      expect(
-        find.byKey(const Key('canonical-group-strategy-option-rev-auth')),
-        findsOneWidget,
-      );
-      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
-      await mouse.moveTo(const Offset(1, 1));
-      await tester.pump(const Duration(milliseconds: 220));
-
+      // With a selection active, tapping the capsule edits that revision.
       await tester.tap(picker);
       await tester.pumpAndSettle();
-      expect(openedRevisions, ['rev-auth', 'rev-auth']);
+      expect(openedRevisions, [null, 'rev-auth']);
 
-      expect(openedRevisions, ['rev-auth', 'rev-auth']);
-      expect(
-        conversationRunner.requests.where(
-          (request) => request['action'] == 'conversation.membership.add',
-        ),
-        isNotEmpty,
-      );
       expect(gateway.actions, isNot(contains('strategy.run.start')));
       expect(gateway.actions, isNot(contains('strategy.run.cancel')));
 
@@ -235,14 +193,10 @@ void main() {
           .where((action) => action == 'strategy.run.cancel')
           .length;
 
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-option-none')),
-      );
+      // Clearing the selection also goes through the durable controller path.
+      expect(await controller.setSelectedStrategyRevision(null), isTrue);
       await tester.pumpAndSettle();
 
-      expect(openedRevisions, ['rev-auth', 'rev-auth']);
       expect(
         gateway.actions
             .where((action) => action == 'strategy.run.cancel')
@@ -308,15 +262,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-option-rev-auth')),
+      expect(
+        find.byKey(const Key('canonical-group-strategy-picker')),
+        findsOneWidget,
       );
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField), 'start the graph');
@@ -402,7 +352,7 @@ void main() {
   );
 
   testWidgets(
-    'Assistant control has no hover editor and matches the input capsule height',
+    'Assistant control sits inside the composer field capsule at its interior left',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1000, 700);
@@ -450,10 +400,15 @@ void main() {
       final field = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
       );
-      expect(assistant.height, lessThanOrEqualTo(42));
-      expect(assistant.height, closeTo(field.height, 0.5));
-      expect(assistant.top, closeTo(field.top, 0.5));
-      expect(assistant.bottom, closeTo(field.bottom, 0.5));
+      expect(
+        assistant.height,
+        MessagingDesktopMetrics.conversationComposerAssistantExtent,
+      );
+      // Inside the field capsule, at its interior left edge.
+      expect(assistant.left, greaterThan(field.left));
+      expect(assistant.left, lessThan(field.left + 24));
+      expect(assistant.top, greaterThan(field.top));
+      expect(assistant.bottom, lessThan(field.bottom));
     },
   );
 
@@ -492,18 +447,9 @@ void main() {
       await tester.pumpWidget(groupPane());
       await tester.pumpAndSettle();
 
-      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-option-rev-auth')),
-      );
-
-      // This models selecting a strategy and immediately leaving the screen,
+      // This models activating a strategy and immediately leaving the screen,
       // before definition inspection or membership reconciliation completes.
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
       await tester.pumpWidget(const SizedBox(key: Key('other-interface')));
       await tester.pump();
 

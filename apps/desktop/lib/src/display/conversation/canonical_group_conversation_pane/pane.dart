@@ -294,99 +294,12 @@ class _CanonicalGroupConversationPaneState
     _strategyRuntimeProfiles = const {};
   }
 
-  Future<void> _exitStrategyMode() async {
-    final conversationId = widget.controller.selectedConversationId;
-    final cleared = await widget.controller.setSelectedStrategyRevision(null);
-    if (!mounted ||
-        !cleared ||
-        widget.controller.selectedConversationId != conversationId) {
-      return;
-    }
-    _strategyProjectionConversationId = conversationId;
-    _strategyProjectionRevision = '';
-    _strategyProjectionGeneration += 1;
-    setState(_clearStrategyFields);
-  }
-
   Future<void> _openAdaptiveFlywheel(String? revisionDigest) async {
     final open = widget.onOpenAdaptiveFlywheel;
     if (open == null) return;
     await open(revisionDigest);
     if (!mounted) return;
     await _loadAuthorizedStrategies();
-  }
-
-  Future<void> _selectStrategy(String revisionDigest) async {
-    final controller = widget.controller;
-    final gateway = widget.flywheelGateway;
-    final conversation = controller.selectedConversation;
-    final conversationId = conversation?.id ?? '';
-    if (conversationId.isEmpty || revisionDigest.isEmpty || gateway == null) {
-      return;
-    }
-    final strategies = List<AdaptiveFlywheelDefinition>.unmodifiable(
-      _authorizedStrategies,
-    );
-    final agentLabels = <String, String>{
-      for (final target in widget.targets)
-        if (target.target.trim().isNotEmpty)
-          target.target: agentConversationTargetDisplayName(target),
-      for (final target in widget.targets)
-        if (target.id.trim().isNotEmpty)
-          target.id: agentConversationTargetDisplayName(target),
-      for (final membership in conversation!.activeAgentMemberships)
-        if (membership.principal.agentId.trim().isNotEmpty)
-          membership.principal.agentId:
-              membership.principal.displayName.trim().isEmpty
-              ? membership.principal.agentId
-              : membership.principal.displayName,
-    };
-
-    // The user's click is the durable state transition. Persist it before
-    // inspection and membership reconciliation so navigation cannot dispose
-    // the pane and cancel the selection before it reaches the Conversation.
-    final persisted = await controller.setSelectedStrategyRevision(
-      revisionDigest,
-    );
-    if (!persisted) return;
-    if (!mounted ||
-        controller.selectedConversationId != conversationId ||
-        controller.selectedConversation?.strategyRevision.trim() !=
-            revisionDigest) {
-      return;
-    }
-    _applyPersistedStrategySelection(revisionDigest);
-    try {
-      final projection = await _inspectStrategy(
-        revisionDigest,
-        gatewayOverride: gateway,
-        strategiesOverride: strategies,
-      );
-      if (projection == null) return;
-      for (final agentId in projection.agentIds) {
-        if (controller.selectedConversationId != conversationId ||
-            controller.selectedConversation?.strategyRevision.trim() !=
-                revisionDigest) {
-          return;
-        }
-        await controller.ensureSelectedAgentMembership(
-          agentId: agentId,
-          displayName: agentLabels[agentId] ?? agentId,
-        );
-      }
-      if (!mounted ||
-          controller.selectedConversationId != conversationId ||
-          controller.selectedConversation?.strategyRevision.trim() !=
-              revisionDigest) {
-        return;
-      }
-      _strategyProjectionConversationId = conversationId;
-      _strategyProjectionRevision = revisionDigest;
-      _strategyProjectionGeneration += 1;
-      _applyStrategyProjection(projection);
-    } on AdaptiveFlywheelFailure {
-      return;
-    }
   }
 
   Future<void> _syncStrategyFromConversation({bool force = false}) async {
@@ -493,6 +406,18 @@ class _CanonicalGroupConversationPaneState
   bool _assistantActive(ClientConversation conversation) =>
       _assistantActiveByConversation[conversation.id] ??
       conversation.assistantMembership != null;
+
+  /// The assistant's brand target for the composer's in-field control; null
+  /// while no assistant is designated or the target is unknown.
+  TargetCandidate? _assistantBrandTarget(ClientConversation conversation) {
+    final agentId =
+        conversation.assistantMembership?.principal.agentId.trim() ?? '';
+    if (agentId.isEmpty) return null;
+    for (final target in widget.targets) {
+      if (target.target == agentId || target.id == agentId) return target;
+    }
+    return null;
+  }
 
   void _toggleAssistant(ClientConversation conversation) {
     setState(() {
@@ -1196,36 +1121,26 @@ class _CanonicalGroupConversationPaneState
       composerFlywheel: GroupStrategyPickerCapsule(
         label: assistantStatus.label,
         statusLight: assistantStatus.light,
-        strategies: _authorizedStrategies,
         selectedRevision: _strategyRevision,
-        onSelected: (revision) => unawaited(_selectStrategy(revision)),
-        onCleared: () => unawaited(_exitStrategyMode()),
         onOpen: widget.onOpenAdaptiveFlywheel == null
             ? null
             : (revision) => unawaited(_openAdaptiveFlywheel(revision)),
       ),
-      composerLeading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AssistantToggleButton(
-            active: _assistantActive(conversation),
-            configured: conversation.assistantMembership != null,
-            onTap: conversation.assistantMembership == null
-                ? () => unawaited(_openAdaptiveFlywheel(_strategyRevision))
-                : () => _toggleAssistant(conversation),
-          ),
-          const SizedBox(
-            width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
-          ),
-          CanonicalGroupAssistantActions(
-            onPickAttachments: widget.onPickComposerImages,
-            onNewConversation: conversation.assistantMembership == null
-                ? null
-                : _refreshAssistantThread,
-            onDiscardImages: widget.onClearComposerImages,
-            showDiscardImages: widget.composerAttachments.isNotEmpty,
-          ),
-        ],
+      composerFieldLeading: AssistantToggleButton(
+        active: _assistantActive(conversation),
+        configured: conversation.assistantMembership != null,
+        assistantTarget: _assistantBrandTarget(conversation),
+        onTap: conversation.assistantMembership == null
+            ? () => unawaited(_openAdaptiveFlywheel(_strategyRevision))
+            : () => _toggleAssistant(conversation),
+      ),
+      composerLeading: CanonicalGroupAssistantActions(
+        onPickAttachments: widget.onPickComposerImages,
+        onNewConversation: conversation.assistantMembership == null
+            ? null
+            : _refreshAssistantThread,
+        onDiscardImages: widget.onClearComposerImages,
+        showDiscardImages: widget.composerAttachments.isNotEmpty,
       ),
     );
     final actions = AgentConversationPaneActions(

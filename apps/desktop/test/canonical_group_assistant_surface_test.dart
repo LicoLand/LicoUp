@@ -69,15 +69,15 @@ void main() {
         reason: 'the ready light is the theme success color',
       );
 
-      // Tapping the trigger (no flywheel editor wired) still opens the
-      // strategy popover above the capsule.
+      // The capsule shows no strategy list on hover or tap; with no flywheel
+      // editor wired the tap is inert and no panel exists.
       await tester.tap(picker);
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('canonical-group-strategy-picker-panel')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('Automatic adaptation'), findsOneWidget);
+      expect(find.text('Automatic adaptation'), findsNothing);
       expect(
         find.descendant(
           of: picker,
