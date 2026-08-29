@@ -86,7 +86,11 @@ class MessagingConversationHeader extends StatelessWidget {
 
     final identity = Row(
       children: [
-        MessagingAgentAvatar(target: target, size: 30, iconSize: 17),
+        MessagingAgentAvatar(
+          target: target,
+          size: MessagingDesktopMetrics.conversationAvatarExtent,
+          iconSize: MessagingDesktopMetrics.conversationAvatarMarkExtent,
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: Column(

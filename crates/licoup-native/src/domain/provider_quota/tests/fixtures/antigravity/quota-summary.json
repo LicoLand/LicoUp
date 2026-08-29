@@ -1,0 +1,18 @@
+{
+  "accountLabel": "fixture@example.invalid",
+  "plan": "fixture-pro",
+  "buckets": [
+    {
+      "id": "fixture-bucket-primary",
+      "label": "primary",
+      "remainingFraction": 0.8,
+      "resetTime": "2033-05-18T03:33:20Z"
+    },
+    {
+      "id": "fixture-bucket-constrained",
+      "label": "constrained",
+      "remainingFraction": 0.25,
+      "resetTime": "2033-05-19T03:33:20Z"
+    }
+  ]
+}

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/provider_quota_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_ring.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_usage_card.dart';
 import 'package:licoup/src/shared/l10n/lico_strings_catalog.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -19,6 +23,7 @@ class CanonicalGroupRoster extends StatelessWidget {
     required this.onMentionAgent,
     this.onOpenAgentConversations,
     this.onBoundaryOverscroll,
+    this.quotaSnapshots = const <String, ProviderQuotaSnapshot>{},
   });
 
   final ClientConversation conversation;
@@ -26,6 +31,10 @@ class CanonicalGroupRoster extends StatelessWidget {
   final ValueChanged<TargetCandidate> onMentionAgent;
   final ValueChanged<TargetCandidate>? onOpenAgentConversations;
   final ValueChanged<double>? onBoundaryOverscroll;
+
+  /// Immutable provider-quota projection keyed by agent id. Members without
+  /// an entry render no ring and no hover card — never placeholder data.
+  final Map<String, ProviderQuotaSnapshot> quotaSnapshots;
 
   Future<void> _showAgentMenu({
     required BuildContext context,
@@ -87,7 +96,7 @@ class CanonicalGroupRoster extends StatelessWidget {
             shrinkWrap: true,
             physics: const ClampingScrollPhysics(),
             padding: const EdgeInsets.symmetric(
-              horizontal: MessagingDesktopMetrics.groupRosterContentInset,
+              horizontal: MessagingDesktopMetrics.groupRosterPadH,
               vertical: MessagingDesktopMetrics.groupRosterVerticalInset,
             ),
             itemCount: targets.length,
@@ -107,40 +116,69 @@ class CanonicalGroupRoster extends StatelessWidget {
               final compactLabel = agentConversationTargetCompactDisplayName(
                 target,
               );
-              return Tooltip(
+              final quotaSnapshot = _renderableQuotaSnapshot(
+                quotaSnapshots[target.target] ?? quotaSnapshots[target.id],
+              );
+              final member = Tooltip(
                 message: fullLabel,
                 waitDuration: LicoMotion.tooltipWait,
-                child: Column(
-                  children: [
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        key: Key(
-                          'canonical-group-roster-agent-${target.target}',
-                        ),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => onMentionAgent(target),
-                        onDoubleTap: onOpenAgentConversations == null
-                            ? null
-                            : () => onOpenAgentConversations!(target),
-                        onSecondaryTapDown: (details) => _showAgentMenu(
-                          context: context,
-                          target: target,
-                          label: compactLabel,
-                          globalPosition: details.globalPosition,
-                        ),
+                // Bare avatar + relay dot only; the member name stays in the
+                // tooltip so the capsule keeps its true stadium silhouette.
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    key: Key('canonical-group-roster-agent-${target.target}'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onMentionAgent(target),
+                    onDoubleTap: onOpenAgentConversations == null
+                        ? null
+                        : () => onOpenAgentConversations!(target),
+                    onSecondaryTapDown: (details) => _showAgentMenu(
+                      context: context,
+                      target: target,
+                      label: compactLabel,
+                      globalPosition: details.globalPosition,
+                    ),
+                    // Anchor the relay dot to the avatar box itself: the
+                    // ListView stretches items to the capsule width, so a
+                    // bare Stack would pin the dot past the icon's edge.
+                    child: Center(
+                      child: SizedBox.square(
+                        dimension:
+                            MessagingDesktopMetrics.groupRosterMemberExtent,
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            MessagingAgentAvatar(
-                              target: target,
-                              size: 42,
-                              iconSize: 24,
+                            Positioned.fill(
+                              child: quotaSnapshot == null
+                                  ? MessagingAgentAvatar(
+                                      target: target,
+                                      size: MessagingDesktopMetrics
+                                          .conversationAvatarExtent,
+                                      iconSize: MessagingDesktopMetrics
+                                          .conversationAvatarMarkExtent,
+                                    )
+                                  : MessagingQuotaRing(
+                                      key: Key(
+                                        'messaging-quota-ring-${target.target}',
+                                      ),
+                                      snapshot: quotaSnapshot,
+                                      child: MessagingAgentAvatar(
+                                        target: target,
+                                        size: MessagingDesktopMetrics
+                                            .groupRosterQuotaAvatarExtent,
+                                        iconSize: MessagingDesktopMetrics
+                                            .groupRosterQuotaAvatarMarkExtent,
+                                      ),
+                                    ),
                             ),
                             Positioned(
-                              right: -1,
-                              bottom: -1,
+                              right: 0,
+                              bottom: 0,
                               child: Container(
+                                key: Key(
+                                  'canonical-group-roster-relay-dot-${target.target}',
+                                ),
                                 width: 10,
                                 height: 10,
                                 decoration: BoxDecoration(
@@ -159,19 +197,29 @@ class CanonicalGroupRoster extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      compactLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: colors.textMuted,
-                        fontSize: 9,
-                        height: 1.1,
-                      ),
-                    ),
-                  ],
+                  ),
+                ),
+              );
+              if (quotaSnapshot == null) {
+                return member;
+              }
+              // The usage card floats beside the hovered avatar; the capsule
+              // itself stays a pure icon list with zero text.
+              return MessagingHoverPopover(
+                wrapInGlass: false,
+                targetAnchor: Alignment.centerLeft,
+                followerAnchor: Alignment.centerRight,
+                offset: const Offset(-8, 0),
+                triggerBuilder:
+                    (
+                      context, {
+                      required open,
+                      required toggle,
+                      required close,
+                    }) => member,
+                cardBuilder: (context, close) => MessagingQuotaUsageCard(
+                  key: Key('messaging-quota-usage-card-${target.target}'),
+                  snapshot: quotaSnapshot,
                 ),
               );
             },
@@ -183,6 +231,14 @@ class CanonicalGroupRoster extends StatelessWidget {
 }
 
 enum _CanonicalGroupRosterAction { mention, openConversations }
+
+/// Only snapshots with usable quota windows render chrome; unavailable or
+/// window-less entries behave exactly like a missing snapshot.
+ProviderQuotaSnapshot? _renderableQuotaSnapshot(
+  ProviderQuotaSnapshot? snapshot,
+) {
+  return snapshot != null && snapshot.hasQuotaWindows ? snapshot : null;
+}
 
 final class _CanonicalGroupRosterScrollBehavior extends MaterialScrollBehavior {
   const _CanonicalGroupRosterScrollBehavior();
@@ -211,9 +267,9 @@ class CanonicalGroupRosterSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(
-      MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
-    );
+    // True stadium: 999 clamps to half the capsule width, so the top and
+    // bottom ends are full semicircles at any content height.
+    final radius = BorderRadius.circular(999);
     return SizedBox(
       key: const Key('canonical-group-roster-surface'),
       width: MessagingDesktopMetrics.groupRosterExtent,

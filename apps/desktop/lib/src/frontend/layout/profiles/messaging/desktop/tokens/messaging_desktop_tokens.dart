@@ -74,19 +74,44 @@ abstract final class MessagingDesktopMetrics {
   /// Drop-shadow Y offset of the floating list card.
   static const double conversationListCardShadowOffsetY = 4;
 
+  /// One circular identity size across conversation chrome: the header
+  /// capsule identity icons, message author avatars, and the floating
+  /// group-member roster all render at this extent.
+  static const double conversationAvatarExtent = 40;
+
+  /// Glyph size inside a [conversationAvatarExtent] identity circle.
+  static const double conversationAvatarMarkExtent = 22;
+
   /// Empty bands between the group roster and the floating header/composer.
   static const double groupRosterHeaderGap = 10;
   static const double groupRosterComposerGap = 10;
 
-  /// Detached member capsule in the right transcript band. Its width matches
-  /// the group header capsule button (38 px avatar + 8 px vertical padding on
-  /// each side), so the two controls share one vertical axis and silhouette.
-  static const double groupRosterExtent = 54;
-  static const double groupRosterContentInset = 2;
+  /// Detached member capsule in the right transcript band: a slim stadium
+  /// hugging the member avatars with [groupRosterPadH] on each side.
+  static const double groupRosterPadH = 4;
+  static const double groupRosterExtent =
+      conversationAvatarExtent + groupRosterPadH * 2;
   static const double groupRosterScrollbarThickness = 2;
   static const double groupRosterMinimumVisibleExtent = 128;
   static const int groupRosterVisibleMemberCount = 5;
-  static const double groupRosterMemberExtent = 54;
+
+  /// Bare avatar row height after member names moved into tooltips — the
+  /// shared conversation avatar size.
+  static const double groupRosterMemberExtent = conversationAvatarExtent;
+
+  /// Provider-quota ring painted around a roster avatar inside the existing
+  /// [groupRosterMemberExtent]: the avatar insets by the ring band so the
+  /// capsule silhouette and member extent stay unchanged.
+  static const double groupRosterQuotaRingThickness = 2;
+  static const double groupRosterQuotaRingInset = 1;
+  static const double groupRosterQuotaAvatarExtent =
+      groupRosterMemberExtent -
+      (groupRosterQuotaRingThickness + groupRosterQuotaRingInset) * 2;
+  static const double groupRosterQuotaAvatarMarkExtent = 18;
+
+  /// Stale snapshots paint the same arc dimmed at this alpha (of 255).
+  static const int groupRosterQuotaRingStaleAlpha = 96;
+
   static const double groupRosterMemberGap = 5;
   static const double groupRosterVerticalInset = 5;
   static const double groupRosterMaxVisibleExtent =
@@ -101,9 +126,9 @@ abstract final class MessagingDesktopMetrics {
   static const double conversationHeaderCapsuleInsetV = 8;
 
   /// Shared radius of the capsule family outside the header identity
-  /// capsules (composer capsule, group roster surface, group failure alert).
-  /// Header identity capsules use a full stadium instead — see their call
-  /// sites (`BorderRadius.circular(999)`).
+  /// capsules (composer capsule, group failure alert). Header identity
+  /// capsules and the group roster surface use a full stadium instead — see
+  /// their call sites (`BorderRadius.circular(999)`).
   static const double conversationHeaderCapsuleCornerRadius = 22;
 
   /// Inner horizontal padding inside the header capsule.
@@ -120,11 +145,11 @@ abstract final class MessagingDesktopMetrics {
 
   /// Vertical space reserved under the floating header capsules so the
   /// transcript can scroll beneath them without clipping the first rows.
-  /// insetV×2 + padV×2 + avatar(30).
+  /// insetV×2 + padV×2 + avatar.
   static const double conversationHeaderOverlayExtent =
       conversationHeaderCapsuleInsetV * 2 +
       conversationHeaderCapsulePadV * 2 +
-      30;
+      conversationAvatarExtent;
 
   /// Extra gap between the header overlay and the group failure alert.
   static const double conversationFailureAlertGap = 16;
