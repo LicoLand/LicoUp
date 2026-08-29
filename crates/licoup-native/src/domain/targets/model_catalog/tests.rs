@@ -455,6 +455,41 @@ Claude Opus 4.6 (Thinking)
         assert!(entries.values().all(|entry| !entry.provider_inferred));
     }
 
+    #[test]
+    fn antigravity_cli_model_lines_split_id_from_display_name() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_model_catalog_from_cli_lines(
+            "gemini-3.7-flash-high Gemini 3.7 Flash (High)\ngemini-3.7-flash-low  Gemini 3.7 Flash (Low)\n",
+            "antigravity-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(added, 2);
+        let high = entries
+            .values()
+            .find(|entry| entry.name == "gemini-3.7-flash-high")
+            .expect("id-only selector entry");
+        assert_eq!(high.display_name, "Gemini 3.7 Flash (High)");
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "gemini-3.7-flash-low"
+                    && entry.display_name == "Gemini 3.7 Flash (Low)")
+        );
+        // A capitalized line stays a bare display name with no id column.
+        let mut named = BTreeMap::<String, ModelCatalogEntry>::new();
+        collect_model_catalog_from_cli_lines(
+            "Gemini 3.5 Flash (Medium)\n",
+            "antigravity-cli:models",
+            &mut named,
+        );
+        assert!(
+            named
+                .values()
+                .any(|entry| entry.name == "Gemini 3.5 Flash (Medium)")
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn antigravity_cli_model_lookup_preserves_real_results() {
