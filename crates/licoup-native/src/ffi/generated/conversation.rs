@@ -71,6 +71,8 @@ pub enum ConversationEventPartKind {
     Diagnostic,
     #[serde(rename = "metadata")]
     Metadata,
+    #[serde(rename = "image")]
+    Image,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -65,7 +65,7 @@ void main() {
 
       final picker = find.byKey(const Key('canonical-group-strategy-picker'));
       expect(picker, findsOneWidget);
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
       expect(
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
@@ -109,7 +109,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
       expect(
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
@@ -141,7 +141,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
       expect(
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
@@ -249,7 +249,7 @@ void main() {
             .length,
         cancelsBeforeClearingStrategy,
       );
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
       expect(
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
@@ -522,7 +522,7 @@ void main() {
       await tester.pumpWidget(groupPane());
       await tester.pumpAndSettle();
 
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
       expect(
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
@@ -570,7 +570,7 @@ void main() {
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
       expect(conversationRunner.strategyRevision, 'rev-auth');
 
       controller.updateDraft('notify projection retry');
@@ -581,7 +581,7 @@ void main() {
         find.byKey(const Key('canonical-group-assistant-control')),
         findsOneWidget,
       );
-      expect(find.text('Your Assistant is ready'), findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
     },
   );
 
@@ -1450,6 +1450,19 @@ Widget _groupApp(Widget child) {
         ),
       ),
     ),
+  );
+}
+
+/// The readiness capsule shows the assistant identity label in place of the
+/// retired ready string: the assistant Membership's display name when no
+/// strategy runtime profile or persistent Profile carries model/effort detail.
+void expectAssistantIdentityLabel(String label) {
+  expect(
+    find.descendant(
+      of: find.byKey(const Key('canonical-group-strategy-picker')),
+      matching: find.text(label),
+    ),
+    findsOneWidget,
   );
 }
 

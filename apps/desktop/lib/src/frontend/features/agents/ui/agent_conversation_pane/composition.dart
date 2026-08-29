@@ -64,6 +64,7 @@ class AgentConversationActivePane extends StatelessWidget {
       onReasoningEffortChanged: actions.onReasoningEffortChanged,
       onDraftChanged: actions.onDraftChanged,
       onSend: actions.onSend,
+      onSlashNewConversation: actions.onNewConversation,
       onCancel: actions.onCancel,
       defaultModel: state.defaultModel,
       defaultReasoningEffort: state.defaultReasoningEffort,
