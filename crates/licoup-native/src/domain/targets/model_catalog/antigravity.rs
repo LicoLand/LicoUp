@@ -255,13 +255,45 @@ pub(super) fn collect_model_catalog_from_cli_lines(
         {
             continue;
         }
-        let selector = trimmed
-            .split_once(" - ")
-            .map(|(id, _)| id.trim())
-            .unwrap_or(trimmed);
-        add_model_catalog_entry(entries, selector, source, BTreeSet::new());
+        let (selector, display_name) = split_cli_model_line(trimmed);
+        add_model_catalog_entry_with_provider(
+            entries,
+            selector,
+            display_name,
+            None,
+            None,
+            source,
+            BTreeSet::new(),
+        );
     }
     entries.len().saturating_sub(before)
+}
+
+/// Splits one `agy models` line into the model id and its display name.
+/// Lines arrive as `id - Name`, `id Name`, a bare id, or a bare name.
+fn split_cli_model_line(line: &str) -> (&str, Option<&str>) {
+    if let Some((id, name)) = line.split_once(" - ") {
+        let name = name.trim();
+        return (id.trim(), if name.is_empty() { None } else { Some(name) });
+    }
+    if let Some((head, tail)) = line.split_once(char::is_whitespace) {
+        let tail = tail.trim();
+        if is_cli_model_id_token(head) && !tail.is_empty() {
+            return (head, Some(tail));
+        }
+    }
+    (line, None)
+}
+
+/// Model ids are lowercase slug tokens (`gemini-3.7-flash-high`); a display
+/// name's first word is capitalized (`Gemini`, `Claude`), so a capital letter
+/// or a slug-free token means the line carries no id column.
+fn is_cli_model_id_token(token: &str) -> bool {
+    !token.is_empty()
+        && token.chars().all(|ch| {
+            ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '-' | '_' | '.' | '/')
+        })
+        && token.chars().any(|ch| ch == '-' || ch.is_ascii_digit())
 }
 
 fn is_antigravity_cli_header_line(trimmed: &str) -> bool {
