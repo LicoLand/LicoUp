@@ -6,7 +6,7 @@
     "remote": "origin"
   },
   "candidate": {
-    "template": "release-candidate/v{version}",
+    "branch": "macos-release-candidate",
     "requiredChecks": [
       "Branch flow",
       "Commit identity",

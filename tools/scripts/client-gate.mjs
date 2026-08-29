@@ -443,7 +443,7 @@ function validateDelegatedApplePublicationTopology() {
   const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest"];
   if (config.schema !== "apple-release.config.v1" ||
       config.source?.branch !== "release" ||
-      !candidate || candidate.template !== "release-candidate/v{version}" ||
+      !candidate || candidate.branch !== "macos-release-candidate" ||
       !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
       config.apple?.target !== "macos-direct-arm64" ||
       config.github?.repository !== "LicoLand/LicoUp" ||
