@@ -53,6 +53,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.mentionTargets = const [],
     this.mentionLabels = const {},
     this.leading,
+    this.fieldLeading,
   });
 
   final String targetLabel;
@@ -114,6 +115,10 @@ class RuntimeMessageComposer extends StatefulWidget {
 
   /// Optional capsule rendered immediately before the input field.
   final Widget? leading;
+
+  /// Optional compact control rendered inside the field capsule, left of the
+  /// text input (for example the assistant toggle).
+  final Widget? fieldLeading;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -392,6 +397,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              if (widget.fieldLeading != null) ...[widget.fieldLeading!],
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
