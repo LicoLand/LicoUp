@@ -49,11 +49,28 @@ pub(super) fn get_json_with_bearer(
     bearer: &str,
     timeout: Duration,
 ) -> Result<Value, QuotaFetchError> {
+    get_json_with_header(url, "Authorization", &format!("Bearer {bearer}"), timeout)
+}
+
+pub(super) fn get_json_with_cookie(
+    url: &str,
+    cookie: &str,
+    timeout: Duration,
+) -> Result<Value, QuotaFetchError> {
+    get_json_with_header(url, "Cookie", cookie, timeout)
+}
+
+fn get_json_with_header(
+    url: &str,
+    header: &str,
+    value: &str,
+    timeout: Duration,
+) -> Result<Value, QuotaFetchError> {
     validate_url(url, "quota_endpoint_url_rejected")?;
     let response = hosted_agent()
         .get(url)
         .timeout(timeout)
-        .set("Authorization", &format!("Bearer {bearer}"))
+        .set(header, value)
         .call()
         .map_err(|_| QuotaFetchError::new("quota_endpoint_request_failed"))?;
     decode_bounded_json(response)

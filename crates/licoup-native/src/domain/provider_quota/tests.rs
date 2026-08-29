@@ -152,10 +152,24 @@ fn provider_quota_cursor_source_normalizes_fixture() {
     let expected_token = token.trim().to_owned();
     let source = cursor::CursorSource::for_testing(
         Some(db_path),
-        Box::new(move |url, bearer| {
-            assert_eq!(url, "https://cursor.com/api/usage-summary");
-            assert_eq!(bearer, expected_token);
-            Ok(fixture_json("cursor/usage-summary.json"))
+        Box::new(move |url, cookie| {
+            // cursor.com authenticates with the WorkOS session cookie derived
+            // from the app token, never the raw token as a bearer credential.
+            assert_eq!(
+                cookie,
+                format!(
+                    "WorkosCursorSessionToken=fixture-cursor-user%3A%3A{expected_token}"
+                )
+            );
+            match url {
+                "https://cursor.com/api/usage-summary" => {
+                    Ok(fixture_json("cursor/usage-summary.json"))
+                }
+                "https://cursor.com/api/auth/me" => {
+                    Ok(json!({"email": "fixture@example.invalid"}))
+                }
+                _ => panic!("unexpected cursor endpoint: {url}"),
+            }
         }),
     );
     let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
@@ -164,16 +178,74 @@ fn provider_quota_cursor_source_normalizes_fixture() {
     assert_eq!(snapshot.provider, QuotaProvider::Cursor);
     assert_eq!(snapshot.status, QuotaStatus::Live);
     assert_eq!(snapshot.captured_at, FIXTURE_NOW);
-    assert_eq!(snapshot.windows.len(), 1);
+    assert_eq!(snapshot.windows.len(), 3);
     let plan = &snapshot.windows[0];
     assert_eq!(plan.label, "plan");
     assert_eq!(plan.used_percent, 42.5);
-    assert_eq!(plan.window_minutes, None);
+    assert_eq!(plan.window_minutes, Some(44640));
     assert_eq!(plan.resets_at.as_deref(), Some("2033-06-01T00:00:00Z"));
+    assert_eq!(snapshot.windows[1].label, "auto");
+    assert_eq!(snapshot.windows[1].used_percent, 50.0);
+    assert_eq!(snapshot.windows[2].label, "api");
+    assert_eq!(snapshot.windows[2].used_percent, 10.0);
     assert_eq!(snapshot.identity.plan.as_deref(), Some("pro"));
+    assert_eq!(
+        snapshot.identity.account_label.as_deref(),
+        Some("fixture@example.invalid")
+    );
 
     let wire = snapshot.wire_value().to_string();
     assert!(!wire.contains(token.trim()));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_quota_cursor_source_rejects_token_without_user_id() {
+    let root = temp_root("cursor-no-user-id");
+    // Well-formed JWT whose payload carries an expiry but no `sub` claim.
+    let token = concat!(
+        "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.",
+        "eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS5pbnZhbGlkIiwiZXhwIjoyMDAwMDAwMDAwfQ.",
+        "fixture-signature"
+    );
+    let db_path = write_cursor_state_db(&root, token);
+    let fetch_called = std::sync::Arc::new(AtomicBool::new(false));
+    let fetch_flag = std::sync::Arc::clone(&fetch_called);
+    let source = cursor::CursorSource::for_testing(
+        Some(db_path),
+        Box::new(move |_, _| {
+            fetch_flag.store(true, Ordering::Relaxed);
+            Err(QuotaFetchError::new("must not reach the network"))
+        }),
+    );
+    let error = source.fetch_snapshot(fixed_now()).unwrap_err();
+    assert_eq!(error.code, "cursor_auth_session_underivable");
+    assert!(!fetch_called.load(Ordering::Relaxed));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_quota_cursor_source_identity_fetch_is_best_effort() {
+    let root = temp_root("cursor-identity-best-effort");
+    let token = std::fs::read_to_string(fixture_path("cursor/access-token.jwt")).unwrap();
+    let db_path = write_cursor_state_db(&root, token.trim());
+    let source = cursor::CursorSource::for_testing(
+        Some(db_path),
+        Box::new(move |url, _| {
+            if url == "https://cursor.com/api/auth/me" {
+                return Err(QuotaFetchError::new("identity endpoint down"));
+            }
+            Ok(fixture_json("cursor/usage-summary.json"))
+        }),
+    );
+    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
+    // A failed identity fetch degrades to the JWT email claim, never to an
+    // unavailable snapshot.
+    assert_eq!(snapshot.status, QuotaStatus::Live);
+    assert_eq!(
+        snapshot.identity.account_label.as_deref(),
+        Some("fixture@example.invalid")
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 
