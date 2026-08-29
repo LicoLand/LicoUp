@@ -180,6 +180,7 @@ class AgentConversationActivePane extends StatelessWidget {
             participantTargets: state.participantTargets,
             participantConversationIds: state.participantConversationIds,
             participantRuntimeProfiles: state.participantRuntimeProfiles,
+            assistantActive: state.assistantActive,
             topOverlayInset: headerOverlayInset,
             bottomOverlayInset: composerOverlayInset,
             onCopyText: actions.onCopyText,

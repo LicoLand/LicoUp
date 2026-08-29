@@ -17,6 +17,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/contracts/provider_quota_models.dart';
+import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/header.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/projection.dart';
@@ -445,14 +446,19 @@ class _CanonicalGroupConversationPaneState
   /// reasoning-effort segments from the selected strategy's runtime profile,
   /// falling back to the assistant Membership's persistent Profile, then the
   /// bare display name. A Fast segment appears only when a source reports it;
-  /// no current group source does.
+  /// no current group source does. Agent, model, and effort segments render
+  /// in their human-readable display forms (brand name, catalog display name,
+  /// token-aware effort casing).
   String _assistantIdentityLabel(ClientConversation conversation) {
     final membership = conversation.assistantMembership;
     if (membership == null) return '';
     final agentId = membership.principal.agentId.trim();
     final displayName = membership.principal.displayName.trim();
+    final target = _assistantBrandTarget(conversation);
     final agentLabel = displayName.isNotEmpty
         ? displayName
+        : target != null
+        ? agentConversationTargetDisplayName(target)
         : agentId.isNotEmpty
         ? agentId
         : membership.id;
@@ -469,6 +475,9 @@ class _CanonicalGroupConversationPaneState
       modelName: model,
       reasoningEffort: effort,
       effortLabel: formatComposerReasoningEffortLabel,
+      modelDisplayName: target == null
+          ? null
+          : (name) => agentOrchestrationModelDisplayName(target, name),
     );
   }
 
@@ -1118,6 +1127,7 @@ class _CanonicalGroupConversationPaneState
           membership.principal.agentId: conversation.id,
       },
       participantRuntimeProfiles: _strategyRuntimeProfiles,
+      assistantActive: _assistantActive(conversation),
       composerFlywheel: GroupStrategyPickerCapsule(
         label: assistantStatus.label,
         statusLight: assistantStatus.light,
