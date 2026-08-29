@@ -1,0 +1,14 @@
+{
+  "user": {
+    "membership": {
+      "level": "LEVEL_FREE"
+    }
+  },
+  "usage": {
+    "limit": "100",
+    "used": "25",
+    "remaining": "75",
+    "resetTime": "2033-06-01T00:00:00Z"
+  },
+  "limits": []
+}

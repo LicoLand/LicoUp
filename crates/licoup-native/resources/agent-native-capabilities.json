@@ -66,6 +66,10 @@
     {
       "agentId": "antigravity",
       "provider": "antigravity"
+    },
+    {
+      "agentId": "kimi-code",
+      "provider": "kimi-code"
     }
   ]
 }

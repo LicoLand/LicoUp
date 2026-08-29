@@ -94,7 +94,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart",
-      "digest": "sha256:e0b122b4496be1dc625f289aa8abae0bfef906a2427311871d3eb4f53563f7f9"
+      "digest": "sha256:16c2218522a1f4146c3578067791a8fddf92f3b40ab662e199617f05dbccb155"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/agents.png",
@@ -121,5 +121,5 @@
       "digest": "sha256:3685a19fc58129ac8356cd183e6736d68182c482faf656e72363efc4fe072fa5"
     }
   ],
-  "manifestDigest": "sha256:0b2f3e84f5d8d7aea1e213495ba988160d53a253be604389fbdfbf7e776b8075"
+  "manifestDigest": "sha256:aa89430d4c7df471f426b73c3991ccdec5a28c8402a7005d87a6b8b5039cc85f"
 }

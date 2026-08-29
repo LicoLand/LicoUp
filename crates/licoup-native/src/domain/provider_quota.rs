@@ -13,6 +13,7 @@ mod contract;
 mod credentials;
 mod cursor;
 mod http;
+mod kimi_code;
 mod persistence;
 mod redaction;
 mod scheduler;
