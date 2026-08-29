@@ -38,6 +38,7 @@ class MessagingMessageGroup extends StatelessWidget {
     required this.target,
     required this.adapter,
     this.runtimeProfile,
+    this.assistantActive = false,
     this.conversationId = '',
     this.onCopyText,
   });
@@ -50,6 +51,11 @@ class MessagingMessageGroup extends StatelessWidget {
   final TargetCandidate target;
   final AgentRenderAdapter adapter;
   final AgentParticipantRuntimeProfile? runtimeProfile;
+
+  /// Whether the group assistant lane is active; an active assistant's
+  /// message header carries its agent's brand mark instead of the generic
+  /// sparkles.
+  final bool assistantActive;
 
   /// Clipboard write routed through the platform boundary; message rows
   /// expose an explicit copy action when present.
@@ -110,7 +116,7 @@ class MessagingMessageGroup extends StatelessWidget {
                     _MessagingUserAvatar(accessibilityLabel: authorName),
                   ]
                 : [
-                    if (isAssistant)
+                    if (isAssistant && !assistantActive)
                       _MessagingAssistantAvatar(accessibilityLabel: authorName)
                     else
                       MessagingAgentAvatar(

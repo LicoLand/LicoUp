@@ -440,39 +440,48 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                     ),
                   ),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
-                    child: Actions(
-                      actions: widget.onPasteImage == null
-                          ? const <Type, Action<Intent>>{}
-                          : <Type, Action<Intent>>{
-                              PasteTextIntent: _pasteAction,
-                            },
-                      child: Focus(
-                        onKeyEvent: _handleMentionKey,
-                        child: TextField(
-                          controller: _controller,
-                          focusNode: _focusNode,
-                          minLines: 1,
-                          maxLines: 4,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _submit(),
-                          enabled: interactive,
-                          style: theme.textTheme.bodyLarge,
-                          decoration: InputDecoration(
-                            hintText: interactive
-                                ? strings.messageTarget(widget.targetLabel)
-                                : null,
-                            hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                              color: colors.textDisabled,
+                  child: SizedBox(
+                    height: double.infinity,
+                    child: Align(
+                      // The text column centers between the frame's insets at
+                      // one line and fills the grown field on wrap — it never
+                      // sinks toward the send button's baseline.
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
+                        child: Actions(
+                          actions: widget.onPasteImage == null
+                              ? const <Type, Action<Intent>>{}
+                              : <Type, Action<Intent>>{
+                                  PasteTextIntent: _pasteAction,
+                                },
+                          child: Focus(
+                            onKeyEvent: _handleMentionKey,
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              minLines: 1,
+                              maxLines: 4,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _submit(),
+                              enabled: interactive,
+                              style: theme.textTheme.bodyLarge,
+                              decoration: InputDecoration(
+                                hintText: interactive
+                                    ? strings.messageTarget(widget.targetLabel)
+                                    : null,
+                                hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colors.textDisabled,
+                                ),
+                                isDense: true,
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                              ),
                             ),
-                            isDense: true,
-                            filled: false,
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            disabledBorder: InputBorder.none,
-                            contentPadding: EdgeInsets.zero,
                           ),
                         ),
                       ),
