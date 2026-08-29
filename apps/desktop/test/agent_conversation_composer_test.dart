@@ -6,7 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -895,6 +898,113 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+    'floating capsule morphs into a rounded rectangle on wrap and keeps the leading control at the interior top-left',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(700, 400);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      BorderRadius fieldRadius(WidgetTester tester) {
+        return tester
+            .widget<MessagingConversationOverlayGlass>(
+              find.descendant(
+                of: find.byKey(const Key('agent-conversation-composer-field')),
+                matching: find.byType(MessagingConversationOverlayGlass),
+              ),
+            )
+            .borderRadius;
+      }
+
+      await tester.pumpWidget(
+        _ComposerTestApp(
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: false,
+            enabled: true,
+            modelOptions: const [],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: (_) {},
+            onReasoningEffortChanged: (_) {},
+            onDraftChanged: (_) {},
+            onSend: (_) async => true,
+            floatingMatteCapsule: true,
+            fieldLeading: const SizedBox.square(
+              key: Key('test-field-leading'),
+              dimension: 32,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // One line: full stadium capsule.
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+        ),
+      );
+      final leadingSingle = tester.getRect(
+        find.byKey(const Key('test-field-leading')),
+      );
+      final fieldSingle = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(
+        leadingSingle.top,
+        closeTo(fieldSingle.top + LicoRadius.composerInset, 0.5),
+      );
+
+      // Wrapping draft: the capsule grows upward as a rounded rectangle while
+      // the leading control stays pinned to the interior top-left.
+      await tester.enterText(
+        find.byType(TextField),
+        'lico up composer wrap check ' * 12,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(LicoRadius.composerField),
+      );
+      final leadingMulti = tester.getRect(
+        find.byKey(const Key('test-field-leading')),
+      );
+      final fieldMulti = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(fieldMulti.height, greaterThan(fieldSingle.height));
+      expect(
+        leadingMulti.top,
+        closeTo(fieldMulti.top + LicoRadius.composerInset, 0.5),
+      );
+      expect(
+        leadingMulti.bottom,
+        lessThan(fieldMulti.bottom - LicoRadius.composerInset),
+      );
+
+      // An explicit newline morphs too, and clearing restores the stadium.
+      await tester.enterText(find.byType(TextField), 'first\nsecond');
+      await tester.pumpAndSettle();
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(LicoRadius.composerField),
+      );
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+        ),
+      );
+    },
+  );
 }
 
 Color contextPrimaryColor(WidgetTester tester) => Theme.of(
