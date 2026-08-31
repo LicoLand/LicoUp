@@ -25,6 +25,8 @@ authority.
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
+- [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
+  [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 
 ## Functionality
 

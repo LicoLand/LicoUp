@@ -104,23 +104,31 @@ impl ClientStateStore {
 
     pub fn read_collection(&self, collection: &str) -> Result<Value> {
         let path = self.collection_path(collection)?;
-        serialization::read_json_or_default(&path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
-            empty_collection(collection)
-        })
+        reject_empty_existing_collection(&path)?;
+        let document = serialization::read_json_or_default(
+            &path,
+            policy::MAX_COLLECTION_DOCUMENT_BYTES,
+            || empty_collection(collection),
+        )?;
+        validate_current_collection_document(collection, &document)?;
+        Ok(document)
     }
 
     pub(crate) fn read_collection_read_only(&self, collection: &str) -> Result<Value> {
         let path = self.collection_path(collection)?;
-        serialization::read_json_or_default_read_only(
+        reject_empty_existing_collection(&path)?;
+        let document = serialization::read_json_or_default_read_only(
             &path,
             policy::MAX_COLLECTION_DOCUMENT_BYTES,
             || empty_collection(collection),
-        )
+        )?;
+        validate_current_collection_document(collection, &document)?;
+        Ok(document)
     }
 
     pub fn write_collection(&self, collection: &str, value: Value) -> Result<Value> {
         let path = self.collection_path(collection)?;
-        let document = normalize_collection(collection, value);
+        let document = normalize_collection(collection, value)?;
         serialization::atomic_write_json(&path, &document, policy::MAX_COLLECTION_DOCUMENT_BYTES)?;
         Ok(document)
     }
@@ -216,6 +224,14 @@ impl ClientStateStore {
                     &empty_collection(collection),
                     policy::MAX_COLLECTION_DOCUMENT_BYTES,
                 )?;
+            } else {
+                reject_empty_existing_collection(&path)?;
+                let document = serialization::read_json_or_default(
+                    &path,
+                    policy::MAX_COLLECTION_DOCUMENT_BYTES,
+                    || empty_collection(collection),
+                )?;
+                validate_current_collection_document(collection, &document)?;
             }
         }
         Ok(())
@@ -254,6 +270,7 @@ fn refresh_target_index_locked(
         serialization::read_json_or_default(path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
             empty_collection(TARGET_DISCOVERY_CACHE_COLLECTION)
         })?;
+    validate_current_collection_document(TARGET_DISCOVERY_CACHE_COLLECTION, &document)?;
     let routes = decode_target_routes(&document)?;
     let prior = index.take();
     let parses = prior.as_ref().map_or(0, |cached| cached.parses) + 1;
@@ -338,21 +355,62 @@ fn empty_collection(collection: &str) -> Value {
     })
 }
 
-fn normalize_collection(collection: &str, value: Value) -> Value {
+fn normalize_collection(collection: &str, value: Value) -> Result<Value> {
     if value.is_object() {
         let mut object = value.as_object().cloned().unwrap_or_default();
+        if let Some(schema) = object.get("schemaVersion") {
+            ensure!(
+                schema.as_str() == Some(policy::STATE_SCHEMA_VERSION),
+                "client state collection requires startup migration"
+            );
+        }
+        if let Some(owner) = object.get("collection") {
+            ensure!(
+                owner.as_str() == Some(collection),
+                "client state collection owner mismatch"
+            );
+        }
         object
             .entry("schemaVersion".to_string())
             .or_insert_with(|| json!(policy::STATE_SCHEMA_VERSION));
         object
             .entry("collection".to_string())
             .or_insert_with(|| json!(collection));
-        Value::Object(object)
+        Ok(Value::Object(object))
     } else {
-        json!({
+        Ok(json!({
             "schemaVersion": policy::STATE_SCHEMA_VERSION,
             "collection": collection,
             "items": value
-        })
+        }))
     }
+}
+
+pub(super) fn validate_current_collection_document(
+    collection: &str,
+    document: &Value,
+) -> Result<()> {
+    ensure!(
+        document.is_object(),
+        "client state collection is not an object"
+    );
+    ensure!(
+        document.get("schemaVersion").and_then(Value::as_str) == Some(policy::STATE_SCHEMA_VERSION),
+        "client state collection requires startup migration"
+    );
+    ensure!(
+        document.get("collection").and_then(Value::as_str) == Some(collection),
+        "client state collection owner mismatch"
+    );
+    Ok(())
+}
+
+fn reject_empty_existing_collection(path: &Path) -> Result<()> {
+    if path.try_exists()? {
+        ensure!(
+            fs::symlink_metadata(path)?.len() > 0,
+            "client state collection is empty"
+        );
+    }
+    Ok(())
 }

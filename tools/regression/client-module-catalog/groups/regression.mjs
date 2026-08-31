@@ -1483,6 +1483,7 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/client_state/accessors.rs",
         "crates/licoup-native/src/platform/client_state/activity.rs",
         "crates/licoup-native/src/platform/client_state/collections.rs",
+        "crates/licoup-native/src/platform/client_state/migration.rs",
         "crates/licoup-native/src/platform/client_state/operations.rs",
         "crates/licoup-native/src/platform/client_state/paths.rs",
         "crates/licoup-native/src/platform/client_state/policy.rs",

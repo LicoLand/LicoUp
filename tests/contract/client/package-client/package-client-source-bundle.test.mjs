@@ -170,8 +170,17 @@ test("build, bundle, manifest, and macOS concerns retain dedicated owners", asyn
 });
 
 test("native build emits space-safe encoded rustflags and clears legacy RUSTFLAGS", async () => {
-  const { encodedRustFlagsWithPathRemap } = await import(
+  const { clientReleaseTrack, encodedRustFlagsWithPathRemap } = await import(
     `${pathToFileURL(path.join(repoRoot, moduleRoot, "build/native.mjs")).href}?rustflags`
+  );
+  assert.equal(clientReleaseTrack({}), "nightly");
+  assert.equal(
+    clientReleaseTrack({ LICO_CLIENT_RELEASE_TRACK: "stable" }, { distributable: true }),
+    "stable",
+  );
+  assert.throws(
+    () => clientReleaseTrack({}, { distributable: true }),
+    /required for distributable builds/u,
   );
   const cargoHome = "/synthetic/lico cargo home/.cargo";
   const encoded = encodedRustFlagsWithPathRemap({

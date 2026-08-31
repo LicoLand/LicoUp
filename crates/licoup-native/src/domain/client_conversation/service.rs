@@ -1,6 +1,6 @@
 use super::{
     ConversationStore, DirectTurn, MembershipAccess, MembershipStatus, NewEventPart, Principal,
-    PrincipalKind, migrate_legacy_state,
+    PrincipalKind,
 };
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
@@ -60,9 +60,6 @@ impl fmt::Debug for ConversationService {
 impl ConversationService {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let store = ConversationStore::open(portable_root)?;
-        // Startup admission is migration-first. A failed migration is returned
-        // to the transport and never falls back to the retired JSON readers.
-        migrate_legacy_state(&store, portable_root)?;
         store.ensure_default_local_group()?;
         Ok(Self {
             store,

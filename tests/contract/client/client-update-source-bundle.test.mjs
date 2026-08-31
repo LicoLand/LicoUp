@@ -29,6 +29,7 @@ const productionFiles = [
     "params.rs",
     "release.rs",
     "release/artifact.rs",
+    "receipt.rs",
     "revocation.rs",
     "selection.rs",
     "signature.rs",
@@ -66,6 +67,7 @@ test("client update source bundle preserves fail-closed split release authority"
     "github_source",
     "keys",
     "native_runner",
+    "receipt",
     "release",
     "revocation",
     "selection",
@@ -79,7 +81,10 @@ test("client update source bundle preserves fail-closed split release authority"
   for (const token of [
     "verify_manifest_role_signatures",
     "requires a valid offline root signature",
-    "requires a valid online channel signature",
+    "requires a valid online signing signature",
+    "manifest-2",
+    "runningReleaseTrack",
+    "targetReleaseTrack",
     'get("keys")',
     "cmp_precedence",
     "CLIENT_UPDATE_ARTIFACT_RECEIPT_SCHEMA",
@@ -100,6 +105,9 @@ test("client update source bundle preserves fail-closed split release authority"
   }
   for (const token of ["#[path", "include!(", "mod tests {"]) {
     assert.ok(!source.includes(token), `client update source bundle contains retired ${token}`);
+  }
+  for (const retired of ["allowDowngrade", '"rollback"', '"rolledBack"']) {
+    assert.ok(!source.includes(retired), `client update source bundle contains retired ${retired}`);
   }
   const outputSources = await Promise.all([
     "apply.rs",

@@ -9,7 +9,7 @@ mod profile_snapshot;
 mod service;
 mod store;
 
-pub use migration::{MigrationReport, migrate_legacy_state};
+pub(crate) use migration::migrate_legacy_state;
 pub use profile_snapshot::{
     CandidateFilters, PriceFacts, ProfileSnapshotAuthority, SharedSnapshotAuthority, TargetFacts,
     production_snapshot_authority, project_profile_snapshot, project_profile_snapshots,

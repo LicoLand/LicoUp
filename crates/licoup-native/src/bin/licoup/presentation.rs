@@ -12,6 +12,7 @@ pub(super) fn print_usage() {
         "Usage:
   licoup rpc stdio  # licoup.stdio.v1 line-delimited JSON RPC
   licoup state get|set <settings|targets|pairings|skills|pins|identities|conversation-archive-profiles|agent-usage-reports|skill-usage> [json]
+  licoup state admit <data-root>
   licoup adapter catalog
   licoup adapter antigravity status|install|uninstall
   licoup opencode-serve ensure|start|restart|stop|status [--port 24173] [--executable PATH] [--attach-url URL]
@@ -34,7 +35,9 @@ pub(super) fn print_usage() {
   licoup agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
   licoup resource-usage scan [--state-root PATH]
   licoup mcp http preview|execute --stdin-json true  # exact-scope private input and fresh platform user-presence confirmation
-  licoup update status|check|download|verify|apply|rollback [--channel CHANNEL] [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--source-path PATH] [--staging-root PATH] [--state-root PATH] [--current-version VERSION] [--install-root PATH] [--gui-pid PID] [--execute true|false] [--wait-for-script true|false]
+  licoup update status|check [--target-release-track nightly|stable] [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--staging-root PATH] [--state-root PATH]
+  licoup update download|verify [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--source-path PATH] [--staging-root PATH] [--state-root PATH]
+  licoup update apply [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--staging-root PATH] [--state-root PATH] [--data-root PATH] [--install-root PATH] [--gui-pid PID] [--execute true|false] [--wait-for-script true|false]
   licoup collaboration status|enable|disable|cleanup
   licoup collaboration install plan|apply|cancel [--github-url URL|--plan-id ID] [--expected-digest-sha256 SHA256] [--confirmed true]
   licoup collaboration workflow catalog

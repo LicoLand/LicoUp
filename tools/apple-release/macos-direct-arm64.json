@@ -37,6 +37,8 @@
   ],
   "build": {
     "command": [
+      "env",
+      "LICO_CLIENT_RELEASE_TRACK=stable",
       "npm",
       "run",
       "client:build:macos"
@@ -83,6 +85,8 @@
       "{repository}",
       "--targets",
       "macos-direct-arm64",
+      "--release-track",
+      "stable",
       "--minimum-supported-version",
       "0.0.0"
     ]

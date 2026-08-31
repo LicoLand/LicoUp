@@ -18,6 +18,13 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(config.apple.target, "macos-direct-arm64");
   assert.equal(config.github.repository, "LicoLand/LicoUp");
   assert.deepEqual(config.gates[0], ["npm", "ci"]);
+  assert.deepEqual(config.build.command, [
+    "env",
+    "LICO_CLIENT_RELEASE_TRACK=stable",
+    "npm",
+    "run",
+    "client:build:macos",
+  ]);
   assert.deepEqual(config.update?.command, [
     "node",
     "tools/scripts/client-update-manifest.mjs",
@@ -29,6 +36,8 @@ test("LicoUp is one declarative Apple Release use case", () => {
     "{repository}",
     "--targets",
     "macos-direct-arm64",
+    "--release-track",
+    "stable",
     "--minimum-supported-version",
     "0.0.0",
   ]);
@@ -43,7 +52,52 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(JSON.stringify(config).includes("../"), false);
 });
 
-test("package commands expose the authority and both release entries", () => {
+test("Nightly publication is a second track profile of the same app identity", () => {
+  const stable = readJson("tools/apple-release/macos-direct-arm64.json");
+  const nightly = readJson("tools/apple-release/macos-direct-arm64-nightly.json");
+  const template = readJson("tools/client-release-template.json");
+
+  assert.equal(nightly.schema, "apple-release.config.v1");
+  assert.equal(nightly.source.branch, "nightly");
+  assert.equal(nightly.candidate?.template, "feature/nightly-publication-{version}");
+  assert.deepEqual(nightly.gates, stable.gates);
+  assert.deepEqual(nightly.build.command, [
+    "env",
+    "LICO_CLIENT_RELEASE_TRACK=nightly",
+    "npm",
+    "run",
+    "client:build:macos",
+  ]);
+  assert.equal(nightly.apple.bundleIdentifier, stable.apple.bundleIdentifier);
+  assert.equal(nightly.build.app, stable.build.app);
+  assert.equal(nightly.github.tagTemplate, "nightly");
+  assert.deepEqual(nightly.update?.command, [
+    "node",
+    "tools/scripts/client-update-manifest.mjs",
+    "--assets",
+    "build/apple-release",
+    "--tag",
+    "nightly",
+    "--repo",
+    "{repository}",
+    "--targets",
+    "macos-direct-arm64",
+    "--release-track",
+    "nightly",
+    "--minimum-supported-version",
+    "0.0.0",
+  ]);
+  assert.deepEqual(nightly.artifacts, stable.artifacts);
+  assert.deepEqual(template.publication.profiles.nightly, {
+    config: "tools/apple-release/macos-direct-arm64-nightly.json",
+    sourceBranch: "nightly",
+    releaseTrack: "nightly",
+    tag: "nightly",
+    mutablePrerelease: true,
+  });
+});
+
+test("package commands expose the authority and stable release entries", () => {
   const scripts = readJson("package.json").scripts;
   assert.equal(scripts["client:release:macos"],
     "apple-release release start --config tools/apple-release/macos-direct-arm64.json");

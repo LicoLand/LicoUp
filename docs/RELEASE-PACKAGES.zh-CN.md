@@ -3,6 +3,10 @@
 [English（规范版本）](RELEASE-PACKAGES.md) · 简体中文（本地化） ·
 [兼容性](COMPATIBILITY.zh-CN.md) · [运行手册](RUNBOOK.md)
 
+Nightly 与 Stable 发布包保留同一个应用身份和数据根。签名更新清单使用 manifest-v2，
+并绑定制品的发布轨道与状态迁移前沿。参见
+[客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)。
+
 LicoUp 不存在“万能发布压缩包”。一次发布请求可以选择一个或多个精确发布
 包目标；每个目标分别生成自己的原生安装包、渠道元数据、校验和与包级清单。
 

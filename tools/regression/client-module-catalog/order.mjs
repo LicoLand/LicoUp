@@ -402,6 +402,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.optional-collaboration.workflow-operations.staging",
   "rust.domain.optional-collaboration.workflow-operations.projection",
   "rust.domain.optional-collaboration.workflow-operations.integration",
+  "rust.domain.client-state-migration",
   "rust.domain.client-update",
   "rust.domain.client-update.signature-roles",
   "rust.domain.client-update.release-selection",

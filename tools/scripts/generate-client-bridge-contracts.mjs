@@ -261,13 +261,21 @@ function readStateSchema(family) {
         typeof value !== "string" ||
         !/^[a-z][a-z0-9-]{0,63}$/u.test(value),
     ) ||
-    JSON.stringify(schema.operations) !== JSON.stringify(["get", "set"]) ||
+    JSON.stringify(schema.operations) !== JSON.stringify(["get", "set", "admit"]) ||
     !Array.isArray(schema.failureCodes) ||
     JSON.stringify(schema.failureCodes) !==
       JSON.stringify([
         "invalid_collection",
         "invalid_document",
         "state_operation_failed",
+        "migration_lock_unavailable",
+        "migration_ledger_invalid",
+        "state_newer_than_binary",
+        "migration_frontier_incomplete",
+        "migration_step_failed",
+        "migration_postcondition_failed",
+        "update_handoff_mismatch",
+        "unsupported_state_shape",
       ])
   ) {
     fail(`unsupported active bridge schema: ${family.schema}`);

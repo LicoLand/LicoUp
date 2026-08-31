@@ -5,7 +5,7 @@ use super::{
     MembershipAccess, Principal, PrincipalKind, ProfileIntent, ProfileIntentUpdate,
     ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
 };
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use rusqlite::{
     Connection, OptionalExtension, Row, Statement, TransactionBehavior, params, params_from_iter,
 };
@@ -507,8 +507,25 @@ impl ConversationStore {
         let root = portable_root.join("client-state").join("conversations");
         crate::platform::file_security::ensure_private_dir(&root)?;
         let db_path = root.join(DATABASE_FILE);
+        let existed = db_path.exists();
         let store = Self {
             pool: ConversationPool::new(db_path),
+        };
+        store.with_connection(|connection| {
+            if existed {
+                validate_current_schema(connection)
+            } else {
+                initialize_schema(connection)
+            }
+        })?;
+        Ok(store)
+    }
+
+    pub(crate) fn open_for_migration(portable_root: &Path) -> StoreResult<Self> {
+        let root = portable_root.join("client-state").join("conversations");
+        crate::platform::file_security::ensure_private_dir(&root)?;
+        let store = Self {
+            pool: ConversationPool::new(root.join(DATABASE_FILE)),
         };
         store.with_connection(|connection| initialize_schema(connection))?;
         Ok(store)
@@ -2851,6 +2868,20 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "TEXT",
     )?;
     ensure_column(connection, "runtime_bindings", "working_directory", "TEXT")?;
+    ensure_search_index(connection)?;
+    Ok(())
+}
+
+fn validate_current_schema(connection: &mut Connection) -> StoreResult<()> {
+    configure_connection(connection)?;
+    let version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    ensure!(version == "9", "conversation_schema_migration_required");
+    // Search state is derived from current-schema event parts. Rebuilding it
+    // repairs current data and does not admit or interpret a legacy schema.
     ensure_search_index(connection)?;
     Ok(())
 }
@@ -5859,7 +5890,9 @@ mod tests {
         fixture.close().unwrap();
 
         let custom_before = snapshot_group(&root, "custom-group");
-        let store = ConversationStore::open(&root).unwrap();
+        assert!(ConversationStore::open(&root).is_err());
+        assert_eq!(schema_version(&root), "2");
+        let store = ConversationStore::open_for_migration(&root).unwrap();
         assert_eq!(schema_version(&root), "9");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
@@ -5949,7 +5982,7 @@ mod tests {
         seed_v2_database(&fixture, false);
         fixture.close().unwrap();
 
-        let store = ConversationStore::open(&root).unwrap();
+        let store = ConversationStore::open_for_migration(&root).unwrap();
         let after_first_open = snapshot_database(&root);
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
@@ -5969,7 +6002,7 @@ mod tests {
         seed_v2_database(&fixture, true);
         fixture.close().unwrap();
 
-        assert!(ConversationStore::open(&root).is_err());
+        assert!(ConversationStore::open_for_migration(&root).is_err());
         assert_eq!(schema_version(&root), "2");
         let check = open_fixture_connection(&root);
         let event_count: i64 = check
@@ -6005,7 +6038,7 @@ mod tests {
             .unwrap();
         drop(check);
 
-        let store = ConversationStore::open(&root).unwrap();
+        let store = ConversationStore::open_for_migration(&root).unwrap();
         assert_eq!(schema_version(&root), "9");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
@@ -6036,7 +6069,7 @@ mod tests {
             .unwrap();
         fixture.close().unwrap();
 
-        let store = ConversationStore::open(&root).unwrap();
+        let store = ConversationStore::open_for_migration(&root).unwrap();
         assert_eq!(schema_version(&root), "9");
         let has_strategy_revision = store
             .with_connection(|connection| {
@@ -6057,7 +6090,7 @@ mod tests {
     #[test]
     fn fresh_install_stays_empty_and_closure_is_a_no_op() {
         let root = std::env::temp_dir().join(format!("lico-conv-fresh-{}", Uuid::new_v4()));
-        let store = ConversationStore::open(&root).unwrap();
+        let store = ConversationStore::open_for_migration(&root).unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
         store
@@ -6470,7 +6503,7 @@ mod tests {
             .unwrap();
         fixture.close().unwrap();
 
-        let store = ConversationStore::open(&root).unwrap();
+        let store = ConversationStore::open_for_migration(&root).unwrap();
         assert_eq!(schema_version(&root), "9");
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());

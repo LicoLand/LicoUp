@@ -294,8 +294,13 @@ test("declared lifecycle consumers read specific projection facts", async () => 
   const lifecycle = sources[`${controllerRoot}/client_lifecycle_facade.dart`];
   assert.match(
     lifecycle,
-    /Future<void>\s+initialize\s*\(\s*\)\s*=>\s*lifecycleController\.initialize\s*\(/u,
-    "client initialization must enter through the coordinator",
+    /Future<void>\s+initialize\s*\(\s*\)\s*=>\s*initializeWithOptions\s*\(\s*\)\s*;/u,
+    "default client initialization must use the configurable lifecycle entry point",
+  );
+  assert.match(
+    lifecycle,
+    /Future<void>\s+initializeWithOptions\s*\([^)]*\)\s*=>\s*lifecycleController\.initialize\s*\(/u,
+    "the configurable lifecycle entry point must enter through the coordinator",
   );
   for (const functionName of [
     "_initializeClientCore",
