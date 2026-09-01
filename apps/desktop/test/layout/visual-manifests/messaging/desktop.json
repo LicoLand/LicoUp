@@ -94,11 +94,11 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart",
-      "digest": "sha256:dfa1175f95f7d92e134f99486da6097902eb09e1e2f380a6d6b3736be1416cf1"
+      "digest": "sha256:573420a72e3a2e3adf14eca567cdb2b0ec64fb42b043b9a52fbf4dc28814ca8e"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/agents.png",
-      "digest": "sha256:ef7d1fa832be3ccbec281cc9311bdaf757427662f2691a3773e416c8a0881ef7"
+      "digest": "sha256:72a9408d1d635000107240e8731ee691210c55b771f03d18735e24360b4c8201"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/settings.png",
@@ -121,5 +121,5 @@
       "digest": "sha256:3685a19fc58129ac8356cd183e6736d68182c482faf656e72363efc4fe072fa5"
     }
   ],
-  "manifestDigest": "sha256:5bfb3f082e051a6fa80ca1c56c1f69909bf90d1a45e77e64405b8a79f6b40c93"
+  "manifestDigest": "sha256:852c53a60669676612e3ef68e20e21c850ec758a85d38c276e802ad864e4de22"
 }

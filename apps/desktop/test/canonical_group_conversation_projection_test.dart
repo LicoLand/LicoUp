@@ -715,7 +715,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Lico'), findsOneWidget);
-    expect(find.text('3 members'), findsOneWidget);
+    expect(find.text('3 members'), findsNothing);
     expect(find.textContaining('@'), findsNothing);
     expect(find.byKey(const Key('canonical-group-archive')), findsNothing);
     expect(
