@@ -53,6 +53,7 @@ void main() {
     final turns = await persistent.activeTurns(
       agentId: 'synthetic',
       sessionId: 'session-1',
+      waitForChange: const Duration(milliseconds: 125),
     );
     final events = await persistent
         .attachActiveTurn(
@@ -71,6 +72,7 @@ void main() {
     );
 
     expect(turns.single['highWater'], 1);
+    expect(runner.activeRequest['waitForChangeMs'], 125);
     expect(events.map((event) => event.kind), [
       'agent.message.chunk',
       'dispatch.turn.completed',
@@ -85,12 +87,33 @@ void main() {
       'cancel:turn-1:conversation-1',
     ]);
   });
+
+  test(
+    'failed attach terminal carries a structured failure transition',
+    () async {
+      final events = await const AgentConversationService()
+          .attachActiveTurn(
+            runner: _FailedRuntimeRunner(),
+            turnHandle: 'turn-1',
+            conversationId: 'conversation-1',
+          )
+          .toList();
+
+      expect(events.single.kind, 'dispatch.turn.failed');
+      expect(events.single.payload['terminalTransition'], {
+        'kind': 'failed',
+        'code': 'cursor_cli_start_failed',
+        'stage': 'process/start',
+      });
+    },
+  );
 }
 
 class _RuntimeRunner implements AgentCommandRunner {
   String attachedHandle = '';
   String attachedConversationId = '';
   final controls = <String>[];
+  Map<String, dynamic> activeRequest = const {};
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async => const {};
@@ -112,6 +135,7 @@ class _RuntimeRunner implements AgentCommandRunner {
       };
     }
     expect(operation, 'active');
+    activeRequest = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
     return {
       'turns': [
         {
@@ -153,6 +177,20 @@ class _RuntimeRunner implements AgentCommandRunner {
       'ok': true,
       'sessionId': 'session-1',
       'turnId': 'native-turn-1',
+    };
+  }
+}
+
+final class _FailedRuntimeRunner extends _RuntimeRunner {
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async* {
+    yield {
+      'event': 'done',
+      'ok': false,
+      'error': {'code': 'cursor_cli_start_failed', 'stage': 'process/start'},
     };
   }
 }

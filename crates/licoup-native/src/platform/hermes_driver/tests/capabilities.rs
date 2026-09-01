@@ -1,14 +1,13 @@
 use crate::platform::acp_session_transport::{
-    APPROVAL_POLL_INTERVAL, APPROVAL_WAIT_TIMEOUT, CONTROL_QUEUE_CAPACITY, MAX_PARKED_PERMISSIONS,
-    MAX_POOLED_TRANSPORTS, MAX_TRACKED_SESSIONS, PROCESS_POLL_INTERVAL,
+    APPROVAL_POLL_INTERVAL, CONTROL_QUEUE_CAPACITY, MAX_POOLED_TRANSPORTS, MAX_TRACKED_SESSIONS,
+    PROCESS_POLL_INTERVAL,
 };
 
 #[test]
-fn runtime_resource_and_wait_bounds_remain_finite() {
-    assert!(PROCESS_POLL_INTERVAL < APPROVAL_WAIT_TIMEOUT);
-    assert!(APPROVAL_POLL_INTERVAL < APPROVAL_WAIT_TIMEOUT);
+fn runtime_resources_are_bounded_without_bounding_user_response_time() {
+    assert!(PROCESS_POLL_INTERVAL > std::time::Duration::ZERO);
+    assert!(APPROVAL_POLL_INTERVAL > std::time::Duration::ZERO);
     assert!(CONTROL_QUEUE_CAPACITY > 0);
     assert!(MAX_POOLED_TRANSPORTS > 0);
     assert!(MAX_TRACKED_SESSIONS >= MAX_POOLED_TRANSPORTS);
-    assert!(MAX_PARKED_PERMISSIONS > 0);
 }

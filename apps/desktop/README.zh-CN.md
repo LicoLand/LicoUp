@@ -34,8 +34,8 @@ Profile，也不承诺未来兼容。稳定客户端将执行一条固定 Lico A
 Transport Profile 语义，同时继续拥有自己的私钥、Provider 配置、明文、历史、
 备份、信任决定、审批和本地效果。
 
-当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、Copilot、Hermes、
-Kilo Code、Kimi Code、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或
+当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、DeepSeek Harness、
+Copilot、Hermes、Kilo Code、Kimi Code、Lico Agent、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或
 通过合成测试均不代表已支持对话；只有通过原生对话等价验收的 adapter 才能启用发送。
 当前适配状态由原生驱动与 readiness 清单负责，并投影到
 [`docs/COMPATIBILITY.md`](../../docs/COMPATIBILITY.md)；未就绪 adapter 必须保持
@@ -124,11 +124,14 @@ npm run client:gate:release-policy  # 仅发布策略改动
 
 ```bash
 npm run client:package:plan
-npm run client:build:macos
-npm run client:build:windows
-npm run client:build:linux
-npm run client:build:android
+npm run client:build -- --platform macos
+npm run client:build -- --platform windows
+npm run client:build -- --platform linux
+npm run client:build -- --platform android
 ```
+
+`client:build` 是唯一构建入口。它会自动清理空闲的编译产物和临时 Flutter 构建缓存，
+但不会删除安装流程所需的可运行或已打包产物。
 
 macOS、Windows、Ubuntu、Android 和 iOS 的构建、普通验证、GitHub Release 以及各平台
 商店发布是互相独立的声明。缺少某个商店的发布身份或签名条件，只阻断该渠道，不阻断

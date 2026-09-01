@@ -10,6 +10,46 @@ mixin FakeAgentConversationSupport on AgentService, FakeAgentStateSupport {
 
   Map<String, List<Map<String, dynamic>>> conversationSessions = {};
   final Map<String, Completer<void>> conversationStreamGates = {};
+  List<Map<String, dynamic>> conversationStdinRequests = const [];
+
+  void recordConversationStdinRequest(Map<String, dynamic> request) {
+    conversationStdinRequests = [
+      ...conversationStdinRequests,
+      Map<String, dynamic>.unmodifiable(request),
+    ];
+  }
+
+  List<Map<String, dynamic>> fakeConversationSessionRequestPage(
+    Map<String, dynamic> request,
+  ) {
+    final agent = (request['agent'] ?? '').toString();
+    final offset = switch (request['offset']) {
+      final int value => value,
+      final Object value => int.tryParse(value.toString()) ?? 0,
+      null => 0,
+    };
+    final limit = switch (request['limit']) {
+      final int value => value,
+      final Object value => int.tryParse(value.toString()),
+      null => null,
+    };
+    final sessionId = (request['sessionId'] ?? '').toString();
+    final source =
+        conversationSessions[agent] ?? const <Map<String, dynamic>>[];
+    final filtered = sessionId.isEmpty
+        ? source
+        : source
+              .where(
+                (session) =>
+                    (session['id'] ?? '').toString() == sessionId ||
+                    (session['nativeSessionId'] ?? '').toString() == sessionId,
+              )
+              .toList(growable: false);
+    final skipped = filtered.skip(offset < 0 ? 0 : offset);
+    return (limit == null || limit <= 0 ? skipped : skipped.take(limit)).toList(
+      growable: false,
+    );
+  }
 
   @override
   Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) async* {

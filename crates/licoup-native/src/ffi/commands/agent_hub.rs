@@ -114,7 +114,10 @@ mod tests {
     fn json_of(args: Vec<String>) -> Value {
         match execute_cli(args).expect("hub command must execute") {
             CliExecution::Json(value) => value,
-            other => panic!("expected json, got {other:?}"),
+            other => {
+                assert!(false, "hub command must return json, got {other:?}");
+                serde_json::Value::Null
+            }
         }
     }
 

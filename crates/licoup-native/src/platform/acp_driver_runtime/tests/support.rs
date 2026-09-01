@@ -34,6 +34,7 @@ pub(super) fn new_protocol(params: Value, prompt: &str, session: &str) -> AcpPro
             Some(absolute_test_cwd().as_path()),
         )
         .unwrap(),
+        super::super::model::AcpParserKind::Copilot,
     )
 }
 
@@ -47,7 +48,12 @@ impl ScriptedProtocolLoopTransport {
     pub(super) fn messages(start: Instant, messages: Vec<(Duration, Value)>) -> Self {
         let events = messages
             .into_iter()
-            .map(|(after_start, message)| (start + after_start, TransportEvent::Message(message)))
+            .map(|(after_start, message)| {
+                (
+                    start + after_start,
+                    TransportEvent::Frame(serde_json::to_vec(&message).unwrap()),
+                )
+            })
             .collect();
         Self {
             now: start,
@@ -64,11 +70,11 @@ impl ScriptedProtocolLoopTransport {
         self.events.len()
     }
 
-    pub(super) fn remaining_messages(&self) -> Vec<&Value> {
+    pub(super) fn remaining_messages(&self) -> Vec<Value> {
         self.events
             .iter()
             .filter_map(|(_, event)| match event {
-                TransportEvent::Message(message) => Some(message),
+                TransportEvent::Frame(line) => serde_json::from_slice(line).ok(),
                 _ => None,
             })
             .collect()
@@ -137,12 +143,11 @@ let third = lines.next().unwrap().unwrap();
 assert!(third.contains("private-stdin-prompt"));
 assert!(third.contains("\"method\":\"session/prompt\""));
 if third.contains("SELFTEST_HARD_DEADLINE") { park_forever(); }
-println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
-io::stdout().flush().unwrap();
 if third.contains("SELFTEST_FLOOD") {
 for i in 0..70 {
 println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"native-fake-session\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"chunk-{}\"}}}}}}}}", i);
 }
+println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
 io::stdout().flush().unwrap();
 park_forever();
 }
@@ -154,11 +159,15 @@ io::stdout().flush().unwrap();
 park_forever();
 }
 if third.contains("SELFTEST_EMPTY_OUTPUT") {
+println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
+io::stdout().flush().unwrap();
 park_forever();
 }
 println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"native-fake-session\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"fake \"}}}}}}}}");
 io::stdout().flush().unwrap();
 println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"native-fake-session\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"final\"}}}}}}}}");
+io::stdout().flush().unwrap();
+println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
 io::stdout().flush().unwrap();
 park_forever();
 }

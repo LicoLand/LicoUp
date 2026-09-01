@@ -1,3 +1,4 @@
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -267,16 +268,31 @@ mixin AgentConversationMobileSessionController
 
   Future<AgentConversationSession?> describeMobileConversationSession(
     String agentId,
-    String sessionId,
-  ) async {
+    String sessionId, {
+    String messageBefore = '',
+    int? messageLimit,
+  }) async {
     final normalizedSession = sessionId.trim();
     if (normalizedSession.isEmpty) {
       return null;
     }
-    final result = await mobileConversationGateway.describeSession(
-      agentId: agentId,
-      sessionId: normalizedSession,
-    );
+    final gateway = mobileConversationGateway;
+    final Map<String, dynamic> result;
+    if (messageLimit != null &&
+        gateway is MobilePagedAgentConversationGateway) {
+      final pagedGateway = gateway as MobilePagedAgentConversationGateway;
+      result = await pagedGateway.describeSessionPage(
+        agentId: agentId,
+        sessionId: normalizedSession,
+        messageBefore: messageBefore,
+        messageLimit: messageLimit,
+      );
+    } else {
+      result = await gateway.describeSession(
+        agentId: agentId,
+        sessionId: normalizedSession,
+      );
+    }
     if (result['ok'] != true) {
       return null;
     }

@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:0db94a46a7320b26683e41c1eef08e147511c2d5708553e68df794dd19519c26"
+      "digest": "sha256:4c769375206079ee7275371786d8b6c9fb17917d3f22cc8b5f3909f9ca77187a"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -30,7 +30,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/components/messaging_search_capsule.dart",
-      "digest": "sha256:dc26db0297907fd9826c0953275fc806eb43e2b8078aef9911aa6de84291d2b4"
+      "digest": "sha256:0135c42b5e9bca47ab247955abbd9343b3736f87422fd2151a7b2748150b50fb"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/agents_destination.dart",
@@ -38,15 +38,15 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/messaging_desktop_destination_builders.dart",
-      "digest": "sha256:6260f012e9e2d87508e34afb5ec17b69587557d1e7d1a02b02538c94202058e1"
+      "digest": "sha256:8f0fb7316578931d26f5c7beb1125bf2c9e94a04eff16c634d51e10a981a922e"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/messaging_destination_frame.dart",
-      "digest": "sha256:f10695fcf6f6d37fd7948520711548477642944c66e291cf348aa1f442b13654"
+      "digest": "sha256:9160622c22dba63e5177200a39a3fe7271c33541f30f290699f3cae3911678b0"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/single_pane_destinations.dart",
-      "digest": "sha256:b4a292e079f6d7eaf03f099bcafc8c27e3579c2db5cb8bf9d82692b1cd9e756a"
+      "digest": "sha256:e6cb46c3325609e5af2d788b8a543e27f84c5e22b8953393ed9085ae4aa07cd6"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/messaging_desktop.dart",
@@ -54,11 +54,11 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/presentation/messaging_desktop_destination_presentations.dart",
-      "digest": "sha256:427bd28ee7379a5eb69952dd2df7e411b265d6d38d2f8c79365e6b20f9a434bd"
+      "digest": "sha256:297c65976db756fb5b7fe86948ccdb0c31aeee1bff3bfdc4c368ec4c5b95b869"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/preview/messaging_desktop_preview.dart",
-      "digest": "sha256:e85996d7828649d0e6b2a2c671db8e0b2da76c4ba89daff02ffc0b10b396d3a9"
+      "digest": "sha256:45a552612bb9594c87d9471bb36bfee1aaedcf94938bc996ca02d3d74006e0ea"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_content_region.dart",
@@ -78,31 +78,31 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_column.dart",
-      "digest": "sha256:5ba55f51b91606496f8a02aa0060cea14b8dc3e3057b06f1c4632c075b0d858e"
+      "digest": "sha256:04af582544644be44439e6128dba8d9f8135efc388ca2965555e8406b075f6b6"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_foundation.dart",
-      "digest": "sha256:049832f354395f684e597a8c663a97f5ae30816d85643e3fe8195b2bbd43f045"
+      "digest": "sha256:6d8ed18eba8e2bc8aaafe97dc570ddc897595eabad47e99357836803350fc1ee"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart",
-      "digest": "sha256:836eacc841d9b6df480ddc2b6767e4d670af20381c1798ad0a563864e07b47ec"
+      "digest": "sha256:0b24bc0e9719ece7d0987ce3beacfe0b0323185a3c7e57f8e2fe1ebdee1fe9ca"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_top_strip.dart",
-      "digest": "sha256:ae9c1a510cb64c3f90ceb9554e7c9555e7a65b82fc4fc6e0af440a4a94c95a47"
+      "digest": "sha256:603205891cf09ae9bef07ac115cdddf36a6d877cdf1b7d292483823b161fe86d"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart",
-      "digest": "sha256:3f040994187124115320b362c190b4135985dd8bb1dd2ab5f8090c3a0b5da4ba"
+      "digest": "sha256:16c2218522a1f4146c3578067791a8fddf92f3b40ab662e199617f05dbccb155"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/agents.png",
-      "digest": "sha256:edd730393ffead4ca6961d5e180b5e4e5a90a27d7bfc5de90ffe58ef6cda16e4"
+      "digest": "sha256:4a4eddafe12381456732b095dc1c99c50a3445ab087d28a092551a5d6fe9456f"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/settings.png",
-      "digest": "sha256:b3ce91387614c1415c694dd8328f4691a013354525f1c4e52a0b175535c2c048"
+      "digest": "sha256:6ea0237bca136d755566b287fc52d552c79e5e22cecd9677df059e2c9a1a3fed"
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_bundle_test.dart",
@@ -110,16 +110,16 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_shell_test.dart",
-      "digest": "sha256:8907c399b67b337622d3295df202d3dd26249eb13c4800b52f052e6172c99642"
+      "digest": "sha256:fad2cfe3bef38c9846659dfecae6541ad318c59d374c3d98b7362d152431b645"
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_test_harness.dart",
-      "digest": "sha256:bb881feec389e69f516611fe172837126dfca141b7cf62eaf3028ac1a3e601f4"
+      "digest": "sha256:29186f3fde16e95fdd96f7cc4e8fec70a865656c7b3a05710a22b5a5cdc87487"
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_main_content_card_test.dart",
       "digest": "sha256:3685a19fc58129ac8356cd183e6736d68182c482faf656e72363efc4fe072fa5"
     }
   ],
-  "manifestDigest": "sha256:23de59317c55fedb3cfa5790fcd6ec992cbb5df6b4f57435584031db63621cd2"
+  "manifestDigest": "sha256:aa89430d4c7df471f426b73c3991ccdec5a28c8402a7005d87a6b8b5039cc85f"
 }

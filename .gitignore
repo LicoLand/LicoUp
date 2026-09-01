@@ -119,3 +119,8 @@ test-results/
 AGENTS.md
 AGENT.md
 CLAUDE.md
+
+# Local-machine agent history replay corpus is developer-local only. It must
+# never enter the remote repository; regenerate via transcript-record ingest.
+tests/replay-corpus/
+.commandcode/

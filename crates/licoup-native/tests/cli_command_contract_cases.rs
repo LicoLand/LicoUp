@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 161;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 162;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1821,6 +1821,13 @@ fn route_authorities() -> Vec<RouteAuthority> {
     );
     add_authority_routes(
         &mut routes,
+        "provider_quota.rs",
+        "handle_provider_quota_snapshot",
+        &["provider-quota snapshot"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
         "resource_usage.rs",
         "handle_resource_usage_scan",
         &["resource-usage scan"],
@@ -2092,6 +2099,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
                 value_kind: Text,
                 required: true,
             },
+            value_option("stdin-json", Json, false),
         ],
         constraints: &[],
     });
@@ -2428,6 +2436,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
                 value_kind: Text,
                 required: true,
             },
+            value_option("stdin-json", Json, false),
         ],
         "llm-gateway service status"
         | "llm-gateway service initialize"
@@ -2543,6 +2552,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         "agent-usage report" => &[
             value_option("agent", Text, false),
             value_option("limit", Text, false),
+            value_option("state-root", Text, false),
+        ],
+        "provider-quota snapshot" => &[
+            value_option("agent", Text, false),
+            boolean_option("force-refresh"),
             value_option("state-root", Text, false),
         ],
         "resource-usage scan" => &[value_option("state-root", Text, false)],
@@ -2696,6 +2710,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("include-accessible-environments", Text, false),
             value_option("include-history-model-catalog", Text, false),
             value_option("enable-agent-cli-model-lookup", Text, false),
+            value_option("stdin-json", Json, false),
         ],
         "targets add" => &[
             value_option("target", Text, true),
@@ -2793,11 +2808,16 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         ],
         "secure-mesh approval request"
         | "secure-mesh approval fanout"
-        | "secure-mesh approval respond"
         | "secure-mesh approval inbox"
         | "secure-mesh approval adapter-capability" => &[
             value_option("pending-operation-id", Text, false),
             value_option("decision", Text, false),
+        ],
+        "secure-mesh approval respond" => &[
+            value_option("pending-operation-id", Text, true),
+            value_option("decision", Text, true),
+            value_option("responding-endpoint-id", Text, true),
+            value_option("response-nonce", Text, true),
         ],
         _ => &[],
     };

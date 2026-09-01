@@ -51,9 +51,9 @@ test("one current catalog owns all rich provider and Agent pricing facts", () =>
   const catalog = loadCatalog();
   const checked = validateCatalog(catalog);
   assert.deepEqual(Object.keys(catalog).sort(), ["agents", "last_updated", "providers"]);
-  assert.equal(catalog.last_updated, "2026-08-14");
+  assert.equal(catalog.last_updated, "2026-08-22");
   assert.equal(checked.tableCount, 10);
-  assert.equal(checked.routeCount, 91);
+  assert.equal(checked.routeCount, 92);
   assert.deepEqual(
     [...catalog.providers, ...catalog.agents].map((table) => table.id),
     [
@@ -83,7 +83,7 @@ test("cache-write retention and context tiers remain lossless", () => {
       candidate.tiers.some((tier) => tier.cache_write !== null)).length,
     30,
   );
-  assert.equal(routes.filter((candidate) => candidate.tiers.length > 1).length, 15);
+  assert.equal(routes.filter((candidate) => candidate.tiers.length > 1).length, 16);
   const anthropic = route(catalog, "anthropic", "claude-fable-5");
   assert.deepEqual(
     anthropic.tiers[0].cache_write.map(({ ttl_seconds: ttl }) => ttl),
@@ -93,6 +93,28 @@ test("cache-write retention and context tiers remain lossless", () => {
   assert.deepEqual(
     openAiSol.tiers.map(({ context_min, context_max }) => [context_min, context_max]),
     [[null, 272000], [272001, null]],
+  );
+  assert.deepEqual(
+    openAiSol.tiers.map(({ input, cache_read: cached, cache_write: write, output }) =>
+      [input, cached, write, output]),
+    [[4, 0.4, 5, 20], [8, 0.8, 10, 30]],
+  );
+  const codexSol = route(catalog, "openai-chatgpt", "gpt-5.6-sol");
+  assert.deepEqual(
+    codexSol.tiers.map(({ input, cache_read: cached, output }) =>
+      [input, cached, output]),
+    [[100, 10, 500]],
+  );
+  assert.equal(route(catalog, "openai-chatgpt", "gpt-5.2"), undefined);
+  assert.ok(route(catalog, "openai-chatgpt", "daybreak-blue"));
+  assert.equal(route(catalog, "google", "gemini-3.1-flash-lite-preview"), undefined);
+  assert.ok(route(catalog, "google", "gemini-3.1-flash-lite"));
+  const zenDeepSeek = route(catalog, "opencode-zen", "deepseek-v4-pro");
+  assert.equal(zenDeepSeek.billing_mode, "hosted_token_peak");
+  assert.deepEqual(
+    zenDeepSeek.tiers.map(({ input, cache_read: cached, output }) =>
+      [input, cached, output]),
+    [[1.32, 0.044, 3.96]],
   );
   const free = route(catalog, "opencode-zen", "big-pickle");
   assert.equal(free.included_by_harness, true);
@@ -127,23 +149,27 @@ test("catalog validation rejects malformed or incomplete facts", () => {
 
 test("release freshness is inclusive for seven days", () => {
   const current = loadCatalog();
-  assert.equal(validateReleaseFreshness(current, "2026-08-14"), true);
+  assert.equal(validateReleaseFreshness(current, "2026-08-22"), true);
 
   const sevenDays = clone(current);
-  sevenDays.providers[0].routes[0].verified_on = "2026-08-07";
-  assert.equal(validateReleaseFreshness(validateCatalog(sevenDays), "2026-08-14"), true);
+  sevenDays.providers[0].routes[0].verified_on = "2026-08-15";
+  assert.equal(validateReleaseFreshness(validateCatalog(sevenDays), "2026-08-22"), true);
 
   const stale = clone(current);
-  stale.providers[0].routes[0].verified_on = "2026-08-06";
+  stale.providers[0].routes[0].verified_on = "2026-08-14";
   rejects(
-    () => validateReleaseFreshness(validateCatalog(stale), "2026-08-14"),
+    () => validateReleaseFreshness(validateCatalog(stale), "2026-08-22"),
     "pricing_verification_stale",
   );
 });
 
 test("Rust and release commands consume only the canonical catalog", () => {
   assert.match(rust, /pricing_catalog\.json/u);
-  assert.match(rust, /last_updated: guard\.last_updated/u);
+  assert.match(rust, /valid_date\(&catalog\.last_updated\)/u);
+  assert.match(
+    rust,
+    /date_key\(&route\.verified_on\) > date_key\(last_updated\)/u,
+  );
   assert.doesNotMatch(source, /writeFileSync|mkdirSync|rmSync/u);
   assert.equal(packageJson.scripts[["client", "pricing", "generate"].join(":")], undefined);
   assert.ok(CLIENT_GATE_LANES["release-policy"].includes("client:pricing:release-check"));
@@ -158,6 +184,6 @@ test("read-only validator self-test is deterministic", () => {
   const result = runSelfTest();
   assert.equal(result.ok, true);
   assert.equal(result.tableCount, 10);
-  assert.equal(result.routeCount, 91);
+  assert.equal(result.routeCount, 92);
   assert.equal(result.deterministic, true);
 });

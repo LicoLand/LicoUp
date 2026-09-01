@@ -1,6 +1,4 @@
-use super::super::stdio_transport::{
-    PROMPT_DRAIN_QUIET_DURATION, PromptDrainBudget, PromptDrainExpiration, run_protocol_loop,
-};
+use super::super::stdio_transport::run_protocol_loop;
 use super::*;
 use std::time::{Duration, Instant};
 
@@ -61,7 +59,7 @@ fn agent_chunk(content: Value) -> Value {
 }
 
 #[test]
-fn fake_child_transport_drains_ordered_chunks_sent_after_prompt_response() {
+fn fake_child_transport_emits_ordered_chunks_before_protocol_finish() {
     let (dir, executable) = compile_fake_agent("response-first");
     let acp_driver = AcpDriverSpec::new("test-acp", &["acp"]).with_identity("test-acp", "acp");
     let result = execute_acp(
@@ -80,68 +78,33 @@ fn fake_child_transport_drains_ordered_chunks_sent_after_prompt_response() {
     assert_eq!(result.session_id, "native-fake-session");
     assert_eq!(result.turn_status, "end_turn");
     assert_eq!(result.capabilities.protocol_version, Some(1));
-    assert_eq!(result.events.len(), 2);
+    assert!(matches!(
+        result.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
+            crate::platform::native_agent_parser::LifecycleStage::Completed
+        ))
+    ));
     assert!(result.stderr_truncated);
     let _ = fs::remove_dir_all(dir);
 }
 
 #[test]
-fn prompt_drain_budget_resets_monotonically_without_extending_the_hard_deadline() {
-    let prompt_response_at = Instant::now();
-    let hard_deadline = prompt_response_at + Duration::from_millis(250);
-    let mut budget = PromptDrainBudget::new(prompt_response_at, Some(hard_deadline));
-
-    assert_eq!(PROMPT_DRAIN_QUIET_DURATION, Duration::from_millis(100));
-    assert_eq!(
-        budget.next_deadline(),
-        prompt_response_at + Duration::from_millis(100)
-    );
-    assert_eq!(
-        budget.expiration_at(prompt_response_at + Duration::from_millis(99)),
-        PromptDrainExpiration::Pending
-    );
-    let quiet_budget = PromptDrainBudget::new(prompt_response_at, Some(hard_deadline));
-    assert_eq!(
-        quiet_budget.expiration_at(prompt_response_at + Duration::from_millis(100)),
-        PromptDrainExpiration::Quiet
-    );
-
-    budget.observe_valid_notification(prompt_response_at + Duration::from_millis(90));
-    assert_eq!(
-        budget.next_deadline(),
-        prompt_response_at + Duration::from_millis(190)
-    );
-    budget.observe_valid_notification(prompt_response_at + Duration::from_millis(180));
-    assert_eq!(budget.next_deadline(), hard_deadline);
-    budget.observe_valid_notification(prompt_response_at + Duration::from_millis(240));
-    assert_eq!(budget.next_deadline(), hard_deadline);
-    assert_eq!(
-        budget.expiration_at(hard_deadline),
-        PromptDrainExpiration::Hard
-    );
-
-    budget.observe_valid_notification(hard_deadline + Duration::from_millis(50));
-    assert_eq!(budget.hard_deadline(), Some(hard_deadline));
-    assert_eq!(budget.next_deadline(), hard_deadline);
-}
-
-#[test]
-fn production_protocol_loop_resets_quiet_deadline_for_controlled_valid_chunks() {
+fn production_protocol_loop_finishes_only_from_the_prompt_response_signal() {
     let start = Instant::now();
     let hard_deadline = start + Duration::from_millis(350);
     let mut protocol = protocol_awaiting_prompt_response();
     let mut transport = ScriptedProtocolLoopTransport::messages(
         start,
         vec![
-            (Duration::ZERO, prompt_response()),
             (
-                Duration::from_millis(90),
+                Duration::ZERO,
                 agent_chunk(json!({"type": "text", "text": "first "})),
             ),
             (
-                Duration::from_millis(180),
+                Duration::from_millis(90),
                 agent_chunk(json!({"type": "text", "text": "second"})),
             ),
+            (Duration::from_millis(180), prompt_response()),
         ],
     );
 
@@ -153,14 +116,18 @@ fn production_protocol_loop_resets_quiet_deadline_for_controlled_valid_chunks() 
     assert_eq!(status_code, None);
     assert!(!stdout_truncated);
     assert_eq!(outcome.output, "first second");
-    assert_eq!(outcome.events.len(), 2);
-    assert_eq!(transport.now(), start + Duration::from_millis(280));
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "first second"
+    )));
+    assert_eq!(transport.now(), start + Duration::from_millis(180));
     assert_eq!(transport.remaining_events(), 0);
     assert!(transport.writes().is_empty());
 }
 
 #[test]
-fn production_protocol_loop_never_extends_a_continuously_reset_hard_cap() {
+fn production_protocol_loop_never_extends_the_explicit_hard_cap() {
     let start = Instant::now();
     let original_request_deadline = start + Duration::from_millis(250);
     let delayed_prompt_response_at = Duration::from_millis(80);
@@ -168,9 +135,8 @@ fn production_protocol_loop_never_extends_a_continuously_reset_hard_cap() {
     let mut transport = ScriptedProtocolLoopTransport::messages(
         start,
         vec![
-            (delayed_prompt_response_at, prompt_response()),
             (
-                Duration::from_millis(160),
+                delayed_prompt_response_at,
                 agent_chunk(json!({"type": "text", "text": "one "})),
             ),
             (
@@ -181,6 +147,7 @@ fn production_protocol_loop_never_extends_a_continuously_reset_hard_cap() {
                 Duration::from_millis(245),
                 agent_chunk(json!({"type": "text", "text": "three"})),
             ),
+            (Duration::from_millis(260), prompt_response()),
         ],
     );
 
@@ -199,12 +166,12 @@ fn production_protocol_loop_never_extends_a_continuously_reset_hard_cap() {
     assert!(!stdout_truncated);
     assert!(delayed_prompt_response_at > Duration::ZERO);
     assert_eq!(transport.now(), original_request_deadline);
-    assert_eq!(transport.remaining_events(), 0);
+    assert_eq!(transport.remaining_events(), 1);
     assert_eq!(protocol.output, "one two three");
 }
 
 #[test]
-fn malformed_canary_content_fails_immediately_without_resetting_quiescence() {
+fn malformed_canary_content_fails_immediately_before_protocol_finish() {
     const MALFORMED_CONTENT_CANARY: &str = "MALFORMED-CONTENT-CANARY";
     let start = Instant::now();
     let hard_deadline = start + Duration::from_millis(300);
@@ -212,7 +179,6 @@ fn malformed_canary_content_fails_immediately_without_resetting_quiescence() {
     let mut transport = ScriptedProtocolLoopTransport::messages(
         start,
         vec![
-            (Duration::ZERO, prompt_response()),
             (
                 Duration::from_millis(40),
                 agent_chunk(json!({"type": "text", "text": "safe"})),
@@ -284,13 +250,13 @@ fn malformed_notification_before_prompt_response_stops_before_later_response_and
     assert_eq!(transport.now(), start + Duration::from_millis(10));
     assert_eq!(transport.remaining_events(), 2);
     let remaining_messages = transport.remaining_messages();
-    assert_eq!(remaining_messages, vec![&later_response, &later_chunk]);
+    assert_eq!(remaining_messages, vec![later_response, later_chunk]);
     assert!(protocol.output.is_empty());
     assert!(protocol.events.is_empty());
 }
 
 #[test]
-fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
+fn protocol_signals_fail_closed_on_output_limit_process_loss_and_hard_deadline() {
     let (dir, executable) = compile_fake_agent("drain-negatives");
     let acp_driver = AcpDriverSpec::new("test-acp", &["acp"]).with_identity("test-acp", "acp");
 
@@ -423,10 +389,11 @@ fn flood_above_queue_capacity_delivers_complete_ordered_output() {
     assert!(result.ok, "flood ACP failure: {:?}", result.error);
     let expected: String = (0..70).map(|index| format!("chunk-{index}")).collect();
     assert_eq!(result.output, expected);
-    assert_eq!(result.events.len(), 70);
-    for (index, event) in result.events.iter().enumerate() {
-        assert_eq!(event["content"]["text"], format!("chunk-{index}"));
-    }
+    assert!(result.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == &expected
+    )));
     assert_eq!(result.turn_status, "end_turn");
     let _ = fs::remove_dir_all(dir);
 }
