@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 161;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 162;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1821,6 +1821,13 @@ fn route_authorities() -> Vec<RouteAuthority> {
     );
     add_authority_routes(
         &mut routes,
+        "provider_quota.rs",
+        "handle_provider_quota_snapshot",
+        &["provider-quota snapshot"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
         "resource_usage.rs",
         "handle_resource_usage_scan",
         &["resource-usage scan"],
@@ -2545,6 +2552,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         "agent-usage report" => &[
             value_option("agent", Text, false),
             value_option("limit", Text, false),
+            value_option("state-root", Text, false),
+        ],
+        "provider-quota snapshot" => &[
+            value_option("agent", Text, false),
+            boolean_option("force-refresh"),
             value_option("state-root", Text, false),
         ],
         "resource-usage scan" => &[value_option("state-root", Text, false)],

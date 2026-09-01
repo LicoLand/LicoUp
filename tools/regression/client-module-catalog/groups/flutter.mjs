@@ -712,6 +712,24 @@ export const FLUTTER_MODULES = Object.freeze([
       ]),
     }),
   defineModule({
+      id: "flutter.feature.provider-quota",
+      kind: "flutter-feature",
+      summary: "Provider-quota snapshot projection, roster rings, and hover usage card",
+      inputs: [
+        "apps/desktop/lib/src/contracts/provider_quota_models.dart",
+        "apps/desktop/lib/src/application/features/agents/contracts/provider_quota_gateway.dart",
+        "apps/desktop/lib/src/application/features/agents/controller/provider_quota_controller.dart",
+        "apps/desktop/lib/src/application/composition/provider_quota_gateway_adapter.dart",
+        "apps/desktop/lib/src/application/controller/assembly/client_provider_quota_component_assembly.dart",
+        "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_quota_ring.dart",
+        "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_quota_usage_card.dart",
+        "apps/desktop/test/messaging/messaging_roster_quota_test.dart",
+      ],
+      command: flutterTests([
+        "test/messaging/messaging_roster_quota_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.feature.agent-usage.workflow",
       kind: "flutter-feature",
       summary: "Path-free native workflow token hierarchy, exact coverage, and progressive Plan disclosure",
