@@ -862,6 +862,7 @@ final class _AdaptiveFlywheelAssistantCard extends StatelessWidget {
               agentCardWidth: 188,
               modelCardWidth: 288,
               settingsCardWidth: 184,
+              revealSelectionOnOpen: true,
               targets: targets,
               draft: draft,
               selectedAgentIds: draft.agentId.trim().isEmpty
