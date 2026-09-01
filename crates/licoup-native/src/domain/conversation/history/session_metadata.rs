@@ -56,7 +56,7 @@ pub(super) fn session_from_messages_with_title(
             .and_then(Value::as_str)
             .is_none_or(|value| value.trim().is_empty())
         {
-            message["createdAt"] = json!(super::message_projection::native_message_timestamp());
+            message["createdAt"] = json!(updated_at.clone());
         }
     }
     let path_display = display_path(path);
@@ -155,7 +155,7 @@ pub(super) fn session_from_messages_with_title(
                     .get("cardType")
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                if role == "subagent" || card_type == "subagent" || role == "subagent_prompt" {
+                if role == "subagent" || card_type == "subagent" {
                     let mut card = message.clone();
                     crate::domain::conversation_semantic::annotate_message_layer(
                         &mut card,
@@ -221,14 +221,7 @@ pub(super) fn ensure_message_semantic_layer(message: &mut Value) {
     } else if !card_type.is_empty()
         || matches!(
             role,
-            "tool_call"
-                | "tool_result"
-                | "reasoning"
-                | "metadata"
-                | "error"
-                | "event"
-                | "subagent"
-                | "subagent_prompt"
+            "tool_call" | "tool_result" | "reasoning" | "metadata" | "error" | "event" | "subagent"
         )
     {
         crate::domain::conversation_semantic::SemanticLayer::Execution

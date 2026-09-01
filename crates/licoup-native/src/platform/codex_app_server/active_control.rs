@@ -1,6 +1,6 @@
 //! Process-local control registry for the official Codex App Server turn API.
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock, mpsc},
@@ -123,16 +123,10 @@ impl SteerRequest {
         thread_id: &str,
         turn_id: &str,
     ) -> (String, Value, mpsc::SyncSender<bool>) {
-        let request_id = format!("lico-steer-{}", uuid::Uuid::new_v4().simple());
-        let message = json!({
-            "id": request_id,
-            "method": "turn/steer",
-            "params": {
-                "threadId": thread_id,
-                "expectedTurnId": turn_id,
-                "input": [{"type": "text", "text": self.text}]
-            }
-        });
+        let (request_id, message) =
+            crate::platform::native_agent_parser::adapters::codex::steer_request(
+                thread_id, turn_id, &self.text,
+            );
         (request_id, message, self.acknowledged)
     }
 }

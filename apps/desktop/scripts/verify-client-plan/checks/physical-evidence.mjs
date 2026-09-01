@@ -107,7 +107,7 @@ for (const token of [
   "evidenceCommands",
   "npm run client:verify:licoarc-badtower-acceptance",
   "npm run client:test:android:native",
-  "npm run client:build:android",
+  "npm run client:build -- --platform android",
   "node tools/scripts/client-android-physical-install-launch.mjs --install --launch --apk build/apps/desktop/android/release/app-release.apk",
   "npm run client:verify:mobile-simulator-closure:ios",
   "npm run client:verify:secure-mesh-macos-keychain-user-presence",

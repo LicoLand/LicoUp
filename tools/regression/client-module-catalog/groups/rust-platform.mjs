@@ -656,7 +656,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Session-bound ACP update parsing and assistant text projection",
       inputs: [
-        "crates/licoup-native/src/platform/acp_driver_runtime/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/framing.rs",
         "crates/licoup-native/src/platform/acp_driver_runtime/tests/events.rs",
       ],
       command: rustLayer("platform::acp_driver_runtime::tests::events::"),
@@ -666,7 +666,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Fail-closed ACP permission interaction projection",
       inputs: [
-        "crates/licoup-native/src/platform/acp_driver_runtime/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
         "crates/licoup-native/src/platform/acp_driver_runtime/tests/interaction.rs",
       ],
       command: rustLayer("platform::acp_driver_runtime::tests::interaction::"),
@@ -716,7 +718,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "ACP initialize, optional MCP server injection, session, prompt, and response state machine",
       inputs: [
-        "crates/licoup-native/src/platform/acp_driver_runtime/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
         "crates/licoup-native/src/platform/acp_driver_runtime/tests/protocol.rs",
       ],
       command: rustLayer("platform::acp_driver_runtime::tests::protocol::"),
@@ -762,7 +766,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/acp_session_transport/capabilities.rs",
         "crates/licoup-native/src/platform/acp_session_transport/continuity.rs",
         "crates/licoup-native/src/platform/acp_session_transport/errors.rs",
-        "crates/licoup-native/src/platform/acp_session_transport/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/framing.rs",
         "crates/licoup-native/src/platform/acp_session_transport/io.rs",
         "crates/licoup-native/src/platform/acp_session_transport/supervision.rs",
         "crates/licoup-native/src/platform/acp_session_transport/tests.rs",
@@ -776,7 +780,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/platform/acp_session_transport/command.rs",
         "crates/licoup-native/src/platform/acp_session_transport/execution.rs",
-        "crates/licoup-native/src/platform/acp_session_transport/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
         "crates/licoup-native/src/platform/acp_session_transport/tests.rs",
       ],
       command: rustLayer("platform::acp_session_transport::tests::"),
@@ -1039,7 +1044,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Claude Code allowlisted streaming event projection without tool, path, or session leakage",
       inputs: [
-        "crates/licoup-native/src/platform/claude_code_driver/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/events.rs",
         "crates/licoup-native/src/platform/claude_code_driver/tests/events.rs",
       ],
       command: rustLayer("platform::claude_code_driver::tests::events::"),
@@ -1049,7 +1054,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Claude Code exact session binding, terminal outcome, permission, and stream state",
       inputs: [
-        "crates/licoup-native/src/platform/claude_code_driver/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/state.rs",
         "crates/licoup-native/src/platform/claude_code_driver/tests/protocol.rs",
       ],
       command: rustLayer("platform::claude_code_driver::tests::protocol::"),
@@ -1170,7 +1176,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw ACP JSON-line codec and request identifier matching",
       inputs: [
-        "crates/licoup-native/src/platform/openclaw_driver/codec.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/codec.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/codec.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::codec::"),
@@ -1190,7 +1196,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw allowlisted event projection without metadata, tool input, or thought leakage",
       inputs: [
-        "crates/licoup-native/src/platform/openclaw_driver/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/events.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::events::"),
@@ -1200,7 +1206,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw ACP state machine, exact session association, mode, and prompt completion",
       inputs: [
-        "crates/licoup-native/src/platform/openclaw_driver/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/protocol.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::protocol::"),
@@ -1210,7 +1217,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw permission requests fail closed into explicit user interaction",
       inputs: [
-        "crates/licoup-native/src/platform/openclaw_driver/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/interaction.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::interaction::"),
@@ -1311,7 +1319,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi model and thinking configuration through the official RPC channel",
       inputs: [
         "crates/licoup-native/src/platform/pi_driver/params.rs",
-        "crates/licoup-native/src/platform/pi_driver/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/settings.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::settings::"),
@@ -1319,19 +1327,21 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.pi-driver.protocol",
       kind: "rust-platform",
-      summary: "Pi RPC state machine, effects, prompt completion, and exact active identity",
+      summary: "Pi parser RPC state machine, effects, prompt completion, and exact active identity",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/protocol.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
+        "crates/licoup-native/src/platform/pi_driver/tests/parser_protocol.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::protocol::"),
+      command: rustLayer("platform::pi_driver::tests::parser_protocol::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.interaction",
       kind: "rust-platform",
-      summary: "Pi extension UI requests fail closed into explicit user interaction",
+      summary: "Pi dialog callbacks park once while notification UI methods remain fire-and-forget",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/protocol.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/interaction.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::interaction::"),
@@ -1339,18 +1349,19 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.pi-driver.events",
       kind: "rust-platform",
-      summary: "Pi allowlisted event metadata without raw message or tool argument projection",
+      summary: "Pi parser allowlisted event metadata without raw message or tool argument projection",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/events.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/events.rs",
+        "crates/licoup-native/src/platform/pi_driver/tests/parser_events.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::events::"),
+      command: rustLayer("platform::pi_driver::tests::parser_events::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.sessions",
       kind: "rust-platform",
       summary: "Pi bounded session-root discovery, exact header matching, and ambiguity rejection",
       inputs: [
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
         "crates/licoup-native/src/platform/pi_driver/sessions.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/sessions.rs",
       ],
@@ -1359,8 +1370,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.pi-driver.io",
       kind: "rust-platform",
-      summary: "Pi bounded JSONL stdout and fully drained non-projecting stderr",
+      summary: "Pi bounded stdout lines and fully drained non-projecting stderr",
       inputs: [
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
         "crates/licoup-native/src/platform/pi_driver/io.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/io.rs",
       ],
@@ -1590,6 +1602,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/codex_app_server/limits.rs",
         "crates/licoup-native/src/platform/codex_app_server/model.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests.rs",
+        "crates/licoup-native/src/platform/codex_app_server/tests/model_catalog.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/support.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::"),
@@ -1618,9 +1631,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Codex initialize, exact thread identity, new or resumed session, and turn-start state machine",
       inputs: [
-        "crates/licoup-native/src/platform/codex_app_server/protocol.rs",
-        "crates/licoup-native/src/platform/codex_app_server/protocol/helpers.rs",
-        "crates/licoup-native/src/platform/codex_app_server/protocol/session.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/helpers.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/session.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/session.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::session::"),
@@ -1630,7 +1643,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Current-thread event filtering, message streaming, final result, and effective settings projection",
       inputs: [
-        "crates/licoup-native/src/platform/codex_app_server/protocol/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/events.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/events.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::events::"),
@@ -1640,7 +1653,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Fail-closed server-request and approval ownership boundary",
       inputs: [
-        "crates/licoup-native/src/platform/codex_app_server/protocol/control.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/control.rs",
         "crates/licoup-native/src/platform/codex_app_server/active_control.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/control.rs",
       ],
@@ -1677,6 +1690,16 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/tests/fixtures/fake_codex_app_server.rs",
       ],
       command: rustLayer("platform::codex_app_server::tests::transport::"),
+    }),
+  defineModule({
+      id: "rust.platform.deepseek-harness-driver",
+      kind: "rust-platform",
+      summary: "Official DeepSeek Harness SDK JSON-RPC transport and bounded protocol projection",
+      inputs: [
+        "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+        "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/deepseek-harness.json",
+      ],
+      command: rustLayer("platform::deepseek_harness_driver::tests::"),
     }),
   defineModule({
       id: "rust.platform.runtime-adapters",
@@ -1768,7 +1791,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/copilot_driver.rs",
         "crates/licoup-native/src/platform/cursor_driver.rs",
         "crates/licoup-native/src/platform/cursor_driver/errors.rs",
-        "crates/licoup-native/src/platform/cursor_driver/events.rs",
+        "crates/licoup-native/src/platform/native_agent_parser/adapters/cursor.rs",
         "crates/licoup-native/src/platform/cursor_driver/execution.rs",
         "crates/licoup-native/src/platform/cursor_driver/io.rs",
         "crates/licoup-native/src/platform/cursor_driver/model.rs",
@@ -1957,6 +1980,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/bin/licoup.rs",
         "crates/licoup-native/src/bin/licoup/conversation_host.rs",
+        "crates/licoup-native/src/platform/conversation_host_transport.rs",
         "crates/licoup-native/src/bin/licoup/presentation.rs",
         "crates/licoup-native/src/bin/licoup/private_stdin_json.rs",
         "crates/licoup-native/src/bin/licoup/tests.rs",

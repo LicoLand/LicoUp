@@ -19,6 +19,7 @@ const productionLeaves = Object.freeze([
   "serve.rs",
   "sse.rs",
   "state.rs",
+  "turn_control.rs",
 ]);
 
 async function read(relativePath) {
@@ -54,10 +55,11 @@ test("HTTP body headers timeout and concurrency remain explicitly bounded", asyn
   }
   assert.match(http, /\.take\(\(MAX_HTTP_RESPONSE_BODY_BYTES as u64\)\.saturating_add\(1\)\)/u);
   assert.match(http, /validate_headers/u);
+  assert.match(http, /control_agent/u);
   assert.match(http, /timeout_connect/u);
-  assert.match(http, /timeout_read/u);
-  assert.match(http, /timeout_write/u);
-  assert.match(http, /url\.scheme\(\) == "https"/u);
+  assert.match(http, /\.timeout\(timeout\)/u);
+  assert.match(http, /try_proxy_from_env\(false\)/u);
+  assert.match(http, /is_https_or_loopback_http_url/u);
 });
 
 test("SSE line frame event timeout and stream concurrency remain bounded", async () => {
@@ -79,7 +81,7 @@ test("SSE line frame event timeout and stream concurrency remain bounded", async
   assert.match(sse, /timeout_read/u);
 });
 
-test("state PID process and event projection remain private bounded and redacted", async () => {
+test("state PID process remain private and neutral serve owns no event decoding", async () => {
   const state = await read(`${root}/state.rs`);
   const process = await read(`${root}/process.rs`);
   const serve = await read(`${root}/serve.rs`);
@@ -88,10 +90,27 @@ test("state PID process and event projection remain private bounded and redacted
   assert.match(state, /try_lock_exclusive/u);
   assert.match(process, /stdout\(Stdio::null\(\)\)/u);
   assert.match(process, /stderr\(Stdio::null\(\)\)/u);
-  assert.match(serve, /event_session != session_id/u);
-  assert.match(serve, /"message\.part\.updated" \| "message\.part\.delta"/u);
+  assert.equal(serve.includes("message.updated"), false);
+  assert.equal(serve.includes("message.part.updated"), false);
+  assert.equal(serve.includes("assistant_messages"), false);
+  assert.equal(serve.includes("serde_json::from_str"), false);
   assert.equal(serve.includes('"state": service_state'), false);
   assert.equal(serve.includes('"stateDir"'), false);
+});
+
+test("turn control remains exact-session bounded and owns no target policy", async () => {
+  const turnControl = await read(`${root}/turn_control.rs`);
+  for (const token of [
+    "MAX_ACTIVE_TURNS",
+    "CONTROL_TIMEOUT",
+    "ActiveTurnGuard",
+    "session_action_url",
+    "generation",
+    "impl Drop",
+  ]) assert.match(turnControl, new RegExp(token, "u"));
+  assert.match(turnControl, /#\[cfg\(test\)\]\s+mod tests/u);
+  assert.equal(turnControl.includes("opencode"), false);
+  assert.equal(turnControl.includes("kilo"), false);
 });
 
 test("HTTP and SSE foundation does not absorb ACP JSONL or target policy", async () => {

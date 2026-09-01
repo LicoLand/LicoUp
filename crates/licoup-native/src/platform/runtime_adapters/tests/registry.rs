@@ -75,6 +75,7 @@ fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
     assert_eq!(capability_kinds("hermes"), ["cli", "acp", "tui-gateway"]);
     assert_eq!(capability_kinds("cursor"), ["desktop", "cli"]);
     assert_eq!(capability_kinds("pi"), ["cli", "rpc"]);
+    assert_eq!(capability_kinds("deepseek-harness"), ["cli", "rpc"]);
     assert_eq!(capability_kinds("copilot"), ["cli", "acp"]);
     assert_eq!(capability_kinds("kimi-code"), ["cli", "acp", "web-server"]);
 
@@ -99,6 +100,7 @@ fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
         "openclaw",
         "opencode",
         "pi",
+        "deepseek-harness",
     ] {
         assert!(
             plugin_ids(agent).is_empty(),
@@ -200,6 +202,21 @@ fn canonical_resources_are_the_only_runtime_profile_source() {
     let cursor = registry.profile("cursor").unwrap();
     assert_eq!(cursor.driver_status, "implemented");
     assert_eq!(cursor.blocker, None);
+
+    let deepseek = registry.profile("deepseek-harness").unwrap();
+    assert_eq!(deepseek.driver_status, "implemented");
+    assert_eq!(deepseek.readiness, "unverified");
+    assert_eq!(deepseek.protocol, "deepseek-harness-sdk-stdio-jsonrpc");
+    assert_eq!(deepseek.blocker, None);
+    assert_eq!(deepseek.summary_codes, vec!["evidence_missing"]);
+    assert_eq!(
+        deepseek
+            .capability_matrix
+            .as_ref()
+            .and_then(|matrix| matrix.get("interruptSteer"))
+            .and_then(Value::as_bool),
+        Some(false)
+    );
 }
 
 #[test]

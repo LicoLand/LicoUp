@@ -101,3 +101,26 @@ fn shared_control_client_reuses_one_connection_for_sequential_calls() {
     assert_eq!(second.unwrap()["ok"], true);
     assert_eq!(accepts.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn http_failure_preserves_the_non_success_status_class() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let _ = read_http_request(&mut stream).unwrap();
+        stream
+            .write_all(
+                b"HTTP/1.1 422 Unprocessable Entity\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            )
+            .unwrap();
+    });
+    let failure = http::post_json(
+        &format!("http://{address}/session"),
+        &json!({}),
+        Duration::from_secs(2),
+    )
+    .unwrap_err();
+    server.join().unwrap();
+    assert_eq!(failure, HttpFailure::Status(422));
+}

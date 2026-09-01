@@ -4,11 +4,11 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::time::Instant;
 
 #[derive(Debug)]
 pub(super) enum TransportEvent {
-    Message(Value),
-    InvalidJson,
+    Line { line: String, received_at: Instant },
     StdoutLimitExceeded,
     StdoutReadFailed,
     StdoutClosed,
@@ -44,20 +44,14 @@ pub(super) fn read_protocol_messages<R: Read>(
                         return;
                     }
                 }
-                let trimmed = line.trim_end_matches(['\r', '\n']);
-                if trimmed.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<Value>(trimmed) {
-                    Ok(message) => {
-                        if sender.send(TransportEvent::Message(message)).is_err() {
-                            return;
-                        }
-                    }
-                    Err(_) => {
-                        let _ = sender.send(TransportEvent::InvalidJson);
-                        return;
-                    }
+                if sender
+                    .send(TransportEvent::Line {
+                        line: std::mem::take(&mut line),
+                        received_at: Instant::now(),
+                    })
+                    .is_err()
+                {
+                    return;
                 }
             }
             Err(_) => {

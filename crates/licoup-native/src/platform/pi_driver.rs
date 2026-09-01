@@ -1,12 +1,10 @@
 mod active_control;
-mod errors;
-mod events;
+pub(in crate::platform) mod errors;
 mod execution;
 mod io;
-mod model;
-mod params;
+pub(in crate::platform) mod model;
+pub(in crate::platform) mod params;
 mod probe;
-mod protocol;
 mod sessions;
 mod supervision;
 

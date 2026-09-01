@@ -8,6 +8,8 @@ abstract interface class AgentConversationGateway {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
@@ -16,6 +18,8 @@ abstract interface class AgentConversationGateway {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
@@ -96,7 +100,11 @@ abstract interface class PersistentAgentConversationGateway {
   Future<List<Map<String, dynamic>>> activeTurns({
     required String agentId,
     String sessionId = '',
+    String conversationId = '',
+    Duration waitForChange = Duration.zero,
   });
+
+  Future<void> ensureRuntime({String conversationId = ''});
 
   Stream<AgentDispatchEvent> attachActiveTurn({
     required String turnHandle,
@@ -134,5 +142,17 @@ abstract interface class MobileAgentConversationGateway {
   Future<Map<String, dynamic>> describeSession({
     required String agentId,
     required String sessionId,
+  });
+}
+
+/// Optional exact-message continuation implemented by the production Secure
+/// Mesh adapter. Older test or embedding gateways can keep the one-shot
+/// describe contract without silently claiming page support.
+abstract interface class MobilePagedAgentConversationGateway {
+  Future<Map<String, dynamic>> describeSessionPage({
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
   });
 }

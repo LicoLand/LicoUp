@@ -17,24 +17,27 @@ mod transport;
 mod claude_process_local_test_lock;
 
 use super::command::{FIXED_STREAM_ARGS, LaunchIdentity, executable_augmented_path};
-use super::control::{ControlDisposition, denied_control_response, interrupt_request};
+use super::control::ControlDisposition;
 use super::errors::{ProtocolFailure, requires_transport_reset};
-use super::events::{partial_text_delta, project_event};
 use super::execution::execute;
 use super::io::{
     MAX_PROTOCOL_LINE_BYTES, TransportEvent, drain_stderr, read_bounded, read_protocol_messages,
 };
 use super::model::{
-    BoundedTranscript, CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
+    CapabilityProbe, CompleteTranscript, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
     TransportLifecycle,
 };
 use super::params::DriverConfig;
 use super::probe::probe;
-use super::protocol::TurnState;
 use super::supervision::{
     cancel, cleanup_session, clear_all_for_test, has_live_session, lookup_session_transport, steer,
 };
 use super::transport::PersistentTransport;
+use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use crate::platform::native_agent_parser::adapters::claude_code::events::partial_text_delta;
+use crate::platform::native_agent_parser::adapters::claude_code::{
+    ClaudeCodeParser, ClaudeEffect, interrupt_request,
+};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{BufReader, Cursor};

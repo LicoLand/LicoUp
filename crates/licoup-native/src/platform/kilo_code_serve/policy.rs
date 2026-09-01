@@ -16,6 +16,8 @@ pub(super) const SPEC: ServeSpec = ServeSpec {
     default_host: "127.0.0.1",
     health_path: "/global/health",
     session_probe_path: "/session",
+    config_path: "/config",
+    provider_path: "/provider",
     state_dir: "kilo-code-serve",
     state_schema_version: "v0.0.1:kilo-code-serve-2",
     default_health_timeout_ms: 45_000,
@@ -23,6 +25,7 @@ pub(super) const SPEC: ServeSpec = ServeSpec {
     executable_environment: &["KILO_BIN", "KILO_PATH", "KILOCODE_PATH"],
     default_executable: "kilo",
     configure_command,
+    parse_readiness: crate::platform::native_agent_parser::adapters::kilo_code::readiness,
     errors: ServeErrorCodes {
         executable_missing: "kilo_executable_missing",
         port_exhausted: "kilo_code_serve_port_exhausted",

@@ -13,6 +13,14 @@ enum ConversationTurnLifecycleStage {
   failed,
 }
 
+const _conversationLifecycleProgressStages = <ConversationTurnLifecycleStage>[
+  ConversationTurnLifecycleStage.submitted,
+  ConversationTurnLifecycleStage.accepted,
+  ConversationTurnLifecycleStage.processing,
+  ConversationTurnLifecycleStage.responding,
+  ConversationTurnLifecycleStage.completed,
+];
+
 final class ConversationTurnLifecycleProjection {
   const ConversationTurnLifecycleProjection(
     this.stage, {
@@ -26,14 +34,23 @@ final class ConversationTurnLifecycleProjection {
       stage == ConversationTurnLifecycleStage.completed ||
       stage == ConversationTurnLifecycleStage.failed;
 
-  int get activeStep => switch (stage) {
-    ConversationTurnLifecycleStage.submitted => 0,
-    ConversationTurnLifecycleStage.accepted => 1,
-    ConversationTurnLifecycleStage.processing => 2,
-    ConversationTurnLifecycleStage.responding => 3,
-    ConversationTurnLifecycleStage.completed => 4,
-    ConversationTurnLifecycleStage.failed => 2,
-  };
+  int get activeStep {
+    if (stage != ConversationTurnLifecycleStage.failed) {
+      return _conversationLifecycleProgressStages.indexOf(stage);
+    }
+    for (
+      var index = _conversationLifecycleProgressStages.length - 1;
+      index >= 0;
+      index--
+    ) {
+      if (observedStages.contains(
+        _conversationLifecycleProgressStages[index],
+      )) {
+        return index;
+      }
+    }
+    return -1;
+  }
 }
 
 bool isConversationLifecycleEvent(AgentConversationMessage message) =>
@@ -42,16 +59,51 @@ bool isConversationLifecycleEvent(AgentConversationMessage message) =>
 ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
   Iterable<AgentConversationMessage> events,
 ) {
-  AgentConversationMessage? lifecycle;
+  ConversationTurnLifecycleStage? last;
+  final observedStages = <ConversationTurnLifecycleStage>{};
   for (final event in events) {
-    if (isConversationLifecycleEvent(event)) lifecycle = event;
+    if (!isConversationLifecycleEvent(event)) continue;
+    final stage = _conversationTurnLifecycleStageOf(event);
+    if (stage == null) continue;
+    _includeConversationLifecycleStage(observedStages, stage);
+    for (final observed in _conversationTurnLifecycleStagesFromSubtitle(
+      event,
+    )) {
+      _includeConversationLifecycleStage(observedStages, observed);
+    }
+    if (stage == ConversationTurnLifecycleStage.failed) {
+      last = stage;
+      break;
+    }
+    if (last == null ||
+        _conversationLifecycleProgressStages.indexOf(stage) >
+            _conversationLifecycleProgressStages.indexOf(last)) {
+      last = stage;
+    }
+    if (stage == ConversationTurnLifecycleStage.completed) break;
   }
-  if (lifecycle == null) return null;
-  final raw = lifecycle.cardTitle.trim().toLowerCase();
-  final stageName = raw.startsWith('lifecycle.')
-      ? raw.substring('lifecycle.'.length)
-      : lifecycle.text.trim().toLowerCase();
-  final stage = switch (stageName) {
+  if (last == null) return null;
+  return ConversationTurnLifecycleProjection(
+    last,
+    observedStages: Set.unmodifiable(observedStages),
+  );
+}
+
+void _includeConversationLifecycleStage(
+  Set<ConversationTurnLifecycleStage> target,
+  ConversationTurnLifecycleStage stage,
+) {
+  if (!_conversationLifecycleProgressStages.contains(stage)) return;
+  target.add(stage);
+}
+
+ConversationTurnLifecycleStage? _conversationTurnLifecycleStageOf(
+  AgentConversationMessage event,
+) {
+  final raw = event.cardTitle.trim().toLowerCase();
+  if (!raw.startsWith('lifecycle.')) return null;
+  final stageName = raw.substring('lifecycle.'.length);
+  return switch (stageName) {
     'submitted' => ConversationTurnLifecycleStage.submitted,
     'accepted' => ConversationTurnLifecycleStage.accepted,
     'processing' => ConversationTurnLifecycleStage.processing,
@@ -60,8 +112,11 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
     'failed' => ConversationTurnLifecycleStage.failed,
     _ => null,
   };
-  if (stage == null) return null;
-  final observedStages = lifecycle.cardSubtitle
+}
+
+Set<ConversationTurnLifecycleStage>
+_conversationTurnLifecycleStagesFromSubtitle(AgentConversationMessage event) {
+  return event.cardSubtitle
       .split(',')
       .map(
         (value) => switch (value.trim().toLowerCase()) {
@@ -75,10 +130,6 @@ ConversationTurnLifecycleProjection? projectConversationTurnLifecycle(
       )
       .whereType<ConversationTurnLifecycleStage>()
       .toSet();
-  return ConversationTurnLifecycleProjection(
-    stage,
-    observedStages: Set.unmodifiable(observedStages),
-  );
 }
 
 String conversationLifecycleStageLabel(
@@ -121,19 +172,23 @@ class ConversationLifecycleSteps extends StatelessWidget {
                   label: labels[index],
                   first: index == 0,
                   last: index == labels.length - 1,
-                  completed:
-                      projection.observedStages.contains(
-                        ConversationTurnLifecycleStage.values[index],
-                      ) &&
-                      (projection.terminal || index < projection.activeStep),
+                  completed: projection.observedStages.contains(
+                    _conversationLifecycleProgressStages[index],
+                  ),
                   current:
                       projection.stage !=
                           ConversationTurnLifecycleStage.completed &&
-                      index == projection.activeStep,
+                      index == projection.activeStep &&
+                      projection.observedStages.contains(
+                        _conversationLifecycleProgressStages[index],
+                      ),
                   failed:
                       projection.stage ==
                           ConversationTurnLifecycleStage.failed &&
-                      index == projection.activeStep,
+                      index == projection.activeStep &&
+                      projection.observedStages.contains(
+                        _conversationLifecycleProgressStages[index],
+                      ),
                   // Neutral progress chrome — primary/lemon reads as 泛黄 in
                   // the messaging transcript (same family as user-bubble glow).
                   accent: colors.text,
