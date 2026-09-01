@@ -49,6 +49,10 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
 pub(crate) use adapter::{RuntimeAdapter, adapter_for_agent_public, text_param_public};
 pub use dispatch::send_message;
 pub use error::RuntimeAdapterError;
+pub(crate) use params::{
+    MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
+    attachment_media_type_supported,
+};
 pub(crate) use probe::probe_runtime_driver;
 pub(crate) use registry::{
     adapter_management_catalog, inventory_capability_matrix, native_capabilities_for_agent,

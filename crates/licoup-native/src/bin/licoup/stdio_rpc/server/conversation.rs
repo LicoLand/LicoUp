@@ -680,6 +680,12 @@ fn direct_turn_params(
         "causationId": context.turn.source_event_id,
         "dispatchId": context.turn.id,
     });
+    if !context.source_attachments.is_empty() {
+        params["attachments"] =
+            licoup_native::domain::client_conversation::dispatch_attachments_param(
+                &context.source_attachments,
+            );
+    }
     for (key, value) in [
         ("sessionId", context.runtime_session_id.as_deref()),
         ("sourcePath", context.runtime_conversation_path.as_deref()),
@@ -1191,7 +1197,8 @@ pub(super) fn reap_finished(workers: &mut Vec<std::thread::JoinHandle<()>>) {
 mod tests {
     use super::*;
     use licoup_native::domain::client_conversation::{
-        ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind, TurnState,
+        ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind,
+        ImageAttachment, ImageAttachmentReference, TurnState,
     };
 
     fn runtime(cache_budget: usize) -> PersistentConversationRuntime {
@@ -1199,6 +1206,52 @@ mod tests {
             ConversationStore::open_in_memory().unwrap(),
             cache_budget,
         )
+    }
+
+    /// A boundary-queued continuation of a post with image attachments must
+    /// carry the same attachment references to the member adapter admission.
+    #[test]
+    fn direct_turn_params_carry_image_attachment_references() {
+        let mut context = DirectTurnExecutionContext {
+            turn: DirectTurn {
+                id: "turn:synthetic".to_owned(),
+                conversation_id: "conversation:synthetic".to_owned(),
+                source_event_id: "event:synthetic".to_owned(),
+                membership_id: "membership:agent".to_owned(),
+                state: TurnState::Claimed,
+                ordinal: 0,
+            },
+            agent_id: "codex".to_owned(),
+            source_content: "exact user-authored text".to_owned(),
+            source_attachments: Vec::new(),
+            is_assistant: false,
+            preferred_model: None,
+            preferred_reasoning_effort: None,
+            runtime_session_id: None,
+            runtime_conversation_path: None,
+            working_directory: None,
+        };
+        assert!(direct_turn_params(&context).get("attachments").is_none());
+
+        context.source_attachments = vec![ImageAttachmentReference {
+            part_id: "part:image-1".to_owned(),
+            attachment: ImageAttachment {
+                path: "fixtures/mockup.png".to_owned(),
+                name: "mockup.png".to_owned(),
+                media_type: "image/png".to_owned(),
+                byte_size: 12,
+            },
+        }];
+        let params = direct_turn_params(&context);
+        assert_eq!(
+            params["attachments"],
+            json!([{
+                "id": "part:image-1",
+                "name": "mockup.png",
+                "mediaType": "image/png",
+                "path": "fixtures/mockup.png",
+            }])
+        );
     }
 
     #[test]
@@ -1214,6 +1267,7 @@ mod tests {
             },
             agent_id: "codex".to_owned(),
             source_content: "exact user-authored text".to_owned(),
+            source_attachments: Vec::new(),
             is_assistant: true,
             preferred_model: None,
             preferred_reasoning_effort: None,

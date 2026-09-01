@@ -9,6 +9,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -21,6 +22,7 @@ import 'package:licoup/src/display/conversation/canonical_group_conversation_pan
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/roster.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/support.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
@@ -41,6 +43,10 @@ class CanonicalGroupConversationPane extends StatefulWidget {
     this.flywheelGateway,
     this.persistentGateway,
     this.onOpenAdaptiveFlywheel,
+    this.composerAttachments = const <ConversationAttachment>[],
+    this.onPickComposerImages,
+    this.onClearComposerImages,
+    this.assistantSupportsImageAttachments = false,
   });
 
   final ClientConversationController controller;
@@ -51,6 +57,22 @@ class CanonicalGroupConversationPane extends StatefulWidget {
   final AdaptiveFlywheelGateway? flywheelGateway;
   final PersistentAgentConversationGateway? persistentGateway;
   final Future<void> Function(String? revisionDigest)? onOpenAdaptiveFlywheel;
+
+  /// Images currently staged in the group composer scope (shared
+  /// presentation-signals store), rendered as a pending draft message and
+  /// carried on the next post.
+  final List<ConversationAttachment> composerAttachments;
+
+  /// Opens the image picker and stages selections into the group scope.
+  final VoidCallback? onPickComposerImages;
+
+  /// Clears the group attachment scope (also releases the picked files).
+  final VoidCallback? onClearComposerImages;
+
+  /// Whether the assistant agent's target transports images end to end. When
+  /// false, a send with staged images fails closed with
+  /// `attachment_transport_unsupported` and keeps draft plus images.
+  final bool assistantSupportsImageAttachments;
 
   @override
   State<CanonicalGroupConversationPane> createState() =>
@@ -79,6 +101,12 @@ class _CanonicalGroupConversationPaneState
   String _attachedConversationId = '';
   bool _cancelPending = false;
 
+  /// Assistant Profile intent keyed by Membership id. The membership rotation
+  /// lands a new id, which queues a clean reload behind the generation guard.
+  Map<String, dynamic>? _assistantProfileIntent;
+  String _assistantProfileMembershipId = '';
+  int _assistantProfileGeneration = 0;
+
   /// Shared 32 ms-coalesced turn projection channel, identical to the 1:1
   /// live path: every PersistentTurn event becomes a generated
   /// [ConversationDeltaEvent] and lands in this holder, which publishes at most
@@ -99,7 +127,9 @@ class _CanonicalGroupConversationPaneState
     widget.controller.addListener(_onConversationChanged);
     _turnStates.addListener(_onTurnProjectionChanged);
     unawaited(_loadAuthorizedStrategies());
-    if (widget.controller.selectedConversation != null) {
+    final selected = widget.controller.selectedConversation;
+    if (selected != null) {
+      _queueAssistantProfileLoad(selected);
       unawaited(_ensureConversationHost());
       unawaited(_attachLiveTurns());
     }
@@ -111,6 +141,10 @@ class _CanonicalGroupConversationPaneState
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onConversationChanged);
       widget.controller.addListener(_onConversationChanged);
+      _assistantProfileMembershipId = '';
+      _assistantProfileIntent = null;
+      final selected = widget.controller.selectedConversation;
+      if (selected != null) _queueAssistantProfileLoad(selected);
       unawaited(_syncStrategyFromConversation(force: true));
     }
     if (oldWidget.flywheelGateway != widget.flywheelGateway) {
@@ -149,12 +183,42 @@ class _CanonicalGroupConversationPaneState
     setState(() {});
     unawaited(_syncStrategyFromConversation());
     final conversationId = widget.controller.selectedConversationId;
-    if (widget.controller.selectedConversation == null) {
+    final conversation = widget.controller.selectedConversation;
+    if (conversation == null) {
       return;
     }
+    _queueAssistantProfileLoad(conversation);
     if (conversationId != _attachedConversationId) {
       unawaited(_ensureConversationHost());
       unawaited(_attachLiveTurns());
+    }
+  }
+
+  /// Loads the assistant Membership's persistent Profile intent, keyed by
+  /// Membership id so the rotation's new Membership reloads cleanly and a
+  /// superseded load can never overwrite a newer one.
+  void _queueAssistantProfileLoad(ClientConversation conversation) {
+    final membershipId = conversation.assistantMembership?.id.trim() ?? '';
+    if (membershipId == _assistantProfileMembershipId) return;
+    _assistantProfileMembershipId = membershipId;
+    _assistantProfileIntent = null;
+    if (membershipId.isEmpty) return;
+    unawaited(_loadAssistantProfile(membershipId));
+  }
+
+  Future<void> _loadAssistantProfile(String membershipId) async {
+    final generation = ++_assistantProfileGeneration;
+    try {
+      final profile = await widget.controller.membershipProfile(membershipId);
+      if (!mounted ||
+          generation != _assistantProfileGeneration ||
+          _assistantProfileMembershipId != membershipId) {
+        return;
+      }
+      setState(() => _assistantProfileIntent = profile);
+    } on Object {
+      if (!mounted || generation != _assistantProfileGeneration) return;
+      setState(() => _assistantProfileIntent = null);
     }
   }
 
@@ -401,14 +465,78 @@ class _CanonicalGroupConversationPaneState
     });
   }
 
-  String _assistantStatusLabel(
+  bool get _assistantWorkingTurn =>
+      _turnSubscriptions.keys.any(
+        (handle) => _participantRoleByHandle[handle]?.trim() == 'assistant',
+      ) ||
+      widget.controller.dispatchPending;
+
+  /// A live turn waiting on the human (waitingForHuman projection: approval,
+  /// permission retry, or explicit input request).
+  bool get _assistantWaiting => _visibleTurnHandles.any(
+    (handle) =>
+        _turnStates.projectionFor(_scopeKeyFor(handle)).turnState.phase ==
+        ConversationTurnState.waitingForHuman,
+  );
+
+  /// Composed assistant identity: the real agent name, then model and
+  /// reasoning-effort segments from the selected strategy's runtime profile,
+  /// falling back to the assistant Membership's persistent Profile, then the
+  /// bare display name. A Fast segment appears only when a source reports it;
+  /// no current group source does.
+  String _assistantIdentityLabel(ClientConversation conversation) {
+    final membership = conversation.assistantMembership;
+    if (membership == null) return '';
+    final agentId = membership.principal.agentId.trim();
+    final displayName = membership.principal.displayName.trim();
+    final agentLabel = displayName.isNotEmpty
+        ? displayName
+        : agentId.isNotEmpty
+        ? agentId
+        : membership.id;
+    final runtime = agentId.isEmpty ? null : _strategyRuntimeProfiles[agentId];
+    final intent = _assistantProfileIntent;
+    final model = runtime != null && runtime.model.trim().isNotEmpty
+        ? runtime.model
+        : (intent?['preferredModel'] ?? '').toString();
+    final effort = runtime != null && runtime.reasoningEffort.trim().isNotEmpty
+        ? runtime.reasoningEffort
+        : (intent?['preferredReasoningEffort'] ?? '').toString();
+    return composeOrchestrationAssignmentCapsuleLabel(
+      agentLabel: agentLabel,
+      modelName: model,
+      reasoningEffort: effort,
+      effortLabel: formatComposerReasoningEffortLabel,
+    );
+  }
+
+  /// Capsule projection: the five-state light and its label. Unconfigured and
+  /// paused keep their existing strings; working keeps the working-alone or
+  /// coordinating-N strings; waiting and failure keep the identity label and
+  /// let the light plus the existing failure banner carry the state.
+  ({GroupAssistantStatusLight light, String label}) _assistantStatus(
     LicoStrings strings,
     ClientConversation conversation,
   ) {
     if (conversation.assistantMembership == null) {
-      return strings.assistantNeedsConfigurationStatus;
+      return (
+        light: GroupAssistantStatusLight.unconfigured,
+        label: strings.assistantNeedsConfigurationStatus,
+      );
     }
-    if (!_assistantActive(conversation)) return strings.assistantPausedStatus;
+    if (!_assistantActive(conversation)) {
+      return (
+        light: GroupAssistantStatusLight.paused,
+        label: strings.assistantPausedStatus,
+      );
+    }
+    final identity = _assistantIdentityLabel(conversation);
+    if (widget.controller.failureCode.isNotEmpty) {
+      return (light: GroupAssistantStatusLight.failure, label: identity);
+    }
+    if (_assistantWaiting) {
+      return (light: GroupAssistantStatusLight.waiting, label: identity);
+    }
     final subagents = _participantRoleByHandle.entries
         .where((entry) => _turnSubscriptions.containsKey(entry.key))
         .where((entry) => entry.value.trim() != 'assistant')
@@ -416,16 +544,18 @@ class _CanonicalGroupConversationPaneState
         .where((agentId) => agentId.isNotEmpty)
         .toSet();
     if (subagents.isNotEmpty) {
-      return strings.assistantCoordinatingStatus(subagents.length);
+      return (
+        light: GroupAssistantStatusLight.working,
+        label: strings.assistantCoordinatingStatus(subagents.length),
+      );
     }
-    final assistantWorking =
-        _turnSubscriptions.keys.any(
-          (handle) => _participantRoleByHandle[handle]?.trim() == 'assistant',
-        ) ||
-        widget.controller.dispatchPending;
-    return assistantWorking
-        ? strings.assistantWorkingAloneStatus
-        : strings.assistantReadyStatus;
+    if (_assistantWorkingTurn) {
+      return (
+        light: GroupAssistantStatusLight.working,
+        label: strings.assistantWorkingAloneStatus,
+      );
+    }
+    return (light: GroupAssistantStatusLight.ready, label: identity);
   }
 
   /// Live turn projections in attach order. Each scope's list is memoized by
@@ -773,16 +903,72 @@ class _CanonicalGroupConversationPaneState
     }
   }
 
+  /// Live turn projections plus, while images are staged in the group composer
+  /// scope, the synthetic pending-images draft message (the same shape the 1:1
+  /// lane renders): the current draft text and the ordered pending images.
+  List<AgentConversationMessage> get _timelineMessages {
+    final live = _liveMessages;
+    final attachments = widget.composerAttachments;
+    if (attachments.isEmpty) return live;
+    final conversationId = widget.controller.selectedConversationId;
+    final identity = 'draft:$conversationId:attachments';
+    return List<AgentConversationMessage>.unmodifiable([
+      ...live,
+      AgentConversationMessage(
+        id: identity,
+        role: 'user',
+        text: widget.controller.draft,
+        createdAt: DateTime.now().toUtc().toIso8601String(),
+        stableIdentity: identity,
+        images: [
+          for (final attachment in attachments)
+            AgentConversationImageAttachment(
+              mediaType: attachment.mediaType,
+              filePath: attachment.path,
+              name: attachment.name,
+            ),
+        ],
+      ),
+    ]);
+  }
+
+  /// Idle-gated assistant thread refresh shared by the plus menu's
+  /// new-conversation action and the composer's slash-new command (both reach
+  /// this through `AgentConversationPaneActions.onNewConversation`). A live
+  /// turn or an in-flight send refuses with `assistant_turn_active` on the
+  /// failure banner; the controller re-checks its own send/dispatch state.
+  void _refreshAssistantThread() {
+    final controller = widget.controller;
+    if (_turnActive || controller.sending) {
+      controller.surfaceFailure('assistant-refresh', 'assistant_turn_active');
+      return;
+    }
+    unawaited(controller.refreshSelectedAssistantThread());
+  }
+
   Future<bool> _sendComposerMessage(String text) async {
     final conversation = widget.controller.selectedConversation;
+    final attachments = widget.composerAttachments;
+    // Fail closed while staged images cannot reach the lane: the composer
+    // restores the text and the scope keeps the images, so nothing is dropped
+    // silently.
+    if (attachments.isNotEmpty && !widget.assistantSupportsImageAttachments) {
+      widget.controller.surfaceFailure(
+        'send',
+        'attachment_transport_unsupported',
+      );
+      return false;
+    }
     final posted = await widget.controller.postMessage(
       text,
       dispatch:
           conversation != null &&
           conversation.assistantMembership != null &&
           _assistantActive(conversation),
+      attachments: attachments,
     );
     if (!posted) return false;
+    if (attachments.isNotEmpty) widget.onClearComposerImages?.call();
     if (mounted) setState(() {});
     unawaited(_attachLiveTurns(postedTurns: widget.controller.liveTurns));
     return true;
@@ -930,10 +1116,11 @@ class _CanonicalGroupConversationPaneState
     );
     final session = _canonicalSession(conversation, strings);
     final primaryTarget = participantTargets.first;
+    final assistantStatus = _assistantStatus(strings, conversation);
     final state = AgentConversationPaneState(
       target: primaryTarget,
       session: session,
-      liveMessages: _liveMessages,
+      liveMessages: _timelineMessages,
       recentSessions: const [],
       loading: controller.loading,
       turnActive: _turnActive,
@@ -943,6 +1130,7 @@ class _CanonicalGroupConversationPaneState
       composerEnabled: conversation.localOwnerMembership != null,
       sendGateReasonCode: '',
       composerDraft: controller.draft,
+      hasAttachments: widget.composerAttachments.isNotEmpty,
       conversationLabel: conversation.title.trim().isEmpty
           ? strings.groupConversation
           : conversation.title.trim(),
@@ -969,7 +1157,8 @@ class _CanonicalGroupConversationPaneState
       },
       participantRuntimeProfiles: _strategyRuntimeProfiles,
       composerFlywheel: GroupStrategyPickerCapsule(
-        label: _assistantStatusLabel(strings, conversation),
+        label: assistantStatus.label,
+        statusLight: assistantStatus.light,
         strategies: _authorizedStrategies,
         selectedRevision: _strategyRevision,
         onSelected: (revision) => unawaited(_selectStrategy(revision)),
@@ -978,12 +1167,28 @@ class _CanonicalGroupConversationPaneState
             ? null
             : (revision) => unawaited(_openAdaptiveFlywheel(revision)),
       ),
-      composerLeading: AssistantToggleButton(
-        active: _assistantActive(conversation),
-        configured: conversation.assistantMembership != null,
-        onTap: conversation.assistantMembership == null
-            ? () => unawaited(_openAdaptiveFlywheel(_strategyRevision))
-            : () => _toggleAssistant(conversation),
+      composerLeading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AssistantToggleButton(
+            active: _assistantActive(conversation),
+            configured: conversation.assistantMembership != null,
+            onTap: conversation.assistantMembership == null
+                ? () => unawaited(_openAdaptiveFlywheel(_strategyRevision))
+                : () => _toggleAssistant(conversation),
+          ),
+          const SizedBox(
+            width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
+          ),
+          CanonicalGroupAssistantActions(
+            onPickAttachments: widget.onPickComposerImages,
+            onNewConversation: conversation.assistantMembership == null
+                ? null
+                : _refreshAssistantThread,
+            onDiscardImages: widget.onClearComposerImages,
+            showDiscardImages: widget.composerAttachments.isNotEmpty,
+          ),
+        ],
       ),
     );
     final actions = AgentConversationPaneActions(
@@ -994,6 +1199,7 @@ class _CanonicalGroupConversationPaneState
       onCancel: _cancelVisibleTurn,
       onSelectSession: (_) {},
       onCopyText: widget.onCopyText,
+      onNewConversation: _refreshAssistantThread,
     );
     final pane = AgentConversationActivePane(
       key: const Key('canonical-group-conversation-pane'),

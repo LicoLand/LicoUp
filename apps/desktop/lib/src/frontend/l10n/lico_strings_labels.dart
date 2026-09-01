@@ -481,8 +481,6 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '配置 Assistant' : 'Configure Assistant';
   String get assistantProfileTitle =>
       isChinese ? 'Assistant 配置' : 'Assistant profile';
-  String get assistantReadyStatus =>
-      isChinese ? '你的助手已就绪' : 'Your Assistant is ready';
   String get assistantPausedStatus =>
       isChinese ? '你的助手已暂停' : 'Your Assistant is paused';
   String get assistantNeedsConfigurationStatus =>
@@ -492,6 +490,12 @@ extension LicoStringsLabels on LicoStrings {
   String assistantCoordinatingStatus(int count) => isChinese
       ? '你的助手正在协调 $count 个 Subagents'
       : 'Your Assistant is coordinating $count ${count == 1 ? 'Subagent' : 'Subagents'}';
+  String get assistantActionsTooltip =>
+      isChinese ? '助手操作' : 'Assistant actions';
+  String get newAssistantConversation =>
+      isChinese ? '新助手对话' : 'New Assistant conversation';
+  String get discardPendingImages =>
+      isChinese ? '丢弃待发送的图片' : 'Discard pending images';
   String get contacts => isChinese ? '对话' : 'Conversations';
   String get conversationBack => isChinese ? '返回上一级' : 'Back one level';
   String mentionAgent(String agent) =>
@@ -662,6 +666,7 @@ extension LicoStringsLabels on LicoStrings {
   String get confirmDailyConversationSelection =>
       isChinese ? '确认添加' : 'Confirm';
   String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
+  String get modelSearchHint => isChinese ? '搜索模型' : 'Search models';
   String get discoveringModels => isChinese ? '正在发现模型…' : 'Discovering models…';
   String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
