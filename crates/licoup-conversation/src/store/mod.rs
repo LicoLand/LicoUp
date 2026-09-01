@@ -1,9 +1,9 @@
 use super::{
     ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, Conversation, ConversationDispatch, ConversationEvent,
     ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn,
-    DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind, Membership,
-    MembershipAccess, Principal, PrincipalKind, ProfileIntent, ProfileIntentUpdate,
-    ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
+    DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind,
+    ImageAttachment, Membership, MembershipAccess, Principal, PrincipalKind, ProfileIntent,
+    ProfileIntentUpdate, ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
 };
 use anyhow::{Result, anyhow};
 use rusqlite::{
@@ -491,11 +491,21 @@ impl CountedSqlite for CountedTransaction<'_> {
     }
 }
 
+/// One stored image part reference: the durable part identity plus its
+/// decoded attachment metadata, carried to member dispatch so the wire id
+/// traces back to the canonical Event Part.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ImageAttachmentReference {
+    pub part_id: String,
+    pub attachment: ImageAttachment,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectTurnExecutionContext {
     pub turn: DirectTurn,
     pub agent_id: String,
     pub source_content: String,
+    pub source_attachments: Vec<ImageAttachmentReference>,
     pub is_assistant: bool,
     pub preferred_model: Option<String>,
     pub preferred_reasoning_effort: Option<String>,
@@ -2012,8 +2022,36 @@ impl ConversationStore {
         correlation_id: Option<&str>,
         membership_ids: &[String],
     ) -> StoreResult<(ConversationEvent, Vec<DirectTurn>)> {
+        self.post_message_with_attachments(
+            conversation_id,
+            author_membership_id,
+            content,
+            correlation_id,
+            membership_ids,
+            &[],
+        )
+    }
+
+    /// Persist one human Message carrying admitted image attachments. Each
+    /// attachment becomes one image Event Part after the text part, inside the
+    /// same writer transaction as the Event and its Direct Turn set. An
+    /// image-only post omits the text part; without attachments the text stays
+    /// required.
+    pub fn post_message_with_attachments(
+        &self,
+        conversation_id: &str,
+        author_membership_id: Option<&str>,
+        content: &str,
+        correlation_id: Option<&str>,
+        membership_ids: &[String],
+        attachments: &[ImageAttachment],
+    ) -> StoreResult<(ConversationEvent, Vec<DirectTurn>)> {
         validate_identifier(conversation_id, "conversation_id")?;
-        validate_required_text(content, "message_content")?;
+        if attachments.is_empty() {
+            validate_required_text(content, "message_content")?;
+        } else {
+            validate_text(content, "message_content")?;
+        }
         if let Some(author) = author_membership_id {
             validate_identifier(author, "membership_id")?;
         }
@@ -2022,11 +2060,15 @@ impl ConversationStore {
         }
         let event_id = new_id("event");
         let now = now_ms();
-        let parts = [NewEventPart {
-            id: String::new(),
-            kind: EventPartKind::Text,
-            content: content.to_owned(),
-        }];
+        let mut parts = Vec::with_capacity(attachments.len() + 1);
+        if !content.trim().is_empty() {
+            parts.push(NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: content.to_owned(),
+            });
+        }
+        parts.extend(attachments.iter().map(NewEventPart::image));
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -2056,7 +2098,8 @@ impl ConversationStore {
 
     /// The stored text of one posted message Event, validated to belong to
     /// the Conversation. Dispatch addressing reads this instead of trusting
-    /// caller-supplied content.
+    /// caller-supplied content. An image-only post carries no text part and
+    /// reads back as empty text so its attachments still dispatch.
     pub fn posted_event_text(&self, conversation_id: &str, event_id: &str) -> StoreResult<String> {
         validate_identifier(conversation_id, "conversation_id")?;
         validate_identifier(event_id, "event_id")?;
@@ -2077,8 +2120,20 @@ impl ConversationStore {
             if owner != conversation_id {
                 return Err(anyhow!("mention_event_mismatch"));
             }
-            text.filter(|content| !content.trim().is_empty())
-                .ok_or_else(|| anyhow!("conversation_event_not_found"))
+            if let Some(text) = text.filter(|content| !content.trim().is_empty()) {
+                return Ok(text);
+            }
+            let has_image = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM event_parts
+                  WHERE event_id=?1 AND kind='image' AND runtime_cursor IS NULL)",
+                params![event_id],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if has_image {
+                Ok(String::new())
+            } else {
+                Err(anyhow!("conversation_event_not_found"))
+            }
         })
     }
 
@@ -2823,6 +2878,18 @@ pub struct NewEventPart {
     pub id: String,
     pub kind: EventPartKind,
     pub content: String,
+}
+
+impl NewEventPart {
+    /// One image part whose content is the canonical attachment metadata
+    /// encoding. Admission and validation happen before this write door.
+    pub fn image(attachment: &ImageAttachment) -> Self {
+        Self {
+            id: String::new(),
+            kind: EventPartKind::Image,
+            content: attachment.part_content(),
+        }
+    }
 }
 fn configure_connection(connection: &Connection) -> StoreResult<()> {
     // WAL + NORMAL skips fsync of the main file during checkpoint. A SIGKILL
@@ -3981,7 +4048,7 @@ fn direct_turn_execution_context(
     connection: &impl CountedSqlite,
     turn_id: &str,
 ) -> StoreResult<DirectTurnExecutionContext> {
-    Ok(connection.query_row(
+    let mut context: DirectTurnExecutionContext = connection.query_row(
         "SELECT t.id, t.conversation_id, t.source_event_id, t.membership_id,
                 t.state, t.ordinal, p.agent_id,
                 (SELECT ep.content FROM event_parts ep
@@ -4015,7 +4082,10 @@ fn direct_turn_execution_context(
                     ordinal: row.get(5)?,
                 },
                 agent_id: row.get(6)?,
-                source_content: row.get(7)?,
+                // An image-only source Event has no text part: the subquery
+                // yields NULL and the turn dispatches on its attachments.
+                source_content: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                source_attachments: Vec::new(),
                 is_assistant: row.get(13)?,
                 runtime_session_id: row.get(8)?,
                 runtime_conversation_path: row.get(9)?,
@@ -4024,7 +4094,38 @@ fn direct_turn_execution_context(
                 preferred_reasoning_effort: row.get(12)?,
             })
         },
-    )?)
+    )?;
+    context.source_attachments =
+        image_attachments_for_event(connection, &context.turn.source_event_id)?;
+    Ok(context)
+}
+
+/// Load the posted image attachment references of one source Event in part
+/// order. Malformed part content is skipped so one unreadable part can never
+/// block a member turn from dispatching.
+fn image_attachments_for_event(
+    connection: &impl CountedSqlite,
+    event_id: &str,
+) -> StoreResult<Vec<ImageAttachmentReference>> {
+    let mut statement = connection.prepare(
+        "SELECT id, content FROM event_parts
+         WHERE event_id=?1 AND kind='image' AND runtime_cursor IS NULL
+         ORDER BY ordinal ASC",
+    )?;
+    let rows = statement.query_map(params![event_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut references = Vec::new();
+    for row in rows {
+        let (part_id, content) = row?;
+        if let Some(attachment) = ImageAttachment::from_part_content(&content) {
+            references.push(ImageAttachmentReference {
+                part_id,
+                attachment,
+            });
+        }
+    }
+    Ok(references)
 }
 
 fn upsert_principal(connection: &impl CountedSqlite, principal: &Principal) -> StoreResult<()> {
@@ -4915,6 +5016,146 @@ mod tests {
             "hello"
         );
         assert_eq!(store.get(&conversation.id).unwrap().memberships.len(), 2);
+    }
+
+    /// AC-013: one posted image attachment persists as an image Event Part
+    /// with its attachment metadata, survives cold recovery, and the
+    /// serialized Event exposes the attachment to the Dart projection.
+    #[test]
+    fn image_part_persists_and_projects_attachment_metadata() {
+        let root = std::env::temp_dir().join(format!("lico-image-part-{}", Uuid::new_v4()));
+        path_security::ensure_private_dir(&root).unwrap();
+        let attachment = ImageAttachment {
+            path: "fixtures/mockup.png".into(),
+            name: "mockup.png".into(),
+            media_type: "image/png".into(),
+            byte_size: 12,
+        };
+        let (event_id, conversation_id) = {
+            let store = ConversationStore::open(&root).unwrap();
+            let conversation = store.create_conversation("Images", owner()).unwrap();
+            let (event, turns) = store
+                .post_message_with_attachments(
+                    &conversation.id,
+                    None,
+                    "see the mockup",
+                    None,
+                    &[],
+                    std::slice::from_ref(&attachment),
+                )
+                .unwrap();
+            assert!(turns.is_empty());
+            assert_eq!(event.parts.len(), 2);
+            assert_eq!(event.parts[0].kind, EventPartKind::Text);
+            let image = &event.parts[1];
+            assert_eq!(image.kind, EventPartKind::Image);
+            assert_eq!(image.image_attachment().as_ref(), Some(&attachment));
+            store.checkpoint().unwrap();
+            (event.id, conversation.id)
+        };
+
+        // Cold recovery: a reopened store reads the same image part back.
+        let reopened = ConversationStore::open(&root).unwrap();
+        let page = reopened.page_events(&conversation_id, None, 10).unwrap();
+        let stored = page
+            .events
+            .iter()
+            .find(|event| event.id == event_id)
+            .unwrap();
+        assert_eq!(stored.parts.len(), 2);
+        let stored_image = stored
+            .parts
+            .iter()
+            .find(|part| part.kind == EventPartKind::Image)
+            .unwrap();
+        assert_eq!(stored_image.image_attachment().as_ref(), Some(&attachment));
+
+        // The projected message exposes the attachment to Dart: the part kind
+        // is "image" and its content carries the attachment metadata JSON.
+        let projected = serde_json::to_value(stored).unwrap();
+        let parts = projected["parts"].as_array().unwrap();
+        let image_json = parts
+            .iter()
+            .find(|part| part["kind"] == serde_json::json!("image"))
+            .unwrap();
+        let content: serde_json::Value =
+            serde_json::from_str(image_json["content"].as_str().unwrap()).unwrap();
+        assert_eq!(content["path"], "fixtures/mockup.png");
+        assert_eq!(content["name"], "mockup.png");
+        assert_eq!(content["mediaType"], "image/png");
+        assert_eq!(content["byteSize"], 12);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Image parts are not searchable text: the FTS index must keep indexing
+    /// only text and reasoning content so attachment metadata never leaks
+    /// into search results.
+    #[test]
+    fn image_part_content_stays_out_of_search() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Images", owner()).unwrap();
+        store
+            .post_message_with_attachments(
+                &conversation.id,
+                None,
+                "ordinary words",
+                None,
+                &[],
+                &[ImageAttachment {
+                    path: "fixtures/lico-unique-token.png".into(),
+                    name: "lico-unique-token.png".into(),
+                    media_type: "image/png".into(),
+                    byte_size: 1,
+                }],
+            )
+            .unwrap();
+        assert_eq!(store.search("ordinary words", 10).unwrap().len(), 1);
+        assert!(store.search("lico-unique-token", 10).unwrap().is_empty());
+    }
+
+    /// An image-only post omits the text part, and its stored text reads back
+    /// empty so dispatch addressing still runs for the attachments.
+    #[test]
+    fn image_only_post_stores_no_text_part_and_reads_back_empty() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Images", owner()).unwrap();
+        let attachment = ImageAttachment {
+            path: "fixtures/only.png".into(),
+            name: "only.png".into(),
+            media_type: "image/png".into(),
+            byte_size: 1,
+        };
+        let (event, _) = store
+            .post_message_with_attachments(
+                &conversation.id,
+                None,
+                "",
+                None,
+                &[],
+                std::slice::from_ref(&attachment),
+            )
+            .unwrap();
+        assert_eq!(event.parts.len(), 1);
+        assert_eq!(event.parts[0].kind, EventPartKind::Image);
+        assert_eq!(
+            store
+                .posted_event_text(&conversation.id, &event.id)
+                .unwrap(),
+            ""
+        );
+    }
+
+    /// Without attachments the message text stays required.
+    #[test]
+    fn post_without_attachments_still_requires_text() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Images", owner()).unwrap();
+        for content in ["", "   "] {
+            let error = store
+                .post_message_with_attachments(&conversation.id, None, content, None, &[], &[])
+                .expect_err("text-only posts must keep the required-text rule");
+            assert_eq!(error.to_string(), "message_content_invalid");
+        }
     }
 
     #[test]

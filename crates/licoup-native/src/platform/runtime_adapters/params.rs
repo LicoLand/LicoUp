@@ -4,9 +4,9 @@ use std::env;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(super) const MAX_IMAGE_ATTACHMENTS: usize = 4;
-pub(super) const MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE: u64 = 4 * 1024 * 1024;
-pub(super) const MAX_IMAGE_ATTACHMENT_BYTES_TOTAL: u64 = 16 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_ATTACHMENTS: usize = 4;
+pub(crate) const MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE: u64 = 4 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_ATTACHMENT_BYTES_TOTAL: u64 = 16 * 1024 * 1024;
 
 pub(super) const SUPPORTED_IMAGE_MEDIA_TYPES: &[&str] =
     &["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -35,7 +35,7 @@ pub(super) enum AttachmentShapeFailure {
     RemoteUrl,
 }
 
-pub(super) fn attachment_media_type_supported(media_type: &str) -> bool {
+pub(crate) fn attachment_media_type_supported(media_type: &str) -> bool {
     SUPPORTED_IMAGE_MEDIA_TYPES.contains(&media_type)
 }
 
