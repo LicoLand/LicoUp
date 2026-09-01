@@ -664,6 +664,7 @@ class _ConversationWorkspaceBodyState
         onClearComposerImages: () => _clearGroupComposerImages(controller),
         assistantSupportsImageAttachments:
             _groupAssistantSupportsImageAttachments(controller),
+        providerQuotaController: controller.providerQuotaController,
       ),
     );
   }

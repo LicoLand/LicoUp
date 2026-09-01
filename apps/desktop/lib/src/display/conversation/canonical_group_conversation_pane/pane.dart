@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
 import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
+import 'package:licoup/src/contracts/provider_quota_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/header.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/projection.dart';
@@ -47,6 +49,7 @@ class CanonicalGroupConversationPane extends StatefulWidget {
     this.onPickComposerImages,
     this.onClearComposerImages,
     this.assistantSupportsImageAttachments = false,
+    this.providerQuotaController,
   });
 
   final ClientConversationController controller;
@@ -73,6 +76,10 @@ class CanonicalGroupConversationPane extends StatefulWidget {
   /// false, a send with staged images fails closed with
   /// `attachment_transport_unsupported` and keeps draft plus images.
   final bool assistantSupportsImageAttachments;
+
+  /// Provider-quota projection polled while this pane is attached; the roster
+  /// receives its immutable snapshot map as plain state.
+  final ProviderQuotaController? providerQuotaController;
 
   @override
   State<CanonicalGroupConversationPane> createState() =>
@@ -121,11 +128,16 @@ class _CanonicalGroupConversationPaneState
   List<AgentConversationMessage>? _cachedLiveMessages;
   List<List<AgentConversationMessage>>? _cachedLiveParts;
 
+  /// Polling owner keeping the provider-quota projection fresh while this
+  /// pane is attached; released on detach so polling stops with the UI.
+  final Object _quotaPollingOwner = Object();
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onConversationChanged);
     _turnStates.addListener(_onTurnProjectionChanged);
+    _attachQuotaController(widget.providerQuotaController);
     unawaited(_loadAuthorizedStrategies());
     final selected = widget.controller.selectedConversation;
     if (selected != null) {
@@ -147,6 +159,10 @@ class _CanonicalGroupConversationPaneState
       if (selected != null) _queueAssistantProfileLoad(selected);
       unawaited(_syncStrategyFromConversation(force: true));
     }
+    if (oldWidget.providerQuotaController != widget.providerQuotaController) {
+      _detachQuotaController(oldWidget.providerQuotaController);
+      _attachQuotaController(widget.providerQuotaController);
+    }
     if (oldWidget.flywheelGateway != widget.flywheelGateway) {
       unawaited(_loadAuthorizedStrategies());
     }
@@ -160,6 +176,7 @@ class _CanonicalGroupConversationPaneState
 
   @override
   void dispose() {
+    _detachQuotaController(widget.providerQuotaController);
     widget.controller.removeListener(_onConversationChanged);
     _turnStates.removeListener(_onTurnProjectionChanged);
     _detachLiveTurns();
@@ -167,6 +184,26 @@ class _CanonicalGroupConversationPaneState
     _messageScrollController.dispose();
     super.dispose();
   }
+
+  void _attachQuotaController(ProviderQuotaController? controller) {
+    if (controller == null) return;
+    controller.addListener(_onQuotaProjectionChanged);
+    controller.acquirePollingOwner(_quotaPollingOwner);
+  }
+
+  void _detachQuotaController(ProviderQuotaController? controller) {
+    if (controller == null) return;
+    controller.releasePollingOwner(_quotaPollingOwner);
+    controller.removeListener(_onQuotaProjectionChanged);
+  }
+
+  void _onQuotaProjectionChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Map<String, ProviderQuotaSnapshot> get _quotaSnapshots =>
+      widget.providerQuotaController?.snapshots ??
+      const <String, ProviderQuotaSnapshot>{};
 
   /// One holder publish per 32 ms window (or an immediate terminal publish)
   /// drives exactly one pane rebuild; streamed chunks no longer repaint at
@@ -1256,6 +1293,7 @@ class _CanonicalGroupConversationPaneState
                           child: CanonicalGroupRoster(
                             conversation: conversation,
                             targets: rosterTargets,
+                            quotaSnapshots: _quotaSnapshots,
                             onMentionAgent: (target) =>
                                 unawaited(_mentionAgent(conversation, target)),
                             onOpenAgentConversations:
@@ -1282,6 +1320,7 @@ class _CanonicalGroupConversationPaneState
                 CanonicalGroupRoster(
                   conversation: conversation,
                   targets: rosterTargets,
+                  quotaSnapshots: _quotaSnapshots,
                   onMentionAgent: (target) =>
                       unawaited(_mentionAgent(conversation, target)),
                   onOpenAgentConversations:
