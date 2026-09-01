@@ -15,6 +15,7 @@ const dartPrefix = "apps/desktop/lib/src/contracts/generated/";
 const allowedNonBridgeOutputs = new Set([
   `${rustPrefix}mod.rs`,
   `${dartPrefix}README.md`,
+  `${dartPrefix}conversation_protocol.g.dart`,
   `${dartPrefix}secure_mesh_capability_catalog.g.dart`,
 ]);
 const maximumDiagnostics = 20;
