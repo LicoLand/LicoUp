@@ -24,8 +24,9 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// author avatar, display name, and AGENT badge for agent authors, followed
 /// by every message in the group. Messages render with the shared markdown
 /// content renderer inside a readable message bubble. Hovering a row applies
-/// a subtle [LicoSurface] highlight and reveals that message's timestamp
-/// outside the bubble at its bottom-right corner.
+/// a subtle [LicoSurface] highlight and reveals that message's copy action
+/// outside the bubble at its bottom-left corner and its timestamp outside the
+/// bubble at its bottom-right corner.
 class MessagingMessageGroup extends StatelessWidget {
   const MessagingMessageGroup({
     super.key,
@@ -114,8 +115,9 @@ class MessagingMessageGroup extends StatelessWidget {
                     else
                       MessagingAgentAvatar(
                         target: participantTarget ?? target,
-                        size: 36,
-                        iconSize: 20,
+                        size: MessagingDesktopMetrics.conversationAvatarExtent,
+                        iconSize: MessagingDesktopMetrics
+                            .conversationAvatarMarkExtent,
                       ),
                     const SizedBox(width: 12),
                     Flexible(
@@ -221,8 +223,8 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   final String agentKey;
   final String conversationId;
 
-  /// Clipboard write routed through the platform boundary; the hover meta row
-  /// shows an explicit copy action when present.
+  /// Clipboard write routed through the platform boundary; hovering the bubble
+  /// reveals an explicit copy action at its bottom-left corner when present.
   final Future<void> Function(String)? onCopyText;
 
   @override
@@ -273,7 +275,13 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
     );
   }
 
-  Widget _buildMessageColumn(BuildContext context, Widget bubble) {
+  // The hover band lives inside the Stack's own bounds: the padded bubble
+  // reserves the space below itself and the corner actions sit inside it, so
+  // the copy action stays hittable (content overflowing a Stack's bounds is
+  // painted but not hit-testable). Extent = 6 gap + 17 copy box + 2 margin.
+  static const double _hoverBandExtent = 25;
+
+  Widget _buildBubbleWithHoverBand(BuildContext context, Widget bubble) {
     final colors = context.licoColors;
     final messageTime = _messageTime;
     final timestampLabel = messageTime == null
@@ -283,20 +291,39 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
           ).formatTimeOfDay(TimeOfDay.fromDateTime(messageTime));
     final conversationId = widget.conversationId.trim();
     final showMeta = timestampLabel != null || conversationId.isNotEmpty;
+    final canCopy =
+        widget.onCopyText != null && widget.message.text.trim().isNotEmpty;
+    if (!showMeta && !canCopy) {
+      return bubble;
+    }
     final metaStyle = TextStyle(
       color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
       fontSize: 10.5,
       fontWeight: FontWeight.w400,
       height: 1.2,
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
+      clipBehavior: Clip.none,
       children: [
-        bubble,
+        Padding(
+          padding: const EdgeInsets.only(bottom: _hoverBandExtent),
+          child: bubble,
+        ),
+        if (canCopy)
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: AnimatedOpacity(
+              opacity: _hovered ? 1 : 0,
+              duration: context.motion(LicoMotion.micro),
+              curve: LicoMotion.standard,
+              child: _buildCopyAction(context),
+            ),
+          ),
         if (showMeta)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
+          Positioned(
+            right: 0,
+            bottom: 2,
             child: AnimatedOpacity(
               opacity: _hovered ? 1 : 0,
               duration: context.motion(LicoMotion.micro),
@@ -305,7 +332,6 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (conversationId.isNotEmpty) ...[
-                    const SizedBox(width: 6),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 220),
                       child: Tooltip(
@@ -381,25 +407,6 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             agentKey: widget.agentKey,
             child: content,
           );
-    final copyOverlay = widget.onCopyText == null
-        ? bubble
-        : Stack(
-            clipBehavior: Clip.none,
-            children: [
-              bubble,
-              Positioned(
-                top: 4,
-                right: widget.authorIsUser ? 4 : null,
-                left: widget.authorIsUser ? null : 4,
-                child: AnimatedOpacity(
-                  opacity: _hovered ? 1 : 0,
-                  duration: context.motion(LicoMotion.micro),
-                  curve: LicoMotion.standard,
-                  child: _buildCopyAction(context),
-                ),
-              ),
-            ],
-          );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -412,12 +419,12 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                   constraints: BoxConstraints(
                     maxWidth: widget.adapter.userBubble.maxWidth,
                   ),
-                  child: _buildMessageColumn(context, copyOverlay),
+                  child: _buildBubbleWithHoverBand(context, bubble),
                 ),
               )
             : Align(
                 alignment: Alignment.centerLeft,
-                child: _buildMessageColumn(context, copyOverlay),
+                child: _buildBubbleWithHoverBand(context, bubble),
               ),
       ),
     );
@@ -436,15 +443,18 @@ class _MessagingAssistantAvatar extends StatelessWidget {
       label: accessibilityLabel,
       child: Container(
         key: const Key('messaging-assistant-avatar'),
-        width: 36,
-        height: 36,
+        width: MessagingDesktopMetrics.conversationAvatarExtent,
+        height: MessagingDesktopMetrics.conversationAvatarExtent,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: colors.accentSurface,
           border: Border.all(color: colors.accentBorder, width: 1),
         ),
-        child: AssistantSparklesIcon(color: colors.accent, size: 19),
+        child: AssistantSparklesIcon(
+          color: colors.accent,
+          size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
+        ),
       ),
     );
   }
@@ -462,8 +472,8 @@ class _MessagingUserAvatar extends StatelessWidget {
       label: accessibilityLabel,
       child: Container(
         key: const Key('messaging-user-avatar'),
-        width: 36,
-        height: 36,
+        width: MessagingDesktopMetrics.conversationAvatarExtent,
+        height: MessagingDesktopMetrics.conversationAvatarExtent,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
@@ -472,7 +482,7 @@ class _MessagingUserAvatar extends StatelessWidget {
         ),
         child: Icon(
           Icons.person_outline_rounded,
-          size: 20,
+          size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
           color: colors.textMuted,
         ),
       ),

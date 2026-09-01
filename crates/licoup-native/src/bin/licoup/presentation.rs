@@ -32,6 +32,7 @@ pub(super) fn print_usage() {
   licoup conversations list|append|delete|stream --agent AGENT [--limit N] [--offset N] [--session-id ID] [--text TEXT]
   licoup agent-usage scan [--agent AGENT] [--history-days DAYS] [--timezone-offset-minutes MINUTES] [--timezone-transitions-json JSON] [--force-refresh] [--state-root PATH]
   licoup agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
+  licoup provider-quota snapshot [--agent AGENT] [--force-refresh] [--state-root PATH]
   licoup resource-usage scan [--state-root PATH]
   licoup mcp http preview|execute --stdin-json true  # exact-scope private input and fresh platform user-presence confirmation
   licoup update status|check|download|verify|apply|rollback [--channel CHANNEL] [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--source-path PATH] [--staging-root PATH] [--state-root PATH] [--current-version VERSION] [--install-root PATH] [--gui-pid PID] [--execute true|false] [--wait-for-script true|false]

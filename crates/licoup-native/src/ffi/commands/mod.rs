@@ -18,6 +18,7 @@ mod llm_gateway;
 mod mcp;
 mod mobile;
 mod opencode_serve;
+mod provider_quota;
 mod resource_usage;
 mod secure_mesh;
 mod skill;
@@ -1625,6 +1626,39 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: agent_usage::handle_agent_usage_report,
         help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "provider_quota.rs",
+        handler_name: "handle_provider_quota_snapshot",
+        path: &["provider-quota", "snapshot"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "force-refresh",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "state-root",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: provider_quota::handle_provider_quota_snapshot,
+        help: "Provider-quota snapshots for agents with a quota source",
     });
     table.register_command(CommandSpec {
         source_module: "resource_usage.rs",

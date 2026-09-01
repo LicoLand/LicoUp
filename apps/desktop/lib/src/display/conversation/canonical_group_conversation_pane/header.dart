@@ -33,8 +33,8 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
       children: [
         Container(
           key: const Key('canonical-group-header-avatar'),
-          width: 38,
-          height: 38,
+          width: MessagingDesktopMetrics.conversationAvatarExtent,
+          height: MessagingDesktopMetrics.conversationAvatarExtent,
           decoration: BoxDecoration(
             color: ConversationVisualTokens.circularIdentityWellFill(colors),
             shape: BoxShape.circle,
@@ -42,7 +42,7 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
           child: Icon(
             Icons.groups_2_rounded,
             color: ConversationVisualTokens.groupIdentityMark(colors),
-            size: 21,
+            size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
           ),
         ),
         const SizedBox(width: 10),

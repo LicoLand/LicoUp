@@ -855,9 +855,9 @@ void main() {
       find.byKey(const Key('canonical-group-header-avatar')),
     );
     expect((headerAvatar.decoration! as BoxDecoration).color, Colors.black);
-    // The promoted header capsule keeps compact labels alongside each avatar.
-    expect(find.text('Codex'), findsOneWidget);
-    expect(find.text('Claude'), findsOneWidget);
+    // Member names live in tooltips only — the capsule shows bare avatars.
+    expect(find.text('Codex'), findsNothing);
+    expect(find.text('Claude'), findsNothing);
     expect(find.text('Claude Code'), findsNothing);
     expect(
       tester

@@ -141,6 +141,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::session_policy::"),
     }),
   defineModule({
+      id: "rust.domain.provider-quota",
+      kind: "rust-domain",
+      summary: "Provider-quota snapshot contract, per-provider sources, refresh scheduler, and retained store",
+      inputs: [
+        "crates/licoup-native/src/domain/provider_quota.rs",
+        "crates/licoup-native/src/domain/provider_quota/**",
+      ],
+      command: rustLayer("domain::provider_quota::"),
+    }),
+  defineModule({
       id: "rust.domain.agent-usage",
       kind: "rust-domain",
       summary: "Agent-usage command composition, shared attribution, contracts, and windows",
