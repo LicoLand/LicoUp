@@ -62,7 +62,8 @@
     "tool-result",
     "artifact",
     "diagnostic",
-    "metadata"
+    "metadata",
+    "image"
   ],
   "failureCodes": [
     "invalid_request",

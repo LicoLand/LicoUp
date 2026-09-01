@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:licoup/src/backend/features/conversations/services/client_conversation_service.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/problem_codes/problem_codes.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -381,11 +382,122 @@ final class ClientConversationController extends ChangeNotifier {
     return value is Map ? _objectMap(value) : null;
   }
 
-  Future<bool> postMessage(String text, {bool dispatch = true}) async {
+  /// Rotates the selected group's Assistant Membership onto a fresh backing
+  /// thread while keeping the group, the roster, and the assistant agent
+  /// unchanged: the current assistant Membership leaves, the same principal
+  /// rejoins under a new Membership id, the new Membership is designated
+  /// assistant, and the previous Profile intent is carried over. The next
+  /// dispatch natively starts a fresh session for the rotated Membership.
+  ///
+  /// The rotation refuses while a send is in flight or a dispatch is pending
+  /// (surfaced as `assistant_turn_active`); every step surfaces its failure
+  /// through the conversation banner.
+  Future<bool> refreshSelectedAssistantThread() async {
+    final conversation = _selectedConversation;
+    if (conversation == null || !conversation.group) return false;
+    if (conversation.assistantMembership == null) return false;
+    if (_sending || _dispatchPending || _liveTurns.isNotEmpty) {
+      surfaceFailure('assistant-refresh', 'assistant_turn_active');
+      return false;
+    }
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null || !selected.group || selected.id != conversation.id) {
+      return false;
+    }
+    final assistant = selected.assistantMembership;
+    final owner = selected.localOwnerMembership;
+    if (assistant == null || owner == null) return false;
+    final principalKind = assistant.principal.kind.wireName;
+    final principalAccess = assistant.access.wireName;
+    return _guard('assistant-refresh', () async {
+      final conversationId = selected.id;
+      final profile = await membershipProfile(assistant.id);
+      final carriedIntent = profile == null
+          ? null
+          : <String, dynamic>{
+              'requiredCapabilities': _profileStringList(
+                profile['requiredCapabilities'],
+              ),
+              'preferredCapabilities': _profileStringList(
+                profile['preferredCapabilities'],
+              ),
+              'skillReferences': _profileStringList(profile['skillReferences']),
+              'preferredModel': _profileNullableString(
+                profile['preferredModel'],
+              ),
+              'preferredReasoningEffort': _profileNullableString(
+                profile['preferredReasoningEffort'],
+              ),
+              'preferredEnvironment': profile['preferredEnvironment'],
+            };
+      await _service.execute(_runner, {
+        'action': 'conversation.membership.leave',
+        'conversationId': conversationId,
+        'membershipId': assistant.id,
+      });
+      final added = _objectMap(
+        await _service.execute(_runner, {
+          'action': 'conversation.membership.add',
+          'conversationId': conversationId,
+          'principal': {
+            'id': assistant.principal.id,
+            'kind': principalKind.isEmpty ? 'agent' : principalKind,
+            'displayName': assistant.principal.displayName.trim().isEmpty
+                ? assistant.principal.agentId
+                : assistant.principal.displayName,
+            if (assistant.principal.agentId.trim().isNotEmpty)
+              'agentId': assistant.principal.agentId,
+          },
+          'access': principalAccess.isEmpty ? 'member' : principalAccess,
+        }),
+      );
+      final rotatedMembershipId = (added['id'] ?? '').toString().trim();
+      if (rotatedMembershipId.isEmpty) {
+        throw const ClientConversationServiceFailure('invalid_response');
+      }
+      await _refreshCatalogWithoutGuard();
+      await _loadSelected();
+      final reloaded = _selectedConversation;
+      if (reloaded == null || reloaded.id != conversationId) {
+        throw const ClientConversationServiceFailure('conversation_not_found');
+      }
+      await _service.execute(_runner, {
+        'action': 'conversation.assistant.set',
+        'conversationId': conversationId,
+        'ownerMembershipId': owner.id,
+        'expectedRevision': reloaded.revision,
+        'membershipId': rotatedMembershipId,
+      });
+      // A freshly added Agent Membership owns a default Profile at revision 0;
+      // the carried-over intent lands on top of it.
+      if (carriedIntent != null) {
+        await _service.execute(_runner, {
+          'action': 'conversation.profile.update',
+          'conversationId': conversationId,
+          'membershipId': rotatedMembershipId,
+          'ownerMembershipId': owner.id,
+          'expectedRevision': 0,
+          'intent': carriedIntent,
+        });
+      }
+      await _refreshCatalogWithoutGuard();
+      await _loadSelected();
+    });
+  }
+
+  Future<bool> postMessage(
+    String text, {
+    bool dispatch = true,
+    List<ConversationAttachment> attachments = const [],
+  }) async {
     final conversation = _selectedConversation;
     final content = text.trim();
     final author = conversation?.localOwnerMembership;
-    if (conversation == null || author == null || content.isEmpty || _sending) {
+    if (conversation == null ||
+        author == null ||
+        (content.isEmpty && attachments.isEmpty) ||
+        _sending) {
       return false;
     }
     _sending = true;
@@ -397,6 +509,15 @@ final class ClientConversationController extends ChangeNotifier {
         'conversationId': conversation.id,
         'authorMembershipId': author.id,
         'content': content,
+        if (attachments.isNotEmpty)
+          'attachments': [
+            for (final attachment in attachments)
+              {
+                'path': attachment.path,
+                'name': attachment.name,
+                'mediaType': attachment.mediaType,
+              },
+          ],
       });
       final eventId = _postedEventId(posted);
       if (eventId == null || eventId.isEmpty) {
@@ -741,6 +862,18 @@ List<ClientConversationSummary> _summaryList(Object? value) => value is List
 
 Map<String, dynamic> _objectMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : const <String, dynamic>{};
+
+List<String> _profileStringList(Object? value) => value is List
+    ? value
+          .map((entry) => entry.toString().trim())
+          .where((entry) => entry.isNotEmpty)
+          .toList(growable: false)
+    : const <String>[];
+
+String? _profileNullableString(Object? value) {
+  final trimmed = (value ?? '').toString().trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
 
 bool _sameStringList(List<String> left, List<String> right) {
   if (left.length != right.length) return false;
