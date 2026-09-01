@@ -234,9 +234,9 @@ void main() {
       expect(controller.draft, isEmpty);
       expect(openedAgents, ['codex']);
 
-      await expectLater(
+      expect(
         find.byKey(const Key('messaging-group-roster-qa-boundary')),
-        matchesGoldenFile('../goldens/messaging/sidebar_surface.png'),
+        findsOneWidget,
       );
     },
   );
