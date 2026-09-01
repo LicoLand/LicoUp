@@ -512,15 +512,54 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn fixture_path(relative: &str) -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/domain/provider_quota/tests/fixtures")
-            .join(relative)
+    fn synthetic_quota_summary() -> Value {
+        json!({
+            "response": {
+                "groups": [
+                    {
+                        "displayName": "Gemini Models",
+                        "buckets": [
+                            {
+                                "bucketId": "gemini-weekly",
+                                "window": "weekly",
+                                "remainingFraction": 0.92015475,
+                                "resetTime": "2026-08-30T10:08:23Z",
+                                "description": "weekly limit reset"
+                            },
+                            {
+                                "bucketId": "gemini-session",
+                                "window": "5h",
+                                "remainingFraction": 0.75
+                            }
+                        ]
+                    },
+                    {
+                        "displayName": "Claude and GPT models",
+                        "buckets": [
+                            {
+                                "bucketId": "claude-weekly",
+                                "window": "weekly",
+                                "remainingFraction": 0.8
+                            },
+                            {
+                                "bucketId": "claude-session",
+                                "window": "5h",
+                                "remainingFraction": 1.0
+                            }
+                        ]
+                    }
+                ]
+            }
+        })
     }
 
-    fn fixture_json(relative: &str) -> Value {
-        let text = std::fs::read_to_string(fixture_path(relative)).unwrap();
-        serde_json::from_str(&text).unwrap()
+    fn synthetic_user_status() -> Value {
+        json!({
+            "userStatus": {
+                "email": "fixture@example.invalid",
+                "planStatus": {"planInfo": {"planName": "Pro"}}
+            }
+        })
     }
 
     fn captured_at() -> String {
@@ -528,12 +567,9 @@ mod tests {
     }
 
     #[test]
-    fn real_shape_fixture_normalizes_to_all_windows() {
-        let snapshot = normalize_quota_summary(
-            &fixture_json("antigravity/quota-summary.json"),
-            &captured_at(),
-        )
-        .expect("real-shape fixture must normalize");
+    fn synthetic_real_shape_normalizes_to_all_windows() {
+        let snapshot = normalize_quota_summary(&synthetic_quota_summary(), &captured_at())
+            .expect("synthetic real-shape payload must normalize");
         assert_eq!(snapshot.status, QuotaStatus::Live);
         assert_eq!(snapshot.windows.len(), 4);
         let weekly = snapshot
@@ -566,9 +602,8 @@ mod tests {
 
     #[test]
     fn agy_cli_lane_discovered_without_token() {
-        let (pid, token) =
-            parse_candidate("  32928 agy --port 50529 --serve --no-csrf")
-                .expect("agy CLI without a token is a candidate");
+        let (pid, token) = parse_candidate("  32928 agy --port 50529 --serve --no-csrf")
+            .expect("agy CLI without a token is a candidate");
         assert_eq!(pid, 32928);
         assert_eq!(token, "");
     }
@@ -657,13 +692,12 @@ mod tests {
     #[test]
     fn identity_enrichment_is_best_effort() {
         let binding = LoopbackBinding::for_testing(49152, "fixture-token", false);
-        let summary =
-            |_binding: &LoopbackBinding| Ok(fixture_json("antigravity/quota-summary.json"));
+        let summary = |_binding: &LoopbackBinding| Ok(synthetic_quota_summary());
 
         let successful = AntigravitySource::for_testing_with_identity(
             Some(binding.clone()),
             Box::new(summary),
-            Box::new(|_binding| Ok(fixture_json("antigravity/user-status.json"))),
+            Box::new(|_binding| Ok(synthetic_user_status())),
         );
         let snapshot = successful
             .fetch_snapshot(OffsetDateTime::now_utc())

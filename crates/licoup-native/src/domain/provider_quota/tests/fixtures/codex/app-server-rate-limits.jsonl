@@ -1,3 +1,0 @@
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"fixture"}}
-{"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"result":{"rateLimits":{"primary":{"usedPercent":17.0,"windowMinutes":300,"resetsAt":"2033-05-18T03:33:20Z"},"secondary":{"usedPercent":3.0,"windowMinutes":10080,"resetsAt":"2033-05-25T03:33:20Z"}}}}
