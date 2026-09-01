@@ -325,7 +325,11 @@ void main() {
       _messageItem('k3', 'assistant', 'new answer', todayAt.toIso8601String()),
       _messageItem('k4', 'user', 'new request', todayAt.toIso8601String()),
     ];
-    await _pumpFlow(tester, chronological.reversed.toList());
+    await _pumpFlow(
+      tester,
+      chronological.reversed.toList(),
+      viewportHeight: 900,
+    );
 
     expect(find.text('You'), findsNWidgets(2));
     expect(find.text('Codex'), findsNWidgets(2));
@@ -345,6 +349,64 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'copy action hangs at the bubble bottom-left, timestamp at bottom-right',
+    (tester) async {
+      final chronological = [
+        _messageItem('k1', 'assistant', 'agent reply', _at(10, 0)),
+        _messageItem('k2', 'user', 'user request', _at(10, 1)),
+      ];
+      final copied = <String>[];
+      await _pumpFlow(
+        tester,
+        chronological.reversed.toList(),
+        onCopyText: (text) async => copied.add(text),
+      );
+
+      final bubbles = find.byKey(const Key('messaging-message-bubble'));
+      final copyActions = find.byKey(
+        const Key('messaging-message-copy-action'),
+      );
+      final timestamps = find.byKey(
+        const Key('messaging-message-hover-timestamp'),
+      );
+      expect(bubbles, findsNWidgets(2));
+      expect(copyActions, findsNWidgets(2));
+      expect(timestamps, findsNWidgets(2));
+      // Bubbles hug their group's own edge: agent left, user right — the
+      // hover meta never widens the group and pushes the bubble off it.
+      final agentGroup = find.byKey(const Key('messaging-agent-message-group'));
+      final userGroup = find.byKey(const Key('messaging-user-message-group'));
+      expect(
+        tester.getRect(find.descendant(of: agentGroup, matching: bubbles)).left,
+        closeTo(tester.getRect(agentGroup).left, 0.1),
+      );
+      expect(
+        tester.getRect(find.descendant(of: userGroup, matching: bubbles)).right,
+        closeTo(tester.getRect(userGroup).right, 0.1),
+      );
+      for (var index = 0; index < 2; index += 1) {
+        final bubbleRect = tester.getRect(bubbles.at(index));
+        final copyRect = tester.getRect(copyActions.at(index));
+        final timestampRect = tester.getRect(timestamps.at(index));
+        // Copy sits under the bubble's bottom-left corner with a clear gap.
+        expect(copyRect.left, closeTo(bubbleRect.left, 0.1));
+        expect(copyRect.top, greaterThanOrEqualTo(bubbleRect.bottom + 4));
+        expect(copyRect.bottom, lessThanOrEqualTo(bubbleRect.bottom + 26));
+        // The timestamp mirrors it at the bottom-right corner.
+        expect(timestampRect.right, closeTo(bubbleRect.right, 0.5));
+        expect(timestampRect.top, greaterThanOrEqualTo(bubbleRect.bottom - 1));
+      }
+      // The corner copy action stays tappable (it lives inside the hover
+      // band's layout bounds, not in painted-only overflow).
+      for (var index = 0; index < 2; index += 1) {
+        await tester.tap(copyActions.at(index));
+      }
+      expect(copied, unorderedEquals(<String>['agent reply', 'user request']));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('group headers omit timestamps', (tester) async {
     final messageAt = DateTime(2026, 7, 20, 18, 58);
@@ -1114,7 +1176,13 @@ Future<void> _pumpFlow(
       const {},
   bool hasEarlier = false,
   Future<void> Function()? onLoadEarlier,
+  Future<void> Function(String)? onCopyText,
+  double viewportHeight = 600,
 }) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = Size(800, viewportHeight);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPhysicalSize);
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -1128,7 +1196,7 @@ Future<void> _pumpFlow(
       home: Scaffold(
         body: SizedBox(
           width: 800,
-          height: 600,
+          height: viewportHeight,
           child: MessagingParticipantFlow(
             items: newestFirst,
             adapter: AgentRenderAdapter.fallback(),
@@ -1146,6 +1214,7 @@ Future<void> _pumpFlow(
             scrollController: scrollController,
             hasEarlier: hasEarlier,
             onLoadEarlier: onLoadEarlier,
+            onCopyText: onCopyText,
           ),
         ),
       ),

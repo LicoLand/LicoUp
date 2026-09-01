@@ -561,6 +561,21 @@ extension LicoStringsLabels on LicoStrings {
   String groupConversationFailureCapsule(String failureRef) => isChinese
       ? '群聊操作失败 · $failureRef'
       : 'Group conversation failed · $failureRef';
+  String quotaUsageCardTitle(String provider) =>
+      isChinese ? '$provider 配额用量' : '$provider quota usage';
+  String quotaWindowUsedPercent(int percent) =>
+      isChinese ? '已用 $percent%' : '$percent% Used';
+  String quotaWindowResetCountdown(String duration) =>
+      isChinese ? '$duration后重置' : 'Resets in $duration';
+  String quotaSnapshotCapturedAgo(String duration) =>
+      isChinese ? '数据捕获于$duration前' : 'Captured $duration ago';
+  String get quotaDurationUnderMinute => isChinese ? '不到 1 分钟' : '<1 min';
+  String quotaDurationMinutes(int minutes) =>
+      isChinese ? '$minutes 分钟' : '${minutes}m';
+  String quotaDurationHoursMinutes(int hours, int minutes) =>
+      isChinese ? '$hours 小时 $minutes 分钟' : '${hours}h ${minutes}m';
+  String quotaDurationDaysHours(int days, int hours) =>
+      isChinese ? '$days 天 $hours 小时' : '${days}d ${hours}h';
   String groupConversationFailureDetail(String stage, String code) =>
       '$stage · $code';
   String get copyFailureReport => isChinese ? '复制报错' : 'Copy error';

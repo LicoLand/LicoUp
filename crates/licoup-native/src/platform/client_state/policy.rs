@@ -30,6 +30,7 @@ pub(super) const COLLECTIONS: &[&str] = &[
     "identities",
     "conversation-archive-profiles",
     "agent-usage-reports",
+    "provider-quota-snapshots",
     "skill-usage",
     "collaboration-plugins",
     "local-server-assemblies",
