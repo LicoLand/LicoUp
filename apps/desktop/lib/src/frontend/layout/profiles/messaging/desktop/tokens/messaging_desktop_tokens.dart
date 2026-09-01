@@ -100,7 +100,10 @@ abstract final class MessagingDesktopMetrics {
   /// Vertical inset of the floating conversation-header capsule.
   static const double conversationHeaderCapsuleInsetV = 8;
 
-  /// Corner radius of the conversation-header capsule (stadium / pill).
+  /// Shared radius of the capsule family outside the header identity
+  /// capsules (composer capsule, group roster surface, group failure alert).
+  /// Header identity capsules use a full stadium instead — see their call
+  /// sites (`BorderRadius.circular(999)`).
   static const double conversationHeaderCapsuleCornerRadius = 22;
 
   /// Inner horizontal padding inside the header capsule.
