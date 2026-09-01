@@ -25,6 +25,7 @@ pub mod mobile_relay;
 pub mod model_planning;
 pub mod protocol_input_admission;
 pub mod provider_model_pricing;
+pub mod provider_quota;
 pub mod release_receipts;
 pub mod resource_bounds;
 pub(crate) mod secure_mesh_command_runtime;
