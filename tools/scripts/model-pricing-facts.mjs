@@ -354,10 +354,10 @@ function expectRejected(label, code, operation) {
 export function runSelfTest() {
   const source = loadCatalog(REPO_ROOT);
   const checked = validateCatalog(source);
-  if (checked.tableCount !== EXPECTED_TABLE_COUNT || checked.routeCount !== 91) {
+  if (checked.tableCount !== EXPECTED_TABLE_COUNT || checked.routeCount !== 92) {
     fail("pricing_self_test_counts");
   }
-  if (checked.lastUpdated !== "2026-08-14") fail("pricing_self_test_date");
+  if (checked.lastUpdated !== "2026-08-22") fail("pricing_self_test_date");
   const cloneCatalog = () => clone(source);
   const cases = [
     ["unknown_key", "pricing_catalog_shape_invalid", () => {
@@ -409,18 +409,18 @@ export function runSelfTest() {
     }],
     ["stale", "pricing_verification_stale", () => {
       const value = cloneCatalog();
-      value.providers[0].routes[0].verified_on = "2026-08-06";
-      validateReleaseFreshness(validateCatalog(value), "2026-08-14");
+      value.providers[0].routes[0].verified_on = "2026-08-14";
+      validateReleaseFreshness(validateCatalog(value), "2026-08-22");
     }],
     ["release_future", "pricing_verification_future", () => {
       const value = cloneCatalog();
-      value.providers[0].routes[0].verified_on = "2026-08-15";
-      validateReleaseFreshness(validateCatalog(value), "2026-08-14");
+      value.providers[0].routes[0].verified_on = "2026-08-23";
+      validateReleaseFreshness(validateCatalog(value), "2026-08-22");
     }],
     ["release_service_end", "pricing_service_end_elapsed", () => {
       const value = cloneCatalog();
-      value.providers[0].routes[0].lifecycle.service_end = "2026-08-14";
-      validateReleaseFreshness(validateCatalog(value), "2026-08-14");
+      value.providers[0].routes[0].lifecycle.service_end = "2026-08-22";
+      validateReleaseFreshness(validateCatalog(value), "2026-08-22");
     }],
   ];
   for (const [label, code, operation] of cases) {

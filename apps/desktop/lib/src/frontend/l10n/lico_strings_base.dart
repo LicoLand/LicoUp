@@ -3,9 +3,17 @@ import 'dart:ui';
 import 'package:flutter/widgets.dart';
 
 import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 class LicoStrings {
   const LicoStrings._(this.locale);
+
+  factory LicoStrings.forPreference(String preference) {
+    final preferred = localeForPreference(preference);
+    return LicoStrings._(
+      resolve(preferred ?? PlatformDispatcher.instance.locale),
+    );
+  }
 
   static const supportedLocales = [Locale('en'), Locale('zh')];
 
@@ -97,6 +105,46 @@ class LicoStrings {
       LocalePreference.chinese => '中文',
       LocalePreference.english => 'English',
       _ => isChinese ? '系统' : 'System',
+    };
+  }
+
+  String conversationClientError(ClientError error) {
+    if (error.isUnknown) {
+      return isChinese
+          ? '请求未完成。请保留当前输入并检查运行时后重试。'
+          : 'The request did not complete. Keep your input, check the runtime, and try again.';
+    }
+    final agent = error.presentationArgs['agentLabel'];
+    final runtime = error.presentationArgs['runtimeLabel'];
+    final subject = agent ?? runtime;
+    return switch (error.code) {
+      ClientErrorCode.invalidRequest ||
+      ClientErrorCode.agentIdentifierMissing ||
+      ClientErrorCode.agentMessageMissing ||
+      ClientErrorCode.agentMessageInputLimit =>
+        isChinese ? '请检查请求内容后重试。' : 'Check the request and try again.',
+      ClientErrorCode.agentRuntimeUnsupported =>
+        isChinese
+            ? '${subject ?? '所选智能体'} 不支持当前运行时，请选择受支持的智能体。'
+            : '${subject ?? 'The selected agent'} does not support this runtime. Select a supported agent.',
+      ClientErrorCode.nativeAgentRuntimeProfileUnavailable ||
+      ClientErrorCode.nativeAgentExecutableUnavailable =>
+        isChinese
+            ? '${subject ?? '本地运行时'} 当前不可用，请安装或恢复运行时后重试。'
+            : '${subject ?? 'The local runtime'} is unavailable. Install or restore it, then try again.',
+      ClientErrorCode.agentConversationDispatchFailed ||
+      ClientErrorCode.streamProtocolFailed =>
+        isChinese
+            ? '${subject ?? '智能体'} 未能完成发送。输入已保留，可以重试。'
+            : '${subject ?? 'The agent'} could not complete the send. Your input was preserved so you can retry.',
+      ClientErrorCode.terminalResultInvalid =>
+        isChinese
+            ? '运行时返回了无效的最终结果，请检查会话状态。'
+            : 'The runtime returned an invalid terminal result. Review the conversation state.',
+      _ =>
+        isChinese
+            ? '请求未完成，请检查运行时状态后重试。'
+            : 'The request did not complete. Check the runtime and try again.',
     };
   }
 }

@@ -25,8 +25,9 @@ adapter support details remain authoritative in
 | Capability | Status | Current source boundary |
 | --- | --- | --- |
 | Local-agent discovery and conversation | implemented in source | Desktop and native client code contains local and explicitly configured agent adapters and conversation flows. |
-| Canonical Conversation backend | implemented in source | Rust owns one indexed SQLite/WAL authority for one-to-one and group Conversations, peer Human/Agent Memberships, structured Events, Conversation Roles, role-pool Flywheels, immutable run snapshots, and private runtime bindings. Generated Rust/Dart contracts expose the same closed action set. Product UI for authoring the new group and Flywheel model is not yet claimed. |
-| Legacy group and orchestration stores | removed | The singleton group room, fixed Designer/Worker/Reviewer topology, JSON conversation projection, TOML flywheel authority, and file-based subagent handoffs are not retained as active implementations. A one-time native migration imports supported owned state and removes retired stores only after validation. |
+| Canonical Conversation backend | implemented in source | Rust owns one indexed SQLite/WAL authority for one-to-one and group Conversations, peer Human/Agent Memberships, the explicit Assistant designation, revisioned per-Membership Profile intent, structured Events/Parts, topology-neutral immutable Graph snapshots, and private runtime bindings. Generated Rust/Dart contracts and the group Conversation UI project the same closed facts. |
+| Assistant workflow and Subagent MCP | implemented in source | Four closed Assistant tools expose Profile ranking plus execute/inspect/cancel for assistant-temporary workflows. The MCP-bound Agent must be the active designated Assistant Membership. Execute performs local preflight, returns ordered privacy-safe diagnostics with stable stages and request pointers, freezes exact Membership bindings and a route receipt before effects, and returns dynamic failure once without implicit retry. Direct `lico_subagent_*` operations remain separate; the persistent Conversation host is the sole run, turn, and transcript owner. |
+| Assistant adaptation and target loading | implemented in source, release evidence unverified | Group Automatic adaptation addresses the designated Assistant through the same Membership-scoped native lane as one-to-one chat. Adaptive Flywheel roles and Assistant model catalogs use one selected-target Rust batch with bounded discovery concurrency. DeepSeek Harness is packaged through its official SDK JSON-RPC carrier with only its declared native capabilities; readiness remains unverified. |
 | Gateway Runtime (LLM + Communication Channel) | implemented in source | Single `lico-gateway` process hosts the LLM Gateway loopback layer and the Telegram Communication Channel (paired DMs, `/agent` `/session`, conversation lane). Verified readiness changes use partial hot-reload via `gateway inventory reload` / `inventory.sock` (new ready agents admitted; bindings/sessions preserved; no process restart). `llm-gateway` CLI remains an alias for lifecycle. DM-only channel; not verified against a live BotFather bot in release evidence. |
 | Skill, history, backup, and usage surfaces | implemented in source | Local client modules exist for these first-stage workflows. |
 | Complete Lico Arc endpoint Protocol Line | not implemented | LicoUp currently has no Lico Arc-owned Pairwise Protection, Generic Message, Reliable Exchange, negotiation, or Transport Profile to execute. The candidate outer-envelope adapter below is not that complete endpoint line. |
@@ -66,15 +67,16 @@ hosted operation.
 
 | Dimension or channel | Status |
 | --- | --- |
-| Product version metadata | `0.1.0-alpha` |
-| Next governed release | none planned |
-| Archived release history | none |
-| GitHub Release publication | not claimed |
+| Product version metadata | `0.1.1` (build 2), owned by `tools/client-version.json` |
+| Next governed release | none currently planned |
+| Archived release history | none archived in the governed release plan; `CHANGELOG.md` records `0.1.1` (2026-08-14) and `0.1.0-alpha` (2026-07-25) entries; `git tag -l` lists only `v0.1.0` |
+| GitHub Release publication | not claimed; no `v0.1.1` tag exists |
 | Platform-store publication | not claimed |
 
-A build target or GitHub Release eligibility flag is not publication. Each
-platform build, physical/device verification, GitHub Release, and store channel
-is an independent claim.
+The `0.1.1` version metadata and its CHANGELOG entry record a version-sources
+synchronization, not a publication. A build target or GitHub Release eligibility
+flag is not publication. Each platform build, physical/device verification,
+GitHub Release, and store channel is an independent claim.
 
 ## Support
 

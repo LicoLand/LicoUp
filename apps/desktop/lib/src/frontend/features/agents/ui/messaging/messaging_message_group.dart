@@ -2,26 +2,31 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
+import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// One author group in the messaging participant flow: a header row with the
 /// author avatar, display name, and AGENT badge for agent authors, followed
 /// by every message in the group. Messages render with the shared markdown
 /// content renderer inside a readable message bubble. Hovering a row applies
-/// a subtle [LicoSurface] highlight and reveals that message's timestamp
-/// outside the bubble at its bottom-right corner.
+/// a subtle [LicoSurface] highlight and reveals that message's copy action
+/// outside the bubble at its bottom-left corner and its timestamp outside the
+/// bubble at its bottom-right corner.
 class MessagingMessageGroup extends StatelessWidget {
   const MessagingMessageGroup({
     super.key,
@@ -32,7 +37,9 @@ class MessagingMessageGroup extends StatelessWidget {
     required this.messages,
     required this.target,
     required this.adapter,
+    this.runtimeProfile,
     this.conversationId = '',
+    this.onCopyText,
   });
 
   final bool authorIsUser;
@@ -42,6 +49,11 @@ class MessagingMessageGroup extends StatelessWidget {
   final List<AgentConversationMessage> messages;
   final TargetCandidate target;
   final AgentRenderAdapter adapter;
+  final AgentParticipantRuntimeProfile? runtimeProfile;
+
+  /// Clipboard write routed through the platform boundary; message rows
+  /// expose an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
 
   /// This author's native/local conversation id, revealed on message hover
   /// immediately before the timestamp (agent bubbles only).
@@ -51,6 +63,10 @@ class MessagingMessageGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final isAssistant = participantRole.trim().toLowerCase() == 'assistant';
+    final bubbleGlowKey = authorIsUser
+        ? ''
+        : messagingAgentBubbleGlowKey(participantTarget ?? target);
     final authorName = authorIsUser
         ? strings.you
         : participantLabel.trim().isNotEmpty
@@ -94,11 +110,15 @@ class MessagingMessageGroup extends StatelessWidget {
                     _MessagingUserAvatar(accessibilityLabel: authorName),
                   ]
                 : [
-                    MessagingAgentAvatar(
-                      target: participantTarget ?? target,
-                      size: 36,
-                      iconSize: 20,
-                    ),
+                    if (isAssistant)
+                      _MessagingAssistantAvatar(accessibilityLabel: authorName)
+                    else
+                      MessagingAgentAvatar(
+                        target: participantTarget ?? target,
+                        size: MessagingDesktopMetrics.conversationAvatarExtent,
+                        iconSize: MessagingDesktopMetrics
+                            .conversationAvatarMarkExtent,
+                      ),
                     const SizedBox(width: 12),
                     Flexible(
                       child: Text(
@@ -114,6 +134,26 @@ class MessagingMessageGroup extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     _MessagingAgentBadge(participantRole: participantRole),
+                    if (!isAssistant && runtimeProfile?.hasDetails == true) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _runtimeProfileLabel(
+                            strings,
+                            participantTarget,
+                            runtimeProfile!,
+                          ),
+                          key: const Key('messaging-subagent-runtime-profile'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
           ),
         ),
@@ -126,13 +166,36 @@ class MessagingMessageGroup extends StatelessWidget {
             message: messages[index],
             adapter: adapter,
             authorIsUser: authorIsUser,
+            agentKey: bubbleGlowKey,
             conversationId: conversationId,
+            onCopyText: onCopyText,
           ),
           if (index != messages.length - 1)
             const SizedBox(height: LicoContentSpacing.compact),
         ],
       ],
     );
+  }
+
+  String _runtimeProfileLabel(
+    LicoStrings strings,
+    TargetCandidate? target,
+    AgentParticipantRuntimeProfile profile,
+  ) {
+    final model = profile.model.trim();
+    final effort = profile.reasoningEffort.trim();
+    final labels = <String>[];
+    if (model.isNotEmpty) {
+      labels.add(
+        target == null
+            ? model
+            : agentOrchestrationModelDisplayName(target, model),
+      );
+    }
+    if (effort.isNotEmpty) {
+      labels.add(strings.reasoningEffortOptionLabel(effort, effort));
+    }
+    return labels.join(' · ');
   }
 }
 
@@ -142,7 +205,9 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     required this.message,
     required this.adapter,
     required this.authorIsUser,
+    this.agentKey = '',
     this.conversationId = '',
+    this.onCopyText,
   });
 
   final AgentConversationMessage message;
@@ -152,7 +217,15 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   /// bubble is why the surface did not read like a chat client: there was no
   /// visual cue for who is speaking beyond the avatar.
   final bool authorIsUser;
+
+  /// Rim-light palette key for agent bubbles (the speaking agent's brand hue);
+  /// empty selects the shared white light.
+  final String agentKey;
   final String conversationId;
+
+  /// Clipboard write routed through the platform boundary; hovering the bubble
+  /// reveals an explicit copy action at its bottom-left corner when present.
+  final Future<void> Function(String)? onCopyText;
 
   @override
   State<_MessagingGroupMessageRow> createState() =>
@@ -165,7 +238,50 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
   DateTime? get _messageTime =>
       parseAgentConversationTimestamp(widget.message.createdAt);
 
-  Widget _buildMessageColumn(BuildContext context, Widget bubble) {
+  Future<void> _copyMessageText(BuildContext context) async {
+    final write = widget.onCopyText;
+    if (write == null) return;
+    final text = widget.message.text.trim();
+    if (text.isEmpty) return;
+    await write(text);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      appleGlassSnackBar(
+        context: context,
+        message: LicoStrings.of(context).conversationMessageCopied,
+      ),
+    );
+  }
+
+  Widget _buildCopyAction(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Tooltip(
+      message: strings.conversationCopyMessage,
+      waitDuration: LicoMotion.tooltipWait,
+      child: InkWell(
+        key: const Key('messaging-message-copy-action'),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
+        onTap: () => _copyMessageText(context),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Icon(
+            Icons.copy_outlined,
+            size: 13,
+            color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // The hover band lives inside the Stack's own bounds: the padded bubble
+  // reserves the space below itself and the corner actions sit inside it, so
+  // the copy action stays hittable (content overflowing a Stack's bounds is
+  // painted but not hit-testable). Extent = 6 gap + 17 copy box + 2 margin.
+  static const double _hoverBandExtent = 25;
+
+  Widget _buildBubbleWithHoverBand(BuildContext context, Widget bubble) {
     final colors = context.licoColors;
     final messageTime = _messageTime;
     final timestampLabel = messageTime == null
@@ -175,20 +291,39 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
           ).formatTimeOfDay(TimeOfDay.fromDateTime(messageTime));
     final conversationId = widget.conversationId.trim();
     final showMeta = timestampLabel != null || conversationId.isNotEmpty;
+    final canCopy =
+        widget.onCopyText != null && widget.message.text.trim().isNotEmpty;
+    if (!showMeta && !canCopy) {
+      return bubble;
+    }
     final metaStyle = TextStyle(
       color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
       fontSize: 10.5,
       fontWeight: FontWeight.w400,
       height: 1.2,
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
+      clipBehavior: Clip.none,
       children: [
-        bubble,
+        Padding(
+          padding: const EdgeInsets.only(bottom: _hoverBandExtent),
+          child: bubble,
+        ),
+        if (canCopy)
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: AnimatedOpacity(
+              opacity: _hovered ? 1 : 0,
+              duration: context.motion(LicoMotion.micro),
+              curve: LicoMotion.standard,
+              child: _buildCopyAction(context),
+            ),
+          ),
         if (showMeta)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
+          Positioned(
+            right: 0,
+            bottom: 2,
             child: AnimatedOpacity(
               opacity: _hovered ? 1 : 0,
               duration: context.motion(LicoMotion.micro),
@@ -264,14 +399,12 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             hovered: _hovered,
             child: content,
           )
-        : LicoSurface(
+        : MessagingAgentBubble(
             key: const Key('messaging-message-bubble'),
-            tone: LicoSurfaceTone.neutral,
-            elevation: LicoElevation.flat,
-            radius: LicoRadius.composerField,
-            bordered: false,
-            hovered: _hovered,
+            borderRadius: bubbleRadius,
             padding: bubblePadding,
+            hovered: _hovered,
+            agentKey: widget.agentKey,
             child: content,
           );
     return MouseRegion(
@@ -286,13 +419,42 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                   constraints: BoxConstraints(
                     maxWidth: widget.adapter.userBubble.maxWidth,
                   ),
-                  child: _buildMessageColumn(context, bubble),
+                  child: _buildBubbleWithHoverBand(context, bubble),
                 ),
               )
             : Align(
                 alignment: Alignment.centerLeft,
-                child: _buildMessageColumn(context, bubble),
+                child: _buildBubbleWithHoverBand(context, bubble),
               ),
+      ),
+    );
+  }
+}
+
+class _MessagingAssistantAvatar extends StatelessWidget {
+  const _MessagingAssistantAvatar({required this.accessibilityLabel});
+
+  final String accessibilityLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Semantics(
+      label: accessibilityLabel,
+      child: Container(
+        key: const Key('messaging-assistant-avatar'),
+        width: MessagingDesktopMetrics.conversationAvatarExtent,
+        height: MessagingDesktopMetrics.conversationAvatarExtent,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: colors.accentSurface,
+          border: Border.all(color: colors.accentBorder, width: 1),
+        ),
+        child: AssistantSparklesIcon(
+          color: colors.accent,
+          size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
+        ),
       ),
     );
   }
@@ -310,8 +472,8 @@ class _MessagingUserAvatar extends StatelessWidget {
       label: accessibilityLabel,
       child: Container(
         key: const Key('messaging-user-avatar'),
-        width: 36,
-        height: 36,
+        width: MessagingDesktopMetrics.conversationAvatarExtent,
+        height: MessagingDesktopMetrics.conversationAvatarExtent,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
@@ -320,7 +482,7 @@ class _MessagingUserAvatar extends StatelessWidget {
         ),
         child: Icon(
           Icons.person_outline_rounded,
-          size: 20,
+          size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
           color: colors.textMuted,
         ),
       ),
@@ -340,13 +502,9 @@ class _MessagingAgentBadge extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final role = switch (participantRole.trim().toLowerCase()) {
+      'assistant' => strings.assistantBadge,
+      'member' || 'peer-agent' => strings.subagentBadge,
       'main-agent' => 'MAIN AGENT',
-      'peer-agent' => 'AGENT',
-      'designer' => 'DESIGNER',
-      'backend-worker' => 'BACKEND WORKER',
-      'frontend-worker' => 'FRONTEND WORKER',
-      'backend-reviewer' => 'BACKEND REVIEWER',
-      'frontend-reviewer' => 'FRONTEND REVIEWER',
       _ => strings.agentBadge,
     };
     return Container(

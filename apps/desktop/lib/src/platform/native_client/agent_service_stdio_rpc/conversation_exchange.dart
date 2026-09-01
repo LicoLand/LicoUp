@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:licoup/src/contracts/generated/client_error.g.dart';
-import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session.dart';
@@ -14,6 +14,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
   required String workflowId,
   required StdioRpcSessionManager sessionManager,
 }) async* {
+  const maxReconnects = 1;
   final wireParams = Map<String, dynamic>.from(params);
   final initialOperation = (wireParams.remove('_rpcOperation') ?? 'send')
       .toString();
@@ -27,21 +28,27 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     final activeRequestId = reconnects == 0
         ? requestId
         : '$requestId-attach-$reconnects';
-    final encoded = encodeStdioRpcFrame({
-      'protocol': stdioRpcProtocol,
-      'id': activeRequestId,
-      'workflowId': workflowId,
-      'method': reconnects == 0
-          ? 'agent.conversation.$initialOperation'
-          : 'agent.conversation.attach',
-      'params': reconnects == 0
+    final operationMethod = ConversationProtocolMethod.fromWire(
+      'agent.conversation.$initialOperation',
+    );
+    final attachMethod = ConversationProtocolMethod.fromWire(
+      'agent.conversation.attach',
+    );
+    if (operationMethod == null || attachMethod == null) {
+      throw const LicoClientRpcException('invalid_request');
+    }
+    final encoded = ConversationCommand(
+      id: activeRequestId,
+      workflowId: workflowId,
+      method: reconnects == 0 ? operationMethod : attachMethod,
+      params: reconnects == 0
           ? wireParams
           : <String, dynamic>{
               'turnHandle': turnHandle,
               'conversationId': conversationId,
               'afterCursor': cursor,
             },
-    });
+    ).encode();
     StdioRpcSession? session;
     try {
       session = await sessionManager.ensureSession();
@@ -114,12 +121,13 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     } on Object catch (error) {
       session?.abandonExpectedFrame(activeRequestId);
       await sessionManager.invalidateAndDiscard();
-      if (turnHandle.isEmpty || conversationId.isEmpty || reconnects >= 8) {
+      if (turnHandle.isEmpty ||
+          conversationId.isEmpty ||
+          reconnects >= maxReconnects) {
         if (error is LicoClientRpcException) rethrow;
         throw const LicoClientRpcException('transport_failed');
       }
       reconnects += 1;
-      await Future<void>.delayed(Duration(milliseconds: 25 * reconnects));
     }
   }
 }

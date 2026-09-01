@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -27,6 +29,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_compos
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_image_attachments.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
@@ -76,7 +79,7 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.addListener(
       _handleControllerChanged,
     );
-    widget.controller.liveConversationListenable.addListener(
+    widget.controller.conversationStateHolder.addListener(
       _handleControllerChanged,
     );
   }
@@ -94,7 +97,7 @@ class _AgentConversationWorkspaceState
     oldWidget.controller.activeConversationListenable.removeListener(
       _handleControllerChanged,
     );
-    oldWidget.controller.liveConversationListenable.removeListener(
+    oldWidget.controller.conversationStateHolder.removeListener(
       _handleControllerChanged,
     );
     widget.controller.addListener(_handleControllerChanged);
@@ -104,7 +107,7 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.addListener(
       _handleControllerChanged,
     );
-    widget.controller.liveConversationListenable.addListener(
+    widget.controller.conversationStateHolder.addListener(
       _handleControllerChanged,
     );
   }
@@ -118,7 +121,7 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.removeListener(
       _handleControllerChanged,
     );
-    widget.controller.liveConversationListenable.removeListener(
+    widget.controller.conversationStateHolder.removeListener(
       _handleControllerChanged,
     );
     super.dispose();
@@ -218,7 +221,11 @@ class _ConversationWorkspaceBodyState
     if (_observedConversationSelection == selection) return;
     _observedConversationSelection = selection;
     if (groupId.isNotEmpty) {
-      _applyConversationListLocation((agentId: '', groupId: groupId));
+      final hasBody =
+          controller.clientConversationController.selectedConversation != null;
+      if (hasBody) {
+        _applyConversationListLocation((agentId: '', groupId: groupId));
+      }
     } else if (agentId.isNotEmpty && sessionId.isNotEmpty) {
       _applyConversationListLocation((agentId: agentId, groupId: ''));
     } else if (agentId.isEmpty) {
@@ -362,13 +369,56 @@ class _ConversationWorkspaceBodyState
   }
 
   Future<void> _pickConversationAttachments(ClientController controller) async {
-    if (_pickingConversationAttachments) return;
+    await _pickConversationAttachmentsForScope(
+      controller,
+      controller.conversationComposerScopeKey,
+    );
+  }
+
+  /// Composer scope key for the selected canonical group conversation, beside
+  /// the per-agent session scopes. Empty while no group is selected.
+  String _groupComposerScopeKey(ClientController controller) {
+    final conversationId = controller
+        .clientConversationController
+        .selectedConversationId
+        .trim();
+    return conversationId.isEmpty ? '' : 'group:$conversationId';
+  }
+
+  bool _scopeKeyIsCurrent(ClientController controller, String scopeKey) {
+    return scopeKey == controller.conversationComposerScopeKey ||
+        scopeKey == _groupComposerScopeKey(controller);
+  }
+
+  void _replaceScopeAttachments(
+    ClientController controller,
+    String scopeKey,
+    List<ConversationAttachment> attachments, {
+    String statusCode = '',
+  }) {
+    if (scopeKey == controller.conversationComposerScopeKey) {
+      controller.replaceConversationComposerAttachments(
+        attachments,
+        statusCode: statusCode,
+      );
+      return;
+    }
+    final signals = controller.conversationPresentationSignals;
+    signals.replaceComposerAttachments(scopeKey, attachments);
+    signals.replaceComposerAttachmentStatus(scopeKey, statusCode);
+    controller.agentWorkspaceNotifyStateChanged();
+  }
+
+  Future<void> _pickConversationAttachmentsForScope(
+    ClientController controller,
+    String scopeKey,
+  ) async {
+    if (scopeKey.trim().isEmpty || _pickingConversationAttachments) return;
     _pickingConversationAttachments = true;
-    final scopeKey = controller.conversationComposerScopeKey;
     bool scopeIsCurrent() =>
         mounted &&
         identical(controller, widget.controller) &&
-        controller.conversationComposerScopeKey == scopeKey;
+        _scopeKeyIsCurrent(controller, scopeKey);
     try {
       const imageTypes = XTypeGroup(
         label: 'Images',
@@ -379,17 +429,21 @@ class _ConversationWorkspaceBodyState
         picked = await openFiles(acceptedTypeGroups: [imageTypes]);
       } on Object {
         if (scopeIsCurrent()) {
-          controller.replaceConversationComposerAttachments(
-            controller.conversationComposerAttachments,
+          _replaceScopeAttachments(
+            controller,
+            scopeKey,
+            _attachmentsForScope(controller, scopeKey),
             statusCode: conversationAttachmentStatusFailed,
           );
         }
         return;
       }
       if (!scopeIsCurrent()) return;
-      final current = controller.conversationComposerAttachments;
+      final current = _attachmentsForScope(controller, scopeKey);
       if (picked.isEmpty) {
-        controller.replaceConversationComposerAttachments(
+        _replaceScopeAttachments(
+          controller,
+          scopeKey,
           current,
           statusCode: conversationAttachmentStatusCancelled,
         );
@@ -403,7 +457,9 @@ class _ConversationWorkspaceBodyState
           p.extension(file.name).replaceFirst('.', ''),
         );
         if (mediaType.isEmpty) {
-          controller.replaceConversationComposerAttachments(
+          _replaceScopeAttachments(
+            controller,
+            scopeKey,
             current,
             statusCode: conversationAttachmentFailureMediaUnsupported,
           );
@@ -420,6 +476,7 @@ class _ConversationWorkspaceBodyState
       }
       await _appendConversationAttachments(
         controller: controller,
+        scopeKey: scopeKey,
         scopeIsCurrent: scopeIsCurrent,
         current: current,
         additions: additions,
@@ -428,6 +485,13 @@ class _ConversationWorkspaceBodyState
       _pickingConversationAttachments = false;
     }
   }
+
+  List<ConversationAttachment> _attachmentsForScope(
+    ClientController controller,
+    String scopeKey,
+  ) => controller.conversationPresentationSignals.composerAttachmentsFor(
+    scopeKey,
+  );
 
   Future<bool> _pasteConversationImage(ClientController controller) async {
     if (_pickingConversationAttachments) return true;
@@ -467,6 +531,7 @@ class _ConversationWorkspaceBodyState
       }
       await _appendConversationAttachments(
         controller: controller,
+        scopeKey: scopeKey,
         scopeIsCurrent: scopeIsCurrent,
         current: current,
         additions: [attachment],
@@ -479,6 +544,7 @@ class _ConversationWorkspaceBodyState
 
   Future<bool> _appendConversationAttachments({
     required ClientController controller,
+    required String scopeKey,
     required bool Function() scopeIsCurrent,
     required List<ConversationAttachment> current,
     required List<ConversationAttachment> additions,
@@ -488,7 +554,9 @@ class _ConversationWorkspaceBodyState
         additions,
       );
       if (scopeIsCurrent()) {
-        controller.replaceConversationComposerAttachments(
+        _replaceScopeAttachments(
+          controller,
+          scopeKey,
           current,
           statusCode: statusCode,
         );
@@ -517,11 +585,88 @@ class _ConversationWorkspaceBodyState
         return reject(conversationAttachmentFailureSizeLimit);
       }
     }
-    controller.replaceConversationComposerAttachments([
-      ...current,
-      ...additions,
-    ]);
+    _replaceScopeAttachments(controller, scopeKey, [...current, ...additions]);
     return true;
+  }
+
+  /// Stages picked images into the selected group's composer scope.
+  Future<void> _pickGroupComposerImages(ClientController controller) async {
+    await _pickConversationAttachmentsForScope(
+      controller,
+      _groupComposerScopeKey(controller),
+    );
+  }
+
+  /// Abandons the selected group's staged images: the scope clear also
+  /// releases the picked files.
+  void _clearGroupComposerImages(ClientController controller) {
+    final scopeKey = _groupComposerScopeKey(controller);
+    if (scopeKey.isEmpty) return;
+    controller.clearConversationComposerAttachmentsForScope(scopeKey);
+  }
+
+  /// Whether the selected group's assistant agent target transports images
+  /// end to end: the packaged `multimodal` capability truth intersected with
+  /// desktop, direct-local, non-VM transport, same as the 1:1 predicate.
+  bool _groupAssistantSupportsImageAttachments(ClientController controller) {
+    if (controller.mobileClientRuntimePlatform) return false;
+    final conversation =
+        controller.clientConversationController.selectedConversation;
+    final agentId =
+        conversation?.assistantMembership?.principal.agentId.trim() ?? '';
+    if (agentId.isEmpty) return false;
+    for (final target in widget.targets) {
+      if (target.target != agentId && target.id != agentId) continue;
+      if (target.conversationCapabilityMatrix['multimodal'] != true) {
+        return false;
+      }
+      return target.location == 'local' &&
+          !target.hasValidVirtualMachineConnection;
+    }
+    return false;
+  }
+
+  /// The canonical group pane with its composer attachment scope wired to the
+  /// shared presentation-signals store (`group:<conversationId>`) and the
+  /// platform image byte reader scoped above it.
+  Widget _canonicalGroupPane(
+    ClientController controller,
+    ClientConversationController groupController, {
+    bool framed = true,
+    ValueChanged<String>? onOpenAgentConversations,
+  }) {
+    final scopeKey = _groupComposerScopeKey(controller);
+    final signals = controller.conversationPresentationSignals;
+    return ConversationImageByteReaderScope(
+      reader: controller.conversationImageByteReader,
+      child: CanonicalGroupConversationPane(
+        controller: groupController,
+        targets: widget.targets,
+        onCopyText: controller.clientClipboardService.writeText,
+        onOpenAgentConversations: onOpenAgentConversations,
+        framed: framed,
+        flywheelGateway: controller.adaptiveFlywheelGateway,
+        persistentGateway:
+            controller.conversationGateway is PersistentAgentConversationGateway
+            ? controller.conversationGateway
+                  as PersistentAgentConversationGateway
+            : null,
+        onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
+          context,
+          controller,
+          initialRevision: revision ?? '',
+        ),
+        composerAttachments: scopeKey.isEmpty
+            ? const <ConversationAttachment>[]
+            : signals.composerAttachmentsFor(scopeKey),
+        onPickComposerImages: () =>
+            unawaited(_pickGroupComposerImages(controller)),
+        onClearComposerImages: () => _clearGroupComposerImages(controller),
+        assistantSupportsImageAttachments:
+            _groupAssistantSupportsImageAttachments(controller),
+        providerQuotaController: controller.providerQuotaController,
+      ),
+    );
   }
 
   Widget _activeConversationPane({
@@ -538,7 +683,13 @@ class _ConversationWorkspaceBodyState
     final workingDirectorySelectable =
         showWorkingDirectory &&
         controller.canSelectNewConversationWorkingDirectory;
-    final composerEnabled = target.canRelayRuntime;
+    final projection = controller.conversationProjectionFor(
+      controller.conversationComposerScopeKey,
+    );
+    final projectedInputEnabled = projection.turnState.inputEnabled;
+    final composerEnabled =
+        target.canRelayRuntime && (projectedInputEnabled ?? true);
+    final projectedMessages = projection.messages;
     final attachmentStatus = controller.conversationAttachmentStatus;
     final gateReasonCode = composerEnabled
         ? (attachmentStatus.isNotEmpty
@@ -565,13 +716,22 @@ class _ConversationWorkspaceBodyState
     final state = AgentConversationPaneState(
       target: target,
       session: session,
-      liveMessages: controller.selectedConversationTimelineMessages,
+      liveMessages:
+          projectedMessages.isEmpty ||
+              controller.conversationComposerAttachments.isNotEmpty
+          ? controller.selectedConversationTimelineMessages
+          : projectedMessages,
       recentSessions: controller.selectedConversationSessions,
       loading: controller.isLoadingConversations,
       recentSessionsHasMore: controller.selectedConversationSessionsHasMore,
       recentSessionsLoadingMore:
           controller.isLoadingMoreSelectedConversationSessions,
-      turnActive: controller.isSendingConversationMessage,
+      messagePageLoading:
+          controller.isLoadingEarlierSelectedConversationMessages,
+      messagePageError: controller.selectedConversationMessagePageError,
+      turnActive: projection.turnState.active,
+      inputEnabled: composerEnabled,
+      cancelEnabled: projection.turnState.cancelEnabled ?? false,
       preparingNewConversation: controller.preparingNewConversation,
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
@@ -627,6 +787,7 @@ class _ConversationWorkspaceBodyState
       onPermissionDeny: controller.dismissDeniedConversationTurn,
       onCopyText: controller.clientClipboardService.writeText,
       onSend: controller.sendConversationMessage,
+      onCancel: controller.cancelActiveConversationTurn,
       onSelectSession: (sessionId) {
         _showAgentConversationList(target.target);
         controller.selectConversationSession(sessionId);
@@ -634,6 +795,7 @@ class _ConversationWorkspaceBodyState
       onNewConversation: controller.startNewConversationSession,
       onLoadMoreRecentSessions: () =>
           unawaited(controller.loadMoreConversationSessions(target.target)),
+      onLoadEarlierMessages: controller.loadEarlierConversationMessages,
       onUnblockSend: onUnblockSend,
       onChooseWorkingDirectory: workingDirectorySelectable
           ? () => unawaited(
@@ -706,9 +868,23 @@ class _ConversationWorkspaceBodyState
             ),
       framed: framed,
     );
+    final pendingApprovals = controller.secureMeshApprovalInbox
+        .where((item) => item.isPending)
+        .toList(growable: false);
+    final content = pendingApprovals.isEmpty
+        ? pane
+        : Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: SecureMeshApprovalCard(controller: controller),
+              ),
+              Expanded(child: pane),
+            ],
+          );
     return ConversationImageByteReaderScope(
       reader: controller.conversationImageByteReader,
-      child: pane,
+      child: content,
     );
   }
 
@@ -1057,22 +1233,15 @@ class _ConversationWorkspaceBodyState
       final presentation = LayoutDestinationPresentationScope.agentsOf(context);
       final showGroupPane = groupSelected && !_showAgentDetailInsideGroupList;
       final conversationPane = showGroupPane
-          ? CanonicalGroupConversationPane(
-              controller: groupController,
-              targets: widget.targets,
-              onCopyText: controller.clientClipboardService.writeText,
+          ? _canonicalGroupPane(
+              controller,
+              groupController,
+              framed: false,
               onOpenAgentConversations: (agentId) {
                 _showAgentConversationList(agentId);
                 groupController.clearSelection();
                 unawaited(controller.selectConversationAgent(agentId));
               },
-              framed: false,
-              flywheelGateway: controller.adaptiveFlywheelGateway,
-              onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
-                context,
-                controller,
-                initialRevision: revision ?? '',
-              ),
             )
           : target == null
           ? const SizedBox.shrink()
@@ -1095,16 +1264,21 @@ class _ConversationWorkspaceBodyState
     }
 
     if (groupSelected) {
-      return CanonicalGroupConversationPane(
-        controller: groupController,
-        targets: widget.targets,
-        onCopyText: controller.clientClipboardService.writeText,
-        flywheelGateway: controller.adaptiveFlywheelGateway,
-        onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
-          context,
-          controller,
-          initialRevision: revision ?? '',
-        ),
+      final groupPane = _canonicalGroupPane(controller, groupController);
+      final groupPendingApprovals = controller.secureMeshApprovalInbox
+          .where((item) => item.isPending)
+          .toList(growable: false);
+      if (groupPendingApprovals.isEmpty) {
+        return groupPane;
+      }
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: SecureMeshApprovalCard(controller: controller),
+          ),
+          Expanded(child: groupPane),
+        ],
       );
     }
 

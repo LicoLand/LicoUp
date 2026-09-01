@@ -141,7 +141,7 @@ impl StrategyEffectPermit {
         })
     }
 
-    fn consume(
+    pub(crate) fn consume(
         &mut self,
         command: &RunCommand,
         authorization_digest: &str,

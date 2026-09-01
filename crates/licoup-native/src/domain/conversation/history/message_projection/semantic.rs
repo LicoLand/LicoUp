@@ -138,63 +138,6 @@ pub(super) fn humanize_history_semantic(value: &str) -> String {
     label
 }
 
-pub(in crate::domain::conversation::history) fn looks_like_delegated_agent_prompt(
-    text: &str,
-) -> bool {
-    let first = text
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if let Some(rest) = first.strip_prefix("you are a") {
-        let digits = rest.chars().take_while(|ch| ch.is_ascii_digit()).count();
-        return digits > 0 && rest[digits..].starts_with(':');
-    }
-    if let Some(rest) = first.strip_prefix("you are agent a") {
-        let digits = rest.chars().take_while(|ch| ch.is_ascii_digit()).count();
-        return digits > 0 && rest[digits..].starts_with(':');
-    }
-    first.starts_with("you are ")
-        && first.contains(" worker")
-        && (first.contains(" round-")
-            || first.contains("worker-")
-            || first.contains("codex security")
-            || first.contains("you are not the coordinator")
-            || first.contains("worker-local"))
-}
-
-pub(super) fn delegated_subagent_prompt_title(text: &str) -> Option<String> {
-    let first = text.lines().map(str::trim).find(|line| !line.is_empty())?;
-    let lower = first.to_ascii_lowercase();
-    let rest = lower
-        .strip_prefix("you are ")
-        .and_then(|_| first.get("You are ".len()..))
-        .unwrap_or(first)
-        .trim();
-    let rest = rest
-        .strip_prefix("agent ")
-        .or_else(|| rest.strip_prefix("Agent "))
-        .unwrap_or(rest)
-        .trim();
-    let end = rest
-        .find(" for ")
-        .or_else(|| rest.find(". "))
-        .or_else(|| rest.find("。"))
-        .unwrap_or(rest.len());
-    let title = rest[..end].trim().trim_end_matches('.');
-    (!title.is_empty()).then(|| compact_title(title))
-}
-
-fn compact_title(text: &str) -> String {
-    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.chars().count() <= 64 {
-        compact
-    } else {
-        format!("{}...", compact.chars().take(64).collect::<String>())
-    }
-}
-
 pub(super) fn structured_name(value: &Value) -> Option<&str> {
     [
         "name",

@@ -14,4 +14,9 @@ fn capability_and_failure_results_preserve_the_stable_projection() {
     assert!(!result.ok);
     assert_eq!(result.session_id, "native");
     assert_eq!(result.effective.cwd, EffectiveSettings::default().cwd);
+    assert!(matches!(
+        result.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Failed { code, .. })
+            if code == "pi_test"
+    ));
 }

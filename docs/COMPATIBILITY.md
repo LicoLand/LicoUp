@@ -66,7 +66,7 @@ Runtime targets and release packages are intentionally different authorities. Ea
 ## Agent adapter targets
 
 This table projects the native driver inventory. Runtime protocol and capability fields remain owned by that inventory.
-Lifecycle evidence columns describe whether the lane can emit a native receipt for that stage. `submitted` is always a local client fact. On each turn, the UI shows only receipts actually observed; unsupported or absent stages are skipped and are never inferred from a later response or terminal result.
+Lifecycle evidence columns describe whether the lane can emit native evidence for that stage. Rust persists one explicit prefix-closed `submitted → accepted → processing → responding → completed` projection from typed parser transitions. The UI renders only that canonical prefix and terminal transition; it never infers missing stages or failure from vendor event kinds, payload success flags, reply presence, aliases, or observer disconnect.
 
 | Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | GUI-exit survival | Active-turn reattach | Ordered cursor replay | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -81,6 +81,7 @@ Lifecycle evidence columns describe whether the lane can emit a native receipt f
 | hermes | conversation | unverified | no | hermes-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | kimi-code | conversation | unverified | no | kimi-code-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | pi | conversation | unverified | no | pi-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| deepseek-harness | conversation | unverified | no | deepseek-harness-sdk-stdio-jsonrpc | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | lico-agent | conversation | unverified | no | lico-agent-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 
 ## Native capability inventory
@@ -109,6 +110,7 @@ Classification rules:
 | hermes | CLI, ACP, TUI Gateway | acp | stdio ACP | conditional remote only | direct ACP; TUI Gateway only for manual VM |
 | kimi-code | CLI, ACP, Web Server | acp | stdio ACP | loopback TCP | direct control plane and Web UI |
 | pi | CLI, RPC | rpc | stdio JSONL | none | direct process interface |
+| deepseek-harness | CLI, RPC | rpc | stdio JSONL | none | direct process interface |
 | lico-agent | CLI, RPC | rpc | stdio JSONL | none | direct process interface |
 
 ## Manual VM conversation transport

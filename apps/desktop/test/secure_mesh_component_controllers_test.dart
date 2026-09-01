@@ -66,6 +66,7 @@ void main() {
       expect(public.originEndpointId, isEmpty);
       expect(public.responseNonce, isEmpty);
       expect(public.adapterCallbackTokenRef, isEmpty);
+      expect(controller.canResolveApproval('operation-1'), isTrue);
 
       await controller.resolveApproval(
         pendingOperationId: 'operation-1',
@@ -75,6 +76,7 @@ void main() {
       expect(gateway.resolvedEndpointId, 'private-endpoint');
       expect(gateway.resolvedNonce, 'private-nonce');
       expect(controller.approvalInbox.single.isPending, isFalse);
+      expect(controller.canResolveApproval('operation-1'), isFalse);
     },
   );
 

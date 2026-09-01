@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import test from "node:test";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { CLIENT_MODULE_CATALOG } from "../client-module-catalog.mjs";
-import { executeClientModules } from "../client-module-execution.mjs";
+import {
+  executeClientModules,
+  executeClientRegressionBatches,
+  runClientRegressionCommand,
+} from "../client-module-execution.mjs";
+import { planClientRegressionBatches } from "../client-regression-batching.mjs";
 import {
   changedPathsSince,
   normalizeRepoPath,
@@ -57,13 +64,18 @@ async function sourceFiles(relativeRoot, extension) {
 
 export {
   assert,
-  spawnSync,
+  spawn,
+  EventEmitter,
+  PassThrough,
   fs,
   path,
   process,
   test,
   CLIENT_MODULE_CATALOG,
   executeClientModules,
+  executeClientRegressionBatches,
+  runClientRegressionCommand,
+  planClientRegressionBatches,
   changedPathsSince,
   normalizeRepoPath,
   parseNulDelimitedPaths,

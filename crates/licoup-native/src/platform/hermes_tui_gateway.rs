@@ -178,19 +178,27 @@ impl GatewayClient {
         }
     }
 
-    pub(crate) fn next_message(&mut self, deadline: Option<Instant>) -> Result<Value, GatewayFailure> {
+    pub(crate) fn next_message(
+        &mut self,
+        deadline: Option<Instant>,
+    ) -> Result<Value, GatewayFailure> {
         loop {
             self.stdin
                 .check_health()
                 .map_err(|_| GatewayFailure::Write)?;
-            let now = Instant::now();
-            if deadline.is_some_and(|limit| now >= limit) {
-                return Err(GatewayFailure::Timeout);
-            }
-            match self
-                .receiver
-                .recv_timeout(deadline.map_or(PROCESS_POLL_INTERVAL, |limit| (limit - now).min(PROCESS_POLL_INTERVAL)))
-            {
+            let wait = match deadline {
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return Err(GatewayFailure::Timeout);
+                    }
+                    (deadline - now).min(PROCESS_POLL_INTERVAL)
+                }
+                // No turn deadline: wait a bounded poll slice so the health and
+                // output bounds still check, but never against the clock.
+                None => PROCESS_POLL_INTERVAL,
+            };
+            match self.receiver.recv_timeout(wait) {
                 Ok(TransportEvent::Message { message, bytes }) => {
                     if let Some(max_stdout_bytes) = self.max_stdout_bytes {
                         self.observed_stdout_bytes =
