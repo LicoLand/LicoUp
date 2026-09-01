@@ -33,20 +33,21 @@ pub(super) fn upsert_discovery_cache_many(
     store: &ClientStateStore,
     candidates: &[&TargetCandidate],
 ) -> Result<()> {
-    let mut records = store.read_target_routes()?;
     let selected = candidates
         .iter()
         .map(|candidate| candidate.target.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    records.retain(|record| !selected.contains(record.target.as_str()));
     let cached_at = now_epoch_seconds();
-    for &candidate in candidates {
-        if let Some(record) = cache_record(candidate, cached_at) {
-            records.push(record);
+    store.update_target_routes(|records| {
+        records.retain(|record| !selected.contains(record.target.as_str()));
+        for &candidate in candidates {
+            if let Some(record) = cache_record(candidate, cached_at) {
+                records.push(record);
+            }
         }
-    }
-    records.sort_by(|left, right| left.target.cmp(&right.target));
-    store.write_target_routes(&records)
+        records.sort_by(|left, right| left.target.cmp(&right.target));
+        Ok(())
+    })
 }
 
 pub(super) fn cached_runtime_executable(store: &ClientStateStore, target: &str) -> Option<PathBuf> {
@@ -105,6 +106,7 @@ mod tests {
     use serde_json::{Value, json};
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Arc, Barrier};
 
     fn temp_test_dir(name: &str) -> PathBuf {
         let dir =
@@ -314,6 +316,56 @@ mod tests {
         assert_eq!(routes[1].target, "codex");
         assert_eq!(routes[1].scan_source, "manual");
         assert_eq!(store.target_index_parse_count(), 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn concurrent_selected_scans_preserve_every_cached_agent_route() {
+        const TARGET_COUNT: usize = 16;
+        let dir = temp_test_dir("concurrent-upserts");
+        let state_root = dir.join("client-state");
+        let stores = (0..TARGET_COUNT)
+            .map(|_| ClientStateStore::new(state_root.clone()).unwrap())
+            .collect::<Vec<_>>();
+        let start = Arc::new(Barrier::new(TARGET_COUNT));
+        let handles = stores
+            .into_iter()
+            .enumerate()
+            .map(|(index, store)| {
+                let start = Arc::clone(&start);
+                let mut target = candidate(
+                    Some(
+                        dir.join(format!("agent-{index}"))
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
+                    None,
+                );
+                target.id = Some(format!("agent-{index}"));
+                target.target = format!("agent-{index}");
+                std::thread::spawn(move || {
+                    start.wait();
+                    upsert_discovery_cache(&store, &target).unwrap();
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        let routes = ClientStateStore::new(state_root)
+            .unwrap()
+            .read_target_routes()
+            .unwrap();
+        assert_eq!(routes.len(), TARGET_COUNT);
+        assert_eq!(
+            routes
+                .iter()
+                .map(|route| route.target.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            TARGET_COUNT
+        );
         let _ = fs::remove_dir_all(dir);
     }
 }
