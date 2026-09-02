@@ -36,7 +36,7 @@ Promotion readiness is not publication. The repository stops at a verified
 delegated to the local Apple Release engine through
 `tools/apple-release/macos-direct-arm64.json`.
 
-The delegated release run cuts one `release-candidate/v{version}` branch from
+The delegated release run cuts the fixed `macos-release-candidate` branch from
 the authorized `origin/release` revision, waits for its required checks, and
 publishes the declared tag, Release, and five-asset contract from that
 candidate. The fifth asset is the signed update manifest: the configured update
