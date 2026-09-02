@@ -52,6 +52,10 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       '',
     );
+    expect(
+      find.byKey(const Key('agent-conversation-composer-input')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('non-image paste delegates to Flutter text paste', (
