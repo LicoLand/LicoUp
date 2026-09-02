@@ -10,8 +10,8 @@ const read = (relative) => readFileSync(path.join(root, relative), "utf8");
 const contract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const manifest = JSON.parse(read("schemas/client_bridge/manifest.json"));
 const state = JSON.parse(read("schemas/client_bridge/state.json"));
-const domain = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
-const store = read("crates/licoup-native/src/domain/client_conversation/store.rs");
+const domain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
+const store = read("crates/licoup-conversation/src/store/mod.rs");
 const service = read("crates/licoup-native/src/domain/client_conversation/service.rs");
 const migration = read("crates/licoup-native/src/domain/client_conversation/migration.rs");
 const conversationMcp = read("crates/licoup-native/src/bin/lico-conversation-mcp.rs");
@@ -84,6 +84,8 @@ test("native Conversation store owns messaging and membership facts only", () =>
     "source_links",
     "runtime_bindings",
     "conversation_dispatches",
+    "subagent_dispatch_claims",
+    "subagent_mcp_inbound",
   ]) {
     assert.match(store, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`, "u"));
   }

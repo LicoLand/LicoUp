@@ -566,9 +566,8 @@ mod tests {
 
     #[test]
     fn agy_cli_lane_discovered_without_token() {
-        let (pid, token) =
-            parse_candidate("  32928 agy --port 50529 --serve --no-csrf")
-                .expect("agy CLI without a token is a candidate");
+        let (pid, token) = parse_candidate("  32928 agy --port 50529 --serve --no-csrf")
+            .expect("agy CLI without a token is a candidate");
         assert_eq!(pid, 32928);
         assert_eq!(token, "");
     }

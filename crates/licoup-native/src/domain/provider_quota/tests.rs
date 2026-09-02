@@ -157,17 +157,13 @@ fn provider_quota_cursor_source_normalizes_fixture() {
             // from the app token, never the raw token as a bearer credential.
             assert_eq!(
                 cookie,
-                format!(
-                    "WorkosCursorSessionToken=fixture-cursor-user%3A%3A{expected_token}"
-                )
+                format!("WorkosCursorSessionToken=fixture-cursor-user%3A%3A{expected_token}")
             );
             match url {
                 "https://cursor.com/api/usage-summary" => {
                     Ok(fixture_json("cursor/usage-summary.json"))
                 }
-                "https://cursor.com/api/auth/me" => {
-                    Ok(json!({"email": "fixture@example.invalid"}))
-                }
+                "https://cursor.com/api/auth/me" => Ok(json!({"email": "fixture@example.invalid"})),
                 _ => panic!("unexpected cursor endpoint: {url}"),
             }
         }),
@@ -280,12 +276,11 @@ fn provider_quota_kimi_code_source_normalizes_fixture() {
                     format!("Bearer {expected_token}")
                 )
             );
-            assert!(
-                owned.contains(&("X-Msh-Platform".to_string(), "kimi_code_cli".to_string()))
-            );
-            assert!(
-                owned.contains(&("X-Msh-Device-Id".to_string(), "fixture-device-id".to_string()))
-            );
+            assert!(owned.contains(&("X-Msh-Platform".to_string(), "kimi_code_cli".to_string())));
+            assert!(owned.contains(&(
+                "X-Msh-Device-Id".to_string(),
+                "fixture-device-id".to_string()
+            )));
             Ok(fixture_json("kimi-code/usages.json"))
         }),
     );
@@ -312,7 +307,8 @@ fn provider_quota_kimi_code_source_normalizes_fixture() {
     );
 
     let wire = snapshot.wire_value().to_string();
-    let credential_text = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credential_text =
+        std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
     let access_token = serde_json::from_str::<Value>(&credential_text).unwrap()["access_token"]
         .as_str()
         .unwrap()

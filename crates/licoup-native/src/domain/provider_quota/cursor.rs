@@ -87,11 +87,7 @@ impl CursorSource {
         // fallback); its failure never fails the snapshot.
         let account_label = (self.fetch_summary)(AUTH_ME_URL, &cookie)
             .ok()
-            .and_then(|me| {
-                me.get("email")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            })
+            .and_then(|me| me.get("email").and_then(Value::as_str).map(str::to_owned))
             .or_else(|| credentials::jwt_string_claim(&token, "email"));
         normalize_usage_summary(&payload, &captured_at, account_label)
     }

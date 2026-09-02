@@ -13,6 +13,17 @@ pub(in crate::platform) enum ControlDisposition {
     TransportUnavailable,
 }
 
+/// Process-local cancel claim. The pid must not outlive the supervised child:
+/// `clear_active_turn` demotes an active pid to `Exited` so a late cancel can
+/// still suppress the completion flush without signalling a recycled pid.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TurnClaim {
+    Active { pid: u32 },
+    PendingCancel,
+    Interrupted,
+    Exited,
+}
+
 const REGISTRY_NAMESPACE: &str = "antigravity-active-turn";
 const MAX_ACTIVE_TURNS: usize = 128;
 
@@ -20,35 +31,76 @@ pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
     if !valid_session_id(session_id) {
         return;
     }
-    let _ = registry_insert(REGISTRY_NAMESPACE, session_id, pid, MAX_ACTIVE_TURNS);
+    let pending = matches!(
+        registry_get::<TurnClaim>(REGISTRY_NAMESPACE, session_id),
+        Some(TurnClaim::PendingCancel)
+    );
+    let _ = registry_insert(
+        REGISTRY_NAMESPACE,
+        session_id,
+        TurnClaim::Active { pid },
+        MAX_ACTIVE_TURNS,
+    );
+    if pending {
+        let _ = interrupt_active(session_id, pid);
+    }
 }
 
 pub(in crate::platform) fn clear_active_turn(session_id: &str) {
-    let _ = registry_remove::<u32>(REGISTRY_NAMESPACE, session_id);
+    match registry_get::<TurnClaim>(REGISTRY_NAMESPACE, session_id) {
+        Some(TurnClaim::Active { .. }) => {
+            let _ = registry_insert(
+                REGISTRY_NAMESPACE,
+                session_id,
+                TurnClaim::Exited,
+                MAX_ACTIVE_TURNS,
+            );
+        }
+        Some(TurnClaim::Interrupted | TurnClaim::PendingCancel | TurnClaim::Exited) | None => {}
+    }
 }
 
 pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
     if !valid_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
-    let pid = registry_get::<u32>(REGISTRY_NAMESPACE, session_id);
-    let Some(pid) = pid else {
-        return ControlDisposition::NoActiveTurn;
-    };
-    #[cfg(unix)]
-    {
-        use nix::sys::signal::{Signal, kill};
-        use nix::unistd::Pid;
-        if kill(Pid::from_raw(pid as i32), Signal::SIGTERM).is_ok() {
-            clear_active_turn(session_id);
-            return ControlDisposition::Accepted;
+    match registry_get::<TurnClaim>(REGISTRY_NAMESPACE, session_id) {
+        Some(TurnClaim::Active { pid }) => interrupt_active(session_id, pid),
+        Some(TurnClaim::Interrupted) => ControlDisposition::Accepted,
+        Some(TurnClaim::Exited) => {
+            store_claim(session_id, TurnClaim::Interrupted);
+            ControlDisposition::Accepted
+        }
+        Some(TurnClaim::PendingCancel) => ControlDisposition::NoActiveTurn,
+        None => {
+            store_claim(session_id, TurnClaim::PendingCancel);
+            ControlDisposition::NoActiveTurn
         }
     }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
+}
+
+/// Peek whether cancel was accepted or is pending. Does not consume the claim,
+/// so the PTY loop can stop projecting new assistant text after interrupt.
+pub(in crate::platform) fn cancel_claimed(session_id: &str) -> bool {
+    if session_id.is_empty() {
+        return false;
     }
-    ControlDisposition::TransportUnavailable
+    matches!(
+        registry_get::<TurnClaim>(REGISTRY_NAMESPACE, session_id),
+        Some(TurnClaim::Interrupted | TurnClaim::PendingCancel)
+    )
+}
+
+/// True when cancel was accepted and native interrupt was delivered, or when a
+/// pending cancel survived until the turn finished. Consumes the claim.
+pub(in crate::platform) fn take_cancelled(session_id: &str) -> bool {
+    if session_id.is_empty() {
+        return false;
+    }
+    matches!(
+        registry_remove::<TurnClaim>(REGISTRY_NAMESPACE, session_id),
+        Some(TurnClaim::Interrupted | TurnClaim::PendingCancel)
+    )
 }
 
 pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
@@ -59,6 +111,44 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
         Ok(true) => ControlDisposition::Accepted,
         Ok(false) => ControlDisposition::NotPersisted,
         Err(_) => ControlDisposition::TransportUnavailable,
+    }
+}
+
+fn interrupt_active(session_id: &str, pid: u32) -> ControlDisposition {
+    // Claim first so the PTY loop stops projecting before SIGTERM can flush
+    // remaining stdout (Stop-hook / finish word) into assistant text.
+    store_claim(session_id, TurnClaim::Interrupted);
+    if interrupt_pid(pid) {
+        return ControlDisposition::Accepted;
+    }
+    store_claim(session_id, TurnClaim::Active { pid });
+    ControlDisposition::TransportUnavailable
+}
+
+fn store_claim(session_id: &str, claim: TurnClaim) {
+    let _ = registry_insert(REGISTRY_NAMESPACE, session_id, claim, MAX_ACTIVE_TURNS);
+}
+
+/// The turn runs in its own process group (`SupervisedChild::group_spawn`). A
+/// negative pid signals the whole tree so a Stop-hook descendant cannot finish
+/// the print turn after the leader is interrupted.
+fn interrupt_pid(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+        let Ok(raw) = i32::try_from(pid) else {
+            return false;
+        };
+        if raw <= 0 {
+            return false;
+        }
+        kill(Pid::from_raw(-raw), Signal::SIGTERM).is_ok()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
     }
 }
 

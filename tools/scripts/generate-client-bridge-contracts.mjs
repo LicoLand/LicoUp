@@ -16,6 +16,7 @@ const allowedNonBridgeOutputs = new Set([
   `${rustPrefix}mod.rs`,
   `${dartPrefix}README.md`,
   `${dartPrefix}secure_mesh_capability_catalog.g.dart`,
+  `${dartPrefix}conversation_protocol.g.dart`,
 ]);
 const maximumDiagnostics = 20;
 const maximumManifestBytes = 64 * 1024;
@@ -368,6 +369,7 @@ function readConversationSchema(family) {
     "conversation.profile.update",
     "conversation.profile.get",
     "conversation.profile.candidates",
+    "conversation.subagent.edge",
   ];
   if (
     !isRecord(schema) ||

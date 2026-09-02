@@ -1091,11 +1091,18 @@ fn build_command_table() -> CommandTable {
                 value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
+            OptionSpec {
+                name: "config-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
         ],
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: adapter::handle_subagent_mcp_status,
-        help: "Probe Subagent MCP readiness for a main agent without silent install.",
+        help: "Probe Subagent MCP readiness for a main agent without silent install. An optional --config-path must canonicalize to the provider's reviewed config candidate.",
     });
     table.register_command(CommandSpec {
         source_module: "adapter.rs",
@@ -1124,11 +1131,18 @@ fn build_command_table() -> CommandTable {
                 value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
+            OptionSpec {
+                name: "config-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
         ],
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: adapter::handle_subagent_mcp_plan,
-        help: "Plan a digest-confirmed Subagent MCP install for a supported main agent.",
+        help: "Plan a digest-confirmed Subagent MCP install for a supported main agent. An optional --config-path must canonicalize to the provider's reviewed config candidate and is bound into the approval digest.",
     });
     table.register_command(CommandSpec {
         source_module: "adapter.rs",
@@ -1158,6 +1172,13 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
+                name: "config-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
                 name: "confirmation",
                 arity: OptionArity::Value,
                 repeatable: false,
@@ -1175,7 +1196,7 @@ fn build_command_table() -> CommandTable {
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: adapter::handle_subagent_mcp_install,
-        help: "Install Subagent MCP for a supported main agent after digest confirmation.",
+        help: "Install Subagent MCP for a supported main agent after digest confirmation. An optional --config-path must canonicalize to the provider's reviewed config candidate and is bound into the approval digest.",
     });
     table.register_command(CommandSpec {
         source_module: "agent_conversation.rs",
@@ -1301,13 +1322,22 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_conversation_execute",
         path: &["conversation", "execute"],
         required_positionals: &[],
-        options: &[OptionSpec {
-            name: "stdin-json",
-            arity: OptionArity::Value,
-            repeatable: false,
-            value_kind: RequiredArgumentKind::Json,
-            required: true,
-        }],
+        options: &[
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: true,
+            },
+            OptionSpec {
+                name: "require-running-host",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: client_conversation::handle_conversation_execute,

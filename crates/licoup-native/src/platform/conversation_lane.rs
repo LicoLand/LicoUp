@@ -593,7 +593,8 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
 
     if matches!(
         adapter,
-        RuntimeAdapter::Hermes
+        RuntimeAdapter::Codex
+            | RuntimeAdapter::Hermes
             | RuntimeAdapter::ClaudeCode
             | RuntimeAdapter::Cursor
             | RuntimeAdapter::Antigravity
@@ -610,6 +611,14 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                     anyhow!("agent cancel requires an exact native session identifier")
                 })?;
         let disposition = match adapter {
+            RuntimeAdapter::Codex => {
+                match super::codex_app_server::active_control::interrupt(&session_id) {
+                    super::codex_app_server::active_control::ControlDisposition::Accepted => 0,
+                    super::codex_app_server::active_control::ControlDisposition::NoActiveTurn => 1,
+                    super::codex_app_server::active_control::ControlDisposition::SessionUnavailable => 2,
+                    super::codex_app_server::active_control::ControlDisposition::TransportUnavailable => 3,
+                }
+            }
             RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cancel(&session_id) {
                 super::claude_code_driver::ControlDisposition::Accepted => 0,
                 super::claude_code_driver::ControlDisposition::NoActiveTurn => 1,
@@ -669,6 +678,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             _ => 3,
         };
         let prefix = match adapter {
+            RuntimeAdapter::Codex => "codex",
             RuntimeAdapter::ClaudeCode => "claude_code",
             RuntimeAdapter::Cursor => "cursor",
             RuntimeAdapter::Antigravity => "antigravity",
@@ -681,6 +691,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             _ => "agent",
         };
         let label = match adapter {
+            RuntimeAdapter::Codex => "Codex App Server",
             RuntimeAdapter::ClaudeCode => "Claude Code",
             RuntimeAdapter::Cursor => "Cursor CLI",
             RuntimeAdapter::Antigravity => "Antigravity CLI",

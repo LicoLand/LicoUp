@@ -1,174 +1,184 @@
 # LicoUp Subagent MCP
 
-English (normative) · [简体中文](subagent-mcp.zh-CN.md) · [Architecture](../architecture/README.md)
+English · [简体中文](subagent-mcp.zh-CN.md) · [Agent adapter architecture](../architecture/AGENT-ADAPTERS-ARCHITECTURE.md)
 
-Authority: `crates/licoup-native/src/bin/lico-subagent-mcp.rs`,
-`domain/client_conversation` (Assistant designation and Membership Profiles),
-`domain/adaptive_flywheel` (Assistant-temporary Graph admission and
-execution), the persistent stdio-RPC Conversation host, the native target
-scanner, and their verification. This document is a public projection of those
-implementations.
+The implemented authority is `domain/subagent_mcp`, the parameterized
+`core/mcp` engine, `licoup-agent-runtime`, `licoup-agent-adapters`, and the
+private Canonical Conversation store. The public contract is frozen by
+`schemas/subagent_mcp/subagent_mcp.schema.json`.
 
-LicoUp exposes runnable local Agents without defining a team topology. A direct
-caller selects an exact active Agent Membership in a canonical Conversation. A
-designated Assistant may additionally author one bounded temporary Graph whose
-nodes are exact active Agent Memberships. Named roles, candidate order, and
-Adaptive Flywheel strategy data are not MCP enums, fixed
-predefined collaboration-role lanes, or a global preset.
+## Common contract
 
-## Implemented contract
+- Primary protocol revision: `2025-06-18`; compatible inbound revision:
+  `2025-11-25`
+- Server: `lico-up-subagents` `0.11.0`
+- Transport: a desktop-owned authenticated loopback Streamable HTTP service
+- Provider entry: one tool-free stdio connector
+- Providers in this mesh: Codex, Cursor, and Antigravity
 
-```mermaid
-flowchart LR
-  C["Caller"] -->|"conversationId + membershipId"| M["Subagent MCP"]
-  C -->|"Profiles / route receipt"| M
-  C -->|"assistant-temporary Graph"| M
-  M --> P["Profile projection"]
-  M --> R["Persistent Conversation host"]
-  P --> A["Named existing authorities"]
-  R --> D["Membership-scoped PersistentTurn"]
-  D --> E["Structured Conversation Events"]
-  R --> F["Temporary Graph run"]
-  F --> E
-```
+The exact ordered tool catalog is:
 
-| Tool | Purpose |
-| --- | --- |
-| `lico_assistant_profiles` | Rank active Agent Membership Profiles and return their privacy-safe route receipt |
-| `lico_assistant_workflow_execute` | Compile, preflight, durably admit, and execute one `assistant-temporary` workflow under exact bindings and an idempotency key |
-| `lico_assistant_workflow_inspect` | Read the projected state of one temporary workflow run |
-| `lico_assistant_workflow_cancel` | Request cancellation of one temporary workflow run |
-| `lico_subagents_list` | List scanned runnable local Agent integrations; it does not assign collaboration roles |
-| `lico_subagent_probe` | Observe one admitted Agent's readiness read-only from target facts and the Conversation host's active-turn snapshot; `busy` is a successful state |
-| `lico_subagent_delegate` | Start one direct dispatch for an exact active `conversationId + membershipId` |
-| `lico_subagent_continue` | Resume the latest resumable dispatch for that same Conversation Membership |
-| `lico_subagent_cancel` | Request cancellation through the selected adapter's native control surface |
+1. `lico_assistant_profiles`
+2. `lico_assistant_workflow_execute`
+3. `lico_assistant_workflow_inspect`
+4. `lico_assistant_workflow_cancel`
+5. `lico_subagents_list`
+6. `lico_subagent_probe`
+7. `lico_subagent_delegate`
+8. `lico_subagent_continue`
+9. `lico_subagent_cancel`
 
-All schemas are closed. A caller can read Profiles, execute one internally
-preflighted assistant-temporary Graph, or delegate directly to an exact Membership. It
-cannot create roles, replace Conversation/Profile/Graph authority, choose routes,
-or bind native sessions itself; native runtime locations remain private
-Conversation state. Assistant operations require the MCP-bound manager Agent
-to be the exact active designated Assistant Membership. Direct delegate,
-continue, and cancel operations require that manager to be an active Agent
-Membership of the same Conversation. Inspect and cancel recheck the stored
-run Conversation and Assistant Membership before returning data or requesting
-an effect.
+All input schemas are closed. The connector contains no catalog or provider
+logic and performs one HTTP attempt for each stdio frame.
 
-## Assistant Profile projection
+## Assistant Profiles and temporary workflows
 
-Every active Agent Membership may carry a revisioned Profile intent
-(`conversation.profile.update`). The MCP reads the projection through the
-process-owned Conversation service (`conversation.profile.candidates`). Price, coding score, Skills,
-environment, capabilities, readiness, and model facts come only from the named
-existing authorities (`targets`, `providerModelPricing`,
-`agentIntelligenceCatalog`, `skillHub`, and the bundled
-`assistant-workflow-authoring` Skill). Each authority is read at most once per
-request/revision, unknown optional facts remain visibly unknown, and candidate
-order is the one deterministic tuple: explicit pin, preference misses,
-verified reliability, coding score descending, known expected price ascending,
-observed latency, then Membership id. The projection never carries a prompt, credential, absolute
-path, machine identity, or runtime endpoint.
+The first four tools preserve the designated-Assistant contract. Only the
+exact active Agent Membership currently designated as the Conversation's
+Assistant may read ranked Membership Profiles or execute, inspect, and cancel
+an Assistant-authored temporary workflow. Inspect and cancel recover the
+stored Conversation and Assistant Membership from the run before authorizing
+the caller; a caller cannot select a different authority through tool input.
 
-## Temporary Graph admission
+Workflow execution accepts closed workflow, binding, filter, input, and
+idempotency fields. Every referenced binding must resolve to an active target
+Membership with an installed executable `runtime.message.send` route before
+the persistent host is asked to admit the run. The persistent Conversation host remains the sole
+workflow and turn owner; the MCP service does not create a second scheduler,
+history, or terminal-output store. Native identities, paths, prompts, and Agent
+output remain outside Profile and workflow receipts.
 
-A designated Assistant may author one bounded `assistant-temporary` workflow
-with exact `conversationId` plus `membershipId` bindings chosen from eligible
-Profile snapshots. `lico_assistant_workflow_execute` performs the internal
-preflight and returns every locally discoverable failure (structure, quota,
-Membership, model, Skill, environment, capability, readiness, Authority)
-before durable admission or any Agent/script effect, with a stable code and the
-complete ordered `diagnostics` list. Each diagnostic carries a stable stage and
-may add an allowlisted JSON Pointer, affected Membership id, and numeric
-actual/limit facts. It then revalidates store-owned Membership and Profile
-revisions immediately before durable admission, freezes the route receipt,
-admits the run under an idempotency key, and starts each
-ready actor as a Membership-scoped PersistentTurn through the persistent
-Conversation host. Replaying an existing key returns the existing run without
-duplicate effects. The facade deliberately exposes no separate public
-preflight or start lane. `lico_assistant_workflow_inspect` and
-`lico_assistant_workflow_cancel` address the run by its projected identifier.
+## Authority and lineage
 
-The persistent host remains the sole run and turn owner; the MCP process never
-creates a parallel turn registry or terminal writer. Runtime failures return a
-typed terminal result with a stable `code`, `stage`, non-retryable projection,
-and privacy-safe `recoveryClass` to the same Assistant turn. The failed Graph is
-immutable and never implicitly retried; the Assistant may then work directly or
-author a later Graph that completes. Graphs cannot invent timeout-based
-failure, hidden participants, silent fallback, or private run data.
+Every effect is bound to an authenticated caller Membership and an exact target
+Membership in the same Canonical Conversation. Both must be active Agent
+Memberships. The store commits a durable dispatch claim before target runtime
+work starts. It rejects self-calls, duplicate active edges, cross-Conversation
+calls, repeated ancestors, cycles, and depth above four without starting an
+Agent effect.
 
-## Direct Membership operations
+Inbound `tools/call` for `lico_subagent_delegate`, `lico_subagent_continue`,
+and `lico_subagent_cancel` is recorded on Canonical Conversation as
+`subagent_mcp_inbound`. Mesh proof reads those rows together with
+`subagent_dispatch_claims` and the target Membership PersistentTurn. It does
+not scrape the caller Agent's conversation or projected `tool-call` parts.
 
-Delegate and continue address exact active Agent Memberships. They return
-immediately with a bounded receipt and dispatch identifier while native
-execution continues in the background. They accept a prompt and optional
-runtime preferences such as model, reasoning effort, working directory,
-timeout, explicit stream budgets, and user-authorized permission settings. They
-do not create roles or a second scheduler.
+Delegation always opens a Membership-scoped PersistentTurn. Continue resolves
+the adapter-owned native identity from the private runtime binding; callers do
+not submit or receive a native session or path. Cancel addresses only an active
+claim. An uncertain native cancellation becomes `reconciliation-required` and
+is never reported as completed.
 
-The MCP verifies that the Membership is active, belongs to the Conversation,
-represents an Agent, and matches the requested runnable integration. Native
-session identifiers and continuation locations are resolved internally from
-the Membership binding; callers cannot choose or retrieve them.
+## Registry, admission, and readiness
 
-`lico_subagent_probe` is a read-only readiness observation rather than an
-Agent-driving primitive. Its `agentId` is the exact identifier returned by
-`lico_subagents_list`; aliases are rejected. It sends no Agent input, starts no
-third-party Agent binary, and creates or mutates no Conversation: one bounded
-request reads the private Conversation host's active-turn snapshot filtered by
-the admitted Agent. Target inspection opens no model or history store and
-refreshes no persisted discovery state; host observation connects only to an
-endpoint the running host already published. Its receipt
-(`licoup.subagent.readiness.v1`)
-reports `agentId`, `state`, `integrationStatus`, `conversationDriver`,
-`conversationReadiness`, `blockerCode`, `hostTransport`, and
-`hostActiveTurns` — no path, session identifier, turn handle, process
-identifier, port, model, or price. `state` is `ready` when the integration is
-runnable, the host is reachable, and the host holds no non-terminal turn for
-that Agent, and `busy` when it holds at least one; both are successful
-observations, never failures. The snapshot covers only LicoUp-owned turns, so
-`ready` means admitted, reachable, and idle inside LicoUp — it makes no claim
-about the Agent's own external activity.
+`McpCallerIntegration` owns provider registration, install, identity,
+readiness, removal, and fresh-session behavior. `SubagentRuntimeAdapter` owns
+capabilities, exact native identity, send, continue, observe, active cancel,
+cleanup, and transition projection. One registry joins both ports. The MCP
+application has no provider branch.
 
-## Bounded execution
+Execution admission is separate from conversation-readiness observation. It
+requires an exact provider identity, a registered adapter, the requested
+operation capability, and an installed executable `runtime.message.send`
+route. The authenticated direct MCP caller, same-Conversation active non-self
+Memberships, durable claim rules, selected model, and service health remain
+independent fail-closed gates. Once admitted, the first discovery, binding,
+authentication, permission, launch, protocol, session, model, dispatch, or
+readback failure keeps its typed stage contract.
 
-| Boundary | Implemented bound |
-| --- | --- |
-| MCP input frame | 64 KiB |
-| Prompt | 48 KiB |
-| Identifier | 256 bytes |
-| Working-directory value | 4 KiB |
-| Non-zero subordinate timeout | 1 second to 30 minutes; `0` opts out |
-| Explicit native stdout budget | 64 KiB to 64 MiB |
-| Explicit native stderr budget | 16 KiB to 4 MiB |
-| MCP execution | 8 workers |
-| Pending tool calls | 32 |
-| Quota cooldown records | 64 |
+Conversation readiness never synthesizes transport or permission and never
+vetoes execution. It remains observational input only for
+`lico_subagent_probe` and other inventory projections.
 
-Independent tool calls may run concurrently. Atomic Conversation dispatch
-claims prevent two workers from executing the same accepted turn.
+`lico_subagents_list` and `lico_subagent_probe` are read-only inventory and
+readiness surfaces. They inspect the exact Codex, Cursor, and Antigravity
+targets without launching a provider, refreshing history, opening a model
+owner, or persisting discovery state. Their projection is limited to safe
+provider, status, driver, readiness, capability, and blocker facts.
 
-## Privacy and failure behavior
+## Provider behavior
 
-Prompts, Agent output, native session identifiers, continuation locations, and
-working-directory bindings remain local. Public receipts contain only safe
-operation identifiers, lifecycle state, stage, component, retryability,
-recovery action, and numeric usage facts; they contain no native path or
-message body. The list projection omits executable paths, account data, target
-diagnostics, raw configuration, and Conversation role assignments.
+| Provider | Caller registration | Target lane | Guidance | Active control |
+| --- | --- | --- | --- | --- |
+| Codex | External `lico-up-codex` package `0.2.0` | App Server stdio JSON-RPC | native `developerInstructions` | native steer and interrupt |
+| Cursor | namespaced user MCP entry | create-chat/resume CLI over PTY | one ordinary unmarked ephemeral prefix | supervised active cancel, then exact resume |
+| Antigravity | namespaced user MCP entry | OAuth/permission preflight, Hook receipt, CLI over PTY | one ordinary unmarked ephemeral prefix | supervised active cancel, then Hook-bound resume |
 
-Queue saturation, unavailable targets, invalid Memberships, invalid
-continuations, cancellation uncertainty, preflight rejection, and native
-transport failures return typed bounded errors. A preflight rejection keeps
-its stable code (`graph_invalid`, `graph_identity_rejected`,
-`graph_membership_rejected`, `graph_binding_incomplete`, `graph_model_rejected`,
-`graph_readiness_rejected`, `graph_environment_unavailable`,
-`graph_preflight_rejected`) so the Assistant can correct one request instead of
-guessing. Diagnostic projection drops unknown fields and raw values. An
-uncertain native effect remains pending reconciliation and is
-never reported as completed. Branches that already settled keep their recorded
-outcome; no new branch effect is issued after the Assistant failure settles the
-Graph.
+Cursor and Antigravity never receive `privateInstructions`. Generated guidance
+is removed before driver invocation and is not stored in visible Event/Part.
+Exact user Event text remains canonical.
 
-Per-Agent mechanisms are projected from the native driver inventory in
-[Compatibility](../COMPATIBILITY.md#agent-adapter-targets).
+## Local security and privacy
+
+The HTTP listener binds only to loopback. Private discovery contains an
+ephemeral per-provider bearer token and is hardened under client state. MCP
+sessions and connection counts are bounded. Shutdown removes only the discovery
+generation owned by that supervisor.
+
+Registration changes require one digest-bound, single-use approval. Cursor and
+Antigravity mutate only the namespaced LicoUp-owned entry; a foreign entry,
+multiple Antigravity config candidates, or a changed config fails closed.
+The same approval delivers the embedded `lico-up-subagents` Skill through the
+provider's user Skill Hub root; foreign Skill content also fails closed.
+Public responses omit config bodies, credentials, endpoints, native sessions,
+paths, prompts, and Agent output.
+
+## Independent verification routes
+
+`tests/product-e2e/cli/subagent-mcp/upstream.mjs` verifies startup recognition.
+It first initializes the desktop-owned service and checks the exact ordered
+tool catalog. It then runs the standalone Codex, Cursor, and Antigravity
+startup probes concurrently. Each probe reads only the provider's standard MCP
+startup/list/registry surface: it sends no turn, opens no conversation, and
+does not install, remove, or rewrite configuration. This verification does not
+depend on a Codex custom plugin. Codex receives one process-local standard MCP
+declaration through its configuration override and the override is never
+persisted. Cursor and Antigravity use their supported read-only `mcp list`
+commands; if the owned registration is absent, they report
+`installer_configuration_required` without changing provider configuration.
+
+`tests/product-e2e/cli/subagent-mcp/downstream.mjs` is a separate direct-effect
+route. Its default is a zero-effect preflight. Only explicit `--live` execution
+may prepare a local verification Conversation and send one authenticated
+`lico_subagent_delegate` request directly to the Streamable HTTP service for
+each unverified target. No Caller Agent process or Caller Agent conversation is
+started. Pass requires the matching inbound delegate record, durable dispatch
+claim, selected target Membership, and its PersistentTurn dispatch state; Agent
+output is neither read nor retained.
+
+Preflight resolves the three installed Agent versions, executable
+`runtime.message.send` routes, and reported model inventories through the
+existing LicoUp target and Agent Hub surfaces. Agent Hub invokes the existing
+bounded `--version` recipe against the exact target-discovery executable
+binding, including Cursor's bound `cursor-agent`; it never rescans `PATH` or
+projects the binding into a card or receipt. Conversation readiness is not an
+admission input. The verifier then validates the MCP service with each non-self
+caller identity that would be used. Missing or unsafe versions, a missing
+executable route, an unavailable approved model, or unhealthy service state
+therefore stops before Conversation creation or paid work.
+
+Live selection admits only the first available approved low-cost model: Codex
+uses `gpt-5.3-codex-spark`, then `gpt-5.4-mini`; Cursor uses `composer-2.5`;
+Antigravity uses the configured Gemini 3.7 Flash alias. There is no Auto or
+expensive fallback. The primary candidate for each Agent comes from the shared
+conversation-verification model authority; only the Codex Mini fallback is
+added at this route boundary. The live route holds one exclusive untracked
+lease while it performs the final Manifest reread and target record write. It
+skips an exact passing App Version, Target Agent, and Target Agent Version
+credential before Conversation creation or payment, performs at most one
+`tools/call` per remaining target, never retries internally, and never breaks
+another live lease by timeout. A structured `licoup.mcp.error.v1` result is
+retained only when its code, stage, retryability, and recovery are in the closed
+safe sets; only its allowlisted reason code may enter Notes.
+
+The latest-App-Version Manifest is
+`tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml`. Its key is App
+Version plus Target Agent, with at most one Codex, Cursor, and Antigravity row.
+Skip also requires the current Target Agent Version and `Results: passed`.
+Rows have exactly App Version, Caller Agent, Caller Agent Version, Target Agent,
+Target Agent Version, Results, and Notes, in that order. Caller fields identify
+the authenticated non-self Membership. Results is `passed` or `failed`; Notes
+is empty or an allowlisted reason code. Writes are atomic, and the closed parser
+rejects duplicate, extra, reordered, or unsafe values. Endpoints, tokens,
+prompts, local identifiers, paths, native identities, models, and runtime
+content never enter the Manifest or console receipt.

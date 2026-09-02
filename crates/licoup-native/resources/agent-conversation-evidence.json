@@ -3,7 +3,7 @@
   "contractVersion": "CL-06",
   "harnessVersion": "dispatch-lane-unified-1",
   "toolVersionClass": "dispatch-lane-unified-1",
-  "generatedAt": "2026-08-08T04:04:46.637Z",
+  "generatedAt": "2026-08-30T16:35:31.521Z",
   "adapters": [
     {
       "agentId": "antigravity",
@@ -130,19 +130,19 @@
       "driverId": "codex-app-server",
       "runtimeProtocol": "codex-app-server-stdio-jsonrpc",
       "harnessVersion": "dispatch-lane-unified-1",
-      "runtimeVersionClass": "verified-codex-app-server-arc-gate",
-      "runtimeVersionDigest": "sha256:35d248101b211d6248ad4e6b8c1d441fe81236da87afb9f3e9ea51a049e9f179",
-      "capabilitySnapshotDigest": "sha256:421da7b0da2a1925b4d3d0c8c62956b3826461f39ecec4b6e2d2ca5ada354b81",
-      "adapterManifestDigest": "sha256:64e444bd617d31fa6b69d46c61a5b05f46c100d3d7720df99b6fedbb8eeff316",
-      "releaseArtifactDigest": "sha256:9fe34202a0bf6629d2ca1bd4365bfc3c0ce2d2be8af3790a7288953501eea90d",
-      "releaseSidecarDigest": "sha256:9a1f6b59820c8523102a3b9da50c5458877f9be4c5d2739424122e01b2b89e81",
-      "productContinuityBindingDigest": "sha256:9ebdfc3d2450e55c5b325bea4b070c41f010c88c11e36e629bf8f6cefd1372a5",
+      "runtimeVersionClass": "verified-release",
+      "runtimeVersionDigest": "sha256:67ea03c98e7726eeebd161bc3bc92d8937f412f1899790a28e4ee9b80803c4d7",
+      "capabilitySnapshotDigest": "sha256:40dd1b8cb9595f97873b2065b91000f59a77429b2241904870805df7bc813c02",
+      "adapterManifestDigest": "sha256:03dbf45578577d9f715c271b377280587c74d04a19d441e27d78c01820648e4f",
+      "releaseArtifactDigest": "sha256:f92c31fbd5b717308c52478110f3de201921185abac80adea34d6d2136aa6140",
+      "releaseSidecarDigest": "sha256:3591dacd27e44ae06ae8f7cf442def1f7c79e0a0e06903cc26cb6b751251cce3",
+      "productContinuityBindingDigest": "sha256:93781b5a7c65e661f3973f7e8bba0e31a7af229e86bcf5669274f472f1f38c4c",
       "runtimeSourceClass": "discovered-binary",
-      "registryDigest": "sha256:577f55a64820aacdceb85f778547de7026f786f0a5e912fab0f66579db7850ae",
-      "driverInventoryDigest": "sha256:133f0299057897f0782df01a8aaec348e142efd0d421dd6d25b80b080f315067",
-      "evidenceDigest": "sha256:cc3be441ecf3feabb18e63d8720502f7a86496b82eca587f8a0e6734dd5126d4",
+      "registryDigest": "sha256:a24748a585dff9325b7db163cea05be0052055f5cb7332c15555f9072854acfa",
+      "driverInventoryDigest": "sha256:ecc5195059c13bc615d743cc7a5f7be5abb3f07775924c9a2a2fb098fba7f418",
+      "evidenceDigest": "sha256:f54c2819f72f8109b7e4cfa9791cfc6b8537ac5e7719adb31d85fa7b5de0585c",
       "officialNativeLane": true,
-      "consecutivePasses": 3,
+      "consecutivePasses": 1,
       "conversationGatePassed": true,
       "cleanupPassed": true,
       "privacyPassed": true,
@@ -172,12 +172,12 @@
           "result": "unsupported-by-native"
         },
         "C-04": {
-          "nativeSupport": "unsupported",
-          "result": "unsupported-by-native"
+          "nativeSupport": "supported",
+          "result": "unverified"
         },
         "C-05": {
           "nativeSupport": "supported",
-          "result": "pass"
+          "result": "unverified"
         },
         "C-06": {
           "nativeSupport": "unsupported",

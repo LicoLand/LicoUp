@@ -15,6 +15,7 @@ fn help_text() {
     println!("  --stream-partial-output");
     println!("  --trust");
     println!("  --force");
+    println!("  --approve-mcps");
     println!("  --workspace");
 }
 
@@ -75,6 +76,13 @@ fn json_string(value: &str) -> String {
 }
 
 fn run_turn(args: &[String]) {
+    if env::var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT").is_ok() {
+        assert!(
+            env::var("LICOUP_PORTABLE_DIR")
+                .map(std::path::PathBuf::from)
+                .is_ok_and(|path| path.is_absolute())
+        );
+    }
     let resume_index = args
         .iter()
         .position(|arg| arg == "--resume")
@@ -175,6 +183,25 @@ fn main() {
         return;
     }
     if args == ["create-chat"] {
+        if env::var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT").is_ok() {
+            assert!(
+                env::var("LICOUP_PORTABLE_DIR")
+                    .map(std::path::PathBuf::from)
+                    .is_ok_and(|path| path.is_absolute())
+            );
+            assert_eq!(
+                env::var("LICOUP_MCP_CONVERSATION_ID").as_deref(),
+                Ok("conversation:fixture")
+            );
+            assert_eq!(
+                env::var("LICOUP_MCP_MEMBERSHIP_ID").as_deref(),
+                Ok("membership:cursor")
+            );
+            assert_eq!(
+                env::var("LICOUP_MCP_PARENT_DISPATCH_ID").as_deref(),
+                Ok("subagent:parent")
+            );
+        }
         // Test hook: delay session creation so the driver can be exercised
         // with a create-chat phase that consumes part of the turn window.
         if let Ok(delay_ms) = env::var("LICO_FAKE_CURSOR_AGENT_CREATE_CHAT_DELAY_MS") {
@@ -193,6 +220,7 @@ fn main() {
     if args.iter().any(|arg| arg == "--print")
         && args.iter().any(|arg| arg == "--resume")
         && args.iter().any(|arg| arg == "stream-json")
+        && args.iter().any(|arg| arg == "--approve-mcps")
         && args.iter().any(|arg| arg == "--stream-partial-output")
     {
         run_turn(&args);
