@@ -26,13 +26,13 @@ const leaves = Object.freeze([
   "report-summary.mjs",
   "report.mjs",
   "run.mjs",
-  "self-test/client-licoarc-crypto.mjs",
+  "self-test/client-relay-crypto.mjs",
   "self-test/contract.mjs",
   "self-test/freshness.mjs",
   "self-test/physical-evidence.mjs",
   "self-test/redaction.mjs",
   "summarize/android-install.mjs",
-  "summarize/client-licoarc-crypto.mjs",
+  "summarize/client-relay-crypto.mjs",
   "summarize/physical-evidence.mjs",
   "summarize/physical-matrix.mjs",
   "summarize/redaction.mjs",
@@ -169,8 +169,8 @@ test("cli, summarize, report, and self-test each have one authority", async () =
   assert.deepEqual(declarationOwners(source, "runReleaseProofContractReadinessSelfTest"), [
     "self-test/contract.mjs",
   ]);
-  assert.deepEqual(declarationOwners(source, "runClientLicoArcCryptoInputsReadinessSelfTest"), [
-    "self-test/client-licoarc-crypto.mjs",
+  assert.deepEqual(declarationOwners(source, "runClientRelayCryptoInputsReadinessSelfTest"), [
+    "self-test/client-relay-crypto.mjs",
   ]);
   assert.deepEqual(declarationOwners(source, "evaluateSourceCheck"), [
     "verifiers.mjs",
@@ -179,7 +179,7 @@ test("cli, summarize, report, and self-test each have one authority", async () =
 
 test("release-proof self-test dry-runs preserve fail-closed contracts", () => {
   for (const flag of [
-    "--client-licoarc-crypto-readiness-self-test",
+    "--client-relay-crypto-readiness-self-test",
     "--release-proof-contract-readiness-self-test",
   ]) {
     const result = spawnSync(

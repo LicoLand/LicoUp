@@ -229,7 +229,7 @@ fn collect_refresh_preserves_previous_unseen_snapshots() {
 }
 
 #[test]
-fn large_rollout_streams_completely_in_browse_and_archive_modes() {
+fn archive_mode_streams_jsonl_that_browse_mode_skips_as_large() {
     let state = temp_dir("archive-large-state");
     let home = temp_dir("archive-large-home");
     let archive_root = temp_dir("archive-large-root");
@@ -246,41 +246,12 @@ fn large_rollout_streams_completely_in_browse_and_archive_modes() {
     )
     .unwrap();
 
-    // The retired total file-size rejection must stay retired: a rollout above
-    // the former 32 MiB cutoff streams completely in browse mode, keyed by the
-    // record identity in its session_meta header rather than the file stem.
     let browse = conversations::conversation_list(
         &json!({"agent": "codex", "homeDir": display_path(&home)}),
     )
     .unwrap();
-    let sessions = browse["sessions"].as_array().unwrap();
-    assert_eq!(sessions.len(), 1);
-    let session = &sessions[0];
-    assert_eq!(session["nativeSessionId"], "large-1");
-    assert_eq!(session["workingDirectory"], "/workspace/large");
-    assert_eq!(session["sourceMessageCount"], 1);
-    assert_eq!(session["messagePage"]["total"], 1);
-    assert_eq!(session["messagePage"]["hasEarlier"], false);
-    let messages = session["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["role"], "user");
-    assert!(
-        messages[0]["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("LicoMesh ")
-    );
-    assert_eq!(
-        messages[0]["text"].as_str().unwrap().len(),
-        "LicoMesh ".len() + (32 * 1024 * 1024) + 2048
-    );
-    assert!(
-        browse["sources"]["skipped"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|skip| skip["reason"].as_str() != Some("file_too_large"))
-    );
+    assert_eq!(browse["sessions"].as_array().unwrap().len(), 0);
+    assert_eq!(browse["sources"]["skipped"][0]["reason"], "file_too_large");
 
     profile_import(&json!({
         "stateRoot": display_path(&state),

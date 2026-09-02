@@ -16,7 +16,7 @@ use crate::domain::llm_api_key_vault::LlmApiKeyProvider;
 #[cfg(unix)]
 use crate::domain::llm_api_key_vault::{GatewayCredentialHandoff, LlmApiKeyInventory};
 use crate::domain::llm_gateway::{
-    CompiledGateway, CredentialStyle, GatewayConfig, GatewayProvider, MAX_GATEWAY_BODY_BYTES,
+    ClientProtocol, CompiledGateway, CredentialStyle, GatewayConfig, GatewayProvider, ModelRoute,
     UpstreamProtocol,
 };
 use crate::platform::file_security::{
@@ -233,80 +233,12 @@ pub fn service_usage() -> Result<Value> {
     crate::platform::llm_gateway_usage::read_usage(&paths.usage)
 }
 
-/// Return the live provider catalogs exposed by a running managed Gateway.
-/// Offline planning remains possible with an empty list, but a healthy Gateway
-/// that rejects or cannot parse an upstream catalog fails instead of falling
-/// back to product-owned model names.
-pub(crate) fn service_model_catalog(
-    port: u16,
-) -> Result<Vec<crate::domain::llm_gateway_agent_config::GatewayAgentModel>> {
-    if !probe_health(port, HEALTH_PROBE_TIMEOUT) {
-        return Ok(Vec::new());
-    }
-    let paths = ServicePaths::resolve()?;
-    let token = crate::platform::llm_gateway_client_auth::read_token(&paths.client_token)?;
-    let token = token
-        .expose_utf8()
-        .map_err(|_| anyhow!("gateway_client_token_invalid"))?;
-    let response = ureq::AgentBuilder::new()
-        .redirects(0)
-        .timeout_connect(Duration::from_secs(2))
-        .timeout_read(Duration::from_secs(60))
-        .timeout_write(Duration::from_secs(5))
-        .build()
-        .get(&format!("http://127.0.0.1:{port}/v1/models"))
-        .set("authorization", &format!("Bearer {token}"))
-        .set("accept", "application/json")
-        .call()
-        .map_err(|_| anyhow!("llm_gateway_model_catalog_unavailable"))?;
-    let mut body = Vec::new();
-    response
-        .into_reader()
-        .take((MAX_GATEWAY_BODY_BYTES as u64).saturating_add(1))
-        .read_to_end(&mut body)
-        .map_err(|_| anyhow!("llm_gateway_model_catalog_unavailable"))?;
-    ensure!(
-        body.len() <= MAX_GATEWAY_BODY_BYTES,
-        "llm_gateway_model_catalog_invalid"
-    );
-    let document: Value =
-        serde_json::from_slice(&body).map_err(|_| anyhow!("llm_gateway_model_catalog_invalid"))?;
-    let rows = document
-        .get("data")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("llm_gateway_model_catalog_invalid"))?;
-    let mut seen = BTreeSet::new();
-    let mut models = Vec::with_capacity(rows.len());
-    for row in rows {
-        let id = row
-            .get("id")
-            .and_then(Value::as_str)
-            .filter(|id| !id.is_empty())
-            .ok_or_else(|| anyhow!("llm_gateway_model_catalog_invalid"))?;
-        if !seen.insert(id.to_owned()) {
-            continue;
-        }
-        let name = row
-            .get("name")
-            .and_then(Value::as_str)
-            .filter(|name| {
-                !name.is_empty() && name.len() <= 1024 && !name.chars().any(char::is_control)
-            })
-            .unwrap_or(id);
-        models.push(crate::domain::llm_gateway_agent_config::GatewayAgentModel {
-            id: id.to_owned(),
-            name: name.to_owned(),
-        });
-    }
-    Ok(models)
-}
-
 /// Start the local service during client initialization without touching the
 /// Keychain. Credential authorization remains a separate action.
 pub fn service_initialize(port: u16) -> Result<Value> {
-    // `service_start` is health-aware and also replaces a managed sidecar that
-    // predates current protocol capabilities. Returning status directly here
-    // would leave an old process running forever across client upgrades.
+    if probe_health(port, HEALTH_PROBE_TIMEOUT) {
+        return service_status(port);
+    }
     service_start(port)
 }
 
@@ -477,7 +409,9 @@ pub fn service_start(port: u16) -> Result<Value> {
         let should_apply_loaded_credentials = managed
             .as_ref()
             .is_some_and(|record| session_credentials_loaded() && !record.credentials_loaded);
-        let should_apply_current_protocols = !health_supports_current_protocols(&health);
+        let should_apply_current_protocols = !health.contains("openai-chat-completions")
+            || !health.contains("anthropic-messages")
+            || !health.contains("bearer-or-x-api-key");
         if should_apply_loaded_credentials {
             if let Ok(Some(applied)) = hot_apply_session_credentials(port) {
                 if applied {
@@ -556,13 +490,6 @@ pub fn service_start(port: u16) -> Result<Value> {
         }
         thread::sleep(POLL_INTERVAL);
     }
-}
-
-fn health_supports_current_protocols(health: &str) -> bool {
-    health.contains("openai-chat-completions")
-        && health.contains("anthropic-messages")
-        && health.contains("bearer-or-x-api-key")
-        && health.contains("live-provider-models")
 }
 
 #[cfg(unix)]
@@ -891,16 +818,52 @@ fn default_config() -> GatewayConfig {
             credential_style: CredentialStyle::Bearer,
         },
     ];
+    let provider_ids = LlmApiKeyProvider::ALL
+        .into_iter()
+        .map(|provider| provider.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut routes = Vec::new();
+    for model in crate::domain::llm_gateway_default_catalog::models_for_provider_ids(&provider_ids)
+    {
+        for client_protocol in [
+            ClientProtocol::OpenAiResponses,
+            ClientProtocol::OpenAiChatCompletions,
+            ClientProtocol::AnthropicMessages,
+        ] {
+            routes.push(ModelRoute {
+                client_protocol,
+                requested_model: model.requested_model.to_owned(),
+                provider_id: model.provider_id.to_owned(),
+                upstream_model: model.upstream_model.to_owned(),
+            });
+        }
+    }
     GatewayConfig {
         schema_version: 1,
         providers,
-        routes: Vec::new(),
+        routes,
     }
 }
 
-/// Materialize only the fixed provider boundaries. Model inventory is fetched
-/// from each provider with the live authorized credential and is never baked
-/// into this private configuration.
+/// Providers that currently have at least one non-expired saved API key.
+/// Inventory metadata only; never opens Keychain secrets.
+pub(crate) fn providers_with_usable_saved_keys() -> BTreeSet<LlmApiKeyProvider> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    match crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::production()
+        .and_then(|vault| vault.list())
+    {
+        Ok(inventory) => inventory.providers_with_usable_keys(now),
+        Err(_) => BTreeSet::new(),
+    }
+}
+
+/// Materialize the complete closed product-owned routing configuration.
+/// Routing capability is static product data and is deliberately independent
+/// from the current credential lease; authorization is enforced only when a
+/// request resolves its selected provider credential.
 fn ensure_default_config(paths: &ServicePaths) -> Result<()> {
     let config = default_config();
     let body = serde_json::to_string_pretty(&config)?;
@@ -1259,30 +1222,69 @@ mod tests {
     }
 
     #[test]
-    fn default_config_compiles_without_a_product_owned_model_catalog() {
+    fn default_config_compiles_and_covers_both_client_protocols() {
+        use crate::domain::llm_gateway_default_catalog::DEFAULT_GATEWAY_MODELS;
         let config = default_config();
         let text = serde_json::to_string_pretty(&config).unwrap();
         let parsed: GatewayConfig = serde_json::from_str(&text).unwrap();
         CompiledGateway::compile(parsed).unwrap();
-        assert_eq!(config.providers.len(), LlmApiKeyProvider::ALL.len());
-        assert!(config.routes.is_empty());
+        assert_eq!(config.routes.len(), DEFAULT_GATEWAY_MODELS.len() * 3);
+        for model in DEFAULT_GATEWAY_MODELS {
+            for client_protocol in [
+                ClientProtocol::OpenAiResponses,
+                ClientProtocol::OpenAiChatCompletions,
+                ClientProtocol::AnthropicMessages,
+            ] {
+                assert!(config.routes.iter().any(|route| {
+                    route.client_protocol == client_protocol
+                        && route.requested_model == model.requested_model
+                        && route.provider_id == model.provider_id
+                        && route.upstream_model == model.upstream_model
+                }));
+            }
+        }
         assert!(text.contains("\"credentialProvider\": \"kimi\""));
         assert!(text.contains("\"credentialProvider\": \"kilo\""));
-        assert!(!text.contains("requestedModel"));
-        assert!(!text.contains("upstreamModel"));
+        assert!(text.contains("\"requestedModel\": \"deepseek:deepseek-v4-pro\""));
+        assert!(text.contains("\"requestedModel\": \"kimi:k3\""));
+        assert!(text.contains("\"requestedModel\": \"kilo:kilo-auto/frontier\""));
+        assert!(text.contains("\"requestedModel\": \"kilo:anthropic/claude-opus-5\""));
+        assert!(text.contains("\"upstreamModel\": \"deepseek-v4-pro\""));
+        assert!(text.contains("\"upstreamModel\": \"kimi-k3\""));
+        assert!(text.contains("\"upstreamModel\": \"kilo-auto/free\""));
+        assert!(!text.contains("\"requestedModel\": \"anthropic/claude-sonnet-4.6\""));
+        assert!(!text.contains("kimi-k2-0905-preview"));
+        assert!(!text.contains("\"requestedModel\": \"deepseek-chat\""));
         assert!(text.contains("\"baseUrl\": \"https://api.kilo.ai/api/gateway\""));
         assert!(text.contains("\"protocol\": \"open_ai_chat_completions\""));
+        assert!(text.contains("\"clientProtocol\": \"anthropic_messages\""));
+        assert!(text.contains("\"clientProtocol\": \"open_ai_chat_completions\""));
+        assert!(text.contains("\"clientProtocol\": \"open_ai_responses\""));
     }
 
     #[test]
-    fn default_config_keeps_only_the_three_provider_boundaries() {
+    fn default_config_is_independent_from_saved_key_inventory() {
         let config = default_config();
         CompiledGateway::compile(config.clone()).unwrap();
         assert_eq!(config.providers.len(), LlmApiKeyProvider::ALL.len());
-        assert_eq!(config.providers[0].id, "kimi");
-        assert_eq!(config.providers[1].id, "deepseek");
-        assert_eq!(config.providers[2].id, "kilo");
-        assert!(config.routes.is_empty());
+        assert!(
+            config
+                .routes
+                .iter()
+                .any(|route| route.provider_id == "kimi")
+        );
+        assert!(
+            config
+                .routes
+                .iter()
+                .any(|route| route.provider_id == "deepseek")
+        );
+        assert!(
+            config
+                .routes
+                .iter()
+                .any(|route| route.provider_id == "kilo")
+        );
     }
 
     #[test]
@@ -1349,60 +1351,6 @@ mod tests {
         server.join().unwrap();
 
         assert!(!probe_health(closed_port(), Duration::from_millis(50)));
-    }
-
-    #[test]
-    fn old_gateway_health_requires_replacement_for_live_provider_models() {
-        let old = r#"{"protocols":["openai-responses","openai-chat-completions","anthropic-messages"],"clientAuth":"bearer-or-x-api-key"}"#;
-        assert!(!health_supports_current_protocols(old));
-        let current = r#"{"protocols":["openai-responses","openai-chat-completions","anthropic-messages","live-provider-models"],"clientAuth":"bearer-or-x-api-key"}"#;
-        assert!(health_supports_current_protocols(current));
-    }
-
-    #[test]
-    fn agent_config_catalog_reads_the_authenticated_live_gateway_snapshot() {
-        let root = temp_state_root();
-        let _guard = PortableDataDirOverrideGuard::set(root.clone());
-        let _token = crate::platform::llm_gateway_client_auth::ensure_default_token().unwrap();
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = thread::spawn(move || {
-            for request_index in 0..2 {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0u8; 4096];
-                let count = stream.read(&mut request).unwrap();
-                let request = String::from_utf8_lossy(&request[..count]);
-                if request_index == 0 {
-                    assert!(request.starts_with("GET /health HTTP/1.1"));
-                    let body = r#"{"ok":true,"service":"licoup-llm-gateway"}"#;
-                    write!(
-                        stream,
-                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                        body.len()
-                    )
-                    .unwrap();
-                } else {
-                    assert!(request.starts_with("GET /v1/models HTTP/1.1"));
-                    assert!(request.contains("authorization: Bearer "));
-                    let body =
-                        r#"{"object":"list","data":[{"id":"kimi:kimi-k3","name":"Kimi K3"}]}"#;
-                    write!(
-                        stream,
-                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                        body.len()
-                    )
-                    .unwrap();
-                }
-            }
-        });
-
-        let models = service_model_catalog(port).unwrap();
-
-        assert_eq!(models.len(), 1);
-        assert_eq!(models[0].id, "kimi:kimi-k3");
-        assert_eq!(models[0].name, "Kimi K3");
-        server.join().unwrap();
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

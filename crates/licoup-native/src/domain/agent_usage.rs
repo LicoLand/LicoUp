@@ -8,7 +8,7 @@ mod contract;
 mod incremental;
 mod persistence;
 mod window;
-pub(crate) mod workflow_ledger;
+pub mod workflow_ledger;
 
 pub use command::{report, scan};
 pub use incremental::{UsageIncrementalAuthority, UsageWindowProjection};

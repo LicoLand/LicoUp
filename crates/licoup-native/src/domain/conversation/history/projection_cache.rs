@@ -6,7 +6,7 @@
 //! strictly bounded (256 entries, 8 MiB), keyed by adapter, canonical identity,
 //! source size, and modification metadata, schema-versioned, written
 //! atomically, and discarded as a whole on schema mismatch, corruption, or
-//! ambiguity (fail-closed). Cached content is the same newest-page, redacted
+//! ambiguity (fail-closed). Cached content is the same bounded, redacted
 //! browse projection the page already renders; the full transcript stays in the
 //! single-session read path.
 
@@ -21,7 +21,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) const HISTORY_PROJECTION_CACHE_SCHEMA: &str = "licoup.history-projection-cache/v3";
+pub(crate) const HISTORY_PROJECTION_CACHE_SCHEMA: &str = "licoup.history-projection-cache/v1";
 pub(crate) const MAX_PROJECTION_CACHE_ENTRIES: usize = 256;
 pub(crate) const MAX_PROJECTION_CACHE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PROJECTION_CACHE_FILE_BYTES: usize = MAX_PROJECTION_CACHE_BYTES + 4096;
@@ -64,6 +64,7 @@ pub(crate) struct ProjectionCacheKey {
     pub(crate) adapter_id: String,
     pub(crate) source_kind: String,
     pub(crate) kind: String,
+    pub(crate) delegated_truncated: bool,
     pub(crate) sources: Vec<SourceFingerprint>,
     pub(crate) authority: Option<SourceFingerprint>,
 }
@@ -316,6 +317,7 @@ mod tests {
             adapter_id: "codex".to_string(),
             source_kind: "codex-session-store".to_string(),
             kind: "file".to_string(),
+            delegated_truncated: false,
             sources: paths
                 .iter()
                 .map(|path| SourceFingerprint::from_path(path).unwrap())
@@ -453,6 +455,7 @@ mod tests {
                         "adapterId": "codex",
                         "sourceKind": "codex-session-store",
                         "kind": "file",
+                        "delegatedTruncated": false,
                         "sources": [],
                         "authority": null
                     },

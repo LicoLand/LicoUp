@@ -3,7 +3,7 @@ use anyhow::{Result, ensure};
 use serde_json::Value;
 
 pub(super) fn handle_targets_scan(command: AdmittedCommand) -> Result<CliExecution> {
-    let mut params = admitted_params(
+    let params = admitted_params(
         &[
             ("stateRoot", command.option_text("state-root")),
             (
@@ -22,25 +22,6 @@ pub(super) fn handle_targets_scan(command: AdmittedCommand) -> Result<CliExecuti
         &[],
         &[],
     );
-    if let Some(private) = command.option_json("stdin-json") {
-        let private = private
-            .as_object()
-            .ok_or_else(|| anyhow::anyhow!("target_selection_invalid"))?;
-        ensure!(
-            private
-                .keys()
-                .all(|key| matches!(key.as_str(), "targetIds" | "modelCatalogTargetIds")),
-            "target_selection_invalid"
-        );
-        let object = params
-            .as_object_mut()
-            .ok_or_else(|| anyhow::anyhow!("target_selection_invalid"))?;
-        for key in ["targetIds", "modelCatalogTargetIds"] {
-            if let Some(value) = private.get(key) {
-                object.insert(key.to_string(), value.clone());
-            }
-        }
-    }
     Ok(CliExecution::Json(
         crate::domain::targets::scan_targets_with_params(&params)?,
     ))

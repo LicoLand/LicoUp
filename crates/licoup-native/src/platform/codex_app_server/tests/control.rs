@@ -1,11 +1,11 @@
 use super::support::{config, initialize, open_thread, start_turn};
 use crate::platform::codex_app_server::model::ProtocolEffect;
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
+use crate::platform::codex_app_server::protocol::CodexProtocol;
 use serde_json::json;
 
 #[test]
 fn server_request_is_declined_and_stops_autonomous_dispatch() {
-    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
     start_turn(&mut protocol);

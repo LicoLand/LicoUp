@@ -12,7 +12,6 @@ export 'package:licoup/src/contracts/agent_usage_models.dart';
 export 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 export 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 export 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-export 'package:licoup/src/contracts/target_management.dart';
 export 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 export 'package:licoup/src/platform/native_client/agent_service.dart';
 export 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';

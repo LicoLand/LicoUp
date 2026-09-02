@@ -103,9 +103,9 @@ test("stable signature vectors and exact low-water boundaries have dedicated tes
   const keyPackage = await read(`${root}/tests/key_package.rs`);
   const inventory = await read(`${root}/tests/inventory.rs`);
   assert.match(pairwise, /pairwise_signature_payload_and_signature_match_the_stable_vector/u);
-  assert.match(pairwise, /ba74fb2e1dc52166cad3b43010b84ef762ba3f4ae2684430b3fc10698da4f021/u);
+  assert.match(pairwise, /4e445166177f231103e3d9654b98aa00a6933174266340d7019259d4530bf0c5/u);
   assert.match(keyPackage, /key_package_signature_payload_and_signature_match_the_stable_vector/u);
-  assert.match(keyPackage, /8b4f63cb8c740677136f73e55a20c5efad984d9b7066824ab60e193384bb916d/u);
+  assert.match(keyPackage, /5a709eef5b9a7cc3bf5d43e5b1a8bec9afd85476800f231d6e130e8abef6e6c5/u);
   assert.match(inventory, /low_water_equality_requests_local_replenishment/u);
 });
 

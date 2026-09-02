@@ -113,16 +113,8 @@ const allowedContentPaths = new Set();
 const retiredStatePolicyChecks = [];
 const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterPhysicalDirs = ["application", "frontend", "backend", "platform", "contracts"];
-// New vertical data-flow doctrine (M1 thin-shell restructure). These coexist
-// with the legacy physical dirs during the staged migration; the legacy set is
-// required, the new set is allowed.
 const allowedFlutterTopLevelDirs = new Set([
-  ...requiredFlutterPhysicalDirs,
-  "events",
-  "projections",
-  "display",
-  "protocol",
-  "shared",
+  ...requiredFlutterPhysicalDirs
 ]);
 const requiredFrontendFeatureDirs = [
   "agents",

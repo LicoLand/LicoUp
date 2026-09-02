@@ -7,7 +7,6 @@ import {
   inferPromotionBase,
   promotionPlan,
   releaseTrainEdges,
-  requiredCheckRegistered,
 } from "../../../tools/scripts/client-promotion.mjs";
 
 test("promotion planner accepts only the three repository promotion edges", () => {
@@ -32,44 +31,6 @@ test("promotion accepts merge-history divergence only when the source has new co
   assert.equal(hasPromotableCommits("diverged"), true);
   assert.equal(hasPromotableCommits("behind"), false);
   assert.equal(hasPromotableCommits("identical"), false);
-});
-
-test("required check registration accepts check-run names and commit-status contexts", () => {
-  assert.equal(requiredCheckRegistered([
-    { name: "Client required", status: "IN_PROGRESS" },
-  ], "Client required"), true);
-  assert.equal(requiredCheckRegistered([
-    { context: "Client required", state: "PENDING" },
-  ], "Client required"), true);
-  assert.equal(requiredCheckRegistered([
-    { name: "unrelated check", status: "COMPLETED" },
-    { context: "Client required", state: "PENDING" },
-  ], "Client required"), true);
-});
-
-test("required check registration stays false until the aggregate appears", () => {
-  assert.equal(requiredCheckRegistered([], "Client required"), false);
-  assert.equal(requiredCheckRegistered([
-    { name: "unrelated check", status: "COMPLETED" },
-    { context: "other status", state: "SUCCESS" },
-  ], "Client required"), false);
-  assert.equal(requiredCheckRegistered([
-    { name: "Client required extra" },
-    { context: "Client require" },
-  ], "Client required"), false);
-});
-
-test("required check registration rejects non-array and garbage rollups", () => {
-  for (const rollup of [
-    undefined,
-    null,
-    "Client required",
-    42,
-    { name: "Client required" },
-    [null, "Client required", 42, [{ name: "Client required" }]],
-  ]) {
-    assert.equal(requiredCheckRegistered(rollup, "Client required"), false);
-  }
 });
 
 test("promotion planner rejects unsafe or non-action branch names", () => {

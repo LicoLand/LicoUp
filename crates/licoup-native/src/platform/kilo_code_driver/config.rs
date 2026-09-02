@@ -6,7 +6,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ServeTurnConfig {
     pub(super) prompt: String,
-    pub(super) private_instructions: Option<String>,
     pub(super) requested_session_id: String,
     pub(super) cwd: String,
     pub(super) model: Option<String>,
@@ -42,7 +41,6 @@ impl ServeTurnConfig {
         }
         Ok(Self {
             prompt: prompt.to_string(),
-            private_instructions: text_setting(params, &["privateInstructions"]),
             requested_session_id: session_id.trim().to_string(),
             cwd: cwd.to_string_lossy().into_owned(),
             model: text_setting(params, &["model"]),

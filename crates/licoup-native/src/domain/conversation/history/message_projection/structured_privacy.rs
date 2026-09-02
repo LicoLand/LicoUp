@@ -5,6 +5,9 @@ use serde_json::Value;
 
 use super::semantic::{HistoryMessageKind, normalize_history_message_semantic};
 
+const MAX_STRUCTURED_EVENT_TEXT_CHARS: usize = 1_200;
+const MAX_REASONING_SUMMARY_DEPTH: usize = 3;
+
 /// Displayable detail for one structured event. Reasoning, metadata, and tool
 /// calls are formatted from their recorded payloads instead of being blanked;
 /// every candidate still passes the same secret/path sanitization as free
@@ -59,43 +62,40 @@ pub(super) fn structured_reasoning_summary(value: &Value) -> Option<String> {
     None
 }
 
-pub(super) fn structured_reasoning_summary_value(value: &Value, _depth: usize) -> Option<String> {
-    let mut pending = vec![value];
-    let mut summaries = Vec::new();
-    while let Some(candidate) = pending.pop() {
-        match candidate {
-            Value::String(text) => {
-                let text = text.trim();
-                if !text.is_empty() {
-                    summaries.push(text.to_string());
-                }
-            }
-            Value::Array(items) => pending.extend(items.iter().rev()),
-            Value::Object(object) => {
-                if let Some(kind) = object
-                    .get("type")
-                    .or_else(|| object.get("kind"))
-                    .and_then(Value::as_str)
-                {
-                    let normalized = normalize_history_message_semantic(kind);
-                    if !matches!(
-                        normalized.as_str(),
-                        "summary" | "summary-text" | "reasoning-summary" | "text"
-                    ) {
-                        continue;
-                    }
-                }
-                if let Some(child) = ["text", "content", "summary"]
-                    .iter()
-                    .find_map(|key| object.get(*key))
-                {
-                    pending.push(child);
-                }
-            }
-            _ => {}
-        }
+pub(super) fn structured_reasoning_summary_value(value: &Value, depth: usize) -> Option<String> {
+    if depth > MAX_REASONING_SUMMARY_DEPTH {
+        return None;
     }
-    (!summaries.is_empty()).then(|| summaries.join("\n"))
+    match value {
+        Value::String(text) => (!text.trim().is_empty()).then(|| text.trim().to_string()),
+        Value::Array(items) => {
+            let summaries = items
+                .iter()
+                .filter_map(|item| structured_reasoning_summary_value(item, depth + 1))
+                .collect::<Vec<_>>();
+            (!summaries.is_empty()).then(|| summaries.join("\n"))
+        }
+        Value::Object(object) => {
+            if let Some(kind) = object
+                .get("type")
+                .or_else(|| object.get("kind"))
+                .and_then(Value::as_str)
+            {
+                let normalized = normalize_history_message_semantic(kind);
+                if !matches!(
+                    normalized.as_str(),
+                    "summary" | "summary-text" | "reasoning-summary" | "text"
+                ) {
+                    return None;
+                }
+            }
+            ["text", "content", "summary"]
+                .iter()
+                .find_map(|key| object.get(*key))
+                .and_then(|candidate| structured_reasoning_summary_value(candidate, depth + 1))
+        }
+        _ => None,
+    }
 }
 
 /// Identity bookkeeping skipped when formatting tool-call arguments. The tool
@@ -385,7 +385,14 @@ pub(super) fn sanitize_structured_event_text(value: &str) -> Option<String> {
     if redacted.is_empty() {
         return None;
     }
-    Some(redacted.to_string())
+    let mut text = redacted
+        .chars()
+        .take(MAX_STRUCTURED_EVENT_TEXT_CHARS)
+        .collect::<String>();
+    if redacted.chars().count() > MAX_STRUCTURED_EVENT_TEXT_CHARS {
+        text.push_str("\n…");
+    }
+    Some(text)
 }
 
 /// Whole-document JSON payloads are rejected: they cannot be redacted

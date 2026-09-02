@@ -2,7 +2,6 @@
 
 use super::*;
 use std::collections::HashMap;
-use std::io::BufReader;
 
 struct JsonlSessionAccumulator {
     native_session_id: String,
@@ -19,17 +18,26 @@ pub(crate) fn parse_jsonl_sessions(
 ) -> Vec<Value> {
     let mut grouped = Vec::<JsonlSessionAccumulator>::new();
     let mut indexes = HashMap::<String, usize>::new();
-    let _ = scan_config;
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(_) => return Vec::new(),
-    };
-    let reader = BufReader::new(file);
-    for (index, line) in reader.lines().enumerate() {
-        let Ok(line) = line else {
-            return Vec::new();
+    if scan_config.archive_mode {
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
+            Err(_) => return Vec::new(),
         };
-        push_jsonl_record(adapter, path, index, &line, &mut grouped, &mut indexes);
+        let reader = BufReader::new(file);
+        for (index, line) in reader.lines().enumerate() {
+            let Ok(line) = line else {
+                continue;
+            };
+            push_jsonl_record(adapter, path, index, &line, &mut grouped, &mut indexes);
+        }
+    } else {
+        let raw = match fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(_) => return Vec::new(),
+        };
+        for (index, line) in raw.lines().enumerate() {
+            push_jsonl_record(adapter, path, index, line, &mut grouped, &mut indexes);
+        }
     }
     grouped
         .into_iter()
@@ -166,9 +174,7 @@ fn push_jsonl_record(
         return;
     }
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-        let Some(session_id) = native_session_id_or_layout(adapter, &value, path) else {
-            return;
-        };
+        let session_id = native_session_id_or_path(&value, path);
         let group_index = match indexes.get(&session_id).copied() {
             Some(group_index) => group_index,
             None => {
@@ -220,11 +226,11 @@ pub(crate) fn parse_json_sessions(
     source_kind: &str,
     metadata: &fs::Metadata,
 ) -> Vec<Value> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
         Err(_) => return Vec::new(),
     };
-    let value = match serde_json::from_reader::<_, Value>(BufReader::new(file)) {
+    let value = match serde_json::from_str::<Value>(&raw) {
         Ok(value) => value,
         Err(_) => return Vec::new(),
     };
@@ -237,15 +243,12 @@ pub(crate) fn parse_json_sessions(
     if messages.is_empty() {
         return Vec::new();
     }
-    let Some(native_session_id) = native_session_id_or_layout(adapter, &value, path) else {
-        return Vec::new();
-    };
     vec![session_from_messages_with_title(
         adapter,
         path,
         metadata,
         source_kind,
-        native_session_id,
+        native_session_id_or_path(&value, path),
         messages,
         extract_conversation_title(&value),
     )]
@@ -272,15 +275,12 @@ pub(crate) fn parse_text_session(
         "createdAt": created_at,
         "sourcePath": display_path(path)
     })];
-    let Some(native_session_id) = text_layout_session_id(adapter, path) else {
-        return Vec::new();
-    };
     vec![session_from_messages(
         adapter,
         path,
         metadata,
         source_kind,
-        native_session_id,
+        "file".to_string(),
         messages,
     )]
 }
@@ -303,26 +303,15 @@ pub(super) fn collect_explicit_json_sessions(
         for (index, item) in items.iter().enumerate() {
             let mut messages = Vec::<Value>::new();
             collect_messages_from_value(adapter, path, item, &mut messages);
-            if messages.is_empty() && adapter != HistoryAdapter::Copilot {
+            if messages.is_empty() {
                 continue;
             }
-            let native_session_id = if adapter == HistoryAdapter::Copilot {
-                crate::domain::conversation::snapshot_identity::extract_native_session_id(item)
-            } else {
-                extract_native_session_id(item)
-            };
-            let Some(native_session_id) = native_session_id.or_else(|| {
-                (adapter == HistoryAdapter::Copilot)
-                    .then(|| session_id(adapter.id(), path, &format!("{key}-{index}")))
-            }) else {
-                continue;
-            };
             sessions.push(session_from_messages_with_title(
                 adapter,
                 path,
                 metadata,
                 source_kind,
-                native_session_id,
+                extract_native_session_id(item).unwrap_or_else(|| format!("{}-{}", key, index)),
                 messages,
                 extract_conversation_title(item),
             ));
@@ -466,6 +455,11 @@ pub(super) fn messages_from_json(
     let Some(text) = extract_text(value) else {
         return Vec::new();
     };
+    if let Some(message) =
+        delegated_subagent_prompt_message(adapter, path, index, &role, &text, created_at.clone())
+    {
+        return vec![message];
+    }
     let Some(mut message) =
         plain_history_message(adapter, path, index, 0, &role, &text, created_at)
     else {
@@ -515,6 +509,16 @@ pub(super) fn message_from_native_content_block(
         ));
     }
     let text = extract_text(block)?;
+    if let Some(message) = delegated_subagent_prompt_message(
+        adapter,
+        path,
+        index,
+        outer_role,
+        &text,
+        created_at.clone(),
+    ) {
+        return Some(message);
+    }
     plain_history_message(
         adapter,
         path,
@@ -543,38 +547,10 @@ pub(super) fn native_content_semantic(value: &Value) -> String {
 /// identity in the path rather than in the records. Falling back to the
 /// literal "file" collapses every conversation of the agent into a single
 /// native identity, which breaks dedupe and open-session refresh targeting.
-fn native_session_id_or_layout(
-    adapter: HistoryAdapter,
-    value: &Value,
-    path: &Path,
-) -> Option<String> {
+fn native_session_id_or_path(value: &Value, path: &Path) -> String {
     extract_native_session_id(value)
-        // A single-document session record commonly names itself with a bare
-        // `id`; that is still record-native identity, never a file-stem or
-        // positional placeholder. The snapshot identity owner already admits
-        // it, so a usage or browse read of the same document cannot diverge.
-        .or_else(|| {
-            crate::domain::conversation::snapshot_identity::extract_native_session_id(value)
-        })
-        .or_else(|| {
-            matches!(adapter, HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode)
-                .then(|| super::delegated_transcripts::transcript_conversation_id(path))
-                .flatten()
-        })
         .or_else(|| directory_component_session_id(path))
-}
-
-fn text_layout_session_id(adapter: HistoryAdapter, path: &Path) -> Option<String> {
-    if matches!(adapter, HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode) {
-        return super::delegated_transcripts::transcript_conversation_id(path);
-    }
-    directory_component_session_id(path).or_else(|| {
-        path.file_stem()
-            .and_then(|value| value.to_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    })
+        .unwrap_or_else(|| "file".to_string())
 }
 
 fn directory_component_session_id(path: &Path) -> Option<String> {

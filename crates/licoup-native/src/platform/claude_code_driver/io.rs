@@ -8,15 +8,16 @@ pub(super) const MAX_PROTOCOL_LINE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug)]
 pub(super) enum TransportEvent {
-    Line(Vec<u8>),
+    Message { message: Value, bytes: usize },
+    InvalidJson,
     LineLimitExceeded,
     StdoutReadFailed,
     StdoutClosed,
 }
 
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
-    let bytes =
-        crate::platform::native_agent_parser::adapters::claude_code::encode_message(message)?;
+    let mut bytes = serde_json::to_vec(message).map_err(io::Error::other)?;
+    bytes.push(b'\n');
     stdin
         .enqueue(bytes)
         .map_err(|_| io::Error::other("Claude Code protocol write failed"))
@@ -59,8 +60,22 @@ pub(super) fn read_protocol_messages<R: BufRead>(mut reader: R, sender: Sender<T
 }
 
 pub(super) fn send_protocol_line(line: &[u8], sender: &Sender<TransportEvent>) -> Result<(), ()> {
+    let trimmed = line
+        .iter()
+        .copied()
+        .skip_while(|byte| byte.is_ascii_whitespace())
+        .collect::<Vec<_>>();
+    if trimmed.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Ok(());
+    }
+    let message = serde_json::from_slice(&trimmed).map_err(|_| {
+        let _ = sender.send(TransportEvent::InvalidJson);
+    })?;
     sender
-        .send(TransportEvent::Line(line.to_vec()))
+        .send(TransportEvent::Message {
+            message,
+            bytes: line.len(),
+        })
         .map_err(|_| ())
 }
 

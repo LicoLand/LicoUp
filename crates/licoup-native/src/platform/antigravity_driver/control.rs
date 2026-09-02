@@ -1,8 +1,7 @@
-use crate::platform::native_agent_parser::adapters::antigravity::valid_session_id;
-use crate::platform::native_agent_parser::adapters::driver_registry::{
-    registry_get, registry_insert, registry_remove,
-};
+use super::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum ControlDisposition {
@@ -13,25 +12,35 @@ pub(in crate::platform) enum ControlDisposition {
     TransportUnavailable,
 }
 
-const REGISTRY_NAMESPACE: &str = "antigravity-active-turn";
-const MAX_ACTIVE_TURNS: usize = 128;
+static ACTIVE_TURNS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+
+fn active_turns() -> &'static Mutex<HashMap<String, u32>> {
+    ACTIVE_TURNS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
-    if !valid_session_id(session_id) {
+    if !safe_session_id(session_id) {
         return;
     }
-    let _ = registry_insert(REGISTRY_NAMESPACE, session_id, pid, MAX_ACTIVE_TURNS);
+    if let Ok(mut registry) = active_turns().lock() {
+        registry.insert(session_id.to_string(), pid);
+    }
 }
 
 pub(in crate::platform) fn clear_active_turn(session_id: &str) {
-    let _ = registry_remove::<u32>(REGISTRY_NAMESPACE, session_id);
+    if let Ok(mut registry) = active_turns().lock() {
+        registry.remove(session_id);
+    }
 }
 
 pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
-    if !valid_session_id(session_id) {
+    if !safe_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
-    let pid = registry_get::<u32>(REGISTRY_NAMESPACE, session_id);
+    let pid = active_turns()
+        .lock()
+        .ok()
+        .and_then(|registry| registry.get(session_id).copied());
     let Some(pid) = pid else {
         return ControlDisposition::NoActiveTurn;
     };
@@ -52,7 +61,7 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
 }
 
 pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
-    if !valid_session_id(session_id) {
+    if !safe_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
     match remove_antigravity_brain(session_id) {
@@ -60,6 +69,15 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
         Ok(false) => ControlDisposition::NotPersisted,
         Err(_) => ControlDisposition::TransportUnavailable,
     }
+}
+
+pub(in crate::platform) fn safe_session_id(session_id: &str) -> bool {
+    let len = session_id.len();
+    len >= MIN_SESSION_ID_LEN
+        && len <= MAX_SESSION_ID_LEN
+        && session_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -86,7 +104,7 @@ fn remove_antigravity_brain(session_id: &str) -> Result<bool, ()> {
 }
 
 fn is_safe_brain_dir(home: &Path, brain: &Path, session_id: &str) -> bool {
-    if !valid_session_id(session_id) {
+    if !safe_session_id(session_id) {
         return false;
     }
     let root = home.join(".gemini").join("antigravity-cli").join("brain");

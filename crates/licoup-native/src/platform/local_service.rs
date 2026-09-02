@@ -17,7 +17,6 @@ pub(super) mod state;
 pub(super) mod turn_control;
 
 pub use endpoint::ServeEndpoint;
-pub(super) use endpoint::{ServeAttachment, ServeModel, ServeModelCatalog, ServeReadiness};
 pub(super) use serve::{ServeErrorCodes, ServeSpec};
 
 #[cfg(test)]

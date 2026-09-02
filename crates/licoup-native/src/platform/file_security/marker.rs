@@ -43,20 +43,6 @@ pub fn read_private_text_bounded(path: &Path, max_bytes: usize) -> Result<Option
         .map_err(|_| anyhow!("private state text is not UTF-8"))
 }
 
-pub(crate) fn read_existing_private_text_bounded(
-    path: &Path,
-    max_bytes: usize,
-) -> Result<Option<String>> {
-    let Some(content) =
-        read_private_bytes_bounded_with_parent(path, max_bytes, ParentAccess::ExistingReadOnly)?
-    else {
-        return Ok(None);
-    };
-    String::from_utf8(content)
-        .map(Some)
-        .map_err(|_| anyhow!("private state text is not UTF-8"))
-}
-
 pub fn open_private_text_bounded(
     path: &Path,
     max_bytes: usize,
@@ -107,35 +93,7 @@ pub fn remove_private_state_marker(path: &Path) -> Result<bool> {
 }
 
 fn read_private_bytes_bounded(path: &Path, max_bytes: usize) -> Result<Option<Vec<u8>>> {
-    read_private_bytes_bounded_with_parent(path, max_bytes, ParentAccess::EnsurePrivate)
-}
-
-#[derive(Clone, Copy)]
-enum ParentAccess {
-    EnsurePrivate,
-    ExistingReadOnly,
-}
-
-fn read_private_bytes_bounded_with_parent(
-    path: &Path,
-    max_bytes: usize,
-    parent_access: ParentAccess,
-) -> Result<Option<Vec<u8>>> {
-    match parent_access {
-        ParentAccess::EnsurePrivate => validation::ensure_private_state_parent(path)?,
-        ParentAccess::ExistingReadOnly => {
-            let parent = path
-                .parent()
-                .ok_or_else(|| anyhow!("private security state marker parent is missing"))?;
-            if !parent.try_exists()? {
-                return Ok(None);
-            }
-            validation::validate_private_path_ancestors(parent)?;
-            let parent_metadata = fs::symlink_metadata(parent)
-                .map_err(|_| anyhow!("private security state directory is unavailable"))?;
-            validation::validate_private_directory_metadata(&parent_metadata)?;
-        }
-    }
+    validation::ensure_private_state_parent(path)?;
     let Some(path_metadata) = validation::state_marker_metadata(path)? else {
         return Ok(None);
     };

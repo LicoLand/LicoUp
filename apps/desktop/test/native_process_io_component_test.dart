@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -75,30 +74,6 @@ void main() {
       expect(context.startCount, 0);
     },
   );
-
-  test('persistent conversation preserves a typed failure code', () async {
-    final processIo = BoundedNativeProcessIo(
-      processContext: _FakeProcessContext(),
-      commandExecutor: _StaticExecutor(const {}),
-      stdioRpcTransport: _FailingStdioTransport(),
-      persistentStdioRpcEnabled: true,
-    );
-
-    await expectLater(
-      processIo.streamCliJsonLinesWithStdin(const [
-        'agent',
-        'conversation',
-        'send',
-      ], '{"agent":"codex","text":"synthetic"}').toList(),
-      throwsA(
-        isA<AgentDispatchStreamException>().having(
-          (error) => error.failureCode,
-          'failureCode',
-          'invalid_response',
-        ),
-      ),
-    );
-  });
 
   test(
     'persistent conversation controls share the same structured RPC transport',
@@ -214,33 +189,6 @@ void main() {
   );
 
   test(
-    'strategy execute uses the persistent structured conversation lane',
-    () async {
-      final transport = _FakeStdioTransport();
-      final context = _FakeProcessContext();
-      final processIo = BoundedNativeProcessIo(
-        processContext: context,
-        commandExecutor: _StaticExecutor(const {}),
-        stdioRpcTransport: transport,
-        persistentStdioRpcEnabled: true,
-      );
-
-      await processIo.runCliWithStdin(
-        const ['strategy', 'execute', '--stdin-json', 'true'],
-        '{"action":"strategy.run.active","revisionDigest":"rev","conversationId":"conversation:group"}',
-      );
-
-      expect(context.startCount, 0);
-      expect(transport.structuredCalls.single.method, 'strategy.execute');
-      expect(transport.structuredCalls.single.params, {
-        'action': 'strategy.run.active',
-        'revisionDigest': 'rev',
-        'conversationId': 'conversation:group',
-      });
-    },
-  );
-
-  test(
     'LLM credential writes reuse the persistent authorized process',
     () async {
       final transport = _FakeStdioTransport();
@@ -272,23 +220,23 @@ void main() {
       ], '{"label":"Renamed"}');
 
       expect(context.startCount, 0);
-      // The JSON payload travels as structured params inside the RPC frame,
-      // never inside the CLI argument array (Tier-2 boundary).
-      expect(transport.executions, isEmpty);
-      expect(transport.structuredCalls.map((call) => call.method), [
-        'gateway.credentials.create',
-        'gateway.credentials.update',
+      expect(transport.executions, [
+        const [
+          'llm-gateway',
+          'credentials',
+          'create',
+          '--stdin-json',
+          createBody,
+        ],
+        const [
+          'llm-gateway',
+          'credentials',
+          'update',
+          '11111111-1111-4111-8111-111111111111',
+          '--stdin-json',
+          '{"label":"Renamed"}',
+        ],
       ]);
-      expect(transport.structuredCalls[0].params, {
-        'provider': 'kimi',
-        'label': 'Primary',
-        'apiKey': 'synthetic',
-        'leaseDays': 30,
-      });
-      expect(transport.structuredCalls[1].params, {
-        'label': 'Renamed',
-        'credentialId': '11111111-1111-4111-8111-111111111111',
-      });
     },
   );
 
@@ -392,15 +340,6 @@ class _FakeStdioTransport implements NativeStdioRpcTransport {
   ) async* {
     conversationRequest = Map<String, dynamic>.unmodifiable(request);
     yield const {'event': 'done'};
-  }
-}
-
-final class _FailingStdioTransport extends _FakeStdioTransport {
-  @override
-  Stream<Map<String, dynamic>> streamConversation(
-    Map<String, dynamic> request,
-  ) async* {
-    throw const LicoClientRpcException('invalid_response');
   }
 }
 

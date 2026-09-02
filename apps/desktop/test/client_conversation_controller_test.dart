@@ -9,7 +9,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 
 void main() {
   test(
-    'posts one Event and dispatches with conversation and event identity only',
+    'lists real groups and posts exact structured mention memberships',
     () async {
       final runner = _ConversationRunner();
       final controller = ClientConversationController(runner: runner);
@@ -32,39 +32,43 @@ void main() {
       );
       expect(post['conversationId'], 'conversation:group');
       expect(post['authorMembershipId'], 'membership:owner');
-      expect(post['content'], 'hello @Codex');
-      expect(post.containsKey('mentionedMembershipIds'), isFalse);
-      final dispatch = runner.requests.lastWhere(
-        (request) => request['action'] == 'conversation.dispatch.after-post',
-      );
-      expect(dispatch.keys.toSet(), {'action', 'conversationId', 'eventId'});
-      expect(dispatch['conversationId'], 'conversation:group');
-      expect(dispatch['eventId'], 'event:existing');
+      expect(post['mentionedMembershipIds'], ['membership:codex']);
       expect(controller.failureCode, isEmpty);
     },
   );
 
-  test(
-    'plain text posts without mentions and never resolves them client-side',
-    () async {
-      final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+  test('suppresses mentions and can target one Agent membership', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(runner: runner);
 
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
 
-      expect(await controller.postMessage('plain group note'), isTrue);
-      final post = runner.requests.lastWhere(
+    expect(
+      await controller.postMessage('plain group note', suppressMentions: true),
+      isTrue,
+    );
+    expect(
+      runner.requests.lastWhere(
         (request) => request['action'] == 'conversation.message.post',
-      );
-      expect(post.containsKey('mentionedMembershipIds'), isFalse);
-      expect(post['content'], 'plain group note');
-      final dispatch = runner.requests.lastWhere(
-        (request) => request['action'] == 'conversation.dispatch.after-post',
-      );
-      expect(dispatch.keys.toSet(), {'action', 'conversationId', 'eventId'});
-    },
-  );
+      )['mentionedMembershipIds'],
+      isEmpty,
+    );
+
+    expect(
+      await controller.postMessage(
+        'continue the entry slot',
+        mentionAgentId: 'codex',
+      ),
+      isTrue,
+    );
+    expect(
+      runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      )['mentionedMembershipIds'],
+      ['membership:codex'],
+    );
+  });
 
   test(
     'creates a group from one person and one Agent in one native action',
@@ -287,186 +291,6 @@ void main() {
       expect(controller.failureCode, isEmpty);
     },
   );
-
-  test('surfaces an explicit group-operation failure on the banner fields', () {
-    final controller = ClientConversationController(
-      runner: _ConversationRunner(),
-    );
-    controller.surfaceFailure(
-      'strategy/start',
-      'strategy_actor_quota_exhausted',
-    );
-    expect(controller.failureStage, 'strategy/start');
-    expect(controller.failureCode, 'strategy_actor_quota_exhausted');
-    expect(controller.failureRef, matches(RegExp(r'^#L-[0-9A-F]{4}$')));
-    expect(
-      controller.failureCopyBlob,
-      contains('ref: ${controller.failureRef}'),
-    );
-    expect(controller.failureCopyBlob, contains('stage: strategy/start'));
-    expect(controller.failureProblemCode, 'LU-ST-1923');
-    expect(
-      controller.failureCopyBlob,
-      contains('code: strategy_actor_quota_exhausted'),
-    );
-    expect(controller.failureCopyBlob, contains('problemCode: LU-ST-1923'));
-    expect(controller.failureCopyBlob, contains('domain: strategy'));
-  });
-
-  test('records a copyable failure ref when post transport fails', () async {
-    final runner = _ConversationRunner()..failPostCode = 'transport_failed';
-    final controller = ClientConversationController(runner: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    expect(await controller.postMessage('hi'), isFalse);
-    expect(controller.failureStage, 'send');
-    expect(controller.failureCode, 'transport_failed');
-    expect(controller.failureRef, matches(RegExp(r'^#L-[0-9A-F]{4}$')));
-    expect(
-      controller.failureCopyBlob,
-      contains('ref: ${controller.failureRef}'),
-    );
-    expect(controller.failureCopyBlob, contains('stage: send'));
-    expect(controller.failureCopyBlob, contains('code: transport_failed'));
-    expect(controller.failureProblemCode, 'LU-RP-1001');
-    expect(controller.failureCopyBlob, contains('problemCode: LU-RP-1001'));
-    expect(controller.failureCopyBlob, contains('domain: rpc'));
-    expect(controller.failureCopyBlob, isNot(contains('hi')));
-  });
-
-  test(
-    'captures returned live turns and surfaces a typed strategy error',
-    () async {
-      final runner = _ConversationRunner()
-        ..postTurns = [
-          {
-            'turnHandle': 'dispatch:live',
-            'conversationId': 'conversation:group',
-            'agent': 'codex',
-          },
-        ]
-        ..dispatchPending = true;
-      final controller = ClientConversationController(runner: runner);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      expect(await controller.postMessage('hello @Codex'), isTrue);
-      expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
-      expect(controller.dispatchPending, isTrue);
-
-      runner
-        ..postTurns = const []
-        ..dispatchPending = false
-        ..failStrategyStart = true;
-      expect(await controller.postMessage('start'), isTrue);
-      expect(controller.liveTurns, isEmpty);
-      expect(controller.dispatchPending, isFalse);
-      expect(controller.failureStage, 'strategy/start');
-      expect(controller.failureCode, 'strategy_actor_quota_exhausted');
-    },
-  );
-
-  test('keeps the persisted event when after-post dispatch fails', () async {
-    final runner = _ConversationRunner()..failDispatchCode = 'transport_failed';
-    final controller = ClientConversationController(runner: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-    final before = controller.events.map((event) => event.id).toList();
-
-    expect(await controller.postMessage('hi'), isTrue);
-    expect(controller.events.map((event) => event.id), before);
-    expect(controller.failureStage, 'send');
-    expect(controller.failureCode, 'transport_failed');
-    expect(controller.liveTurns, isEmpty);
-    expect(controller.dispatchPending, isFalse);
-  });
-
-  test(
-    'does not synthesize a code for an untyped dispatch exception',
-    () async {
-      final runner = _ConversationRunner()..throwUntypedDispatch = true;
-      final controller = ClientConversationController(runner: runner);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      expect(await controller.postMessage('hi'), isTrue);
-      expect(controller.failureCode, isEmpty);
-      expect(controller.liveTurns, isEmpty);
-      expect(controller.dispatchPending, isFalse);
-    },
-  );
-
-  test('classifies a malformed post result as an invalid response', () async {
-    final runner = _ConversationRunner()..malformedPost = true;
-    final controller = ClientConversationController(runner: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    expect(await controller.postMessage('hi'), isFalse);
-    expect(controller.failureStage, 'send');
-    expect(controller.failureCode, 'invalid_response');
-  });
-
-  test(
-    'a dispatch without handles and without a typed error records no failure',
-    () async {
-      final runner = _ConversationRunner()
-        ..strategyRevision = 'rev-auth'
-        ..dispatchPending = true;
-      final controller = ClientConversationController(runner: runner);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      expect(await controller.postMessage('hi'), isTrue);
-      expect(controller.liveTurns, isEmpty);
-      expect(controller.dispatchPending, isFalse);
-      expect(controller.failureCode, isEmpty);
-    },
-  );
-
-  test('settleLiveDispatch clears a leftover composer busy latch', () async {
-    final runner = _ConversationRunner()
-      ..postTurns = [
-        {
-          'turnHandle': 'dispatch:live',
-          'conversationId': 'conversation:group',
-          'agent': 'codex',
-        },
-      ]
-      ..dispatchPending = true;
-    final controller = ClientConversationController(runner: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-    expect(await controller.postMessage('hello @Codex'), isTrue);
-    expect(controller.dispatchPending, isTrue);
-    controller.settleLiveDispatch();
-    expect(controller.dispatchPending, isFalse);
-    expect(controller.liveTurns, isEmpty);
-  });
-
-  test(
-    'one catalog and timeline refresh runs after dispatch returns',
-    () async {
-      final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-      runner.requests.clear();
-
-      expect(await controller.postMessage('hi'), isTrue);
-      final actions = runner.requests
-          .map((request) => request['action'])
-          .toList();
-      expect(actions, [
-        'conversation.message.post',
-        'conversation.dispatch.after-post',
-        'conversation.list',
-        'conversation.get',
-        'conversation.events.page',
-      ]);
-    },
-  );
 }
 
 final class _ConversationRunner implements AgentCommandRunner {
@@ -476,14 +300,6 @@ final class _ConversationRunner implements AgentCommandRunner {
   bool groupArchived;
   final Completer<void>? gate;
   final Map<String, String> addedAgents = {};
-  bool failStrategyStart = false;
-  bool dispatchPending = false;
-  bool throwUntypedDispatch = false;
-  bool malformedPost = false;
-  String failPostCode = '';
-  String failDispatchCode = '';
-  String strategyRevision = '';
-  List<Map<String, dynamic>> postTurns = const [];
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -506,25 +322,6 @@ final class _ConversationRunner implements AgentCommandRunner {
       addedAgents[(principal['agentId'] ?? '').toString()] =
           (principal['displayName'] ?? '').toString();
     }
-    if (action == 'conversation.strategy.set') {
-      strategyRevision = (request['strategyRevision'] ?? '').toString();
-    }
-    if (action == 'conversation.message.post' && failPostCode.isNotEmpty) {
-      return {
-        'ok': false,
-        'error': {'code': failPostCode},
-      };
-    }
-    if (action == 'conversation.dispatch.after-post' &&
-        failDispatchCode.isNotEmpty) {
-      return {
-        'ok': false,
-        'error': {'code': failDispatchCode},
-      };
-    }
-    if (action == 'conversation.dispatch.after-post' && throwUntypedDispatch) {
-      throw StateError('synthetic dispatch exception');
-    }
     return {
       'ok': true,
       'result': switch (action) {
@@ -533,7 +330,6 @@ final class _ConversationRunner implements AgentCommandRunner {
         'conversation.get' => _conversation(
           (request['conversationId'] ?? 'conversation:group').toString(),
           addedAgents: addedAgents,
-          strategyRevision: strategyRevision,
         ),
         'conversation.events.page' => {
           'events': request['conversationId'] == 'conversation:created'
@@ -544,25 +340,9 @@ final class _ConversationRunner implements AgentCommandRunner {
               ? 0
               : 1,
         },
-        'conversation.message.post' =>
-          malformedPost
-              ? <String, dynamic>{}
-              : {
-                  'event': _event(),
-                  'directTurns': <Map<String, dynamic>>[],
-                  'turns': <Map<String, dynamic>>[],
-                  'dispatchPending': false,
-                },
-        'conversation.dispatch.after-post' => {
-          'event': {'id': request['eventId']},
+        'conversation.message.post' => {
+          'event': _event(),
           'directTurns': <Map<String, dynamic>>[],
-          'turns': postTurns,
-          'dispatchPending': dispatchPending && !failStrategyStart,
-          if (failStrategyStart)
-            'strategyError': <String, dynamic>{
-              'code': 'strategy_actor_quota_exhausted',
-              'stage': 'strategy/start',
-            },
         },
         'conversation.membership.add' => <String, dynamic>{},
         _ => <String, dynamic>{},
@@ -620,7 +400,6 @@ Map<String, dynamic> _summary({
 Map<String, dynamic> _conversation(
   String id, {
   Map<String, String> addedAgents = const {},
-  String strategyRevision = '',
 }) => {
   'id': id,
   'title': id == 'conversation:created' ? 'Review room' : 'Lico',
@@ -631,7 +410,6 @@ Map<String, dynamic> _conversation(
   'createdAtUnixMs': 1,
   'updatedAtUnixMs': 10,
   'eventCount': id == 'conversation:created' ? 0 : 1,
-  'strategyRevision': strategyRevision,
   'memberships': [
     _membership(
       id: 'membership:owner',

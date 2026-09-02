@@ -12,7 +12,10 @@ mod protocol;
 mod support;
 
 pub(super) use super::probe::probe as probe_driver;
-pub(super) use super::{HERMES_SESSION_DRIVER, RUNTIME_PROTOCOL, cancel, cleanup_session, execute};
+pub(super) use super::{
+    HERMES_SESSION_DRIVER, RUNTIME_PROTOCOL, cancel, cleanup_session, execute,
+    resolve_parked_permission,
+};
 pub(super) use crate::platform::acp_session_transport::errors::ProtocolFailure;
 pub(super) use crate::platform::acp_session_transport::{
     ControlDisposition, INITIALIZE_REQUEST_ID, LaunchSpec, MODEL_REQUEST_ID, PROMPT_REQUEST_ID,

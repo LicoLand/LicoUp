@@ -77,18 +77,7 @@ impl CompiledWorkflow {
     }
 }
 
-pub fn compile_workflow(definition: WorkflowDefinition) -> Result<CompiledWorkflow> {
-    compile_workflow_inner(definition, false)
-}
-
-pub fn compile_persisted_workflow(definition: WorkflowDefinition) -> Result<CompiledWorkflow> {
-    compile_workflow_inner(definition, true)
-}
-
-fn compile_workflow_inner(
-    mut definition: WorkflowDefinition,
-    fill_legacy_effect_routing: bool,
-) -> Result<CompiledWorkflow> {
+pub fn compile_workflow(mut definition: WorkflowDefinition) -> Result<CompiledWorkflow> {
     ensure!(
         definition.has_supported_schema(),
         "workflow_schema_unsupported"
@@ -303,17 +292,6 @@ fn compile_workflow_inner(
         state_indexes.contains_key(&definition.initial),
         "workflow_initial_unknown"
     );
-    if fill_legacy_effect_routing {
-        normalize_legacy_effect_routing(&mut definition, &mut state_indexes)?;
-        ensure!(
-            definition.states.len() <= MAX_GRAPH_STATES,
-            "workflow_state_limit"
-        );
-        ensure!(
-            definition.transitions.len() <= MAX_GRAPH_TRANSITIONS,
-            "workflow_transition_limit"
-        );
-    }
 
     let mut transition_ids = BTreeSet::new();
     let mut transition_indexes = BTreeMap::<(String, TransitionEvent), Vec<usize>>::new();
@@ -392,131 +370,6 @@ fn compile_workflow_inner(
         predecessors,
         reachable,
     })
-}
-
-fn is_effect_state(kind: GraphStateKind) -> bool {
-    matches!(
-        kind,
-        GraphStateKind::Authorization
-            | GraphStateKind::Actor
-            | GraphStateKind::Script
-            | GraphStateKind::Workset
-    )
-}
-
-fn normalize_legacy_effect_routing(
-    definition: &mut WorkflowDefinition,
-    state_indexes: &mut BTreeMap<String, usize>,
-) -> Result<()> {
-    let effect_ids = definition
-        .states
-        .iter()
-        .filter(|state| is_effect_state(state.kind))
-        .map(|state| state.id.clone())
-        .collect::<BTreeSet<_>>();
-    if effect_ids.is_empty() {
-        return Ok(());
-    }
-
-    let mut has_success = BTreeSet::new();
-    let mut has_failure = BTreeSet::new();
-    for transition in &definition.transitions {
-        if !effect_ids.contains(&transition.from) {
-            continue;
-        }
-        match transition.event {
-            TransitionEvent::Success => {
-                has_success.insert(transition.from.clone());
-            }
-            TransitionEvent::Failure => {
-                has_failure.insert(transition.from.clone());
-            }
-            TransitionEvent::Complete => {}
-        }
-    }
-    for transition in &mut definition.transitions {
-        if !effect_ids.contains(&transition.from) || transition.event != TransitionEvent::Complete {
-            continue;
-        }
-        // Older graphs used Complete on actor/authorization states.
-        // Keep one Success path; reuse extra Complete edges as Failure.
-        if !has_success.contains(&transition.from) {
-            transition.event = TransitionEvent::Success;
-            has_success.insert(transition.from.clone());
-        } else if !has_failure.contains(&transition.from) {
-            transition.event = TransitionEvent::Failure;
-            has_failure.insert(transition.from.clone());
-        }
-    }
-    definition.transitions.retain(|transition| {
-        !(effect_ids.contains(&transition.from) && transition.event == TransitionEvent::Complete)
-    });
-    let missing_failure = effect_ids
-        .iter()
-        .filter(|id| has_success.contains(*id) && !has_failure.contains(*id))
-        .cloned()
-        .collect::<Vec<_>>();
-    if missing_failure.is_empty() {
-        return Ok(());
-    }
-
-    let terminal_id = if let Some(state) = definition
-        .states
-        .iter()
-        .find(|state| matches!(state.kind, GraphStateKind::Blocked | GraphStateKind::Fail))
-    {
-        state.id.clone()
-    } else {
-        let mut terminal_id = "blocked".to_owned();
-        let mut suffix = 0u32;
-        while state_indexes.contains_key(&terminal_id) {
-            suffix += 1;
-            terminal_id = format!("blocked-{suffix}");
-        }
-        validate_identifier(&terminal_id, "workflow_state_id")?;
-        definition.states.push(GraphState {
-            id: terminal_id.clone(),
-            kind: GraphStateKind::Blocked,
-            label: "Blocked".into(),
-            instruction: String::new(),
-            binding: None,
-            runtime: None,
-            entry: None,
-            workset: None,
-            retry: Default::default(),
-        });
-        ensure!(
-            state_indexes
-                .insert(terminal_id.clone(), definition.states.len() - 1)
-                .is_none(),
-            "workflow_state_duplicate"
-        );
-        terminal_id
-    };
-
-    let mut transition_ids = definition
-        .transitions
-        .iter()
-        .map(|transition| transition.id.clone())
-        .collect::<BTreeSet<_>>();
-    for state_id in missing_failure {
-        let mut transition_id = format!("{state_id}-legacy-failure");
-        let mut suffix = 0u32;
-        while transition_ids.contains(&transition_id) {
-            suffix += 1;
-            transition_id = format!("{state_id}-legacy-failure-{suffix}");
-        }
-        validate_identifier(&transition_id, "workflow_transition_id")?;
-        transition_ids.insert(transition_id.clone());
-        definition.transitions.push(Transition {
-            id: transition_id,
-            from: state_id,
-            to: terminal_id.clone(),
-            event: TransitionEvent::Failure,
-            guard: None,
-        });
-    }
-    Ok(())
 }
 
 fn unique_ids<'a>(
@@ -617,7 +470,7 @@ fn validate_state_edges(
                                 TransitionEvent::Success | TransitionEvent::Failure
                             )
                         }),
-                    format!("workflow_effect_routing_incomplete:{}", state.id)
+                    "workflow_effect_routing_incomplete"
                 );
             }
         }
@@ -1327,146 +1180,6 @@ mod tests {
             guard: None,
         });
         assert!(compile_workflow(definition).is_ok());
-    }
-
-    #[test]
-    fn effect_states_normalize_legacy_success_only_routing() {
-        let mut definition = workflow(
-            vec![
-                state("plan", GraphStateKind::Actor),
-                state("done", GraphStateKind::Succeed),
-            ],
-            vec![Transition {
-                id: "plan-ready".into(),
-                from: "plan".into(),
-                to: "done".into(),
-                event: TransitionEvent::Success,
-                guard: None,
-            }],
-        );
-        definition.actor_slots = vec![crate::domain::adaptive_flywheel::ActorSlot::required_actor(
-            "entry", "Entry",
-        )];
-        definition.states[0].binding = Some("entry".into());
-        let compiled = compile_persisted_workflow(definition).unwrap();
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Failure)
-                .count(),
-            1
-        );
-        assert!(
-            compiled
-                .state("blocked")
-                .is_some_and(|state| state.kind == GraphStateKind::Blocked)
-        );
-    }
-
-    #[test]
-    fn effect_states_reuse_extra_complete_edges_as_failure() {
-        let mut definition = workflow(
-            vec![
-                state("plan", GraphStateKind::Actor),
-                state("done", GraphStateKind::Succeed),
-                state("blocked", GraphStateKind::Blocked),
-            ],
-            vec![
-                Transition {
-                    id: "plan-ready".into(),
-                    from: "plan".into(),
-                    to: "done".into(),
-                    event: TransitionEvent::Success,
-                    guard: None,
-                },
-                Transition {
-                    id: "plan-complete".into(),
-                    from: "plan".into(),
-                    to: "blocked".into(),
-                    event: TransitionEvent::Complete,
-                    guard: None,
-                },
-            ],
-        );
-        definition.actor_slots = vec![crate::domain::adaptive_flywheel::ActorSlot::required_actor(
-            "entry", "Entry",
-        )];
-        definition.states[0].binding = Some("entry".into());
-        let compiled = compile_persisted_workflow(definition).unwrap();
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Success)
-                .count(),
-            1
-        );
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Failure)
-                .count(),
-            1
-        );
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Complete)
-                .count(),
-            0
-        );
-    }
-
-    #[test]
-    fn effect_states_drop_leftover_complete_after_success_and_failure_exist() {
-        let mut definition = workflow(
-            vec![
-                state("plan", GraphStateKind::Actor),
-                state("done", GraphStateKind::Succeed),
-                state("blocked", GraphStateKind::Blocked),
-            ],
-            vec![
-                Transition {
-                    id: "plan-ready".into(),
-                    from: "plan".into(),
-                    to: "done".into(),
-                    event: TransitionEvent::Success,
-                    guard: None,
-                },
-                Transition {
-                    id: "plan-failed".into(),
-                    from: "plan".into(),
-                    to: "blocked".into(),
-                    event: TransitionEvent::Failure,
-                    guard: None,
-                },
-                Transition {
-                    id: "plan-complete".into(),
-                    from: "plan".into(),
-                    to: "blocked".into(),
-                    event: TransitionEvent::Complete,
-                    guard: None,
-                },
-            ],
-        );
-        definition.actor_slots = vec![crate::domain::adaptive_flywheel::ActorSlot::required_actor(
-            "entry", "Entry",
-        )];
-        definition.states[0].binding = Some("entry".into());
-        let compiled = compile_persisted_workflow(definition).unwrap();
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Complete)
-                .count(),
-            0
-        );
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Success)
-                .count(),
-            1
-        );
-        assert_eq!(
-            compiled
-                .transitions("plan", TransitionEvent::Failure)
-                .count(),
-            1
-        );
     }
 
     #[test]

@@ -9,8 +9,8 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const facadeRef = "tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs";
-const moduleRoot = "tests/product-e2e/cli/agent-conversations/support/reducer";
+const facadeRef = "tools/scripts/client-agent-conversation-parity-reducer.mjs";
+const moduleRoot = "tools/scripts/client-agent-conversation-parity-reducer";
 const leaves = Object.freeze([
   "cli.mjs",
   "constants.mjs",

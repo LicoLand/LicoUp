@@ -14,7 +14,7 @@
     "versionProbe": "fixed --version probe",
     "capabilityProbe": "fixed help probe for streaming input flags",
     "newSessionMethod": "first supervised streaming-input turn",
-    "exactResumeMethod": "process-local binding with native --resume fallback",
+    "exactResumeMethod": "process-local protected native-session binding",
     "streamingMethod": "stream-json partial message events",
     "historyMethod": "process-local exact transcript projection",
     "cleanupMethod": "terminate supervised process and erase process-local binding",
@@ -26,17 +26,18 @@
     "family": "stream-json",
     "origin": "official",
     "promptChannel": "stdin",
-    "continuityChannel": "launch-argument",
+    "continuityChannel": "protected-mapping",
     "workingDirectoryChannel": "process-cwd",
     "framing": "jsonl",
-    "sessionScope": "persistent",
+    "sessionScope": "process",
     "fixedLaunchArguments": [
       "--print",
       "--input-format",
       "stream-json",
       "--output-format",
       "stream-json",
-      "--include-partial-messages"
+      "--include-partial-messages",
+      "--no-session-persistence"
     ]
   },
   "configuration": {
@@ -60,7 +61,7 @@
     },
     "exactResume": {
       "status": "supported",
-      "method": "process-local binding with native --resume fallback"
+      "method": "process-local protected native-session binding"
     },
     "send": {
       "status": "supported",
@@ -125,7 +126,7 @@
   },
   "privacy": {
     "promptInArguments": false,
-    "continuityIdInArguments": true,
+    "continuityIdInArguments": false,
     "boundedInput": true,
     "boundedOutput": true,
     "structuredEventProjection": true,

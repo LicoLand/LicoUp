@@ -17,93 +17,60 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   required String requestId,
   required String workflowId,
   required StdioRpcSessionManager sessionManager,
-  bool recreateIfDeadBeforeWrite = false,
 }) async {
-  var attemptedRecreate = false;
-
-  Future<void> reconnectWithoutReplay() async {
+  final session = await sessionManager.ensureSession();
+  late Future<StdioRpcFrame> responseFuture;
+  try {
+    responseFuture = session.expectFrame(requestId: requestId);
+  } on Object {
     await sessionManager.invalidateAndDiscard();
-    if (!recreateIfDeadBeforeWrite || attemptedRecreate) return;
-    attemptedRecreate = true;
-    try {
-      await sessionManager.ensureSession();
-    } on Object {
-      // The current command remains outcome-unknown either way. A later
-      // command may try normal setup again; this command is never replayed.
-    }
+    throw const LicoClientRpcException('transport_failed');
   }
 
-  while (true) {
-    final session = await sessionManager.ensureSession();
-    if (!session.usable) {
-      await sessionManager.invalidateAndDiscard();
-      if (recreateIfDeadBeforeWrite && !attemptedRecreate) {
-        attemptedRecreate = true;
-        continue;
-      }
-      throw const LicoClientRpcException('transport_failed');
-    }
-    late Future<StdioRpcFrame> responseFuture;
-    try {
-      responseFuture = session.expectFrame(requestId: requestId);
-      // A failed write abandons this expectation before the normal await site.
-      // Mark the future observed immediately so that completion during teardown
-      // cannot escape as an uncaught asynchronous transport error.
-      responseFuture.ignore();
-    } on Object {
-      await sessionManager.invalidateAndDiscard();
-      if (recreateIfDeadBeforeWrite && !attemptedRecreate) {
-        attemptedRecreate = true;
-        continue;
-      }
-      throw const LicoClientRpcException('transport_failed');
-    }
-
-    // A write may reach native code even when flush fails. Commands are never
-    // replayed against a replacement process after this point.
-    try {
-      await writeStdioRpcFrame(session, encoded);
-    } on Object {
-      session.abandonExpectedFrame(requestId);
-      await reconnectWithoutReplay();
-      throw const LicoClientRpcException('transport_failed');
-    }
-
-    late StdioRpcFrame responseFrame;
-    try {
-      responseFrame = await responseFuture;
-    } on Object {
-      await reconnectWithoutReplay();
-      throw const LicoClientRpcException('transport_failed');
-    }
-    final responseBytes = responseFrame.bytes;
-    if (responseBytes == null) {
-      await reconnectWithoutReplay();
-      throw const LicoClientRpcException('transport_failed');
-    }
-
-    late StdioRpcCommandReply reply;
-    try {
-      reply = decodeStdioRpcCommandReply(
-        responseBytes,
-        requestId: requestId,
-        workflowId: workflowId,
-      );
-    } on StdioRpcProtocolViolation {
-      await sessionManager.invalidateAndDiscard();
-      throw const LicoClientRpcException('invalid_response');
-    }
-    final result = reply.result;
-    if (result != null) return result;
-    final ClientError error =
-        reply.error ??
-        ClientError.fromJson(const <String, Object?>{
-          'code': 'command_failed',
-          'stage': 'stdio_rpc/response',
-          'component': 'native_cli',
-          'retryable': false,
-          'recovery': 'retry_or_review_request',
-        });
-    throw LicoClientRpcException.fromClientError(error);
+  // A write may reach native code even when flush fails. Commands are never
+  // replayed against a replacement process after this point.
+  try {
+    await writeStdioRpcFrame(session, encoded);
+  } on Object {
+    session.abandonExpectedFrame(requestId);
+    await sessionManager.invalidateAndDiscard();
+    throw const LicoClientRpcException('transport_failed');
   }
+
+  late StdioRpcFrame responseFrame;
+  try {
+    responseFrame = await responseFuture;
+  } on Object {
+    await sessionManager.invalidateAndDiscard();
+    throw const LicoClientRpcException('transport_failed');
+  }
+  final responseBytes = responseFrame.bytes;
+  if (responseBytes == null) {
+    await sessionManager.invalidateAndDiscard();
+    throw const LicoClientRpcException('transport_failed');
+  }
+
+  late StdioRpcCommandReply reply;
+  try {
+    reply = decodeStdioRpcCommandReply(
+      responseBytes,
+      requestId: requestId,
+      workflowId: workflowId,
+    );
+  } on StdioRpcProtocolViolation {
+    await sessionManager.invalidateAndDiscard();
+    throw const LicoClientRpcException('invalid_response');
+  }
+  final result = reply.result;
+  if (result != null) return result;
+  final ClientError error =
+      reply.error ??
+      ClientError.fromJson(const <String, Object?>{
+        'code': 'command_failed',
+        'stage': 'stdio_rpc/response',
+        'component': 'native_cli',
+        'retryable': false,
+        'recovery': 'retry_or_review_request',
+      });
+  throw LicoClientRpcException.fromClientError(error);
 }

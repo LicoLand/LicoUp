@@ -10,58 +10,26 @@ test("LicoUp is one declarative Apple Release use case", () => {
   const config = readJson("tools/apple-release/macos-direct-arm64.json");
   assert.equal(config.schema, "apple-release.config.v1");
   assert.equal(config.source.branch, "release");
-  assert.equal(config.candidate?.template, "release-candidate/v{version}");
-  assert.ok(config.candidate?.requiredChecks?.length > 0);
-  assert.equal(config.candidate?.mergeMethod, undefined);
-  assert.equal(config.version.prepare, undefined);
-  assert.equal(config.version.allowedPaths, undefined);
+  assert.equal(Object.hasOwn(config, "candidate"), false);
+  assert.equal(Array.isArray(config.version.prepare), false);
   assert.equal(config.apple.target, "macos-direct-arm64");
   assert.equal(config.github.repository, "LicoLand/LicoUp");
   assert.deepEqual(config.gates[0], ["npm", "ci"]);
-  assert.deepEqual(config.build?.command, [
-    "npm",
-    "run",
-    "client:build",
-    "--",
-    "--platform",
-    "macos",
-  ]);
-  assert.deepEqual(config.update?.command, [
-    "node",
-    "tools/scripts/client-update-manifest.mjs",
-    "--assets",
-    "build/apple-release",
-    "--tag",
-    "{tag}",
-    "--repo",
-    "{repository}",
-    "--targets",
-    "macos-direct-arm64",
-    "--minimum-supported-version",
-    "0.0.0",
-  ]);
   assert.deepEqual(config.artifacts.map(({ role, publicName }) => ({ role, publicName })), [
     { role: "installer", publicName: "LicoUp-macos-arm64.dmg" },
     { role: "installer-digest", publicName: "LicoUp-macos-arm64.dmg.sha256" },
     { role: "update-archive", publicName: "LicoUp-macos-arm64-update.zip" },
     { role: "update-digest", publicName: "LicoUp-macos-arm64-update.zip.sha256" },
-    { role: "update-manifest", publicName: "LicoUp-update-manifest.json" },
   ]);
   assert.equal(JSON.stringify(config).includes("Apple-Release"), false);
   assert.equal(JSON.stringify(config).includes("../"), false);
 });
 
-test("package commands expose the authority and both release entries", () => {
+test("package commands expose the service and exactly one release start", () => {
   const scripts = readJson("package.json").scripts;
   assert.equal(scripts["client:release:macos"],
     "apple-release release start --config tools/apple-release/macos-direct-arm64.json");
-  assert.equal(scripts["client:release:macos:publish"],
-    "apple-release release start --config tools/apple-release/macos-direct-arm64.json --authorize");
-  assert.equal(scripts["client:release:authority:configure"],
-    "apple-release authority configure --config tools/apple-release/macos-direct-arm64.json");
-  assert.equal(scripts["client:release:service:install"], undefined);
-  assert.equal(scripts["client:release:service:configure"], undefined);
-  assert.equal(scripts["client:release:service:status"], undefined);
+  assert.equal(scripts["client:release:service:install"], "apple-release service install");
   assert.equal(scripts["client:release:status"], "apple-release release status");
   assert.equal(scripts["client:promotion"], "node tools/scripts/client-promotion.mjs");
   const prePush = readFileSync(".githooks/pre-push", "utf8");

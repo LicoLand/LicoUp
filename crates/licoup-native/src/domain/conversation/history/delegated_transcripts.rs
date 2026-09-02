@@ -249,7 +249,7 @@ pub(crate) fn delegated_task_prompt_text(session: &Value) -> Option<&str> {
             message
                 .get("role")
                 .and_then(Value::as_str)
-                .is_some_and(|role| role == "user")
+                .is_some_and(|role| role == "user" || role == "subagent_prompt")
         })
         .and_then(|message| message.get("text"))
         .and_then(Value::as_str)

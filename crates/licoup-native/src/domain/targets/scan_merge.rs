@@ -23,49 +23,6 @@ pub(super) fn scan_target_with_manual(
     scan_context: &mut ScanContext,
     params: &Value,
 ) -> Result<TargetCandidate> {
-    scan_target_with_manual_projection(
-        def,
-        manual,
-        automatic_vm,
-        scan_context,
-        params,
-        TargetScanProjection::Full,
-    )
-}
-
-/// Read the target facts needed for readiness without opening model stores,
-/// executing capability probes, or producing a cacheable discovery refresh.
-pub(super) fn scan_target_read_only_with_manual(
-    def: &TargetDef,
-    manual: Option<&ManualTarget>,
-    automatic_vm: Option<&AutomaticVmTarget>,
-    scan_context: &mut ScanContext,
-    params: &Value,
-) -> Result<TargetCandidate> {
-    scan_target_with_manual_projection(
-        def,
-        manual,
-        automatic_vm,
-        scan_context,
-        params,
-        TargetScanProjection::ReadOnly,
-    )
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum TargetScanProjection {
-    Full,
-    ReadOnly,
-}
-
-fn scan_target_with_manual_projection(
-    def: &TargetDef,
-    manual: Option<&ManualTarget>,
-    automatic_vm: Option<&AutomaticVmTarget>,
-    scan_context: &mut ScanContext,
-    params: &Value,
-    projection: TargetScanProjection,
-) -> Result<TargetCandidate> {
     if let Some(manual) = manual.filter(|item| item.location == "virtual-machine") {
         return Ok(scan_virtual_machine_target(def, manual));
     }
@@ -169,8 +126,7 @@ fn scan_target_with_manual_projection(
         base_detail
     };
     let mut capabilities = adapter_capabilities_for(def.id);
-    if projection == TargetScanProjection::Full
-        && let Some(binary) = binary_path.as_deref()
+    if let Some(binary) = binary_path.as_deref()
         && param_bool(params, "probeConversationRuntime") == Some(true)
     {
         let probe_cwd = param_string(params, "workingDirectory")
@@ -199,17 +155,11 @@ fn scan_target_with_manual_projection(
     let runtime_available =
         candidate_runtime_is_available(&mut capabilities, def.id, binary_path.as_deref());
     let adapter_status = "implemented";
-    let model_catalog = if projection == TargetScanProjection::ReadOnly {
-        None
-    } else if detected || manual_entry {
-        let catalog_params = model_catalog_params(def.id, binary_path.as_deref(), params);
-        Some(model_catalog_for_target(
-            def.id,
-            config_path.as_deref(),
-            &catalog_params,
-        ))
+    let catalog_params = model_catalog_params(def.id, binary_path.as_deref(), params);
+    let model_catalog = if detected || manual_entry {
+        model_catalog_for_target(def.id, config_path.as_deref(), &catalog_params)
     } else {
-        Some(empty_model_catalog("unavailable", "not-detected"))
+        empty_model_catalog("unavailable", "not-detected")
     };
 
     let mut supported_actions = Vec::new();
@@ -253,7 +203,7 @@ fn scan_target_with_manual_projection(
             }
             .to_string(),
         ),
-        model_catalog,
+        model_catalog: Some(model_catalog),
     })
 }
 

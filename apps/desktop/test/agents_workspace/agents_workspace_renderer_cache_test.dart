@@ -1,5 +1,3 @@
-import 'package:licoup/src/contracts/target_management.dart';
-
 import 'support/agents_workspace_test_harness.dart';
 
 void registerAgentsWorkspaceRendererCacheScenarios() {
@@ -13,9 +11,7 @@ void registerAgentsWorkspaceRendererCacheScenarios() {
       AgentRenderAdapterRegistry.instance = previousRegistry;
     });
 
-    final agentService = _RendererCacheAgentService();
-    addTearDown(agentService.dispose);
-    final controller = ClientController(agentService: agentService);
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -103,17 +99,6 @@ void registerAgentsWorkspaceRendererCacheScenarios() {
 
     expect(registry.resolveCalls, 2);
   });
-}
-
-final class _RendererCacheAgentService extends AgentService {
-  @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
-    bool enableAgentCliModelLookup = false,
-  }) async => TargetScanBatch([
-    for (final targetId in targetIds)
-      TargetScanSlot(targetId: targetId, failed: true),
-  ]);
 }
 
 void main() => registerAgentsWorkspaceRendererCacheScenarios();

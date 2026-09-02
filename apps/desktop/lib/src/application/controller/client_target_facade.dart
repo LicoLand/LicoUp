@@ -68,9 +68,6 @@ mixin ClientTargetFacade on AgentWorkspaceCoordinator {
   bool isRefreshingNativeModelCatalog(String targetId) =>
       targetController.isRefreshingNativeModelCatalog(targetId);
 
-  Future<void> refreshAgentModelCatalogs(Iterable<String> targetIds) =>
-      targetController.refreshAgentModelCatalogs(targetIds);
-
   Future<void> addManualTarget({
     required String target,
     String configPath = '',

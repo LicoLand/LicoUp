@@ -35,11 +35,6 @@ pair; there is no global active provider. Messaging channels are documented in
   authorization that rebuilds the handoff (hot apply) or on the next cold start.
 - Codex and Claude Code managed configuration points only to the loopback
   Gateway. Upstream provider API keys are never copied into agent files.
-- Authenticated `GET /v1/models` and `GET /models` requests query each provider
-  represented in the current in-memory credential lease and return its live
-  `/models` response. No authorized provider credential means an empty list;
-  an invalid authorized credential returns the upstream failure instead of a
-  product-owned fallback catalog.
 
 ## Configuration
 
@@ -66,31 +61,25 @@ pair; there is no global active provider. Messaging channels are documented in
 }
 ```
 
-The shipped configuration defines only the fixed Kimi, DeepSeek, and Kilo
-provider boundaries. It contains no product-owned model inventory. A model
-request uses `{provider}:{upstream-model-id}` (for example
-`kimi:kimi-k3`, `deepseek:deepseek-v4-flash`, or
-`kilo:anthropic/claude-sonnet-4.5`); the Gateway removes only the first provider
-prefix before forwarding the request. Model-list responses preserve each
-upstream model object and expose the namespaced id, plus `upstream_id` and
-`gateway_provider`, so combined provider catalogs remain unambiguous.
-If one authorized provider is unavailable while another succeeds, the healthy
-models are returned with `partial: true` and a redacted
-`failed_provider_count`; model discovery has one 45-second aggregate deadline.
-
-OpenCode and Pi require explicit custom-provider model entries. Their
-agent-config plan/apply commands therefore snapshot the live list from a
-running Gateway. When the Gateway is stopped, the snapshot is empty; when it
-is running, an upstream catalog or credential failure fails the plan rather
-than substituting fixed model names. Codex and Claude Code continue to use the
-Gateway endpoint directly without an embedded model list.
-The one-click OpenCode/Pi helpers refuse to apply an empty snapshot.
+The shipped default catalog defines Kimi, DeepSeek, and Kilo providers. Routes
+are the closed product catalog in `domain/llm_gateway_default_catalog.rs`.
+At Gateway start and agent-config plan/apply time, only providers that currently
+have at least one non-expired saved API key are materialized: their routes and
+OpenCode/Pi model lists are projected; providers without a usable key are
+omitted entirely. When no usable keys exist, the Gateway config is empty and
+advertises no models. Client-facing `requestedModel` ids use
+`{provider}:{alias}` (for example `kimi:k3`, `deepseek:deepseek-v4-flash`,
+`kilo:kilo-auto/free`); `upstreamModel` remains the vendor or Kilo API id.
+The curated Kilo set includes the stable `kilo-auto/*` tiers and current named
+upstream ids. Agent-config adapters advertise only the client-facing aliases
+for providers with usable keys. Kilo’s full hosted inventory is hundreds of
+models; the Gateway keeps an explicit curated subset rather than proxying the
+entire remote list.
 
 The configuration must be an absolute regular file no larger than 1 MiB. Run
 `lico-llm-gateway --config <absolute-path> --check` before starting the
 sidecar. It listens on `127.0.0.1:15722` by default. Non-loopback HTTP
-endpoints, redirects, unknown providers, unnamespaced dynamic models, and
-unknown fields fail closed.
+endpoints, redirects, unknown models, and unknown fields fail closed.
 
 ## Credential custody
 
@@ -111,7 +100,6 @@ The native surface is closed to these operations:
 - `llm-gateway service start [--port]`
 - `llm-gateway service stop [--port]`
 - `llm-gateway agent-config plan <codex|claude-code|opencode|pi> <absolute-config-root>`
-- `llm-gateway agent-config apply <codex|claude-code|opencode|pi> <absolute-config-root> --confirmation <digest> --confirmed [--stdin-json true]`
 
 The agent configuration command produces a reviewable, secret-free plan. Codex
 uses an official custom `model_providers` profile with a Responses API base URL;
@@ -123,9 +111,7 @@ global config. Pi writes a sidecar `models.licoup-gateway.json` (OpenAI
 Completions provider) and never rewrites `models.json` wholesale; the helper
 merges only `providers.licoup-gateway` into `~/.pi/agent/models.json`. Unknown
 agents fail closed until a precise adapter is added to the canonical runtime
-registry. OpenCode and Pi apply receive the plan's exact model snapshot through
-private stdin, so upstream catalog drift after preview cannot change confirmed
-content.
+registry.
 
 Developer one-click helpers (same sidecar semantics):
 
