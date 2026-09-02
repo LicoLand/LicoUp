@@ -3,8 +3,8 @@ import 'client_controller_scenario_json.dart';
 
 mixin FakeAgentStateSupport on AgentService {
   int scanTargetsCalls = 0;
-  int scanBatchSlotCalls = 0;
-  final List<String> scannedBatchTargetIds = <String>[];
+  int scanOneTargetCalls = 0;
+  final List<String> scannedOneTargetIds = <String>[];
   final List<bool> catalogLookups = <bool>[];
   int inspectTargetCalls = 0;
   int addTargetCalls = 0;
@@ -85,32 +85,24 @@ mixin FakeAgentStateSupport on AgentService {
   }
 
   @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
     bool enableAgentCliModelLookup = false,
   }) async {
-    scanTargetsCalls += targetIds.length;
-    scanBatchSlotCalls += targetIds.length;
-    scannedBatchTargetIds.addAll(targetIds);
-    catalogLookups.addAll(
-      List<bool>.filled(targetIds.length, enableAgentCliModelLookup),
-    );
+    scanTargetsCalls++;
+    scanOneTargetCalls++;
+    scannedOneTargetIds.add(targetId);
+    catalogLookups.add(enableAgentCliModelLookup);
     if (throwScanTargets) {
       throw Exception('scan failed');
     }
-    final slots = <TargetScanSlot>[];
-    for (final targetId in targetIds) {
-      final id = targetId.trim();
-      slots.add(
-        TargetScanSlot(
-          targetId: targetId,
-          candidate: scanTargetsResult
-              .where((target) => target.target == id)
-              .firstOrNull,
-        ),
-      );
+    final id = targetId.trim();
+    for (final target in scanTargetsResult) {
+      if (target.target == id) {
+        return target;
+      }
     }
-    return TargetScanBatch(slots);
+    return null;
   }
 
   @override

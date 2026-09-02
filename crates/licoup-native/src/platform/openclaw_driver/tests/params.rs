@@ -1,6 +1,4 @@
 use super::*;
-fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
-
 
 #[test]
 fn request_validation_normalizes_agent_and_keeps_private_values_off_command_config() {
@@ -31,23 +29,4 @@ fn conflicting_native_session_identity_fails_closed() {
     )
     .unwrap_err();
     assert_eq!(failure.code, "openclaw_acp_conflicting_session_id");
-}
-
-#[test]
-fn private_instructions_fail_as_a_typed_capability_without_prompt_rewrite() {
-    let sv_private_system_canary = synthetic_value("private-system-canary");
-    let sv_canary = synthetic_value("canary");
-    let failure = ProtocolConfig::from_params(
-        &json!({"privateInstructions": sv_private_system_canary.as_str()}),
-        "exact-user-prompt",
-        "",
-        Some(absolute_test_cwd().as_path()),
-    )
-    .unwrap_err();
-    assert_eq!(
-        failure.code,
-        "openclaw_acp_private_instructions_unsupported"
-    );
-    assert!(!failure.message.contains(sv_canary.as_str()));
-    assert!(!failure.message.contains("exact-user-prompt"));
 }

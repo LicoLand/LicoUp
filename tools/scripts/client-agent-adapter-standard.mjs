@@ -62,19 +62,6 @@ function readJson(relativePath) {
   return JSON.parse(readFileSync(resolve(root, relativePath), "utf8"));
 }
 
-function parseValidationScope(argv) {
-  if (argv.length === 0) {
-    return Object.freeze({ agentId: null, sharedOnly: false, scope: "all" });
-  }
-  if (argv.length === 1 && argv[0] === "--shared") {
-    return Object.freeze({ agentId: null, sharedOnly: true, scope: "shared" });
-  }
-  if (argv.length === 2 && argv[0] === "--agent" && safeId.test(argv[1])) {
-    return Object.freeze({ agentId: argv[1], sharedOnly: false, scope: "agent" });
-  }
-  throw new Error("adapter_standard_argument_invalid");
-}
-
 function fail(code) {
   throw new Error(code);
 }
@@ -157,7 +144,7 @@ function validateSchemaAuthority() {
   return validate;
 }
 
-function validateInventory(validateManifest, { agentId = null, sharedOnly = false } = {}) {
+function validateInventory(validateManifest) {
   const packaged = packaging?.modules?.["target-adapters"]?.targetAdapters;
   const drivers = inventory?.drivers;
   requireFact(Array.isArray(packaged) && Array.isArray(drivers), "adapter_inventory_missing");
@@ -173,7 +160,6 @@ function validateInventory(validateManifest, { agentId = null, sharedOnly = fals
     requireFact(!driverIds.has(driver.driverId), "adapter_driver_id_duplicate");
     driverIds.add(driver.driverId);
     driverByAgent.set(driver.agentId, driver);
-    if (sharedOnly || (agentId && driver.agentId !== agentId)) continue;
     requireFact(["conversation", "blocked", "history-only"].includes(driver.driverMode), "adapter_mode_invalid");
     requireFact(Array.isArray(driver.blockerCodes) && driver.blockerCodes.every((code) => safeId.test(code)), "adapter_blocker_invalid");
     const matrix = driver.capabilityMatrix;
@@ -205,15 +191,13 @@ function validateInventory(validateManifest, { agentId = null, sharedOnly = fals
       sameSet(manifestIds, packaged),
     "adapter_manifest_packaging_set_drift",
   );
-  if (agentId) requireFact(driverByAgent.has(agentId), "adapter_agent_unknown");
   for (const { fileName, manifest } of manifests) {
-    if (sharedOnly || (agentId && manifest?.identity?.agentId !== agentId)) continue;
     requireFact(validateManifest(manifest), "adapter_manifest_schema_invalid");
-    const manifestAgentId = manifest.identity.agentId;
-    const driver = driverByAgent.get(manifestAgentId);
-    requireFact(fileName === `${manifestAgentId}.json` && driver, "adapter_manifest_identity_invalid");
+    const agentId = manifest.identity.agentId;
+    const driver = driverByAgent.get(agentId);
+    requireFact(fileName === `${agentId}.json` && driver, "adapter_manifest_identity_invalid");
     requireFact(
-      manifest.identity.packagingTargetId === manifestAgentId &&
+      manifest.identity.packagingTargetId === agentId &&
         manifest.identity.driverId === driver.driverId &&
         manifest.identity.runtimeProtocol === driver.runtimeProtocol,
       "adapter_manifest_inventory_binding_drift",
@@ -274,7 +258,7 @@ function validateInventory(validateManifest, { agentId = null, sharedOnly = fals
     );
     if (driver.driverMode === "conversation") {
       requireFact(
-        ["openNew", "exactResume", "send", "cleanup"]
+        ["openNew", "exactResume", "send", "cleanup", "history"]
           .every((operation) => operations[operation].status === "supported") &&
           matrix.officialLane === true && manifest.privacy.safeCleanup === true,
         "adapter_manifest_conversation_incomplete",
@@ -343,36 +327,25 @@ function validateInventory(validateManifest, { agentId = null, sharedOnly = fals
         "adapter_manifest_release_ui_gate_incomplete",
       );
     }
-    // Argv privacy is a per-field transport claim, not an agent-id allowlist:
-    // streaming CLIs can keep prompts on stdin while passing only a native
-    // continuation id through a documented resume argument.
-    if (manifest.privacy.promptInArguments === true) {
+    const argvLane = manifest.privacy.promptInArguments === true
+      && manifest.privacy.continuityIdInArguments === true;
+    // Argv privacy is a transport claim, not an agent-id allowlist.
+    if (argvLane) {
       requireFact(
         manifest.transport.family === "cli"
-          && manifest.transport.promptChannel === "launch-argument",
+          && manifest.transport.promptChannel === "launch-argument"
+          && manifest.transport.continuityChannel === "launch-argument",
         "adapter_manifest_argv_transport_drift",
       );
     } else {
       requireFact(
         manifest.privacy.promptInArguments === false
-          && manifest.transport.promptChannel !== "launch-argument",
+          && manifest.privacy.continuityIdInArguments === false,
         "adapter_manifest_argv_privacy_drift",
       );
     }
-    if (manifest.privacy.continuityIdInArguments === true) {
-      requireFact(
-        manifest.transport.continuityChannel === "launch-argument",
-        "adapter_manifest_continuity_argv_transport_drift",
-      );
-    } else {
-      requireFact(
-        manifest.privacy.continuityIdInArguments === false
-          && manifest.transport.continuityChannel !== "launch-argument",
-        "adapter_manifest_continuity_argv_privacy_drift",
-      );
-    }
   }
-  return agentId ? 1 : manifests.length;
+  return manifests.length;
 }
 
 function operationStatusIsBlocked(operation) {
@@ -380,20 +353,14 @@ function operationStatusIsBlocked(operation) {
 }
 
 try {
-  const validationScope = parseValidationScope(process.argv.slice(2));
   const validateManifest = validateSchemaAuthority();
-  const manifestCount = validateInventory(validateManifest, validationScope);
-  const selectedCount = validationScope.agentId ? 1 : inventory.drivers.length;
+  const manifestCount = validateInventory(validateManifest);
   process.stdout.write(`${JSON.stringify({
     schemaVersion: "lico.agent-adapter-standard.receipt.v1",
     ok: true,
-    scope: validationScope.scope,
-    agentId: validationScope.agentId,
-    adapters: selectedCount,
+    adapters: inventory.drivers.length,
     manifests: manifestCount,
-    packaged: validationScope.agentId
-      ? 1
-      : packaging.modules["target-adapters"].targetAdapters.length,
+    packaged: packaging.modules["target-adapters"].targetAdapters.length,
     productUiRequiredByDefault: true,
     cursorSameSessionGate: true,
     minimumConsecutivePasses: 1,

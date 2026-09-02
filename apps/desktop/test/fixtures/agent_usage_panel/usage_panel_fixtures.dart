@@ -63,36 +63,43 @@ AgentUsageReport snapshotOnlyReport({
   );
 }
 
-/// Shared current-generation 52-Token Graph fixture used by contract,
+/// Shared current-generation 52-Token workflow fixture used by contract,
 /// controller, widget, localization, and rendered-evidence tests. Unknown
 /// content/location fields are intentional canaries: the Dart model must drop
 /// them before any UI projection.
 AgentUsageReport syntheticWorkflowUsageReport({
   String workflowSchema = agentUsageWorkflowReportSchema,
 }) {
-  Map<String, dynamic> command({
+  Map<String, dynamic> node({
     required String id,
-    required String state,
-    required String membership,
-    required String kind,
-    required String status,
+    required String role,
     required String agent,
     required String model,
+    required String state,
+    required String dispatch,
+    String? parent,
+    String? task,
     required int prompt,
     required int cached,
     required int completion,
     String accuracy = 'exact',
   }) {
     return {
-      'commandId': id,
-      'stateId': state,
-      'membershipId': membership,
-      'kind': kind,
-      'status': status,
+      'nodeId': id,
+      'parentNodeId': ?parent,
+      'planCode': 'PLAN-TREE',
+      'planRevision': 2,
+      'taskCode': ?task,
+      'phase': role,
+      'dispatchId': dispatch,
+      'role': role,
       'attempt': 1,
       'agentId': agent,
       'model': model,
       'accuracy': accuracy,
+      'sessionMode': 'resume',
+      'state': state,
+      'usageSettlement': 'ready',
       'usage': {
         'promptTokens': prompt,
         'cachedInputTokens': cached,
@@ -106,51 +113,54 @@ AgentUsageReport syntheticWorkflowUsageReport({
     };
   }
 
-  final commands = [
-    command(
-      id: 'command:authorization',
-      state: 'state:authorization',
-      membership: 'membership:assistant',
-      kind: 'authorization',
-      status: 'succeeded',
-      agent: 'assistant-agent',
-      model: 'assistant-model',
+  final rootId = 'delivery-tree-root';
+  final nodes = [
+    node(
+      id: rootId,
+      role: 'main',
+      agent: 'main-agent',
+      model: 'main-model',
+      state: 'completed',
+      dispatch: 'delivery-tree-root-dispatch',
       prompt: 10,
       cached: 2,
       completion: 3,
     ),
-    command(
-      id: 'command:actor-alpha',
-      state: 'state:actor-alpha',
-      membership: 'membership:actor-alpha',
-      kind: 'actor',
-      status: 'succeeded',
-      agent: 'agent-alpha',
-      model: 'model-alpha',
+    node(
+      id: 'designer-node',
+      parent: rootId,
+      role: 'designer',
+      agent: 'agent-designer',
+      model: 'model-designer',
+      state: 'completed',
+      dispatch: 'designer-dispatch',
+      task: 'DESIGN',
       prompt: 10,
       cached: 2,
       completion: 2,
     ),
-    command(
-      id: 'command:actor-beta',
-      state: 'state:actor-beta',
-      membership: 'membership:actor-beta',
-      kind: 'actor',
-      status: 'succeeded',
-      agent: 'agent-beta',
-      model: 'model-beta',
+    node(
+      id: 'worker-node',
+      parent: rootId,
+      role: 'worker',
+      agent: 'agent-worker',
+      model: 'model-worker',
+      state: 'completed',
+      dispatch: 'worker-dispatch',
+      task: 'IMPLEMENT',
       prompt: 6,
       cached: 1,
       completion: 2,
     ),
-    command(
-      id: 'command:workset-item',
-      state: 'state:workset',
-      membership: 'membership:actor-gamma',
-      kind: 'workset-item',
-      status: 'succeeded',
-      agent: 'agent-gamma',
-      model: 'model-gamma',
+    node(
+      id: 'reviewer-node',
+      parent: rootId,
+      role: 'reviewer',
+      agent: 'agent-reviewer',
+      model: 'model-reviewer',
+      state: 'completed',
+      dispatch: 'reviewer-dispatch',
+      task: 'REVIEW',
       prompt: 15,
       cached: 3,
       completion: 4,
@@ -185,13 +195,13 @@ AgentUsageReport syntheticWorkflowUsageReport({
         'exactCount': 4,
         'estimatedCount': 0,
       },
-      'runs': [
+      'workflows': [
         {
-          'runId': 'run:usage-fixture',
-          'revisionDigest': 'revision:two',
-          'conversationId': 'conversation:usage-fixture',
-          'assistantMembershipId': 'membership:assistant',
-          'status': 'completed',
+          'workflowId': 'delivery-tree',
+          'planCode': 'PLAN-TREE',
+          'planRevision': 2,
+          'state': 'completed',
+          'terminalCorrelation': 'terminal-tree',
           'totals': {
             'promptTokens': 41,
             'cachedInputTokens': 8,
@@ -200,12 +210,15 @@ AgentUsageReport syntheticWorkflowUsageReport({
             'exactCount': 4,
             'estimatedCount': 0,
           },
-          'commands': commands,
+          'nodes': nodes,
+          'roots': const [],
           'nativePath': 'private-workflow-location-canary',
           'summary': 'private-summary-canary',
         },
       ],
     },
+    'workflows': const [],
+    'workflowSummary': const {},
     'warnings': const [],
   });
 }

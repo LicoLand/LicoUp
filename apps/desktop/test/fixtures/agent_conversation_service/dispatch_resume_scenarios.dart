@@ -109,9 +109,8 @@ void registerAgentConversationDispatchScenarios() {
       final events = await service
           .stream(runner: agentService, agentId: 'codex', sessionId: 'native-1')
           .toList();
-      // The stream lane emits only native events and never fabricates a
-      // binding event, so it is empty until the native side produces one.
-      expect(events, isEmpty);
+      expect(events, isNotEmpty);
+      expect(events.first.kind, 'dispatch.lane.bound');
 
       final steer = await service.steer(
         runner: agentService,

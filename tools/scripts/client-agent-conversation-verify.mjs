@@ -9,7 +9,7 @@ import {
   createReleaseClosureChallenge,
 } from "./lib/release-closure-challenge.mjs";
 import { verificationModelsMap } from "./lib/agent-conversation-verification-models.mjs";
-import { strictRoundCount } from "../../tests/product-e2e/cli/agent-conversations/support/parity/constants.mjs";
+import { strictRoundCount } from "./client-acp-conversation-parity/constants.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const inventoryPath = resolve(root, "crates/licoup-native/resources/agent-conversation-drivers.json");
@@ -224,8 +224,8 @@ async function main() {
   const checks = {
     nativePlatform: run("cargo", ["test", "-p", "licoup-native", "--lib", "platform::", "--", "--test-threads=1"]),
     reducerContract: run("node", ["tests/contract/client/agent-conversation-parity-reducer.test.mjs"]),
-    readinessContract: run("node", ["tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs", "--check"]),
-    harnessSelfTest: runJson("node", ["tests/product-e2e/cli/agent-conversations/support/parity-facade.mjs", "--self-test"]),
+    readinessContract: run("node", ["tools/scripts/client-agent-conversation-parity-reducer.mjs", "--check"]),
+    harnessSelfTest: runJson("node", ["tools/scripts/client-acp-conversation-parity.mjs", "--self-test"]),
     productHarnessSelfTest: runJson("node", ["tools/scripts/client-agent-conversation-product-e2e.mjs", "--self-test"]),
   };
 
@@ -277,7 +277,7 @@ async function main() {
         };
       } else {
         const args = [
-          "tests/product-e2e/cli/agent-conversations/support/parity-facade.mjs",
+          "tools/scripts/client-acp-conversation-parity.mjs",
           "--agent", driver.agentId,
           "--strict",
           "--timeout-ms", "180000",
@@ -295,7 +295,7 @@ async function main() {
     }
     if (options.releaseUi && liveResult?.status === "passed") {
       const reducerWrite = runJson("node", [
-        "tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs",
+        "tools/scripts/client-agent-conversation-parity-reducer.mjs",
         "--write",
       ]);
       checks.releaseReducerWrite = reducerWrite;
@@ -317,13 +317,7 @@ async function main() {
     // The P-10 application is an acceptance-only Release artifact. Restore a
     // normal Release build before handoff so it cannot be mistaken for the
     // ordinary GitHub Release/package artifact.
-    checks.ordinaryReleaseRebuild = run("npm", [
-      "run",
-      "client:build",
-      "--",
-      "--platform",
-      "macos",
-    ]);
+    checks.ordinaryReleaseRebuild = run("npm", ["run", "client:build:macos"]);
   }
 
   const staticPassed = Object.values(checks).every((check) => check.status === "passed");

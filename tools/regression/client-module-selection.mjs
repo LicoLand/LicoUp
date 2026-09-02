@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { CLIENT_MODULE_CATALOG } from "./client-module-catalog.mjs";
-import { CLIENT_REGRESSION_STAGES } from "./client-regression-metadata.mjs";
 
 const compiledCatalogs = new WeakMap();
 const allowedPrograms = new Set(["cargo", "node"]);
@@ -88,24 +87,6 @@ export function validateClientModuleCatalog(catalog = CLIENT_MODULE_CATALOG) {
     if (!Number.isSafeInteger(moduleCommand.timeoutMs) || moduleCommand.timeoutMs <= 0) {
       throw new Error(`client module command timeout is invalid: ${module.id}`);
     }
-    const regression = module.regression;
-    if (!regression || !CLIENT_REGRESSION_STAGES.includes(regression.stage)) {
-      throw new Error(`client module regression stage is invalid: ${module.id}`);
-    }
-    if (regression.lane !== regression.stage || typeof regression.environment !== "string") {
-      throw new Error(`client module regression lane is invalid: ${module.id}`);
-    }
-    if (!Number.isSafeInteger(regression.weight) || regression.weight <= 0) {
-      throw new Error(`client module regression weight is invalid: ${module.id}`);
-    }
-    if (!Array.isArray(regression.resources) ||
-        regression.resources.some((resource) => typeof resource !== "string" || resource.length === 0)) {
-      throw new Error(`client module regression resources are invalid: ${module.id}`);
-    }
-    if (typeof regression.batchKey !== "string" || regression.batchKey.length === 0 ||
-        typeof regression.internalParallelism !== "boolean") {
-      throw new Error(`client module regression batching metadata is invalid: ${module.id}`);
-    }
   }
   return true;
 }
@@ -154,18 +135,6 @@ export function selectModulesById(moduleIds, catalog = CLIENT_MODULE_CATALOG) {
   return selected;
 }
 
-export function selectModulesByLane(lanes, catalog = CLIENT_MODULE_CATALOG) {
-  if (!Array.isArray(lanes) || lanes.length === 0) {
-    throw new Error("at least one client regression lane is required");
-  }
-  validateClientModuleCatalog(catalog);
-  const requested = new Set(lanes);
-  const known = new Set(catalog.map((module) => module.regression.lane));
-  const missing = [...requested].filter((lane) => !known.has(lane));
-  if (missing.length > 0) throw new Error(`unknown client regression lane: ${missing.join(", ")}`);
-  return catalog.filter((module) => requested.has(module.regression.lane));
-}
-
 export function validateChangedFromRevision(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 256) {
     throw new Error("changed-from revision is invalid");
@@ -184,64 +153,37 @@ export function parseNulDelimitedPaths(value) {
     .map(normalizeRepoPath);
 }
 
-function gitPathOutput(program, args, options, spawnImpl) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let outputBytes = 0;
-    let overflow = false;
-    let child;
-    try {
-      child = spawnImpl(program, args, options);
-    } catch {
-      reject(new Error("git change inspection could not start"));
-      return;
-    }
-    child.once("error", () => reject(new Error("git change inspection could not start")));
-    child.stdout.on("data", (chunk) => {
-      if (overflow) return;
-      const buffer = Buffer.from(chunk);
-      outputBytes += buffer.length;
-      if (outputBytes > 16 * 1024 * 1024) {
-        chunks.length = 0;
-        overflow = true;
-      } else {
-        chunks.push(buffer);
-      }
-    });
-    child.stderr?.resume?.();
-    child.once("close", (code) => {
-      if (code !== 0 || overflow) reject(new Error("git change inspection failed"));
-      else resolve(Buffer.concat(chunks, outputBytes));
-    });
-  });
-}
-
-export async function changedPathsSince({
+export function changedPathsSince({
   revision,
   repoRoot,
-  spawnImpl = spawn,
+  spawnSyncImpl = spawnSync,
 }) {
   const safeRevision = validateChangedFromRevision(revision);
   const commonOptions = Object.freeze({
     cwd: repoRoot,
+    encoding: "buffer",
+    maxBuffer: 16 * 1024 * 1024,
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
   });
-  let tracked;
-  let untracked;
-  try {
-    [tracked, untracked] = await Promise.all([
-      gitPathOutput("git", ["diff", "--no-renames", "--name-only", "-z", safeRevision, "--"],
-        commonOptions, spawnImpl),
-      gitPathOutput("git", ["ls-files", "--others", "--exclude-standard", "-z", "--"],
-        commonOptions, spawnImpl),
-    ]);
-  } catch {
-    throw new Error("unable to inspect changes from the requested revision");
+  const tracked = spawnSyncImpl(
+    "git",
+    ["diff", "--no-renames", "--name-only", "-z", safeRevision, "--"],
+    commonOptions,
+  );
+  if (tracked.error || tracked.status !== 0) {
+    throw new Error("unable to inspect tracked changes from the requested revision");
+  }
+  const untracked = spawnSyncImpl(
+    "git",
+    ["ls-files", "--others", "--exclude-standard", "-z", "--"],
+    commonOptions,
+  );
+  if (untracked.error || untracked.status !== 0) {
+    throw new Error("unable to inspect untracked changes");
   }
   return [...new Set([
-    ...parseNulDelimitedPaths(tracked),
-    ...parseNulDelimitedPaths(untracked),
+    ...parseNulDelimitedPaths(tracked.stdout),
+    ...parseNulDelimitedPaths(untracked.stdout),
   ])];
 }

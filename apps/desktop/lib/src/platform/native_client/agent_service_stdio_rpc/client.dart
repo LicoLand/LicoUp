@@ -77,8 +77,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       immutableParams,
     );
     final conversationMethod =
-        stdioRpcMethodUsesConversationLane(method, immutableParams) ||
-        unboundedClientTurn;
+        stdioRpcMethodUsesConversationLane(method) || unboundedClientTurn;
     if (conversationMethod && stdioRpcMethodIsInFlightControl(method)) {
       return executeStdioRpcInFlightControl(
         method: method,
@@ -100,7 +99,6 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         requestId: _nextRequestId(),
         workflowId: _workflowId,
         sessionManager: sessionManager,
-        recreateIfDeadBeforeWrite: conversationMethod,
       );
       if (unboundedClientTurn) {
         return execution;
@@ -117,25 +115,21 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
 
   @override
   Stream<Map<String, dynamic>> streamConversation(Map<String, dynamic> params) {
-    if (_conversationOperations.closing) {
-      return Stream<Map<String, dynamic>>.error(
-        const LicoClientRpcException('service_disposed'),
-      );
-    }
     if (_processContext.requestTimeout <= Duration.zero) {
       return Stream<Map<String, dynamic>>.error(
         const LicoClientRpcException('invalid_timeout'),
       );
     }
-    // PersistentTurn streams are multiplexed by request id inside the session.
-    // Do not hold the command queue for an unbounded observer: cancelling one
-    // UI subscription must allow an immediate attach or control request while
-    // the native turn continues in the host.
-    return executeStdioRpcConversation(
-      params: params,
-      requestId: _nextRequestId(),
-      workflowId: _workflowId,
-      sessionManager: _chat,
+    return _conversationOperations.serializeStream(
+      operation: () => executeStdioRpcConversation(
+        params: params,
+        requestId: _nextRequestId(),
+        workflowId: _workflowId,
+        sessionManager: _chat,
+      ),
+      // Agent turns are unbounded: no end-to-end timeout on the send stream.
+      timeout: null,
+      onTimeout: _chat.invalidateAndDiscard,
     );
   }
 

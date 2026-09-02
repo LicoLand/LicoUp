@@ -17,15 +17,9 @@ export 'package:licoup/src/application/features/agents/policy/conversation_sessi
 /// Each mixin below owns one independently testable lifecycle concern.
 abstract class AgentConversationController extends AgentWorkspaceCoordinator
     with
-        AgentConversationLiveProjectionController,
         AgentConversationSessionStateController,
         AgentConversationMobileSessionController,
         AgentConversationSessionController,
+        AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController,
-        AgentConversationMessageController {
-  @override
-  void dispose() {
-    conversationStateHolder.dispose();
-    super.dispose();
-  }
-}
+        AgentConversationMessageController {}

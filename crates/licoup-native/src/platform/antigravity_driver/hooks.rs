@@ -1,6 +1,5 @@
 use super::errors::ProtocolFailure;
 use super::model::{HOOK_NAMESPACE, RECEIPT_ENV};
-use crate::platform::native_agent_parser::adapters::antigravity::parse_hook_receipt;
 use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
@@ -8,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 const HOOK_SCRIPT_NAME: &str = "session-receipt-hook.sh";
 
-pub(in crate::platform) fn ensure_hook_bridge() -> Result<(), ProtocolFailure> {
+pub(super) fn ensure_hook_bridge() -> Result<(), ProtocolFailure> {
     let script_path = hook_script_path()?;
     write_hook_script(&script_path)?;
     install_global_hook(&script_path)?;
@@ -132,7 +131,13 @@ pub(super) fn receipt_path_for_turn() -> Result<PathBuf, ProtocolFailure> {
 
 pub(super) fn read_conversation_id(receipt: &Path) -> Option<String> {
     let text = fs::read_to_string(receipt).ok()?;
-    parse_hook_receipt(&text)
+    let value: Value = serde_json::from_str(&text).ok()?;
+    value
+        .get("conversationId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn receipt_root() -> Result<PathBuf, ProtocolFailure> {
@@ -194,41 +199,35 @@ fn write_hook_script(path: &Path) -> Result<(), ProtocolFailure> {
         r#"#!/bin/sh
 set -eu
 out="{receipt_expansion}"
-payload="$(cat)"
-python3 - "$out" "$payload" <<'PY'
+python3 - "$out" <<'PY'
 import json, os, sys
 out = sys.argv[1]
-raw = sys.argv[2]
+raw = sys.stdin.read()
 data = {{}}
 try:
     data = json.loads(raw) if raw.strip() else {{}}
 except Exception:
     data = {{}}
-conversation_id = ""
+cid = ""
 if isinstance(data, dict):
     for key in ("conversationId", "conversation_id", "sessionId", "session_id"):
         value = data.get(key)
         if isinstance(value, str) and value.strip():
-            conversation_id = value.strip()
+            cid = value.strip()
             break
-if not conversation_id:
-    conversation_id = (os.environ.get("ANTIGRAVITY_CONVERSATION_ID") or "").strip()
-if not conversation_id:
-    # Same-turn writer-order safety: a vendor direct receipt can already exist
-    # on this path, so never erase it when the hook input carries no id.
+if not cid:
+    cid = (os.environ.get("ANTIGRAVITY_CONVERSATION_ID") or "").strip()
+if not cid:
     try:
         previous = json.load(open(out, encoding="utf-8"))
-        if isinstance(previous, dict):
-            for key in ("conversationId", "conversation_id", "sessionId", "session_id"):
-                value = previous.get(key)
-                if isinstance(value, str) and value.strip():
-                    conversation_id = value.strip()
-                    break
+        prior = previous.get("conversationId") if isinstance(previous, dict) else ""
+        if isinstance(prior, str) and prior.strip():
+            cid = prior.strip()
     except Exception:
         pass
+payload = {{"conversationId": cid}}
 with open(out, "w", encoding="utf-8") as handle:
-    json.dump({{"conversationId": conversation_id}}, handle)
-os.chmod(out, 0o600)
+    json.dump(payload, handle)
 print("{{}}")
 PY
 "#

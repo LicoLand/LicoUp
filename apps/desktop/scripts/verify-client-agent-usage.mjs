@@ -272,16 +272,12 @@ assertIncludes(
   [
     "WORKFLOW_LEDGER_REPORT_SCHEMA",
     "workflow_report",
-    "graph_runs",
-    "graph_commands",
-    '"runId"',
-    '"commandId"',
-    '"membershipId"',
+    "workflow_nodes",
     "promptTokens",
     "cachedInputTokens",
     "completionTokens",
     "totalTokens",
-    "WORKFLOW_LEDGER_MAX_RUNS",
+    "WORKFLOW_LEDGER_MAX_TERMINAL_REPORTS",
   ],
   "native workflow usage report"
 );
@@ -322,11 +318,10 @@ assertIncludes(
     "AgentUsageWorkflowSection",
     "AgentUsageChartGrouping.workflow",
     "workflowExactCoverage",
-    "workflowRuns",
-    "workflowCommands",
-    "workflowRunLabel",
-    "workflowCommandLabel",
-    "workflowMembershipLabel",
+    "workflowMainShare",
+    "workflowSubordinateShare",
+    "workflowTaskLabel",
+    "workflowDispatchLabel",
     "startAgentUsagePolling",
     "ensureAgentUsageLoadedAndFresh"
   ],
@@ -381,8 +376,6 @@ assertIncludes(
     "path-canary",
     "52",
     "Exact 4/4 (100%)",
-    "Graph run 1",
-    "Command 1",
     "Simplified Chinese",
   ],
   "workflow usage regression"

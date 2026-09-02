@@ -3,7 +3,6 @@ import 'package:flutter/widgets.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/plan_document_reader.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
 /// only production adapter from mutable application controllers to this view.
@@ -16,11 +15,7 @@ final class AgentConversationPaneState {
     required this.loading,
     this.recentSessionsHasMore = false,
     this.recentSessionsLoadingMore = false,
-    this.messagePageLoading = false,
-    this.messagePageError = '',
     required this.turnActive,
-    this.inputEnabled = true,
-    this.cancelEnabled = false,
     required this.preparingNewConversation,
     required this.composerEnabled,
     required this.sendGateReasonCode,
@@ -45,13 +40,10 @@ final class AgentConversationPaneState {
     this.planDocumentPath = '',
     this.planDocumentReader = const UnavailablePlanDocumentReader(),
     Map<String, String> participantConversationIds = const {},
-    Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
-        const {},
     Set<String> runningRecentSessionIds = const {},
     this.recentSessionsCached = false,
     this.composerFlywheel,
     this.composerLeading,
-    bool? composerBusy,
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
@@ -61,11 +53,7 @@ final class AgentConversationPaneState {
        participantConversationIds = Map.unmodifiable(
          participantConversationIds,
        ),
-       participantRuntimeProfiles = Map.unmodifiable(
-         participantRuntimeProfiles,
-       ),
-       runningRecentSessionIds = Set.unmodifiable(runningRecentSessionIds),
-       composerBusy = composerBusy ?? turnActive;
+       runningRecentSessionIds = Set.unmodifiable(runningRecentSessionIds);
 
   final TargetCandidate target;
   final AgentConversationSession? session;
@@ -74,11 +62,7 @@ final class AgentConversationPaneState {
   final bool loading;
   final bool recentSessionsHasMore;
   final bool recentSessionsLoadingMore;
-  final bool messagePageLoading;
-  final String messagePageError;
   final bool turnActive;
-  final bool inputEnabled;
-  final bool cancelEnabled;
   final bool preparingNewConversation;
   final bool composerEnabled;
   final String sendGateReasonCode;
@@ -105,12 +89,10 @@ final class AgentConversationPaneState {
 
   /// Agent id → that agent's conversation id for bubble hover metadata.
   final Map<String, String> participantConversationIds;
-  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
   final Set<String> runningRecentSessionIds;
   final bool recentSessionsCached;
   final Widget? composerFlywheel;
   final Widget? composerLeading;
-  final bool composerBusy;
 }
 
 /// Typed commands available to the conversation body.
@@ -120,11 +102,9 @@ final class AgentConversationPaneActions {
     required this.onReasoningEffortChanged,
     required this.onDraftChanged,
     required this.onSend,
-    this.onCancel,
     required this.onSelectSession,
     this.onNewConversation,
     this.onLoadMoreRecentSessions,
-    this.onLoadEarlierMessages,
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
@@ -140,11 +120,9 @@ final class AgentConversationPaneActions {
   final ValueChanged<String> onReasoningEffortChanged;
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
-  final Future<void> Function()? onCancel;
   final ValueChanged<String> onSelectSession;
   final VoidCallback? onNewConversation;
   final VoidCallback? onLoadMoreRecentSessions;
-  final Future<void> Function()? onLoadEarlierMessages;
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;

@@ -27,7 +27,6 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
   "crates/licoup-native/src/domain/lico_agent/transport.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
-  "crates/licoup-native/src/domain/provider_quota/http.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
   "crates/licoup-native/src/platform/gateway_runtime/channels/telegram/transport.rs",
   "crates/licoup-native/src/platform/llm_gateway_server.rs",
@@ -118,11 +117,6 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
     ["crates/licoup-native/src/domain/provider_model_pricing.rs", [
       'parsed.scheme() != "https"', ".timeout_connect(REFRESH_TIMEOUT)",
       ".get(url)", "MAX_PRICE_PAGE_BYTES", ".take(MAX_PRICE_PAGE_BYTES + 1)",
-    ]],
-    ["crates/licoup-native/src/domain/provider_quota/http.rs", [
-      "HOSTED_FETCH_TIMEOUT", "LOOPBACK_FETCH_TIMEOUT", "MAX_RESPONSE_BYTES",
-      "quota_endpoint_url_rejected", "quota_loopback_url_rejected",
-      ".take(MAX_RESPONSE_BYTES.saturating_add(1))",
     ]],
     ["crates/licoup-native/src/platform/badtower_station/http_io.rs", [
       "HTTP_TIMEOUT_SECONDS", "MAX_ERROR_RESPONSE_BYTES", "read_bounded",

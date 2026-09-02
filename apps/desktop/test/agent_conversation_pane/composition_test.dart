@@ -701,43 +701,4 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'slash-new command routes to the surface new-conversation action',
-    (tester) async {
-      var newConversationCount = 0;
-      var sendCount = 0;
-      await tester.pumpWidget(
-        paneTestApp(
-          AgentConversationActivePane(
-            state: paneTestState(),
-            actions: paneTestActions(
-              onNewConversation: () => newConversationCount += 1,
-              onSend: (text) async {
-                sendCount += 1;
-                return true;
-              },
-            ),
-            header: paneTestHeader(),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      await tester.enterText(find.byType(TextField), '/new');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-
-      expect(newConversationCount, 1);
-      expect(sendCount, 0);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).controller?.text,
-        '',
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
 }

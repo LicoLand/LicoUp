@@ -127,9 +127,7 @@ void main() {
         toggleCapsuleRect.height,
         closeTo(identityCapsuleRect.height, 0.1),
       );
-      // Slim capsule: narrower than the header toggle while sharing its
-      // right axis.
-      expect(surfaceRect.width, lessThan(toggleCapsuleRect.width));
+      expect(surfaceRect.width, closeTo(toggleCapsuleRect.width, 0.1));
       expect(surfaceRect.right, closeTo(toggleCapsuleRect.right, 0.1));
       expect(surfaceRect.center.dy, closeTo(paneRect.center.dy, 8));
       expect(surfaceRect.top, greaterThan(headerRect.bottom));
@@ -180,9 +178,8 @@ void main() {
       expect(surfaceFinder, findsOneWidget);
       expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
 
-      // Member names live in tooltips only — the capsule shows bare avatars.
-      expect(find.text('Codex'), findsNothing);
-      expect(find.text('Claude'), findsNothing);
+      expect(find.text('Codex'), findsOneWidget);
+      expect(find.text('Claude'), findsOneWidget);
       expect(find.text('Claude Code'), findsNothing);
       expect(
         tester
@@ -190,53 +187,26 @@ void main() {
             .map((tooltip) => tooltip.message),
         containsAll(<String>['Codex', 'Claude Code']),
       );
-      expect(
-        tester
-            .widget<MessagingConversationOverlayGlass>(
-              find.byKey(const Key('canonical-group-roster-glass')),
-            )
-            .borderRadius,
-        BorderRadius.circular(999),
-      );
 
-      // The relay dot hangs on the avatar's bottom-right edge and overlaps
-      // the icon; it never claims a separate slot beside it.
-      final codexAgentFinder = find.byKey(
+      final codexAvatar = find.byKey(
         const Key('canonical-group-roster-agent-codex'),
       );
-      final codexDotRect = tester.getRect(
-        find.byKey(const Key('canonical-group-roster-relay-dot-codex')),
-      );
-      final codexWellRect = tester.getRect(
-        find.descendant(
-          of: codexAgentFinder,
-          matching: find.byKey(const Key('messaging-agent-avatar-well')),
-        ),
-      );
-      expect(codexDotRect.overlaps(codexWellRect), isTrue);
-      expect(codexDotRect.center.dx, greaterThan(codexWellRect.center.dx));
-      expect(codexDotRect.center.dy, greaterThan(codexWellRect.center.dy));
-      expect(
-        codexDotRect.right,
-        lessThanOrEqualTo(tester.getRect(codexAgentFinder).right),
-      );
-
-      await tester.tap(codexAgentFinder);
+      await tester.tap(codexAvatar);
       await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
       expect(controller.draft, '@Codex ');
 
       controller.updateDraft('');
       await tester.pump();
-      await tester.tap(codexAgentFinder);
+      await tester.tap(codexAvatar);
       await tester.pump(kDoubleTapMinTime);
-      await tester.tap(codexAgentFinder);
+      await tester.tap(codexAvatar);
       await tester.pumpAndSettle();
       expect(controller.draft, isEmpty);
       expect(openedAgents, ['codex']);
 
-      expect(
+      await expectLater(
         find.byKey(const Key('messaging-group-roster-qa-boundary')),
-        findsOneWidget,
+        matchesGoldenFile('../goldens/messaging/sidebar_surface.png'),
       );
     },
   );

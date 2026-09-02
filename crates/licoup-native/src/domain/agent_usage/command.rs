@@ -102,6 +102,14 @@ pub fn scan(params: &Value) -> Result<Value> {
             }
         },
         "workflow": workflow_report_value,
+        "workflows": workflow_report_value
+            .get("workflows")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        "workflowSummary": workflow_report_value
+            .get("summary")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
         "warnings": warnings
     });
     persist_report(params, &report)?;

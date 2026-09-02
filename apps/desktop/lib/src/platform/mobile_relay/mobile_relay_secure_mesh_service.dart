@@ -69,21 +69,6 @@ final class MobileRelaySecureMeshOperations {
     bridge: bridge,
   );
 
-  Future<Map<String, dynamic>> describeSecureAgentSessionPage({
-    required AgentCommandRunner agentService,
-    required String agentId,
-    required String sessionId,
-    String messageBefore = '',
-    required int messageLimit,
-    SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
-  }) => _conversationOperations.describeSecureAgentSessionPage(
-    agentId: agentId,
-    sessionId: sessionId,
-    messageBefore: messageBefore,
-    messageLimit: messageLimit,
-    bridge: bridge,
-  );
-
   Future<Map<String, dynamic>> secureMeshStatus({
     required AgentCommandRunner agentService,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),

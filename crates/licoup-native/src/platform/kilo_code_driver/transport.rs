@@ -2,11 +2,10 @@ use super::super::acp_driver_runtime::ProtocolFailure;
 use super::super::{kilo_code_serve, turn_event_emit};
 use super::config::ServeTurnConfig;
 use super::projection::{ProtocolOutcome, project_turn};
-use crate::platform::native_agent_parser::adapters::kilo_code as serve_parser;
 use serde_json::{Value, json};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -26,7 +25,6 @@ pub(super) fn execute_via_serve(
         super::KILO_CODE_DRIVER.agent_id,
         &endpoint.attach_url,
         &session_id,
-        None,
     )
     .map_err(|_| {
         ProtocolFailure::new(
@@ -42,107 +40,42 @@ pub(super) fn execute_via_serve(
     let watch_url = endpoint.attach_url.clone();
     let watch_session = session_id.clone();
     let (chunk_sender, chunk_receiver) = mpsc::sync_channel::<String>(SESSION_EVENT_QUEUE_CAPACITY);
-    let first_failure = Arc::new(Mutex::new(None::<ProtocolFailure>));
-    let turn_completed = Arc::new(AtomicBool::new(false));
-    let watch_failure = Arc::clone(&first_failure);
-    let watch_completed = Arc::clone(&turn_completed);
     let watch_handle = thread::spawn(move || {
-        match kilo_code_serve::watch_session_events(
+        kilo_code_serve::watch_session_events(
             &watch_url,
             &watch_session,
             &watch_flag,
             &chunk_sender,
-        ) {
-            Ok(()) => None,
-            Err(kilo_code_serve::EventStreamFailure::Closed) => Some(sse_failure(
-                kilo_code_serve::EventStreamFailure::Closed,
-                &watch_session,
-            )),
-            Err(failure) => {
-                if !watch_completed.load(Ordering::Acquire) {
-                    record_first_failure(&watch_failure, sse_failure(failure, &watch_session));
-                }
-                None
-            }
-        }
+        );
     });
     let post_url = format!("{}/session/{}/message", endpoint.attach_url, session_id);
-    let post_failure = Arc::clone(&first_failure);
-    let post_completed = Arc::clone(&turn_completed);
-    let post_handle = thread::spawn(move || {
-        let response = wait_post_json(&post_url, &message_body, deadline);
-        match &response {
-            Ok(_) => post_completed.store(true, Ordering::Release),
-            Err(failure) => record_first_failure(&post_failure, failure.clone()),
-        }
-        response
-    });
+    let post_handle = thread::spawn(move || wait_post_json(&post_url, &message_body, deadline));
+    let mut streamed = Vec::new();
     while !post_handle.is_finished() {
         match chunk_receiver.recv_timeout(PROCESS_POLL_INTERVAL) {
             Ok(text) => {
                 turn_event_emit::emit_agent_message_chunk(&session_id, &turn_id, &text);
+                streamed.push(text);
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
-    let response = match post_handle.join() {
-        Ok(response) => Some(response),
-        Err(_) => {
-            record_first_failure(
-                &first_failure,
-                ProtocolFailure::new(
-                    "kilo_code_serve_cleanup_failed",
-                    "The Kilo message response worker could not be joined.",
-                    "serve/cleanup",
-                )
-                .with_session(Some(&session_id)),
-            );
-            None
-        }
-    };
+    let response = post_handle.join().map_err(|_| {
+        ProtocolFailure::new(
+            "acp_protocol_read_failed",
+            "The Kilo serve response worker could not be joined.",
+            "serve/http",
+        )
+    })?;
     watch_stop.store(true, Ordering::Relaxed);
-    let provisional_observer_failure = match watch_handle.join() {
-        Ok(failure) => failure,
-        Err(_) => {
-            record_first_failure(
-                &first_failure,
-                ProtocolFailure::new(
-                    "kilo_code_serve_cleanup_failed",
-                    "The Kilo event-stream worker could not be joined.",
-                    "serve/cleanup",
-                )
-                .with_session(Some(&session_id)),
-            );
-            None
-        }
-    };
+    let _ = watch_handle.join();
     for text in chunk_receiver.try_iter() {
         turn_event_emit::emit_agent_message_chunk(&session_id, &turn_id, &text);
+        streamed.push(text);
     }
-    if let Some(failure) = select_canonical_failure(
-        &first_failure,
-        response.as_ref(),
-        provisional_observer_failure,
-    ) {
-        return Err(failure);
-    }
-    let response = response.ok_or_else(|| {
-        ProtocolFailure::new(
-            "kilo_code_serve_cleanup_failed",
-            "The Kilo message response worker did not return an outcome.",
-            "serve/cleanup",
-        )
-    })??;
-    let response = serve_parser::message(&response).ok_or_else(|| {
-        ProtocolFailure::new(
-            "kilo_code_serve_final_message_missing",
-            "The Kilo turn completed without a final assistant message.",
-            "session/prompt",
-        )
-        .with_session(Some(&session_id))
-    })?;
-    let outcome = project_turn(response, session_id, turn_id, config)?;
+    let response = response?;
+    let outcome = project_turn(&response, streamed, session_id, turn_id, config)?;
     turn_event_emit::emit_agent_message_completed(
         &outcome.session_id,
         &outcome.turn_id,
@@ -162,15 +95,15 @@ fn open_session(
             endpoint.attach_url, config.requested_session_id
         );
         return match kilo_code_serve::get_json(&url) {
-            Ok(payload) => match serve_parser::session_id(&payload) {
-                Some(id) if id == config.requested_session_id => Ok(id.to_string()),
-                // A returned different identity is an exact-lookup mismatch:
-                // the resumed conversation is never replaced by another native
-                // session, and no message POST follows.
-                Some(_) => Err(load_identity_mismatch(&config.requested_session_id)),
-                None => Err(load_session_not_found(&config.requested_session_id)),
-            },
-            Err(_) => Err(load_session_not_found(&config.requested_session_id)),
+            Ok(payload) if payload.get("id").and_then(Value::as_str).is_some() => {
+                Ok(config.requested_session_id.clone())
+            }
+            Ok(_) | Err(_) => Err(ProtocolFailure::new(
+                "acp_native_session_not_found",
+                "The requested native conversation does not exist in the ACP agent.",
+                "session/load",
+            )
+            .with_session(Some(&config.requested_session_id))),
         };
     }
 
@@ -180,7 +113,10 @@ fn open_session(
         json!({"directory": config.cwd})
     };
     let created = wait_post_json(&format!("{}/session", endpoint.attach_url), &body, deadline)?;
-    serve_parser::session_id(&created)
+    created
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
         .map(str::to_string)
         .ok_or_else(|| {
             ProtocolFailure::new(
@@ -189,79 +125,6 @@ fn open_session(
                 "session/new",
             )
         })
-}
-
-fn load_session_not_found(requested_session_id: &str) -> ProtocolFailure {
-    ProtocolFailure::new(
-        "acp_native_session_not_found",
-        "The requested native conversation does not exist in the ACP agent.",
-        "session/load",
-    )
-    .with_session(Some(requested_session_id))
-}
-
-fn load_identity_mismatch(requested_session_id: &str) -> ProtocolFailure {
-    ProtocolFailure::new(
-        "acp_session_id_mismatch",
-        "The ACP agent returned a different conversation than the one requested.",
-        "session/load",
-    )
-    .with_session(Some(requested_session_id))
-}
-
-fn record_first_failure(slot: &Mutex<Option<ProtocolFailure>>, failure: ProtocolFailure) {
-    if let Ok(mut slot) = slot.lock()
-        && slot.is_none()
-    {
-        *slot = Some(failure);
-    }
-}
-
-fn select_canonical_failure(
-    first_failure: &Mutex<Option<ProtocolFailure>>,
-    response: Option<&Result<Value, ProtocolFailure>>,
-    provisional_observer_failure: Option<ProtocolFailure>,
-) -> Option<ProtocolFailure> {
-    let exact_failure = first_failure.lock().ok().and_then(|slot| slot.clone());
-    if exact_failure.is_some() {
-        return exact_failure;
-    }
-    if matches!(response, Some(Ok(_))) {
-        // The message endpoint reports the protocol finish. A plain SSE EOF is
-        // observer loss and cannot relabel an already returned HTTP terminal.
-        return None;
-    }
-    provisional_observer_failure
-}
-
-fn sse_failure(failure: kilo_code_serve::EventStreamFailure, session_id: &str) -> ProtocolFailure {
-    use super::super::local_service::sse::SseFailure;
-    use kilo_code_serve::EventStreamFailure;
-    let code = match failure {
-        EventStreamFailure::Closed => "kilo_code_serve_sse_closed",
-        EventStreamFailure::Decode(_) => "kilo_code_serve_sse_invalid_json",
-        EventStreamFailure::Framing(SseFailure::Busy) => "kilo_code_serve_sse_busy",
-        EventStreamFailure::Framing(SseFailure::EventLimit) => "kilo_code_serve_sse_event_limit",
-        EventStreamFailure::Framing(SseFailure::FrameTooLarge) => {
-            "kilo_code_serve_sse_frame_too_large"
-        }
-        EventStreamFailure::Framing(SseFailure::HeadersTooLarge) => {
-            "kilo_code_serve_sse_headers_too_large"
-        }
-        EventStreamFailure::Framing(SseFailure::InvalidUtf8) => "kilo_code_serve_sse_invalid_utf8",
-        EventStreamFailure::Framing(SseFailure::InvalidUrl) => "kilo_code_serve_sse_url_invalid",
-        EventStreamFailure::Framing(SseFailure::LineTooLarge) => {
-            "kilo_code_serve_sse_line_too_large"
-        }
-        EventStreamFailure::Framing(SseFailure::Request) => "kilo_code_serve_sse_request_failed",
-        EventStreamFailure::Framing(SseFailure::Unavailable) => "kilo_code_serve_sse_unavailable",
-    };
-    ProtocolFailure::new(
-        code,
-        "The Kilo event stream failed before the turn completed.",
-        "serve/sse",
-    )
-    .with_session(Some(session_id))
 }
 
 pub(super) fn build_message_body(config: &ServeTurnConfig) -> Value {
@@ -289,11 +152,6 @@ pub(super) fn build_message_body(config: &ServeTurnConfig) -> Value {
     }
     if let Some(reasoning_effort) = config.reasoning_effort.as_deref() {
         body["variant"] = json!(reasoning_effort);
-    }
-    if let Some(instructions) = config.private_instructions.as_deref() {
-        // Kilo's OpenCode-compatible message contract accepts native system
-        // guidance independently from the user's text part.
-        body["system"] = json!(instructions);
     }
     body
 }
