@@ -393,6 +393,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
         ),
       _MessagingContactActionButton(
         key: _createMenuAnchorKey,
+        inkWellKey: const Key('messaging-create-conversation'),
         tooltip: strings.createConversation,
         onPressed: _showCreateMenu,
         icon: Icons.add_rounded,
@@ -731,11 +732,13 @@ final class _MessagingContactGroup {
 class _MessagingContactActionButton extends StatelessWidget {
   const _MessagingContactActionButton({
     super.key,
+    this.inkWellKey,
     required this.tooltip,
     required this.onPressed,
     required this.icon,
   });
 
+  final Key? inkWellKey;
   final String tooltip;
   final VoidCallback onPressed;
   final IconData icon;
@@ -747,6 +750,7 @@ class _MessagingContactActionButton extends StatelessWidget {
       message: tooltip,
       waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
+        key: inkWellKey,
         onTap: onPressed,
         customBorder: const CircleBorder(),
         hoverColor: colors.isDark
