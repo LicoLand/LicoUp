@@ -86,7 +86,7 @@ final class _ConversationProcessCardState
         ? conversationProcessSemanticTitle(operations, strings)
         : conversationLifecycleStageLabel(lifecycle.stage, strings);
     final summary = lifecycle == null
-        ? '${widget.active ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, projection.countTruncated, strings)}'
+        ? '${widget.active ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, false, strings)}'
         : lifecycle.terminal
         ? '$durationTitle · ${strings.lifecycleObserved(lifecycle.observedStages.length, 5)}'
         : strings.lifecycleObserved(lifecycle.observedStages.length, 5);
@@ -104,7 +104,6 @@ final class _ConversationProcessCardState
       operations: operations,
       adapter: widget.adapter,
       detailsBuilder: widget.detailsBuilder,
-      truncated: projection.renderTruncated,
       activeStepIndex: widget.active ? operations.length - 1 : -1,
     );
     final expandedBody = ConversationProcessOperationViewport(

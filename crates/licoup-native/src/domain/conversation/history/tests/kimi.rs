@@ -307,3 +307,43 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     // redacted in the projected tool call.
     assert!(!serialized.contains(argument_canary));
 }
+
+#[test]
+fn kimi_code_missing_timestamps_use_stable_source_order_not_epoch() {
+    let root = temp_dir("kimi-code-stable-source-order");
+    let wire = root.join("work-key/native-session-order/agents/main/wire.jsonl");
+    fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    fs::write(
+        &wire,
+        [
+            r#"{"type":"turn.prompt","turnId":"turn-1","input":"First untimed prompt"}"#,
+            r#"{"type":"context.append_loop_event","turnId":"turn-1","event":{"type":"content.part","step":1,"part":{"type":"text","text":"Untimed reply"}}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let read = || {
+        conversation_list(&json!({
+            "agent": "kimi-code",
+            "root": display_path(&root),
+            "sessionId": "native-session-order",
+            "messageLimit": 50
+        }))
+        .unwrap()["sessions"][0]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| message["createdAt"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    let first = read();
+    let second = read();
+    assert_eq!(first, second);
+    assert!(
+        first
+            .iter()
+            .all(|timestamp| !timestamp.starts_with("1970-01-01"))
+    );
+    assert!(first.windows(2).all(|pair| pair[0] <= pair[1]));
+}

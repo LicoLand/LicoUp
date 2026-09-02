@@ -6,7 +6,7 @@ use super::super::dedupe_paging::{
 };
 
 #[test]
-fn dedupe_uses_codex_native_identity_and_other_adapter_source_identity() {
+fn dedupe_uses_native_identity_for_every_adapter() {
     let codex_active = json!({
         "adapterId": "codex", "nativeSessionId": "same", "sourcePath": "active"
     });
@@ -22,12 +22,28 @@ fn dedupe_uses_codex_native_identity_and_other_adapter_source_identity() {
         1
     );
 
+    let copilot_store = json!({
+        "adapterId": "copilot", "nativeSessionId": "same", "sourcePath": "state.vscdb"
+    });
+    let copilot_transcript = json!({
+        "adapterId": "copilot", "nativeSessionId": "same", "sourcePath": "session.jsonl"
+    });
+    assert_eq!(
+        history_session_dedupe_key(&copilot_store),
+        history_session_dedupe_key(&copilot_transcript)
+    );
+    assert_eq!(
+        dedupe_history_sessions(vec![copilot_store, copilot_transcript]).len(),
+        1
+    );
+
     let other_a = json!({"adapterId": "pi", "nativeSessionId": "same", "sourcePath": "a"});
     let other_b = json!({"adapterId": "pi", "nativeSessionId": "same", "sourcePath": "b"});
-    assert_ne!(
+    assert_eq!(
         history_session_dedupe_key(&other_a),
         history_session_dedupe_key(&other_b)
     );
+    assert_eq!(dedupe_history_sessions(vec![other_a, other_b]).len(), 1);
 }
 
 #[test]
@@ -48,4 +64,39 @@ fn paging_applies_offset_and_bounded_end_without_overread() {
         },
     );
     assert!(empty.is_empty());
+}
+
+#[test]
+fn richest_copy_wins_and_complementary_runtime_archive_metadata_survives() {
+    let richest = json!({
+        "adapterId": "codex",
+        "nativeSessionId": "shared",
+        "sourcePath": "active",
+        "messages": [
+            {"id": "m1", "role": "user", "text": "one"},
+            {"id": "m2", "role": "agent", "text": "two"},
+            {"id": "m3", "role": "agent", "text": "three"}
+        ],
+        "messageCount": 3
+    });
+    let metadata = json!({
+        "adapterId": "codex",
+        "nativeSessionId": "shared",
+        "sourcePath": "archive",
+        "messages": [{"id": "m1", "role": "user", "text": "one"}],
+        "messageCount": 1,
+        "workingDirectory": "/synthetic/workspace",
+        "model": "synthetic-model",
+        "runtime": {"name": "native"},
+        "archived": true,
+        "archivePath": "/synthetic/archive"
+    });
+    let merged = dedupe_history_sessions(vec![metadata, richest]);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0]["messages"].as_array().unwrap().len(), 3);
+    assert_eq!(merged[0]["workingDirectory"], "/synthetic/workspace");
+    assert_eq!(merged[0]["model"], "synthetic-model");
+    assert_eq!(merged[0]["runtime"]["name"], "native");
+    assert_eq!(merged[0]["archived"], true);
+    assert_eq!(merged[0]["archivePath"], "/synthetic/archive");
 }

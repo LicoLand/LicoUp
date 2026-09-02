@@ -32,7 +32,11 @@ impl ProtocolFailure {
         *self.0
     }
 
-    pub(super) fn new(code: &'static str, message: &'static str, stage: &'static str) -> Self {
+    pub(in crate::platform) fn new(
+        code: &'static str,
+        message: &'static str,
+        stage: &'static str,
+    ) -> Self {
         Self(Box::new(ProtocolFailurePayload {
             code,
             message,
@@ -45,32 +49,15 @@ impl ProtocolFailure {
         }))
     }
 
-    pub(super) fn with_session(mut self, session_id: Option<&str>) -> Self {
+    pub(in crate::platform) fn with_session(mut self, session_id: Option<&str>) -> Self {
         let session_id = session_id.map(str::trim).filter(|value| !value.is_empty());
         self.session_id = session_id.map(str::to_string);
         self
     }
-
-    pub(super) fn user_interaction(
-        method: &str,
-        session_id: Option<&str>,
-        turn_id: Option<&str>,
-    ) -> Self {
-        Self(Box::new(ProtocolFailurePayload {
-            code: "pi_user_interaction_required",
-            message: "Pi Agent requires explicit user interaction before this turn can continue.",
-            stage: "extension/ui",
-            user_interaction_required: true,
-            request_method: Some(method.to_string()),
-            session_id: session_id.map(str::to_string),
-            turn_id: turn_id.map(str::to_string),
-            turn_status: None,
-        }))
-    }
 }
 
 impl ProtocolFailure {
-    pub(super) fn with_turn(mut self, turn_id: &str) -> Self {
+    pub(in crate::platform) fn with_turn(mut self, turn_id: &str) -> Self {
         if !turn_id.is_empty() {
             self.turn_id = Some(turn_id.to_string());
         }

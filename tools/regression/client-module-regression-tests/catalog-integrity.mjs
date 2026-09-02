@@ -487,7 +487,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
     ["conversation-ownership.mjs", 6],
     ["flutter-selection.mjs", 4],
     ["platform-driver-ownership.mjs", 20],
-    ["runner-safety.mjs", 9],
+    ["runner-safety.mjs", 14],
     ["rust-selection.mjs", 10],
     ["secure-mesh-ownership.mjs", 17],
   ]);
@@ -509,7 +509,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 80);
+  assert.equal(registeredNames.size, 85);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

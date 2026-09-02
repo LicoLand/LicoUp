@@ -3,8 +3,8 @@ use super::active_control::{ActiveTurnGuard, SteerRequest, bind};
 use super::io::{TransportEvent, write_message};
 use super::limits::PROCESS_POLL_INTERVAL;
 use super::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome, RunResult};
-use super::protocol::CodexProtocol;
-use serde_json::Value;
+use crate::platform::native_agent_parser::adapters::codex::CodexEffect;
+use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::time::Instant;
@@ -14,7 +14,7 @@ pub(super) fn run_protocol_loop(
     receiver: &Receiver<TransportEvent>,
     control_sender: &SyncSender<SteerRequest>,
     control_receiver: &Receiver<SteerRequest>,
-    protocol: &mut CodexProtocol,
+    protocol: &mut CodexParser,
     deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
@@ -91,11 +91,23 @@ pub(super) fn run_protocol_loop(
             .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
             .unwrap_or(PROCESS_POLL_INTERVAL);
         match receiver.recv_timeout(wait) {
-            Ok(TransportEvent::Message(message)) => {
-                if acknowledge_steer_response(&message, &mut pending_steers) {
-                    continue;
-                }
-                for effect in protocol.handle_message(message) {
+            Ok(TransportEvent::Line(line)) => {
+                let effects = match protocol.parse_line(&line) {
+                    Ok(effects) => effects,
+                    Err(failure) => return (None, Some(failure), None, false),
+                };
+                for effect in effects {
+                    let CodexEffect::Protocol(effect) = effect else {
+                        if let CodexEffect::SteerResponse {
+                            request_id,
+                            accepted,
+                        } = effect
+                            && let Some(acknowledged) = pending_steers.remove(&request_id)
+                        {
+                            let _ = acknowledged.send(accepted);
+                        }
+                        continue;
+                    };
                     match effect {
                         ProtocolEffect::Send(message) => {
                             if write_message(stdin, &message).is_err() {
@@ -119,14 +131,6 @@ pub(super) fn run_protocol_loop(
                         }
                     }
                 }
-            }
-            Ok(TransportEvent::InvalidJson) => {
-                return read_failure(
-                    protocol,
-                    "codex_app_server_invalid_json",
-                    "Codex app-server returned an invalid protocol message.",
-                    false,
-                );
             }
             Ok(TransportEvent::StdoutLimitExceeded) => {
                 return read_failure(
@@ -161,23 +165,8 @@ pub(super) fn run_protocol_loop(
     }
 }
 
-fn acknowledge_steer_response(
-    message: &Value,
-    pending_steers: &mut HashMap<String, SyncSender<bool>>,
-) -> bool {
-    let Some(request_id) = message.get("id").and_then(Value::as_str) else {
-        return false;
-    };
-    let Some(acknowledged) = pending_steers.remove(request_id) else {
-        return false;
-    };
-    let accepted = message.get("error").is_none() && message.get("result").is_some();
-    let _ = acknowledged.send(accepted);
-    true
-}
-
 fn read_failure(
-    protocol: &CodexProtocol,
+    protocol: &CodexParser,
     code: &'static str,
     message: &'static str,
     stdout_truncated: bool,

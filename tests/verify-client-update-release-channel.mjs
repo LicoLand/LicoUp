@@ -477,7 +477,7 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
     developerIdSigned: false,
     notarizationVerified: false,
     gatekeeperVerified: false,
-    command: "node apps/desktop/scripts/package-client.mjs --platform macos --mode release --production-entitlements",
+    command: "npm run client:build -- --platform macos --production-entitlements",
     verificationCommand: "node apps/desktop/scripts/verify-macos-client-bundle.mjs",
     codesignCommand: "codesign --verify --deep --strict LicoUp.app",
     ok: false
@@ -506,8 +506,14 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
     };
   }
 
-  const packageScriptPath = path.join(repoRoot, "apps", "desktop", "scripts", "package-client.mjs");
-  const packageResult = spawnSync(process.execPath, [packageScriptPath, "--platform", "macos", "--mode", "release", "--production-entitlements"], {
+  const packageResult = spawnSync("npm", [
+    "run",
+    "client:build",
+    "--",
+    "--platform",
+    "macos",
+    "--production-entitlements",
+  ], {
     cwd: repoRoot,
     encoding: "utf8",
     env: process.env,

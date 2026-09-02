@@ -1,8 +1,16 @@
 //! Complete Agent output spool. Memory overflow transfers intact chunks to a
 //! process-local sealed store. Chunks are never truncated.
+//!
+//! Sealing uses a per-spool key drawn from the OS CSPRNG so the ciphertext is
+//! not decryptable or forgeable against a publicly known constant key. The
+//! spool is process-local and non-persistent: the key never leaves the process
+//! and no ciphertext survives a restart, so a per-spool random key provides
+//! the full confidentiality and integrity service of the AEAD without any
+//! key-export or key-custody requirement.
 
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use rand::{RngCore, rngs::OsRng};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,7 +48,7 @@ pub struct OutputSpool {
 impl OutputSpool {
     pub fn process_local() -> Self {
         Self {
-            cipher: ChaCha20Poly1305::new(&Key::from([0x11; 32])),
+            cipher: ChaCha20Poly1305::new(&derive_process_key()),
             chunks: BTreeMap::new(),
             next_offset: 0,
             next_nonce: 1,
@@ -101,6 +109,16 @@ fn nonce_from(index: u64) -> Nonce {
     let mut bytes = [0_u8; 12];
     bytes[4..].copy_from_slice(&index.to_le_bytes());
     Nonce::from(bytes)
+}
+
+/// Draws a fresh 256-bit key from the OS CSPRNG, matching the crate's secure
+/// mesh key-derivation convention. Each `OutputSpool` instance gets an
+/// independent key, so two spools never share a key and no key material is
+/// embedded or exported.
+fn derive_process_key() -> Key {
+    let mut bytes = [0_u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    Key::from(bytes)
 }
 
 #[cfg(test)]

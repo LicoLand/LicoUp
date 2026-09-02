@@ -2,24 +2,24 @@ use super::adapter::adapter_for_agent;
 use super::artifact::runtime_executable;
 use super::normalization::{
     execution_response, normalize_acp, normalize_antigravity, normalize_claude, normalize_codex,
-    normalize_cursor, normalize_hermes_with_protocol, normalize_lico_agent, normalize_openclaw,
-    normalize_pi,
+    normalize_cursor, normalize_deepseek_harness, normalize_hermes_with_protocol,
+    normalize_lico_agent, normalize_openclaw, normalize_pi,
 };
 use super::params::{
     AttachmentShapeFailure, LocalImageInput, MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE,
     MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, binary_param, bounded_output_param, codex_binary_param,
-    message_param, optional_output_param, parse_attachments, text_param, u64_param,
+    message_param, optional_output_param, parse_attachments, text_param, timeout_param,
 };
 use super::{
-    DEFAULT_MAX_STDERR_BYTES, DEFAULT_TIMEOUT_MS, MAX_MESSAGE_BYTES, MAX_TIMEOUT_MS,
-    MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
+    DEFAULT_MAX_STDERR_BYTES, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
+    runtime_driver_profile,
 };
 use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
 use crate::platform::{
     antigravity_driver, claude_code_driver, codex_app_server, copilot_driver, cursor_driver,
-    hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver, openclaw_driver,
-    opencode_driver, pi_driver,
+    deepseek_harness_driver, hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver,
+    openclaw_driver, opencode_driver, pi_driver,
 };
 use serde_json::Value;
 use std::{
@@ -106,6 +106,9 @@ fn verify_attachment_signature(path: &Path, media_type: &str) -> Result<(), Runt
 }
 
 pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
+    if params.get("command").is_some() || params.get("args").is_some() {
+        return Err(RuntimeAdapterError::LegacyLaunchConfiguration);
+    }
     let agent_id = text_param(params, &["agent", "agentId", "target"])
         .filter(|value| !value.is_empty())
         .ok_or(RuntimeAdapterError::AgentIdentifierMissing)?;
@@ -114,13 +117,16 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
     if text.trim().is_empty() && attachments.is_empty() {
         return Err(RuntimeAdapterError::MessageMissing);
     }
-    if text.len() > MAX_MESSAGE_BYTES {
-        return Err(RuntimeAdapterError::MessageInputLimit);
-    }
     let adapter =
         adapter_for_agent(&agent_id).ok_or_else(|| RuntimeAdapterError::UnsupportedAdapter {
             agent_label: agent_id.clone(),
         })?;
+    crate::platform::native_agent_parser::require_registered(adapter);
+    if adapter == RuntimeAdapter::DeepSeekHarness
+        && runtime_driver_profile(adapter.id()).is_none_or(|profile| profile.readiness != "ready")
+    {
+        return Err(RuntimeAdapterError::RuntimeProfileUnavailable);
+    }
     let runtime_connection = SshRuntimeConnection::from_params(params, adapter.id())
         .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
     if !attachments.is_empty() {
@@ -151,17 +157,20 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         _ => Cow::Borrowed(params),
     };
     let params = params.as_ref();
-    let timeout_ms = u64_param(params, "timeoutMs", DEFAULT_TIMEOUT_MS);
-    // timeoutMs 0 opts out of any turn deadline: the agent runs until the turn
-    // completes, however long that takes. A non-zero value stays bounded by the
-    // configured window.
-    let timeout_ms = if timeout_ms == 0 {
-        0
-    } else {
-        timeout_ms.clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
-    };
-    let max_stdout = optional_output_param(params, "maxStdoutBytes");
-    let max_stderr = bounded_output_param(params, "maxStderrBytes", DEFAULT_MAX_STDERR_BYTES);
+    // Omission and zero mean no deadline. Every explicit non-zero setting is
+    // either preserved byte-for-byte as the driver window or rejected before
+    // process launch; dispatch never silently clamps a caller request.
+    let timeout_ms = timeout_param(params, "timeoutMs", MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
+        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
+    let max_stdout = optional_output_param(params, "maxStdoutBytes").map_err(|_| {
+        RuntimeAdapterError::InvalidRuntimeSetting {
+            field: "maxStdoutBytes",
+        }
+    })?;
+    let max_stderr = bounded_output_param(params, "maxStderrBytes", DEFAULT_MAX_STDERR_BYTES)
+        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting {
+            field: "maxStderrBytes",
+        })?;
     let requested_executable = if adapter == RuntimeAdapter::Codex {
         codex_binary_param(params)
     } else {
@@ -321,6 +330,18 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             max_stdout,
             max_stderr,
         )),
+        RuntimeAdapter::DeepSeekHarness => {
+            normalize_deepseek_harness(deepseek_harness_driver::execute(
+                &executable,
+                params,
+                &text,
+                &session_id,
+                cwd.as_deref(),
+                timeout_ms,
+                max_stdout,
+                max_stderr,
+            ))
+        }
     };
 
     Ok(execution_response(adapter, execution))

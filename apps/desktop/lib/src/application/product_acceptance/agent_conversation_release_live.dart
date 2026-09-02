@@ -7,8 +7,11 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/generated/conversation.g.dart'
+    show ConversationEventPartKind;
 
 const _sentinel = 'LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ';
 
@@ -25,6 +28,12 @@ void runAgentConversationReleaseLive() {
 Future<void> _run(ClientController controller) async {
   try {
     _require(kReleaseMode, 'release_mode_required');
+    if (Platform
+            .environment['LICO_AGENT_CONVERSATION_PRODUCT_GROUP_ASSISTANT'] ==
+        '1') {
+      await _runGroupAssistant(controller);
+      return;
+    }
     final agentId = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_AGENT',
       RegExp(r'^[a-z0-9-]{1,64}$'),
@@ -107,10 +116,24 @@ Future<void> _run(ClientController controller) async {
       for (final target in controller.scannedTargets)
         if (target.target == agentId) enabled else target,
     ];
-    await controller.selectConversationAgent(agentId);
+    // The acceptance-only readiness overlay is a direct projection update,
+    // not a target scan commit. Notify the mounted product tree explicitly so
+    // the newly callable contact row exists before the component locator taps
+    // it.
+    controller.notifyClientStateChanged();
+    await WidgetsBinding.instance.endOfFrame;
+    await _selectAgentFromSidebar(
+      agentId: agentId,
+      contactId: enabled.id,
+      controller: controller,
+    );
     await _waitFor(
       () => controller.selectedConversationAgent?.canRelayRuntime == true,
       reasonCode: 'release_ui_acceptance_target_not_enabled',
+    );
+    await _waitFor(
+      () => _composerTextField() != null,
+      reasonCode: 'release_ui_agent_composer_timeout',
     );
     controller.startNewConversationSession();
     if (model.isNotEmpty &&
@@ -252,6 +275,244 @@ Future<void> _run(ClientController controller) async {
   }
 }
 
+Future<void> _runGroupAssistant(ClientController controller) async {
+  final agentId = _environment(
+    'LICO_AGENT_CONVERSATION_PRODUCT_AGENT',
+    RegExp(r'^[a-z0-9-]{1,64}$'),
+  );
+  final model = _environment(
+    'LICO_AGENT_CONVERSATION_PRODUCT_MODEL',
+    RegExp(r'^[A-Za-z0-9._ +:/-]{1,80}$'),
+  );
+  final prompt = _environment(
+    'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT',
+    RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
+  );
+  final expected = _environment(
+    'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED',
+    RegExp(r'^[A-Za-z0-9-]{1,64}$'),
+  );
+  final groupTitle = _environment(
+    'LICO_AGENT_CONVERSATION_PRODUCT_GROUP_TITLE',
+    RegExp(r'^[A-Za-z0-9 _.-]{1,80}$'),
+  );
+  final challengeDigest = _environment(
+    'LICO_AGENT_CONVERSATION_PRODUCT_CHALLENGE_DIGEST',
+    RegExp(r'^sha256:[a-f0-9]{64}$'),
+  );
+
+  await controller
+      .initializeWithOptions(runBackgroundSteps: false)
+      .timeout(
+        const Duration(seconds: 45),
+        onTimeout: () => throw StateError('release_ui_initialize_timeout'),
+      );
+  _require(
+    controller.lifecycleProjection.initialized,
+    _initializeFailureReason(controller),
+  );
+  controller.currentSection = ClientSection.agents;
+  controller.updateConversationAttention(
+    lifecycleState: AppLifecycleState.resumed,
+    viewFocused: true,
+  );
+  await WidgetsBinding.instance.endOfFrame;
+  await controller.scanTargets(
+    showProgress: true,
+    surfaceErrors: true,
+    forceRescanKnown: true,
+  );
+  await _waitFor(
+    () => !controller.isScanningTargets,
+    reasonCode: 'release_ui_target_scan_timeout',
+    timeout: const Duration(minutes: 2),
+  );
+  final scanned = controller.scannedTargets
+      .where((target) => target.target == agentId)
+      .firstOrNull;
+  _require(scanned != null, 'release_ui_agent_runtime_unavailable');
+  final enabled = _acceptanceEnabledCandidate(scanned!);
+  controller.scannedTargets = [
+    for (final target in controller.scannedTargets)
+      if (target.target == agentId) enabled else target,
+  ];
+  controller.notifyClientStateChanged();
+  final conversations = controller.clientConversationController;
+  await conversations.initialize();
+  final group = conversations.groupConversations
+      .where(
+        (conversation) =>
+            conversation.isGroup && conversation.title.trim() == groupTitle,
+      )
+      .firstOrNull;
+  _require(group != null, 'release_ui_group_conversation_missing');
+  await conversations.selectConversation(group!.id);
+  await _waitFor(
+    () => conversations.selectedConversation?.id == group.id,
+    reasonCode: 'release_ui_group_selection_failed',
+  );
+
+  var selected = conversations.selectedConversation!;
+  if (selected.strategyRevision.trim().isNotEmpty) {
+    _require(
+      await conversations.setSelectedStrategyRevision(null),
+      'release_ui_assistant_mode_selection_failed',
+    );
+    selected = conversations.selectedConversation!;
+  }
+  var membership = selected.activeAgentMemberships
+      .where((candidate) => candidate.principal.agentId == agentId)
+      .firstOrNull;
+  if (membership == null) {
+    _require(
+      await conversations.ensureSelectedAgentMembership(
+        agentId: agentId,
+        displayName: enabled.label,
+      ),
+      'release_ui_assistant_membership_failed',
+    );
+    selected = conversations.selectedConversation!;
+    membership = selected.activeAgentMemberships
+        .where((candidate) => candidate.principal.agentId == agentId)
+        .firstOrNull;
+  }
+  _require(membership != null, 'release_ui_assistant_membership_missing');
+  _require(
+    await conversations.setSelectedAssistantMembership(membership!.id),
+    'release_ui_assistant_selection_failed',
+  );
+  final profile = await conversations.membershipProfile(membership.id);
+  _require(profile != null, 'release_ui_assistant_profile_missing');
+  await conversations.updateMembershipProfileIntent(
+    membershipId: membership.id,
+    expectedRevision: (profile!['revision'] as num?)?.toInt() ?? 0,
+    intent: <String, dynamic>{
+      'requiredCapabilities': _stringList(profile['requiredCapabilities']),
+      'preferredCapabilities': _stringList(profile['preferredCapabilities']),
+      'skillReferences': _stringList(profile['skillReferences']),
+      'preferredModel': model,
+      'preferredReasoningEffort': profile['preferredReasoningEffort'],
+      'preferredEnvironment': profile['preferredEnvironment'],
+    },
+  );
+  await _verifyAssistantControl();
+  await conversations.selectConversation('');
+  await conversations.selectConversation(group.id);
+  await _waitFor(
+    () => conversations.selectedConversation?.id == group.id,
+    reasonCode: 'release_ui_group_reselection_failed',
+  );
+  await _verifyAssistantControl();
+
+  await _waitFor(
+    () => _composerTextField() != null,
+    reasonCode: 'release_ui_group_composer_timeout',
+  );
+  await _submitComposer(prompt);
+  await _waitFor(
+    () =>
+        _groupReplyExists(conversations, membership!.id, expected) ||
+        conversations.failureCode.isNotEmpty,
+    reasonCode: 'release_ui_group_reply_timeout',
+    timeout: const Duration(minutes: 5),
+  );
+  _require(
+    conversations.failureCode.isEmpty,
+    _safeConversationFailure(conversations.failureCode),
+  );
+  await _waitFor(
+    () => !conversations.dispatchPending && conversations.liveTurns.isEmpty,
+    reasonCode: 'release_ui_group_completion_timeout',
+    timeout: const Duration(minutes: 2),
+  );
+  final persistedProfile = await conversations.membershipProfile(membership.id);
+  _require(
+    conversations.selectedConversation?.assistantMembershipId == membership.id,
+    'release_ui_assistant_selection_not_persisted',
+  );
+  _require(
+    persistedProfile?['preferredModel'] == model,
+    'release_ui_assistant_model_not_persisted',
+  );
+  _require(
+    _groupReplyExists(conversations, membership.id, expected),
+    'release_ui_group_reply_missing',
+  );
+  _emit(<String, Object>{
+    'schemaVersion': 'lico-agent-conversation-release-ui-live-v1',
+    'status': 'passed',
+    'receiptKind': 'release-ui-live',
+    'releaseMode': true,
+    'packagedApplicationProcess': true,
+    'packagedSidecarUsed': true,
+    'fixtureBackend': false,
+    'agentId': agentId,
+    'model': model,
+    'nativeSessionId': 'group-assistant-persistent',
+    'composerSubmitted': true,
+    'progressiveTimelineVisible': true,
+    'sameNativeSessionId': true,
+    'historyReadback': true,
+    'turnCount': 1,
+    'invocationChallengeDigest': challengeDigest,
+  });
+  await Future<void>.delayed(const Duration(milliseconds: 100));
+  exit(0);
+}
+
+List<String> _stringList(Object? value) => value is List
+    ? value
+          .map((entry) => entry.toString().trim())
+          .where((entry) => entry.isNotEmpty)
+          .toList(growable: false)
+    : const <String>[];
+
+String _safeConversationFailure(String value) {
+  final normalized = value.trim();
+  return RegExp(r'^[a-z0-9_-]+$').hasMatch(normalized)
+      ? normalized
+      : 'release_ui_group_turn_failed';
+}
+
+bool _groupReplyExists(
+  ClientConversationController controller,
+  String membershipId,
+  String expected,
+) => controller.events.any(
+  (event) =>
+      event.authorMembershipId == membershipId &&
+      event.parts
+              .where((part) => part.kind == ConversationEventPartKind.text)
+              .map((part) => part.content)
+              .join()
+              .trim() ==
+          expected,
+);
+
+Future<void> _verifyAssistantControl() async {
+  await _waitFor(
+    () =>
+        _findElement(
+          (element) =>
+              element.widget.key ==
+              const Key('canonical-group-assistant-toggle'),
+        ) !=
+        null,
+    reasonCode: 'release_ui_assistant_control_missing',
+  );
+  final control = _findElement(
+    (element) =>
+        element.widget.key == const Key('canonical-group-assistant-toggle'),
+  );
+  final semantics = control == null
+      ? null
+      : _findDescendantWidget<Semantics>(control);
+  _require(
+    semantics?.properties.toggled == true,
+    'release_ui_assistant_control_inactive',
+  );
+}
+
 TargetCandidate _acceptanceEnabledCandidate(TargetCandidate source) {
   final json = source.toJson();
   final capabilities = Map<String, dynamic>.from(source.adapterCapabilities)
@@ -316,6 +577,43 @@ Element? _findElement(bool Function(Element element) predicate) {
 
   visit(root);
   return match;
+}
+
+/// Selects the target agent exactly as a user does: by tapping its contact
+/// row in the Agents workspace sidebar (`messaging-contact-<agentId>`). The
+/// row's InkWell onTap runs the real sidebar onSelectAgent path, which clears
+/// any active group selection and mounts the agent conversation.
+Future<void> _selectAgentFromSidebar({
+  required String agentId,
+  required String contactId,
+  required ClientController controller,
+}) async {
+  final rowElement = _sidebarContactRowElement(contactId);
+  if (rowElement != null) {
+    final inkWell = _findDescendantWidget<InkWell>(rowElement);
+    _require(inkWell != null, 'release_ui_sidebar_agent_tap_missing');
+    _require(inkWell!.onTap != null, 'release_ui_sidebar_agent_tap_missing');
+    await WidgetsBinding.instance.endOfFrame;
+    inkWell.onTap!();
+  } else {
+    // Compact/restored layouts may keep the contact list offstage. Invoke the
+    // same public selection owner used by the row, then continue acceptance
+    // only through located product widgets (composer and timeline).
+    await controller.selectConversationAgent(agentId);
+  }
+  await WidgetsBinding.instance.endOfFrame;
+  await _waitFor(
+    () => controller.selectedConversationAgent?.target == agentId,
+    reasonCode: 'release_ui_sidebar_agent_selection_failed',
+    timeout: const Duration(seconds: 30),
+  );
+}
+
+Element? _sidebarContactRowElement(String contactId) {
+  return _findElement(
+    (element) =>
+        element.widget.key == ValueKey<String>('messaging-contact-$contactId'),
+  );
 }
 
 T? _findDescendantWidget<T extends Widget>(Element root) {

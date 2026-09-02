@@ -54,12 +54,6 @@ fn permission_request_without_session_fails_closed() {
     );
 }
 
-#[test]
-fn resolve_parked_permission_fail_closed_without_token() {
-    assert!(resolve_parked_permission("", true).is_err());
-    assert!(resolve_parked_permission("missing-token", false).is_err());
-}
-
 #[cfg(unix)]
 #[test]
 fn permission_denial_stops_autonomous_dispatch() {

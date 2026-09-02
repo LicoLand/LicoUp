@@ -1,11 +1,10 @@
 use super::{AdmittedCommand, CliExecution};
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 
 use crate::domain::llm_api_key_vault::{
     GatewayCredentialLeaseDays, LlmApiKeyCredentialUpdate, LlmApiKeyProvider, NewLlmApiKey,
 };
-use crate::platform::llm_gateway_service::providers_with_usable_saved_keys;
 
 fn local_token_helper() -> Result<std::path::PathBuf> {
     let executable =
@@ -108,40 +107,36 @@ pub(super) fn handle_agent_plan(command: AdmittedCommand) -> Result<CliExecution
     let target = crate::domain::llm_gateway_agent_config::GatewayAgentTarget::parse(
         command.required_text("agent"),
     )?;
-    let root = std::path::Path::new(command.required_text("config-root"));
+    let root = std::path::PathBuf::from(command.required_text("config-root"));
     let port = command
         .option_text("port")
         .unwrap_or("15722")
         .parse::<u16>()?;
     let helper = local_token_helper()?;
-    let available_providers = providers_with_usable_saved_keys();
+    let models = if target.embeds_model_catalog() {
+        crate::platform::llm_gateway_service::service_model_catalog(port)?
+    } else {
+        Vec::new()
+    };
     let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
-        target,
-        root,
-        port,
-        &helper,
-        &available_providers,
+        target, &root, port, &helper, &models,
     )?;
     Ok(CliExecution::Json(serde_json::to_value(plan)?))
 }
 
-pub(super) fn handle_agent_apply(command: AdmittedCommand) -> Result<CliExecution> {
+pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExecution> {
     let target = crate::domain::llm_gateway_agent_config::GatewayAgentTarget::parse(
         command.required_text("agent"),
     )?;
-    let root = std::path::Path::new(command.required_text("config-root"));
+    let root = std::path::PathBuf::from(command.required_text("config-root"));
     let port = command
         .option_text("port")
         .unwrap_or("15722")
         .parse::<u16>()?;
-    let available_providers = providers_with_usable_saved_keys();
     let helper = local_token_helper()?;
+    let models = confirmed_agent_models(&mut command, target)?;
     let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
-        target,
-        root,
-        port,
-        &helper,
-        &available_providers,
+        target, &root, port, &helper, &models,
     )?;
     let confirmation = command
         .option_text("confirmation")
@@ -177,6 +172,62 @@ pub(super) fn handle_agent_apply(command: AdmittedCommand) -> Result<CliExecutio
         json!({"ok": true, "agentId": plan.agent_id,
         "configured": true, "destination": plan.destination, "containsUpstreamSecret": false}),
     ))
+}
+
+fn confirmed_agent_models(
+    command: &mut AdmittedCommand,
+    target: crate::domain::llm_gateway_agent_config::GatewayAgentTarget,
+) -> Result<Vec<crate::domain::llm_gateway_agent_config::GatewayAgentModel>> {
+    let supplied = command.take_option_json("stdin-json");
+    if !target.embeds_model_catalog() {
+        ensure!(
+            supplied.is_none(),
+            "llm_gateway_agent_config_model_catalog_invalid"
+        );
+        return Ok(Vec::new());
+    }
+    let Value::Object(mut input) =
+        supplied.ok_or_else(|| anyhow!("llm_gateway_agent_config_model_catalog_required"))?
+    else {
+        return Err(anyhow!("llm_gateway_agent_config_model_catalog_invalid"));
+    };
+    let models = input
+        .remove("models")
+        .and_then(|value| value.as_array().cloned())
+        .ok_or_else(|| anyhow!("llm_gateway_agent_config_model_catalog_invalid"))?;
+    ensure!(
+        input.is_empty() && models.len() <= 8192,
+        "llm_gateway_agent_config_model_catalog_invalid"
+    );
+    models
+        .into_iter()
+        .map(|model| {
+            let Value::Object(mut model) = model else {
+                return Err(anyhow!("llm_gateway_agent_config_model_catalog_invalid"));
+            };
+            let id = model
+                .remove("id")
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .ok_or_else(|| anyhow!("llm_gateway_agent_config_model_catalog_invalid"))?;
+            let name = model
+                .remove("name")
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .ok_or_else(|| anyhow!("llm_gateway_agent_config_model_catalog_invalid"))?;
+            let valid_id = id.split_once(':').is_some_and(|(provider, upstream)| {
+                crate::domain::llm_gateway::namespaced_model_id(provider, upstream).as_deref()
+                    == Some(id.as_str())
+            });
+            ensure!(
+                model.is_empty()
+                    && valid_id
+                    && !name.is_empty()
+                    && name.len() <= 1024
+                    && !name.chars().any(char::is_control),
+                "llm_gateway_agent_config_model_catalog_invalid"
+            );
+            Ok(crate::domain::llm_gateway_agent_config::GatewayAgentModel { id, name })
+        })
+        .collect()
 }
 
 pub(super) fn handle_service_status(command: AdmittedCommand) -> Result<CliExecution> {
