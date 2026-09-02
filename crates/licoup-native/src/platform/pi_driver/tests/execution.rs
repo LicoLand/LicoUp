@@ -227,6 +227,7 @@ fn interaction_park_reports_transport_loss_and_releases_its_route() {
         Duration::from_secs(5),
     )
     .expect("Pi should park the exact interaction route before transport loss");
+    fs::write(directory.join("release-interaction-exit"), b"").unwrap();
     let result = run.join().unwrap();
     assert!(!result.ok);
     assert_eq!(result.error.unwrap().code, "pi_rpc_exited");
