@@ -2,8 +2,9 @@ use super::{
     ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, Conversation, ConversationDispatch, ConversationEvent,
     ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn,
     DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind,
-    ImageAttachment, Membership, MembershipAccess, Principal, PrincipalKind, ProfileIntent,
-    ProfileIntentUpdate, ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
+    ImageAttachment, Membership, MembershipAccess, Principal, PrincipalKind, PrivateRuntimeBinding,
+    ProfileIntent, ProfileIntentUpdate, ProfileResponsibility, RuntimeBinding, SourceLink,
+    TurnState,
 };
 use anyhow::{Result, anyhow};
 use rusqlite::{
@@ -27,7 +28,7 @@ mod path_security;
 mod recovery;
 
 pub use conversations::ConversationRepository;
-pub use dispatches::DispatchRepository;
+pub use dispatches::{DispatchRepository, MAX_SUBAGENT_INVOCATION_DEPTH};
 pub use events::EventRepository;
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
 
@@ -126,8 +127,44 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
            runtime_conversation_path TEXT, error_code TEXT,
            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
          );
-         CREATE INDEX IF NOT EXISTS conversation_dispatches_resume_idx
-           ON conversation_dispatches(conversation_id, membership_id, state, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS conversation_dispatches_resume_idx
+            ON conversation_dispatches(conversation_id, membership_id, state, updated_at DESC);
+          CREATE TABLE IF NOT EXISTS subagent_dispatch_claims (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            caller_membership_id TEXT NOT NULL REFERENCES memberships(id),
+            target_membership_id TEXT NOT NULL REFERENCES memberships(id),
+            parent_dispatch_id TEXT REFERENCES subagent_dispatch_claims(id),
+            depth INTEGER NOT NULL CHECK(depth BETWEEN 1 AND 8),
+            state TEXT NOT NULL CHECK(state IN (
+              'claimed','running','cancel-requested','reconciliation-required',
+              'completed','failed','cancelled'
+            )),
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS subagent_dispatch_claims_active_edge
+            ON subagent_dispatch_claims(conversation_id, caller_membership_id, target_membership_id)
+            WHERE state IN ('claimed','running','cancel-requested','reconciliation-required');
+          CREATE INDEX IF NOT EXISTS subagent_dispatch_claims_parent_idx
+            ON subagent_dispatch_claims(parent_dispatch_id);
+          CREATE INDEX IF NOT EXISTS subagent_dispatch_claims_target_idx
+            ON subagent_dispatch_claims(conversation_id, target_membership_id, updated_at DESC);
+          CREATE TABLE IF NOT EXISTS subagent_mcp_inbound (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            caller_membership_id TEXT,
+            target_membership_id TEXT,
+            tool TEXT NOT NULL CHECK(tool IN (
+              'lico_subagent_delegate','lico_subagent_continue','lico_subagent_cancel'
+            )),
+            outcome TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS subagent_mcp_inbound_edge_idx
+            ON subagent_mcp_inbound(
+              conversation_id, caller_membership_id, target_membership_id, created_at, id
+            );
          CREATE TABLE IF NOT EXISTS migration_provenance (
            source_kind TEXT NOT NULL, source_identity TEXT NOT NULL,
            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -1156,20 +1193,31 @@ impl ConversationStore {
                     }
                 }
             } else {
-                insert_runtime_event_part(
-                    &transaction,
-                    &scope.conversation_id,
-                    &scope.event_id,
-                    ordinal,
-                    &NewEventPart {
-                        id: String::new(),
-                        kind: EventPartKind::Diagnostic,
-                        content: runtime_terminal_diagnostic(terminal, error_code),
-                    },
-                    None,
-                    now,
+                // A typed MCP tool-result is already the caller-visible
+                // failure. A second diagnostic part would be classified as a
+                // generic caller runtime failure and hide that code.
+                let tool_result_exists: bool = transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM event_parts
+                     WHERE event_id=?1 AND kind='tool-result')",
+                    params![scope.event_id],
+                    |row| row.get(0),
                 )?;
-                ordinal += 1;
+                if !tool_result_exists {
+                    insert_runtime_event_part(
+                        &transaction,
+                        &scope.conversation_id,
+                        &scope.event_id,
+                        ordinal,
+                        &NewEventPart {
+                            id: String::new(),
+                            kind: EventPartKind::Diagnostic,
+                            content: runtime_terminal_diagnostic(terminal, error_code),
+                        },
+                        None,
+                        now,
+                    )?;
+                    ordinal += 1;
+                }
             }
             if state == DispatchState::Completed {
                 for stage in [
@@ -1280,6 +1328,45 @@ impl ConversationStore {
             )?;
             transaction.commit()?;
             Ok(())
+        })
+    }
+
+    /// Read the exact private native binding for one active Membership. No
+    /// generic path heuristic or completed-turn scan participates.
+    pub fn private_runtime_binding(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+    ) -> StoreResult<Option<PrivateRuntimeBinding>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(membership_id, "membership_id")?;
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT rb.conversation_id, rb.membership_id,
+                            rb.runtime_session_id, rb.runtime_conversation_path,
+                            rb.working_directory
+                     FROM runtime_bindings rb
+                     JOIN memberships m ON m.id=rb.membership_id
+                       AND m.conversation_id=rb.conversation_id
+                       AND m.status='active'
+                     WHERE rb.conversation_id=?1 AND rb.membership_id=?2
+                       AND rb.lane='conversation' AND rb.availability='available'
+                       AND rb.runtime_session_id IS NOT NULL
+                     LIMIT 1",
+                    params![conversation_id, membership_id],
+                    |row| {
+                        Ok(PrivateRuntimeBinding {
+                            conversation_id: row.get(0)?,
+                            membership_id: row.get(1)?,
+                            runtime_session_id: row.get(2)?,
+                            runtime_conversation_path: row.get(3)?,
+                            working_directory: row.get(4)?,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(Into::into)
         })
     }
 
@@ -2664,6 +2751,7 @@ impl ConversationStore {
                     params![conversation_id],
                 )?;
                 for table in [
+                    "subagent_dispatch_claims",
                     "conversation_dispatches",
                     "runtime_bindings",
                     "source_links",
@@ -2925,8 +3013,8 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     match prior_schema_version.as_deref() {
         None => {
             connection.execute_batch(
-                "INSERT INTO schema_meta(key, value) VALUES ('version', '9')
-                 ON CONFLICT(key) DO UPDATE SET value='9';",
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '11')
+                 ON CONFLICT(key) DO UPDATE SET value='11';",
             )?;
         }
         Some("1") => {
@@ -2964,7 +3052,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3008,6 +3096,22 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if current_schema_version == "8" {
         migrate_profile_reasoning_effort_v9(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "9" {
+        migrate_subagent_dispatch_claims_v10(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "10" {
+        migrate_subagent_mcp_inbound_v11(connection)?;
     }
     ensure_column(
         connection,
@@ -3320,6 +3424,33 @@ fn migrate_profile_reasoning_effort_v9(connection: &mut Connection) -> StoreResu
     Ok(())
 }
 
+/// Version 10 adds private, durable Subagent lineage and active-edge claims.
+/// `CONVERSATION_SCHEMA_TABLES` creates the table before migrations run, so
+/// this transaction advances the version only after that DDL succeeded.
+fn migrate_subagent_dispatch_claims_v10(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '10')
+         ON CONFLICT(key) DO UPDATE SET value='10'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Version 11 records inbound Subagent MCP `tools/call` rows. The table is
+/// created by `CONVERSATION_SCHEMA_TABLES`; this step only advances the version.
+fn migrate_subagent_mcp_inbound_v11(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '11')
+         ON CONFLICT(key) DO UPDATE SET value='11'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn normalize_reserved_group_after_legacy_import(connection: &mut Connection) -> StoreResult<()> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     normalize_reserved_group(&transaction)?;
@@ -3356,6 +3487,8 @@ fn ensure_default_local_group_inner(
                 "source_links",
                 "runtime_bindings",
                 "conversation_dispatches",
+                "subagent_dispatch_claims",
+                "subagent_mcp_inbound",
                 "migration_provenance",
             ] {
                 transaction.execute(
@@ -4586,7 +4719,15 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
         "dispatch.turn.failed" | "agent.turn.failed" => Vec::new(),
         "permission.denied" => vec![(
             EventPartKind::Diagnostic,
-            text.unwrap_or("permission denied").to_owned(),
+            serde_json::json!({
+                "code": "permission_denied",
+                "stage": "permission",
+            })
+            .to_string(),
+        )],
+        "agent.tool.result" => vec![(
+            EventPartKind::ToolResult,
+            text.unwrap_or("tool result").to_owned(),
         )],
         _ if event.contains("tool") && event.contains("result") => vec![(
             EventPartKind::ToolResult,
@@ -4608,7 +4749,7 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
         )],
         _ if event.contains("diagnostic") || event.contains("failed") => vec![(
             EventPartKind::Diagnostic,
-            text.unwrap_or("runtime diagnostic").to_owned(),
+            runtime_terminal_diagnostic(payload, Some("runtime_failed")),
         )],
         _ => Vec::new(),
     };
@@ -6216,6 +6357,8 @@ mod tests {
             "source_links",
             "runtime_bindings",
             "conversation_dispatches",
+            "subagent_dispatch_claims",
+            "subagent_mcp_inbound",
             "migration_provenance",
             "schema_meta",
         ];
@@ -6263,7 +6406,7 @@ mod tests {
 
         let custom_before = snapshot_group(&root, "custom-group");
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "9");
+        assert_eq!(schema_version(&root), "11");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -6409,7 +6552,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "9");
+        assert_eq!(schema_version(&root), "11");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -6440,7 +6583,7 @@ mod tests {
         fixture.close().unwrap();
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "9");
+        assert_eq!(schema_version(&root), "11");
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -6468,7 +6611,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "9");
+        assert_eq!(schema_version(&root), "11");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -6827,6 +6970,170 @@ mod tests {
             part.kind == EventPartKind::Metadata && part.content.contains("accepted")
         }));
     }
+
+    #[test]
+    fn permission_denied_frame_projects_typed_diagnostic_json() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:one".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "One".into(),
+                    agent_id: Some("one".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                "one",
+                "",
+                "hello",
+                Some(&conversation.id),
+                Some(&agent.id),
+                Some("event:user"),
+                None,
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "permission.denied",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"text": "permission denied"}
+                }),
+            )
+            .unwrap();
+        let event = store
+            .page_events(&conversation.id, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|candidate| candidate.id == scope.event_id)
+            .unwrap();
+        let diagnostics: Vec<_> = event
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Diagnostic)
+            .map(|part| part.content.as_str())
+            .collect();
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].contains("permission_denied"));
+        assert!(!diagnostics.contains(&"permission denied"));
+        assert!(!diagnostics.contains(&"runtime diagnostic"));
+    }
+
+    #[test]
+    fn three_member_tool_error_stays_tool_result_and_skips_terminal_diagnostic() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store
+            .create_conversation_with_members(
+                "Mesh",
+                owner(),
+                &[
+                    (agent("cursor", "cursor"), MembershipAccess::Member),
+                    (agent("codex", "codex"), MembershipAccess::Member),
+                    (
+                        agent("antigravity", "antigravity"),
+                        MembershipAccess::Member,
+                    ),
+                ],
+            )
+            .unwrap();
+        assert_eq!(conversation.memberships.len(), 4);
+        let caller = conversation
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.agent_id.as_deref() == Some("cursor"))
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                "cursor",
+                "",
+                "delegate",
+                Some(&conversation.id),
+                Some(&caller.id),
+                Some("event:user"),
+                None,
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "agent.turn.processing",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {
+                        "evidenceKind": "tool",
+                        "toolName": "lico_subagent_delegate"
+                    }
+                }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                2,
+                &serde_json::json!({
+                    "event": "agent.tool.result",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {
+                        "text": "caller_membership_not_authorized",
+                        "toolName": "lico_subagent_delegate",
+                        "status": "error"
+                    }
+                }),
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({
+                    "ok": false,
+                    "error": {
+                        "code": "cursor_cli_turn_failed",
+                        "stage": "turn/completed"
+                    }
+                }),
+                DispatchState::Failed,
+                Some("cursor_cli_turn_failed"),
+            )
+            .unwrap();
+        let event = store
+            .page_events(&conversation.id, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|candidate| candidate.id == scope.event_id)
+            .unwrap();
+        assert!(event.parts.iter().any(|part| {
+            part.kind == EventPartKind::ToolCall && part.content == "lico_subagent_delegate"
+        }));
+        assert!(event.parts.iter().any(|part| {
+            part.kind == EventPartKind::ToolResult
+                && part.content == "caller_membership_not_authorized"
+        }));
+        assert!(
+            !event
+                .parts
+                .iter()
+                .any(|part| part.kind == EventPartKind::Diagnostic)
+        );
+        assert!(event.parts.iter().any(|part| {
+            part.kind == EventPartKind::Metadata && part.content.contains("failed")
+        }));
+    }
+
     fn agent(agent_id: &str, display_name: &str) -> Principal {
         Principal {
             id: agent_id.into(),
@@ -7017,7 +7324,7 @@ mod tests {
         fixture.close().unwrap();
 
         let store = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "9");
+        assert_eq!(schema_version(&root), "11");
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());
         let profiles = store.membership_profiles("legacy-group").unwrap();
@@ -7027,7 +7334,7 @@ mod tests {
 
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "9");
+        assert_eq!(schema_version(&root), "11");
         assert_eq!(
             reopened.membership_profiles("legacy-group").unwrap().len(),
             1

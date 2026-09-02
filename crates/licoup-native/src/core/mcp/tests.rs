@@ -1,6 +1,7 @@
 use super::*;
 use serde_json::{Map, Value};
 
+mod server;
 mod transfer;
 mod wire;
 

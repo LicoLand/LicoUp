@@ -33,7 +33,7 @@ pub(in crate::platform) fn execute(
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
     };
     let launch = CodexLaunchSpec::new(executable, cwd);
-    let mut child = match launch.spawn() {
+    let mut child = match launch.spawn_with_context(Some(params)) {
         Ok(child) => child,
         Err(error) => {
             let message = match error.kind() {

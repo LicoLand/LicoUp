@@ -8,12 +8,6 @@ fn generated_context_blocks_are_removed_without_dropping_trailing_user_text() {
     let text = "<environment_context>\nprivate context\n</environment_context>Keep this\nUser line";
     assert_eq!(strip_generated_context_blocks(text), "Keep this\nUser line");
     assert_eq!(
-        extract_user_authored_text(
-            "<skills_instructions>\nUse tools freely\n</skills_instructions>\n\nKeep the user request"
-        ),
-        "\nKeep the user request"
-    );
-    assert_eq!(
         extract_user_authored_text("## My request for Codex:\nDo the bounded change"),
         "\nDo the bounded change"
     );

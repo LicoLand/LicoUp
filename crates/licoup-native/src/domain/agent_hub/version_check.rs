@@ -4,6 +4,7 @@ use super::argv::{self, ArgvKind};
 use super::contract::{AgentRecipe, FIRST_BATCH_IDS, InstallChannel};
 use super::version;
 use serde_json::Value;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -16,6 +17,7 @@ pub fn installed_version(
     present: bool,
     live_lookup: bool,
     params: &Value,
+    executable_binding: Option<&Path>,
 ) -> String {
     if !present {
         return String::new();
@@ -26,18 +28,24 @@ pub fn installed_version(
     if !live_lookup {
         return String::new();
     }
-    let Some(channel) = channel else {
+    let (Some(channel), Some(executable_binding)) = (channel, executable_binding) else {
         return String::new();
     };
     if channel.verify_argv.is_empty() {
         return String::new();
     }
-    let program = &channel.verify_argv[0];
+    let recipe_program = &channel.verify_argv[0];
     let args = &channel.verify_argv[1..];
-    if argv::validate_program_args(program, args, ArgvKind::Lifecycle).is_err() {
+    if !agent
+        .binary_names
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(recipe_program))
+        || !binding_belongs_to_agent(executable_binding, agent)
+        || argv::validate_program_args(recipe_program, args, ArgvKind::Lifecycle).is_err()
+    {
         return String::new();
     }
-    let output = match run_probe(program, args) {
+    let output = match run_probe(executable_binding, args) {
         Some(output) => output,
         None => return String::new(),
     };
@@ -66,11 +74,59 @@ pub fn parse_output(agent_id: &str, stdout: &str, stderr: &str) -> String {
 }
 
 fn parse_codex(raw: &str) -> String {
-    version::concrete_display(strip_prefix(raw, &["codex-cli", "codex"]))
+    parse_exact_version(raw, &["codex-cli", "codex"])
 }
 
 fn parse_cursor(raw: &str) -> String {
-    version::concrete_display(strip_prefix(raw, &["cursor-agent", "cursor"]))
+    let candidate = strip_prefix(raw, &["cursor-agent", "cursor"]).trim();
+    let semver = parse_exact_version(raw, &["cursor-agent", "cursor"]);
+    if !semver.is_empty() {
+        return semver;
+    }
+    if is_cursor_date_hash_version(candidate) {
+        candidate.to_owned()
+    } else {
+        String::new()
+    }
+}
+
+pub(crate) fn is_cursor_date_hash_version(candidate: &str) -> bool {
+    let Some((date, hash)) = candidate.split_once('-') else {
+        return false;
+    };
+    if hash.len() != 7 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return false;
+    }
+    let parts = date.split('.').collect::<Vec<_>>();
+    if parts.len() != 3
+        || parts[0].len() != 4
+        || parts[1].len() != 2
+        || parts[2].len() != 2
+        || parts
+            .iter()
+            .any(|part| !part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return false;
+    }
+    let Ok(year) = parts[0].parse::<u16>() else {
+        return false;
+    };
+    let Ok(month) = parts[1].parse::<u8>() else {
+        return false;
+    };
+    let Ok(day) = parts[2].parse::<u8>() else {
+        return false;
+    };
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year.is_multiple_of(400) || (year.is_multiple_of(4) && !year.is_multiple_of(100)) => {
+            29
+        }
+        2 => 28,
+        _ => return false,
+    };
+    year != 0 && day != 0 && day <= days_in_month
 }
 
 fn parse_opencode(raw: &str) -> String {
@@ -94,7 +150,7 @@ fn parse_hermes(raw: &str) -> String {
 }
 
 fn parse_antigravity(raw: &str) -> String {
-    version::concrete_display(strip_prefix(raw, &["agy", "antigravity"]))
+    parse_exact_version(raw, &["agy", "antigravity"])
 }
 
 fn parse_deepseek_harness(raw: &str) -> String {
@@ -108,14 +164,27 @@ fn strip_prefix<'a>(raw: &'a str, prefixes: &[&str]) -> &'a str {
         .find(|line| !line.is_empty())
         .unwrap_or("");
     for prefix in prefixes {
+        if line == *prefix {
+            return "";
+        }
         if let Some(rest) = line
             .strip_prefix(prefix)
-            .or_else(|| line.strip_prefix(&format!("{prefix} ")))
+            .and_then(|rest| rest.strip_prefix(char::is_whitespace))
         {
             return rest.trim();
         }
     }
     line
+}
+
+fn parse_exact_version(raw: &str, prefixes: &[&str]) -> String {
+    let candidate = strip_prefix(raw, prefixes).trim();
+    let parsed = version::concrete_display(candidate);
+    if parsed.is_empty() || candidate.trim_start_matches(['v', 'V']) != parsed {
+        String::new()
+    } else {
+        parsed
+    }
 }
 
 fn reject_unknown(value: String) -> String {
@@ -145,7 +214,18 @@ struct ProbeOutput {
     stderr: String,
 }
 
-fn run_probe(program: &str, args: &[String]) -> Option<ProbeOutput> {
+fn binding_belongs_to_agent(binding: &Path, agent: &AgentRecipe) -> bool {
+    let Some(file_name) = binding.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let normalized = file_name.strip_suffix(".exe").unwrap_or(file_name);
+    agent
+        .binary_names
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(normalized))
+}
+
+fn run_probe(program: &Path, args: &[String]) -> Option<ProbeOutput> {
     let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())

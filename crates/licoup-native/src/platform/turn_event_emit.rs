@@ -120,6 +120,23 @@ pub fn emit_agent_processing(
     emit_turn_event("agent.turn.processing", session_id, turn_id, payload);
 }
 
+/// Emit only a fixed application error code for a completed native tool call.
+/// Provider results, arguments, identifiers, and model-authored text never
+/// cross this projection boundary.
+pub fn emit_agent_tool_error(session_id: &str, turn_id: &str, tool_name: &str, error_code: &str) {
+    emit_turn_event(
+        "agent.tool.result",
+        session_id,
+        turn_id,
+        json!({
+            "text": error_code,
+            "toolName": tool_name,
+            "status": "error",
+            "lifecyclePrefix": ["submitted", "accepted", "processing"]
+        }),
+    );
+}
+
 /// RAII guard that clears the sink on drop.
 pub struct StreamSinkGuard;
 
@@ -206,6 +223,32 @@ mod tests {
                 "toolName": "Bash",
                 "lifecyclePrefix": ["submitted", "accepted", "processing"]
             })
+        );
+    }
+
+    #[test]
+    fn tool_error_receipt_projects_only_the_fixed_code_and_tool_name() {
+        let captured = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let sink_target = Arc::clone(&captured);
+        install_stream_sink(Box::new(move |event| {
+            sink_target.lock().unwrap().push(event);
+        }));
+        let _guard = StreamSinkGuard;
+
+        emit_agent_tool_error(
+            "sess-1",
+            "turn-1",
+            "lico_subagent_delegate",
+            "subagent_cross_conversation_rejected",
+        );
+
+        let events = captured.lock().unwrap().clone();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["event"], "agent.tool.result");
+        assert_eq!(events[0]["payload"]["toolName"], "lico_subagent_delegate");
+        assert_eq!(
+            events[0]["payload"]["text"],
+            "subagent_cross_conversation_rejected"
         );
     }
 

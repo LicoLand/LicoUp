@@ -3,7 +3,7 @@ use super::plan::McpApprovalPlanStore;
 use super::sse::decode_sse_messages;
 use crate::core::mcp::{
     DEFAULT_MAX_MESSAGE_BYTES, McpExternalTransferGate, McpMessage, McpRequestId,
-    McpTransferDirection, PROTOCOL_REVISION, decode_http_body,
+    McpTransferDirection, OUTBOUND_TRANSFER_PROTOCOL_REVISION, decode_http_body,
 };
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
@@ -25,7 +25,7 @@ pub fn preview_http_transfer(params: &Value, plans: &impl McpApprovalPlanStore) 
         "direction": direction_name(scope.direction),
         "destination": scope.destination,
         "purpose": scope.purpose,
-        "protocolVersion": PROTOCOL_REVISION,
+        "protocolVersion": OUTBOUND_TRANSFER_PROTOCOL_REVISION,
         "sessionBound": scope.session_id.is_some(),
         "messageBytes": scope.body.len(),
         "planId": plan_id,
