@@ -3,7 +3,7 @@ import { createPrivateKey } from "node:crypto";
 
 export const UPDATE_SIGNING_KEYCHAIN_SERVICES = Object.freeze({
   offlineRoot: "land.lico.licoup.release-update.offline-root",
-  onlineChannel: "land.lico.licoup.release-update.online-channel",
+  onlineSigning: "land.lico.licoup.release-update.online-signing",
 });
 
 function privateKeyFromKeychain(service) {
@@ -33,7 +33,7 @@ export function updateSigningKeyEnvironment(baseEnvironment = process.env) {
     ...baseEnvironment,
     LICO_UPDATE_OFFLINE_ROOT_KEY: privateKeyFromKeychain(
       UPDATE_SIGNING_KEYCHAIN_SERVICES.offlineRoot),
-    LICO_UPDATE_ONLINE_CHANNEL_KEY: privateKeyFromKeychain(
-      UPDATE_SIGNING_KEYCHAIN_SERVICES.onlineChannel),
+    LICO_UPDATE_ONLINE_SIGNING_KEY: privateKeyFromKeychain(
+      UPDATE_SIGNING_KEYCHAIN_SERVICES.onlineSigning),
   };
 }

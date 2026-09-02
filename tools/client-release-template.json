@@ -34,6 +34,22 @@
   "publication": {
     "owner": "apple-release-service",
     "config": "tools/apple-release/macos-direct-arm64.json",
+    "profiles": {
+      "nightly": {
+        "config": "tools/apple-release/macos-direct-arm64-nightly.json",
+        "sourceBranch": "nightly",
+        "releaseTrack": "nightly",
+        "tag": "nightly",
+        "mutablePrerelease": true
+      },
+      "stable": {
+        "config": "tools/apple-release/macos-direct-arm64.json",
+        "sourceBranch": "release",
+        "releaseTrack": "stable",
+        "tag": "v{version}",
+        "mutablePrerelease": false
+      }
+    },
     "sourceBranch": "release",
     "repositoryMutation": "forbidden",
     "authorizationCount": 1,

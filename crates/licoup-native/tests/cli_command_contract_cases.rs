@@ -1903,7 +1903,6 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "update download",
             "update verify",
             "update apply",
-            "update rollback",
         ],
         Options,
     );
@@ -2379,6 +2378,15 @@ fn route_authorities() -> Vec<RouteAuthority> {
             options: vec![],
             constraints: &[],
         },
+        RouteAuthority {
+            module: "state.rs",
+            handler: "handle_state_admit",
+            path: "state admit",
+            required: &[("data-root", Text)],
+            cardinality: Exact,
+            options: vec![],
+            constraints: &[],
+        },
     ]);
     add_authority_routes(
         &mut routes,
@@ -2656,9 +2664,8 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             },
         ],
         "mcp http preview" | "mcp http execute" => &[value_option("stdin-json", Json, true)],
-        "update status" | "update check" | "update download" | "update verify" | "update apply"
-        | "update rollback" => &[
-            value_option("channel", Text, false),
+        "update status" | "update check" => &[
+            value_option("target-release-track", Text, false),
             value_option("manifest-path", Text, false),
             value_option("public-keys-path", Text, false),
             value_option("revocation-path", Text, false),
@@ -2667,7 +2674,35 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("repo", Text, false),
             value_option("staging-root", Text, false),
             value_option("state-root", Text, false),
-            value_option("current-version", Text, false),
+            value_option("execute", Text, false),
+            value_option("install-root", Text, false),
+            value_option("gui-pid", Text, false),
+            value_option("wait-for-script", Text, false),
+        ],
+        "update download" | "update verify" => &[
+            value_option("manifest-path", Text, false),
+            value_option("public-keys-path", Text, false),
+            value_option("revocation-path", Text, false),
+            value_option("source-path", Text, false),
+            value_option("source", Text, false),
+            value_option("repo", Text, false),
+            value_option("staging-root", Text, false),
+            value_option("state-root", Text, false),
+            value_option("execute", Text, false),
+            value_option("install-root", Text, false),
+            value_option("gui-pid", Text, false),
+            value_option("wait-for-script", Text, false),
+        ],
+        "update apply" => &[
+            value_option("manifest-path", Text, false),
+            value_option("public-keys-path", Text, false),
+            value_option("revocation-path", Text, false),
+            value_option("source-path", Text, false),
+            value_option("source", Text, false),
+            value_option("repo", Text, false),
+            value_option("staging-root", Text, false),
+            value_option("state-root", Text, false),
+            value_option("data-root", Text, false),
             value_option("execute", Text, false),
             value_option("install-root", Text, false),
             value_option("gui-pid", Text, false),
@@ -2893,23 +2928,24 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
 fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
     use OptionConstraintKind::{ConditionalRequired, MutuallyExclusive, OneOf};
     match path {
-        "update status" | "update check" | "update download" | "update verify" | "update apply"
-        | "update rollback" => &[
-            ConstraintAuthority {
-                kind: MutuallyExclusive,
-                members: &["source-path", "source"],
-                condition_option: None,
-                condition_value: None,
-                required_option: None,
-            },
-            ConstraintAuthority {
-                kind: MutuallyExclusive,
-                members: &["source-path", "repo"],
-                condition_option: None,
-                condition_value: None,
-                required_option: None,
-            },
-        ],
+        "update status" | "update check" | "update download" | "update verify" | "update apply" => {
+            &[
+                ConstraintAuthority {
+                    kind: MutuallyExclusive,
+                    members: &["source-path", "source"],
+                    condition_option: None,
+                    condition_value: None,
+                    required_option: None,
+                },
+                ConstraintAuthority {
+                    kind: MutuallyExclusive,
+                    members: &["source-path", "repo"],
+                    condition_option: None,
+                    condition_value: None,
+                    required_option: None,
+                },
+            ]
+        }
         "snapshots profiles list" | "snapshots profiles get" | "snapshots profiles import" => {
             &[ConstraintAuthority {
                 kind: MutuallyExclusive,

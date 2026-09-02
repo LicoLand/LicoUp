@@ -151,9 +151,11 @@ fn write_zip_entries(path: &Path, entries: &[ZipEntry]) {
 
 fn selection_for(path: &Path, file_name: &str) -> VerifiedUpdateSelection {
     VerifiedUpdateSelection {
-        channel: "stable".to_string(),
-        current_version: "0.0.1".to_string(),
+        running_release_track: "nightly".to_string(),
+        target_release_track: "stable".to_string(),
+        running_version: "0.0.1".to_string(),
         version: "999.0.0".to_string(),
+        migration_frontier: crate::domain::client_state_migration::frontier_projection().unwrap(),
         classification: serde_json::json!("optional"),
         release_notes_url: serde_json::json!("https://updates.invalid/999.0.0"),
         migration_notes: serde_json::json!([]),

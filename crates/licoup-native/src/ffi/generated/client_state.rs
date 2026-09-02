@@ -205,6 +205,22 @@ pub enum ClientStateFailureCode {
     InvalidDocument,
     #[serde(rename = "state_operation_failed")]
     StateOperationFailed,
+    #[serde(rename = "migration_lock_unavailable")]
+    MigrationLockUnavailable,
+    #[serde(rename = "migration_ledger_invalid")]
+    MigrationLedgerInvalid,
+    #[serde(rename = "state_newer_than_binary")]
+    StateNewerThanBinary,
+    #[serde(rename = "migration_frontier_incomplete")]
+    MigrationFrontierIncomplete,
+    #[serde(rename = "migration_step_failed")]
+    MigrationStepFailed,
+    #[serde(rename = "migration_postcondition_failed")]
+    MigrationPostconditionFailed,
+    #[serde(rename = "update_handoff_mismatch")]
+    UpdateHandoffMismatch,
+    #[serde(rename = "unsupported_state_shape")]
+    UnsupportedStateShape,
 }
 
 impl ClientStateFailureCode {
@@ -213,6 +229,14 @@ impl ClientStateFailureCode {
             Self::InvalidCollection => "invalid_collection",
             Self::InvalidDocument => "invalid_document",
             Self::StateOperationFailed => "state_operation_failed",
+            Self::MigrationLockUnavailable => "migration_lock_unavailable",
+            Self::MigrationLedgerInvalid => "migration_ledger_invalid",
+            Self::StateNewerThanBinary => "state_newer_than_binary",
+            Self::MigrationFrontierIncomplete => "migration_frontier_incomplete",
+            Self::MigrationStepFailed => "migration_step_failed",
+            Self::MigrationPostconditionFailed => "migration_postcondition_failed",
+            Self::UpdateHandoffMismatch => "update_handoff_mismatch",
+            Self::UnsupportedStateShape => "unsupported_state_shape",
         }
     }
 }

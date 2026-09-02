@@ -1,6 +1,6 @@
 use super::{
     ConversationStore, DirectTurn, ImageAttachment, ImageAttachmentReference, MembershipAccess,
-    MembershipStatus, NewEventPart, Principal, PrincipalKind, migrate_legacy_state,
+    MembershipStatus, NewEventPart, Principal, PrincipalKind,
 };
 use crate::platform::runtime_adapters::{
     MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
@@ -64,9 +64,6 @@ impl fmt::Debug for ConversationService {
 impl ConversationService {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let store = ConversationStore::open(portable_root)?;
-        // Startup admission is migration-first. A failed migration is returned
-        // to the transport and never falls back to the retired JSON readers.
-        migrate_legacy_state(&store, portable_root)?;
         store.ensure_default_local_group()?;
         Ok(Self {
             store,

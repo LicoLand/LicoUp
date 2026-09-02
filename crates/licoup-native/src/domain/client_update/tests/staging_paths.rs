@@ -26,7 +26,8 @@ fn client_update_rejects_symbolic_link_source_and_staging_paths() {
     let fixture = UpdateFixture::new();
     let source_link = fixture.root.join("source-link.bin");
     symlink(&fixture.source, &source_link).unwrap();
-    let mut source_params = fixture.params(fixture.manifest());
+    let manifest = fixture.manifest();
+    let mut source_params = fixture.checked_params(manifest.clone());
     source_params["sourcePath"] = json!(source_link);
     assert!(
         download(&source_params)
@@ -40,7 +41,7 @@ fn client_update_rejects_symbolic_link_source_and_staging_paths() {
     fs::write(&outside, b"outside").unwrap();
     symlink(&outside, fixture.staging.join("artifact.bin")).unwrap();
     assert!(
-        download(&fixture.params(fixture.manifest()))
+        download(&fixture.checked_params(manifest))
             .unwrap_err()
             .to_string()
             .contains("regular file")
@@ -52,7 +53,7 @@ fn client_update_rejects_source_path_that_differs_from_signed_file_url() {
     let fixture = UpdateFixture::new();
     let alternate = fixture.root.join("alternate.bin");
     fs::copy(&fixture.source, &alternate).unwrap();
-    let mut params = fixture.params(fixture.manifest());
+    let mut params = fixture.checked_params(fixture.manifest());
     params["sourcePath"] = json!(alternate);
     assert!(
         download(&params)

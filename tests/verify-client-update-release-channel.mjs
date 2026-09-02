@@ -30,6 +30,18 @@ import { loadSecureClientContract } from "../tools/scripts/lib/secure-client-con
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const clientVersionManifest = JSON.parse(readFileSync(path.join(repoRoot, "tools", "client-version.json"), "utf8"));
 const currentClientVersion = clientVersionManifest.productVersion;
+const embeddedMigrationFrontier = JSON.parse(
+  readFileSync(
+    path.join(
+      repoRoot,
+      "crates",
+      "licoup-native",
+      "resources",
+      "client-state-migration-frontier.json",
+    ),
+    "utf8",
+  ),
+);
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(currentClientVersion)) {
   throw new Error(`Invalid client product version: ${currentClientVersion}`);
 }
@@ -71,16 +83,19 @@ function stableStringify(value) {
   return JSON.stringify(value);
 }
 
+function hasExactKeys(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length &&
+    [...expected].sort().every((key, index) => actual[index] === key);
+}
+
 function sha256Buffer(buffer) {
   return `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
 }
 
 function sha256File(filePath) {
   return sha256Buffer(readFileSync(filePath));
-}
-
-function keyFingerprint(keyObject) {
-  return sha256Buffer(keyObject.export({ type: "spki", format: "der" }));
 }
 
 function parseSemanticVersion(value, label = "version") {
@@ -186,7 +201,10 @@ function selectRelease(manifest, target) {
   const seenVersions = new Set();
   const candidates = [];
   for (const release of manifest.releases) {
-    parseSemanticVersion(release.version, "release version");
+    const version = parseSemanticVersion(release.version, "release version");
+    if (manifest.releaseTrack === "stable") {
+      ensure(version.prerelease.length === 0, "stable manifest contains a prerelease version");
+    }
     parseSemanticVersion(release.minimumSupportedVersion, "minimum supported version");
     ensure(!seenVersions.has(release.version), "manifest contains a duplicate release version");
     seenVersions.add(release.version);
@@ -211,14 +229,22 @@ function selectRelease(manifest, target) {
   return candidates.at(-1) || null;
 }
 
-function verifyManifest(manifest, publicKeysById, { currentVersion, target, revocationList, channel = "stable" } = {}) {
-  ensure(manifest.schemaVersion === "v0.0.1:client-update:manifest-1", "unexpected manifest schema");
-  ensure(manifest.channel === channel, "manifest channel does not match the selected channel");
-  ensure(manifest.channelPolicy?.offlineRootKeyId, "missing offline root key id");
-  ensure(manifest.channelPolicy?.onlineChannelKeyId, "missing online channel key id");
+function verifyManifest(
+  manifest,
+  publicKeysById,
+  { currentVersion, target, revocationList, releaseTrack = "stable" } = {},
+) {
+  ensure(manifest.schemaVersion === "v0.0.1:client-update:manifest-2", "unexpected manifest schema");
+  ensure(hasExactKeys(manifest, [
+    "schemaVersion", "releaseTrack", "releaseTrackPolicy", "releases", "signatures",
+  ]), "update manifest top-level contract is not closed");
+  ensure(manifest.releaseTrack === releaseTrack,
+    "manifest release track does not match the selected track");
+  ensure(manifest.releaseTrackPolicy?.offlineRootKeyId, "missing offline root key id");
+  ensure(manifest.releaseTrackPolicy?.onlineSigningKeyId, "missing online signing key id");
   ensure(
-    manifest.channelPolicy.offlineRootKeyId !== manifest.channelPolicy.onlineChannelKeyId,
-    "offline root and online channel keys must be distinct"
+    manifest.releaseTrackPolicy.offlineRootKeyId !== manifest.releaseTrackPolicy.onlineSigningKeyId,
+    "offline root and online signing keys must be distinct"
   );
   ensure(Array.isArray(manifest.signatures) && manifest.signatures.length > 0, "manifest has no signatures");
   const payload = Buffer.from(stableStringify(unsignedPayload(manifest)), "utf8");
@@ -235,12 +261,12 @@ function verifyManifest(manifest, publicKeysById, { currentVersion, target, revo
     verifiedKeyIds.add(signature.keyId);
   }
   ensure(
-    verifiedKeyIds.has(manifest.channelPolicy.offlineRootKeyId),
+    verifiedKeyIds.has(manifest.releaseTrackPolicy.offlineRootKeyId),
     "manifest is missing the offline root signature"
   );
   ensure(
-    verifiedKeyIds.has(manifest.channelPolicy.onlineChannelKeyId),
-    "manifest is missing the online channel signature"
+    verifiedKeyIds.has(manifest.releaseTrackPolicy.onlineSigningKeyId),
+    "manifest is missing the online signing signature"
   );
   const signatureOk = true;
   if (!target) {
@@ -250,8 +276,8 @@ function verifyManifest(manifest, publicKeysById, { currentVersion, target, revo
   ensure(selected, `unsupported update target: ${target.id}`);
   if (revocationList) {
     verifyRevocationList(revocationList, publicKeysById, {
-      channel,
-      offlineRootKeyId: manifest.channelPolicy.offlineRootKeyId
+      releaseTrack,
+      offlineRootKeyId: manifest.releaseTrackPolicy.offlineRootKeyId
     });
     const revokedKeyIds = new Set(revocationList.revokedKeyIds || []);
     const revokedArtifactDigests = new Set(revocationList.revokedArtifactDigests || []);
@@ -266,8 +292,31 @@ function verifyManifest(manifest, publicKeysById, { currentVersion, target, revo
       throw new Error("selected release version is revoked by the signed revocation list");
     }
   }
-  if (currentVersion && compareVersions(selected.release.version, currentVersion) < 0) {
-    ensure(manifest.channelPolicy.allowDowngrade === true, "signed channel policy rejects downgrade");
+  ensure(
+    selected.release.migrationFrontier?.frontierId === embeddedMigrationFrontier.frontierId,
+    "release migration frontier does not match the embedded frontier",
+  );
+  ensure(
+    hasExactKeys(selected.release.migrationFrontier, ["frontierId", "domains"]) &&
+      selected.release.migrationFrontier.domains.every((domain) =>
+        hasExactKeys(domain, ["domainId", "targetSchemaVersion", "requiredStepIds"])),
+    "release migration frontier contract is not closed",
+  );
+  ensure(
+    stableStringify(selected.release.migrationFrontier?.domains) === stableStringify(
+      embeddedMigrationFrontier.domains.map((domain) => ({
+        domainId: domain.domainId,
+        targetSchemaVersion: domain.targetSchemaVersion,
+        requiredStepIds: domain.steps.map((step) => step.stepId),
+      })),
+    ),
+    "release migration frontier domains do not match the embedded frontier",
+  );
+  if (currentVersion) {
+    ensure(
+      compareVersions(selected.release.version, currentVersion) > 0,
+      "update release must be strictly newer by SemVer",
+    );
   }
   if (currentVersion && compareVersions(currentVersion, selected.release.minimumSupportedVersion) < 0) {
     throw new Error("current version is below the minimum supported update floor");
@@ -312,9 +361,19 @@ function verifySignedEnvelope(envelope, publicKeysById, expectedSchemaVersion, l
 function verifyRevocationList(
   revocationList,
   publicKeysById,
-  { channel = "stable", offlineRootKeyId = revocationList.offlineRootKeyId } = {}
+  { releaseTrack = "stable", offlineRootKeyId = revocationList.offlineRootKeyId } = {}
 ) {
-  ensure(revocationList.channel === channel, "revocation list channel does not match the selected channel");
+  ensure(hasExactKeys(revocationList, [
+    "schemaVersion",
+    "releaseTrack",
+    "offlineRootKeyId",
+    "revokedKeyIds",
+    "revokedVersions",
+    "revokedArtifactDigests",
+    "signatures",
+  ]), "revocation list contract is not closed");
+  ensure(revocationList.releaseTrack === releaseTrack,
+    "revocation list release track does not match the selected track");
   ensure(
     revocationList.offlineRootKeyId === offlineRootKeyId,
     "revocation list offline root key does not match channel policy"
@@ -322,7 +381,7 @@ function verifyRevocationList(
   const verifiedKeyIds = verifySignedEnvelope(
     revocationList,
     publicKeysById,
-    "v0.0.1:client-update:revocation-list-1",
+    "v0.0.1:client-update:revocation-list-2",
     "revocation list"
   );
   ensure(
@@ -622,11 +681,11 @@ function createDryRunInstallerPlans(artifacts) {
     arch: artifact.arch,
     updateAuthority: artifact.updateAuthority,
     preUpdateStateRecord: `${artifact.targetId}.pre-update.json`,
-    rollback:
+    preClaimAbort:
       artifact.platform === "android"
         ? {
             feasibility: "platform-managed-or-recovery-install",
-            note: "Android rollback depends on platform policy; dry-run records recovery install metadata."
+            note: "Android pre-claim abort depends on platform policy; dry-run records recovery install metadata."
           }
         : {
             feasibility: "supported-by-staged-previous-artifact",
@@ -730,7 +789,7 @@ function buildProductionClosureStatus({
   const dryRunPlansCoverTargetLabels =
     dryRunInstallerPlans.length === productionTargets.length &&
     dryRunInstallerPlans.every((plan) =>
-      plan.packageFormat && plan.updateAuthority && plan.preUpdateStateRecord && plan.rollback);
+      plan.packageFormat && plan.updateAuthority && plan.preUpdateStateRecord && plan.preClaimAbort);
   const localAdHocBundleVerified =
     macosReleaseBundleEvidence.ok === true &&
     macosReleaseBundleEvidence.artifactKind === "actual-release-bundle" &&
@@ -745,7 +804,7 @@ function buildProductionClosureStatus({
     productionMacosDistributionReady: false,
     signingCustody: {
       offlineRootSigningCustody: "generated-test-vector-only",
-      onlineChannelSigningCustody: "generated-test-vector-only",
+      onlineSigningCustody: "generated-test-vector-only",
       publicationAuthorityCustody: "generated-test-vector-only",
       productionCustodyReceiptVerified: false
     },
@@ -773,7 +832,7 @@ function buildProductionClosureStatus({
       productionReady: false
     },
     remainingProductionGates: [
-      "offline-root and online-channel signing custody receipts",
+      "offline-root and online-signing custody receipts",
       "publication-authority custody and production-channel publication receipt",
       "Developer ID signing, notarization, stapling, and Gatekeeper assessment",
       "release-built installer/package execution proof on declared production hosts",
@@ -791,10 +850,10 @@ function main() {
   mkdirSync(artifactRoot, { recursive: true });
 
   const offlineRoot = generateKeyPairSync("ed25519");
-  const onlineChannel = generateKeyPairSync("ed25519");
+  const onlineSigning = generateKeyPairSync("ed25519");
   const publicationAuthority = generateKeyPairSync("ed25519");
   const offlineRootKeyId = "offline-root-test-vector";
-  const onlineChannelKeyId = "online-channel-test-vector";
+  const onlineSigningKeyId = "online-signing-test-vector";
   const publicationAuthorityKeyId = "release-publication-test-vector";
   const artifacts = productionTargets.map(createArtifact);
   const selectedTargetIds = productionTargets.map((target) => target.id);
@@ -852,21 +911,12 @@ function main() {
   const releaseVersion = nextReleaseVersion(currentClientVersion);
   const manifest = signManifest(
     {
-      schemaVersion: "v0.0.1:client-update:manifest-1",
-      generatedAt: "2026-06-28T00:00:00.000Z",
-      channel: "stable",
-      channelPolicy: {
+      schemaVersion: "v0.0.1:client-update:manifest-2",
+      releaseTrack: "stable",
+      releaseTrackPolicy: {
         offlineRootKeyId,
-        onlineChannelKeyId,
-        allowDowngrade: false,
-        keyCustody: "offline-root-plus-online-channel-signing-key",
-        revokePolicy: "signed-revocation-list-required"
-      },
-      signing: {
-        manifestAlgorithm: "Ed25519",
-        artifactDigest: "sha256",
-        offlineRootKeyFingerprint: keyFingerprint(offlineRoot.publicKey),
-        onlineChannelKeyFingerprint: keyFingerprint(onlineChannel.publicKey)
+        onlineSigningKeyId,
+        revocationPolicy: "signed-revocation-list-required"
       },
       releases: [
         {
@@ -875,14 +925,21 @@ function main() {
           classification: "optional",
           releaseNotesUrl: `https://updates.example.com/releases/${releaseVersion}`,
           migrationNotes: ["No destructive migration is required for this dry-run vector."],
+          migrationFrontier: {
+            frontierId: embeddedMigrationFrontier.frontierId,
+            domains: embeddedMigrationFrontier.domains.map((domain) => ({
+              domainId: domain.domainId,
+              targetSchemaVersion: domain.targetSchemaVersion,
+              requiredStepIds: domain.steps.map((step) => step.stepId),
+            })),
+          },
           artifacts
         }
-      ],
-      dryRunInstallerPlans
+      ]
     },
     [
       { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
-      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+      { signingKey: onlineSigning.privateKey, keyId: onlineSigningKeyId }
     ]
   );
 
@@ -890,7 +947,7 @@ function main() {
     {
       schemaVersion: "v0.0.1:client-update:publication-receipt-1",
       publicationId: `client-update-release-channel-stable-${releaseVersion}`,
-      channel: "stable",
+      releaseTrack: "stable",
       releaseVersion,
       manifestSha256: sha256Buffer(Buffer.from(stableStringify(unsignedPayload(manifest)), "utf8")),
       artifactCount: artifacts.length,
@@ -904,13 +961,11 @@ function main() {
 
   const revocationList = signEnvelope(
     {
-      schemaVersion: "v0.0.1:client-update:revocation-list-1",
-      channel: "stable",
-      issuedAt: "2026-06-28T00:00:00.000Z",
-      revokedKeyIds: [onlineChannelKeyId],
+      schemaVersion: "v0.0.1:client-update:revocation-list-2",
+      releaseTrack: "stable",
+      revokedKeyIds: [onlineSigningKeyId],
       revokedVersions: [],
       revokedArtifactDigests: [artifacts[0].sha256],
-      reason: "local test-vector revocation for release channel validation",
       offlineRootKeyId
     },
     offlineRoot.privateKey,
@@ -918,7 +973,7 @@ function main() {
   );
 
   const publicKeysById = new Map([
-    [onlineChannelKeyId, onlineChannel.publicKey],
+    [onlineSigningKeyId, onlineSigning.publicKey],
     [offlineRootKeyId, offlineRoot.publicKey],
     [publicationAuthorityKeyId, publicationAuthority.publicKey]
   ]);
@@ -997,7 +1052,7 @@ function main() {
   ensure(
     dryRunInstallerPlans.length === productionTargets.length &&
       dryRunInstallerPlans.every((plan) =>
-        plan.packageFormat && plan.updateAuthority && plan.preUpdateStateRecord && plan.rollback),
+        plan.packageFormat && plan.updateAuthority && plan.preUpdateStateRecord && plan.preClaimAbort),
     "installer dry-run plan is incomplete"
   );
   positiveChecks.push({ name: "platform installer dry-run plan covers production target labels", ok: true });
@@ -1019,7 +1074,7 @@ function main() {
     },
     [
       { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
-      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+      { signingKey: onlineSigning.privateKey, keyId: onlineSigningKeyId }
     ]
   );
   const tamperedPublicationReceipt = structuredClone(publicationReceipt);
@@ -1030,7 +1085,7 @@ function main() {
   );
   const missingOnlineManifest = structuredClone(manifest);
   missingOnlineManifest.signatures = missingOnlineManifest.signatures.filter(
-    (signature) => signature.keyId !== onlineChannelKeyId
+    (signature) => signature.keyId !== onlineSigningKeyId
   );
   const duplicateSignatureManifest = structuredClone(manifest);
   duplicateSignatureManifest.signatures.push(structuredClone(manifest.signatures[0]));
@@ -1041,7 +1096,7 @@ function main() {
     },
     [
       { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
-      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+      { signingKey: onlineSigning.privateKey, keyId: onlineSigningKeyId }
     ]
   );
   const mismatchedArtifactNameDocument = unsignedPayload(manifest);
@@ -1050,13 +1105,13 @@ function main() {
     mismatchedArtifactNameDocument,
     [
       { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
-      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+      { signingKey: onlineSigning.privateKey, keyId: onlineSigningKeyId }
     ]
   );
   const onlineOnlyRevocationList = signEnvelope(
     unsignedPayload(revocationList),
-    onlineChannel.privateKey,
-    onlineChannelKeyId
+    onlineSigning.privateKey,
+    onlineSigningKeyId
   );
   const unsupportedTarget = {
     id: "freebsd-x64",
@@ -1110,7 +1165,7 @@ function main() {
         target: productionTargets[0]
       })
     ),
-    expectFailure("manifest missing online channel signature is rejected", () =>
+    expectFailure("manifest missing online signing signature is rejected", () =>
       verifyManifest(missingOnlineManifest, publicKeysById, {
         currentVersion: currentClientVersion,
         target: productionTargets[0]
@@ -1136,7 +1191,7 @@ function main() {
     ),
     expectFailure("revocation list without offline root signature is rejected", () =>
       verifyRevocationList(onlineOnlyRevocationList, publicKeysById, {
-        channel: manifest.channel,
+        releaseTrack: manifest.releaseTrack,
         offlineRootKeyId
       })
     ),
@@ -1173,7 +1228,7 @@ function main() {
   mkdirSync(path.dirname(reportPath), { recursive: true });
   const diagnosticRemainingGaps = [
     "This verifier now covers local signed revocation, publication-receipt, tamper, downgrade, installer dry-run evidence, and macOS actual release bundle structure/local codesign evidence with generated test-vector keys.",
-    "Production closure still needs offline-root plus online-channel signing custody, release publication receipts on the production channel, production signing/notarization, and platform installer/package proof on declared hosts.",
+    "Production closure still needs offline-root plus online-signing custody, release publication receipts on the production channel, production signing/notarization, and platform installer/package proof on declared hosts.",
     ...(
       androidPhysicalInstallLaunchEvidence.ready
         ? []
@@ -1193,7 +1248,7 @@ function main() {
     scenario: "client-update",
     artifactKind: "client-update-release-channel-evidence",
     manifestSchema: manifest.schemaVersion,
-    channel: manifest.channel,
+    releaseTrack: manifest.releaseTrack,
     productionTargetLabels: productionTargets.map((target) => target.id),
     releaseTargetCatalog: {
       schemaVersion: releaseTargetCatalog.schemaVersion,

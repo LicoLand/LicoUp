@@ -236,6 +236,14 @@ void main() {
       expect(decoded.toJson(), isNot(contains('surface')));
       expect(decoded.toJson(), isNot(contains('viewport')));
       expect(decoded.toJson(), isNot(contains('transientPanelId')));
+      expect(
+        () => PresentationPreferences.fromJson({
+          'layoutProfileId': 'atlas',
+          'appearancePresetId': 'dark',
+          'localePreference': 'zh',
+        }, fallback: fallback),
+        throwsA(isA<FormatException>()),
+      );
     },
   );
 }

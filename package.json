@@ -28,6 +28,8 @@
     "client:release:authority:configure": "apple-release authority configure --config tools/apple-release/macos-direct-arm64.json",
     "client:release:macos": "apple-release release start --config tools/apple-release/macos-direct-arm64.json",
     "client:release:macos:publish": "apple-release release start --config tools/apple-release/macos-direct-arm64.json --authorize",
+    "client:release:macos:nightly": "apple-release release start --config tools/apple-release/macos-direct-arm64-nightly.json",
+    "client:release:macos:nightly:publish": "apple-release release start --config tools/apple-release/macos-direct-arm64-nightly.json --authorize",
     "client:release:status": "apple-release release status",
     "repo:client-boundary": "node tools/verify-client-boundary.mjs",
     "client:contracts:generate": "node tools/scripts/generate-client-bridge-contracts.mjs",
