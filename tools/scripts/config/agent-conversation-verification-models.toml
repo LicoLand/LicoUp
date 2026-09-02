@@ -14,7 +14,7 @@ schema_version = "licoup.agent-conversation-verification-models.v1"
 
 [models]
 # agent-id = "wire-or-alias model id passed to the agent / gate"
-antigravity = "gemini-3.6-flash-low"
+antigravity = "gemini-3.7-flash-medium"
 "claude-code" = "haiku"
 codex = "gpt-5.3-codex-spark"
 cursor = "composer-2.5"

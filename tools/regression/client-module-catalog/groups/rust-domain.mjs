@@ -581,6 +581,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/domain/conversation/history/catalog.rs",
         "crates/licoup-native/src/domain/conversation/history/tests/catalog.rs",
+        "crates/licoup-native/tests/conversation_catalog_invariants.rs",
       ],
       command: rustLayer("domain::conversation::history::tests::catalog::"),
     }),
