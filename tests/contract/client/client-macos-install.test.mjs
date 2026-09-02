@@ -214,7 +214,7 @@ test("existing current-bound runnable installs byte-for-byte without invoking a 
   const source = readFileSync(installerPath, "utf8");
   assert.equal(source.includes("package-client"), false);
   assert.equal(source.includes("client:run:macos"), false);
-  assert.equal(source.includes("client:build:macos"), false);
+  assert.equal(source.includes("client:build"), false);
   assert.equal(source.includes("flutter build"), false);
   assert.equal(Object.keys(calls).includes("spawn"), false);
 });

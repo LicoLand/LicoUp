@@ -1,4 +1,5 @@
 use super::errors::ProtocolFailure;
+use crate::platform::native_agent_parser::Transition;
 use serde_json::Value;
 
 pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "lico-agent-rpc-stdio-jsonl";
@@ -17,7 +18,7 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) events: Vec<Value>,
+    pub(in crate::platform) transitions: Vec<Transition>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -32,10 +33,16 @@ pub(in crate::platform) struct RunResult {
 
 impl RunResult {
     pub(super) fn failed(failure: ProtocolFailure, started_at: String) -> Self {
+        let transitions =
+            crate::platform::native_agent_parser::adapters::lico_agent::failure_transitions(
+                failure.code,
+                failure.stage,
+                failure.message,
+            );
         Self {
             ok: false,
             output: String::new(),
-            events: Vec::new(),
+            transitions,
             error: Some(failure),
             session_id: String::new(),
             thread_id: String::new(),

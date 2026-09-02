@@ -5,8 +5,8 @@ use super::config::ProtocolConfig;
 use super::io::{drain_stderr, read_protocol_messages, write_message};
 use super::launch::CodexLaunchSpec;
 use super::model::{ProtocolFailure, RunResult};
-use super::protocol::CodexProtocol;
 use super::supervision::{pipe_failure, run_protocol_loop};
+use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use serde_json::Value;
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -81,7 +81,7 @@ pub(in crate::platform) fn execute(
     let stderr_flag = Arc::clone(&stderr_truncated);
     let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
 
-    let mut protocol = CodexProtocol::new(config);
+    let mut protocol = CodexParser::new(config);
     let (control_sender, control_receiver) = mpsc::sync_channel(16);
     if write_message(&mut stdin, &protocol.initial_request()).is_err() {
         let cleanup =
@@ -157,10 +157,14 @@ pub(in crate::platform) fn execute(
     }
 
     if let Some(outcome) = outcome {
+        let transitions =
+            crate::platform::native_agent_parser::adapters::codex::completed_transitions(
+                &outcome.output,
+            );
         return RunResult {
             ok: true,
             output: outcome.output,
-            events: outcome.events,
+            transitions,
             error: None,
             session_id: outcome.session_id,
             thread_id: outcome.thread_id,

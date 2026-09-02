@@ -74,6 +74,20 @@ final class MobileRelaySecureConversationOperations {
     bridge: bridge,
   );
 
+  Future<Map<String, dynamic>> describeSecureAgentSessionPage({
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
+    SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
+  }) => _describeSecureAgentSessionThroughRelay(
+    agentId: agentId,
+    sessionId: sessionId,
+    messageBefore: messageBefore,
+    messageLimit: messageLimit,
+    bridge: bridge,
+  );
+
   Future<Map<String, dynamic>> secureMeshStatus({
     required AgentCommandRunner agentService,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
@@ -153,6 +167,8 @@ final class MobileRelaySecureConversationOperations {
   Future<Map<String, dynamic>> _describeSecureAgentSessionThroughRelay({
     required String agentId,
     required String sessionId,
+    String messageBefore = '',
+    int? messageLimit,
     required SecureMeshMobileBridge bridge,
   }) async {
     final normalizedAgent = agentId.trim();
@@ -169,6 +185,12 @@ final class MobileRelaySecureConversationOperations {
         'errorCode': 'secure_agent_sessions_session_id_missing',
       };
     }
+    if (messageLimit != null && (messageLimit < 1 || messageLimit > 100)) {
+      return const {
+        'ok': false,
+        'errorCode': 'secure_agent_sessions_message_limit_invalid',
+      };
+    }
     final params = {
       'clientIntentId': _newSecureRelayClientIntentId(),
       'commandKind': 'agent.sessions.describe',
@@ -177,6 +199,9 @@ final class MobileRelaySecureConversationOperations {
       'body': {
         'sessionId': normalizedSession,
         'nativeSessionId': normalizedSession,
+        if (messageBefore.trim().isNotEmpty)
+          'messageBefore': messageBefore.trim(),
+        'messageLimit': ?messageLimit,
       },
     };
     SecureMeshMobileBridge mobileBridge;

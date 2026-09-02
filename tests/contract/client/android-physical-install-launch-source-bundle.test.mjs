@@ -171,6 +171,6 @@ test("self-test dry-run preserves fail-closed install/launch contracts", () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.ok, true);
   assert.equal(payload.mode, "self-test");
-  assert.equal(payload.caseCount, 12);
+  assert.equal(payload.caseCount, 13);
   assert.equal(payload.privatePathsIncluded, false);
 });

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeAgentId } from "../client-acp-conversation-parity/agent-ids.mjs";
+import { normalizeAgentId } from "../../../tests/product-e2e/cli/agent-conversations/support/parity/agent-ids.mjs";
 import { defaultMaxStdoutBytes, probeAgentAuthentication } from "./probe.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));

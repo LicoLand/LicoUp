@@ -355,7 +355,7 @@ final class _AdapterCard extends StatelessWidget {
                         target: adapter.agentId,
                         label: adapter.label,
                         kind: 'agent-adapter',
-                        status: 'detected',
+                        status: TargetCandidateStatus.detected,
                         configured: true,
                         confidence: 1,
                         adapterStatus: 'packaged',
