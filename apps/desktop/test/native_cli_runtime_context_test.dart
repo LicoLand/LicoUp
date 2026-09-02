@@ -209,5 +209,33 @@ void main() {
         expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
       },
     );
+
+    test(
+      'installed app bundle ignores an external LICO_CLIENT_PATH override',
+      () async {
+        final appRoot = await Directory.systemTemp.createTemp('lico-app-');
+        addTearDown(() => appRoot.delete(recursive: true));
+        final macos = Directory('${appRoot.path}/LicoUp.app/Contents/MacOS');
+        await macos.create(recursive: true);
+        final appExecutable = File('${macos.path}/licoup');
+        final bundledCli = File('${macos.path}/licoup-cli');
+        final externalDir = await Directory.systemTemp.createTemp(
+          'lico-external-cli-',
+        );
+        addTearDown(() => externalDir.delete(recursive: true));
+        final externalCli = File('${externalDir.path}/licoup-cli');
+        await appExecutable.writeAsString('app');
+        await bundledCli.writeAsString('bundled');
+        await externalCli.writeAsString('external');
+
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: appExecutable.path,
+          environment: {'LICO_CLIENT_PATH': externalCli.path},
+          workingDirectory: externalDir.path,
+        );
+
+        expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
+      },
+    );
   });
 }

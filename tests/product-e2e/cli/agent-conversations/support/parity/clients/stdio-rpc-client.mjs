@@ -49,6 +49,9 @@ export class StdioRpcClient {
     this.timeoutMs = context.timeoutMs;
     this.maxOutputBytes = context.maxOutputBytes;
     this.args = Object.freeze(options.args || ["rpc", "stdio"]);
+    // The conversation proxy relays to the persistent host; it is the only
+    // admitted alternative to the in-process stdio lane.
+    this.conversationProxy = options.conversationProxy === true;
     this.workflowId = `acceptance-${randomUUID()}`;
     this.nextRequest = 1;
     this.child = null;
@@ -64,8 +67,11 @@ export class StdioRpcClient {
 
   async connect() {
     requireFact(this.child === null && !this.closed, "stdio_rpc_client_reused");
+    const allowed = this.args[0] === "rpc"
+      && (this.args[1] === "stdio"
+        || (this.conversationProxy === true && this.args[1] === "conversation"));
     requireFact(
-      this.args.length === 2 && this.args[0] === "rpc" && this.args[1] === "stdio",
+      this.args.length === 2 && allowed,
       "stdio_rpc_launch_args_invalid",
     );
     const child = spawn(this.executable, this.args, {
@@ -81,6 +87,9 @@ export class StdioRpcClient {
       if (this.stderrBytes > this.maxOutputBytes) {
         this.#fail(new AcceptanceError("stdio_rpc_stderr_limit"));
       }
+    });
+    child.stdin.on("error", () => {
+      this.#fail(new AcceptanceError("stdio_rpc_write_failed"));
     });
     child.once("close", (statusCode) => {
       this.closeStatus = statusCode;

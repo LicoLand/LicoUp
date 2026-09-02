@@ -1,5 +1,5 @@
 use super::CodexParser;
-use crate::platform::codex_app_server::model::{ProtocolEffect, ProtocolFailure};
+use crate::platform::codex_app_server::model::ProtocolEffect;
 use serde_json::{Value, json};
 
 impl CodexParser {
@@ -10,20 +10,44 @@ impl CodexParser {
             return None;
         }
 
-        Some(vec![
-            ProtocolEffect::Send(json!({
-                "id": request_id,
-                "error": {
-                    "code": -32001,
-                    "message": "User interaction is required and was not approved by this client."
-                }
-            })),
-            ProtocolEffect::Fail(ProtocolFailure::user_interaction(
-                method,
-                self.session_id.as_deref(),
-                self.thread_id.as_deref(),
-                self.turn_id.as_deref(),
-            )),
-        ])
+        Some(vec![ProtocolEffect::Send(decline_server_request(
+            request_id, method,
+        ))])
+    }
+}
+
+/// Unattended PersistentTurn has no approval UI. Decline the native request and
+/// leave the turn running so Codex can still emit the agent message. Aborting
+/// here is what surfaces as a target diagnostic (`codex_user_interaction_required`)
+/// before canary text.
+fn decline_server_request(request_id: &Value, method: &str) -> Value {
+    match method {
+        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" => json!({
+            "id": request_id,
+            "result": { "decision": "decline" }
+        }),
+        "item/permissions/requestApproval" => json!({
+            "id": request_id,
+            "result": { "permissions": [] }
+        }),
+        "mcpServer/elicitation/request" => json!({
+            "id": request_id,
+            "result": { "action": "decline", "content": null }
+        }),
+        "item/tool/requestUserInput" | "tool/requestUserInput" => json!({
+            "id": request_id,
+            "result": { "decision": "decline" }
+        }),
+        "item/tool/call" => json!({
+            "id": request_id,
+            "result": { "success": false, "contentItems": [] }
+        }),
+        _ => json!({
+            "id": request_id,
+            "error": {
+                "code": -32001,
+                "message": "User interaction is required and was not approved by this client."
+            }
+        }),
     }
 }

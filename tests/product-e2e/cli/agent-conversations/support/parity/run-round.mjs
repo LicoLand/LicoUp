@@ -112,6 +112,12 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
     const settingsParity = settingsParityMask === "111111";
     const createdOutput = String(created.result.output || "").trim();
     const resumedOutput = String(resumed.result.output || "").trim();
+    const outputBackedCliHistory = context.config.cleanupKind === "cursor-cli-chat-leaf"
+      || context.config.cliReadbackKind === "none";
+    const cliOutputHistory = `${createdOutput}\n${resumedOutput}`;
+    const nativeHistoryContainsExpected = outputBackedCliHistory
+      ? expectedReplies.every((reply) => cliOutputHistory.includes(reply))
+      : expectedReplies.every((reply) => history.includes(reply));
     const createdFinalCanaryPresent = createdOutput.includes(expectedReplies[0]);
     const resumedFinalCanaryPresent = resumedOutput.includes(expectedReplies[1]);
     const createdFinalCanary = createdOutput === expectedReplies[0];
@@ -126,7 +132,7 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
       exactResume: sidecarSessionId(resumed.result) === sessionId,
       nativeToArc: created.result.sessionId === sessionId
         && created.result.threadId === sessionId,
-      arcToNative: history.includes(expectedReplies[0]) && history.includes(expectedReplies[1]),
+      arcToNative: nativeHistoryContainsExpected,
       realSessionIds: sessionId.length > 0,
       nativeFirstFinalCanaryPresent: createdFinalCanaryPresent,
       nativeFirstFinalCanaryNormalized: createdFinalCanaryNormalized,
@@ -145,8 +151,8 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
       settingsParity,
       settingsParityMask,
       argvCanariesAbsent,
-      historyReadback: context.config.cleanupKind === "cursor-cli-chat-leaf"
-        ? expectedReplies.every((reply) => `${createdOutput}\n${resumedOutput}`.includes(reply))
+      historyReadback: outputBackedCliHistory
+        ? nativeHistoryContainsExpected
         : expectedReplies.every((reply) => history.includes(reply)),
       noPermissionRequests: true,
       noUnsupportedRequests: true,

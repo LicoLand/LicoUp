@@ -425,6 +425,8 @@ function validateDelegatedApplePublicationTopology() {
     "client:release:authority:configure": "apple-release authority configure --config tools/apple-release/macos-direct-arm64.json",
     "client:release:macos": "apple-release release start --config tools/apple-release/macos-direct-arm64.json",
     "client:release:macos:publish": "apple-release release start --config tools/apple-release/macos-direct-arm64.json --authorize",
+    "client:release:macos:nightly": "apple-release release start --config tools/apple-release/macos-direct-arm64-nightly.json",
+    "client:release:macos:nightly:publish": "apple-release release start --config tools/apple-release/macos-direct-arm64-nightly.json --authorize",
     "client:release:status": "apple-release release status",
   };
   for (const [name, command] of Object.entries(expected)) {
@@ -437,25 +439,35 @@ function validateDelegatedApplePublicationTopology() {
   ]) {
     if (Object.hasOwn(scripts, retired)) fail(`retired Apple Release command remains: ${retired}`);
   }
-  const config = readJson("tools/apple-release/macos-direct-arm64.json");
-  const candidate = config.candidate;
-  const artifacts = Array.isArray(config.artifacts) ? config.artifacts : [];
   const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest"];
-  if (config.schema !== "apple-release.config.v1" ||
-      config.source?.branch !== "release" ||
-      !candidate || candidate.branch !== "macos-release-candidate" ||
-      !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
-      config.apple?.target !== "macos-direct-arm64" ||
-      config.github?.repository !== "LicoLand/LicoUp" ||
-      JSON.stringify(config.build?.command) !== JSON.stringify([
-        "npm", "run", "client:build", "--", "--platform", "macos",
-      ]) ||
-      !Array.isArray(config.update?.command) || config.update.command.length === 0 ||
-      artifacts.length !== 5 ||
-      roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
-      artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
-        "LicoUp-update-manifest.json") {
-    fail("LicoUp delegated Apple publication configuration is invalid");
+  for (const [file, sourceBranch, candidateBranch, releaseTrack] of [
+    ["tools/apple-release/macos-direct-arm64.json", "release",
+      "macos-release-candidate", "stable"],
+    ["tools/apple-release/macos-direct-arm64-nightly.json", "nightly",
+      "macos-nightly-release-candidate", "nightly"],
+  ]) {
+    const config = readJson(file);
+    const candidate = config.candidate;
+    const artifacts = Array.isArray(config.artifacts) ? config.artifacts : [];
+    if (config.schema !== "apple-release.config.v1" ||
+        config.source?.branch !== sourceBranch ||
+        !candidate || candidate.branch !== candidateBranch || candidate.template !== undefined ||
+        !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
+        config.apple?.target !== "macos-direct-arm64" ||
+        config.github?.repository !== "LicoLand/LicoUp" ||
+        JSON.stringify(config.build?.command) !== JSON.stringify([
+          "env", `LICO_CLIENT_RELEASE_TRACK=${releaseTrack}`,
+          "npm", "run", "client:build", "--", "--platform", "macos",
+        ]) ||
+        !Array.isArray(config.update?.command) ||
+        !config.update.command.includes("--release-track") ||
+        !config.update.command.includes(releaseTrack) ||
+        artifacts.length !== 5 ||
+        roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
+        artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
+          "LicoUp-update-manifest.json") {
+      fail(`LicoUp delegated Apple publication configuration is invalid: ${file}`);
+    }
   }
 }
 

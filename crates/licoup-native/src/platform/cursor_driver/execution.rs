@@ -6,7 +6,9 @@ use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
 };
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
-use crate::platform::turn_event_emit::{emit_agent_processing, emit_turn_event};
+use crate::platform::turn_event_emit::{
+    emit_agent_processing, emit_agent_tool_error, emit_turn_event,
+};
 use serde_json::Value;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -89,7 +91,7 @@ pub(in crate::platform) fn execute(
                 "text": "creating native chat session",
             }),
         );
-        match create_chat_session(executable, &workspace, timeout_ms, max_stdout) {
+        match create_chat_session(executable, params, &workspace, timeout_ms, max_stdout) {
             Ok(created) => {
                 native_session = created;
                 emit_turn_event(
@@ -175,6 +177,7 @@ fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Option<PathBuf> {
 
 fn create_chat_session(
     executable: &str,
+    params: &Value,
     workspace: &Path,
     timeout_ms: u64,
     max_output: Option<usize>,
@@ -186,6 +189,11 @@ fn create_chat_session(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Cursor may initialize and retain its MCP subprocess while creating the
+    // native chat. Bind the same scoped caller context here as on the resumed
+    // turn so the connector never starts without its canonical Membership.
+    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
+    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
     let mut child = SupervisedChild::spawn(&mut command).map_err(|_| {
         ProtocolFailure::new(
             "cursor_cli_start_failed",
@@ -296,6 +304,8 @@ fn run_turn(
         .current_dir(workspace)
         .stderr(Stdio::piped());
     apply_optional_turn_flags(&mut command, params);
+    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
+    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
     let (mut child, stdout) = match spawn_turn_transport(command) {
         Ok(transport) => transport,
         Err(_) => {
@@ -618,6 +628,21 @@ fn consume_turn_stream(
                                 &turn_id,
                                 &text,
                             );
+                        }
+                        CursorEffect::Tool {
+                            session_id,
+                            turn_id,
+                            tool_name,
+                        } => {
+                            emit_agent_processing(&session_id, &turn_id, "tool", Some(&tool_name));
+                        }
+                        CursorEffect::ToolError {
+                            session_id,
+                            turn_id,
+                            tool_name,
+                            error_code,
+                        } => {
+                            emit_agent_tool_error(&session_id, &turn_id, &tool_name, error_code);
                         }
                         CursorEffect::Complete(outcome) => {
                             super::super::turn_event_emit::emit_agent_message_completed(

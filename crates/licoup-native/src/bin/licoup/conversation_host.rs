@@ -23,7 +23,7 @@ use std::{
 };
 
 use super::stdio_rpc::{
-    PersistentConversationRuntime, execute_rpc_cli, serve_stdio_rpc_with_runtime,
+    PersistentConversationRuntime, execute_rpc_cli, serve_stdio_rpc_with_persistent_conversation,
 };
 
 const CONNECT_ATTEMPTS: usize = 80;
@@ -272,6 +272,21 @@ fn client_owner_is_gone() -> bool {
     configured_client_pid().is_some_and(|pid| process_liveness(pid) == ProcessLiveness::Dead)
 }
 
+/// Desktop startup ownership: every `rpc stdio` bridge lane launched by the
+/// desktop client (marked by LICOUP_CLIENT_PID) ensures the persistent
+/// conversation host — and with it the supervised Subagent MCP service — is
+/// running before any conversation RPC. A spawn failure only degrades MCP
+/// readiness; the bridge lane is never affected.
+pub(super) fn ensure_host_for_desktop_start() {
+    if configured_client_pid().is_none() {
+        return;
+    }
+    if host_is_current() && endpoint_accepts_connections() {
+        return;
+    }
+    let _ = spawn_host();
+}
+
 fn spawn_host() -> Result<()> {
     let executable = env::current_exe().context("conversation host executable unavailable")?;
     let mut command = Command::new(executable);
@@ -292,13 +307,13 @@ fn spawn_host() -> Result<()> {
 pub(super) fn serve_proxy() -> Result<()> {
     let stream = connect_or_start()?;
     let (mut receiver, mut sender) = stream.split();
+    // Continue draining the host after stdout disappears. This prevents a
+    // closed GUI pipe from applying backpressure to the turn owner.
     let upload = thread::spawn(move || -> io::Result<()> {
         io::copy(&mut io::stdin().lock(), &mut sender)?;
         sender.flush()?;
         shutdown_upload(&sender)
     });
-    // Continue draining the host after stdout disappears. This prevents a
-    // closed GUI pipe from applying backpressure to the turn owner.
     let mut stdout = io::stdout().lock();
     let mut buffer = [0_u8; 16 * 1024];
     let mut observable = true;
@@ -367,23 +382,47 @@ pub(super) fn serve_host() -> Result<()> {
     };
     write_host_identity()?;
     let root = licoup_native::platform::paths::portable_data_dir()?;
+    // The persistent Conversation host and Gateway must admit the same
+    // evidence-bound adapters. The Gateway persists hot reloads in this
+    // standard overlay; load it before any runtime profile is resolved so a
+    // restarted host cannot fall back to the packaged readiness snapshot.
+    let readiness_overlay = root
+        .join("llm-gateway")
+        .join(licoup_native::platform::llm_gateway_inventory_control::OVERLAY_FILE_NAME);
+    let _ =
+        licoup_native::platform::llm_gateway_inventory_control::load_inventory_overlay_if_present(
+            &readiness_overlay,
+        );
     let service = licoup_native::domain::client_conversation::ConversationService::open(&root)?;
     let runtime = PersistentConversationRuntime::new(service.store().clone());
+    // The Subagent MCP service is a supervised child: a start failure or an
+    // unexpected exit degrades MCP readiness through the monitor instead of
+    // crashing the unrelated Conversation host behavior.
+    let _subagent_mcp =
+        licoup_native::platform::subagent_mcp_supervisor::SubagentMcpService::start();
     let mut idle_since = None;
     let mut next_owner_check = Instant::now();
     loop {
         match listener.accept() {
             Ok(stream) => {
+                // macOS may propagate O_NONBLOCK from the listener despite
+                // ListenerNonblockingMode::Accept. Each accepted RPC session
+                // is served by its own thread and must block between frames.
+                if stream.set_nonblocking(false).is_err() {
+                    continue;
+                }
                 idle_since = None;
                 runtime.client_connected();
                 let runtime = runtime.clone();
+                let conversation_service = service.clone();
                 thread::spawn(move || {
                     let (receiver, sender) = stream.split();
-                    let _ = serve_stdio_rpc_with_runtime(
+                    let _ = serve_stdio_rpc_with_persistent_conversation(
                         BufReader::new(receiver),
                         sender,
                         execute_rpc_cli,
                         runtime.clone(),
+                        conversation_service,
                     );
                     runtime.client_disconnected();
                 });

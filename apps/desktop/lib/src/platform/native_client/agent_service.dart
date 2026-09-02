@@ -238,6 +238,11 @@ class AgentService
     return _processIo.runCliWithStdin(args, stdinText);
   }
 
+  /// Runs the native, embedded-frontier migration gate before any product
+  /// state is loaded. The caller supplies only the already-resolved raw root.
+  Future<Map<String, dynamic>> admitClientStateMigration(String dataRoot) =>
+      runCli(['state', 'admit', dataRoot]);
+
   @override
   Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) {
     return _processIo.streamCliJsonLines(args);

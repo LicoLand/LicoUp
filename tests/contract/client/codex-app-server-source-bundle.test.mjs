@@ -87,7 +87,10 @@ test("Codex protocol, state, events, and approval control have single owners", a
   assert.ok(sources["parser/session.rs"].includes('"turn/start"'));
   assert.ok(sources["parser/events.rs"].includes('"turn/completed"'));
   assert.ok(sources["parser/events.rs"].includes("matches_current_ids"));
-  assert.ok(sources["parser/control.rs"].includes("ProtocolFailure::user_interaction"));
+  assert.ok(sources["parser/control.rs"].includes("fn decline_server_request"));
+  assert.ok(sources["parser/control.rs"].includes("ProtocolEffect::Send"));
+  assert.equal(sources["parser/control.rs"].includes("ProtocolEffect::Fail"), false);
+  assert.equal(sources["parser/control.rs"].includes("ProtocolFailure::user_interaction"), false);
   assert.ok(sources["error.rs"].includes('message: &\'static str'));
   assert.ok(sources["parser/session.rs"].includes("self.session_id = Some(thread_id.to_string())"));
   assert.ok(sources["parser.rs"].includes("fn parse_line"));
@@ -122,6 +125,8 @@ test("Codex transport stays bounded, supervised, and redacted", async () => {
   }
   assert.ok(launch.includes('"app-server"'));
   assert.ok(launch.includes('"--stdio"'));
+  assert.ok(launch.includes("apply_subagent_caller_context"));
+  assert.equal(launch.includes("apply_mcp_runtime_root"), false);
   for (const rawProjection of [
     "stderr: String",
     "stderr: Vec",

@@ -43,6 +43,11 @@ fn main() -> Result<()> {
         panic::set_hook(Box::new(|_| {
             eprintln!("licoup RPC command terminated unexpectedly");
         }));
+        // The desktop client spawns this bridge lane during normal startup,
+        // so it owns starting the persistent conversation host — and with it
+        // the default-enabled, supervised Subagent MCP service — without
+        // waiting for a first conversation RPC.
+        conversation_host::ensure_host_for_desktop_start();
         let stdin = io::stdin();
         return serve_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
     }

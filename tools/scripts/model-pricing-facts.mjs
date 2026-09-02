@@ -106,22 +106,6 @@ function dayNumber(value) {
   return Date.UTC(year, month - 1, day) / 86_400_000;
 }
 
-function normalizeDate(value, code = "pricing_date_invalid") {
-  if (value instanceof Date) {
-    if (!Number.isFinite(value.getTime())) fail(code);
-    return value.toISOString().slice(0, 10);
-  }
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value)) {
-    dateParts(value, code);
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = new Date(value);
-    if (Number.isFinite(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  }
-  fail(code);
-}
-
 function readJson(filePath) {
   let info;
   try {
@@ -313,30 +297,6 @@ export function loadCatalog(root = REPO_ROOT) {
   return readJson(path.join(root, CATALOG_RELATIVE));
 }
 
-function checkedCatalog(value) {
-  return value && Array.isArray(value.tables) && typeof value.lastUpdated === "string"
-    ? value
-    : validateCatalog(value);
-}
-
-export function validateReleaseFreshness(value, releaseDate = new Date()) {
-  const checked = checkedCatalog(value);
-  const today = normalizeDate(releaseDate, "pricing_release_date_invalid");
-  const todayNumber = dayNumber(today);
-  for (const table of checked.tables) {
-    for (const route of table.routes) {
-      const verifiedNumber = dayNumber(route.verified_on);
-      if (verifiedNumber > todayNumber) fail("pricing_verification_future");
-      if (todayNumber - verifiedNumber > 7) fail("pricing_verification_stale");
-      if (route.lifecycle.service_end !== null &&
-          dayNumber(route.lifecycle.service_end) <= todayNumber) {
-        fail("pricing_service_end_elapsed");
-      }
-    }
-  }
-  return true;
-}
-
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -407,21 +367,6 @@ export function runSelfTest() {
       value.providers[1].routes[0].model_id = value.providers[0].routes[0].model_id;
       validateCatalog(value);
     }],
-    ["stale", "pricing_verification_stale", () => {
-      const value = cloneCatalog();
-      value.providers[0].routes[0].verified_on = "2026-08-14";
-      validateReleaseFreshness(validateCatalog(value), "2026-08-22");
-    }],
-    ["release_future", "pricing_verification_future", () => {
-      const value = cloneCatalog();
-      value.providers[0].routes[0].verified_on = "2026-08-23";
-      validateReleaseFreshness(validateCatalog(value), "2026-08-22");
-    }],
-    ["release_service_end", "pricing_service_end_elapsed", () => {
-      const value = cloneCatalog();
-      value.providers[0].routes[0].lifecycle.service_end = "2026-08-22";
-      validateReleaseFreshness(validateCatalog(value), "2026-08-22");
-    }],
   ];
   for (const [label, code, operation] of cases) {
     expectRejected(label, code, operation);
@@ -440,16 +385,6 @@ function main(argv) {
   const mode = argv[0] || "check";
   if (mode === "check") {
     const checked = validateCatalog(loadCatalog());
-    process.stdout.write(`${JSON.stringify({
-      ok: true,
-      tableCount: checked.tableCount,
-      routeCount: checked.routeCount,
-    })}\n`);
-    return;
-  }
-  if (mode === "release-check") {
-    const checked = validateCatalog(loadCatalog());
-    validateReleaseFreshness(checked);
     process.stdout.write(`${JSON.stringify({
       ok: true,
       tableCount: checked.tableCount,

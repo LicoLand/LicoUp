@@ -10,6 +10,7 @@ mod support;
 
 pub use command_sync::commands_sync;
 pub use config::{config_get, config_set};
+pub(crate) use config::{migrate_config_document, validate_current_config_document};
 pub use key_transparency::{SECURE_MESH_KT_NATIVE_ACTIONS, dispatch_key_transparency_action};
 pub use pairing::{pairing_claim, pairing_create, pairing_revoke, pairing_status};
 pub use relay_operations::{

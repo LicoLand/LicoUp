@@ -12,6 +12,7 @@ pub(crate) mod protocol_selector {
     pub use licoup_agent_runtime::protocol_selector::*;
 }
 mod registry;
+mod subagent_mesh;
 
 // Public host-neutral L4/L5 contracts. Concrete drivers remain composed in
 // this native host until their individually owned modules can move without
@@ -61,6 +62,87 @@ pub(crate) use registry::{
 pub use registry::{
     reload_conversation_readiness_document, reload_conversation_readiness_from_path,
 };
+pub(crate) use subagent_mesh::{
+    apply_mcp_runtime_root, apply_subagent_caller_context, production_subagent_registry,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeneratedInstructionDelivery {
+    pub text: String,
+    pub field: Option<&'static str>,
+    pub guidance: Option<String>,
+}
+
+/// Compose generated guidance for one explicitly declared adapter policy.
+/// The canonical Event text is supplied separately and remains unchanged.
+pub fn compose_generated_instruction_delivery(
+    agent_id: &str,
+    user_text: &str,
+    guidance: Option<&str>,
+) -> Result<GeneratedInstructionDelivery, &'static str> {
+    let Some(guidance) = guidance else {
+        return Ok(GeneratedInstructionDelivery {
+            text: user_text.to_owned(),
+            field: None,
+            guidance: None,
+        });
+    };
+    let Some(adapter) = adapter_for_agent_public(agent_id) else {
+        #[cfg(test)]
+        {
+            return Ok(GeneratedInstructionDelivery {
+                text: format!("{guidance}\n\n{user_text}"),
+                field: None,
+                guidance: None,
+            });
+        }
+        #[cfg(not(test))]
+        return Err("runtime_instruction_policy_undeclared");
+    };
+    let policy = match adapter {
+        RuntimeAdapter::Codex => {
+            licoup_agent_runtime::InstructionPolicy::NativeDeveloperInstructions
+        }
+        RuntimeAdapter::Cursor | RuntimeAdapter::Antigravity => {
+            licoup_agent_runtime::InstructionPolicy::OrdinaryWirePrefix
+        }
+        RuntimeAdapter::ClaudeCode
+        | RuntimeAdapter::Copilot
+        | RuntimeAdapter::Hermes
+        | RuntimeAdapter::KiloCode
+        | RuntimeAdapter::KimiCode
+        | RuntimeAdapter::OpenClaw
+        | RuntimeAdapter::OpenCode => {
+            licoup_agent_runtime::InstructionPolicy::NativePrivateInstructions
+        }
+        RuntimeAdapter::Pi | RuntimeAdapter::LicoAgent | RuntimeAdapter::DeepSeekHarness => {
+            return Err("runtime_instruction_policy_unavailable");
+        }
+    };
+    Ok(match policy {
+        licoup_agent_runtime::InstructionPolicy::NativeDeveloperInstructions => {
+            GeneratedInstructionDelivery {
+                text: user_text.to_owned(),
+                field: Some("developerInstructions"),
+                guidance: Some(guidance.to_owned()),
+            }
+        }
+        licoup_agent_runtime::InstructionPolicy::NativePrivateInstructions => {
+            GeneratedInstructionDelivery {
+                text: user_text.to_owned(),
+                field: Some("privateInstructions"),
+                guidance: Some(guidance.to_owned()),
+            }
+        }
+        licoup_agent_runtime::InstructionPolicy::OrdinaryWirePrefix => {
+            GeneratedInstructionDelivery {
+                text: format!("{guidance}\n\n{user_text}"),
+                field: None,
+                guidance: None,
+            }
+        }
+    })
+}
 
 #[cfg(test)]
 mod tests;

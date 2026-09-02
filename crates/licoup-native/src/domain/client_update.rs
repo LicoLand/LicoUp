@@ -19,6 +19,7 @@ mod native_runner;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod model;
 mod params;
+mod receipt;
 mod release;
 mod revocation;
 mod selection;
@@ -29,7 +30,7 @@ mod status;
 mod tree;
 mod verify;
 
-pub use apply::{apply, rollback};
+pub use apply::apply;
 pub use check::check;
 pub use constants::{CLIENT_UPDATE_MANIFEST_SCHEMA, CLIENT_UPDATE_MODE};
 pub use dispatch::dispatch;
