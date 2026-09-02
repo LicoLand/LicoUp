@@ -74,19 +74,53 @@ abstract final class MessagingDesktopMetrics {
   /// Drop-shadow Y offset of the floating list card.
   static const double conversationListCardShadowOffsetY = 4;
 
+  /// One circular identity size across conversation chrome: the header
+  /// capsule identity icons, message author avatars, and the floating
+  /// group-member roster all render at this extent.
+  static const double conversationAvatarExtent = 40;
+
+  /// Glyph size inside a [conversationAvatarExtent] identity circle.
+  static const double conversationAvatarMarkExtent = 22;
+
   /// Empty bands between the group roster and the floating header/composer.
   static const double groupRosterHeaderGap = 10;
   static const double groupRosterComposerGap = 10;
 
-  /// Detached member capsule in the right transcript band. Its width matches
-  /// the group header capsule button (38 px avatar + 8 px vertical padding on
-  /// each side), so the two controls share one vertical axis and silhouette.
-  static const double groupRosterExtent = 54;
-  static const double groupRosterContentInset = 2;
+  /// Detached member capsule in the right transcript band: a slim stadium
+  /// hugging the member avatars with [groupRosterPadH] on each side.
+  static const double groupRosterPadH = 4;
+  static const double groupRosterExtent =
+      conversationAvatarExtent + groupRosterPadH * 2;
   static const double groupRosterScrollbarThickness = 2;
   static const double groupRosterMinimumVisibleExtent = 128;
   static const int groupRosterVisibleMemberCount = 5;
-  static const double groupRosterMemberExtent = 54;
+
+  /// Bare avatar row height after member names moved into tooltips — the
+  /// shared conversation avatar size.
+  static const double groupRosterMemberExtent = conversationAvatarExtent;
+
+  /// Provider-quota ring painted around a roster avatar inside the existing
+  /// [groupRosterMemberExtent]: the avatar insets by the ring band so the
+  /// capsule silhouette and member extent stay unchanged.
+  static const double groupRosterQuotaRingThickness = 2;
+  static const double groupRosterQuotaRingInset = 1;
+  static const double groupRosterQuotaAvatarExtent =
+      groupRosterMemberExtent -
+      (groupRosterQuotaRingThickness + groupRosterQuotaRingInset) * 2;
+  static const double groupRosterQuotaAvatarMarkExtent = 18;
+
+  /// Stale snapshots paint the same arc dimmed at this alpha (of 255).
+  static const int groupRosterQuotaRingStaleAlpha = 96;
+
+  /// Hover quota-card progress bar: a full-width stadium track with a
+  /// severity-colored fill, one per quota window.
+  static const double quotaCardBarHeight = 6;
+  static const double quotaCardBarGapAbove = 3;
+  static const double quotaCardBarGapBelow = 3;
+
+  /// Stale snapshots paint the bar fill dimmed at this alpha (of 255).
+  static const int quotaCardBarStaleAlpha = 96;
+
   static const double groupRosterMemberGap = 5;
   static const double groupRosterVerticalInset = 5;
   static const double groupRosterMaxVisibleExtent =
@@ -100,7 +134,10 @@ abstract final class MessagingDesktopMetrics {
   /// Vertical inset of the floating conversation-header capsule.
   static const double conversationHeaderCapsuleInsetV = 8;
 
-  /// Corner radius of the conversation-header capsule (stadium / pill).
+  /// Shared radius of the capsule family outside the header identity
+  /// capsules (composer capsule, group failure alert). Header identity
+  /// capsules and the group roster surface use a full stadium instead — see
+  /// their call sites (`BorderRadius.circular(999)`).
   static const double conversationHeaderCapsuleCornerRadius = 22;
 
   /// Inner horizontal padding inside the header capsule.
@@ -117,11 +154,14 @@ abstract final class MessagingDesktopMetrics {
 
   /// Vertical space reserved under the floating header capsules so the
   /// transcript can scroll beneath them without clipping the first rows.
-  /// insetV×2 + padV×2 + avatar(30).
+  /// insetV×2 + padV×2 + avatar.
   static const double conversationHeaderOverlayExtent =
       conversationHeaderCapsuleInsetV * 2 +
       conversationHeaderCapsulePadV * 2 +
-      30;
+      conversationAvatarExtent;
+
+  /// Extra gap between the header overlay and the group failure alert.
+  static const double conversationFailureAlertGap = 16;
 
   /// Horizontal inset of the floating composer capsule.
   static const double conversationComposerCapsuleInsetH = 12;
@@ -212,26 +252,95 @@ abstract final class MessagingDesktopMetrics {
   /// Light-canvas counterpart — also fully transparent.
   static const int userBubbleGlassFillLightAlpha = 0;
 
-  /// Neutral hairline alpha on user bubbles (dark canvas) — uses theme
-  /// [line], never brand/primary (brand rims read as olive 泛黄).
-  static const int userBubbleGlassBorderAlphaDark = 90;
-
-  /// Neutral hairline alpha on user bubbles (light canvas).
-  static const int userBubbleGlassBorderAlphaLight = 100;
-
   /// Neutral transparent fill for user message bubbles.
   static Color userBubbleGlassFill({required bool isDark}) =>
       Colors.transparent.withAlpha(
         isDark ? userBubbleGlassFillDarkAlpha : userBubbleGlassFillLightAlpha,
       );
 
-  /// Neutral rim for frosted user bubbles on [line].
-  static Color userBubbleGlassBorder(Color line, {required bool isDark}) =>
-      line.withAlpha(
-        isDark
-            ? userBubbleGlassBorderAlphaDark
-            : userBubbleGlassBorderAlphaLight,
+  /// Accent edge-light shared by conversation bubbles — Kiro-style: a thin,
+  /// bright rim line plus a light field that decays outward from the rim.
+  /// Interiors stay dark glass. Never brand/primary — lemon rims read as
+  /// olive 泛黄 on the dark chat canvas.
+  ///
+  /// The light is stroked around the rounded rim by
+  /// `MessagingBubbleEdgeGlowPainter` as bloom: crisp rim plus gaussian
+  /// passes whose blur grows while alpha falls. A gradient band painted
+  /// under an inset fill bleeds through translucent glass, and a radial tint
+  /// clamps to its edge color past the gradient radius and floods wide
+  /// bubbles.
+  static const double bubbleEdgeRimWidth = 1;
+
+  /// Rim line alpha at the top edge (dark canvas) — thin and bright.
+  static const int bubbleEdgeGlowAlphaDark = 245;
+
+  /// Rim line alpha at the top edge (light canvas).
+  static const int bubbleEdgeGlowAlphaLight = 210;
+
+  /// Rim line alpha at the bottom edge (dark canvas).
+  static const int bubbleEdgeGlowDimAlphaDark = 120;
+
+  /// Rim line alpha at the bottom edge (light canvas).
+  static const int bubbleEdgeGlowDimAlphaLight = 105;
+
+  /// Near field alpha (dark canvas): the bright glow hugging the line.
+  static const int bubbleEdgeGlowNearAlphaDark = 160;
+
+  /// Near field alpha (light canvas).
+  static const int bubbleEdgeGlowNearAlphaLight = 132;
+
+  /// Mid field alpha (dark canvas): the first outward decay step.
+  static const int bubbleEdgeGlowMidAlphaDark = 115;
+
+  /// Mid field alpha (light canvas).
+  static const int bubbleEdgeGlowMidAlphaLight = 95;
+
+  /// Far field alpha (dark canvas): the wide lamp-light cast.
+  static const int bubbleEdgeGlowFarAlphaDark = 70;
+
+  /// Far field alpha (light canvas).
+  static const int bubbleEdgeGlowFarAlphaLight = 58;
+
+  /// Rim-light band: brightest along the top edge, calm at the bottom.
+  static Gradient bubbleEdgeGlowBand(
+    Color accentGlow, {
+    required bool isDark,
+  }) => LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      accentGlow.withAlpha(
+        isDark ? bubbleEdgeGlowAlphaDark : bubbleEdgeGlowAlphaLight,
+      ),
+      accentGlow.withAlpha(
+        isDark ? bubbleEdgeGlowDimAlphaDark : bubbleEdgeGlowDimAlphaLight,
+      ),
+    ],
+  );
+
+  /// Distance-decay field gradient for one glow pass: the rim hue at [alpha]
+  /// on the top edge, fading toward the bottom. Painted by the rim painter
+  /// (outward-clipped) instead of a `boxShadow`: a shadow's blurred
+  /// silhouette fills the whole box and would wash the translucent interior.
+  static Gradient bubbleEdgeGlowAura(Color accentGlow, {required int alpha}) =>
+      LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          accentGlow.withAlpha(alpha),
+          accentGlow.withAlpha((alpha * 0.45).round()),
+        ],
       );
+
+  /// Agent bubble interior: the shared black readability veil, not an accent
+  /// tint — the accent lives only on the rim light.
+  static Color agentBubbleVeilFill({required bool isDark}) =>
+      conversationOverlayReadabilityVeilFill(isDark: isDark);
+
+  /// Resting (unlit) neutral hairline on conversation bubbles — the plain
+  /// style the hover-lit edge light fades back to.
+  static Color bubbleRestingBorder(Color line, {required bool isDark}) =>
+      line.withAlpha(isDark ? 90 : 100);
 
   /// Black readability veil on floating conversation overlays (dark).
   /// Layered with [conversationOverlayGlassFill] and blur so menus and
@@ -311,10 +420,12 @@ abstract final class MessagingDesktopMetrics {
 
   /// Black veil on the main conversation content card (dark). The card itself
   /// is transparent glass over native VE; without this mask, dense chat/list
-  /// text loses contrast. Same character as the retired shell chrome black
-  /// tint (historically `chromeTintDarkAlpha` 77). Shell band and gutters stay
+  /// text loses contrast. Kept thin (historically 77 over the old gray
+  /// `.underWindowBackground`) now that the native `.popover` material
+  /// supplies the deep dark base — the veil only guards readability while
+  /// letting more of the desktop bleed through. Shell band and gutters stay
   /// untinted — only this reading surface uses the veil.
-  static const int mainContentCardOverlayDarkAlpha = 77;
+  static const int mainContentCardOverlayDarkAlpha = 48;
 
   /// Black veil on the main conversation content card (light). Same
   /// readability role as the dark overlay; lighter alpha so the card does not

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
 var _synthSeq = 0;
 String _synth(String label) => '$label-${_synthSeq++}';
@@ -674,6 +675,11 @@ done
         ['rpc stdio'],
       );
     },
+    // Six sequential subprocess RPC round-trips share the default 30-second
+    // package:test harness budget; under full-suite load, process spawn and
+    // pipe scheduling alone can exceed it. This widens only the test harness
+    // budget; product RPC timeouts and behavior are untouched.
+    timeout: const Timeout(Duration(seconds: 90)),
   );
 
   test('macOS conversation RPC fails closed on out-of-order frames', () async {
@@ -700,9 +706,9 @@ done
         'send',
       ], '{"agent":"claude-code","text":"one"}').toList(),
       throwsA(
-        isA<LicoClientRpcException>().having(
-          (error) => error.code,
-          'code',
+        isA<AgentDispatchStreamException>().having(
+          (error) => error.failureCode,
+          'failureCode',
           'invalid_response',
         ),
       ),
@@ -777,9 +783,9 @@ fi
           'send',
         ], '{"agent":"claude-code","text":"one"}').toList(),
         throwsA(
-          isA<LicoClientRpcException>().having(
-            (error) => error.code,
-            'code',
+          isA<AgentDispatchStreamException>().having(
+            (error) => error.failureCode,
+            'failureCode',
             'transport_failed',
           ),
         ),

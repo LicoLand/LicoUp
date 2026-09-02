@@ -4,11 +4,6 @@ use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags, Row};
 use serde_json::{Value, json};
 
-pub(super) const MAX_SQLITE_FIELDS_PER_ROW: usize = 256;
-pub(super) const MAX_SQLITE_FIELD_NAME_BYTES: usize = 256;
-pub(super) const MAX_SQLITE_VALUE_BYTES: usize = 4 * 1024 * 1024;
-pub(super) const MAX_SQLITE_ROW_BYTES: usize = 8 * 1024 * 1024;
-
 pub(in crate::domain::conversation::history) fn open_read_only_connection(
     path: &Path,
 ) -> Option<Connection> {
@@ -34,34 +29,21 @@ pub(in crate::domain::conversation::history) fn sqlite_table_exists(
         .is_ok()
 }
 
-pub(super) fn sqlite_row_fields(row: &Row<'_>, column_names: &[String]) -> Vec<(String, String)> {
+pub(super) fn sqlite_row_fields(
+    row: &Row<'_>,
+    column_names: &[String],
+) -> rusqlite::Result<Vec<(String, String)>> {
     let mut fields = Vec::new();
-    let mut row_bytes = 0usize;
-    for (index, name) in column_names
-        .iter()
-        .take(MAX_SQLITE_FIELDS_PER_ROW)
-        .enumerate()
-    {
-        if name.len() > MAX_SQLITE_FIELD_NAME_BYTES {
-            continue;
-        }
-        let Some(value) = row.get_ref(index).ok().and_then(sqlite_value_text) else {
+    for (index, name) in column_names.iter().enumerate() {
+        let Some(value) = sqlite_value_text(row.get_ref(index)?) else {
             continue;
         };
         if value.trim().is_empty() {
             continue;
         }
-        let field_bytes = name.len().saturating_add(value.len());
-        let Some(next_bytes) = row_bytes.checked_add(field_bytes) else {
-            break;
-        };
-        if next_bytes > MAX_SQLITE_ROW_BYTES {
-            break;
-        }
-        row_bytes = next_bytes;
         fields.push((name.clone(), value));
     }
-    fields
+    Ok(fields)
 }
 
 pub(super) fn sqlite_row_key(fields: &[(String, String)]) -> Option<String> {
@@ -87,7 +69,7 @@ pub(super) fn sqlite_row_key(fields: &[(String, String)]) -> Option<String> {
 
 pub(super) fn sqlite_fields_json(fields: &[(String, String)]) -> Value {
     let mut object = serde_json::Map::<String, Value>::new();
-    for (name, value) in fields.iter().take(MAX_SQLITE_FIELDS_PER_ROW) {
+    for (name, value) in fields {
         object.insert(name.clone(), json!(value));
     }
     Value::Object(object)
@@ -99,11 +81,7 @@ pub(super) fn sqlite_value_text(value: ValueRef<'_>) -> Option<String> {
         ValueRef::Integer(value) => Some(value.to_string()),
         ValueRef::Real(value) => Some(value.to_string()),
         ValueRef::Text(value) | ValueRef::Blob(value) => {
-            if value.len() > MAX_SQLITE_VALUE_BYTES {
-                None
-            } else {
-                Some(String::from_utf8_lossy(value).into_owned())
-            }
+            Some(String::from_utf8_lossy(value).into_owned())
         }
     }
 }

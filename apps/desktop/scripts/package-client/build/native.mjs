@@ -28,8 +28,9 @@ export function buildNativeSidecars(selected, options) {
   for (const bin of bins) args.push("--bin", bin);
   const environment = {
     ...process.env,
-    RUSTFLAGS: rustFlagsWithPathRemap(),
+    CARGO_ENCODED_RUSTFLAGS: encodedRustFlagsWithPathRemap(),
   };
+  delete environment.RUSTFLAGS;
   if (options.mode === "release") {
     environment.LICO_CLIENT_PRODUCT_VERSION = clientProductVersion();
   }
@@ -70,11 +71,15 @@ function cargoProfile(mode) {
   return mode === "release" ? "release" : "debug";
 }
 
-function rustFlagsWithPathRemap() {
-  const cargoHome = process.env.CARGO_HOME || path.join(os.homedir(), ".cargo");
-  const flags = [
+export function encodedRustFlagsWithPathRemap(environment = process.env) {
+  const cargoHome =
+    environment.CARGO_HOME || path.join(os.homedir(), ".cargo");
+  const remapFlags = [
     `--remap-path-prefix=${packageClientRuntime.workspaceRoot}=/lico/source`,
     `--remap-path-prefix=${cargoHome}=/cargo`,
   ];
-  return [process.env.RUSTFLAGS, ...flags].filter(Boolean).join(" ");
+  const inherited = environment.CARGO_ENCODED_RUSTFLAGS
+    ? environment.CARGO_ENCODED_RUSTFLAGS.split("\x1f").filter(Boolean)
+    : String(environment.RUSTFLAGS || "").split(/\s+/u).filter(Boolean);
+  return [...inherited, ...remapFlags].join("\x1f");
 }

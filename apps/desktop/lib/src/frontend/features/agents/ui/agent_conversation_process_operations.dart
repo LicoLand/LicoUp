@@ -97,11 +97,12 @@ final class ConversationProcessOperationViewport extends StatelessWidget {
       ),
       child: Scrollbar(
         controller: controller,
-        child: SingleChildScrollView(
-          key: ValueKey('conversation-process-operation-scroll-$processId'),
+        child: PrimaryScrollController(
           controller: controller,
-          primary: false,
-          child: child,
+          child: KeyedSubtree(
+            key: ValueKey('conversation-process-operation-scroll-$processId'),
+            child: child,
+          ),
         ),
       ),
     );
@@ -114,14 +115,12 @@ final class ConversationProcessOperationList extends StatelessWidget {
     required this.operations,
     required this.adapter,
     required this.detailsBuilder,
-    required this.truncated,
     this.activeStepIndex = -1,
   });
 
   final List<AgentConversationMessage> operations;
   final AgentRenderAdapter adapter;
   final ConversationEventDetailsBuilder detailsBuilder;
-  final bool truncated;
   final int activeStepIndex;
 
   @override
@@ -132,52 +131,22 @@ final class ConversationProcessOperationList extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: colors.line)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var index = 0; index < operations.length; index++) ...[
-            if (index > 0) Divider(height: 1, indent: 46, color: colors.line),
-            _ProcessOperationRow(
-              message: operations[index],
-              adapter: adapter,
-              detailsBuilder: detailsBuilder,
-              operationKey: operationKeys[index],
-              executing: index == activeStepIndex,
-            ),
-          ],
-          if (truncated) ...[
-            if (operations.isNotEmpty)
+      child: SizedBox(
+        height: operations.isEmpty
+            ? 0
+            : (operations.length * 56.0).clamp(120.0, 560.0),
+        child: ListView.separated(
+          primary: true,
+          itemCount: operations.length,
+          separatorBuilder: (context, index) =>
               Divider(height: 1, indent: 46, color: colors.line),
-            const _ProcessTruncationRow(),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-final class _ProcessTruncationRow extends StatelessWidget {
-  const _ProcessTruncationRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 44),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            Icon(Icons.more_horiz_rounded, size: 17, color: colors.textMuted),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Text(
-                strings.additionalOperationsHidden,
-                style: TextStyle(color: colors.textMuted, fontSize: 11),
-              ),
-            ),
-          ],
+          itemBuilder: (context, index) => _ProcessOperationRow(
+            message: operations[index],
+            adapter: adapter,
+            detailsBuilder: detailsBuilder,
+            operationKey: operationKeys[index],
+            executing: index == activeStepIndex,
+          ),
         ),
       ),
     );

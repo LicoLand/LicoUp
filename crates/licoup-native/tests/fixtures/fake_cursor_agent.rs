@@ -12,6 +12,7 @@ fn help_text() {
     println!("  --print");
     println!("  --resume");
     println!("  --output-format stream-json");
+    println!("  --stream-partial-output");
     println!("  --trust");
     println!("  --force");
     println!("  --workspace");
@@ -43,6 +44,36 @@ fn turn_output(prompt: &str) -> (&'static str, &'static str) {
     }
 }
 
+fn split_fragments(reply: &str) -> (String, String) {
+    // Progressive stream: the reply arrives as two assistant delta frames.
+    // Split at the first space so every tested reply keeps an exact
+    // first + second concatenation budget, then fall back to the midpoint.
+    if let Some(index) = reply.find(' ') {
+        if index > 0 {
+            return (reply[..index].to_owned(), reply[index..].to_owned());
+        }
+    }
+    let mid = reply.len() / 2;
+    (reply[..mid].to_owned(), reply[mid..].to_owned())
+}
+
+fn json_string(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
 fn run_turn(args: &[String]) {
     let resume_index = args
         .iter()
@@ -53,13 +84,22 @@ fn run_turn(args: &[String]) {
         .filter(|value| !value.is_empty())
         .expect("session id");
     let prompt = args.last().expect("prompt");
+    // Test hook: the turn stream reports a different native conversation than
+    // the one the driver launched. Gated on a prompt marker and an explicit
+    // env var so no other fake invocation is affected.
+    let observed_session = if env::var("LICO_FAKE_CURSOR_AGENT_DRIFT_SESSION_ID").is_ok()
+        && prompt.contains("__lico_drift__")
+    {
+        "drifted-cursor-session".to_string()
+    } else {
+        session_id.clone()
+    };
     // Test hook: hold the turn open until the update-watcher fixture has
     // observed its completion transition. The wait is bounded so a broken
     // fixture cannot strand the test process.
     if let Ok(release_path) = env::var("LICO_FAKE_CURSOR_AGENT_UPDATE_RELEASE_PATH") {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-        while !std::path::Path::new(&release_path).is_file()
-            && std::time::Instant::now() < deadline
+        while !std::path::Path::new(&release_path).is_file() && std::time::Instant::now() < deadline
         {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
@@ -78,9 +118,23 @@ fn run_turn(args: &[String]) {
             }
         }
     }
-    let (chunk, response) = turn_output(prompt);
+    let (reply, _) = turn_output(prompt);
+    let (first_fragment, second_fragment) = split_fragments(reply);
+    // Real Cursor stream-json: system init, then a user prompt echo, then
+    // progressive assistant fragments, then the cumulative result.
     emit(&format!(
-        r#"{{"type":"assistant","session_id":"{session_id}","message":{{"content":[{{"type":"text","text":"{chunk}"}}]}}}}"#
+        r#"{{"type":"system","subtype":"init","apiKeySource":"synthetic","cwd":"/tmp","session_id":{},"model":"fake-model","permissionMode":"default"}}"#,
+        json_string(&observed_session)
+    ));
+    emit(&format!(
+        r#"{{"type":"user","session_id":{},"message":{{"role":"user","content":[{{"type":"text","text":{}}}]}}}}"#,
+        json_string(&observed_session),
+        json_string(prompt)
+    ));
+    emit(&format!(
+        r#"{{"type":"assistant","session_id":{},"timestamp_ms":1,"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
+        json_string(&observed_session),
+        json_string(&first_fragment)
     ));
     // Test hook: crash after the partial chunk, before any terminal result.
     // Gated on a prompt marker so a concurrent test's env vars can never
@@ -91,7 +145,22 @@ fn run_turn(args: &[String]) {
         std::process::exit(3);
     }
     emit(&format!(
-        r#"{{"type":"result","subtype":"success","is_error":false,"session_id":"{session_id}","result":"{response}"}}"#
+        r#"{{"type":"assistant","session_id":{},"timestamp_ms":2,"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
+        json_string(&observed_session),
+        json_string(&second_fragment)
+    ));
+    // Current Cursor emits one timestamp-free cumulative assistant snapshot
+    // after the timestamped partial deltas and before the cumulative result.
+    emit(&format!(
+        r#"{{"type":"assistant","session_id":{},"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
+        json_string(&observed_session),
+        json_string(reply)
+    ));
+    emit(&format!(
+        r#"{{"type":"result","subtype":"success","is_error":false,"session_id":{},"request_id":"req-{}","result":{}}}"#,
+        json_string(&observed_session),
+        session_id,
+        json_string(reply)
     ));
 }
 
@@ -124,6 +193,7 @@ fn main() {
     if args.iter().any(|arg| arg == "--print")
         && args.iter().any(|arg| arg == "--resume")
         && args.iter().any(|arg| arg == "stream-json")
+        && args.iter().any(|arg| arg == "--stream-partial-output")
     {
         run_turn(&args);
         return;

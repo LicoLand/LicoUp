@@ -14,8 +14,6 @@ use std::time::Duration;
 const PRICING_CATALOG_JSON: &str = include_str!("provider_model_pricing/pricing_catalog.json");
 const MAX_PRICE_PAGE_BYTES: u64 = 2 * 1024 * 1024;
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(8);
-const PROBE_INPUT_TOKENS: f64 = 1_024.0;
-const PROBE_OUTPUT_TOKENS: f64 = 32.0;
 
 #[derive(Clone, Debug, Deserialize)]
 struct PricingCatalog {
@@ -84,15 +82,6 @@ pub(crate) struct PlanningModelPrice {
     pub cached_input: f64,
     pub output: f64,
     pub unit: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ProbePriceQuote {
-    pub amount: f64,
-    pub unit: String,
-    pub included: bool,
-    pub provider: String,
-    pub last_updated: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -433,48 +422,6 @@ fn planning_price(
     }
 }
 
-fn price_for_tokens(route: &PricingRoute, input_tokens: f64, output_tokens: f64) -> Option<f64> {
-    let tier = default_tier(route)?;
-    Some((tier.input * input_tokens + tier.output * output_tokens) / 1_000_000.0)
-}
-
-/// Quote one minimal diagnostic probe. The quote is used only to order models
-/// within the same local harness, so provider-specific units remain intact.
-pub fn quote_probe(agent_id: &str, model_keys: &[String]) -> Option<ProbePriceQuote> {
-    let guard = pricing()?.read().ok()?;
-    let provider_ids = [
-        provider_for_agent(agent_id),
-        raw_provider_for_agent(agent_id),
-    ];
-    let route_match = provider_ids.into_iter().flatten().find_map(|table_id| {
-        let table = guard
-            .agents
-            .iter()
-            .chain(guard.providers.iter())
-            .find(|table| table.id == table_id)?;
-        let route = model_keys.iter().find_map(|key| find_route(table, key))?;
-        Some((table, route))
-    });
-    let (table, route) = route_match.or_else(|| {
-        guard.providers.iter().find_map(|table| {
-            let route = model_keys.iter().find_map(|key| find_route(table, key))?;
-            Some((table, route))
-        })
-    })?;
-    let amount = if route.included_by_harness {
-        0.0
-    } else {
-        price_for_tokens(route, PROBE_INPUT_TOKENS, PROBE_OUTPUT_TOKENS)?
-    };
-    Some(ProbePriceQuote {
-        amount,
-        unit: table.unit.clone(),
-        included: route.included_by_harness,
-        provider: table.id.clone(),
-        last_updated: guard.last_updated.clone(),
-    })
-}
-
 /// Refresh every pricing table concurrently from its official public source.
 /// Each table is merged independently; malformed or unavailable pages keep
 /// the last embedded/in-memory values.
@@ -527,17 +474,6 @@ fn provider_for_agent(agent_id: &str) -> Option<&'static str> {
         "codex" => Some("openai-chatgpt"),
         "kilo-code" => Some("kilo"),
         "opencode" => Some("opencode-zen"),
-        _ => None,
-    }
-}
-
-fn raw_provider_for_agent(agent_id: &str) -> Option<&'static str> {
-    match agent_id {
-        "claude-code" => Some("anthropic"),
-        "kimi-code" => Some("kimi"),
-        "antigravity" => Some("google"),
-        "codex" => Some("openai"),
-        "grok-build" => Some("xai"),
         _ => None,
     }
 }
@@ -738,6 +674,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn catalog_last_updated_bounds_route_verification_dates() {
+        let catalog = serde_json::from_str::<PricingCatalog>(PRICING_CATALOG_JSON).unwrap();
+        assert!(validate_catalog(&catalog));
+
+        let mut invalid_catalog_date = catalog.clone();
+        invalid_catalog_date.last_updated = "invalid".to_owned();
+        assert!(!validate_catalog(&invalid_catalog_date));
+
+        let mut future_route = catalog;
+        future_route.providers[0].routes[0].verified_on = "9999-12-31".to_owned();
+        assert!(!validate_catalog(&future_route));
+    }
+
+    #[test]
     fn model_price_returns_planning_rates_without_usage() {
         let price = model_price("deepseek-v4-flash").unwrap();
         assert!(price.input.is_finite() && price.input >= 0.0);
@@ -798,19 +748,6 @@ mod tests {
             zen,
             agent_model_price("opencode", "gpt-5.6-sol", "max").unwrap()
         );
-    }
-
-    #[test]
-    fn embedded_harness_routes_preserve_zero_cost_probe_billing() {
-        let quote = quote_probe("cursor", &["composer-2-5".into()]).unwrap();
-        assert_eq!(quote.amount, 0.0);
-        assert!(quote.included);
-        assert_eq!(quote.unit, "usd_per_million_tokens");
-
-        let kilo = quote_probe("kilo-code", &["free".into()]).unwrap();
-        assert_eq!(kilo.amount, 0.0);
-        assert!(kilo.included);
-        assert_eq!(kilo.provider, "kilo");
     }
 
     #[test]

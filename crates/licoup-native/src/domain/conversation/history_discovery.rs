@@ -1,15 +1,11 @@
-//! Bounded, platform-neutral discovery of local agent history files.
+//! Platform-neutral discovery of local agent history files.
 
 use super::source_catalog::{HistoryAdapter, HistoryRoot};
 use serde_json::{Value, json};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-pub(crate) const MAX_HISTORY_FILE_BYTES: u64 = 32 * 1024 * 1024;
-const MAX_HISTORY_FILES: usize = 8_000;
-const MAX_HISTORY_DIRECTORY_ENTRIES: usize = 16_000;
-const MAX_HISTORY_DIRECTORY_DEPTH: usize = 32;
 
 #[derive(Clone, Debug)]
 pub(crate) struct HistoryFileCandidate {
@@ -35,24 +31,95 @@ pub(crate) struct HistoryDiscovery {
     pub(crate) directory_entries_seen: usize,
 }
 
+enum HistoryWalkItem {
+    Path {
+        path: PathBuf,
+        source_kind: String,
+        explicitly_selected: bool,
+        depth: usize,
+    },
+    Directory {
+        path: PathBuf,
+        entries: fs::ReadDir,
+        source_kind: String,
+        explicitly_selected: bool,
+        child_depth: usize,
+    },
+}
+
 pub(crate) fn discover_history_files(
     adapter: HistoryAdapter,
     roots: &[HistoryRoot],
     options: HistoryDiscoveryOptions,
 ) -> HistoryDiscovery {
     let mut discovery = HistoryDiscovery::default();
-    for root in roots {
-        discover_path(
-            adapter,
-            &root.path,
-            &root.source_kind,
-            root.explicitly_selected,
-            &options,
-            &mut discovery,
-            0,
-        );
-        if !options.archive_mode && discovery.files_seen >= MAX_HISTORY_FILES {
-            break;
+    let mut pending = roots
+        .iter()
+        .rev()
+        .map(|root| HistoryWalkItem::Path {
+            path: root.path.clone(),
+            source_kind: root.source_kind.clone(),
+            explicitly_selected: root.explicitly_selected,
+            depth: 0,
+        })
+        .collect::<Vec<_>>();
+    while let Some(item) = pending.pop() {
+        match item {
+            HistoryWalkItem::Path {
+                path,
+                source_kind,
+                explicitly_selected,
+                depth,
+            } => discover_path(
+                adapter,
+                &path,
+                &source_kind,
+                explicitly_selected,
+                &options,
+                &mut discovery,
+                depth,
+                &mut pending,
+            ),
+            HistoryWalkItem::Directory {
+                path,
+                mut entries,
+                source_kind,
+                explicitly_selected,
+                child_depth,
+            } => match entries.next() {
+                Some(Ok(entry)) => {
+                    discovery.directory_entries_seen =
+                        discovery.directory_entries_seen.saturating_add(1);
+                    pending.push(HistoryWalkItem::Directory {
+                        path,
+                        entries,
+                        source_kind: source_kind.clone(),
+                        explicitly_selected,
+                        child_depth,
+                    });
+                    pending.push(HistoryWalkItem::Path {
+                        path: entry.path(),
+                        source_kind,
+                        explicitly_selected,
+                        depth: child_depth,
+                    });
+                }
+                Some(Err(error)) => {
+                    discovery.skipped.push(json!({
+                        "path": display_path(&path),
+                        "reason": "read_dir_entry_failed",
+                        "error": error.to_string()
+                    }));
+                    pending.push(HistoryWalkItem::Directory {
+                        path,
+                        entries,
+                        source_kind,
+                        explicitly_selected,
+                        child_depth,
+                    });
+                }
+                None => {}
+            },
         }
     }
     discovery
@@ -66,14 +133,13 @@ fn discover_path(
     options: &HistoryDiscoveryOptions,
     discovery: &mut HistoryDiscovery,
     depth: usize,
+    pending: &mut Vec<HistoryWalkItem>,
 ) {
-    if !options.archive_mode && discovery.files_seen >= MAX_HISTORY_FILES {
-        record_skip(discovery, path, "file_limit_reached");
-        return;
-    }
-    if let Some(reason) = excluded_history_path_reason(path) {
-        record_skip(discovery, path, reason);
-        return;
+    if adapter != HistoryAdapter::Copilot && !options.archive_mode {
+        if let Some(reason) = excluded_history_path_reason(path) {
+            record_skip(discovery, path, reason);
+            return;
+        }
     }
     if !explicitly_selected
         && crate::domain::targets::scan_paths::denied(
@@ -84,19 +150,31 @@ fn discover_path(
         record_skip(discovery, path, "denied_personal_location");
         return;
     }
-    if crate::domain::targets::scan_paths::symlink_escapes_denied_location(path) {
-        record_skip(discovery, path, "denied_symlink_escape");
-        return;
-    }
-    if !path.exists() {
-        record_skip(discovery, path, "not_present");
-        return;
-    }
-    if path.is_dir() {
-        if depth >= MAX_HISTORY_DIRECTORY_DEPTH {
-            record_skip(discovery, path, "directory_depth_limit_reached");
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            record_skip(discovery, path, "not_present");
             return;
         }
+        Err(error) => {
+            discovery.skipped.push(json!({
+                "path": display_path(path),
+                "reason": "metadata_failed",
+                "error": error.to_string()
+            }));
+            return;
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        let reason = if crate::domain::targets::scan_paths::symlink_escapes_denied_location(path) {
+            "denied_symlink_escape"
+        } else {
+            "symlink_not_followed"
+        };
+        record_skip(discovery, path, reason);
+        return;
+    }
+    if metadata.is_dir() {
         // Directed exact lookup visits only deterministic layout paths: once a
         // tree-identity store puts conversation directories at a known depth,
         // siblings that no requested identity can name are skipped without
@@ -124,25 +202,17 @@ fn discover_path(
                 return;
             }
         };
-        for entry in entries.flatten() {
-            if discovery.directory_entries_seen >= MAX_HISTORY_DIRECTORY_ENTRIES {
-                record_skip(discovery, path, "directory_entry_limit_reached");
-                break;
-            }
-            discovery.directory_entries_seen = discovery.directory_entries_seen.saturating_add(1);
-            discover_path(
-                adapter,
-                &entry.path(),
-                source_kind,
-                explicitly_selected,
-                options,
-                discovery,
-                depth.saturating_add(1),
-            );
-            if !options.archive_mode && discovery.files_seen >= MAX_HISTORY_FILES {
-                break;
-            }
-        }
+        pending.push(HistoryWalkItem::Directory {
+            path: path.to_path_buf(),
+            entries,
+            source_kind: source_kind.to_owned(),
+            explicitly_selected,
+            child_depth: depth.saturating_add(1),
+        });
+        return;
+    }
+    if !metadata.is_file() {
+        record_skip(discovery, path, "unsupported_file_type");
         return;
     }
 
@@ -150,28 +220,6 @@ fn discover_path(
         return;
     }
     discovery.files_seen = discovery.files_seen.saturating_add(1);
-    let metadata = match fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            discovery.skipped.push(json!({
-                "path": display_path(path),
-                "reason": "metadata_failed",
-                "error": error.to_string()
-            }));
-            return;
-        }
-    };
-    if !options.archive_mode
-        && metadata.len() > MAX_HISTORY_FILE_BYTES
-        && !history_file_can_exceed_byte_limit(adapter, path)
-    {
-        discovery.skipped.push(json!({
-            "path": display_path(path),
-            "reason": "file_too_large",
-            "bytes": metadata.len()
-        }));
-        return;
-    }
     let extension = extension(path);
     if !adapter.accepts_file(path, &extension) {
         return;
@@ -246,7 +294,7 @@ fn path_identity_matches(path: &Path, session_id: &str) -> bool {
 /// Whether a directory cannot hold any file of the requested exact sessions
 /// and should be skipped without descending. Only tree-identity stores with a
 /// deterministic conversation-directory depth are pruned; every other adapter
-/// keeps its bounded full walk and the per-file identity predicate.
+/// keeps its complete full walk and the per-file identity predicate.
 fn exact_directory_can_be_pruned(
     adapter: HistoryAdapter,
     source_kind: &str,
@@ -279,12 +327,6 @@ fn exact_directory_can_be_pruned(
         .filter_map(|component| component.as_os_str().to_str())
         .any(|component| exact_session_ids.iter().any(|id| component == id));
     !any_id_in_path
-}
-
-fn history_file_can_exceed_byte_limit(adapter: HistoryAdapter, path: &Path) -> bool {
-    let extension = extension(path);
-    matches!(extension.as_str(), "sqlite" | "sqlite3" | "db" | "vscdb")
-        && adapter.accepts_file(path, &extension)
 }
 
 fn excluded_history_path_reason(path: &Path) -> Option<&'static str> {
@@ -633,35 +675,6 @@ mod tests {
     }
 
     #[test]
-    fn discovery_stops_at_the_global_directory_entry_bound() {
-        let root = temp_root("entry-bound");
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("rollout-bound.jsonl"), b"{}\n").unwrap();
-        let mut discovery = HistoryDiscovery {
-            directory_entries_seen: MAX_HISTORY_DIRECTORY_ENTRIES,
-            ..HistoryDiscovery::default()
-        };
-        discover_path(
-            HistoryAdapter::Codex,
-            &root,
-            "codex-session-store",
-            false,
-            &HistoryDiscoveryOptions {
-                archive_mode: false,
-                exact_session_ids: vec!["bound".to_owned()],
-            },
-            &mut discovery,
-            0,
-        );
-        assert!(discovery.candidates.is_empty());
-        assert_eq!(discovery.files_seen, 0);
-        assert!(discovery.skipped.iter().any(|entry| {
-            entry.get("reason").and_then(Value::as_str) == Some("directory_entry_limit_reached")
-        }));
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
     fn exact_cursor_projects_prune_unrelated_project_trees() {
         let root = temp_root("exact-prune-projects");
         let wanted = root.join("wanted-project/agent-transcripts/session-abc");
@@ -838,18 +851,71 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_history_files_can_exceed_the_text_byte_limit() {
-        assert!(history_file_can_exceed_byte_limit(
-            HistoryAdapter::OpenCode,
-            Path::new("opencode.db")
-        ));
-        assert!(history_file_can_exceed_byte_limit(
-            HistoryAdapter::KiloCode,
-            Path::new("kilo.db")
-        ));
-        assert!(!history_file_can_exceed_byte_limit(
-            HistoryAdapter::OpenCode,
-            Path::new("opencode.log")
-        ));
+    fn complete_history_discovery_exhausts_former_global_limits() {
+        let root = temp_root("copilot-unbounded-transcript");
+        fs::create_dir_all(&root).unwrap();
+        for index in 0..8_001 {
+            fs::write(root.join(format!("session-{index:05}.jsonl")), b"{}\n").unwrap();
+            fs::write(root.join(format!("ignored-{index:05}.tmp")), b"ignored").unwrap();
+        }
+        let mut deep = root.clone();
+        for index in 0..33 {
+            deep = deep.join(format!("level-{index}"));
+        }
+        fs::create_dir_all(&deep).unwrap();
+        let transcript = deep.join("deep-session.jsonl");
+        let file = fs::File::create(&transcript).unwrap();
+        file.set_len(32 * 1024 * 1024 + 1).unwrap();
+
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "codex-session-store".to_owned(),
+                explicitly_selected: false,
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+
+        assert_eq!(discovery.candidates.len(), 8_002);
+        assert!(discovery.directory_entries_seen > 16_000);
+        assert!(
+            discovery
+                .candidates
+                .iter()
+                .any(|candidate| candidate.path == transcript)
+        );
+        assert!(!discovery.skipped.iter().any(|skip| {
+            skip["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("limit") || reason.contains("too_large"))
+        }));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn copilot_agent_owned_layout_is_not_rejected_by_name_or_depth() {
+        let root = temp_root("copilot-unbounded-layout");
+        let mut transcript_parent = root.join("build");
+        for index in 0..=32 {
+            transcript_parent = transcript_parent.join(format!("level-{index}"));
+        }
+        fs::create_dir_all(&transcript_parent).unwrap();
+        let transcript = transcript_parent.join("session.jsonl");
+        fs::write(&transcript, b"{}\n").unwrap();
+
+        let discovery = discover_history_files(
+            HistoryAdapter::Copilot,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "vscode-copilot-workspace-storage".to_owned(),
+                explicitly_selected: false,
+            }],
+            HistoryDiscoveryOptions::default(),
+        );
+
+        assert_eq!(discovery.candidates.len(), 1);
+        assert_eq!(discovery.candidates[0].path, transcript);
+        fs::remove_dir_all(root).unwrap();
     }
 }
