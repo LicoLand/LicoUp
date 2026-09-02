@@ -127,6 +127,18 @@ fn main() {
             if line.contains("interaction-exit-case") {
                 println!("{{\"type\":\"extension_ui_request\",\"id\":\"ui-confirm\",\"method\":\"confirm\",\"title\":\"Synthetic confirmation\"}}");
                 io::stdout().flush().unwrap();
+                let release = std::env::current_dir().unwrap().join("release-interaction-exit");
+                let mut released = false;
+                for _ in 0..10_000 {
+                    if release.exists() {
+                        released = true;
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                if !released {
+                    std::process::exit(6);
+                }
                 break;
             }
             if line.contains("interaction-case") {
