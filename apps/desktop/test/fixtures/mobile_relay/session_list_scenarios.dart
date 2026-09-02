@@ -281,46 +281,6 @@ void registerMobileRelaySessionListScenarios() {
     expect(resolved['ok'], isTrue);
     expect(resolved['hasMore'], isTrue);
   });
-
-  test('secure agent exact page has no cross-session message budget', () {
-    final session = secureAgentSessionFixture(
-      id: 'codex-projection-large-page',
-      nativeSessionId: 'codex-native-large-page',
-      updatedAt: '2026-07-10T00:00:01Z',
-      text: 'seed',
-    );
-    session['messages'] = [
-      for (var index = 0; index < 2001; index += 1)
-        {
-          'id': 'message-$index',
-          'role': index.isEven ? 'user' : 'assistant',
-          'text': 'synthetic-$index',
-          'createdAt': '',
-        },
-    ];
-    session['messageCount'] = 2001;
-    session['sourceMessageCount'] = 2001;
-    session['messagePage'] = {
-      'start': 0,
-      'endExclusive': 2001,
-      'returned': 2001,
-      'total': 2001,
-      'hasEarlier': false,
-    };
-
-    final resolved = resolveSecureAgentSessionListResult(
-      agentId: 'codex',
-      commandKind: 'agent.sessions.describe',
-      result: secureAgentSessionListRelayResult([
-        session,
-      ], commandKind: 'agent.sessions.describe'),
-    );
-
-    expect(resolved['ok'], isTrue);
-    final sessions = resolved['sessions'] as List;
-    expect(sessions.single['messages'], hasLength(2001));
-    expect(sessions.single['sourceMessageCount'], 2001);
-  });
 }
 
 void main() {

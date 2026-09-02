@@ -66,7 +66,7 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 ## 智能体适配目标
 
 本表投影原生驱动清单。运行协议和能力字段仍由该清单负责。
-生命周期证据列表示该通道是否能为对应阶段发出原生证据。Rust 从 typed parser transition 持久化一份明确、前缀闭合的“已提交 → 已接收 → 处理中 → 回复中 → 已完成”投影。界面只渲染该规范前缀和终态 transition；不得从供应商事件类型、payload 成功标记、回复是否存在、别名或观察者断开推导缺失阶段或失败。
+生命周期证据列表示该通道是否能为对应阶段发出原生回执。“已发送”始终是客户端本地事实。每一轮中，界面只展示实际观测到的回执；不支持或未到达的阶段直接跳过，不得通过后续回复或终态结果倒推。
 
 | 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | GUI 退出后续跑 | 活动轮次重附着 | 有序游标重放 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -81,7 +81,6 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 | hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| deepseek-harness | conversation | unverified | 否 | deepseek-harness-sdk-stdio-jsonrpc | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
 
 ## 原生能力清单
@@ -110,7 +109,6 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 | hermes | CLI, ACP, TUI Gateway | acp | stdio ACP | 仅条件式远程连接 | ACP 直连；TUI Gateway 仅用于手动虚拟机 |
 | kimi-code | CLI, ACP, Web Server | acp | stdio ACP | 回环 TCP | 直接控制面与 Web UI |
 | pi | CLI, RPC | rpc | stdio JSONL | 无 | 直接进程接口 |
-| deepseek-harness | CLI, RPC | rpc | stdio JSONL | 无 | 直接进程接口 |
 | lico-agent | CLI, RPC | rpc | stdio JSONL | 无 | 直接进程接口 |
 
 ## 手动虚拟机对话传输

@@ -1,15 +1,12 @@
-#[path = "native_agent_parser/adapters/openclaw/codec.rs"]
 mod codec;
 mod continuity;
 mod errors;
-#[path = "native_agent_parser/adapters/openclaw/events.rs"]
 mod events;
 mod execution;
 mod io;
 mod model;
 mod params;
 mod probe;
-#[path = "native_agent_parser/adapters/openclaw/protocol.rs"]
 mod protocol;
 mod supervision;
 

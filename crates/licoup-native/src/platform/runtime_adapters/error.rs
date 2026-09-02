@@ -9,8 +9,7 @@ use std::fmt;
 pub enum RuntimeAdapterError {
     AgentIdentifierMissing,
     MessageMissing,
-    LegacyLaunchConfiguration,
-    InvalidRuntimeSetting { field: &'static str },
+    MessageInputLimit,
     AttachmentUnsupportedForAdapter { agent_label: String },
     AttachmentListExceeded,
     AttachmentInvalid,
@@ -45,22 +44,14 @@ impl RuntimeAdapterError {
                 ClientErrorRecovery::CorrectRequest,
             )
             .with_presentation_arg("field", "message"),
-            Self::LegacyLaunchConfiguration => ClientError::new(
-                ClientErrorCode::InvalidRequest,
+            Self::MessageInputLimit => ClientError::new(
+                ClientErrorCode::AgentMessageInputLimit,
                 ClientErrorStage::RequestValidation,
                 ClientErrorComponent::RuntimeAdapter,
                 false,
                 ClientErrorRecovery::CorrectRequest,
             )
-            .with_presentation_arg("field", "launch"),
-            Self::InvalidRuntimeSetting { field } => ClientError::new(
-                ClientErrorCode::InvalidRequest,
-                ClientErrorStage::RequestValidation,
-                ClientErrorComponent::RuntimeAdapter,
-                false,
-                ClientErrorRecovery::CorrectRequest,
-            )
-            .with_presentation_arg("field", *field),
+            .with_presentation_arg("field", "message"),
             Self::AttachmentUnsupportedForAdapter { agent_label } => ClientError::new(
                 ClientErrorCode::AgentRuntimeUnsupported,
                 ClientErrorStage::DiscoveryAdapter,
@@ -173,12 +164,7 @@ impl fmt::Display for RuntimeAdapterError {
                 "agent conversation request requires an agent identifier"
             }
             Self::MessageMissing => "agent message request requires message text",
-            Self::LegacyLaunchConfiguration => {
-                "legacy command and argument launch configuration is not supported"
-            }
-            Self::InvalidRuntimeSetting { .. } => {
-                "agent conversation request contains an invalid runtime setting"
-            }
+            Self::MessageInputLimit => "agent message request exceeds the input limit",
             Self::AttachmentUnsupportedForAdapter { .. } => {
                 "image attachments are not supported by this runtime adapter"
             }

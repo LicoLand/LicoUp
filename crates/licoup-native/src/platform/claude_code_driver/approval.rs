@@ -10,73 +10,81 @@
 use super::errors::ProtocolFailure;
 use super::io::write_message;
 use super::transport::PersistentTransport;
-use crate::platform::native_agent_parser::adapters::claude_code::permission_response;
-use serde_json::json;
-use std::sync::mpsc::{self, Receiver, TryRecvError};
+use serde_json::{Value, json};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use uuid::Uuid;
 
+/// Poll cadence while waiting for the external approval decision.
+const APPROVAL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Extract the permission request fields from a Claude Code control request.
+///
+/// Shape (Claude Code stream-json):
+/// `{"type":"control_request","request_id":"<uuid>","request":{...}}` where
+/// `request` carries the `permission_request` subtype plus the display prompt
+/// and the tool use that needs approval.
+pub(super) fn permission_request_details(message: &Value) -> Option<PermissionRequest> {
+    let request_id = message.get("request_id").and_then(Value::as_str)?;
+    let request = message.get("request")?;
+    let subtype = request
+        .get("subtype")
+        .or_else(|| request.get("type"))
+        .and_then(Value::as_str)?;
+    if subtype != "permission_request" {
+        return None;
+    }
+    let tool_use = request.get("toolUse").or_else(|| request.get("tool_use"));
+    let tool_use_id = tool_use
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let tool_name = tool_use
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str)
+        .map(|name| name.chars().take(64).collect::<String>());
+    let prompt = request
+        .get("prompt")
+        .or_else(|| request.get("message"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let summary = prompt
+        .or_else(|| {
+            tool_name
+                .as_ref()
+                .map(|name| format!("Claude Code requests permission for: {name}"))
+        })
+        .unwrap_or_else(|| "Claude Code requests permission to continue.".to_string());
+    Some(PermissionRequest {
+        request_id: request_id.to_string(),
+        tool_use_id,
+        tool_name,
+        summary,
+    })
+}
+
 #[derive(Debug)]
-pub(in crate::platform) struct PermissionRequest {
-    pub(in crate::platform) request_id: String,
-    pub(in crate::platform) tool_use_id: Option<String>,
-    pub(in crate::platform) tool_name: Option<String>,
-    pub(in crate::platform) summary: String,
+pub(super) struct PermissionRequest {
+    pub(super) request_id: String,
+    pub(super) tool_use_id: Option<String>,
+    pub(super) tool_name: Option<String>,
+    pub(super) summary: String,
 }
 
-pub(super) struct PendingApproval {
-    token: String,
-    request_id: String,
-    tool_use_id: Option<String>,
-    decision_rx: Receiver<bool>,
-}
-
-impl PendingApproval {
-    /// Poll one unbounded approval route without blocking native transport
-    /// supervision. `None` means the user has not decided yet.
-    pub(super) fn try_resolve(
-        &self,
-        transport: &mut PersistentTransport,
-    ) -> Result<Option<bool>, ProtocolFailure> {
-        let allow = match self.decision_rx.try_recv() {
-            Ok(allow) => allow,
-            Err(TryRecvError::Empty) => return Ok(None),
-            Err(TryRecvError::Disconnected) => {
-                return Err(ProtocolFailure::new(
-                    "claude_code_approval_park_disconnected",
-                    "Claude Code approval park channel disconnected.",
-                    "server/request",
-                ));
-            }
-        };
-        write_message(
-            &mut transport.stdin,
-            &permission_response(&self.request_id, self.tool_use_id.as_deref(), allow),
-        )
-        .map_err(|_| {
-            ProtocolFailure::new(
-                "claude_code_write_failed",
-                "Claude Code stopped accepting the approval response.",
-                "protocol/write",
-            )
-        })?;
-        Ok(Some(allow))
-    }
-}
-
-impl Drop for PendingApproval {
-    fn drop(&mut self) {
-        crate::platform::native_agent_interaction::abandon(&self.token);
-    }
-}
-
-/// Park the turn until the client resolves the approval. The caller continues
-/// polling native transport/control events, so the wait has no elapsed-time
-/// expiry while process exit and cancellation remain observable.
-pub(super) fn park_external_approval(
+/// Suspend the turn until the client resolves the parked approval.
+///
+/// Never returns a timeout failure: the approval wait is unbounded by design
+/// (developer-mandated rule — sending to an agent is never time-limited).
+/// Returns `Ok(true)` when allowed (turn continues), `Ok(false)` when denied
+/// (caller ends the turn with an interaction failure), and `Err` on transport
+/// or park failures.
+pub(super) fn await_external_approval(
+    transport: &mut PersistentTransport,
     session_id: &str,
     turn_id: &str,
     request: &PermissionRequest,
-) -> Result<PendingApproval, ProtocolFailure> {
+) -> Result<bool, ProtocolFailure> {
     let (decision_tx, decision_rx) = mpsc::sync_channel(1);
     let token = Uuid::new_v4().to_string();
     let tools = request.tool_name.clone().into_iter().collect::<Vec<_>>();
@@ -97,10 +105,59 @@ pub(super) fn park_external_approval(
         }
         return Err(converted);
     }
-    Ok(PendingApproval {
-        token,
-        request_id: request.request_id.clone(),
-        tool_use_id: request.tool_use_id.clone(),
-        decision_rx,
+    loop {
+        match decision_rx.recv_timeout(APPROVAL_POLL_INTERVAL) {
+            Ok(true) => {
+                if write_message(
+                    &mut transport.stdin,
+                    &permission_response(&request.request_id, request.tool_use_id.as_deref(), true),
+                )
+                .is_err()
+                {
+                    return Err(ProtocolFailure::new(
+                        "claude_code_write_failed",
+                        "Claude Code stopped accepting the approval response.",
+                        "protocol/write",
+                    ));
+                }
+                return Ok(true);
+            }
+            Ok(false) => {
+                let _ = write_message(
+                    &mut transport.stdin,
+                    &permission_response(
+                        &request.request_id,
+                        request.tool_use_id.as_deref(),
+                        false,
+                    ),
+                );
+                return Ok(false);
+            }
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(ProtocolFailure::new(
+                    "claude_code_approval_park_disconnected",
+                    "Claude Code approval park channel disconnected.",
+                    "server/request",
+                ));
+            }
+        }
+    }
+}
+
+fn permission_response(request_id: &str, tool_use_id: Option<&str>, allow: bool) -> Value {
+    let mut response = serde_json::Map::new();
+    response.insert("subtype".to_string(), json!("permission_response"));
+    response.insert("request_id".to_string(), json!(request_id));
+    if let Some(tool_use_id) = tool_use_id {
+        response.insert("tool_use_id".to_string(), json!(tool_use_id));
+    }
+    response.insert(
+        "response".to_string(),
+        json!(if allow { "allow" } else { "deny" }),
+    );
+    json!({
+        "type": "control_response",
+        "response": response,
     })
 }

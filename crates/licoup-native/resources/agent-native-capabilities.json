@@ -46,30 +46,8 @@
       "capabilities": ["cli", "rpc"]
     },
     {
-      "agentId": "deepseek-harness",
-      "capabilities": ["cli", "rpc"]
-    },
-    {
       "agentId": "lico-agent",
       "capabilities": ["cli", "rpc"]
-    }
-  ],
-  "quotaSources": [
-    {
-      "agentId": "codex",
-      "provider": "codex"
-    },
-    {
-      "agentId": "cursor",
-      "provider": "cursor"
-    },
-    {
-      "agentId": "antigravity",
-      "provider": "antigravity"
-    },
-    {
-      "agentId": "kimi-code",
-      "provider": "kimi-code"
     }
   ]
 }

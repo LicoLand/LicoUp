@@ -9,12 +9,11 @@
 use serde_json::Value;
 use std::path::Path;
 
-use super::acp_driver_runtime::{AcpDriverSpec, AcpParserKind, execute_acp, probe_acp};
+use super::acp_driver_runtime::{AcpDriverSpec, execute_acp, probe_acp};
 pub(super) use super::acp_driver_runtime::{CapabilityProbe, ProtocolFailure, RunResult};
 
 pub(super) const RUNTIME_PROTOCOL: &str = "kimi-code-acp-v1-stdio-ndjson";
 const KIMI_CODE_DRIVER: AcpDriverSpec = AcpDriverSpec::new(RUNTIME_PROTOCOL, &["acp"])
-    .with_parser(AcpParserKind::KimiCode)
     .with_identity("kimi-code-acp", "kimi_code_acp")
     .with_launch_settings(
         "--model",

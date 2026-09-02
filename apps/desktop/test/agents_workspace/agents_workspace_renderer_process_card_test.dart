@@ -1,5 +1,3 @@
-import 'package:licoup/src/contracts/target_management.dart';
-
 import 'support/agents_workspace_test_harness.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
@@ -62,28 +60,32 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
         lessThanOrEqualTo(conversationProcessExpandedBodyMaxHeight(700)),
       );
       final headerTop = tester.getTopLeft(find.byKey(toggleKey)).dy;
-      const firstOperationKey = ValueKey(
-        'conversation-process-operation-bounded-process-0',
-      );
-      expect(find.byKey(firstOperationKey), findsOneWidget);
-      final operationScrollable = find.descendant(
-        of: scroll,
-        matching: find.byType(Scrollable),
-      );
-      final initialPixels = tester
-          .state<ScrollableState>(operationScrollable)
-          .position
-          .pixels;
+      final firstOperationTop = tester
+          .getTopLeft(
+            find.byKey(
+              const ValueKey(
+                'conversation-process-operation-bounded-process-0',
+              ),
+            ),
+          )
+          .dy;
 
       await tester.drag(scroll, const Offset(0, -280));
       await tester.pumpAndSettle();
 
       expect(tester.getTopLeft(find.byKey(toggleKey)).dy, headerTop);
       expect(
-        tester.state<ScrollableState>(operationScrollable).position.pixels,
-        greaterThan(initialPixels),
+        tester
+            .getTopLeft(
+              find.byKey(
+                const ValueKey(
+                  'conversation-process-operation-bounded-process-0',
+                ),
+              ),
+            )
+            .dy,
+        lessThan(firstOperationTop),
       );
-      expect(find.byKey(firstOperationKey), findsNothing);
 
       await tester.tap(find.byKey(toggleKey));
       await tester.pumpAndSettle();
@@ -262,9 +264,7 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    final agentService = _ProcessCardAgentService();
-    addTearDown(agentService.dispose);
-    final controller = ClientController(agentService: agentService);
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -364,19 +364,6 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       ],
     };
     expect(controller.selectedConversationSession?.messages, hasLength(7));
-    final projectedMessages = controller.selectedConversationSession!.messages;
-    expect(
-      projectedMessages
-          .firstWhere((message) => message.id == 'message-tool')
-          .text,
-      '{"cmd":"read [local path hidden]","access_token":"[redacted]"}',
-    );
-    expect(
-      projectedMessages
-          .firstWhere((message) => message.id == 'message-reasoning')
-          .text,
-      'Inspected the adapter under [local path hidden] and verified cleanup; api_key: [redacted]',
-    );
 
     await tester.pumpWidget(
       MaterialApp(
@@ -465,8 +452,8 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.getSemantics(find.byKey(processSemanticsKey)),
-      isSemantics(hasExpandedState: true, isExpanded: true, hasTapAction: true),
+      find.byKey(const Key('conversation-process-operation-message-tool')),
+      findsOneWidget,
     );
     expect(
       find.byKey(const Key('conversation-process-operation-message-reasoning')),
@@ -519,10 +506,10 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       findsOneWidget,
     );
     expect(find.textContaining('secret-value'), findsNothing);
-    // The error row expands by default, but local paths remain policy-redacted;
-    // collapsed tool/reasoning rows keep their bodies hidden until expanded.
+    // The error row expands by default and carries the failed path; the
+    // collapsed tool/reasoning rows keep their paths hidden until expanded.
     expect(
-      find.textContaining('[local path hidden]', findRichText: true),
+      find.textContaining('/workspace/private', findRichText: true),
       findsOneWidget,
     );
     expect(
@@ -557,7 +544,7 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
         'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
         findRichText: true,
       ),
-      findsNothing,
+      findsWidgets,
     );
     expect(
       find.textContaining('Inspected the adapter under', findRichText: true),
@@ -570,16 +557,13 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(find.textContaining('secret-value'), findsNothing);
     expect(
       find.textContaining('/workspace/private', findRichText: true),
-      findsNothing,
-    );
-    expect(
-      find.textContaining('[local path hidden]', findRichText: true),
       findsWidgets,
     );
     expect(
       find.textContaining('private-thread', findRichText: true),
       findsNothing,
     );
+    expect(find.textContaining('{"', findRichText: true), findsWidgets);
     expect(
       tester.getSemantics(find.byKey(processSemanticsKey)),
       isSemantics(hasExpandedState: true, isExpanded: true, hasTapAction: true),
@@ -600,8 +584,8 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     await tester.pump(const Duration(milliseconds: 220));
 
     expect(
-      tester.getSemantics(find.byKey(processSemanticsKey)),
-      isSemantics(hasExpandedState: true, isExpanded: true, hasTapAction: true),
+      find.byKey(const Key('conversation-process-operation-message-tool')),
+      findsOneWidget,
     );
 
     final currentSession = controller.selectedConversationSession!;
@@ -629,8 +613,8 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     await tester.pump();
 
     expect(
-      tester.getSemantics(find.byKey(processSemanticsKey)),
-      isSemantics(hasExpandedState: true, isExpanded: true, hasTapAction: true),
+      find.byKey(const Key('conversation-process-operation-message-tool')),
+      findsOneWidget,
     );
 
     controller.conversationSessionsByAgent = {
@@ -665,17 +649,6 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });
-}
-
-final class _ProcessCardAgentService extends AgentService {
-  @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
-    bool enableAgentCliModelLookup = false,
-  }) async => TargetScanBatch([
-    for (final targetId in targetIds)
-      TargetScanSlot(targetId: targetId, failed: true),
-  ]);
 }
 
 void main() => registerAgentsWorkspaceRendererProcessCardScenarios();

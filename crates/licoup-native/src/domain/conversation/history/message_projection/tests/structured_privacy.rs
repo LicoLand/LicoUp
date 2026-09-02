@@ -1,4 +1,4 @@
-use serde_json::{Map, Value, json};
+use serde_json::json;
 
 use super::super::semantic::HistoryMessageKind;
 use super::super::structured_privacy::{
@@ -6,7 +6,6 @@ use super::super::structured_privacy::{
     structured_metadata_detail, structured_reasoning_detail, structured_reasoning_summary,
     structured_tool_call_detail,
 };
-use super::drop_json_iteratively;
 
 #[test]
 fn structured_text_redacts_credentials_paths_and_opaque_values() {
@@ -122,26 +121,4 @@ fn metadata_detail_unfolds_json_content_and_keeps_key_values() {
         .unwrap(),
         "model: test-model\nusage: {\"input_tokens\":120}"
     );
-}
-
-#[test]
-fn policy_allowed_structured_text_and_deep_summaries_are_complete() {
-    let long = format!("begin {} end", "allowed segment ".repeat(200));
-    assert_eq!(
-        sanitize_structured_event_text(&long).as_deref(),
-        Some(long.as_str())
-    );
-
-    let mut nested = json!("deep-summary-canary");
-    for _ in 0..4_097 {
-        nested = Value::Array(vec![nested]);
-    }
-    let mut wrapper = Map::new();
-    wrapper.insert("summary".to_string(), nested);
-    let value = Value::Object(wrapper);
-    assert_eq!(
-        structured_reasoning_summary(&value).as_deref(),
-        Some("deep-summary-canary")
-    );
-    drop_json_iteratively(value);
 }

@@ -1,5 +1,5 @@
 use super::super::process_supervisor::BoundedStdinWriter;
-use super::codec;
+use super::codec::{self, DecodeFailure};
 use serde_json::Value;
 use std::io::{self, BufRead, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,7 +7,8 @@ use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub(super) enum TransportEvent {
-    Frame(Vec<u8>),
+    Message(Value),
+    InvalidJson,
     StdoutLimitExceeded,
     StdoutReadFailed,
     StdoutClosed,
@@ -67,9 +68,15 @@ pub(super) fn read_protocol_messages<R: BufRead>(
 }
 
 pub(super) fn send_protocol_line(line: &[u8], sender: &Sender<TransportEvent>) -> Result<(), ()> {
-    sender
-        .send(TransportEvent::Frame(line.to_vec()))
-        .map_err(|_| ())
+    match codec::decode_message(line) {
+        Ok(message) => sender
+            .send(TransportEvent::Message(message))
+            .map_err(|_| ()),
+        Err(DecodeFailure::TooLarge) => sender
+            .send(TransportEvent::StdoutLimitExceeded)
+            .map_err(|_| ()),
+        Err(DecodeFailure::Invalid) => sender.send(TransportEvent::InvalidJson).map_err(|_| ()),
+    }
 }
 
 pub(super) fn drain_stderr<R: Read>(mut stderr: R, max_bytes: usize, truncated: &AtomicBool) {

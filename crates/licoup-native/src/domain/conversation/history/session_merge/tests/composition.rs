@@ -31,26 +31,3 @@ fn composition_keeps_only_matching_user_authored_sessions() {
     assert_eq!(finalized.len(), 1);
     assert_eq!(finalized[0]["nativeSessionId"], "keep");
 }
-
-#[test]
-fn composition_keeps_agent_owned_empty_copilot_conversations() {
-    let sessions = vec![json!({
-        "adapterId": "copilot",
-        "nativeSessionId": "copilot-empty",
-        "messages": []
-    })];
-    let scan_config = HistoryScanConfig {
-        archive_mode: false,
-        session_ids: Vec::new(),
-        match_terms: Vec::new(),
-        match_project_paths: Vec::new(),
-        page: HistoryPageConfig {
-            offset: 0,
-            limit: None,
-        },
-    };
-
-    let finalized = finalize_history_sessions(sessions, &scan_config);
-    assert_eq!(finalized.len(), 1);
-    assert_eq!(finalized[0]["nativeSessionId"], "copilot-empty");
-}

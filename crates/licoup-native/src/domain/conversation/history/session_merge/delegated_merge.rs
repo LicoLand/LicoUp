@@ -166,10 +166,6 @@ pub(super) fn insert_subagent_card_into_session(session: &mut Value, card: Value
     let Some(object) = session.as_object_mut() else {
         return;
     };
-    let previous_total = object
-        .get("messageCount")
-        .and_then(Value::as_u64)
-        .map(|value| value as usize);
     let Some(message_count) = object
         .get_mut("messages")
         .and_then(Value::as_array_mut)
@@ -204,22 +200,18 @@ pub(super) fn insert_subagent_card_into_session(session: &mut Value, card: Value
     else {
         return;
     };
-    let exact_count = previous_total
-        .map(|count| count.saturating_add(1))
-        .unwrap_or(message_count)
-        .max(message_count);
-    object.insert("messageCount".to_string(), json!(exact_count));
+    object.insert("messageCount".to_string(), json!(message_count));
 }
 
 pub(super) fn subagent_card_from_session(session: &Value) -> Option<Value> {
     let messages = session.get("messages").and_then(Value::as_array)?;
-    let explicit = session_is_explicit_delegated_subagent(session);
-    if !explicit {
-        return None;
-    }
     let prompt = messages
         .iter()
-        .find(|message| matches!(message_role(message).as_str(), "user" | "human"));
+        .find(|message| message_role(message) == "subagent_prompt");
+    let explicit = session_is_explicit_delegated_subagent(session);
+    if prompt.is_none() && !explicit {
+        return None;
+    }
     let title = session
         .get("subagentTitle")
         .and_then(Value::as_str)
@@ -307,7 +299,10 @@ pub(super) fn subagent_card_from_session(session: &Value) -> Option<Value> {
 /// empty card that says nothing about what the task did.
 fn subagent_card_child_message_is_visible(message: &Value) -> bool {
     let role = message_role(message);
-    if matches!(role.as_str(), "system" | "developer" | "metadata") {
+    if matches!(
+        role.as_str(),
+        "subagent_prompt" | "system" | "developer" | "metadata"
+    ) {
         return false;
     }
     if message
@@ -361,6 +356,14 @@ pub(super) fn subagent_card_preview_text(text: &str) -> String {
 
 pub(super) fn session_is_delegated_subagent(session: &Value) -> bool {
     session_is_explicit_delegated_subagent(session)
+        || session
+            .get("messages")
+            .and_then(Value::as_array)
+            .is_some_and(|messages| {
+                messages
+                    .iter()
+                    .any(|message| message_role(message) == "subagent_prompt")
+            })
 }
 
 fn session_is_explicit_delegated_subagent(session: &Value) -> bool {

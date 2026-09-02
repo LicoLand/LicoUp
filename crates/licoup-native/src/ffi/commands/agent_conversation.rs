@@ -9,9 +9,7 @@ use serde_json::Value;
 pub(super) fn handle_agent_conversation(command: AdmittedCommand) -> Result<CliExecution> {
     let operation = match command.path() {
         ["agent", "conversation", operation] => *operation,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete conversation routes"),
     };
     let admitted_json = command.option_json("stdin-json");
     let params = match admitted_json {
@@ -105,9 +103,7 @@ fn write_stdout_json_line(value: &Value) -> Result<()> {
 pub(super) fn handle_agents_pair(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["agents", "pair", action] => *action,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete pairing routes"),
     };
     let params = admitted_params(
         &[
@@ -122,9 +118,7 @@ pub(super) fn handle_agents_pair(command: AdmittedCommand) -> Result<CliExecutio
         "approve" => crate::domain::skill_hub::pair_approve(&params)?,
         "revoke" => crate::domain::skill_hub::pair_revoke(&params)?,
         "list" => crate::domain::skill_hub::pair_list(&params)?,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers supported pairing actions"),
     };
     Ok(CliExecution::Json(result))
 }

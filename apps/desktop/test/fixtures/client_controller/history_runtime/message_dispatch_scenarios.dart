@@ -38,6 +38,7 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
         'streamEvents': true,
         'timeoutMs': 0,
         'sessionId': 'native-codex-1',
+        'permissionMode': 'bypassPermissions',
         'sessionPath': 'test-data/codex/history.jsonl',
         'workingDirectory': localConversationWorkingDirectoryFallback(
           agentId: 'codex',

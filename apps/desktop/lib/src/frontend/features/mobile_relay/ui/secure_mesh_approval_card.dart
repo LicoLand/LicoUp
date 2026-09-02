@@ -97,15 +97,16 @@ class SecureMeshApprovalCard extends StatelessWidget {
                         key: Key(
                           'secure-mesh-approval-allow-${item.pendingOperationId}',
                         ),
-                        onPressed:
-                            busy ||
-                                !controller.canResolveSecureMeshApproval(
-                                  item.pendingOperationId,
-                                )
+                        onPressed: busy || item.responseNonce.trim().isEmpty
                             ? null
                             : () => controller.resolveSecureMeshApproval(
                                 pendingOperationId: item.pendingOperationId,
                                 allow: true,
+                                respondingEndpointId:
+                                    item.originEndpointId.isEmpty
+                                    ? 'local-trusted-endpoint'
+                                    : item.originEndpointId,
+                                responseNonce: item.responseNonce,
                               ),
                         child: Text(strings.allow),
                       ),
@@ -113,15 +114,16 @@ class SecureMeshApprovalCard extends StatelessWidget {
                         key: Key(
                           'secure-mesh-approval-deny-${item.pendingOperationId}',
                         ),
-                        onPressed:
-                            busy ||
-                                !controller.canResolveSecureMeshApproval(
-                                  item.pendingOperationId,
-                                )
+                        onPressed: busy || item.responseNonce.trim().isEmpty
                             ? null
                             : () => controller.resolveSecureMeshApproval(
                                 pendingOperationId: item.pendingOperationId,
                                 allow: false,
+                                respondingEndpointId:
+                                    item.originEndpointId.isEmpty
+                                    ? 'local-trusted-endpoint'
+                                    : item.originEndpointId,
+                                responseNonce: item.responseNonce,
                               ),
                         child: Text(strings.deny),
                       ),

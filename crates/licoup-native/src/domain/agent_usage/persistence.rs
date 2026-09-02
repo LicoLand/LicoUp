@@ -4,9 +4,6 @@ use super::contract::{
     AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE, MAX_REPORTS,
     REPORT_COLLECTION,
 };
-use super::workflow_ledger::{
-    WORKFLOW_LEDGER_REPORT_SCHEMA, WORKFLOW_LEDGER_RESULT_KIND, WORKFLOW_LEDGER_SCHEMA_VERSION,
-};
 use crate::domain::conversation::parameters::text_param;
 use crate::platform::client_state::ClientStateStore;
 use anyhow::Result;
@@ -92,24 +89,6 @@ fn is_current_report(report: &Value) -> bool {
         && report.get("tokenSourceMode").and_then(Value::as_str)
             == Some(AGENT_USAGE_TOKEN_SOURCE_MODE)
         && report_generated_at(report).is_some()
-        && report_workflow_is_current(report)
-}
-
-/// The embedded Graph usage projection must carry the schema the client
-/// parses. A retained report from an older workflow generation is dropped and
-/// purged from the local collection instead of failing the whole list.
-fn report_workflow_is_current(report: &Value) -> bool {
-    match report.get("workflow") {
-        None => true,
-        Some(workflow) => {
-            workflow.get("schemaVersion").and_then(Value::as_str)
-                == Some(WORKFLOW_LEDGER_REPORT_SCHEMA)
-                && workflow.get("ledgerSchemaVersion").and_then(Value::as_i64)
-                    == Some(WORKFLOW_LEDGER_SCHEMA_VERSION)
-                && workflow.get("resultKind").and_then(Value::as_str)
-                    == Some(WORKFLOW_LEDGER_RESULT_KIND)
-        }
-    }
 }
 
 fn report_generated_at(report: &Value) -> Option<i128> {
@@ -200,40 +179,6 @@ mod tests {
         let reports = read_retained_reports(&params, None, 10).unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0]["schemaVersion"], AGENT_USAGE_SCHEMA_VERSION);
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn retrieval_removes_legacy_workflow_projection_contracts() {
-        let root = temp_root();
-        let params = json!({"stateRoot": root.to_string_lossy()});
-        let store = client_state_store(&params).unwrap();
-        let mut legacy = report(1, "codex");
-        legacy["workflow"] = json!({
-            "schemaVersion": "licoup.workflow-token-report.v1",
-            "ledgerSchemaVersion": 1,
-            "resultKind": "workflow-token-usage"
-        });
-        let mut current = report(2, "codex");
-        current["workflow"] = json!({
-            "schemaVersion": WORKFLOW_LEDGER_REPORT_SCHEMA,
-            "ledgerSchemaVersion": WORKFLOW_LEDGER_SCHEMA_VERSION,
-            "resultKind": WORKFLOW_LEDGER_RESULT_KIND,
-            "runs": [],
-            "summary": {}
-        });
-        store
-            .write_collection(REPORT_COLLECTION, json!({ "items": [legacy, current] }))
-            .unwrap();
-        let reports = read_retained_reports(&params, None, 10).unwrap();
-        assert_eq!(reports.len(), 1);
-        assert_eq!(
-            reports[0]["workflow"]["schemaVersion"],
-            WORKFLOW_LEDGER_REPORT_SCHEMA
-        );
-        // The legacy entry is purged from the stored collection too.
-        let retained = store.read_collection(REPORT_COLLECTION).unwrap();
-        assert_eq!(retained["items"].as_array().unwrap().len(), 1);
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -504,50 +504,6 @@ void registerClientConversationDispatchScenarios() {
     },
   );
 
-  for (final target in const ['kilo-code', 'opencode']) {
-    test(
-      '$target Auto projects its current catalog default on every send',
-      () async {
-        final service = FakeAgentService()
-          ..scanTargetsResult = [
-            TargetCandidate(
-              target: target,
-              label: target == 'kilo-code' ? 'Kilo Code' : 'OpenCode',
-              kind: 'cli',
-              status: 'detected',
-              configured: true,
-              confidence: 0.9,
-              binaryPath: '/test-bin/$target',
-              adapterStatus: 'implemented',
-              modelCatalog: const {
-                'status': 'available',
-                'defaultModel': 'provider/current-model',
-                'models': [
-                  {'name': 'provider/current-model'},
-                ],
-              },
-              adapterCapabilities: parityReadyAdapterCapabilities,
-              supportedActions: const ['runtime.message.send'],
-            ),
-          ];
-        final controller = ClientController(agentService: service);
-        addTearDown(controller.dispose);
-
-        await controller.scanTargets();
-        await controller.selectConversationAgent(target);
-        expect(controller.selectedConversationModel, isEmpty);
-        await controller.sendConversationMessage('first current-model turn');
-        await controller.sendConversationMessage('second current-model turn');
-
-        expect(service.runtimeMessageCalls, 2);
-        expect(
-          service.runtimeMessageRequests.map((request) => request['model']),
-          everyElement('provider/current-model'),
-        );
-      },
-    );
-  }
-
   test(
     'selected working directory survives the new-session projection',
     () async {

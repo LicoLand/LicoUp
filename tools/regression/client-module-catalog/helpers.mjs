@@ -1,5 +1,3 @@
-import { classifyClientModule } from "../client-regression-metadata.mjs";
-
 const REPO_ROOT = ".";
 export const NATIVE_MANIFEST = "crates/licoup-native/Cargo.toml";
 
@@ -148,7 +146,6 @@ export function rustLayer(filter, harnessArgs = []) {
       "test",
       "--manifest-path",
       NATIVE_MANIFEST,
-      "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
     ],
@@ -188,14 +185,12 @@ export function rustBinaryTests(binary, filter, features = []) {
 }
 
 export function defineModule({ id, kind, summary, inputs, command: moduleCommand }) {
-  const regression = classifyClientModule({ id, kind, command: moduleCommand });
   return Object.freeze({
     id,
     kind,
     summary,
     inputs: Object.freeze([...new Set(inputs)]),
     command: moduleCommand,
-    regression,
   });
 }
 

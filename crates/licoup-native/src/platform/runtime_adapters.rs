@@ -8,17 +8,11 @@ mod normalization;
 mod params;
 mod probe;
 #[cfg(test)]
-pub(crate) mod protocol_selector {
-    pub use licoup_agent_runtime::protocol_selector::*;
-}
+pub(crate) mod protocol_selector;
 mod registry;
 
-// Public host-neutral L4/L5 contracts. Concrete drivers remain composed in
-// this native host until their individually owned modules can move without
-// crossing concurrent ownership boundaries.
-pub use licoup_agent_runtime::{PersistentTurnRuntime, RuntimeDriver, RuntimeDriverRegistry};
-
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
+const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 const MIN_TIMEOUT_MS: u64 = 1_000;
 const MAX_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
 const DEFAULT_MAX_STDERR_BYTES: usize = 512 * 1024;
@@ -26,6 +20,7 @@ const DEFAULT_MAX_STDERR_BYTES: usize = 512 * 1024;
 // A lower hidden clamp turns an accepted budget into a misleading early
 // output-limit failure and prevents exact native-session continuation.
 const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
 
 /// Dispatch implementations must stay in one-to-one correspondence with the
 /// canonical target-adapters packaging registry. This is implementation
@@ -43,20 +38,14 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
     "kimi-code",
     "pi",
     "lico-agent",
-    "deepseek-harness",
 ];
 
 pub(crate) use adapter::{RuntimeAdapter, adapter_for_agent_public, text_param_public};
 pub use dispatch::send_message;
 pub use error::RuntimeAdapterError;
-pub(crate) use params::{
-    MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
-    attachment_media_type_supported,
-};
 pub(crate) use probe::probe_runtime_driver;
 pub(crate) use registry::{
-    adapter_management_catalog, inventory_capability_matrix, native_capabilities_for_agent,
-    runtime_driver_profile,
+    adapter_management_catalog, inventory_capability_matrix, runtime_driver_profile,
 };
 pub use registry::{
     reload_conversation_readiness_document, reload_conversation_readiness_from_path,

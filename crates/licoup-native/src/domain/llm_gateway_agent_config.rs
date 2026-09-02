@@ -1,14 +1,17 @@
 //! Closed configuration plans for connecting supported coding agents to the
 //! loopback LicoUp Gateway. Plans never contain upstream provider credentials.
 //!
-//! OpenCode and Pi embed the live catalog returned by the running Gateway.
-//! Codex and Claude Code point at the loopback Gateway without embedding a
-//! model catalog.
+//! OpenCode and Pi embed only catalog models whose providers currently have a
+//! usable saved API key. Codex and Claude Code point at the loopback Gateway
+//! without embedding a model catalog.
 
+use crate::domain::llm_api_key_vault::LlmApiKeyProvider;
+use crate::domain::llm_gateway_default_catalog::{DefaultGatewayModel, models_for_provider_ids};
 use anyhow::{Result, anyhow, ensure};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const GATEWAY_AGENT_CONFIG_SCHEMA: &str = "licoup.llm-gateway-agent-config.v1";
@@ -41,16 +44,6 @@ impl GatewayAgentTarget {
             Self::Pi => "pi",
         }
     }
-
-    pub fn embeds_model_catalog(self) -> bool {
-        matches!(self, Self::OpenCode | Self::Pi)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GatewayAgentModel {
-    pub id: String,
-    pub name: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -69,7 +62,7 @@ pub fn plan_agent_config(
     agent_config_root: &Path,
     gateway_port: u16,
     local_token_helper: &Path,
-    models: &[GatewayAgentModel],
+    available_providers: &BTreeSet<LlmApiKeyProvider>,
 ) -> Result<GatewayAgentConfigPlan> {
     ensure!(gateway_port > 0, "llm_gateway_port_invalid");
     ensure!(
@@ -77,6 +70,12 @@ pub fn plan_agent_config(
         "llm_gateway_agent_config_path_invalid"
     );
     let base_url = format!("http://127.0.0.1:{gateway_port}");
+    let provider_ids = available_providers
+        .iter()
+        .map(|provider| provider.as_str())
+        .collect::<BTreeSet<_>>();
+    let models =
+        models_for_provider_ids(&provider_ids).collect::<Vec<&'static DefaultGatewayModel>>();
     let (destination, content) = match target {
         GatewayAgentTarget::Codex => {
             let helper = toml_string(local_token_helper.to_string_lossy().as_ref())?;
@@ -105,8 +104,11 @@ pub fn plan_agent_config(
             let destination = agent_config_root.join("opencode.licoup-gateway.json");
             let chat_base = format!("{base_url}/v1");
             let mut model_map = Map::new();
-            for model in models {
-                model_map.insert(model.id.to_owned(), json!({ "name": model.name }));
+            for model in &models {
+                model_map.insert(
+                    model.requested_model.to_owned(),
+                    json!({ "name": model.display_name }),
+                );
             }
             let document = json!({
                 "$schema": "https://opencode.ai/config.json",
@@ -137,8 +139,8 @@ pub fn plan_agent_config(
                 .iter()
                 .map(|model| {
                     json!({
-                        "id": model.id,
-                        "name": model.name
+                        "id": model.requested_model,
+                        "name": model.display_name
                     })
                 })
                 .collect();
@@ -197,24 +199,10 @@ fn toml_string(value: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::llm_gateway_default_catalog::DEFAULT_GATEWAY_MODELS;
 
-    fn live_models() -> Vec<GatewayAgentModel> {
-        [
-            ("kimi:kimi-k3", "Kimi K3"),
-            ("deepseek:deepseek-v4-flash", "DeepSeek V4 Flash"),
-            ("deepseek:deepseek-v4-pro", "DeepSeek V4 Pro"),
-            ("kilo:kilo-auto/frontier", "Kilo Auto Frontier"),
-            ("kilo:kilo-auto/balanced", "Kilo Auto Balanced"),
-            ("kilo:kilo-auto/free", "Kilo Auto Free"),
-            ("kilo:anthropic/claude-opus-5", "Claude Opus 5"),
-            ("kilo:anthropic/claude-sonnet-5", "Claude Sonnet 5"),
-        ]
-        .into_iter()
-        .map(|(id, name)| GatewayAgentModel {
-            id: id.into(),
-            name: name.into(),
-        })
-        .collect()
+    fn all_providers() -> BTreeSet<LlmApiKeyProvider> {
+        BTreeSet::from(LlmApiKeyProvider::ALL)
     }
 
     #[test]
@@ -230,7 +218,7 @@ mod tests {
                 Path::new("/synthetic/config"),
                 15722,
                 Path::new("/synthetic/lico-native"),
-                &live_models(),
+                &all_providers(),
             )
             .unwrap();
             assert!(plan.content.contains("127.0.0.1:15722"));
@@ -247,7 +235,7 @@ mod tests {
             Path::new("/synthetic/opencode"),
             15722,
             Path::new("/synthetic/lico-native"),
-            &live_models(),
+            &all_providers(),
         )
         .unwrap();
         assert_eq!(
@@ -258,21 +246,28 @@ mod tests {
         assert!(plan.content.contains("http://127.0.0.1:15722/v1"));
         assert!(plan.content.contains(LOCAL_CLIENT_TOKEN_PLACEHOLDER));
         assert!(!plan.content.contains("licoup-local"));
-        assert!(plan.content.contains("kimi:kimi-k3"));
+        assert!(plan.content.contains("kimi:k3"));
         assert!(plan.content.contains("deepseek:deepseek-v4-pro"));
         assert!(plan.content.contains("kilo:kilo-auto/frontier"));
         assert!(plan.content.contains("kilo:anthropic/claude-opus-5"));
         assert!(!plan.content.contains("anthropic/claude-sonnet-4.6"));
         assert!(!plan.content.contains("kimi-k2-0905-preview"));
         assert!(!plan.content.contains("opencode.jsonc"));
+        assert_eq!(
+            models_for_provider_ids(
+                &all_providers()
+                    .iter()
+                    .map(|provider| provider.as_str())
+                    .collect()
+            )
+            .count(),
+            DEFAULT_GATEWAY_MODELS.len()
+        );
     }
 
     #[test]
-    fn opencode_and_pi_plans_project_only_live_gateway_models() {
-        let only_kilo = vec![GatewayAgentModel {
-            id: "kilo:kilo-auto/free".into(),
-            name: "Kilo Auto Free".into(),
-        }];
+    fn opencode_and_pi_plans_omit_providers_without_saved_keys() {
+        let only_kilo = BTreeSet::from([LlmApiKeyProvider::Kilo]);
         for target in [GatewayAgentTarget::OpenCode, GatewayAgentTarget::Pi] {
             let plan = plan_agent_config(
                 target,
@@ -292,7 +287,7 @@ mod tests {
             Path::new("/synthetic/config"),
             15722,
             Path::new("/synthetic/lico-native"),
-            &[],
+            &BTreeSet::new(),
         )
         .unwrap();
         assert!(empty.content.contains("\"models\": {}"));
@@ -307,7 +302,7 @@ mod tests {
             Path::new("/synthetic/pi/agent"),
             15722,
             Path::new("/synthetic/lico-native"),
-            &live_models(),
+            &all_providers(),
         )
         .unwrap();
         assert_eq!(
@@ -318,7 +313,7 @@ mod tests {
         assert!(plan.content.contains("http://127.0.0.1:15722/v1"));
         assert!(plan.content.contains(LOCAL_CLIENT_TOKEN_PLACEHOLDER));
         assert!(!plan.content.contains("licoup-local"));
-        assert!(plan.content.contains("kimi:kimi-k3"));
+        assert!(plan.content.contains("kimi:k3"));
         assert!(plan.content.contains("deepseek:deepseek-v4-flash"));
         assert!(plan.content.contains("kilo:kilo-auto/balanced"));
         assert!(plan.content.contains("kilo:anthropic/claude-sonnet-5"));

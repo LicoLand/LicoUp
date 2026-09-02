@@ -2,17 +2,19 @@
 //!
 //! Browse lists never parse conversation content up front. Each adapter contributes
 //! native catalog metadata (agent-owned sqlite state, per-session state files, or
-//! plain file metadata) without an age or terminal-count window. Only sessions
-//! that land in the
+//! plain file metadata) inside a bounded recency window: active sessions from the
+//! last few days (the head tier of the recency sort) are served first, deeper
+//! paging progressively extends coverage to [`CATALOG_WINDOW_DAYS`], and anything
+//! older (or natively archived) is left out. Only sessions that land in the
 //! returned page are hydrated from their content files. Explicit searches
 //! (match terms), archive discovery, single-session readback, and root overrides
 //! keep the legacy full-scan path in `query.rs`.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -21,34 +23,59 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use super::codex::{
-    CodexRuntimeObservation, parse_codex_rollout_browse_sessions, rollout_session_id_from_filename,
+    CodexRolloutGroup, CodexRuntimeObservation, codex_rollout_groups_to_sessions,
+    parse_codex_rollout_line, rollout_session_id_from_filename,
 };
 use super::cursor_openagent::codec::{open_read_only_connection, sqlite_table_exists};
-use super::cursor_openagent::{
-    CopilotChatSessionsReadError, copilot_chat_sessions_document, cursor_composer_catalog,
-};
+use super::cursor_openagent::cursor_composer_catalog;
 use super::delegated_transcripts::{
     CURSOR_TRANSCRIPTS_DIRECTORY, delegated_file_is_transcript, delegated_task_label,
     delegated_task_prompt_text, transcript_conversation_id, transcript_is_delegated,
 };
 use super::project_workspace::bounded_project_workspace;
 use super::projection_cache::{HistoryProjectionCache, ProjectionCacheKey, SourceFingerprint};
-use super::query_filter::{epoch_number_to_rfc3339, session_id, system_time, title_from_text};
-use super::session_metadata::{
-    extract_conversation_title, meaningful_explicit_title, session_from_messages_with_title,
-};
+use super::query_filter::{epoch_number_to_rfc3339, system_time, title_from_text};
+use super::session_metadata::{meaningful_explicit_title, session_from_messages_with_title};
 use super::{CONVERSATION_SCHEMA_VERSION, HistoryScanConfig, finalize_history_sessions};
 use crate::domain::conversation::adapter_dispatch::parse_history_file;
 use crate::domain::conversation::history_discovery::{
-    HistoryDiscoveryOptions, HistoryFileCandidate, discover_history_files,
+    HistoryDiscoveryOptions, discover_history_files,
 };
 use crate::domain::conversation::source_catalog::{HistoryAdapter, HistoryRoot, history_roots};
 
+/// Browse lists never cover sessions older than this many days. The most recent
+/// seven days form the head tier of the recency-sorted window: short pages are
+/// served from them alone and deeper paging progressively reaches the rest of
+/// the window.
+pub(crate) const CATALOG_WINDOW_DAYS: u64 = 30;
+
+const MAX_CATALOG_DIRECTORY_ENTRIES: usize = 16_000;
 const CURSOR_IDE_STORE_FILE: &str = "state.vscdb";
 const CURSOR_IDE_STORE_WALK_DEPTH: usize = 2;
+/// Bound on delegated-task transcripts a browse row folds in.
+///
+/// A browse row keeps only [`CATALOG_HYDRATED_MESSAGE_CAP`] messages, so parsing
+/// every delegated transcript of every row on the page is work that is thrown
+/// away: one orchestration run can hold seventy of them, and a page holds
+/// dozens of rows. The newest transcripts are kept and the row reports the
+/// remainder as truncated; the single-session read has no such bound and folds
+/// the complete set.
+const MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS: usize = 8;
+const MAX_CATALOG_WALK_DEPTH: usize = 8;
+const MAX_STATE_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_TITLE_PROBE_LINES: usize = 200;
 const MAX_TITLE_PROBE_LINE_BYTES: usize = 1024 * 1024;
 const MAX_TITLE_PROBE_BYTES: u64 = 2 * 1024 * 1024;
+/// Browse rows only render the newest messages of a content file, so oversized
+/// sources are decoded from the end instead of parsed whole. The window is the
+/// byte budget for record materialization; the absolute line scan that anchors
+/// message ids stays a separate cheap byte pass.
+const CATALOG_TAIL_BYTES: u64 = 1024 * 1024;
+/// Record budget for one tail window. The window itself bounds memory, and the
+/// ring keeps only the newest records so a pathological line-per-byte file
+/// still costs a fixed number of record parses.
+const CATALOG_TAIL_MAX_RECORDS: usize = 2_000;
+const CATALOG_TAIL_CHUNK_BYTES: u64 = 64 * 1024;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogSession {
@@ -77,6 +104,8 @@ pub(crate) enum CatalogHydration {
     TranscriptWithDelegatedTasks {
         transcript: PathBuf,
         delegated: Vec<PathBuf>,
+        /// Whether delegated transcripts were left out of this browse row.
+        delegated_truncated: bool,
         /// Conversation the delegated transcripts belong to, for stores whose
         /// layout does not encode lineage in the path. Cursor and Claude Code
         /// leave this empty because their transcript path already names the
@@ -101,7 +130,7 @@ impl CatalogSession {
     }
 }
 
-/// Browse-mode list entry point: complete catalog metadata,
+/// Browse-mode list entry point: catalog metadata within the recency window,
 /// sorted by last activity, paginated, with content hydration for the page only.
 pub(crate) fn conversation_list_from_catalog(
     adapter: HistoryAdapter,
@@ -195,9 +224,11 @@ pub(crate) fn conversation_list_from_catalog_inner(
 pub(crate) fn load_session_catalog(
     adapter: HistoryAdapter,
     params: &Value,
-    _now: SystemTime,
+    now: SystemTime,
 ) -> SessionCatalog {
-    let cutoff = UNIX_EPOCH;
+    let cutoff = now
+        .checked_sub(Duration::from_secs(CATALOG_WINDOW_DAYS * 86_400))
+        .unwrap_or(UNIX_EPOCH);
     let roots = history_roots(adapter, params);
     let mut catalog = SessionCatalog::default();
     match adapter {
@@ -263,15 +294,6 @@ fn catalog_content_rank(entry: &CatalogSession) -> u8 {
     }
     match entry.source_kind.as_str() {
         "cursor-cli-projects" => 2,
-        "vscode-copilot-workspace-storage" | "vscode-copilot-global-storage"
-            if entry
-                .source_path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| matches!(extension, "jsonl" | "ndjson")) =>
-        {
-            2
-        }
         _ => 1,
     }
 }
@@ -306,9 +328,12 @@ fn absorb_duplicate_catalog_entry(kept: &mut CatalogSession, duplicate: CatalogS
 }
 
 fn catalog_dedupe_key(adapter: HistoryAdapter, entry: &CatalogSession) -> String {
-    // Native identity is the conversation key; source paths are hydration
-    // locations. Only records without identity fall back to a source locator.
-    if !entry.native_session_id.is_empty() {
+    // Cursor and Codex both write one conversation into several stores under a
+    // single native identity, so identity alone is the key. Adapters without a
+    // native identity fall back to the source file.
+    if matches!(adapter, HistoryAdapter::Codex | HistoryAdapter::Cursor)
+        && !entry.native_session_id.is_empty()
+    {
         return format!("{}\n{}", adapter.id(), entry.native_session_id);
     }
     format!(
@@ -323,9 +348,13 @@ fn catalog_dedupe_key(adapter: HistoryAdapter, entry: &CatalogSession) -> String
 // Page hydration: parse content files for the returned page only.
 // ---------------------------------------------------------------------------
 
-/// Browse pages return a newest-message preview with exact continuation facts.
-/// Message text is never rewritten; selecting a row enters exact paging.
+/// Browse pages bound their payload: hydrated sessions keep only the newest
+/// messages in the list projection (`messageCount` still reports the full
+/// transcript size), and each message text is truncated to a browse-sized
+/// prefix. The complete transcript stays available through the
+/// single-session read path.
 const CATALOG_HYDRATED_MESSAGE_CAP: usize = 50;
+const CATALOG_HYDRATED_MESSAGE_TEXT_CAP: usize = 2000;
 
 fn hydrate_catalog_page(
     adapter: HistoryAdapter,
@@ -362,6 +391,7 @@ fn hydrate_catalog_page(
             CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript,
                 delegated,
+                delegated_truncated,
                 delegated_parent_session_id,
             } => {
                 let unit = units.entry(transcript.clone()).or_insert_with(|| {
@@ -370,6 +400,7 @@ fn hydrate_catalog_page(
                         CatalogHydration::TranscriptWithDelegatedTasks {
                             transcript: transcript.clone(),
                             delegated: delegated.clone(),
+                            delegated_truncated: *delegated_truncated,
                             delegated_parent_session_id: delegated_parent_session_id.clone(),
                         },
                         Vec::new(),
@@ -384,7 +415,14 @@ fn hydrate_catalog_page(
     let mut resolved = BTreeMap::<usize, Value>::new();
     let mut units_with_content = HashSet::<&PathBuf>::new();
     for (unit_path, (source_kind, hydration, indexes)) in &units {
-        // A hydration unit is shared by every page entry that names it.
+        // A hydration unit is shared by every page entry that names it. The
+        // seed conversation identity anchors the bounded-tail reader when the
+        // source header lies outside the window; it is only a fallback for the
+        // filename-derived identity the whole-file reader would use.
+        let seed_session_id = indexes
+            .first()
+            .map(|index| page[*index].native_session_id.as_str())
+            .filter(|id| !id.is_empty());
         let key = projection_cache_key(adapter, source_kind, hydration, params);
         let sessions = match key.as_ref().and_then(|key| cache.get(key)) {
             Some(cached) => {
@@ -402,8 +440,9 @@ fn hydrate_catalog_page(
                     hydration,
                     params,
                     scan_config,
+                    seed_session_id,
+                    counters,
                 );
-                let parsed = catalog_cache_projection(parsed);
                 if let Some(key) = key.as_ref().filter(|_| !parsed.is_empty()) {
                     cache.insert(key.clone(), parsed.clone());
                 }
@@ -447,49 +486,31 @@ fn hydrate_catalog_page(
                 {
                     object.insert("model".to_string(), json!(model));
                 }
-                if adapter == HistoryAdapter::Copilot {
-                    if let Some(created_at) = page[*index].created_at {
-                        object.insert("createdAt".to_string(), json!(system_time(created_at)));
-                    }
-                    if let Some(updated_at) = page[*index].updated_at {
-                        object.insert("updatedAt".to_string(), json!(system_time(updated_at)));
-                    }
-                }
                 if page[*index].running {
                     object.insert("running".to_string(), json!(true));
                 } else {
                     object.remove("running");
                 }
-                let recorded_message_count = object
-                    .get("messageCount")
-                    .and_then(Value::as_u64)
-                    .map(|value| value as usize);
                 if let Some(messages) = object.get_mut("messages").and_then(Value::as_array_mut) {
-                    let total = recorded_message_count
-                        .unwrap_or(messages.len())
-                        .max(messages.len());
-                    trim_browse_messages(messages);
-                    let returned = messages.len();
-                    let start = total.saturating_sub(returned);
-                    let next_before = (start > 0)
-                        .then(|| messages.first())
-                        .flatten()
-                        .and_then(|message| message.get("id"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    object.insert("messageCount".to_string(), json!(total));
-                    object.insert("sourceMessageCount".to_string(), json!(total));
-                    object.insert(
-                        "messagePage".to_string(),
-                        json!({
-                            "start": start,
-                            "endExclusive": total,
-                            "returned": returned,
-                            "total": total,
-                            "hasEarlier": start > 0,
-                            "nextBefore": next_before
-                        }),
-                    );
+                    let overflow = messages.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
+                    if overflow > 0 {
+                        messages.drain(0..overflow);
+                    }
+                    for message in messages.iter_mut() {
+                        let Some(text_value) = message.get_mut("text") else {
+                            continue;
+                        };
+                        let Some(text) = text_value.as_str() else {
+                            continue;
+                        };
+                        if text.chars().count() > CATALOG_HYDRATED_MESSAGE_TEXT_CAP {
+                            let truncated: String = text
+                                .chars()
+                                .take(CATALOG_HYDRATED_MESSAGE_TEXT_CAP)
+                                .collect();
+                            *text_value = Value::String(truncated);
+                        }
+                    }
                 }
                 // Long execution traces follow the same browse bound as the
                 // message list; the full trace stays in the session read path.
@@ -539,80 +560,6 @@ fn hydrate_catalog_page(
         .collect()
 }
 
-fn catalog_cache_projection(mut sessions: Vec<Value>) -> Vec<Value> {
-    for session in &mut sessions {
-        let Some(object) = session.as_object_mut() else {
-            continue;
-        };
-        let total = object
-            .get("messageCount")
-            .and_then(Value::as_u64)
-            .map(|value| value as usize)
-            .or_else(|| {
-                object
-                    .get("messages")
-                    .and_then(Value::as_array)
-                    .map(Vec::len)
-            })
-            .unwrap_or(0);
-        let Some(messages) = object.get_mut("messages").and_then(Value::as_array_mut) else {
-            continue;
-        };
-        trim_browse_messages(messages);
-        let returned = messages.len();
-        let start = total.saturating_sub(returned);
-        let next_before = (start > 0)
-            .then(|| messages.first())
-            .flatten()
-            .and_then(|message| message.get("id"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        object.insert("messageCount".to_string(), json!(total));
-        object.insert("sourceMessageCount".to_string(), json!(total));
-        object.insert(
-            "messagePage".to_string(),
-            json!({
-                "start": start,
-                "endExclusive": total,
-                "returned": returned,
-                "total": total,
-                "hasEarlier": start > 0,
-                "nextBefore": next_before
-            }),
-        );
-        if let Some(semantic) = object.get_mut("semantic").and_then(Value::as_object_mut) {
-            for key in ["execution", "thread"] {
-                if let Some(entries) = semantic.get_mut(key).and_then(Value::as_array_mut) {
-                    let overflow = entries.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
-                    if overflow > 0 {
-                        entries.drain(0..overflow);
-                    }
-                }
-            }
-        }
-    }
-    sessions
-}
-
-fn trim_browse_messages(messages: &mut Vec<Value>) {
-    // Delegated cards are part of the browse contract, not tail content. Until
-    // cards have an independent descriptor channel, retain the complete
-    // top-level order whenever a conversation has one so no card creates a
-    // non-contiguous message page.
-    if messages.iter().any(message_is_subagent_card) {
-        return;
-    }
-    let overflow = messages.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
-    if overflow > 0 {
-        messages.drain(0..overflow);
-    }
-}
-
-fn message_is_subagent_card(message: &Value) -> bool {
-    message.get("role").and_then(Value::as_str) == Some("subagent")
-        || message.get("cardType").and_then(Value::as_str) == Some("subagent")
-}
-
 /// Hydration unit key of one catalog entry, when it has content to parse.
 fn catalog_entry_content_source(entry: &CatalogSession) -> Option<&PathBuf> {
     match &entry.hydrate {
@@ -644,18 +591,51 @@ fn parse_catalog_unit(
     hydration: &CatalogHydration,
     params: &Value,
     scan_config: &HistoryScanConfig,
+    seed_session_id: Option<&str>,
+    counters: &mut BrowseWorkCounters,
 ) -> Vec<Value> {
     let mut sessions = Vec::<Value>::new();
     match hydration {
         CatalogHydration::File(path) => {
             if let Ok(metadata) = fs::metadata(path) {
-                sessions.extend(parse_catalog_history_file(
-                    adapter,
-                    path,
-                    source_kind,
-                    &metadata,
-                    scan_config,
-                ));
+                // Oversized Codex rollouts keep only a bounded tail for the
+                // browse row: the catalog entry supplies the canonical
+                // conversation identity, absolute line indices stay anchored
+                // to the file start, and every other adapter keeps the
+                // whole-file reader (their identities live in headers that can
+                // lie outside any window, and their stores are small by
+                // design). Small files parse whole so their rows are
+                // byte-identical to the pre-bounding path.
+                if adapter == HistoryAdapter::Codex && metadata.len() > CATALOG_TAIL_BYTES {
+                    let seed = rollout_session_id_from_filename(path)
+                        .or_else(|| seed_session_id.map(str::to_string));
+                    if let Some(seed) = seed {
+                        if let Some(tail) = read_bounded_tail(
+                            path,
+                            &metadata,
+                            CATALOG_TAIL_BYTES,
+                            CATALOG_TAIL_MAX_RECORDS,
+                        ) {
+                            record_tail_work(counters, Some(&tail));
+                            sessions.extend(parse_codex_unit_tail(
+                                path,
+                                source_kind,
+                                &metadata,
+                                &seed,
+                                &tail,
+                                scan_config,
+                            ));
+                        }
+                    }
+                } else {
+                    sessions.extend(parse_history_file(
+                        adapter,
+                        path,
+                        source_kind,
+                        &metadata,
+                        scan_config.clone(),
+                    ));
+                }
             }
         }
         CatalogHydration::KimiWireDirectory(directory) => {
@@ -674,6 +654,7 @@ fn parse_catalog_unit(
         CatalogHydration::TranscriptWithDelegatedTasks {
             transcript,
             delegated,
+            delegated_truncated,
             delegated_parent_session_id,
         } => {
             // Curated delegated labels are read once per unit and only when the
@@ -696,7 +677,7 @@ fn parse_catalog_unit(
                     continue;
                 };
                 let mut child_sessions =
-                    parse_catalog_history_file(adapter, child, source_kind, &metadata, scan_config);
+                    parse_history_file(adapter, child, source_kind, &metadata, scan_config.clone());
                 if let Some(parent_session_id) = delegated_parent_session_id.as_deref() {
                     let labels =
                         declared_labels.get_or_insert_with(|| codex_delegated_labels(params));
@@ -708,6 +689,13 @@ fn parse_catalog_unit(
                 }
                 sessions.extend(child_sessions);
             }
+            if *delegated_truncated {
+                for session in sessions.iter_mut() {
+                    if let Some(object) = session.as_object_mut() {
+                        object.insert("messageTreeTruncated".to_string(), json!(true));
+                    }
+                }
+            }
         }
         CatalogHydration::None => {
             let _ = unit_path;
@@ -716,30 +704,7 @@ fn parse_catalog_unit(
     if sessions.is_empty() {
         return sessions;
     }
-    if matches!(adapter, HistoryAdapter::OpenCode | HistoryAdapter::KiloCode) {
-        apply_openagent_parent_lineage(adapter, params, &mut sessions);
-    }
     finalize_history_sessions(sessions, scan_config)
-}
-
-fn parse_catalog_history_file(
-    adapter: HistoryAdapter,
-    path: &Path,
-    source_kind: &str,
-    metadata: &fs::Metadata,
-    scan_config: &HistoryScanConfig,
-) -> Vec<Value> {
-    if adapter == HistoryAdapter::Codex {
-        return parse_codex_rollout_browse_sessions(
-            path,
-            source_kind,
-            metadata,
-            scan_config.clone(),
-            CATALOG_HYDRATED_MESSAGE_CAP,
-        )
-        .unwrap_or_default();
-    }
-    parse_history_file(adapter, path, source_kind, metadata, scan_config.clone())
 }
 
 /// Mark delegated sessions whose lineage the store declares outside the
@@ -793,11 +758,8 @@ fn kimi_wire_files(session_dir: &Path) -> Vec<PathBuf> {
     };
     let mut wires = entries
         .flatten()
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
         .map(|entry| entry.path().join("wire.jsonl"))
-        .filter(|path| {
-            fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
-        })
+        .filter(|path| path.is_file())
         .collect::<Vec<_>>();
     wires.sort();
     wires
@@ -852,25 +814,13 @@ fn catalog_session_stub(adapter: HistoryAdapter, entry: &CatalogSession) -> Opti
             "messageCount".to_string(),
             json!(entry.message_count.unwrap_or(0)),
         );
-        let total = entry.message_count.unwrap_or(0);
-        object.insert("sourceMessageCount".to_string(), json!(total));
-        object.insert(
-            "messagePage".to_string(),
-            json!({
-                "start": total,
-                "endExclusive": total,
-                "returned": 0,
-                "total": total,
-                "hasEarlier": false,
-                "nextBefore": Value::Null
-            }),
-        );
     }
     Some(session)
 }
 
 /// Bounded-work counters for one browse pass. Internal diagnostics only: the
-/// public catalog DTO is unchanged, and tests assert cache bounds.
+/// public catalog DTO is unchanged, and tests assert sharp bounds for cache
+/// entries/bytes and tail reads.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct BrowseWorkCounters {
     pub(crate) cache_hits: usize,
@@ -878,6 +828,160 @@ pub(crate) struct BrowseWorkCounters {
     pub(crate) cache_entries: usize,
     pub(crate) cache_bytes: usize,
     pub(crate) cache_discards: usize,
+    /// Bytes materialized from the end of oversized sources.
+    pub(crate) tail_bytes: u64,
+    /// Bytes scanned before the window to anchor absolute line indices.
+    pub(crate) tail_scanned_bytes: u64,
+    /// Complete records decoded from tail windows.
+    pub(crate) tail_records: usize,
+}
+
+/// Complete records read from the end of a content file, oldest first, with
+/// absolute line indices (message ids are derived from them).
+pub(crate) struct BoundedTail {
+    pub(crate) lines: Vec<(usize, String)>,
+    pub(crate) tail_bytes: u64,
+    pub(crate) scanned_bytes: u64,
+}
+
+/// Read the newest complete records of a file within a byte budget.
+///
+/// Absolute line indices are anchored by counting newlines before the window
+/// (a byte-only pass with O(1) memory), so every record keeps the same message
+/// id the whole-file reader would assign it. A partial record straddling the
+/// window start is dropped: its beginning is outside the window and its index
+/// would be ambiguous. The dropped prefix is kept as bytes, so the window may
+/// safely start inside a multibyte code point. Every retained record is then
+/// decoded strictly; invalid complete records fail closed rather than being
+/// repaired lossily.
+pub(super) fn read_bounded_tail(
+    path: &Path,
+    metadata: &fs::Metadata,
+    max_bytes: u64,
+    max_records: usize,
+) -> Option<BoundedTail> {
+    let len = metadata.len();
+    if len == 0 || max_bytes == 0 || max_records == 0 {
+        return Some(BoundedTail {
+            lines: Vec::new(),
+            tail_bytes: 0,
+            scanned_bytes: 0,
+        });
+    }
+    let window = len.min(max_bytes);
+    let start = len - window;
+    let mut file = fs::File::open(path).ok()?;
+    let (prefix_newlines, previous_is_newline) = count_newlines_before(&mut file, start)?;
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut window_bytes = Vec::with_capacity(window as usize);
+    file.take(window).read_to_end(&mut window_bytes).ok()?;
+    let mut lines = VecDeque::<(usize, String)>::new();
+    let mut absolute_index = prefix_newlines;
+    let mut segment_start = 0usize;
+    // The first segment of the window is a partial record unless the window
+    // starts at a line boundary (file start or right after a newline).
+    let mut skip_first = start > 0 && !previous_is_newline;
+    for (offset, &byte) in window_bytes.iter().enumerate() {
+        if byte != b'\n' {
+            continue;
+        }
+        if skip_first {
+            skip_first = false;
+            // The dropped segment completes the line the window cut into; the
+            // next complete line keeps the following absolute index.
+            absolute_index += 1;
+        } else {
+            let line = std::str::from_utf8(&window_bytes[segment_start..offset])
+                .ok()?
+                .to_owned();
+            if lines.len() == max_records {
+                lines.pop_front();
+            }
+            lines.push_back((absolute_index, line));
+            absolute_index += 1;
+        }
+        segment_start = offset + 1;
+    }
+    if !skip_first && segment_start < window_bytes.len() {
+        let line = std::str::from_utf8(&window_bytes[segment_start..])
+            .ok()?
+            .to_owned();
+        if lines.len() == max_records {
+            lines.pop_front();
+        }
+        lines.push_back((absolute_index, line));
+    }
+    Some(BoundedTail {
+        lines: lines.into_iter().collect(),
+        tail_bytes: window,
+        scanned_bytes: start,
+    })
+}
+
+/// Number of newlines in `file[0..start]` and whether `file[start - 1]` is a
+/// newline (the window starts at a line boundary when either holds).
+fn count_newlines_before(file: &mut fs::File, start: u64) -> Option<(usize, bool)> {
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let mut count = 0usize;
+    let mut previous = b'\n';
+    let mut remaining = start;
+    let mut chunk = vec![0u8; CATALOG_TAIL_CHUNK_BYTES as usize];
+    while remaining > 0 {
+        let to_read = remaining.min(chunk.len() as u64) as usize;
+        let read = file.read(&mut chunk[..to_read]).ok()?;
+        if read == 0 {
+            break;
+        }
+        count += chunk[..read].iter().filter(|&&byte| byte == b'\n').count();
+        previous = chunk[read - 1];
+        remaining -= read as u64;
+    }
+    let previous_is_newline = start == 0 || previous == b'\n';
+    Some((count, previous_is_newline))
+}
+
+/// Build Codex sessions from bounded tail records. The catalog entry carries
+/// the canonical conversation identity, which doubles as the parser seed when
+/// the rollout header lies outside the window; any `session_meta` record
+/// inside the window still overrides it, exactly as in the whole-file reader.
+fn parse_codex_unit_tail(
+    path: &Path,
+    source_kind: &str,
+    metadata: &fs::Metadata,
+    seed_session_id: &str,
+    tail: &BoundedTail,
+    scan_config: &HistoryScanConfig,
+) -> Vec<Value> {
+    let mut groups = Vec::<CodexRolloutGroup>::new();
+    let mut current_session_id = Some(seed_session_id.to_string());
+    let mut saw_rollout_record = false;
+    for (index, line) in &tail.lines {
+        parse_codex_rollout_line(
+            path,
+            *index,
+            line,
+            scan_config,
+            &mut current_session_id,
+            &mut saw_rollout_record,
+            &mut groups,
+        );
+    }
+    if !saw_rollout_record {
+        return Vec::new();
+    }
+    codex_rollout_groups_to_sessions(groups, path, metadata, source_kind, scan_config)
+        .unwrap_or_default()
+}
+
+/// Counters for one bounded tail read, folded into [`BrowseWorkCounters`].
+fn record_tail_work(counters: &mut BrowseWorkCounters, tail: Option<&BoundedTail>) {
+    if let Some(tail) = tail {
+        counters.tail_bytes = counters.tail_bytes.saturating_add(tail.tail_bytes);
+        counters.tail_scanned_bytes = counters
+            .tail_scanned_bytes
+            .saturating_add(tail.scanned_bytes);
+        counters.tail_records = counters.tail_records.saturating_add(tail.lines.len());
+    }
 }
 
 /// Cache identity of one hydration unit: every source file that shaped the
@@ -897,6 +1001,7 @@ fn projection_cache_key(
             adapter_id,
             source_kind,
             kind: "file".to_string(),
+            delegated_truncated: false,
             sources: vec![SourceFingerprint::from_path(path)?],
             authority: None,
         }),
@@ -912,6 +1017,7 @@ fn projection_cache_key(
                 adapter_id,
                 source_kind,
                 kind: "kimi-wire-directory".to_string(),
+                delegated_truncated: false,
                 sources,
                 authority: None,
             })
@@ -919,6 +1025,7 @@ fn projection_cache_key(
         CatalogHydration::TranscriptWithDelegatedTasks {
             transcript,
             delegated,
+            delegated_truncated,
             ..
         } => {
             let mut sources = Vec::with_capacity(1 + delegated.len());
@@ -934,6 +1041,7 @@ fn projection_cache_key(
                 adapter_id,
                 source_kind,
                 kind: "transcript-delegated".to_string(),
+                delegated_truncated: *delegated_truncated,
                 sources,
                 authority,
             })
@@ -989,13 +1097,7 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
         if candidate.modified_at < cutoff {
             continue;
         }
-        let (recorded_identity, working_directory) = codex_rollout_header_facts(&candidate.path);
-        // The rollout header owns native identity. The filename UUID is only
-        // the layout fallback for a header that records none, so a rollout
-        // whose record id differs from its file stem still opens itself.
-        let Some(session_id) =
-            recorded_identity.or_else(|| rollout_session_id_from_filename(&candidate.path))
-        else {
+        let Some(session_id) = rollout_session_id_from_filename(&candidate.path) else {
             continue;
         };
         if !known_ids.insert(session_id.clone()) {
@@ -1008,7 +1110,10 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
             title: None,
             created_at: None,
             updated_at: Some(candidate.modified_at),
-            working_directory,
+            // The rollout header records the directory the turn ran in. Without
+            // it a rollout the thread database has not indexed yet reaches the
+            // client with no project directory at all.
+            working_directory: codex_rollout_working_directory(&candidate.path),
             message_count: None,
             model: None,
             running: false,
@@ -1036,50 +1141,43 @@ fn fold_codex_delegated_threads(
         .iter()
         .map(|entry| (entry.native_session_id.clone(), entry.source_path.clone()))
         .collect::<BTreeMap<_, _>>();
-    let mut roots_by_child = BTreeMap::<String, String>::new();
     let mut delegated_by_parent = BTreeMap::<String, Vec<PathBuf>>::new();
-    for child in rollout_by_id.keys() {
-        let root = explicit_lineage_root(child, &parents_by_child);
-        if root == *child || !rollout_by_id.contains_key(&root) {
+    for (child, parent) in &parents_by_child {
+        // A delegated thread whose conversation is not in this window keeps its
+        // own row so the work stays reachable.
+        if !rollout_by_id.contains_key(parent) {
             continue;
         }
-        roots_by_child.insert(child.clone(), root.clone());
         if let Some(rollout) = rollout_by_id.get(child) {
             delegated_by_parent
-                .entry(root)
+                .entry(parent.clone())
                 .or_default()
                 .push(rollout.clone());
         }
     }
     entries
         .into_iter()
-        .filter(|entry| !roots_by_child.contains_key(&entry.native_session_id))
+        .filter(|entry| {
+            parents_by_child
+                .get(&entry.native_session_id)
+                .is_none_or(|parent| !rollout_by_id.contains_key(parent))
+        })
         .map(|mut entry| {
             let Some(mut delegated) = delegated_by_parent.remove(&entry.native_session_id) else {
                 return entry;
             };
             delegated.sort();
+            let delegated_truncated = delegated.len() > MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS;
+            delegated.truncate(MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS);
             entry.hydrate = CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript: entry.source_path.clone(),
                 delegated,
+                delegated_truncated,
                 delegated_parent_session_id: Some(entry.native_session_id.clone()),
             };
             entry
         })
         .collect()
-}
-
-fn explicit_lineage_root(session_id: &str, parents_by_child: &BTreeMap<String, String>) -> String {
-    let mut current = session_id.to_string();
-    let mut visited = HashSet::new();
-    while visited.insert(current.clone()) {
-        let Some(parent) = parents_by_child.get(&current) else {
-            return current;
-        };
-        current.clone_from(parent);
-    }
-    // A cycle has no authoritative root. Leave every member standalone.
-    session_id.to_string()
 }
 
 /// Mark every parsed Codex session the thread database records as delegated, so
@@ -1148,21 +1246,13 @@ pub(crate) fn codex_delegated_thread_ids(params: &Value, requested: &[String]) -
     let Some(parents_by_child) = read_codex_spawn_edges(&state_db) else {
         return Vec::new();
     };
-    let mut wanted = requested.iter().cloned().collect::<HashSet<_>>();
-    let mut children = Vec::new();
-    loop {
-        let mut changed = false;
-        for (child, parent) in &parents_by_child {
-            if wanted.contains(parent) && wanted.insert(child.clone()) {
-                children.push(child.clone());
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    children
+    let wanted = requested.iter().collect::<HashSet<_>>();
+    parents_by_child
+        .into_iter()
+        .filter(|(_, parent)| wanted.contains(parent))
+        .map(|(child, _)| child)
+        .take(MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS * 8)
+        .collect()
 }
 
 /// Parent thread of each Codex conversation, for read paths that carry no
@@ -1278,41 +1368,20 @@ fn read_codex_spawn_edges(state_db: &Path) -> Option<BTreeMap<String, String>> {
     Some(edges)
 }
 
-/// Identity and project directory one Codex rollout records in its
-/// `session_meta` header. Record identity is authoritative here: the filename
-/// UUID is only a layout fallback for a header that names no identity. Only
-/// the bounded head of the file is read; the header is always the first
-/// record.
-fn codex_rollout_header_facts(path: &Path) -> (Option<String>, Option<String>) {
-    let (identity, cwd) = (|| {
-        let file = fs::File::open(path).ok()?;
-        let mut head = Vec::new();
-        BufReader::new(file)
-            .take(MAX_TITLE_PROBE_BYTES)
-            .read_to_end(&mut head)
-            .ok()?;
-        let head = String::from_utf8_lossy(&head);
-        let line = head.lines().next()?;
-        let value = serde_json::from_str::<Value>(line).ok()?;
-        let payload = value.get("payload").unwrap_or(&value);
-        let identity = (value.get("type").and_then(Value::as_str) == Some("session_meta"))
-            .then(|| {
-                payload
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|id| !id.is_empty())
-                    .map(str::to_string)
-            })
-            .flatten();
-        let cwd = payload
-            .get("cwd")
-            .and_then(Value::as_str)
-            .and_then(bounded_project_workspace);
-        Some((identity, cwd))
-    })()
-    .unwrap_or((None, None));
-    (identity, cwd)
+/// Directory one Codex rollout ran in, from its `session_meta` header. Only the
+/// bounded head of the file is read; the header is always the first record.
+fn codex_rollout_working_directory(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let mut head = Vec::new();
+    BufReader::new(file)
+        .take(MAX_TITLE_PROBE_BYTES)
+        .read_to_end(&mut head)
+        .ok()?;
+    let head = String::from_utf8_lossy(&head);
+    let line = head.lines().next()?;
+    let value = serde_json::from_str::<Value>(line).ok()?;
+    let payload = value.get("payload").unwrap_or(&value);
+    bounded_project_workspace(payload.get("cwd").and_then(Value::as_str)?)
 }
 
 fn newest_codex_state_database(sessions_dir: &Path) -> Option<PathBuf> {
@@ -1404,7 +1473,7 @@ fn read_codex_state_threads(
 }
 
 // ---------------------------------------------------------------------------
-// OpenCode / Kilo Code: native session table with archive and parent filters.
+// OpenCode / Kilo Code: native session table with archive and window filters.
 // ---------------------------------------------------------------------------
 
 fn openagent_catalog(
@@ -1518,288 +1587,17 @@ fn read_openagent_sessions(
     Ok(entries)
 }
 
-/// Apply the same explicit `session.parent_id` relation used by browse catalog
-/// filtering to exact and search projections. Prompt text never participates.
-pub(crate) fn apply_openagent_parent_lineage(
-    adapter: HistoryAdapter,
-    params: &Value,
-    sessions: &mut [Value],
-) {
-    let mut parents = BTreeMap::<String, String>::new();
-    for root in history_roots(adapter, params) {
-        let database = match (adapter, root.source_kind.as_str()) {
-            (HistoryAdapter::KiloCode, "kilo-session-database") => root.path,
-            (HistoryAdapter::OpenCode, "opencode-data") => root.path.join("opencode.db"),
-            _ => continue,
-        };
-        let Some(connection) = open_read_only_connection(&database) else {
-            continue;
-        };
-        if !sqlite_table_exists(&connection, "session") {
-            continue;
-        }
-        let Ok(columns) = sqlite_columns(&connection, "session") else {
-            continue;
-        };
-        if !columns.contains("id") || !columns.contains("parent_id") {
-            continue;
-        }
-        let Ok(mut statement) = connection.prepare(
-            "SELECT id, parent_id FROM session WHERE parent_id IS NOT NULL ORDER BY id ASC",
-        ) else {
-            continue;
-        };
-        let Ok(rows) = statement.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }) else {
-            continue;
-        };
-        for (child, parent) in rows.flatten() {
-            if !child.trim().is_empty() && !parent.trim().is_empty() && child != parent {
-                parents.insert(child, parent);
-            }
-        }
-    }
-    if parents.is_empty() {
-        return;
-    }
-    let present = sessions
-        .iter()
-        .filter_map(|session| session.get("nativeSessionId").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect::<HashSet<_>>();
-    for session in sessions.iter_mut() {
-        let Some(id) = session
-            .get("nativeSessionId")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-        else {
-            continue;
-        };
-        let Some(parent) = parents
-            .get(&id)
-            .filter(|parent| present.contains(parent.as_str()))
-        else {
-            continue;
-        };
-        if let Some(object) = session.as_object_mut() {
-            object.insert("delegatedSubagent".to_string(), json!(true));
-            object.insert("parentSessionId".to_string(), json!(parent));
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Copilot: CLI session-store rows plus precise VS Code chat stores/transcripts.
+// Copilot: session-store.db rows backed by an on-disk session-state directory.
 // ---------------------------------------------------------------------------
 
 fn copilot_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut SessionCatalog) {
     for root in roots {
         match root.source_kind.as_str() {
             "copilot-cli-session-store" => copilot_sqlite_catalog(root, cutoff, catalog),
-            "vscode-copilot-workspace-storage" => {
-                copilot_vscode_workspace_catalog(root, cutoff, catalog)
-            }
-            "vscode-copilot-global-storage" => {
-                copilot_vscode_store_catalog(&root.path.join("state.vscdb"), root, cutoff, catalog);
-                copilot_vscode_transcript_catalog(&root.path, root, cutoff, catalog);
-            }
             _ => generic_file_root_catalog(HistoryAdapter::Copilot, root, cutoff, catalog),
         }
     }
-}
-
-fn copilot_vscode_workspace_catalog(
-    root: &HistoryRoot,
-    cutoff: SystemTime,
-    catalog: &mut SessionCatalog,
-) {
-    let Ok(entries) = fs::read_dir(&root.path) else {
-        return;
-    };
-    let mut workspaces = Vec::<PathBuf>::new();
-    for entry in entries.flatten() {
-        catalog.directory_entries_seen = catalog.directory_entries_seen.saturating_add(1);
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-            workspaces.push(entry.path());
-        }
-    }
-    workspaces.sort();
-    for workspace in workspaces {
-        copilot_vscode_store_catalog(&workspace.join("state.vscdb"), root, cutoff, catalog);
-        copilot_vscode_transcript_catalog(&workspace, root, cutoff, catalog);
-    }
-}
-
-fn copilot_vscode_transcript_catalog(
-    parent: &Path,
-    root: &HistoryRoot,
-    cutoff: SystemTime,
-    catalog: &mut SessionCatalog,
-) {
-    let transcript_root = parent.join("GitHub.copilot-chat/transcripts");
-    if !transcript_root.is_dir() {
-        return;
-    }
-    let discovery = discover_history_files(
-        HistoryAdapter::Copilot,
-        std::slice::from_ref(&HistoryRoot {
-            path: transcript_root,
-            source_kind: root.source_kind.clone(),
-            explicitly_selected: root.explicitly_selected,
-        }),
-        HistoryDiscoveryOptions::default(),
-    );
-    catalog.files_seen += discovery.files_seen;
-    catalog.directory_entries_seen += discovery.directory_entries_seen;
-    catalog.skipped.extend(discovery.skipped);
-    for candidate in discovery.candidates {
-        let extension = candidate
-            .path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or_default();
-        if matches!(extension, "jsonl" | "ndjson") {
-            push_generic_file_catalog_session(HistoryAdapter::Copilot, candidate, cutoff, catalog);
-        }
-    }
-}
-
-fn copilot_vscode_store_catalog(
-    store: &Path,
-    root: &HistoryRoot,
-    cutoff: SystemTime,
-    catalog: &mut SessionCatalog,
-) {
-    let Ok(metadata) = fs::metadata(store) else {
-        return;
-    };
-    let store_recency = metadata.modified().unwrap_or(UNIX_EPOCH);
-    if store_recency < cutoff {
-        return;
-    }
-    catalog.files_seen += 1;
-    let Some(connection) = open_read_only_connection(store) else {
-        catalog.skipped.push(json!({
-            "path": store.to_string_lossy(),
-            "reason": "copilot_vscode_store_unreadable"
-        }));
-        return;
-    };
-    let document = match copilot_chat_sessions_document(&connection) {
-        Ok(Some(document)) => document,
-        Ok(None) => {
-            catalog.skipped.push(json!({
-                "path": store.to_string_lossy(),
-                "reason": "copilot_vscode_store_has_no_conversations"
-            }));
-            return;
-        }
-        Err(error) => {
-            let reason = match error {
-                CopilotChatSessionsReadError::SchemaUnrecognized => {
-                    "copilot_vscode_store_schema_unrecognized"
-                }
-                CopilotChatSessionsReadError::ReadFailed => "copilot_vscode_store_read_failed",
-                CopilotChatSessionsReadError::InvalidPayload => {
-                    "copilot_vscode_store_payload_invalid"
-                }
-            };
-            catalog.skipped.push(json!({
-                "path": store.to_string_lossy(),
-                "reason": reason
-            }));
-            return;
-        }
-    };
-    let Some(items) = document.get("chatSessions").and_then(Value::as_array) else {
-        catalog.skipped.push(json!({
-            "path": store.to_string_lossy(),
-            "reason": "copilot_vscode_store_schema_unrecognized"
-        }));
-        return;
-    };
-    for (index, item) in items.iter().enumerate() {
-        let messages = item
-            .get("messages")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        let native_session_id =
-            crate::domain::conversation::snapshot_identity::extract_native_session_id(item)
-                .unwrap_or_else(|| {
-                    session_id(
-                        HistoryAdapter::Copilot.id(),
-                        store,
-                        &format!("chatSessions-{index}"),
-                    )
-                });
-        let created_at = copilot_session_time(item, &["createdAt", "created_at"])
-            .or_else(|| messages.iter().filter_map(copilot_message_time).min());
-        let updated_at = copilot_session_time(
-            item,
-            &[
-                "updatedAt",
-                "updated_at",
-                "lastActivity",
-                "lastActivityAt",
-                "timestamp",
-                "time",
-            ],
-        )
-        .or_else(|| messages.iter().filter_map(copilot_message_time).max())
-        .or(created_at)
-        .unwrap_or(store_recency);
-        if updated_at < cutoff {
-            continue;
-        }
-        let working_directory = ["cwd", "workingDirectory", "projectPath"]
-            .iter()
-            .find_map(|key| item.get(*key).and_then(Value::as_str))
-            .and_then(bounded_project_workspace);
-        catalog.sessions.push(CatalogSession {
-            native_session_id,
-            source_path: store.to_path_buf(),
-            source_kind: root.source_kind.clone(),
-            title: extract_conversation_title(item),
-            created_at,
-            updated_at: Some(updated_at),
-            working_directory,
-            message_count: None,
-            model: None,
-            running: false,
-            hydrate: CatalogHydration::File(store.to_path_buf()),
-        });
-    }
-}
-
-fn copilot_session_time(value: &Value, keys: &[&str]) -> Option<SystemTime> {
-    let object = value.as_object()?;
-    keys.iter()
-        .find_map(|key| object.get(*key).and_then(copilot_time_value))
-}
-
-fn copilot_message_time(value: &Value) -> Option<SystemTime> {
-    copilot_session_time(
-        value,
-        &[
-            "updatedAt",
-            "updated_at",
-            "createdAt",
-            "created_at",
-            "timestamp",
-            "time",
-            "date",
-        ],
-    )
-}
-
-fn copilot_time_value(value: &Value) -> Option<SystemTime> {
-    if let Some(text) = value.as_str() {
-        return rfc3339_to_system_time(text)
-            .or_else(|| text.parse::<i64>().ok().and_then(epoch_to_system_time));
-    }
-    value.as_i64().and_then(epoch_to_system_time)
 }
 
 fn copilot_sqlite_catalog(root: &HistoryRoot, cutoff: SystemTime, catalog: &mut SessionCatalog) {
@@ -1941,6 +1739,9 @@ fn kimi_code_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Se
 }
 
 fn read_kimi_state(path: &Path) -> Option<CatalogSession> {
+    if fs::metadata(path).ok()?.len() > MAX_STATE_FILE_BYTES {
+        return None;
+    }
     let raw = fs::read_to_string(path).ok()?;
     let value = serde_json::from_str::<Value>(&raw).ok()?;
     let session_dir = path.parent()?.to_path_buf();
@@ -2135,10 +1936,14 @@ fn group_delegated_transcripts(
         unit.source_kind = candidate.source_kind;
     }
     for unit in transcripts.values_mut() {
-        // Newest delegated work first; every explicitly related child remains
-        // part of the hydration unit.
+        // Newest delegated work first, then keep the browse bound.
         unit.delegated
             .sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        if unit.delegated.len() > MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS {
+            unit.delegated
+                .truncate(MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS);
+            unit.delegated_truncated = true;
+        }
     }
     transcripts
 }
@@ -2188,6 +1993,7 @@ fn push_delegated_transcript_units(
             hydrate: CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript,
                 delegated: unit.delegated.into_iter().map(|(_, path)| path).collect(),
+                delegated_truncated: unit.delegated_truncated,
                 delegated_parent_session_id: None,
             },
         });
@@ -2199,6 +2005,7 @@ struct DelegatedTranscriptUnit {
     /// Delegated transcripts with their last-modified time, newest first after
     /// grouping so the browse bound keeps the most recent work.
     delegated: Vec<(SystemTime, PathBuf)>,
+    delegated_truncated: bool,
     modified_at: SystemTime,
     source_kind: String,
 }
@@ -2208,6 +2015,7 @@ impl Default for DelegatedTranscriptUnit {
         Self {
             transcript: None,
             delegated: Vec::new(),
+            delegated_truncated: false,
             modified_at: UNIX_EPOCH,
             source_kind: String::new(),
         }
@@ -2221,9 +2029,12 @@ fn cursor_project_directories(root: &Path, catalog: &mut SessionCatalog) -> Vec<
     };
     let mut projects = Vec::new();
     for entry in entries.flatten() {
+        if catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
+            break;
+        }
         catalog.directory_entries_seen += 1;
         let path = entry.path();
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+        if path.is_dir() {
             projects.push(path);
         }
     }
@@ -2239,6 +2050,12 @@ fn cursor_project_directories(root: &Path, catalog: &mut SessionCatalog) -> Vec<
 fn cursor_project_workspace_path(project: &Path) -> Option<String> {
     let trusted = project.join(".workspace-trusted");
     if !trusted.is_file() {
+        return None;
+    }
+    if fs::metadata(&trusted)
+        .ok()
+        .is_some_and(|metadata| metadata.len() > MAX_STATE_FILE_BYTES)
+    {
         return None;
     }
     let raw = fs::read_to_string(&trusted).ok()?;
@@ -2265,6 +2082,9 @@ fn cursor_cli_meta_catalog(root: &HistoryRoot, cutoff: SystemTime, catalog: &mut
 }
 
 fn read_cursor_cli_meta(path: &Path) -> Option<CatalogSession> {
+    if fs::metadata(path).ok()?.len() > MAX_STATE_FILE_BYTES {
+        return None;
+    }
     let raw = fs::read_to_string(path).ok()?;
     let value = serde_json::from_str::<Value>(&raw).ok()?;
     if value.get("hasConversation").and_then(Value::as_bool) == Some(false) {
@@ -2329,9 +2149,12 @@ fn antigravity_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut 
         let trajectories = root.path.join(ANTIGRAVITY_TRAJECTORY_DIRECTORY);
         let mut conversations = Vec::<PathBuf>::new();
         for entry in entries.flatten() {
+            if catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
+                break;
+            }
             catalog.directory_entries_seen += 1;
             let path = entry.path();
-            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            if path.is_dir() {
                 conversations.push(path);
             }
         }
@@ -2574,15 +2397,39 @@ fn pi_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut SessionCa
 }
 
 fn pi_header(path: &Path) -> (String, Option<SystemTime>, Option<String>) {
-    let header = super::pi_copilot::pi_session_header(path);
-    (
-        header.native_session_id,
-        header
-            .created_at
-            .as_deref()
-            .and_then(rfc3339_to_system_time),
-        header.working_directory,
-    )
+    let fallback_id = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let Some(file) = fs::File::open(path).ok() else {
+        return (fallback_id, None, None);
+    };
+    let Some(Ok(line)) = BufReader::new(file).lines().next() else {
+        return (fallback_id, None, None);
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&line) else {
+        return (fallback_id, None, None);
+    };
+    if value.get("type").and_then(Value::as_str) != Some("session") {
+        return (fallback_id, None, None);
+    }
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&fallback_id)
+        .to_string();
+    let created_at = value
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .and_then(rfc3339_to_system_time);
+    let cwd = value
+        .get("cwd")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string);
+    (id, created_at, cwd)
 }
 
 // ---------------------------------------------------------------------------
@@ -2615,92 +2462,27 @@ fn generic_file_root_catalog(
     catalog.directory_entries_seen += discovery.directory_entries_seen;
     catalog.skipped.extend(discovery.skipped);
     for candidate in discovery.candidates {
-        push_generic_file_catalog_session(adapter, candidate, cutoff, catalog);
-    }
-}
-
-fn push_generic_file_catalog_session(
-    adapter: HistoryAdapter,
-    candidate: HistoryFileCandidate,
-    cutoff: SystemTime,
-    catalog: &mut SessionCatalog,
-) {
-    if candidate.modified_at < cutoff {
-        return;
-    }
-    let Ok(metadata) = fs::metadata(&candidate.path) else {
-        catalog.skipped.push(json!({
-            "path": candidate.path.to_string_lossy(),
-            "reason": "catalog_source_metadata_failed"
-        }));
-        return;
-    };
-    let scan_config = HistoryScanConfig::from_params(&json!({}));
-    let parsed = parse_history_file(
-        adapter,
-        &candidate.path,
-        &candidate.source_kind,
-        &metadata,
-        scan_config.clone(),
-    );
-    let parsed = finalize_history_sessions(parsed, &scan_config);
-    if parsed.is_empty() {
-        catalog.skipped.push(json!({
-            "path": candidate.path.to_string_lossy(),
-            "reason": "catalog_source_has_no_conversation"
-        }));
-        return;
-    }
-    for session in parsed {
-        let Some(native_session_id) = session
-            .get("nativeSessionId")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-        else {
-            catalog.skipped.push(json!({
-                "path": candidate.path.to_string_lossy(),
-                "reason": "catalog_session_identity_missing"
-            }));
+        if candidate.modified_at < cutoff {
             continue;
-        };
-        let timestamp = |key: &str| {
-            session
-                .get(key)
-                .and_then(Value::as_str)
-                .and_then(rfc3339_to_system_time)
-        };
+        }
+        let native_session_id = candidate
+            .path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
         catalog.sessions.push(CatalogSession {
             native_session_id,
             source_path: candidate.path.clone(),
-            source_kind: candidate.source_kind.clone(),
-            title: session
-                .get("title")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            created_at: timestamp("createdAt"),
-            updated_at: timestamp("updatedAt").or(Some(candidate.modified_at)),
-            working_directory: session
-                .get("workingDirectory")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            message_count: session
-                .get("messageCount")
-                .and_then(Value::as_u64)
-                .map(|value| value as usize)
-                .or_else(|| {
-                    session
-                        .get("messages")
-                        .and_then(Value::as_array)
-                        .map(Vec::len)
-                }),
-            model: session
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            running: session.get("running").and_then(Value::as_bool) == Some(true),
-            hydrate: CatalogHydration::File(candidate.path.clone()),
+            source_kind: candidate.source_kind,
+            title: None,
+            created_at: None,
+            updated_at: Some(candidate.modified_at),
+            working_directory: None,
+            message_count: None,
+            model: None,
+            running: false,
+            hydrate: CatalogHydration::File(candidate.path),
         });
     }
 }
@@ -2712,34 +2494,11 @@ fn push_generic_file_catalog_session(
 fn collect_named_files(
     dir: &Path,
     name: &str,
-    _depth: usize,
+    depth: usize,
     catalog: &mut SessionCatalog,
     out: &mut Vec<PathBuf>,
 ) {
-    let mut pending = vec![dir.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        let Ok(entries) = fs::read_dir(&directory) else {
-            continue;
-        };
-        let mut children = Vec::new();
-        for entry in entries.flatten() {
-            catalog.directory_entries_seen = catalog.directory_entries_seen.saturating_add(1);
-            let path = entry.path();
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            if kind.is_symlink() {
-                continue;
-            }
-            if kind.is_dir() {
-                children.push(path);
-            } else if entry.file_name().to_str() == Some(name) {
-                out.push(path);
-            }
-        }
-        children.sort_by(|left, right| right.cmp(left));
-        pending.extend(children);
-    }
+    collect_named_files_bounded(dir, name, depth, MAX_CATALOG_WALK_DEPTH, catalog, out);
 }
 
 fn collect_named_files_bounded(
@@ -2750,22 +2509,19 @@ fn collect_named_files_bounded(
     catalog: &mut SessionCatalog,
     out: &mut Vec<PathBuf>,
 ) {
-    if depth >= max_depth {
+    if depth >= max_depth || catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
+        if catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
+            return;
+        }
         catalog.directory_entries_seen += 1;
         let path = entry.path();
-        let Ok(kind) = entry.file_type() else {
-            continue;
-        };
-        if kind.is_symlink() {
-            continue;
-        }
-        if kind.is_dir() {
+        if path.is_dir() {
             collect_named_files_bounded(&path, name, depth + 1, max_depth, catalog, out);
         } else if entry.file_name().to_str() == Some(name) {
             out.push(path);

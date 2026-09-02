@@ -1,9 +1,8 @@
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use super::super::json_extract::{
     extract_native_session_id, extract_role, extract_text, extract_timestamp, find_string,
 };
-use super::drop_json_iteratively;
 
 #[test]
 fn recursive_json_extraction_keeps_text_and_rejects_tool_or_system_payloads() {
@@ -28,16 +27,13 @@ fn recursive_json_extraction_keeps_text_and_rejects_tool_or_system_payloads() {
 }
 
 #[test]
-fn extraction_and_string_lookup_cross_four_thousand_nested_nodes() {
-    let mut value = json!({"role": "agent", "text": "deep text"});
-    for _ in 0..4_097 {
-        let mut wrapper = Map::new();
-        wrapper.insert("message".to_string(), value);
-        value = Value::Object(wrapper);
+fn recursive_extraction_and_string_lookup_have_explicit_depth_bounds() {
+    let mut value = json!("too deep");
+    for _ in 0..18 {
+        value = json!({"message": value});
     }
-    assert_eq!(extract_text(&value).as_deref(), Some("deep text"));
-    assert_eq!(find_string(&value, &["role"]).as_deref(), Some("agent"));
-    drop_json_iteratively(value);
+    assert!(extract_text(&value).is_none());
+    assert!(find_string(&value, &["role"]).is_none());
 }
 
 #[test]
