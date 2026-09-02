@@ -12,14 +12,15 @@ const decision0003 = read("docs/adrs/0003-group-conversation-agent-profile.md");
 const decision0004 = read("docs/adrs/0004-assistant-authored-flexible-workflows.md");
 const decision0005 = read("docs/adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md");
 const domain = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
-const store = read("crates/licoup-native/src/domain/client_conversation/store.rs");
+const conversationDomain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
+const store = read("crates/licoup-conversation/src/store/mod.rs");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
 const assistant = read("crates/licoup-native/src/domain/adaptive_flywheel/assistant.rs");
 const flywheelService = read("crates/licoup-native/src/domain/adaptive_flywheel/service.rs");
 const strategyStore = read("crates/licoup-native/src/domain/adaptive_flywheel/store.rs");
 const usage = read("crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs");
 const policy = read("crates/licoup-native/src/platform/client_state/policy.rs");
-const subagentMcp = read("crates/licoup-native/src/bin/lico-subagent-mcp.rs");
+const subagentMcp = read("crates/licoup-native/src/domain/subagent_mcp/mod.rs");
 const conversationContract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const strategyContract = JSON.parse(read("schemas/client_bridge/strategy.json"));
 const bundledSkill = exists("crates/licoup-native/resources/assistant-workflow-authoring/SKILL.md")
@@ -48,7 +49,7 @@ test("ADR 0003 is historical and ADR 0004 freezes the Assistant boundary", () =>
 });
 
 test("conversation migration v8 cuts over to intent-only Assistant Profiles idempotently", () => {
-  assert.equal(domain.includes('ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID: &str = "assistant-workflow-authoring"'), true);
+  assert.equal(conversationDomain.includes('ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID: &str = "assistant-workflow-authoring"'), true);
   assert.match(domain, /include_str!\([\s\S]*assistant-workflow-authoring\/SKILL\.md/u);
   assert.match(store, /CREATE TABLE IF NOT EXISTS membership_profiles/u);
   assert.match(store, /CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx/u);
@@ -167,6 +168,7 @@ test("bridge contracts expose Assistant/Profile actions and typed failures", () 
     "conversation.profile.update",
     "conversation.profile.get",
     "conversation.profile.candidates",
+    "conversation.subagent.edge",
   ]) {
     assert.equal(conversationContract.actions.includes(action), true, action);
   }
@@ -205,23 +207,14 @@ test("subagent MCP surface is closed and exposes the Assistant workflow facade o
     assert.match(subagentMcp, new RegExp(`"${name}"`, "u"), name);
   }
   const catalog = subagentMcp.slice(
-    subagentMcp.indexOf("fn tool_catalog()"),
-    subagentMcp.indexOf("fn closed_object("),
+    subagentMcp.indexOf("pub const TOOL_NAMES"),
+    subagentMcp.indexOf("pub fn server_definition"),
   );
   assert.deepEqual(
-    [...catalog.matchAll(/"name": "(lico_assistant_[^"]+)"/gu)].map((match) => match[1]),
+    [...catalog.matchAll(/"(lico_assistant_[^"]+)"/gu)].map((match) => match[1]),
     assistantTools,
   );
-  // Every tool schema is built by the closed-object helper; the helper is the
-  // single authority that forbids extra keys.
-  assert.match(catalog, /closed_object\(/u);
-  assert.match(
-    subagentMcp.slice(
-      subagentMcp.indexOf("fn closed_object("),
-      subagentMcp.indexOf("fn bounded_string("),
-    ),
-    /additionalProperties": false/u,
-  );
+  assert.match(subagentMcp, /"additionalProperties": false/u);
   assert.doesNotMatch(catalog, /conversationPath/u);
   assert.doesNotMatch(catalog, /sessionMode/u);
   for (const pattern of FORBIDDEN_PRIVATE) {

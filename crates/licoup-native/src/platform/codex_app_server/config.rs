@@ -70,7 +70,11 @@ impl ProtocolConfig {
             prompt: prompt.to_string(),
             private_instructions: text_param(
                 params,
-                &["privateInstructions", "private_instructions"],
+                &[
+                    "developerInstructions",
+                    "privateInstructions",
+                    "private_instructions",
+                ],
             ),
             requested_session_id,
             session_path,

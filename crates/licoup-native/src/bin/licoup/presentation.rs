@@ -46,7 +46,7 @@ pub(super) fn print_usage() {
   licoup collaboration workflow mcp-install plan|apply --request-origin direct-user --selected-plugin-ids IDS --agent-destinations JSON [--plan-id ID --expected-plan-digest-sha256 SHA256 --expected-package-digest-sha256 SHA256 --confirmed true]
   licoup collaboration workflow cancel --request-origin direct-user --plan-id ID --expected-plan-digest-sha256 SHA256 --expected-package-digest-sha256 SHA256 --confirmed true
   licoup agent conversation open|send|steer|cancel|cleanup|capabilities|stream [--stdin-json true]
-  licoup conversation execute --stdin-json JSON
+  licoup conversation execute --stdin-json JSON [--require-running-host]
   licoup agents pair request|approve|revoke|list --agent AGENT [--target TARGET]
   licoup agent-hub catalog|plan|apply [--agent-id ID] [--operation install|update|uninstall] [--confirmation TOKEN] [--cancel] [--stdin-json JSON]
   licoup skill list --agent AGENT [--skill-root PATH]

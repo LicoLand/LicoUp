@@ -349,6 +349,17 @@ pub struct RuntimeBinding {
     pub safe_reason: Option<String>,
 }
 
+/// Private adapter binding read only by the native runtime. It deliberately
+/// has no serialization implementation and is absent from public projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PrivateRuntimeBinding {
+    pub conversation_id: String,
+    pub membership_id: String,
+    pub runtime_session_id: String,
+    pub runtime_conversation_path: Option<String>,
+    pub working_directory: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConversationDispatch {
     pub id: String,
@@ -392,6 +403,59 @@ impl DispatchState {
 pub enum DispatchSessionMode {
     New,
     Resume,
+}
+
+/// Server-owned lineage claim for one Subagent edge. This record is durable
+/// dispatch authority; native identities and prompts are deliberately absent.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubagentDispatchClaim {
+    pub id: String,
+    pub conversation_id: String,
+    pub caller_membership_id: String,
+    pub target_membership_id: String,
+    pub parent_dispatch_id: Option<String>,
+    pub depth: u8,
+    pub state: SubagentDispatchClaimState,
+    pub created_at_unix_ms: i64,
+    pub updated_at_unix_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SubagentDispatchClaimState {
+    Claimed,
+    Running,
+    CancelRequested,
+    ReconciliationRequired,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl SubagentDispatchClaimState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Claimed => "claimed",
+            Self::Running => "running",
+            Self::CancelRequested => "cancel-requested",
+            Self::ReconciliationRequired => "reconciliation-required",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// Privacy-safe Subagent MCP edge status. Identifiers and prompts stay out.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SubagentMeshEdge {
+    pub inbound_delegate: bool,
+    pub inbound_continue: bool,
+    pub inbound_cancel: bool,
+    pub delegate_outcome: Option<String>,
+    pub continue_outcome: Option<String>,
+    pub cancel_outcome: Option<String>,
+    pub claim_state: Option<String>,
+    pub dispatch_state: Option<String>,
 }
 
 impl DispatchSessionMode {

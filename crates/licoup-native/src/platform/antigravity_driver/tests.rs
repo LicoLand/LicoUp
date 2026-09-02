@@ -6,7 +6,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(unix)]
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
@@ -280,17 +282,21 @@ fn execute_streams_pty_chunks_before_completion() {
         .iter()
         .filter(|event| event["event"] == "agent.message.chunk")
         .collect();
-    assert!(chunks.len() >= 2, "expected progressive chunks: {events:?}");
+    assert_eq!(
+        chunks.len(),
+        1,
+        "new sessions publish after identity binding: {events:?}"
+    );
     let joined: String = chunks
         .iter()
         .map(|event| event["payload"]["text"].as_str().unwrap_or_default())
         .collect();
-    assert_eq!(joined, "first\nsecond\n");
+    assert_eq!(joined, "first\nsecond");
     assert!(
-        chunks
-            .iter()
-            .all(|event| event["sessionId"].as_str() == Some("")),
-        "new-session chunks carry the requested (empty) session id"
+        chunks.iter().all(
+            |event| event["sessionId"].as_str() == Some("11111111-2222-3333-4444-555555555555")
+        ),
+        "new-session chunks carry the Stop-hook native session id"
     );
     let completed_at = events.iter().position(|value| {
         value["event"] == "agent.message.completed"
@@ -301,6 +307,173 @@ fn execute_streams_pty_chunks_before_completion() {
             first_chunk_at.is_some_and(|chunk_at| chunk_at < completed_at)
         }),
         "completed must follow the chunks (the fake only exits after 'second'): {events:?}"
+    );
+}
+
+/// A cancelled resume must not publish `agent.message.completed` or post-cancel
+/// stdout as assistant text, even when the vendor CLI writes a Stop-hook
+/// receipt and exits 0 after SIGTERM. Pre-cancel chunks may remain.
+#[cfg(unix)]
+#[test]
+fn cancelled_resume_does_not_emit_completed() {
+    let session_id = unique_session_token("resume");
+    let (result, events) = execute_and_cancel("cancel-resume", &session_id, json!({}), &session_id);
+    assert_cancelled_without_completed(&result, &events);
+}
+
+/// A new conversation buffers until the Stop-hook binds. Cancel on the private
+/// control identity must still suppress that buffered completion flush.
+#[cfg(unix)]
+#[test]
+fn cancelled_new_conversation_does_not_emit_completed() {
+    let control_id = unique_session_token("new");
+    let dispatch_id = format!("subagent:{control_id}");
+    let (result, events) = execute_and_cancel(
+        "cancel-new",
+        "",
+        json!({"dispatchId": dispatch_id}),
+        DEFAULT_RECEIPT_ID,
+    );
+    assert_cancelled_without_completed(&result, &events);
+}
+
+#[cfg(unix)]
+fn unique_session_token(label: &str) -> String {
+    format!(
+        "agy-{label}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    )
+}
+
+#[cfg(unix)]
+fn execute_and_cancel(
+    label: &str,
+    session_id: &str,
+    params: Value,
+    receipt_id: &str,
+) -> (RunResult, Vec<Value>) {
+    let _environment_guard = environment_lock();
+    let portable = std::env::temp_dir().join(format!(
+        "lico-agy-portable-{label}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-gemini-{label}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&portable).unwrap();
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    let fixture = FakeExecutable::new_hold_for_cancel(label, receipt_id);
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let executable = fixture.executable.to_string_lossy().into_owned();
+    let workspace_for_turn = workspace.clone();
+    let session_for_turn = session_id.to_owned();
+    let params_for_turn = params;
+    let cancel_id = if session_id.is_empty() {
+        params_for_turn
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .and_then(|dispatch_id| dispatch_id.rsplit(':').next())
+            .unwrap_or_default()
+            .to_owned()
+    } else {
+        session_id.to_owned()
+    };
+    let handle = std::thread::spawn(move || {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let sink_target = Arc::clone(&captured);
+        crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+            sink_target.lock().unwrap().push(event);
+        }));
+        let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
+        let result = execute(
+            &executable,
+            &params_for_turn,
+            "synthetic-cancel-prompt",
+            &session_for_turn,
+            Some(workspace_for_turn.as_path()),
+            30_000,
+            Some(8_192),
+            8_192,
+        );
+        let events = captured.lock().unwrap().clone();
+        (result, events)
+    });
+    let mut accepted = false;
+    for _ in 0..160 {
+        if cancel(&cancel_id) == ControlDisposition::Accepted {
+            accepted = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let (result, events) = handle.join().unwrap();
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    // A pending cancel can interrupt on register and be consumed before this
+    // poll observes Accepted. Settling as cancelled without a finish marker is
+    // the product proof in that race.
+    assert!(
+        accepted || result.turn_status == "cancelled",
+        "cancel was neither accepted nor settled cancelled: {:?}",
+        result.error.as_ref().map(|error| error.code)
+    );
+    (result, events)
+}
+
+#[cfg(unix)]
+fn assert_cancelled_without_completed(result: &RunResult, events: &[Value]) {
+    assert!(
+        !result.ok,
+        "a cancelled turn must not report success: {:?}",
+        result.error
+    );
+    assert_eq!(
+        result.error.as_ref().map(|error| error.code),
+        Some("antigravity_cli_cancelled")
+    );
+    assert_eq!(result.turn_status, "cancelled");
+    assert!(
+        events
+            .iter()
+            .all(|event| event["event"] != "agent.message.completed"),
+        "cancelled turns must not emit a finish marker: {events:?}"
+    );
+    assert!(
+        events.iter().all(|event| {
+            !event["payload"]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("post-cancel-output")
+        }),
+        "post-cancel stdout must not become assistant text: {events:?}"
     );
 }
 
@@ -1062,6 +1235,67 @@ sleep 0.4
 printf '%s\n' 'second'
 exit 0
 "#
+        );
+        fs::write(&executable, script).unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        Self { root, executable }
+    }
+
+    /// Prints pre-cancel text, holds, then on SIGTERM prints post-cancel text
+    /// and writes a Stop-hook receipt with exit 0. Post-cancel stdout must not
+    /// become assistant text after the cancel claim.
+    fn new_hold_for_cancel(label: &str, receipt_id: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "lico-antigravity-driver-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("fake-agy");
+        let writer = ReceiptStyle::Direct.writer_body(receipt_id);
+        let script = format!(
+            r#"#!/bin/sh
+set -eu
+for arg in "$@"; do
+  case "$arg" in
+    --help)
+      printf '%s\n' '--print --conversation --model --effort --dangerously-skip-permissions'
+      exit 0
+      ;;
+    --version)
+      printf '%s\n' '1.1.5'
+      exit 0
+      ;;
+    models)
+      exit 0
+      ;;
+  esac
+done
+receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
+write_receipt() {{
+  python3 - "$receipt" <<'PY'
+{writer}
+PY
+}}
+printf '%s\n' 'pre-cancel-output'
+trap 'printf "%s\n" "post-cancel-output"; write_receipt; exit 0' TERM
+i=0
+while [ "$i" -lt 400 ]; do
+  i=$((i + 1))
+  sleep 0.05
+done
+write_receipt
+printf '%s\n' 'uncancelled-output'
+exit 0
+"#,
+            writer = writer,
         );
         fs::write(&executable, script).unwrap();
         let mut permissions = fs::metadata(&executable).unwrap().permissions();

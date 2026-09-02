@@ -1,5 +1,7 @@
 use super::CodexParser;
-use super::helpers::{final_agent_message, matches_current_ids};
+use super::helpers::{
+    final_agent_message, matches_current_ids, mcp_tool_application_error, mcp_tool_name,
+};
 use crate::platform::codex_app_server::model::{
     ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase,
 };
@@ -37,6 +39,7 @@ impl CodexParser {
         }
         if let Some(item) = params.get("item") {
             self.emit_processing_item_once(item, false);
+            self.emit_mcp_tool_error(item);
             self.completed_items.push(item.clone());
             if item.get("type").and_then(Value::as_str) == Some("agentMessage")
                 && let Some(text) = item.get("text").and_then(Value::as_str)
@@ -101,7 +104,19 @@ impl CodexParser {
             self.thread_id.as_deref().unwrap_or_default(),
             self.turn_id.as_deref().unwrap_or_default(),
             evidence_kind,
-            None,
+            mcp_tool_name(item),
+        );
+    }
+
+    fn emit_mcp_tool_error(&self, item: &Value) {
+        let Some((tool_name, error_code)) = mcp_tool_application_error(item) else {
+            return;
+        };
+        crate::platform::turn_event_emit::emit_agent_tool_error(
+            self.thread_id.as_deref().unwrap_or_default(),
+            self.turn_id.as_deref().unwrap_or_default(),
+            tool_name,
+            error_code,
         );
     }
 

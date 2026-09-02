@@ -32,4 +32,5 @@ pub(crate) mod secure_mesh_command_runtime;
 pub mod secure_mesh_mls;
 pub mod session_policy;
 pub mod skill_hub;
+pub mod subagent_mcp;
 pub mod targets;

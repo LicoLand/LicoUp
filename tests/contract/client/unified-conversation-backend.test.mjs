@@ -85,6 +85,8 @@ test("Canonical Conversation crate owns messaging and membership facts only", ()
     "source_links",
     "runtime_bindings",
     "conversation_dispatches",
+    "subagent_dispatch_claims",
+    "subagent_mcp_inbound",
   ]) {
     assert.match(
       canonicalStore,

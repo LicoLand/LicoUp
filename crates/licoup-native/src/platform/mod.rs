@@ -30,6 +30,7 @@ mod opencode_driver;
 mod pi_driver;
 pub mod process_sandbox;
 mod process_supervisor;
+pub(crate) mod provider_mcp_registration;
 #[cfg(unix)]
 mod pty_transport;
 pub(crate) mod remote_acp_history;
@@ -47,6 +48,7 @@ pub mod client_autostart;
 pub mod client_state;
 pub mod codex_plugin_manager;
 pub mod conversation_host_transport;
+pub mod cursor_subagent_mcp_manager;
 pub mod file_security;
 pub mod gateway_runtime;
 pub mod llm_api_key_vault;
@@ -65,6 +67,8 @@ pub mod runtime_adapters;
 pub mod secure_mesh_capability_probe;
 pub mod secure_mesh_secret_store;
 pub mod subagent_mcp_ensure;
+pub(crate) mod subagent_mcp_host_client;
+pub mod subagent_mcp_supervisor;
 pub mod url_security;
 
 pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;

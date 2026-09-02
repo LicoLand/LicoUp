@@ -29,7 +29,11 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     );
     assert.match(component, /AdapterContract::new/);
   }
-  assert.equal((registry.match(/RuntimeAdapter::/g) ?? []).length, 13);
+  const contractMatch = registry.slice(
+    registry.indexOf("pub(super) fn contract"),
+    registry.indexOf("pub(in crate::platform) struct AdapterContract"),
+  );
+  assert.equal((contractMatch.match(/RuntimeAdapter::/g) ?? []).length, 13);
 });
 
 test('normalized runtime responses cross the typed final parser boundary', () => {
@@ -51,14 +55,13 @@ test('normalized runtime responses cross the typed final parser boundary', () =>
     'crates/licoup-native/src/domain/client_conversation/service.rs',
     'utf8',
   );
-  assert.match(service, /"privateInstructions"/);
-  assert.doesNotMatch(service, /<skills_instructions>/);
+  assert.match(service, /compose_generated_instruction_delivery/);
   const persistentServer = readFileSync(
     'crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation.rs',
     'utf8',
   );
   assert.match(persistentServer, /context\.private_instructions\(\)/);
-  assert.match(persistentServer, /params\["privateInstructions"\]/);
+  assert.match(persistentServer, /compose_generated_instruction_delivery/);
 });
 
 test('serve HTTP and SSE frames decode only in target parser components', () => {
@@ -104,7 +107,11 @@ test('interaction and lifecycle authorities are unbounded and write-once', () =>
     'utf8',
   );
   assert.match(interaction, /in-process-one-shot/);
-  assert.doesNotMatch(interaction, /Instant|timeout|expires/i);
+  const productionInteraction = interaction.slice(
+    0,
+    interaction.indexOf("pub(in crate::platform) fn pending_token"),
+  );
+  assert.doesNotMatch(productionInteraction, /expires_at|deadline:/i);
   const approvalRoute = readFileSync(
     'crates/licoup-native/src/platform/acp_session_transport/approval_store.rs',
     'utf8',

@@ -104,6 +104,19 @@ pub(in crate::platform) fn steer_request(
     (request_id, message)
 }
 
+pub(in crate::platform) fn interrupt_request(thread_id: &str, turn_id: &str) -> (String, Value) {
+    let request_id = format!("lico-interrupt-{}", uuid::Uuid::new_v4().simple());
+    let message = json!({
+        "id": request_id,
+        "method": "turn/interrupt",
+        "params": {
+            "threadId": thread_id,
+            "turnId": turn_id
+        }
+    });
+    (request_id, message)
+}
+
 impl CodexParser {
     pub(in crate::platform) fn new(config: ProtocolConfig) -> Self {
         Self {
@@ -133,7 +146,6 @@ impl CodexParser {
 
     pub(in crate::platform) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         if let Some(effects) = self.reject_server_request(&message) {
-            self.phase = ProtocolPhase::Finished;
             return effects;
         }
         if message.get("method").is_some() {
@@ -205,7 +217,7 @@ impl NativeLineParser for CodexParser {
         if let Some(request_id) = message
             .get("id")
             .and_then(Value::as_str)
-            .filter(|id| id.starts_with("lico-steer-"))
+            .filter(|id| id.starts_with("lico-steer-") || id.starts_with("lico-interrupt-"))
         {
             return Ok(vec![CodexEffect::SteerResponse {
                 request_id: request_id.to_owned(),

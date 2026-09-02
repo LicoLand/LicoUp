@@ -165,4 +165,6 @@ pub enum ConversationActionKind {
     ConversationProfileGet,
     #[serde(rename = "conversation.profile.candidates")]
     ConversationProfileCandidates,
+    #[serde(rename = "conversation.subagent.edge")]
+    ConversationSubagentEdge,
 }

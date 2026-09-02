@@ -96,6 +96,150 @@ fn native_item_started_emits_redacted_processing_receipt() {
 }
 
 #[test]
+fn mcp_tool_call_projects_only_the_tool_name() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+
+    protocol.handle_message(json!({
+        "method": "item/started",
+        "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "item": {
+                "id": "mcp-1",
+                "type": "mcpToolCall",
+                "server": "land.lico.licoup.subagents",
+                "tool": "lico_subagent_cancel",
+                "arguments": {"conversationId": "private", "membershipId": "private"},
+                "status": "inProgress"
+            }
+        }
+    }));
+
+    let events = captured.lock().unwrap().clone();
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.turn.processing"
+            && event["payload"]["evidenceKind"] == "tool"
+            && event["payload"]["toolName"] == "lico_subagent_cancel"
+    }));
+    let encoded = serde_json::to_string(&events).unwrap();
+    assert!(!encoded.contains("private"));
+    assert!(!encoded.contains("conversationId"));
+}
+
+#[test]
+fn mcp_tool_call_ignores_a_server_name_and_keeps_a_frozen_suffix() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+
+    protocol.handle_message(json!({
+        "method": "item/started",
+        "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "item": {
+                "id": "mcp-server-name",
+                "type": "mcpToolCall",
+                "name": "land.lico.licoup.subagents",
+                "status": "inProgress"
+            }
+        }
+    }));
+    protocol.handle_message(json!({
+        "method": "item/started",
+        "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "item": {
+                "id": "mcp-fqn",
+                "type": "mcpToolCall",
+                "name": "land.lico.licoup.subagents-lico_subagent_delegate",
+                "status": "inProgress"
+            }
+        }
+    }));
+
+    let events = captured.lock().unwrap().clone();
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.turn.processing"
+            && event["payload"]["evidenceKind"] == "tool"
+            && event["payload"].get("toolName").is_none()
+    }));
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.turn.processing"
+            && event["payload"]["toolName"] == "land.lico.licoup.subagents-lico_subagent_delegate"
+    }));
+    let encoded = serde_json::to_string(&events).unwrap();
+    assert!(!encoded.contains("\"toolName\":\"land.lico.licoup.subagents\""));
+}
+
+#[test]
+fn mcp_tool_completion_projects_only_allowlisted_application_codes() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    start_turn(&mut protocol);
+
+    protocol.handle_message(json!({
+        "method": "item/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "item": {
+                "id": "mcp-2",
+                "type": "mcpToolCall",
+                "server": "land.lico.licoup.subagents",
+                "tool": "lico_subagent_delegate",
+                "arguments": {"prompt": "private-prompt"},
+                "status": "failed",
+                "result": {
+                    "content": [{
+                        "type": "text",
+                        "text": "caller_membership_not_authorized private provider result"
+                    }]
+                }
+            }
+        }
+    }));
+
+    let events = captured.lock().unwrap().clone();
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.turn.processing"
+            && event["payload"]["toolName"] == "lico_subagent_delegate"
+    }));
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.tool.result"
+            && event["payload"]["toolName"] == "lico_subagent_delegate"
+            && event["payload"]["text"] == "caller_membership_not_authorized"
+    }));
+    let encoded = serde_json::to_string(&events).unwrap();
+    assert!(!encoded.contains("private-prompt"));
+    assert!(!encoded.contains("private provider result"));
+}
+
+#[test]
 fn native_item_started_and_completed_emit_one_processing_receipt() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);

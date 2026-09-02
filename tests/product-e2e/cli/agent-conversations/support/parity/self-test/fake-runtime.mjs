@@ -1040,6 +1040,9 @@ if (args[0] === "agent") {
   if (!state.sessions[sessionId]) process.exit(2);
   state.sessions[sessionId].messages.push({ role: "user", text: prompt }, { role: "assistant", text: reply });
   save(state);
+  // The real Cursor CLI may report a display label here even though argv used
+  // a stable model slug. The parity lane must retain the explicit selector.
+  send({ type: "system", subtype: "init", session_id: sessionId, model: "Fixture Display Model" });
   send({ type: "assistant", session_id: sessionId, message: { content: [{ type: "text", text: reply }] } });
   send({ type: "result", subtype: "success", is_error: false, session_id: sessionId, result: reply });
 } else if (args[0] === "acp" || args[0] === "serve") {

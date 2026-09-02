@@ -1,5 +1,5 @@
 use super::super::process_supervisor::{BoundedStdinWriter, SupervisedChild};
-use super::active_control::{ActiveTurnGuard, SteerRequest, bind};
+use super::active_control::{ActiveTurnGuard, ControlRequest, bind};
 use super::io::{TransportEvent, write_message};
 use super::limits::PROCESS_POLL_INTERVAL;
 use super::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome, RunResult};
@@ -12,8 +12,8 @@ use std::time::Instant;
 pub(super) fn run_protocol_loop(
     stdin: &mut BoundedStdinWriter,
     receiver: &Receiver<TransportEvent>,
-    control_sender: &SyncSender<SteerRequest>,
-    control_receiver: &Receiver<SteerRequest>,
+    control_sender: &SyncSender<ControlRequest>,
+    control_receiver: &Receiver<ControlRequest>,
     protocol: &mut CodexParser,
     deadline: Option<Instant>,
 ) -> (
