@@ -55,7 +55,7 @@ export function validateGovernanceDeclarations(files) {
   requireValue(
     config?.schema === "apple-release.config.v1" &&
       config?.source?.branch === "release" &&
-      candidate?.template === "release-candidate/v{version}" &&
+      candidate?.branch === "macos-release-candidate" &&
       Array.isArray(candidate?.requiredChecks) && candidate.requiredChecks.length > 0 &&
       config?.github?.repository === "LicoLand/LicoUp" &&
       config?.apple?.target === "macos-direct-arm64" &&

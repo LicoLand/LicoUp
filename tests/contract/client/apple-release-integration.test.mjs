@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -10,7 +11,8 @@ test("LicoUp is one declarative Apple Release use case", () => {
   const config = readJson("tools/apple-release/macos-direct-arm64.json");
   assert.equal(config.schema, "apple-release.config.v1");
   assert.equal(config.source.branch, "release");
-  assert.equal(config.candidate?.template, "release-candidate/v{version}");
+  assert.equal(config.candidate?.branch, "macos-release-candidate");
+  assert.equal(config.candidate?.template, undefined);
   assert.ok(config.candidate?.requiredChecks?.length > 0);
   assert.equal(config.candidate?.mergeMethod, undefined);
   assert.equal(config.version.prepare, undefined);
@@ -51,6 +53,19 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(JSON.stringify(config).includes("../"), false);
 });
 
+test("Auditor preflight accepts the fixed platform candidate branch", () => {
+  const result = JSON.parse(execFileSync(
+    process.execPath,
+    ["tools/scripts/client-auditor-preflight.mjs"],
+    { encoding: "utf8" },
+  ));
+  assert.equal(result.ok, true);
+  assert.equal(result.requiredChecksReady, true);
+  assert.equal(result.delegatedApplePublicationReady, true);
+  assert.equal(result.remoteMutationExecuted, false);
+  assert.equal(result.privateDataIncluded, false);
+});
+
 test("package commands expose the authority and both release entries", () => {
   const scripts = readJson("package.json").scripts;
   assert.equal(scripts["client:release:macos"],
@@ -80,5 +95,5 @@ test("delegated publication leaves the protected release train unchanged", () =>
   assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "release",
     headRef: "stable", payload }).ok, true);
   assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "release",
-    headRef: "release-candidate/v1.2.3", payload }).ok, false);
+    headRef: "macos-release-candidate", payload }).ok, false);
 });
