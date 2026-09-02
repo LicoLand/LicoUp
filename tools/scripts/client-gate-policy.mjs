@@ -11,7 +11,6 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "repo:local-info-hygiene",
     "repo:workspace-cache-boundary",
     "client:artifacts:self-test",
-    "client:verify:build-entry:self-test",
     "client:version:check",
     "client:verify:plan",
     "client:verify:architecture",

@@ -8,13 +8,6 @@ import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptiv
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
-import 'package:licoup/src/contracts/generated/strategy.g.dart'
-    show
-        StrategyWorkflowDiagnosticActualKind,
-        StrategyWorkflowDiagnosticCode,
-        StrategyWorkflowDiagnosticRecovery,
-        StrategyWorkflowDiagnosticStage,
-        strategyWorkflowMaxDiagnostics;
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -22,74 +15,6 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 void main() {
-  test('generated workflow diagnostics close fields and scalar bounds', () {
-    final failure = AdaptiveFlywheelFailure.fromJson({
-      'code': 'graph_preflight_rejected',
-      'recovery': 'correct_graph_or_bindings_and_retry',
-      'diagnostics': [
-        {
-          'code': 'graph_membership_rejected',
-          'stage': 'assistant-workflow/preflight',
-          'path': '/bindings/0/valueId',
-          'relatedPaths': ['/bindings/0', '/bad~2pointer'],
-          'membershipId': 'membership:worker',
-          'actual': 1,
-          'limit': 2,
-          'expected': 'existing_reference',
-          'actualKind': 'string',
-          'recovery': 'update_binding',
-        },
-        {
-          'code': 'workflow_syntax_invalid',
-          'stage': 'assistant-workflow/preflight',
-          'path': '/private-workspace-sentinel',
-          'membershipId': 'membership:private',
-          'recovery': 'update_binding',
-          'line': 3,
-          'column': 7,
-        },
-      ],
-    });
-
-    final binding = failure.diagnostics.first;
-    expect(
-      binding.code,
-      StrategyWorkflowDiagnosticCode.graphMembershipRejected,
-    );
-    expect(
-      binding.stage,
-      StrategyWorkflowDiagnosticStage.assistantWorkflowPreflight,
-    );
-    expect(binding.path, '/bindings/0/valueId');
-    expect(binding.relatedPaths, ['/bindings/0']);
-    expect(binding.membershipId, 'membership:worker');
-    expect(binding.actualKind.wireName, 'string');
-    expect(binding.recovery, StrategyWorkflowDiagnosticRecovery.updateBinding);
-
-    final syntax = failure.diagnostics.last;
-    expect(syntax.code, StrategyWorkflowDiagnosticCode.workflowSyntaxInvalid);
-    expect(syntax.stage, StrategyWorkflowDiagnosticStage.workflowParse);
-    expect(syntax.path, isEmpty);
-    expect(syntax.membershipId, isEmpty);
-    expect(syntax.recovery, StrategyWorkflowDiagnosticRecovery.unknown);
-    expect(syntax.actualKind, StrategyWorkflowDiagnosticActualKind.unknown);
-    expect(syntax.line, 3);
-    expect(syntax.column, 7);
-
-    final bounded = AdaptiveFlywheelFailure.fromJson({
-      'code': 'graph_invalid',
-      'diagnostics': List.generate(
-        strategyWorkflowMaxDiagnostics + 10,
-        (_) => {
-          'code': 'workflow_invalid',
-          'stage': 'workflow/compile',
-          'recovery': 'correct_field',
-        },
-      ),
-    });
-    expect(bounded.diagnostics, hasLength(strategyWorkflowMaxDiagnostics));
-  });
-
   test('starts with an empty catalog until a package is imported', () async {
     final runner = _StrategyRunner(definitions: const []);
     final controller = AdaptiveFlywheelController(gateway: runner);
@@ -310,102 +235,6 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
-  testWidgets(
-    'Assistant is the top three-column card and saves Profile independently of workflows',
-    (tester) async {
-      tester.view.physicalSize = const Size(1200, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final runner = _StrategyRunner(definitions: const []);
-      final agentService = AgentService(
-        processIo: runner,
-        persistentStdioRpcEnabled: false,
-      );
-      final clientController = ClientController(agentService: agentService);
-      clientController.scannedTargets = [_target('codex', callable: true)];
-      addTearDown(clientController.dispose);
-      addTearDown(agentService.dispose);
-      await clientController.clientConversationController.initialize();
-      await clientController.clientConversationController.selectConversation(
-        'conversation:group',
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('en'),
-          supportedLocales: const [Locale('en'), Locale('zh')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () =>
-                    showAdaptiveFlywheelDialog(context, clientController),
-                child: const Text('open'),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
-
-      final card = find.byKey(const Key('adaptive-flywheel-assistant-card'));
-      final agent = find.byKey(
-        const Key('adaptive-flywheel-assistant-agent-card'),
-      );
-      final model = find.byKey(
-        const Key('adaptive-flywheel-assistant-model-card'),
-      );
-      final effort = find.byKey(
-        const Key('adaptive-flywheel-assistant-settings-card'),
-      );
-      expect(card, findsOneWidget);
-      expect(agent, findsOneWidget);
-      expect(model, findsOneWidget);
-      expect(effort, findsOneWidget);
-      expect(
-        tester.getTopLeft(agent).dx,
-        lessThan(tester.getTopLeft(model).dx),
-      );
-      expect(
-        tester.getTopLeft(model).dx,
-        lessThan(tester.getTopLeft(effort).dx),
-      );
-      expect(
-        tester.getTopLeft(card).dy,
-        lessThan(
-          tester
-              .getTopLeft(
-                find.byKey(const Key('adaptive-flywheel-import-package')),
-              )
-              .dy,
-        ),
-      );
-
-      await tester.tap(
-        find.byKey(const Key('adaptive-flywheel-assistant-effort-codex-high')),
-      );
-      await tester.tap(find.byKey(const Key('main-agent-save')));
-      await tester.pumpAndSettle();
-
-      final update = runner.conversationRequests.lastWhere(
-        (request) => request['action'] == 'conversation.profile.update',
-      );
-      final intent = Map<String, dynamic>.from(update['intent'] as Map);
-      expect(intent['preferredModel'], 'gpt-5');
-      expect(intent['preferredReasoningEffort'], 'high');
-      expect(find.byKey(const Key('adaptive-flywheel-dialog')), findsNothing);
-    },
-  );
-
   testWidgets('glass strategy selector can open and choose a definition', (
     tester,
   ) async {
@@ -525,7 +354,6 @@ final class _StrategyRunner
   final bool includeRuntime;
   final List<Map<String, dynamic>> definitions;
   final List<String> actions = [];
-  final List<Map<String, dynamic>> conversationRequests = [];
   final Map<String, Map<String, dynamic>> bindings = {};
   bool authorized = false;
 
@@ -545,12 +373,6 @@ final class _StrategyRunner
     List<String> args,
     String stdinText,
   ) async {
-    if (args.first == 'conversation') {
-      expect(args, ['conversation', 'execute', '--stdin-json', 'true']);
-      final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
-      conversationRequests.add(request);
-      return {'ok': true, 'result': _conversationResult(request)};
-    }
     expect(args, ['strategy', 'execute', '--stdin-json', 'true']);
     final request = jsonDecode(stdinText) as Map<String, dynamic>;
     final action = request['action'] as String;
@@ -568,30 +390,6 @@ final class _StrategyRunner
       _ => throw StateError('unexpected action $action'),
     };
     return {'ok': true, 'result': result};
-  }
-
-  Object _conversationResult(Map<String, dynamic> request) {
-    return switch (request['action']) {
-      'conversation.list' => [_conversationSummary],
-      'conversation.get' => _conversation,
-      'conversation.events.page' => {
-        'events': <Map<String, dynamic>>[],
-        'nextCursor': null,
-        'totalCount': 0,
-      },
-      'conversation.profile.get' => <String, dynamic>{
-        'revision': 0,
-        'requiredCapabilities': <String>[],
-        'preferredCapabilities': <String>[],
-        'skillReferences': <String>[],
-        'preferredModel': 'gpt-5',
-        'preferredReasoningEffort': 'medium',
-      },
-      'conversation.profile.update' => <String, dynamic>{
-        'profile': request['intent'],
-      },
-      _ => <String, dynamic>{},
-    };
   }
 
   List<Map<String, dynamic>> _replace(Map<String, dynamic> request) {
@@ -732,60 +530,6 @@ final class _StrategyRunner
     String stdinText,
   ) => const Stream.empty();
 }
-
-const _conversationSummary = <String, dynamic>{
-  'id': 'conversation:group',
-  'title': 'Synthetic group',
-  'archived': false,
-  'pinned': true,
-  'isGroup': true,
-  'revision': 2,
-  'updatedAtUnixMs': 2,
-  'membershipCount': 2,
-  'eventCount': 0,
-};
-
-const _conversation = <String, dynamic>{
-  'id': 'conversation:group',
-  'title': 'Synthetic group',
-  'archived': false,
-  'pinned': true,
-  'isGroup': true,
-  'assistantMembershipId': 'membership:codex',
-  'revision': 2,
-  'createdAtUnixMs': 1,
-  'updatedAtUnixMs': 2,
-  'eventCount': 0,
-  'memberships': <Map<String, dynamic>>[
-    {
-      'id': 'membership:owner',
-      'conversationId': 'conversation:group',
-      'principal': {
-        'id': 'human:local',
-        'kind': 'human',
-        'displayName': 'Local User',
-        'createdAtUnixMs': 1,
-      },
-      'access': 'owner',
-      'status': 'active',
-      'joinedAtUnixMs': 1,
-    },
-    {
-      'id': 'membership:codex',
-      'conversationId': 'conversation:group',
-      'principal': {
-        'id': 'agent:codex',
-        'kind': 'agent',
-        'displayName': 'Codex',
-        'agentId': 'codex',
-        'createdAtUnixMs': 1,
-      },
-      'access': 'member',
-      'status': 'active',
-      'joinedAtUnixMs': 1,
-    },
-  ],
-};
 
 TargetCandidate _target(String id, {required bool callable}) {
   return TargetCandidate(

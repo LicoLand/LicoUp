@@ -52,8 +52,8 @@ fn conversations_scan_codex_jsonl_history() {
     fs::write(
         &history,
         [
-            r#"{"sessionId":"codex-history","role":"user","content":"Build LicoMesh native history","createdAt":"2026-06-12T00:00:00Z"}"#,
-            r#"{"sessionId":"codex-history","role":"assistant","content":"Use Codex history adapter","createdAt":"2026-06-12T00:00:01Z"}"#,
+            r#"{"role":"user","content":"Build LicoMesh native history","createdAt":"2026-06-12T00:00:00Z"}"#,
+            r#"{"role":"assistant","content":"Use Codex history adapter","createdAt":"2026-06-12T00:00:01Z"}"#,
         ]
         .join("\n"),
     )
@@ -172,16 +172,13 @@ fn codex_jsonl_groups_by_native_session_id() {
     assert_eq!(native_sessions[0]["nativeSessionId"], "codex-session-2");
 
     let projection_id = native_sessions[0]["id"].as_str().unwrap();
-    let projection_error = conversation_list(&json!({
+    let projection_filtered = conversation_list(&json!({
         "agent": "codex",
         "root": dir.to_string_lossy(),
         "sessionId": projection_id
     }))
-    .unwrap_err();
-    assert_eq!(
-        projection_error.to_string(),
-        "native_history_session_not_found"
-    );
+    .unwrap();
+    assert_eq!(projection_filtered["sessions"].as_array().unwrap().len(), 1);
 }
 
 #[test]

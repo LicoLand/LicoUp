@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Stateless native command builder. It has no process or service lifecycle.
@@ -34,7 +33,6 @@ class NativeCommandActions {
     'kimi',
     'kimi-code',
     'pi',
-    'deepseek-harness',
   ];
 
   Future<List<Map<String, dynamic>>> listSnapshots({String target = ''}) async {
@@ -200,65 +198,32 @@ class NativeCommandActions {
         .toList();
   }
 
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
     bool enableAgentCliModelLookup = false,
   }) async {
-    final normalizedTargetIds = <String>[];
-    final seen = <String>{};
-    for (final targetId in targetIds) {
-      final id = targetId.trim();
-      if (id.isNotEmpty && seen.add(id)) normalizedTargetIds.add(id);
+    final normalizedTargetId = targetId.trim();
+    if (normalizedTargetId.isEmpty) {
+      return null;
     }
-    if (normalizedTargetIds.isEmpty) return const TargetScanBatch([]);
-    final runner = _privateRunner;
-    if (runner == null) {
-      return TargetScanBatch([
-        for (final id in normalizedTargetIds)
-          TargetScanSlot(targetId: id, failed: true),
-      ]);
+    final arguments = <String>[
+      'targets',
+      'inspect',
+      normalizedTargetId,
+      '--include-accessible-environments',
+      'true',
+    ];
+    if (enableAgentCliModelLookup) {
+      arguments.addAll(const ['--enable-agent-cli-model-lookup', 'true']);
     }
-    final output = await runner.runCliWithStdin(
-      const [
-        'targets',
-        'scan',
-        '--include-accessible-environments',
-        'true',
-        '--stdin-json',
-        'true',
-      ],
-      jsonEncode(<String, dynamic>{
-        'targetIds': normalizedTargetIds,
-        'modelCatalogTargetIds': enableAgentCliModelLookup
-            ? normalizedTargetIds
-            : const <String>[],
-      }),
-    );
-    if (output['ok'] != true || output['results'] is! List) {
-      return TargetScanBatch([
-        for (final id in normalizedTargetIds)
-          TargetScanSlot(targetId: id, failed: true),
-      ]);
-    }
-    return TargetScanBatch([
-      for (final raw in (output['results'] as List).whereType<Map>())
-        _targetScanSlot(Map<String, dynamic>.from(raw)),
-    ]);
-  }
-
-  TargetScanSlot _targetScanSlot(Map<String, dynamic> raw) {
-    final targetId = (raw['targetId'] ?? '').toString().trim();
-    final candidateRaw = raw['candidate'];
-    if (raw['ok'] != true || candidateRaw is! Map) {
-      return TargetScanSlot(targetId: targetId, failed: true);
+    final output = await _concurrentCommandExecutor.execute(arguments);
+    if (output['ok'] != true || output['target'] is! Map) {
+      return null;
     }
     final candidate = TargetCandidate.fromJson(
-      Map<String, dynamic>.from(candidateRaw),
+      Map<String, dynamic>.from(output['target'] as Map),
     );
-    return TargetScanSlot(
-      targetId: targetId,
-      candidate: candidate.visibleInClient ? candidate : null,
-    );
+    return candidate.visibleInClient ? candidate : null;
   }
 
   Future<Map<String, dynamic>> addTarget({

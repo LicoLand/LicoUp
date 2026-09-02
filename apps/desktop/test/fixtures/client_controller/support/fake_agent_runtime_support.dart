@@ -28,29 +28,9 @@ mixin FakeAgentRuntimeSupport
     List<String> args,
     String stdinText,
   ) async* {
-    if (args.length >= 2 && args[0] == 'conversations' && args[1] == 'stream') {
-      cliCalls = [...cliCalls, List<String>.from(args)];
-      conversationStreamCalls++;
-      final decoded = jsonDecode(stdinText);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('conversation stream stdin must be a JSON object');
-      }
-      recordConversationStdinRequest(decoded);
-      final gate = conversationStreamGates[(decoded['agent'] ?? '').toString()];
-      if (gate != null) {
-        await gate.future;
-      }
-      for (final session in fakeConversationSessionRequestPage(decoded)) {
-        await Future<void>.delayed(Duration.zero);
-        yield {'event': 'session', 'ok': true, 'session': session};
-      }
-      yield {'event': 'done', 'ok': true};
-      return;
-    }
     if (runtimeMessageRpcErrorCode.isNotEmpty) {
       throw LicoClientRpcException(runtimeMessageRpcErrorCode);
     }
-    final submittedText = _fakeSubmittedText(stdinText);
     final messageGate = runtimeMessageGate;
     late final Map<String, dynamic> result;
     if (messageGate != null &&
@@ -77,71 +57,10 @@ mixin FakeAgentRuntimeSupport
     final streamEvents = runtimeMessageStreamEventQueue.isEmpty
         ? const <Map<String, dynamic>>[]
         : runtimeMessageStreamEventQueue.removeAt(0);
-    // A real native transport delivers stage events across time while token
-    // streams arrive as a continuous burst. The stream-level projection
-    // consumer coalesces on publish, so keep the same shape here: stage
-    // changes are separated by a transport gap, consecutive same-kind chunk
-    // frames stay contiguous. The native host also binds every frame of one
-    // turn to one identity (the persistent runtime enriches recorded frames),
-    // so frames that omit their turn id inherit the stream's declared one.
-    var streamTurnId = '';
-    var previousStageKind = '';
     for (final event in streamEvents) {
-      final stageKind = (event['event'] ?? '').toString();
-      final eventTurnId = (event['turnId'] ?? '').toString();
-      if (streamTurnId.isEmpty && eventTurnId.isNotEmpty) {
-        streamTurnId = eventTurnId;
-      }
-      // Only a contiguous token-chunk stream arrives as a burst; every other
-      // stage change is separated by a transport gap so the stream consumer's
-      // publish coalescing behaves as for a real native transport.
-      final chunkFollowsChunk =
-          stageKind == 'agent.message.chunk' &&
-          previousStageKind == 'agent.message.chunk';
-      if (previousStageKind.isNotEmpty && !chunkFollowsChunk) {
-        await Future<void>.delayed(const Duration(milliseconds: 37));
-      }
-      previousStageKind = stageKind;
-      yield eventTurnId.isEmpty && streamTurnId.isNotEmpty
-          ? <String, dynamic>{...event, 'turnId': streamTurnId}
-          : event;
+      yield event;
     }
-    // Native send-stream projection: the submitted user message is carried by
-    // the native delta stream so the client never fabricates it.
-    yield {
-      'event': 'conversation.user.message',
-      'sessionId': (result['nativeSessionId'] ?? result['sessionId'] ?? '')
-          .toString(),
-      'turnId': streamTurnId,
-      'payload': {
-        'text': submittedText,
-        'role': 'user',
-        'lifecyclePrefix': const ['submitted'],
-        'turnState': {
-          'state': 'pending',
-          'inputEnabled': true,
-          'cancelEnabled': false,
-        },
-      },
-    };
-    yield {
-      'event': 'done',
-      if (streamTurnId.isNotEmpty) 'turnId': streamTurnId,
-      ...result,
-    };
-  }
-
-  String _fakeSubmittedText(String stdinText) {
-    try {
-      final decoded = jsonDecode(stdinText);
-      if (decoded is Map<String, dynamic>) {
-        return (decoded['text'] ?? '').toString();
-      }
-    } on Object {
-      // Malformed fixture input yields an empty projection; the client drops
-      // an empty delta exactly as the real native host does.
-    }
-    return '';
+    yield {'event': 'done', ...result};
   }
 
   @override
@@ -150,18 +69,6 @@ mixin FakeAgentRuntimeSupport
     String stdinText,
   ) async {
     cliCalls = [...cliCalls, List<String>.from(args)];
-    if (args.length >= 2 && args[0] == 'conversations' && args[1] == 'list') {
-      final decoded = jsonDecode(stdinText);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('conversation list stdin must be a JSON object');
-      }
-      recordConversationStdinRequest(decoded);
-      conversationListCalls++;
-      return {
-        'ok': true,
-        'sessions': fakeConversationSessionRequestPage(decoded),
-      };
-    }
     if (args.length >= 3 &&
         args[0] == 'agent' &&
         args[1] == 'conversation' &&

@@ -7,13 +7,11 @@
 
 mod control;
 mod errors;
-#[path = "native_agent_parser/adapters/copilot/framing.rs"]
 mod events;
 mod io;
 mod model;
 mod params;
 mod probe;
-#[path = "native_agent_parser/adapters/copilot/protocol.rs"]
 mod protocol;
 mod session_plan;
 mod settings;
@@ -22,9 +20,8 @@ mod supervision;
 
 pub(in crate::platform) use control::{ActiveAcpControl, ControlDisposition, cancel_active_turn};
 pub(in crate::platform) use errors::ProtocolFailure;
-pub(in crate::platform) use model::{
-    AcpDriverSpec, AcpParserKind, CapabilityProbe, EffectiveSettings, RunResult,
-};
+pub(in crate::platform) use events::{extract_assistant_text, project_agent_chunks};
+pub(in crate::platform) use model::{AcpDriverSpec, CapabilityProbe, EffectiveSettings, RunResult};
 pub(in crate::platform) use params::{ProtocolConfig, timestamp};
 pub(in crate::platform) use probe::probe_acp;
 pub(in crate::platform) use stdio_transport::execute_acp;

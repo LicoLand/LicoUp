@@ -27,7 +27,7 @@
     "android": [
       "npm run client:verify:licoarc-badtower-acceptance",
       "npm run client:test:android:native",
-      "npm run client:build -- --platform android",
+      "npm run client:build:android",
       "node tools/scripts/client-android-physical-install-launch.mjs --install --launch --apk build/apps/desktop/android/release/app-release.apk"
     ],
     "ios": [

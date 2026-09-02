@@ -7,7 +7,7 @@ use super::continuity::{
     remove_transport, set_active_session,
 };
 use super::errors::{ProtocolFailure, failure_requires_transport_reset};
-use super::events::ConversationTransportEvent as TransportEvent;
+use super::events::TransportEvent;
 use super::io::write_message;
 use super::protocol::{ProtocolEffect, ProtocolOutcome, SessionProtocol};
 use super::supervision::PersistentTransport;
@@ -179,7 +179,7 @@ fn run_protocol_loop(
             .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
             .unwrap_or(PROCESS_POLL_INTERVAL);
         match transport.receiver.recv_timeout(wait) {
-            Ok(TransportEvent::Frame { line, bytes }) => {
+            Ok(TransportEvent::Message { message, bytes }) => {
                 if let Some(max_stdout) = max_stdout {
                     observed_bytes = observed_bytes.saturating_add(bytes);
                     if observed_bytes > max_stdout {
@@ -194,7 +194,7 @@ fn run_protocol_loop(
                         );
                     }
                 }
-                for effect in protocol.handle_frame(&line).effects {
+                for effect in protocol.handle_message(message) {
                     match effect {
                         ProtocolEffect::Send(message) => {
                             if write_message(&mut transport.stdin, &message).is_err() {
@@ -245,6 +245,17 @@ fn run_protocol_loop(
                 if let Some(session_id) = protocol.session_id.as_deref() {
                     register_session(session_id, managed);
                 }
+            }
+            Ok(TransportEvent::InvalidJson) => {
+                return (
+                    None,
+                    Some(ProtocolFailure::new(
+                        "hermes_acp_invalid_json",
+                        "Hermes ACP returned an invalid protocol message.",
+                        "protocol/read",
+                    )),
+                    false,
+                );
             }
             Ok(TransportEvent::LineLimitExceeded) => {
                 return (

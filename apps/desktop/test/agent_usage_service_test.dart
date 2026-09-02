@@ -132,7 +132,7 @@ void main() {
               'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
               'resultKind': agentUsageWorkflowResultKind,
               'summary': workflow.totals.toJson(),
-              'runs': [workflow.toJson()],
+              'workflows': [workflow.toJson()],
             },
           }),
           '',
@@ -145,7 +145,7 @@ void main() {
       );
       expect(report.workflows, hasLength(1));
       expect(report.workflowTotalTokens, 52);
-      expect(report.workflows.single.commands, hasLength(4));
+      expect(report.workflows.single.roots.single.children, hasLength(3));
     },
   );
 
@@ -165,11 +165,11 @@ void main() {
             'summary': const {'agentCount': 0, 'totalTokens': 0},
             'agents': const [],
             'workflow': {
-              'schemaVersion': 'unsupported-schema',
+              'schemaVersion': 'licoup.workflow-token-report.v0',
               'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
               'resultKind': agentUsageWorkflowResultKind,
               'summary': const {},
-              'runs': const [],
+              'workflows': const [],
             },
           }),
           '',
@@ -306,11 +306,11 @@ void main() {
             'mode': AgentUsageReport.currentMode,
             'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
             'workflow': {
-              'schemaVersion': 'unsupported-schema',
+              'schemaVersion': 'licoup.workflow-token-report.v0',
               'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
               'resultKind': agentUsageWorkflowResultKind,
               'summary': const {},
-              'runs': const [],
+              'workflows': const [],
             },
             'reports': const [],
           }),

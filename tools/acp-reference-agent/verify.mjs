@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
-import { AcpClient } from "../../tests/product-e2e/cli/agent-conversations/support/parity/clients/acp-client.mjs";
+import { AcpClient } from "../scripts/client-acp-conversation-parity/clients/acp-client.mjs";
 
 const agentPath = resolve(fileURLToPath(new URL("./agent.mjs", import.meta.url)));
 const timeoutMs = 30_000;

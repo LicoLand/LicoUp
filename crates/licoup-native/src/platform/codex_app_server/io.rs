@@ -6,14 +6,16 @@ use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub(super) enum TransportEvent {
-    Line(Vec<u8>),
+    Message(Value),
+    InvalidJson,
     StdoutLimitExceeded,
     StdoutReadFailed,
     StdoutClosed,
 }
 
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
-    let bytes = crate::platform::native_agent_parser::adapters::codex::encode_message(message)?;
+    let mut bytes = serde_json::to_vec(message).map_err(io::Error::other)?;
+    bytes.push(b'\n');
     stdin
         .enqueue(bytes)
         .map_err(|_| io::Error::other("native agent protocol write failed"))
@@ -69,9 +71,12 @@ pub(super) fn read_protocol_messages<R: BufRead>(
 }
 
 fn send_protocol_line(line: &[u8], sender: &Sender<TransportEvent>) -> Result<(), ()> {
-    sender
-        .send(TransportEvent::Line(line.to_vec()))
-        .map_err(|_| ())
+    match serde_json::from_slice::<Value>(line) {
+        Ok(message) => sender
+            .send(TransportEvent::Message(message))
+            .map_err(|_| ()),
+        Err(_) => sender.send(TransportEvent::InvalidJson).map_err(|_| ()),
+    }
 }
 
 /// Drain child stderr without retaining or forwarding its potentially private

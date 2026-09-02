@@ -20,14 +20,11 @@ npm run client:get
 npm run client:run:macos
 npm run client:run:android
 npm run client:run:ios
-npm run client:build -- --platform macos
-npm run client:build -- --platform linux
-npm run client:build -- --platform windows
-npm run client:build -- --platform android
+npm run client:build:macos
+npm run client:build:linux
+npm run client:build:windows
+npm run client:build:android
 ```
-
-这个唯一构建入口会自动回收空闲的编译产物和临时 Flutter 构建缓存，同时保留可运行及
-可打包产物供安装流程使用，包括 macOS Applications 安装流程。
 
 存在构建命令，不代表对应平台已经完整支持。
 
@@ -78,32 +75,19 @@ Agent 二进制；未使用智能体的扫描
 选择 Agent 或 Plan 模式；Plan 模式在操作系统沙盒下仅能写入绑定的本地计划文件。
 详见 [Lico Agent](../protocols/lico-agent.zh-CN.md)。
 
-打开**适应性飞轮**可配置日常对话与 Assistant 工作流入口。飞轮是唯一的 route 选择权威：
-每个工作流条目解析为一个 agent、model 和 reasoning effort，LicoUp 会把决定冻结在
-run receipt 中。
+打开**适应性飞轮**可配置日常对话和交付 route 表。飞轮是唯一的 route 选择权威：
+每个交付角色与难度解析为一个 agent、model 和 reasoning effort，LicoUp 会把决定冻结
+在 dispatch receipt 中。
 
-Assistant 是在同一原生 Conversation 中对你的目标负责到底的长期属主。它要么自行完成，
-要么提交一份带准确 Membership 绑定的有界临时 workflow Graph。Graph 在任何 Agent 效果
-之前先编译并预检：结构、额度、model、Agent、Skill、环境与能力问题先返回稳定 typed
-错误；readiness 与既有 Authority 问题也在效果前返回；无法预检的运行期失败返回给 Assistant，
-它可以直接继续或编写后续 Graph。MCP
-的四个 Assistant 工具负责 Profile 排序，以及临时工作流的执行（含内部预检与持久准入）、
-查看和显式取消。MCP 绑定的 Agent 必须是准确且活动的指定 Assistant Membership；它不能
-选择 route、绑定原生会话或创建隐藏参与者。不同工作流可以并发执行，每个工作流与
-Membership turn 保持有序。
+Conversation runtime 消费持久化 Plan 与 Checkpoints，获取完整 eligible frontier，保持
+稳定顺序和有界原生通道，通过准确 Conversation Membership 派发每个 Agent，并且只在
+终态结算后推进 checkpoint。MCP 调用方只能启动、授权、查看或显式取消交付；不能提交
+Task、选择 route、绑定原生会话或接受 Reviewer。不同交付可以并发执行，同一交付和
+Task attempt 保持有序。
 
-日常对话选择仍由 Assistant 配置控制，其模型和思考强度控制与 Adaptive Flywheel route
-选择分离。修改 route 后请保存适应性飞轮，客户端会读取新的持久化状态；
-客户端不会暴露状态文件、可执行文件路径或原生续接位置。
-
-群聊输入框中的**自动适配**表示下一条消息通过与一对一聊天相同的原生通道发给指定
-Assistant。导入策略是由 Assistant 控制的工作流工具，不会替换 Assistant。工作流拒绝会
-标出失败 stage 和安全的请求位置；角色与 Assistant 的 model 目录通过一次后台 target
-batch 加载。
-
-DeepSeek Harness 通过官方 SDK JSON-RPC runtime carrier 纳入适配目标。当前声明文本会话、
-准确 session 连续性、结构化流式事件与显式 model 选择；发布 readiness 仍为 unverified，
-且本通道不声明 cancel、活动 prompt steer、历史回读、reasoning override 或多模态输入。
+日常对话选择仍由 Assistant 配置控制，其模型和思考强度控制与交付角色 route 分离。
+修改 route 后请保存适应性飞轮，Conversation runtime 会读取新的持久化状态；客户端
+不会暴露状态文件、可执行文件路径或原生续接位置。
 
 ## 连接虚拟机内的 OpenClaw 或 Hermes
 
@@ -153,7 +137,7 @@ Native Support 和 Native ACP 无需额外安装。当目标不属于这两类�
 LicoUp Adaptive Bridge 负责针对该目标的交互适配。只有目录条目声明了真实的
 生命周期操作时，页面才会显示安装或卸载。每个桥接操作都需要直接确认，
 并且只能修改 LicoUp 自有文件或命名空间 Hook。发现或安装成功本身不代表
-智能体已经可以对话。插件就绪状态始终与原生 Assistant 工作流和适应性飞轮 route 权威分开报告。
+智能体已经可以对话。插件就绪状态始终与原生交付归属和适应性飞轮 route 权威分开报告。
 
 可选协作始终位于默认客户端之外。安装或启用不会授予持续传输权限；组装不会自动启动服务端。
 导入签名公钥、组装固定签名运行器、在 loopback 上启动它，以及批准
@@ -172,10 +156,10 @@ LicoUp Adaptive Bridge 负责针对该目标的交互适配。只有目录条目
 - 对话备份写入用户选择的本地目录。启动本地备份任务前，可选择全部对话或准确关键词，
   并先检查预览结果。
 - Token 用量视图根据本地记录计算，默认窗口为最近 30 天；也可以选择按智能体、模型或
-  工作流统计，并指定自定义时间窗口。工作流视图展示 Graph run、command、准确
-  Membership 归属、校验过的数字用量与精确覆盖率。LicoUp 负责工作流用量
-  记账，Adaptive Flywheel 负责 route 选择，原生对话位置只作为私有 adapter 绑定。视图不会
-  暴露 prompt、reply、tool payload、摘要、压缩或 cache 控件；原生 ledger 只保留活动工作流
+  交付统计，并指定自定义时间窗口。交付视图按 Plan → Task → dispatch 展开，
+  展示精确覆盖率和主对话与下属对话拆分，数据仅来自数字 ledger。LicoUp 负责调度，
+  Adaptive Flywheel 负责 route 选择，原生对话位置只作为私有 adapter 绑定。视图不会
+  暴露 prompt、reply、tool payload、摘要、压缩或 cache 控件；原生 ledger 只保留活动交付
   和最新二十份终态汇总。
 - 日志和诊断留在本机；用户可以主动保存一份脱敏副本。
 

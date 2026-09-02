@@ -9,54 +9,49 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const driverRoot = "crates/licoup-native/src/platform/openclaw_driver";
-const parserRoot =
-  "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw";
 
-const driverLeaves = Object.freeze([
+const productionLeaves = Object.freeze([
+  "codec.rs",
   "continuity.rs",
   "errors.rs",
+  "events.rs",
   "execution.rs",
   "io.rs",
   "model.rs",
   "params.rs",
   "probe.rs",
+  "protocol.rs",
   "supervision.rs",
 ]);
-const parserLeaves = Object.freeze(["codec.rs", "events.rs", "protocol.rs"]);
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
 async function sources() {
-  return Object.fromEntries(await Promise.all([
-    ...driverLeaves.map(async (leaf) => [
-      `driver/${leaf}`,
-      await read(`${driverRoot}/${leaf}`),
-    ]),
-    ...parserLeaves.map(async (leaf) => [
-      `parser/${leaf}`,
-      await read(`${parserRoot}/${leaf}`),
-    ]),
-  ]));
+  return Object.fromEntries(await Promise.all(productionLeaves.map(async (leaf) => [
+    leaf,
+    await read(`${driverRoot}/${leaf}`),
+  ])));
 }
 
-test("OpenClaw facade routes decoding leaves to the parser boundary", async () => {
+test("OpenClaw driver facade is thin and owns every production leaf", async () => {
   const facade = await read(`${driverRoot}.rs`);
-  for (const leaf of driverLeaves) {
-    assert.ok(facade.includes(`mod ${leaf.replace(".rs", "")};`));
-  }
-  for (const leaf of parserLeaves) {
-    const moduleName = leaf.replace(".rs", "");
-    assert.ok(facade.includes(`native_agent_parser/adapters/openclaw/${leaf}`));
-    assert.ok(facade.includes(`mod ${moduleName};`));
-  }
+  assert.deepEqual(
+    [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
+      .map((match) => match[1])
+      .filter((moduleName) => moduleName !== "tests")
+      .map((moduleName) => `${moduleName}.rs`)
+      .sort(),
+    [...productionLeaves].sort(),
+  );
   for (const implementationToken of [
     "struct OpenClawProtocol",
     "struct ProtocolConfig",
     "Command::new",
     "fn run_protocol_loop",
     "include!(",
+    "#[path",
   ]) {
     assert.equal(facade.includes(implementationToken), false);
   }
@@ -65,16 +60,16 @@ test("OpenClaw facade routes decoding leaves to the parser boundary", async () =
 test("OpenClaw retains one fixed Gateway ACP lane without shell fallback", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
-  assert.ok(source["driver/model.rs"].includes(
+  assert.ok(source["model.rs"].includes(
     'RUNTIME_PROTOCOL: &str = "openclaw-acp-stdio-jsonrpc"',
   ));
-  assert.ok(source["driver/supervision.rs"].includes(
+  assert.ok(source["supervision.rs"].includes(
     'ATTACH_ARGS_PREFIX: &[&str] = &["acp", "--url"]',
   ));
-  assert.ok(source["driver/supervision.rs"].includes("Command::new(&self.executable)"));
-  assert.ok(source["driver/probe.rs"].includes('&["acp", "--help"]'));
-  assert.ok(source["driver/probe.rs"].includes('&["--version"]'));
-  assert.ok(source["driver/probe.rs"].includes(".stderr(Stdio::null())"));
+  assert.ok(source["supervision.rs"].includes("Command::new(&self.executable)"));
+  assert.ok(source["probe.rs"].includes('&["acp", "--help"]'));
+  assert.ok(source["probe.rs"].includes('&["--version"]'));
+  assert.ok(source["probe.rs"].includes(".stderr(Stdio::null())"));
   for (const fallback of [
     'Command::new("sh")',
     'Command::new("bash")',
@@ -89,8 +84,8 @@ test("OpenClaw retains one fixed Gateway ACP lane without shell fallback", async
 
 test("OpenClaw continuity keeps protocol and resumable Gateway identities exact", async () => {
   const source = await sources();
-  const continuity = source["driver/continuity.rs"];
-  const params = source["driver/params.rs"];
+  const continuity = source["continuity.rs"];
+  const params = source["params.rs"];
   for (const token of [
     "SessionBinding",
     "capture_opening_update",
@@ -120,11 +115,9 @@ test("OpenClaw IO, cleanup, events, and errors stay bounded and non-projecting",
   ]) {
     assert.ok(joined.includes(token), `missing OpenClaw lifecycle token: ${token}`);
   }
-  assert.ok(source["driver/errors.rs"].includes("message: &'static str"));
-  assert.ok(source["parser/events.rs"].includes("projected_event"));
-  assert.ok(source["parser/protocol.rs"].includes("handle_frame"));
-  assert.equal(source["driver/io.rs"].includes("decode_message"), false);
-  assert.equal(source["parser/protocol.rs"].includes("update.payload().clone()"), false);
+  assert.ok(source["errors.rs"].includes("message: &'static str"));
+  assert.ok(source["events.rs"].includes("projected_event"));
+  assert.equal(source["protocol.rs"].includes("update.payload().clone()"), false);
   for (const rawProjection of [
     "stderr: String",
     "stderr: Vec",

@@ -48,12 +48,6 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
     assert_eq!(result.thread_id, "fake-thread");
     assert_eq!(result.turn_id, "fake-turn");
     assert_eq!(result.turn_status, "completed");
-    assert!(matches!(
-        result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
-        ))
-    ));
     assert_eq!(result.effective.model.as_deref(), Some("fake-explicit"));
     assert_eq!(result.effective.reasoning_effort.as_deref(), Some("high"));
     assert!(result.stderr_truncated);

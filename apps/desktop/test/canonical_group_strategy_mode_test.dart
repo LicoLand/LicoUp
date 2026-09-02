@@ -7,19 +7,15 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
-import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -65,10 +61,10 @@ void main() {
 
       final picker = find.byKey(const Key('canonical-group-strategy-picker'));
       expect(picker, findsOneWidget);
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Optional strategy'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
-        findsOneWidget,
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        findsNothing,
       );
 
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
@@ -80,10 +76,9 @@ void main() {
         find.byKey(const Key('canonical-group-strategy-picker-panel')),
         findsOneWidget,
       );
-      expect(find.text('Automatic adaptation'), findsOneWidget);
       expect(find.text('Authorized Graph'), findsOneWidget);
       expect(find.text('Pending Graph'), findsNothing);
-      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsNothing);
       final option = find.byKey(
         const Key('canonical-group-strategy-option-rev-auth'),
       );
@@ -109,9 +104,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Authorized Graph'), findsWidgets);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
         findsOneWidget,
       );
       expect(conversationRunner.strategyRevision, 'rev-auth');
@@ -141,9 +136,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Authorized Graph'), findsWidgets);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
         findsOneWidget,
       );
       expect(
@@ -164,7 +159,7 @@ void main() {
       );
 
       final entry = tester.getRect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry')),
       );
       final field = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
@@ -189,7 +184,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(openedRevisions, ['rev-auth', 'rev-auth']);
 
-      expect(openedRevisions, ['rev-auth', 'rev-auth']);
+      await tester.tap(
+        find.byKey(const Key('canonical-group-strategy-entry-open')),
+      );
+      await tester.pumpAndSettle();
+      expect(openedRevisions, ['rev-auth', 'rev-auth', 'rev-auth']);
       expect(
         conversationRunner.requests.where(
           (request) => request['action'] == 'conversation.membership.add',
@@ -206,53 +205,60 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(gateway.actions, isNot(contains('strategy.run.start')));
-      expect(gateway.startCount, 0);
-      expect(callOrder, contains('conversation:conversation.message.post'));
+      expect(gateway.actions, contains('strategy.run.start'));
+      expect(gateway.startCount, 1);
+      expect(
+        callOrder.indexOf('conversation:conversation.message.post'),
+        lessThan(callOrder.indexOf('flywheel:strategy.run.start')),
+      );
       final post = conversationRunner.requests.lastWhere(
         (request) => request['action'] == 'conversation.message.post',
       );
       expect(post['content'], 'start the graph');
-      expect(post.containsKey('mentionedMembershipIds'), isFalse);
+      expect(post['mentionedMembershipIds'], isEmpty);
 
       callOrder.clear();
+      gateway.needsHumanInput = true;
       await tester.enterText(find.byType(TextField), 'continue the graph');
       await tester.pump();
       await tester.tap(
         find.byKey(const Key('agent-conversation-composer-send')),
       );
       await tester.pumpAndSettle();
-      expect(callOrder, contains('conversation:conversation.message.post'));
-      expect(callOrder, isNot(contains('flywheel:strategy.run.active')));
-      expect(callOrder, isNot(contains('flywheel:strategy.run.cancel')));
-      expect(callOrder, isNot(contains('flywheel:strategy.run.start')));
+      expect(
+        callOrder,
+        containsAllInOrder([
+          'flywheel:strategy.run.active',
+          'flywheel:strategy.run.cancel',
+          'conversation:conversation.message.post',
+          'flywheel:strategy.run.start',
+        ]),
+      );
       final continuation = conversationRunner.requests.lastWhere(
         (request) => request['action'] == 'conversation.message.post',
       );
-      expect(continuation.containsKey('mentionedMembershipIds'), isFalse);
-      expect(gateway.startCount, 0);
+      expect(continuation['mentionedMembershipIds'], isEmpty);
+      expect(gateway.startCount, 2);
       final cancelsBeforeClearingStrategy = gateway.actions
           .where((action) => action == 'strategy.run.cancel')
           .length;
 
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
       await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-option-none')),
+        find.byKey(const Key('canonical-group-strategy-entry-clear')),
       );
       await tester.pumpAndSettle();
 
-      expect(openedRevisions, ['rev-auth', 'rev-auth']);
+      expect(openedRevisions, ['rev-auth', 'rev-auth', 'rev-auth']);
       expect(
         gateway.actions
             .where((action) => action == 'strategy.run.cancel')
             .length,
         cancelsBeforeClearingStrategy,
       );
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Optional strategy'), findsOneWidget);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
-        findsOneWidget,
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
+        findsNothing,
       );
       expect(conversationRunner.strategyRevision, isEmpty);
       expect(
@@ -270,190 +276,7 @@ void main() {
         find.byKey(const Key('agent-conversation-composer-send')),
       );
       await tester.pumpAndSettle();
-      expect(gateway.startCount, 0);
-    },
-  );
-
-  testWidgets(
-    'group strategy follow-up posts without cancelling or starting from Dart',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final callOrder = <String>[];
-      final conversationRunner = _GroupConversationRunner(callOrder: callOrder);
-      final gateway = _StrategyGateway(callOrder: callOrder);
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [
-              _target('codex', 'Codex'),
-              _target('worker-a', 'Worker A'),
-            ],
-            onCopyText: (_) async {},
-            framed: false,
-            flywheelGateway: gateway,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(tester.getCenter(picker));
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('canonical-group-strategy-option-rev-auth')),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'start the graph');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
-      expect(gateway.startCount, 0);
-
-      callOrder.clear();
-      await tester.enterText(find.byType(TextField), 'hi');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
-      expect(callOrder, contains('conversation:conversation.message.post'));
-      expect(callOrder, isNot(contains('flywheel:strategy.run.cancel')));
-      expect(callOrder, isNot(contains('flywheel:strategy.run.start')));
-      expect(gateway.startCount, 0);
-    },
-  );
-
-  testWidgets(
-    'Assistant sparkles control pauses only future dispatch and resumes on the next tap',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final runner = _GroupConversationRunner();
-      final controller = ClientConversationController(runner: runner);
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final toggle = find.byKey(const Key('canonical-group-assistant-toggle'));
-      expect(toggle, findsOneWidget);
-      await tester.tap(toggle);
-      await tester.pump();
-      expect(find.text('Your Assistant is paused'), findsOneWidget);
-
-      await tester.enterText(find.byType(TextField), 'save without dispatch');
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        runner.requests.where(
-          (request) => request['action'] == 'conversation.dispatch.after-post',
-        ),
-        isEmpty,
-      );
-
-      await tester.tap(toggle);
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), 'dispatch again');
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        runner.requests.where(
-          (request) => request['action'] == 'conversation.dispatch.after-post',
-        ),
-        hasLength(1),
-      );
-    },
-  );
-
-  testWidgets(
-    'Assistant control has no hover editor and matches the input capsule height',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1000, 700);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final runner = _GroupConversationRunner();
-      final controller = ClientConversationController(runner: runner);
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(
-        tester.getCenter(
-          find.byKey(const Key('canonical-group-assistant-control')),
-        ),
-      );
-      await tester.pump();
-      expect(
-        find.byKey(const Key('canonical-group-assistant-edit')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('canonical-group-assistant-editor')),
-        findsNothing,
-      );
-      final assistant = tester.getRect(
-        find.byKey(const Key('canonical-group-assistant-control')),
-      );
-      final field = tester.getRect(
-        find.byKey(const Key('agent-conversation-composer-field')),
-      );
-      expect(assistant.height, lessThanOrEqualTo(42));
-      expect(assistant.height, closeTo(field.height, 0.5));
-      expect(assistant.top, closeTo(field.top, 0.5));
-      expect(assistant.bottom, closeTo(field.bottom, 0.5));
+      expect(gateway.startCount, 2);
     },
   );
 
@@ -522,9 +345,9 @@ void main() {
       await tester.pumpWidget(groupPane());
       await tester.pumpAndSettle();
 
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Authorized Graph'), findsWidgets);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
         findsOneWidget,
       );
       expect(conversationRunner.strategyRevision, 'rev-auth');
@@ -567,10 +390,10 @@ void main() {
 
       expect(gateway.inspectionCount, 1);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
         findsOneWidget,
       );
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Authorized Graph'), findsWidgets);
       expect(conversationRunner.strategyRevision, 'rev-auth');
 
       controller.updateDraft('notify projection retry');
@@ -578,10 +401,10 @@ void main() {
 
       expect(gateway.inspectionCount, 2);
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
         findsOneWidget,
       );
-      expectAssistantIdentityLabel('Codex');
+      expect(find.text('Authorized Graph'), findsWidgets);
     },
   );
 
@@ -621,7 +444,7 @@ void main() {
       expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('canonical-group-assistant-control')),
+        find.byKey(const Key('canonical-group-strategy-entry-capsule')),
         findsOneWidget,
       );
 
@@ -653,779 +476,6 @@ void main() {
       expect(gateway.startCount, 0);
     },
   );
-
-  testWidgets(
-    'surfaces a strategy start failure on the group conversation banner',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final conversationRunner = _GroupConversationRunner()
-        ..failStrategyStart = true;
-      final gateway = _StrategyGateway();
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-            flywheelGateway: gateway,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'hi');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(controller.failureStage, 'strategy/start');
-      expect(controller.failureCode, 'strategy_actor_quota_exhausted');
-      expect(controller.failureRef, matches(RegExp(r'^#L-[0-9A-F]{4}$')));
-      expect(find.byKey(const Key('canonical-group-failure')), findsOneWidget);
-      expect(
-        find.byKey(const Key('canonical-group-failure-copy')),
-        findsOneWidget,
-      );
-      expect(find.textContaining(controller.failureRef), findsWidgets);
-    },
-  );
-
-  testWidgets(
-    'strategy dispatch without handles and without a typed error shows no failure',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final conversationRunner = _GroupConversationRunner()
-        ..dispatchPending = true;
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'hi');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(controller.failureCode, isEmpty);
-      expect(controller.dispatchPending, isFalse);
-      expect(find.byKey(const Key('canonical-group-failure')), findsNothing);
-      expect(
-        tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
-        isFalse,
-      );
-    },
-  );
-
-  testWidgets(
-    'plain group text does not show agent-turn progress while posting',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final postBarrier = Completer<void>();
-      final conversationRunner = _GroupConversationRunner(
-        postBarrier: postBarrier,
-      );
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'plain group note');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-
-      expect(controller.sending, isTrue);
-      expect(controller.dispatchPending, isFalse);
-      expect(
-        tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
-        isFalse,
-      );
-
-      postBarrier.complete();
-      await tester.pumpAndSettle();
-      expect(controller.dispatchPending, isFalse);
-      expect(
-        tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
-        isFalse,
-      );
-    },
-  );
-
-  testWidgets(
-    'group mention attach uses posted turn handles without waiting for activeTurns',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final conversationRunner = _GroupConversationRunner()
-        ..postTurns = [
-          {
-            'turnHandle': 'dispatch:live',
-            'conversationId': 'conversation:group',
-            'membershipId': 'membership:codex',
-            'agent': 'codex',
-          },
-        ]
-        ..dispatchPending = true;
-      final persistent = _PersistentGateway();
-      addTearDown(persistent.dispose);
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-            persistentGateway: persistent,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'hello @Codex');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 40));
-
-      expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
-      expect(persistent.attachedHandles, ['dispatch:live']);
-      expect(find.text('streaming token'), findsOneWidget);
-      expect(
-        tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
-        isTrue,
-      );
-    },
-  );
-
-  testWidgets('new group observer replays a discovered turn from cursor zero', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final conversationRunner = _GroupConversationRunner();
-    final persistent = _PersistentGateway(
-      active: const [
-        {
-          'turnHandle': 'dispatch:existing',
-          'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
-          'highWater': 9,
-        },
-      ],
-    );
-    addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPane(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
-          persistentGateway: persistent,
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-
-    expect(persistent.attachedHandles, ['dispatch:existing']);
-    expect(persistent.attachedAfterCursors, [0]);
-    expect(find.text('streaming token'), findsOneWidget);
-  });
-
-  testWidgets(
-    'chunk burst renders once after the coalesced publish window and keeps '
-    'projection caches stable across repaint-only rebuilds',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final conversationRunner = _GroupConversationRunner()
-        ..postTurns = [
-          {
-            'turnHandle': 'dispatch:live',
-            'conversationId': 'conversation:group',
-            'membershipId': 'membership:codex',
-            'agent': 'codex',
-          },
-        ];
-      final persistent = _BurstGateway();
-      addTearDown(persistent.dispose);
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-            persistentGateway: persistent,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'hello @Codex');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-
-      expect(persistent.attachedHandles, ['dispatch:live']);
-
-      // The 12-chunk burst lands in one microtask; the coalesced publish fires
-      // after the 32 ms window, so the complete text appears in one step
-      // instead of a per-chunk repaint cascade.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 40));
-      expect(find.textContaining('burst-11'), findsOneWidget);
-
-      final flowFinder = find.byType(MessagingParticipantFlow);
-      expect(flowFinder, findsOneWidget);
-      final itemsAfterBurst = tester
-          .widget<MessagingParticipantFlow>(flowFinder)
-          .items;
-
-      // Rebuilds with no new content must reuse the timeline instead of
-      // re-projecting history: the message list keeps list identity.
-      await tester.pump();
-      await tester.pump();
-      final itemsAfterIdleRebuilds = tester
-          .widget<MessagingParticipantFlow>(flowFinder)
-          .items;
-      expect(identical(itemsAfterBurst, itemsAfterIdleRebuilds), isTrue);
-
-      // Typing in the composer must not re-project the message history either.
-      await tester.enterText(find.byType(TextField), 'still typing');
-      await tester.pump();
-      final itemsAfterDraft = tester
-          .widget<MessagingParticipantFlow>(flowFinder)
-          .items;
-      expect(identical(itemsAfterBurst, itemsAfterDraft), isTrue);
-    },
-  );
-
-  testWidgets(
-    'terminal handoff keeps the live reply until durable readback arrives',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final conversationRunner = _GroupConversationRunner()
-        ..postTurns = [
-          {
-            'turnHandle': 'dispatch:live',
-            'conversationId': 'conversation:group',
-            'membershipId': 'membership:codex',
-            'agent': 'codex',
-          },
-        ]
-        ..dispatchPending = true;
-      final persistent = _PersistentGateway();
-      addTearDown(persistent.dispose);
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-            persistentGateway: persistent,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'hello @Codex');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 40));
-      expect(find.text('streaming token'), findsOneWidget);
-
-      final reloadBarrier = Completer<void>();
-      conversationRunner
-        ..persistedEvents = [_completedConversationEvent()]
-        ..nextGetBarrier = reloadBarrier;
-      persistent.completeObserver();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 40));
-
-      // The attach stream has ended, but the live scope remains visible while
-      // the two durable Conversation RPCs are still in flight.
-      expect(find.text('streaming token'), findsOneWidget);
-      expect(controller.dispatchPending, isTrue);
-
-      reloadBarrier.complete();
-      await tester.pumpAndSettle();
-      expect(find.text('streaming token'), findsOneWidget);
-      expect(controller.dispatchPending, isFalse);
-    },
-  );
-
-  testWidgets(
-    'terminal handoff retains live reply until finalized readback is available',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final conversationRunner = _GroupConversationRunner()
-        ..postTurns = [
-          {
-            'turnHandle': 'dispatch:live',
-            'conversationId': 'conversation:group',
-            'membershipId': 'membership:codex',
-            'agent': 'codex',
-          },
-        ]
-        ..dispatchPending = true;
-      final persistent = _PersistentGateway();
-      addTearDown(persistent.dispose);
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-            persistentGateway: persistent,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'hello @Codex');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 40));
-
-      conversationRunner.getFailuresRemaining = 2;
-      persistent.completeObserver();
-      await tester.pumpAndSettle();
-
-      expect(find.text('streaming token'), findsOneWidget);
-      expect(controller.dispatchPending, isFalse);
-    },
-  );
-
-  testWidgets('observer loss detaches without inventing a turn failure', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final conversationRunner = _GroupConversationRunner()
-      ..postTurns = [
-        {
-          'turnHandle': 'dispatch:live',
-          'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
-        },
-      ]
-      ..dispatchPending = true;
-    final persistent = _PersistentGateway();
-    addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPane(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
-          persistentGateway: persistent,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'hello @Codex');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
-    await tester.pump();
-    await tester.pump();
-    expect(controller.dispatchPending, isTrue);
-
-    persistent.failObserver();
-    await tester.pumpAndSettle();
-
-    expect(controller.failureStage, isEmpty);
-    expect(controller.failureCode, isEmpty);
-    expect(controller.dispatchPending, isFalse);
-    expect(persistent.cancelCount, 0);
-  });
-
-  testWidgets('observer loss reattaches an active turn after its last cursor', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final conversationRunner = _GroupConversationRunner();
-    final persistent = _PersistentGateway(
-      active: const [
-        {
-          'turnHandle': 'dispatch:existing',
-          'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
-        },
-      ],
-    );
-    addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPane(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
-          persistentGateway: persistent,
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-    expect(persistent.attachedAfterCursors, [0]);
-
-    persistent.failObserver();
-    for (
-      var attempt = 0;
-      attempt < 20 && persistent.attachedAfterCursors.length < 2;
-      attempt += 1
-    ) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-
-    expect(persistent.attachedHandles, [
-      'dispatch:existing',
-      'dispatch:existing',
-    ]);
-    expect(persistent.attachedAfterCursors, [0, 1]);
-    expect(find.text('streaming token'), findsOneWidget);
-  });
-
-  testWidgets('single active group turn exposes an explicit stop operation', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final conversationRunner = _GroupConversationRunner();
-    final persistent = _PersistentGateway(
-      active: const [
-        {
-          'turnHandle': 'dispatch:existing',
-          'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
-        },
-      ],
-    );
-    addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPane(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
-          persistentGateway: persistent,
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-
-    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
-    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
-    await tester.pump();
-    expect(persistent.cancelCount, 1);
-  });
-
-  testWidgets('observer loss reloads and preserves exact persisted failure', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final conversationRunner = _GroupConversationRunner()
-      ..postTurns = [
-        {
-          'turnHandle': 'dispatch:live',
-          'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
-        },
-      ]
-      ..dispatchPending = true;
-    final persistent = _PersistentGateway();
-    addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPane(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
-          persistentGateway: persistent,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'hello @Codex');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
-    await tester.pump();
-    await tester.pump();
-
-    conversationRunner.persistedEvents = [_failedConversationEvent()];
-    persistent.failObserver();
-    for (
-      var attempt = 0;
-      attempt < 20 && controller.failureCode.isEmpty;
-      attempt += 1
-    ) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-
-    expect(controller.failureStage, 'turn');
-    expect(controller.failureCode, 'exact_native_failure');
-    expect(controller.failureCode, isNot('transport_failed'));
-    expect(controller.dispatchPending, isFalse);
-    expect(persistent.cancelCount, 0);
-  });
-
-  testWidgets(
-    'strategy send shows running edge only after dispatch returns handles',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final dispatchBarrier = Completer<void>();
-      final conversationRunner =
-          _GroupConversationRunner(dispatchBarrier: dispatchBarrier)
-            ..postTurns = [
-              {
-                'turnHandle': 'dispatch:live',
-                'conversationId': 'conversation:group',
-                'agent': 'codex',
-              },
-            ]
-            ..dispatchPending = true;
-      final controller = ClientConversationController(
-        runner: conversationRunner,
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPane(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'hi');
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pump();
-
-      // While after-post is in flight no handle exists yet, so the running
-      // edge stays off even though the composer is busy.
-      expect(controller.sending, isTrue);
-      expect(controller.dispatchPending, isFalse);
-      expect(
-        tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
-        isFalse,
-      );
-
-      dispatchBarrier.complete();
-      await tester.pump();
-      await tester.pump();
-
-      expect(controller.dispatchPending, isTrue);
-      expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
-      expect(
-        tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
-        isTrue,
-      );
-    },
-  );
 }
 
 Widget _groupApp(Widget child) {
@@ -1453,19 +503,6 @@ Widget _groupApp(Widget child) {
   );
 }
 
-/// The readiness capsule shows the assistant identity label in place of the
-/// retired ready string: the assistant Membership's display name when no
-/// strategy runtime profile or persistent Profile carries model/effort detail.
-void expectAssistantIdentityLabel(String label) {
-  expect(
-    find.descendant(
-      of: find.byKey(const Key('canonical-group-strategy-picker')),
-      matching: find.text(label),
-    ),
-    findsOneWidget,
-  );
-}
-
 TargetCandidate _target(String id, String label) => TargetCandidate(
   id: id,
   target: id,
@@ -1475,20 +512,10 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
   configured: true,
   confidence: 1,
   adapterStatus: 'implemented',
-  binaryPath: '/fixture/agent',
   adapterCapabilities: const {
     'conversationDriver': 'implemented',
     'conversationProtocol': 'fixture',
     'conversationReadiness': 'ready',
-  },
-  modelCatalog: const {
-    'models': [
-      {
-        'id': 'model-a',
-        'reasoningEfforts': ['low', 'high'],
-        'defaultReasoningEffort': 'low',
-      },
-    ],
   },
   supportedActions: const ['runtime.message.send'],
 );
@@ -1503,7 +530,6 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
   int inspectionCount = 0;
   int inspectionFailures = 0;
   bool needsHumanInput = false;
-  bool failStart = false;
 
   @override
   Future<Object?> execute(Map<String, dynamic> request) async {
@@ -1592,12 +618,6 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
       'strategy.run.cancel' => {'runId': 'run-1', 'status': 'cancelled'},
       'strategy.run.start' => () {
         startCount += 1;
-        if (failStart) {
-          throw const AdaptiveFlywheelFailure(
-            code: 'strategy_actor_quota_exhausted',
-            recovery: 'Review the strategy run.',
-          );
-        }
         needsHumanInput = false;
         return {'runId': 'run-1', 'needsHumanInput': false};
       }(),
@@ -1607,25 +627,14 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
 }
 
 final class _GroupConversationRunner implements AgentCommandRunner {
-  _GroupConversationRunner({
-    this.callOrder,
-    this.postBarrier,
-    this.dispatchBarrier,
-  });
+  _GroupConversationRunner({this.callOrder, this.postBarrier});
 
   final List<String>? callOrder;
   final Completer<void>? postBarrier;
-  final Completer<void>? dispatchBarrier;
   final List<Map<String, dynamic>> requests = [];
   final Map<String, String> addedAgents = {};
   String strategyRevision = '';
   int revision = 2;
-  bool failStrategyStart = false;
-  bool dispatchPending = false;
-  List<Map<String, dynamic>> postTurns = const [];
-  List<Map<String, dynamic>> persistedEvents = const [];
-  Completer<void>? nextGetBarrier;
-  int getFailuresRemaining = 0;
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -1638,18 +647,6 @@ final class _GroupConversationRunner implements AgentCommandRunner {
     callOrder?.add('conversation:$action');
     if (action == 'conversation.message.post') {
       await postBarrier?.future;
-    }
-    if (action == 'conversation.dispatch.after-post') {
-      await dispatchBarrier?.future;
-    }
-    if (action == 'conversation.get') {
-      if (getFailuresRemaining > 0) {
-        getFailuresRemaining -= 1;
-        throw StateError('conversation get unavailable');
-      }
-      final barrier = nextGetBarrier;
-      nextGetBarrier = null;
-      await barrier?.future;
     }
     if (action == 'conversation.membership.add') {
       final principal = Map<String, dynamic>.from(request['principal'] as Map);
@@ -1674,9 +671,9 @@ final class _GroupConversationRunner implements AgentCommandRunner {
               .toString(),
         ),
         'conversation.events.page' => {
-          'events': persistedEvents,
+          'events': <Map<String, dynamic>>[],
           'nextCursor': null,
-          'totalCount': persistedEvents.length,
+          'totalCount': 0,
         },
         'conversation.message.post' => {
           'event': <String, dynamic>{
@@ -1690,31 +687,9 @@ final class _GroupConversationRunner implements AgentCommandRunner {
             'parts': <Map<String, dynamic>>[],
           },
           'directTurns': <Map<String, dynamic>>[],
-          'turns': <Map<String, dynamic>>[],
-          'dispatchPending': false,
-        },
-        'conversation.dispatch.after-post' => {
-          'event': <String, dynamic>{'id': request['eventId']},
-          'directTurns': <Map<String, dynamic>>[],
-          'turns': postTurns,
-          'dispatchPending': dispatchPending && !failStrategyStart,
-          if (failStrategyStart)
-            'strategyError': <String, dynamic>{
-              'code': 'strategy_actor_quota_exhausted',
-              'stage': 'strategy/start',
-            },
         },
         'conversation.membership.add' => <String, dynamic>{},
         'conversation.strategy.set' => <String, dynamic>{},
-        'conversation.profile.get' => <String, dynamic>{
-          'revision': 0,
-          'requiredCapabilities': <String>[],
-          'preferredCapabilities': <String>[],
-          'skillReferences': <String>[],
-        },
-        'conversation.profile.update' => <String, dynamic>{
-          'profile': request['intent'],
-        },
         _ => <String, dynamic>{},
       },
     };
@@ -1758,7 +733,6 @@ Map<String, dynamic> _conversation(
   'archived': false,
   'pinned': true,
   'isGroup': true,
-  'assistantMembershipId': 'membership:codex',
   if (strategyRevision.isNotEmpty) 'strategyRevision': strategyRevision,
   'revision': revision,
   'createdAtUnixMs': 1,
@@ -1801,48 +775,6 @@ Map<String, dynamic> _conversation(
   ],
 };
 
-Map<String, dynamic> _failedConversationEvent() => {
-  'id': 'event:failed',
-  'conversationId': 'conversation:group',
-  'sequence': 1,
-  'authorMembershipId': 'membership:codex',
-  'correlationId': 'dispatch:live',
-  'kind': 'message',
-  'createdAtUnixMs': 3,
-  'finalized': true,
-  'parts': [
-    {
-      'id': 'part:failure',
-      'eventId': 'event:failed',
-      'ordinal': 0,
-      'kind': 'diagnostic',
-      'content': '{"code":"exact_native_failure","stage":"native/turn"}',
-      'createdAtUnixMs': 3,
-    },
-  ],
-};
-
-Map<String, dynamic> _completedConversationEvent() => {
-  'id': 'event:completed',
-  'conversationId': 'conversation:group',
-  'sequence': 1,
-  'authorMembershipId': 'membership:codex',
-  'correlationId': 'dispatch:live',
-  'kind': 'message',
-  'createdAtUnixMs': 3,
-  'finalized': true,
-  'parts': [
-    {
-      'id': 'part:reply',
-      'eventId': 'event:completed',
-      'ordinal': 0,
-      'kind': 'text',
-      'content': 'streaming token',
-      'createdAtUnixMs': 3,
-    },
-  ],
-};
-
 Map<String, dynamic> _membership({
   required String id,
   required String principalId,
@@ -1865,119 +797,3 @@ Map<String, dynamic> _membership({
   'status': 'active',
   'joinedAtUnixMs': 1,
 };
-
-final class _PersistentGateway implements PersistentAgentConversationGateway {
-  _PersistentGateway({List<Map<String, dynamic>> active = const []})
-    : _active = List<Map<String, dynamic>>.unmodifiable(active) {
-    _chunks = StreamController<AgentDispatchEvent>.broadcast();
-  }
-
-  final List<Map<String, dynamic>> _active;
-  final List<String> attachedHandles = [];
-  final List<int> attachedAfterCursors = [];
-  late final StreamController<AgentDispatchEvent> _chunks;
-  var cancelCount = 0;
-
-  void failObserver() {
-    _chunks.addError(const AgentDispatchStreamException('transport_failed'));
-  }
-
-  void completeObserver() {
-    _chunks.add(
-      const AgentDispatchEvent(
-        kind: 'dispatch.turn.completed',
-        payload: {
-          'ok': true,
-          'terminalTransition': {'kind': 'lifecycle', 'stage': 'completed'},
-        },
-      ),
-    );
-  }
-
-  void dispose() {
-    unawaited(_chunks.close());
-  }
-
-  @override
-  Future<List<Map<String, dynamic>>> activeTurns({
-    required String agentId,
-    String sessionId = '',
-    String conversationId = '',
-    Duration waitForChange = Duration.zero,
-  }) async => _active;
-
-  @override
-  Future<void> ensureRuntime({String conversationId = ''}) async {}
-
-  @override
-  Stream<AgentDispatchEvent> attachActiveTurn({
-    required String turnHandle,
-    required String conversationId,
-    int afterCursor = 0,
-  }) {
-    attachedHandles.add(turnHandle);
-    attachedAfterCursors.add(afterCursor);
-    scheduleMicrotask(() {
-      if (_chunks.isClosed) return;
-      _chunks.add(
-        const AgentDispatchEvent(
-          kind: 'agent.message.chunk',
-          payload: {'text': 'streaming token', 'cursor': 1},
-        ),
-      );
-    });
-    return _chunks.stream;
-  }
-
-  @override
-  Future<AgentDispatchTurnResult> steerActiveTurn({
-    required String turnHandle,
-    required String conversationId,
-    required String text,
-  }) async => const AgentDispatchTurnResult(ok: true);
-
-  @override
-  Future<AgentDispatchCancelResult> cancelActiveTurn({
-    required String turnHandle,
-    required String conversationId,
-  }) async {
-    cancelCount += 1;
-    return const AgentDispatchCancelResult(ok: true);
-  }
-}
-
-/// Emits a burst of chunk events carrying a responding lifecycle prefix when a
-/// turn attaches, so tests can exercise the coalesced publish window.
-final class _BurstGateway extends _PersistentGateway {
-  int burstSize = 12;
-
-  @override
-  Stream<AgentDispatchEvent> attachActiveTurn({
-    required String turnHandle,
-    required String conversationId,
-    int afterCursor = 0,
-  }) {
-    attachedHandles.add(turnHandle);
-    attachedAfterCursors.add(afterCursor);
-    scheduleMicrotask(() {
-      if (_chunks.isClosed) return;
-      for (var index = 0; index < burstSize; index += 1) {
-        _chunks.add(
-          AgentDispatchEvent(
-            kind: 'agent.message.chunk',
-            payload: {
-              'text': 'burst-$index',
-              'lifecyclePrefix': const [
-                'submitted',
-                'accepted',
-                'processing',
-                'responding',
-              ],
-            },
-          ),
-        );
-      }
-    });
-    return _chunks.stream;
-  }
-}

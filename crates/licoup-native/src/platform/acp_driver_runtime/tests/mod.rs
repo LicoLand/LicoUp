@@ -15,7 +15,7 @@ mod support;
 
 use super::errors::ProtocolFailure;
 use super::errors::failure_from_response;
-use super::events::{ACP_EVENT_CHANNEL_CAPACITY, read_protocol_messages};
+use super::events::{ACP_EVENT_CHANNEL_CAPACITY, extract_assistant_text, read_protocol_messages};
 use super::io::drain_stderr;
 use super::model::{AcpDriverSpec, CapabilityProbe};
 use super::params::{ProtocolConfig, timestamp};

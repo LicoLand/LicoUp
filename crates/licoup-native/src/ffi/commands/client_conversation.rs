@@ -18,14 +18,6 @@ pub(super) fn handle_conversation_execute(mut command: AdmittedCommand) -> Resul
         Some(_) => return Err(anyhow!("conversation_request_invalid")),
         None => return Err(anyhow!("conversation_request_required")),
     };
-    // Dispatch-type work needs the persistent host runtime. A one-shot
-    // process would open a turn no observer can attach, so it fails closed
-    // with the typed transport rejection and performs no Agent work.
-    if input.get("action").and_then(Value::as_str) == Some("conversation.dispatch.after-post") {
-        return Err(anyhow!(
-            crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED
-        ));
-    }
     let root = portable_data_dir()?;
     let service = conversation_service(&root)?;
     Ok(CliExecution::Json(serde_json::json!({

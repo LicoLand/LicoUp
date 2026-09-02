@@ -160,9 +160,8 @@ turn for display and start the next user message only after the native reply is
 complete. It must not emulate mid-turn injection by editing private databases,
 scraping a terminal UI, or starting a replacement conversation.
 
-The packaged adapter set is Antigravity, Claude Code, Codex, Cursor, DeepSeek
-Harness, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent,
-OpenClaw, OpenCode, and Pi Agent.
+The packaged adapter set is Antigravity, Claude Code, Codex, Cursor, GitHub
+Copilot, Hermes Agent, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi Agent.
 Adapter readiness remains a release-evidence claim and is disclosed separately
 from source runtime resolution. A target is usable only when the client resolves
 its packaged driver plus a valid local executable or discovered/explicit VM
@@ -276,31 +275,7 @@ acceptable modules and their dedicated commands. During development:
 npm run client:regression:list
 npm run client:regression -- --changed-from <ref> --dry-run
 npm run client:regression -- --module <module-id>
-npm run client:regression:frontend
-npm run client:regression:backend
-npm run client:regression:integration
 ```
-
-The maintained runner executes shared foundation checks first, overlaps the
-frontend and backend collections, then runs interface integration and core
-scenarios. After the core is terminal, it probes every platform and Agent
-entry independently and runs all locally eligible compatibility targets with
-bounded concurrency. A missing optional capability is reported as
-`unverified`. It does not block unrelated evidence or become a pass.
-Agent validation has one shared inventory/schema contract and one independent
-static batch per Agent. A failed Agent batch blocks only that Agent's live
-branch; the other Agent branches continue.
-
-Complete selections batch compatible Cargo targets, Node test files, Flutter
-paths, and Gradle filters before scheduling. Cargo jobs, libtest threads,
-Flutter test workers, and Node test-file processes remain bounded by the
-central resource pools. Aggregated Node tests report only failed numeric input
-indexes, which the parent maps to module IDs without retaining paths, test
-names, stacks, or raw output; retries can therefore select only failed
-members. The privacy-safe report records per-command wall time,
-measured/unavailable process-resource fields, anonymous Rust/Flutter native
-statistics, and the compatibility matrix. Use `--retry-report` to redispatch
-only failed or blocked evidence.
 
 Run the smallest affected module set first. After all changed modules and
 integration edges pass, run `npm run client:gate:source` exactly once and run

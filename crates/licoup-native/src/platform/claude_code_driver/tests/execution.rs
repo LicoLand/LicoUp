@@ -23,12 +23,6 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     );
     assert!(first.ok, "first turn failed: {:?}", first.error);
     assert_eq!(first.output, "fake Claude final answer 1");
-    assert!(matches!(
-        first.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
-        ))
-    ));
     assert_eq!(first.session_id, "fake-claude-session");
     assert!(has_live_session(&first.session_id));
     let second = execute(
@@ -64,9 +58,7 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
         [
             "byteCount",
             "continuityScope",
-            "hasMore",
             "nativeSessionId",
-            "nextBefore",
             "ok",
             "turnCount",
             "turns"
@@ -82,7 +74,7 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
                 .keys()
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>(),
-            ["events", "output", "prompt", "turnId"]
+            ["output", "turnId"]
                 .into_iter()
                 .map(str::to_string)
                 .collect()
@@ -92,16 +84,6 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     assert_eq!(history["turns"][1]["turnId"], second.turn_id);
     assert_eq!(history["turns"][0]["output"], "fake Claude final answer 1");
     assert_eq!(history["turns"][1]["output"], "fake Claude final answer 2");
-    assert_eq!(
-        history["turns"][0]["prompt"],
-        "fake-claude-private-prompt-1"
-    );
-    assert_eq!(
-        history["turns"][1]["prompt"],
-        "fake-claude-private-prompt-2"
-    );
-    assert_eq!(history["hasMore"], false);
-    assert!(history["nextBefore"].is_null());
     let projected_bytes = history["turns"]
         .as_array()
         .unwrap()
@@ -416,123 +398,9 @@ fn whole_assistant_messages_stream_progress_chunks() {
 }
 
 #[test]
-fn whole_assistant_messages_keep_distinct_units_without_replayed_text() {
-    let _serial = process_local_test_guard();
-    let (directory, executable) = compile_fake_claude("lico-claude-segmented-assistant");
-    let executable_text = executable.to_string_lossy().to_string();
-    let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
-    let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
-    crate::platform::install_stream_sink(Box::new(move |event| {
-        events.lock().unwrap().push(event);
-    }));
-    let params = json!({
-        "model": "fake-model",
-        "reasoningEffort": "high",
-        "permissionMode": "plan"
-    });
-    let turn = execute(
-        &executable_text,
-        &params,
-        "fake-claude-segmented-assistant-prompt-1",
-        "",
-        Some(&directory),
-        10_000,
-        Some(1024 * 1024),
-        1024,
-    );
-    crate::platform::clear_stream_sink();
-    assert!(turn.ok, "segmented assistant turn failed: {:?}", turn.error);
-    let events = captured.lock().unwrap();
-    let chunks = events
-        .iter()
-        .filter(|event| event["event"] == "agent.message.chunk")
-        .map(|event| {
-            (
-                event["payload"]["messageUnit"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-                event["payload"]["text"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        chunks,
-        vec![
-            ("1".to_owned(), "第一段".to_owned()),
-            ("2".to_owned(), "第二段".to_owned()),
-            ("3".to_owned(), "第三段".to_owned()),
-        ]
-    );
-    let completed = events
-        .iter()
-        .find(|event| event["event"] == "agent.message.completed")
-        .expect("completed message event");
-    assert_eq!(completed["payload"]["messageUnit"], "3");
-    assert_eq!(completed["payload"]["text"], "第三段");
-    drop(events);
-    assert_eq!(
-        cleanup_session(&turn.session_id),
-        ControlDisposition::Accepted
-    );
-    let _ = fs::remove_dir_all(directory);
-}
-
-#[test]
-fn terminal_only_final_message_gets_its_own_unit() {
-    let _serial = process_local_test_guard();
-    let (directory, executable) = compile_fake_claude("lico-claude-terminal-segment");
-    let executable_text = executable.to_string_lossy().to_string();
-    let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
-    let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
-    crate::platform::install_stream_sink(Box::new(move |event| {
-        events.lock().unwrap().push(event);
-    }));
-    let turn = execute(
-        &executable_text,
-        &json!({"model": "fake-model", "permissionMode": "plan"}),
-        "fake-claude-terminal-segment-prompt-1",
-        "",
-        Some(&directory),
-        10_000,
-        Some(1024 * 1024),
-        1024,
-    );
-    crate::platform::clear_stream_sink();
-    assert!(turn.ok, "terminal segment turn failed: {:?}", turn.error);
-    let events = captured.lock().unwrap();
-    let chunk = events
-        .iter()
-        .find(|event| event["event"] == "agent.message.chunk")
-        .expect("first segment chunk");
-    assert_eq!(chunk["payload"]["messageUnit"], "1");
-    assert_eq!(chunk["payload"]["text"], "First segment");
-    let completed = events
-        .iter()
-        .find(|event| event["event"] == "agent.message.completed")
-        .expect("terminal segment completed");
-    assert_eq!(completed["payload"]["messageUnit"], "2");
-    assert_eq!(completed["payload"]["text"], "Final segment");
-    drop(events);
-    assert_eq!(
-        cleanup_session(&turn.session_id),
-        ControlDisposition::Accepted
-    );
-    let _ = fs::remove_dir_all(directory);
-}
-
-#[test]
 fn permission_request_suspends_the_turn_until_external_approval() {
     let _serial = process_local_test_guard();
     let (directory, executable) = compile_fake_claude("lico-claude-approval");
-    // A freshly compiled unsigned binary pays a one-time cold-launch policy
-    // scan that can exceed the first turn's deliberate 500ms deadline; warm
-    // the binary once so that deadline measures the turn, never the OS scan.
-    let warm_up = Command::new(&executable).arg("--version").output().unwrap();
-    assert!(warm_up.status.success());
     let executable_text = executable.to_string_lossy().to_string();
     let params = json!({
         "model": "fake-model",
@@ -549,7 +417,7 @@ fn permission_request_suspends_the_turn_until_external_approval() {
             "fake-claude-permission-prompt-1",
             "",
             Some(&working_dir),
-            500,
+            10_000,
             Some(1024 * 1024),
             1024,
         )
@@ -558,8 +426,14 @@ fn permission_request_suspends_the_turn_until_external_approval() {
     // the parked approval to allow and let the turn continue.
     let deadline = Instant::now() + Duration::from_secs(5);
     let token = loop {
-        let token =
-            super::super::super::native_agent_interaction::pending_token("claude-code", "Bash");
+        let parked = super::super::super::acp_session_transport::parked_permissions()
+            .lock()
+            .unwrap();
+        let token = parked
+            .iter()
+            .find(|(_, parked)| parked.display_summary.contains("Bash"))
+            .map(|(token, _)| token.clone());
+        drop(parked);
         if let Some(token) = token {
             break token;
         }
@@ -568,13 +442,11 @@ fn permission_request_suspends_the_turn_until_external_approval() {
         }
         thread::sleep(Duration::from_millis(10));
     };
-    // Deliberately exceed the ordinary turn deadline while the native
-    // permission route is parked. User decision time is not execution time.
-    thread::sleep(Duration::from_millis(550));
     let resolved =
-        super::super::super::acp_session_transport::resolve_interaction_approval(&token, true)
+        super::super::super::acp_session_transport::resolve_parked_permission(&token, true)
             .unwrap();
-    assert_eq!(resolved["adapterId"], "claude-code");
+    assert_eq!(resolved["decision"], "allow");
+    assert_eq!(resolved["agentId"], "claude-code");
     let allowed = run.join().unwrap();
     assert!(allowed.ok, "allowed turn failed: {:?}", allowed.error);
     assert_eq!(allowed.output, "fake Claude allowed answer");
@@ -585,8 +457,8 @@ fn permission_request_suspends_the_turn_until_external_approval() {
         ControlDisposition::Accepted
     );
 
-    // Denying a later permission request resumes the same native turn. The
-    // CLI's valid reply and denial metadata remain authoritative.
+    // Denying a later permission request ends the turn with an interaction
+    // failure instead of failing the transport.
     let working_dir = directory.clone();
     let executable_for_deny = executable_text.clone();
     let deny_params = params.clone();
@@ -604,8 +476,14 @@ fn permission_request_suspends_the_turn_until_external_approval() {
     });
     let deadline = Instant::now() + Duration::from_secs(5);
     let token = loop {
-        let token =
-            super::super::super::native_agent_interaction::pending_token("claude-code", "Bash");
+        let parked = super::super::super::acp_session_transport::parked_permissions()
+            .lock()
+            .unwrap();
+        let token = parked
+            .iter()
+            .find(|(_, parked)| parked.display_summary.contains("Bash"))
+            .map(|(token, _)| token.clone());
+        drop(parked);
         if let Some(token) = token {
             break token;
         }
@@ -615,43 +493,18 @@ fn permission_request_suspends_the_turn_until_external_approval() {
         thread::sleep(Duration::from_millis(10));
     };
     let denied =
-        super::super::super::acp_session_transport::resolve_interaction_approval(&token, false)
+        super::super::super::acp_session_transport::resolve_parked_permission(&token, false)
             .unwrap();
-    assert_eq!(denied["adapterId"], "claude-code");
+    assert_eq!(denied["decision"], "deny");
     let turn = run.join().unwrap();
-    assert!(turn.ok, "denied turn failed: {:?}", turn.error);
-    assert_eq!(turn.output, "fake Claude denied answer");
-    assert_eq!(
-        cleanup_session(&turn.session_id),
-        ControlDisposition::Accepted
-    );
-    let _ = fs::remove_dir_all(directory);
-}
-
-#[test]
-fn permission_park_reports_transport_loss_and_releases_its_route() {
-    let _serial = process_local_test_guard();
-    let (directory, executable) = compile_fake_claude("lico-claude-approval-exit");
-    let result = execute(
-        executable.to_string_lossy().as_ref(),
-        &json!({
-            "model": "fake-model",
-            "reasoningEffort": "high",
-            "permissionMode": "plan"
-        }),
-        "fake-claude-permission-exit-prompt",
-        "",
-        Some(&directory),
-        0,
-        Some(1024 * 1024),
-        1024,
-    );
-    assert!(!result.ok);
-    assert_eq!(result.error.unwrap().code, "claude_code_exited");
-    assert!(
-        super::super::super::native_agent_interaction::pending_token("claude-code", "Bash")
-            .is_none()
-    );
+    assert!(!turn.ok);
+    let failure = turn.error.unwrap();
+    assert_eq!(failure.code, "claude_code_user_interaction_required");
+    // The denied transport still owns the shared fixture session; release it
+    // so later fixture turns bind their own fresh process.
+    if let Some(session_id) = failure.session_id.as_deref() {
+        assert_eq!(cleanup_session(session_id), ControlDisposition::Accepted);
+    }
     let _ = fs::remove_dir_all(directory);
 }
 

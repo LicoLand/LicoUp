@@ -84,7 +84,7 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Build the stable client once
         if: env.README_FAST_SELECTED != 'true'
-        run: npm run client:build -- --platform macos
+        run: npm run client:build:macos
       - name: Install, launch, and prove stable survival
         if: env.README_FAST_SELECTED != 'true'
         run: npm run client:install:macos -- --launch-installed --verify-stable

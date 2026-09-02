@@ -32,7 +32,6 @@ pub(super) fn print_usage() {
   licoup conversations list|append|delete|stream --agent AGENT [--limit N] [--offset N] [--session-id ID] [--text TEXT]
   licoup agent-usage scan [--agent AGENT] [--history-days DAYS] [--timezone-offset-minutes MINUTES] [--timezone-transitions-json JSON] [--force-refresh] [--state-root PATH]
   licoup agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
-  licoup provider-quota snapshot [--agent AGENT] [--force-refresh] [--state-root PATH]
   licoup resource-usage scan [--state-root PATH]
   licoup mcp http preview|execute --stdin-json true  # exact-scope private input and fresh platform user-presence confirmation
   licoup update status|check|download|verify|apply|rollback [--channel CHANNEL] [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--source-path PATH] [--staging-root PATH] [--state-root PATH] [--current-version VERSION] [--install-root PATH] [--gui-pid PID] [--execute true|false] [--wait-for-script true|false]
@@ -54,7 +53,7 @@ pub(super) fn print_usage() {
   licoup skill delete plan|apply --skill SKILL --path PATH [--confirmation PLAN_VALUE]
   licoup skill visibility set <skill-id> --agent AGENT --hidden true|false
   licoup skill usage report [--agent AGENT] [--skill SKILL] [--days 1..365|--from YYYY-MM-DD] [--to YYYY-MM-DD]
-  licoup targets scan [--stdin-json true] [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false] [--enable-agent-cli-model-lookup true|false]
+  licoup targets scan [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false] [--enable-agent-cli-model-lookup true|false]
   licoup targets add --target <target> [--config-path PATH] [--binary-path PATH] [--history-root PATH] [--state-root PATH]
   licoup targets inspect <target> [--state-root PATH] [--enable-agent-cli-model-lookup true|false]
   licoup mobile relay config get|set [--use-custom-gateway true|false] [--custom-gateway-url URL] [--relay-enabled true|false]
@@ -66,8 +65,7 @@ pub(super) fn print_usage() {
   licoup secure-mesh device-trust evaluate --identity JSON [--previous-identity JSON] [--trust-state verified|cross_signed|unverified|key_changed|revoked]  # caller state is advisory and cannot authorize
   licoup secure-mesh file route --manifest JSON
   licoup secure-mesh file receive-destination --manifest JSON --approved-root PATH [--conflict-policy fail_if_exists|rename|overwrite_after_confirm]
-  licoup secure-mesh approval request|fanout|inbox|adapter-capability [--pending-operation-id ID] [--decision allow|deny]
-  licoup secure-mesh approval respond --pending-operation-id ID --decision allow|deny --responding-endpoint-id ID --response-nonce NONCE
+  licoup secure-mesh approval request|fanout|respond|inbox|adapter-capability [--pending-operation-id ID] [--decision allow|deny]
   licoup secure-mesh file receive-confirmation --manifest JSON --approved-root PATH --user-confirmed true|false"
     );
 }
