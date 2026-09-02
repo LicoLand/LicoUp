@@ -19,23 +19,38 @@ final class AgentConversationGatewayAdapter
   Future<List<Map<String, dynamic>>> activeTurns({
     required String agentId,
     String sessionId = '',
+    String conversationId = '',
+    Duration waitForChange = Duration.zero,
   }) => service.activeTurns(
     runner: runner,
     agentId: agentId,
     sessionId: sessionId,
+    conversationId: conversationId,
+    waitForChange: waitForChange,
   );
+
+  @override
+  Future<void> ensureRuntime({String conversationId = ''}) async {
+    await activeTurns(agentId: '', conversationId: conversationId);
+  }
 
   @override
   Stream<AgentDispatchEvent> attachActiveTurn({
     required String turnHandle,
     required String conversationId,
     int afterCursor = 0,
-  }) => service.attachActiveTurn(
-    runner: runner,
-    turnHandle: turnHandle,
-    conversationId: conversationId,
-    afterCursor: afterCursor,
-  );
+  }) async* {
+    try {
+      yield* service.attachActiveTurn(
+        runner: runner,
+        turnHandle: turnHandle,
+        conversationId: conversationId,
+        afterCursor: afterCursor,
+      );
+    } on LicoClientRpcException catch (error) {
+      throw AgentDispatchStreamException(error.code);
+    }
+  }
 
   @override
   Future<AgentDispatchTurnResult> steerActiveTurn({
@@ -65,30 +80,52 @@ final class AgentConversationGatewayAdapter
     String sessionId = '',
     int? limit,
     int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
     AgentDispatchBind bind = const AgentDispatchBind(),
-  }) => service.loadSessions(
-    agentService: runner,
-    agentId: agentId,
-    sessionId: sessionId,
-    limit: limit,
-    offset: offset,
-    bind: bind,
-  );
+  }) => messageLimit == null
+      ? service.loadSessions(
+          agentService: runner,
+          agentId: agentId,
+          sessionId: sessionId,
+          limit: limit,
+          offset: offset,
+          bind: bind,
+        )
+      : service.loadSessionMessagePage(
+          agentService: runner,
+          agentId: agentId,
+          sessionId: sessionId,
+          messageBefore: messageBefore,
+          messageLimit: messageLimit,
+          bind: bind,
+        );
   @override
   Stream<AgentConversationSession> streamSessions({
     required String agentId,
     String sessionId = '',
     int? limit,
     int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
     AgentDispatchBind bind = const AgentDispatchBind(),
-  }) => service.streamSessions(
-    agentService: runner,
-    agentId: agentId,
-    sessionId: sessionId,
-    limit: limit,
-    offset: offset,
-    bind: bind,
-  );
+  }) => messageLimit == null
+      ? service.streamSessions(
+          agentService: runner,
+          agentId: agentId,
+          sessionId: sessionId,
+          limit: limit,
+          offset: offset,
+          bind: bind,
+        )
+      : service.streamSessionMessagePage(
+          agentService: runner,
+          agentId: agentId,
+          sessionId: sessionId,
+          messageBefore: messageBefore,
+          messageLimit: messageLimit,
+          bind: bind,
+        );
   @override
   Future<AgentDispatchSession> openOrResume({
     required String agentId,
@@ -245,7 +282,9 @@ final class AgentConversationGatewayAdapter
 }
 
 final class MobileAgentConversationGatewayAdapter
-    implements MobileAgentConversationGateway {
+    implements
+        MobileAgentConversationGateway,
+        MobilePagedAgentConversationGateway {
   const MobileAgentConversationGatewayAdapter({
     required this.service,
     required this.agentService,
@@ -288,5 +327,19 @@ final class MobileAgentConversationGatewayAdapter
     agentService: agentService,
     agentId: agentId,
     sessionId: sessionId,
+  );
+
+  @override
+  Future<Map<String, dynamic>> describeSessionPage({
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
+  }) => service.describeSecureAgentSessionPage(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    messageBefore: messageBefore,
+    messageLimit: messageLimit,
   );
 }

@@ -41,7 +41,7 @@ void registerClientTargetScenarios() {
       await controller.scanTargets();
 
       expect(
-        service.scanOneTargetCalls,
+        service.scanBatchSlotCalls,
         AgentService.packagedScanTargetIds.length,
       );
       expect(controller.scannedTargets.map((target) => target.target), [

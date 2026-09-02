@@ -7,7 +7,6 @@
   },
   "candidate": {
     "template": "release-candidate/v{version}",
-    "mergeMethod": "merge",
     "requiredChecks": [
       "Branch flow",
       "Commit identity",
@@ -18,27 +17,7 @@
   "version": {
     "file": "tools/client-version.json",
     "versionField": "productVersion",
-    "buildField": "buildNumber",
-    "allowedPaths": [
-      "tools/client-version.json",
-      "package.json",
-      "package-lock.json",
-      "Cargo.toml",
-      "Cargo.lock",
-      "crates/licoup-native/Cargo.toml",
-      "apps/desktop/pubspec.yaml",
-      "apps/desktop/ios/Runner.xcodeproj/project.pbxproj",
-      "apps/desktop/macos/Runner.xcodeproj/project.pbxproj"
-    ],
-    "prepare": [
-      "node",
-      "tools/scripts/client-version.mjs",
-      "set",
-      "--version",
-      "{version}",
-      "--build-number",
-      "{build}"
-    ]
+    "buildField": "buildNumber"
   },
   "gates": [
     [
@@ -60,7 +39,10 @@
     "command": [
       "npm",
       "run",
-      "client:build:macos"
+      "client:build",
+      "--",
+      "--platform",
+      "macos"
     ],
     "app": "build/apps/desktop/runnable/macos/release/LicoUp.app",
     "materials": [
@@ -92,6 +74,22 @@
     "tagTemplate": "v{version}",
     "releaseNameTemplate": "LicoUp {version}"
   },
+  "update": {
+    "command": [
+      "node",
+      "tools/scripts/client-update-manifest.mjs",
+      "--assets",
+      "build/apple-release",
+      "--tag",
+      "{tag}",
+      "--repo",
+      "{repository}",
+      "--targets",
+      "macos-direct-arm64",
+      "--minimum-supported-version",
+      "0.0.0"
+    ]
+  },
   "artifacts": [
     {
       "role": "installer",
@@ -112,6 +110,11 @@
       "role": "update-digest",
       "path": "build/apple-release/LicoUp-macos-arm64-update.zip.sha256",
       "publicName": "LicoUp-macos-arm64-update.zip.sha256"
+    },
+    {
+      "role": "update-manifest",
+      "path": "build/apple-release/LicoUp-update-manifest.json",
+      "publicName": "LicoUp-update-manifest.json"
     }
   ]
 }

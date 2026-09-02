@@ -63,10 +63,11 @@ fn collect_pi_models_from_output(
             .flatten()
             .map(str::to_owned)
             .collect();
+        let selector = format!("{}/{}", columns[0], columns[1]);
         add_model_catalog_entry_with_provider(
             entries,
-            columns[1],
-            None,
+            &selector,
+            Some(columns[1]),
             Some(columns[0]),
             None,
             "pi-cli:list-models",
@@ -94,7 +95,9 @@ mod tests {
         );
         assert_eq!(count, 1);
         let model = entries.values().next().unwrap();
-        assert_eq!(model.name, "alpha");
+        assert_eq!(model.name, "acme/alpha");
+        assert_eq!(model.display_name, "alpha");
+        assert_eq!(model.provider_id.as_deref(), Some("acme"));
         assert!(model.reasoning_efforts.contains(&"max".to_string()));
     }
 

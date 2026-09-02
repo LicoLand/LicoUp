@@ -14,18 +14,34 @@ class StdioRpcSessionManager {
 
   final List<String> arguments;
   StdioRpcSession? _session;
+  Future<StdioRpcSession>? _opening;
   var _generation = 0;
   var _closed = false;
 
-  Future<StdioRpcSession> ensureSession() async {
+  Future<StdioRpcSession> ensureSession() {
     if (_closed) {
-      throw const LicoClientRpcException('service_disposed');
+      return Future<StdioRpcSession>.error(
+        const LicoClientRpcException('service_disposed'),
+      );
     }
-    final processGeneration = _generation;
     final current = _session;
     if (current != null && current.usable) {
-      return current;
+      return Future<StdioRpcSession>.value(current);
     }
+    final opening = _opening;
+    if (opening != null) return opening;
+
+    late final Future<StdioRpcSession> created;
+    created = _openSession().whenComplete(() {
+      if (identical(_opening, created)) _opening = null;
+    });
+    _opening = created;
+    return created;
+  }
+
+  Future<StdioRpcSession> _openSession() async {
+    final processGeneration = _generation;
+    final current = _session;
     if (current != null) {
       await discard(session: current, kill: true);
     }

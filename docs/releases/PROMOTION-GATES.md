@@ -33,38 +33,50 @@ promote a later `nightly` tip into the same in-flight publication.
 
 Promotion readiness is not publication. The repository stops at a verified
 `origin/release` source cut. Post-release macOS Developer ID publication is
-delegated to the local Apple Release service through
+delegated to the local Apple Release engine through
 `tools/apple-release/macos-direct-arm64.json`.
 
-The delegated release service cuts one `release-candidate/v{version}` branch
-from the authorized `origin/release` revision, prepares the pinned version
-commit, merges the candidate through its required checks, and publishes the
-declared tag, Release, and four-asset contract from that candidate. It never
-mutates `nightly`, `stable`, `release`, Rulesets, or required checks, and the
-only remote mutations it may perform are the frozen candidate, its merge, and
-the declared public tag, Release, and assets.
+The delegated release run cuts one `release-candidate/v{version}` branch from
+the authorized `origin/release` revision, waits for its required checks, and
+publishes the declared tag, Release, and five-asset contract from that
+candidate. The fifth asset is the signed update manifest: the configured update
+command generates it during the build, the engine uploads it with the other
+assets, and it is verified by the same unauthenticated public download. The
+engine never mutates `nightly`, `stable`, `release`, Rulesets, or
+required checks, and the only remote mutations it may perform are the frozen
+candidate and the declared public tag, Release, and assets.
 
-Install or inspect the local service with:
+Configure the local release authority and inspect release runs with:
 
 ```sh
-npm run client:release:service:install
-npm run client:release:service:configure
-npm run client:release:service:status
+npm run client:release:authority:configure
 npm run client:release:status -- --job <job-id>
 ```
 
-An explicitly authorized publication starts with:
+One authorization precondition applies: export the two update signing keys
+(`LICO_UPDATE_OFFLINE_ROOT_KEY` and `LICO_UPDATE_ONLINE_CHANNEL_KEY`, Ed25519
+PEM) before configuration so they are registered into the Keychain; they may be
+unset afterwards. A run with either key missing is blocked at preflight.
+
+An explicitly authorized publication starts with one command:
 
 ```sh
-npm run client:release:macos -- --version <version> --build <build>
+npm run client:release:macos:publish
 ```
 
-Read-only preflight precedes one immutable authorization. Credentials remain in
-their owning secure stores, and retained receipts exclude credentials, account
+The version and build come from the version document at the frozen `release`
+revision. `npm run client:release:macos -- --version <version> --build <build>`
+remains the interactive variant and asks once before authorizing; explicit
+values must match that document exactly.
+
+Read-only preflight precedes one immutable authorization. Once authorized, the
+CLI launches a detached runner that executes the release; no service
+installation is involved. Credentials remain in their owning secure stores,
+and retained receipts exclude credentials, account
 identity, machine paths, raw output, and runtime data. A tag, draft Release,
 notarization result, or uploaded asset alone is not success. Terminal success
 requires exact public-asset reconciliation, anonymous installer download,
 digest verification, installation, and stable launch.
 
-Branch promotion never starts this service and never creates or publishes a
+Branch promotion never starts a release run and never creates or publishes a
 GitHub Release, tag, asset, notarization submission, or update-channel record.

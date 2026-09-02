@@ -130,7 +130,7 @@ impl GatewayClient {
         Self::connect_command(command, max_stdout_bytes, max_stderr_bytes)
     }
 
-    pub(crate) fn wait_ready(&mut self, deadline: Instant) -> Result<(), GatewayFailure> {
+    pub(crate) fn wait_ready(&mut self, deadline: Option<Instant>) -> Result<(), GatewayFailure> {
         let message = self.next_message(deadline)?;
         if event_type(&message) == Some("gateway.ready") && event_session_id(&message).is_none() {
             return Ok(());
@@ -142,7 +142,7 @@ impl GatewayClient {
         &mut self,
         method: &str,
         params: Value,
-        deadline: Instant,
+        deadline: Option<Instant>,
         mut observe: F,
     ) -> Result<Value, GatewayFailure>
     where
@@ -178,19 +178,27 @@ impl GatewayClient {
         }
     }
 
-    pub(crate) fn next_message(&mut self, deadline: Instant) -> Result<Value, GatewayFailure> {
+    pub(crate) fn next_message(
+        &mut self,
+        deadline: Option<Instant>,
+    ) -> Result<Value, GatewayFailure> {
         loop {
             self.stdin
                 .check_health()
                 .map_err(|_| GatewayFailure::Write)?;
-            let now = Instant::now();
-            if now >= deadline {
-                return Err(GatewayFailure::Timeout);
-            }
-            match self
-                .receiver
-                .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
-            {
+            let wait = match deadline {
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return Err(GatewayFailure::Timeout);
+                    }
+                    (deadline - now).min(PROCESS_POLL_INTERVAL)
+                }
+                // No turn deadline: wait a bounded poll slice so the health and
+                // output bounds still check, but never against the clock.
+                None => PROCESS_POLL_INTERVAL,
+            };
+            match self.receiver.recv_timeout(wait) {
                 Ok(TransportEvent::Message { message, bytes }) => {
                     if let Some(max_stdout_bytes) = self.max_stdout_bytes {
                         self.observed_stdout_bytes =

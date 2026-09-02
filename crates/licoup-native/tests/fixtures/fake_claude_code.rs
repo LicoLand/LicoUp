@@ -45,16 +45,36 @@ fn main() {
     }
     // Configuration switches (model, effort, permission mode, allowlist) must
     // not reject the launch: the fixture accepts the bounded value sets the
-    // driver may legitimately pass.
+    // driver may legitimately pass. The permission-mode set matches the driver
+    // contract, including the vendor YOLO default (bypassPermissions).
     let mut value_arguments = remaining.clone();
-    for key in ["--model", "--effort", "--permission-mode", "--allowedTools"] {
+    for key in [
+        "--model",
+        "--effort",
+        "--permission-mode",
+        "--allowedTools",
+        "--append-system-prompt",
+    ] {
         if let Some(position) = value_arguments.iter().position(|argument| argument == key) {
-            let value = value_arguments.get(position + 1).cloned().unwrap_or_default();
-            let allowed = if key == "--allowedTools" {
-                !value.is_empty()
-            } else {
-                ["fake-model", "fake-model-2", "high", "max", "plan"]
-                    .contains(&value.as_str())
+            let value = value_arguments
+                .get(position + 1)
+                .cloned()
+                .unwrap_or_default();
+            let allowed = match key {
+                "--allowedTools" | "--append-system-prompt" => !value.is_empty(),
+                "--model" => ["fake-model", "fake-model-2"].contains(&value.as_str()),
+                "--effort" => ["high", "max"].contains(&value.as_str()),
+                "--permission-mode" => [
+                    "default",
+                    "manual",
+                    "acceptEdits",
+                    "plan",
+                    "auto",
+                    "dontAsk",
+                    "bypassPermissions",
+                ]
+                .contains(&value.as_str()),
+                _ => true,
             };
             if !allowed {
                 std::process::exit(2);
@@ -77,6 +97,7 @@ fn main() {
                 .map(|value| value.to_string_lossy().into_owned())
         })
         .unwrap_or_default();
+    let resumed_process = resume_session.is_some();
     let session_id = if let Some(requested) = resume_session {
         // Unknown conversations fail closed like the real CLI.
         if requested.contains("missing") {
@@ -112,6 +133,63 @@ fn main() {
         let is_auth_turn = line.contains("fake-claude-auth-prompt");
         let is_steer_turn = line.contains("fake-claude-steer-prompt");
         let is_whole_assistant_turn = line.contains("fake-claude-whole-assistant-prompt");
+        let is_segmented_assistant_turn = line.contains("fake-claude-segmented-assistant-prompt");
+        let is_terminal_only_segment_turn =
+            line.contains("fake-claude-terminal-segment-prompt");
+        if is_terminal_only_segment_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"First segment"}}]}} ,"session_id":"{session_id}","uuid":"msg-a"}}"#
+                ),
+            );
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"Final segment","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
+        if is_segmented_assistant_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            for (uuid, text) in [
+                ("msg-a", "第一段"),
+                ("msg-a", "第一段"),
+                ("msg-b", "第一段第二段"),
+                ("msg-b", "第一段第二段"),
+                ("msg-c", "第二段第三段"),
+            ] {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"{text}"}}]}} ,"session_id":"{session_id}","uuid":"{uuid}"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"第二段第三段","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
         if is_whole_assistant_turn {
             if turns == 1 {
                 send(
@@ -181,6 +259,22 @@ fn main() {
             );
             continue;
         }
+        let is_permission_exit_turn = line.contains("fake-claude-permission-exit-prompt");
+        if is_permission_exit_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                r#"{"type":"control_request","request_id":"perm-exit","request":{"subtype":"permission_request","prompt":"Run Bash command","toolUse":{"id":"toolu_exit","name":"Bash","input":{}}}}"#,
+            );
+            return;
+        }
         let is_permission_turn = line.contains("fake-claude-permission-prompt");
         if is_permission_turn {
             if turns == 1 {
@@ -196,15 +290,24 @@ fn main() {
                 r#"{"type":"control_request","request_id":"perm-1","request":{"subtype":"permission_request","prompt":"Run Bash command","toolUse":{"id":"toolu_perm","name":"Bash","input":{}}}}"#,
             );
             let response = lines.next().and_then(Result::ok).unwrap_or_default();
-            if !response.contains(r#""subtype":"permission_response""#)
-                || !response.contains(r#""response":"allow""#)
-            {
+            if !response.contains(r#""subtype":"permission_response""#) {
                 std::process::exit(6);
             }
+            let allowed = response.contains(r#""response":"allow""#);
             send(
                 &mut stdout,
                 &format!(
-                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"fake Claude allowed answer","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"{}","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":{}}}"#,
+                    if allowed {
+                        "fake Claude allowed answer"
+                    } else {
+                        "fake Claude denied answer"
+                    },
+                    if allowed {
+                        "[]"
+                    } else {
+                        r#"[{"tool_name":"Bash","tool_use_id":"toolu_perm"}]"#
+                    },
                 ),
             );
             continue;
@@ -224,10 +327,15 @@ fn main() {
             std::fs::write("fake-claude-descendant.pid", child.id().to_string()).unwrap();
             retained_descendant = Some(child);
         }
-        if !is_cancel_turn
-            && !is_auth_turn
-            && !is_steer_turn
-            && !line.contains(&format!("fake-claude-private-prompt-{turns}"))
+        // A freshly launched process starts its stdin at turn 1, so the exact
+        // per-turn synthetic prompt is deterministic there. A resumed fresh
+        // process may carry any conversation turn (a launch-configuration
+        // change, such as the default YOLO mode, releases the old process and
+        // resumes the same conversation), so the per-process turn index does
+        // not apply; the prompt must still never carry the session identifier.
+        let prompt_is_this_process_turn =
+            resumed_process || line.contains(&format!("fake-claude-private-prompt-{turns}"));
+        if !is_cancel_turn && !is_auth_turn && !is_steer_turn && !prompt_is_this_process_turn
             || line.contains("fake-claude-session")
         {
             std::process::exit(3);
@@ -294,7 +402,13 @@ fn main() {
         let output = if line.contains("fake-claude-utf8-output") {
             "多字节🙂".to_string()
         } else {
-            format!("fake Claude final answer {turns}")
+            // The synthetic answer matches the prompt's own turn suffix, so a
+            // resumed fresh process answers the same way for any conversation
+            // turn (the reply is per prompt, not per process stdin line).
+            format!(
+                "fake Claude final answer {}",
+                prompt_turn_suffix(&line).unwrap_or(turns)
+            )
         };
         send(
             &mut stdout,
@@ -324,6 +438,17 @@ fn main() {
         }
         std::fs::write("fake-claude-child.closed", "closed").unwrap();
     }
+}
+
+fn prompt_turn_suffix(line: &str) -> Option<usize> {
+    let prefix = "fake-claude-private-prompt-";
+    let start = line.find(prefix)? + prefix.len();
+    line.get(start..)?
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
 }
 
 fn send(stdout: &mut impl Write, message: &str) {
