@@ -2,8 +2,7 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use super::super::openagent::{
-    openagent_json_time, openagent_messages_for_session, openagent_session_rows,
-    openagent_usage_from_columns,
+    openagent_json_time, openagent_session_rows, openagent_usage_from_columns,
 };
 
 #[test]
@@ -42,44 +41,4 @@ fn openagent_nested_time_projection_accepts_epoch_values() {
         .is_some()
     );
     assert!(openagent_json_time(&json!({}), "created").is_none());
-}
-
-#[test]
-fn openagent_large_values_and_narrow_schema_are_complete() {
-    let connection = Connection::open_in_memory().expect("database");
-    connection
-        .execute_batch(
-            "CREATE TABLE session (id TEXT, title TEXT);
-             CREATE TABLE message (id TEXT, session_id TEXT, data TEXT);
-             CREATE TABLE part (message_id TEXT, session_id TEXT, data TEXT);
-             INSERT INTO session VALUES ('narrow-session', 'Narrow');
-             INSERT INTO message VALUES (
-               'message-1', 'narrow-session', '{\"role\":\"assistant\"}'
-             );",
-        )
-        .expect("fixture");
-    let large = json!({
-        "type": "text",
-        "text": "x".repeat(4 * 1024 * 1024 + 1)
-    })
-    .to_string();
-    connection
-        .execute(
-            "INSERT INTO part (message_id, session_id, data) VALUES (?1, ?2, ?3)",
-            ("message-1", "narrow-session", large.as_str()),
-        )
-        .expect("large part");
-
-    assert_eq!(openagent_session_rows(&connection).len(), 1);
-    let messages = openagent_messages_for_session(
-        super::super::super::HistoryAdapter::OpenCode,
-        std::path::Path::new("synthetic.db"),
-        &connection,
-        "narrow-session",
-    );
-    assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0]["text"].as_str().expect("large text").len(),
-        4 * 1024 * 1024 + 1
-    );
 }

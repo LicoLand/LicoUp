@@ -113,9 +113,13 @@ struct ResponseHistory {
 
 impl CompiledGateway {
     pub fn compile(config: GatewayConfig) -> Result<Self, GatewayError> {
+        // Empty providers and empty routes together are valid: the machine has
+        // no usable saved API keys, so the Gateway advertises no model catalog.
+        // One side empty and the other not is still invalid configuration.
         if config.schema_version != 1
             || config.providers.len() > MAX_CONFIG_ENTRIES
             || config.routes.len() > MAX_CONFIG_ENTRIES
+            || config.providers.is_empty() != config.routes.is_empty()
         {
             return Err(GatewayError::InvalidConfig);
         }
@@ -147,14 +151,6 @@ impl CompiledGateway {
         })
     }
 
-    /// Providers whose live model catalogs may be queried. Stable sorting keeps
-    /// a multi-provider `/v1/models` response deterministic.
-    pub(crate) fn catalog_providers(&self) -> Vec<GatewayProvider> {
-        let mut providers = self.providers.values().cloned().collect::<Vec<_>>();
-        providers.sort_by(|left, right| left.id.cmp(&right.id));
-        providers
-    }
-
     pub fn prepare(&self, path: &str, body: &[u8]) -> Result<PreparedGatewayRequest, GatewayError> {
         if body.len() > MAX_GATEWAY_BODY_BYTES {
             return Err(GatewayError::RequestTooLarge);
@@ -176,8 +172,6 @@ impl CompiledGateway {
         let route = self
             .routes
             .get(&(client_protocol, requested_model.clone()))
-            .cloned()
-            .or_else(|| self.provider_namespaced_route(client_protocol, &requested_model))
             .ok_or(GatewayError::RouteNotFound)?;
         let provider = self
             .providers
@@ -239,25 +233,6 @@ impl CompiledGateway {
             requested_model,
             upstream_model: route.upstream_model.clone(),
             history_messages,
-        })
-    }
-
-    fn provider_namespaced_route(
-        &self,
-        client_protocol: ClientProtocol,
-        requested_model: &str,
-    ) -> Option<ModelRoute> {
-        let (provider_id, upstream_model) = requested_model.split_once(':')?;
-        if namespaced_model_id(provider_id, upstream_model).as_deref() != Some(requested_model)
-            || !self.providers.contains_key(provider_id)
-        {
-            return None;
-        }
-        Some(ModelRoute {
-            client_protocol,
-            requested_model: requested_model.to_owned(),
-            provider_id: provider_id.to_owned(),
-            upstream_model: legacy_generated_alias(provider_id, upstream_model).to_owned(),
         })
     }
 
@@ -439,36 +414,6 @@ fn endpoint_for(provider: &GatewayProvider) -> Result<String, GatewayError> {
         UpstreamProtocol::OpenAiChatCompletions => "chat/completions",
         UpstreamProtocol::OpenAiResponses => "responses",
     };
-    endpoint_with_suffix(provider, suffix)
-}
-
-pub(crate) fn models_endpoint_for(provider: &GatewayProvider) -> Result<String, GatewayError> {
-    endpoint_with_suffix(provider, "models")
-}
-
-pub(crate) fn namespaced_model_id(provider_id: &str, upstream_model: &str) -> Option<String> {
-    (valid_id(provider_id) && valid_id(upstream_model))
-        .then(|| format!("{provider_id}:{upstream_model}"))
-}
-
-/// Older LicoUp OpenCode/Pi sidecars used shortened Kimi aliases. Keep those
-/// persisted configurations routable without advertising them as current
-/// provider catalog entries.
-fn legacy_generated_alias<'a>(provider_id: &str, upstream_model: &'a str) -> &'a str {
-    if provider_id != "kimi" {
-        return upstream_model;
-    }
-    match upstream_model {
-        "k3" => "kimi-k3",
-        "k2.7-code" => "kimi-k2.7-code",
-        "k2.7-code-highspeed" => "kimi-k2.7-code-highspeed",
-        "k2.6" => "kimi-k2.6",
-        "k2.5" => "kimi-k2.5",
-        _ => upstream_model,
-    }
-}
-
-fn endpoint_with_suffix(provider: &GatewayProvider, suffix: &str) -> Result<String, GatewayError> {
     let url = Url::parse(&provider.base_url).map_err(|_| GatewayError::InvalidConfig)?;
     let mut base = provider.base_url.trim_end_matches('/').to_owned();
     // A bare origin (path "/") gets the conventional `/v1` segment; providers
@@ -1299,7 +1244,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn providers_can_compile_without_a_static_model_catalog() {
+    fn empty_providers_and_routes_compile_when_no_saved_keys() {
         let gateway = CompiledGateway::compile(GatewayConfig {
             schema_version: 1,
             providers: vec![],
@@ -1314,75 +1259,20 @@ mod tests {
                 )
                 .is_err()
         );
-        let gateway = CompiledGateway::compile(GatewayConfig {
-            schema_version: 1,
-            providers: vec![GatewayProvider {
-                id: "kimi".into(),
-                base_url: "https://api.moonshot.cn/v1".into(),
-                protocol: UpstreamProtocol::OpenAiChatCompletions,
-                credential_provider: LlmApiKeyProvider::Kimi,
-                credential_style: CredentialStyle::Bearer,
-            }],
-            routes: vec![],
-        })
-        .unwrap();
-        let request = gateway
-            .prepare(
-                "/v1/chat/completions",
-                br#"{"model":"kimi:kimi-k3","messages":[]}"#,
-            )
-            .unwrap();
-        assert_eq!(request.upstream_model, "kimi-k3");
-        assert_eq!(
-            request.endpoint,
-            "https://api.moonshot.cn/v1/chat/completions"
+        assert!(
+            CompiledGateway::compile(GatewayConfig {
+                schema_version: 1,
+                providers: vec![GatewayProvider {
+                    id: "kimi".into(),
+                    base_url: "https://api.moonshot.cn/v1".into(),
+                    protocol: UpstreamProtocol::OpenAiChatCompletions,
+                    credential_provider: LlmApiKeyProvider::Kimi,
+                    credential_style: CredentialStyle::Bearer,
+                }],
+                routes: vec![],
+            })
+            .is_err()
         );
-    }
-
-    #[test]
-    fn provider_model_catalog_endpoint_keeps_the_configured_base_path() {
-        let kilo = GatewayProvider {
-            id: "kilo".into(),
-            base_url: "https://api.kilo.ai/api/gateway".into(),
-            protocol: UpstreamProtocol::OpenAiChatCompletions,
-            credential_provider: LlmApiKeyProvider::Kilo,
-            credential_style: CredentialStyle::Bearer,
-        };
-        assert_eq!(
-            models_endpoint_for(&kilo).unwrap(),
-            "https://api.kilo.ai/api/gateway/models"
-        );
-        let mut bare = kilo;
-        bare.base_url = "https://gateway.example".into();
-        assert_eq!(
-            models_endpoint_for(&bare).unwrap(),
-            "https://gateway.example/v1/models"
-        );
-    }
-
-    #[test]
-    fn previously_generated_kimi_aliases_still_route_without_becoming_a_catalog() {
-        let gateway = CompiledGateway::compile(GatewayConfig {
-            schema_version: 1,
-            providers: vec![GatewayProvider {
-                id: "kimi".into(),
-                base_url: "https://api.moonshot.cn/v1".into(),
-                protocol: UpstreamProtocol::OpenAiChatCompletions,
-                credential_provider: LlmApiKeyProvider::Kimi,
-                credential_style: CredentialStyle::Bearer,
-            }],
-            routes: Vec::new(),
-        })
-        .unwrap();
-        let request = gateway
-            .prepare(
-                "/v1/chat/completions",
-                br#"{"model":"kimi:k3","messages":[]}"#,
-            )
-            .unwrap();
-        assert_eq!(request.upstream_model, "kimi-k3");
-        let body: Value = serde_json::from_slice(&request.body).unwrap();
-        assert_eq!(body["model"], "kimi-k3");
     }
 
     fn gateway() -> CompiledGateway {
@@ -1762,20 +1652,6 @@ mod tests {
         let gateway = gateway();
         assert_eq!(
             gateway.prepare("/v1/messages", br#"{"model":"unknown","messages":[]}"#),
-            Err(GatewayError::RouteNotFound)
-        );
-        assert_eq!(
-            gateway.prepare(
-                "/v1/chat/completions",
-                br#"{"model":"unknown-provider:model","messages":[]}"#
-            ),
-            Err(GatewayError::RouteNotFound)
-        );
-        assert_eq!(
-            gateway.prepare(
-                "/v1/chat/completions",
-                br#"{"model":"kimi-chat:","messages":[]}"#
-            ),
             Err(GatewayError::RouteNotFound)
         );
         assert_eq!(

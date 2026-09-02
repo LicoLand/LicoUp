@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:4c769375206079ee7275371786d8b6c9fb17917d3f22cc8b5f3909f9ca77187a"
+      "digest": "sha256:0db94a46a7320b26683e41c1eef08e147511c2d5708553e68df794dd19519c26"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -42,7 +42,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_components.dart",
-      "digest": "sha256:f51d197305488d09ea7c1773f261daf57d10d30c28afc51887f4f5919479364c"
+      "digest": "sha256:3e06094112689416a36a762148f32f35c153e74e37bedba637504686bb6fb174"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_preview.dart",
@@ -58,7 +58,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/presentation/messaging_mobile_destination_presentations.dart",
-      "digest": "sha256:75b11d898853c8eed35c3e420b9c62a462c69b27427e6bc2268972cd0bd50aae"
+      "digest": "sha256:2eafe3f87e01257e72b0ee275cfd086f41a1cda323d099f70a488a5ab2a533ce"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile/agents.png",
@@ -66,7 +66,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile/settings.png",
-      "digest": "sha256:4e327a9fa2dc3b0c1f603ddb69c23154757548ae571d5ff15829a31901ce37ce"
+      "digest": "sha256:679793978b4a5fe459722dd892c6a52a7671b2711e1bb9fbb9df75b0ff5989ce"
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_bundle_test.dart",
@@ -81,5 +81,5 @@
       "digest": "sha256:ccc1d93ad6bfd51ec8456e4f4d976f32ee8a8f94fc680536e0c1f88b9037035a"
     }
   ],
-  "manifestDigest": "sha256:53ddda56665f24334d0338fcb39db959e9c9533fe30d6b0032aaedf9fe85e706"
+  "manifestDigest": "sha256:13b1f52b296d78036d0c515fa89556a5f5484a7d4785fe9422f59428445c8a0e"
 }

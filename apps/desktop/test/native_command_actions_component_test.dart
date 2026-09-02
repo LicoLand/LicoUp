@@ -25,81 +25,45 @@ void main() {
           'adapterStatus': 'implemented',
         },
       });
-      final privateRunner = _RecordingRunner(serialized.response);
       final actions = NativeCommandActions(
         commandExecutor: serialized,
         concurrentCommandExecutor: concurrent,
-        privateRunner: privateRunner,
       );
 
       await actions.listPairings(agent: ' codex ');
-      serialized.response
-        ..clear()
-        ..addAll({
-          'ok': true,
-          'results': [
-            {
-              'targetId': 'codex',
-              'ok': true,
-              'candidate': {
-                'target': 'codex',
-                'label': 'Codex',
-                'kind': 'cli',
-                'status': 'detected',
-                'configured': true,
-                'confidence': 1.0,
-                'adapterStatus': 'implemented',
-              },
-            },
-          ],
-        });
-      final targetBatch = await actions.scanTargetsBatch([' codex ']);
+      final target = await actions.scanOneTarget(' codex ');
 
-      expect(serialized.calls.first, [
+      expect(serialized.calls.single, [
         'agents',
         'pair',
         'list',
         '--agent',
         'codex',
       ]);
-      expect(privateRunner.arguments.last, [
+      expect(concurrent.calls.single, [
         'targets',
-        'scan',
+        'inspect',
+        'codex',
         '--include-accessible-environments',
         'true',
-        '--stdin-json',
-        'true',
       ]);
-      expect(targetBatch.slots.single.candidate?.target, 'codex');
+      expect(target?.target, 'codex');
       expect(
-        serialized.calls.last,
+        concurrent.calls.single,
         isNot(contains('--enable-agent-cli-model-lookup')),
       );
 
-      privateRunner.arguments.clear();
-      privateRunner.stdin.clear();
-      serialized.response['results'] = [
-        {
-          'targetId': 'cursor',
-          'ok': false,
-          'error': {'code': 'target_scan_failed'},
-        },
-      ];
-      await actions.scanTargetsBatch([
-        'cursor',
-      ], enableAgentCliModelLookup: true);
-      expect(privateRunner.arguments.single, [
+      concurrent.calls.clear();
+      await actions.scanOneTarget('cursor', enableAgentCliModelLookup: true);
+      expect(concurrent.calls.single, [
         'targets',
-        'scan',
+        'inspect',
+        'cursor',
         '--include-accessible-environments',
         'true',
-        '--stdin-json',
+        '--enable-agent-cli-model-lookup',
         'true',
       ]);
-      expect(jsonDecode(privateRunner.stdin.single), {
-        'targetIds': ['cursor'],
-        'modelCatalogTargetIds': ['cursor'],
-      });
 
       serialized.calls.clear();
       await actions.inspectTarget('codex');
@@ -159,7 +123,7 @@ void main() {
     'VM targets use private stdin and never place connection data in argv',
     () async {
       final executor = _RecordingExecutor({'ok': true});
-      final privateRunner = _RecordingRunner(const {'ok': true});
+      final privateRunner = _RecordingRunner();
       final workingDirectory = _guestPath(['srv', 'project']);
       final actions = NativeCommandActions(
         commandExecutor: executor,
@@ -218,9 +182,6 @@ class _RecordingExecutor implements NativeCommandExecutor {
 }
 
 class _RecordingRunner implements AgentCommandRunner {
-  _RecordingRunner(this.response);
-
-  final Map<String, dynamic> response;
   final List<List<String>> arguments = [];
   final List<String> stdin = [];
 
@@ -235,7 +196,7 @@ class _RecordingRunner implements AgentCommandRunner {
   ) async {
     arguments.add(List<String>.unmodifiable(args));
     stdin.add(stdinText);
-    return response;
+    return const {'ok': true};
   }
 
   @override

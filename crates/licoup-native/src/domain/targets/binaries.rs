@@ -411,7 +411,6 @@ mod tests {
                 "app",
                 "bin",
             ]),
-            posix_path(&["Applications", "ChatGPT.app", "Contents", "Resources"]),
             posix_path(&["profile", ".local", "bin"]),
             posix_path(&["profile", ".nvm", "current", "bin"]),
             posix_path(&["profile", ".local", "share", "mise", "shims"]),

@@ -45,7 +45,7 @@ const _scenarioFingerprints = <String, List<String>>{
     "contains('2026.08.04-aaa8809')",
     "expect(card.role, 'event')",
     "expect(card.text, 'completed')",
-    "'submitted,accepted,processing,responding,completed'",
+    "'submitted,accepted,responding,completed'",
   ],
 };
 

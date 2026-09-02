@@ -86,11 +86,7 @@ class MessagingConversationHeader extends StatelessWidget {
 
     final identity = Row(
       children: [
-        MessagingAgentAvatar(
-          target: target,
-          size: MessagingDesktopMetrics.conversationAvatarExtent,
-          iconSize: MessagingDesktopMetrics.conversationAvatarMarkExtent,
-        ),
+        MessagingAgentAvatar(target: target, size: 30, iconSize: 17),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -145,9 +141,9 @@ class MessagingConversationHeader extends StatelessWidget {
       );
     }
 
-    // True stadium: 999 clamps to half the capsule height, so the ends are
-    // full semicircles at any content height.
-    final radius = BorderRadius.circular(999);
+    final radius = BorderRadius.circular(
+      MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
+    );
     final identityCapsule = MessagingConversationOverlayGlass(
       borderRadius: radius,
       child: Padding(
@@ -167,7 +163,7 @@ class MessagingConversationHeader extends StatelessWidget {
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetV,
       ),
       // Match trailing button height (and thus end-cap radius) to the
-      // identity capsule — both are full stadiums.
+      // identity capsule — same corner radius token on both.
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

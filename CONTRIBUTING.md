@@ -23,19 +23,6 @@ lane; it runs only at the `stable` → `release` promotion edge described in the
 [client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
 never builds or publishes every platform.
 
-The maintained complete client regression is a bounded dependency graph. It
-runs the shared foundation once, overlaps frontend and backend work, settles
-all eligible siblings after failures, and only then reaches integration,
-scenarios, and the parallel capability-aware platform/Agent frontier. Use the
-dedicated `client:regression:frontend`, `:backend`, and `:integration` entries
-for focused work. Use `client:regression:environment -- --platform <id>` or
-`--agent <id>` immediately before a live compatibility target. Use
-`client:regression -- --retry-report build/reports/client-module-regression.json`
-to redispatch failed evidence instead of repeating unrelated successes.
-Agent static checks are independently scheduled after one shared inventory
-contract, and aggregated Node tests attribute failures through anonymous input
-indexes, so one Agent or test file does not invalidate its whole peer batch.
-
 Starting a complete regression expands the current verification closure to
 every problem it reveals. Do not hand off with a known failure, stale golden,
 layout overflow, timeout, or flaky test from that run. Diagnose and fix its
@@ -148,14 +135,17 @@ after any native interface change.
 
 ## Documentation rules
 
-- **Strict Single Source of Truth (SSOT)**: Every architectural model, protocol specification, feature mechanism, or platform rule must have exactly one authoritative owning document (see [ADR 0009](docs/adrs/0009-single-source-of-truth-documentation-architecture.md)). Other documents must reference that owner rather than duplicating or paraphrasing facts.
-- **Overview Document Modularity & Domain Indexing**: Top-level overview documents (architecture, protocols, functionalities) must remain concise and high-level, using structured Markdown tables to index and navigate to dedicated domain specifications.
-- **Tabular Document References**: Header cross-references (normative versions, localizations, governing product charters) must be presented in structured Markdown tables.
-- **Language & Synchronization**: Keep English as the normative public entry and link each maintained Simplified Chinese localization back to it. Shared product facts in the two root READMEs change together.
-- Use short sentences and common words. Use a small Mermaid diagram when a data flow is hard to explain in text.
-- Keep product text focused on diversity, connection, openness, integration, and user control. Design philosophy and product promises belong to `PRODUCT.md`.
+- Use short sentences and common words.
+- Keep English as the normative public entry and link each maintained
+  Simplified Chinese localization back to it. Shared product facts in the two
+  root READMEs change together.
+- Use a small Mermaid diagram when a data flow is hard to explain in text.
+- Keep product text focused on diversity, connection, openness, integration,
+  and user control.
 - Treat `README.md` as the public product page. Check every claim.
-- Keep structured plans under `docs/plans/`. Keep audit reports, temporary proposals, and other one-off documents under `docs/reports/`. Both paths are local only.
+- Keep structured plans under `docs/plans/`. Keep audit reports, temporary
+  proposals, and other one-off documents under `docs/reports/`. Both paths are
+  local only.
 - Do not add local skills or temporary scripts to the repository.
 
 ## Maintained model and cost tables

@@ -20,52 +20,50 @@ licoup-client-state = { path = "../licoup-client-state" }
 licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
-licoup-agent-runtime = { path = "../licoup-agent-runtime" }
-licoup-conversation = { path = "../licoup-conversation" }
-anyhow.workspace = true
-thiserror.workspace = true
-base64.workspace = true
-chacha20poly1305.workspace = true
-command-group.workspace = true
-hkdf.workspace = true
-hmac.workspace = true
-jni.workspace = true
-mime_guess.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-semver.workspace = true
-sha2.workspace = true
-subtle.workspace = true
-fs2.workspace = true
-notify.workspace = true
-interprocess.workspace = true
-icu_segmenter.workspace = true
-libcrux-ml-kem.workspace = true
-libcrux-sha3.workspace = true
-libcrux-traits.workspace = true
-libc.workspace = true
-trash.workspace = true
-openmls.workspace = true
-openmls_basic_credential.workspace = true
-openmls_memory_storage.workspace = true
-openmls_rust_crypto.workspace = true
-openmls_traits.workspace = true
-rusqlite.workspace = true
-log.workspace = true
-env_logger.workspace = true
-time.workspace = true
-ureq.workspace = true
-url.workspace = true
-uuid.workspace = true
-toml.workspace = true
-ed25519-dalek.workspace = true
-rand.workspace = true
-regex.workspace = true
-x25519-dalek.workspace = true
-zeroize.workspace = true
-tar.workspace = true
-flate2.workspace = true
-zip.workspace = true
+anyhow = "1.0"
+base64 = "0.22"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+command-group = "5.0.1"
+hkdf = "0.12"
+hmac = "0.12"
+jni = "0.21"
+mime_guess = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+semver = "1.0"
+sha2 = "0.10"
+subtle = "2.6"
+fs2 = "0.4"
+notify = "6.1"
+interprocess = "2.4"
+icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
+libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = ["alloc", "incremental", "mlkem1024"] }
+libcrux-sha3 = "=0.0.10"
+libcrux-traits = "=0.0.8"
+libc = "0.2"
+trash = "5.2"
+openmls = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["openmls_rust_crypto"] }
+openmls_basic_credential = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_memory_storage = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["persistence"] }
+openmls_rust_crypto = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_traits = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+log = "0.4"
+env_logger = "0.11"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1.48", features = ["rt-multi-thread", "sync", "time"] }
+ureq = { version = "2.10", features = ["json"] }
+url = "2.5"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+toml = "0.8"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+regex = "1.11"
+x25519-dalek = { version = "2.0", features = ["static_secrets", "zeroize"] }
+zeroize = "1.8"
+tar = "0.4"
+flate2 = "1.0"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6.2"
@@ -91,12 +89,8 @@ windows-sys = { version = "0.61", features = [
 nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
 
 [dev-dependencies]
-licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
-# Bench-only async runtime: production target builds without tokio; benches
-# drive the async backend lanes under criterion.
-tokio = { version = "1", features = ["rt", "sync", "macros"] }
 
 [[bench]]
 name = "native_backend"

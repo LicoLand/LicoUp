@@ -6,14 +6,7 @@ use std::time::Duration;
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum AcpParserKind {
-    Copilot,
-    KimiCode,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) struct AcpDriverSpec {
-    pub(super) parser: AcpParserKind,
     pub(in crate::platform) agent_id: &'static str,
     pub(in crate::platform) error_prefix: &'static str,
     pub(in crate::platform) runtime_protocol: &'static str,
@@ -30,7 +23,6 @@ impl AcpDriverSpec {
         launch_args: &'static [&'static str],
     ) -> Self {
         Self {
-            parser: AcpParserKind::Copilot,
             agent_id: "acp",
             error_prefix: "acp",
             runtime_protocol,
@@ -40,11 +32,6 @@ impl AcpDriverSpec {
             launch_reasoning_values: &[],
             launch_allow_all_arg: None,
         }
-    }
-
-    pub(in crate::platform) const fn with_parser(mut self, parser: AcpParserKind) -> Self {
-        self.parser = parser;
-        self
     }
 
     pub(in crate::platform) const fn with_identity(
@@ -126,7 +113,7 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    pub(in crate::platform) events: Vec<Value>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -151,25 +138,9 @@ impl RunResult {
         stdout_truncated: bool,
         stderr_truncated: bool,
         capabilities: CapabilityProbe,
-        _events: Vec<Value>,
+        events: Vec<Value>,
     ) -> Self {
         let failure = failure.namespaced(driver);
-        let transitions = match driver.parser {
-            AcpParserKind::Copilot => {
-                crate::platform::native_agent_parser::adapters::copilot::failed_transitions(
-                    &failure.code,
-                    &failure.stage,
-                    &failure.message,
-                )
-            }
-            AcpParserKind::KimiCode => {
-                crate::platform::native_agent_parser::adapters::kimi_code::failed_transitions(
-                    &failure.code,
-                    &failure.stage,
-                    &failure.message,
-                )
-            }
-        };
         Self {
             ok: false,
             output: String::new(),
@@ -186,7 +157,7 @@ impl RunResult {
             runtime_protocol: driver.runtime_protocol,
             driver_id: driver.agent_id,
             capabilities,
-            transitions,
+            events,
         }
     }
 }

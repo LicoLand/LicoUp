@@ -22,23 +22,15 @@ pub fn set_portable_data_dir_override(path: Option<PathBuf>) -> Option<PathBuf> 
 /// environment variables, executable-adjacent roots, and old product
 /// namespaces are deliberately never inspected or migrated.
 pub fn portable_data_dir() -> Result<PathBuf> {
-    prepare_current_root(portable_data_dir_read_only()?)
-}
-
-/// Resolve the current LicoUp state root lexically without creating or
-/// hardening it. Read-only observers use this before opening existing state.
-pub(crate) fn portable_data_dir_read_only() -> Result<PathBuf> {
     if let Some(path) = portable_data_dir_override() {
-        return Ok(path);
+        return prepare_current_root(path);
     }
 
     if let Some(path) = portable_data_dir_from_value(env::var("LICOUP_PORTABLE_DIR").ok())? {
-        return Ok(path);
+        return prepare_current_root(path);
     }
 
-    let home =
-        user_home_from_env().ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
-    Ok(home.join(".lico-up"))
+    home_portable_data_dir()
 }
 
 fn portable_data_dir_override() -> Option<PathBuf> {
@@ -118,7 +110,12 @@ where
         .map(PathBuf::from)
 }
 
-#[cfg(test)]
+fn home_portable_data_dir() -> Result<PathBuf> {
+    let home =
+        user_home_from_env().ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
+    home_portable_data_dir_from_home(&home)
+}
+
 fn home_portable_data_dir_from_home(home: &Path) -> Result<PathBuf> {
     prepare_current_root(home.join(".lico-up"))
 }

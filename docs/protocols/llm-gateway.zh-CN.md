@@ -27,9 +27,6 @@ LLM Gateway 是 Gateway Runtime 的**下层**。本层权威实现位于
   下次重建交接的机主授权（热加载）或冷启动时生效。
 - Codex 与 Claude Code 的托管配置只指向本机回环 Gateway，上游 API Key 绝不复制到
   智能体配置文件。
-- 经过本机客户端认证的 `GET /v1/models` 与 `GET /models` 会使用当前进程内租约中
-  各厂商的凭据，实时请求对应上游 `/models`。没有已授权厂商凭据时返回空列表；
-  已授权凭据无效时返回上游错误，不再回退到产品内置模型目录。
 
 ## 配置格式
 
@@ -56,25 +53,20 @@ LLM Gateway 是 Gateway Runtime 的**下层**。本层权威实现位于
 }
 ```
 
-内置配置只定义 Kimi、DeepSeek 与 Kilo 三个固定厂商边界，不再包含产品维护的
-模型目录。模型请求使用 `{provider}:{upstream-model-id}`，例如
-`kimi:kimi-k3`、`deepseek:deepseek-v4-flash` 或
-`kilo:anthropic/claude-sonnet-4.5`；Gateway 转发时只移除第一个厂商前缀。模型列表
-保留上游返回的模型对象，并把 `id` 改为带厂商命名空间的值，同时补充
-`upstream_id` 与 `gateway_provider`，从而让多个厂商的合并目录保持无歧义。
-若一个已授权厂商不可用而其他厂商成功，Gateway 会返回健康模型，并附带
-`partial: true` 与经过收敛的 `failed_provider_count`；模型发现总时限为 45 秒。
-
-OpenCode 与 Pi 的自定义厂商配置要求显式模型项，因此其 agent-config plan/apply
-会从运行中的 Gateway 快照实时列表。Gateway 停止时快照为空；Gateway 运行时，
-上游目录或凭据错误会使计划失败，而不会替换为固定模型名。Codex 与 Claude Code
-继续直接使用 Gateway 端点，不嵌入模型列表。
-OpenCode/Pi 一键脚本拒绝应用空快照。
+内置默认目录定义 Kimi、DeepSeek 与 Kilo 供应商。路由表是
+`domain/llm_gateway_default_catalog.rs` 中的封闭产品目录。在 Gateway 启动与
+智能体配置 plan/apply 时，仅物化当前至少有一把未过期已存 API 密钥的供应商：
+投影其路由与 OpenCode/Pi 模型列表；没有可用密钥的供应商被完全省略。若本机
+没有任何可用密钥，Gateway 配置为空且不展示任何模型。客户端可见的
+`requestedModel` 使用 `{provider}:{alias}`（例如 `kimi:k3`、
+`deepseek:deepseek-v4-flash`、`kilo:kilo-auto/free`）；`upstreamModel` 仍是厂商
+或 Kilo API 的真实模型 id。精选 Kilo 集合包含稳定的 `kilo-auto/*` 档位与当前
+上游命名 id。智能体配置适配器只展示有可用密钥的供应商的客户端别名。Kilo
+托管目录有数百个模型；Gateway 保持显式精选子集，而不是代理整份远端列表。
 
 配置文件必须是绝对路径、普通文件且不超过 1 MiB。可先用
 `lico-llm-gateway --config <绝对路径> --check` 校验，再启动 sidecar；默认监听
-`127.0.0.1:15722`。非回环 HTTP 端点、重定向、未知厂商、没有厂商命名空间的动态
-模型和未知字段都会关闭失败。
+`127.0.0.1:15722`。非回环 HTTP 端点、重定向、未知模型和未知字段都会关闭失败。
 
 ## 密钥托管
 
@@ -93,7 +85,6 @@ OpenCode/Pi 一键脚本拒绝应用空快照。
 - `llm-gateway service start [--port]`
 - `llm-gateway service stop [--port]`
 - `llm-gateway agent-config plan <codex|claude-code|opencode|pi> <绝对配置根目录>`
-- `llm-gateway agent-config apply <codex|claude-code|opencode|pi> <绝对配置根目录> --confirmation <digest> --confirmed [--stdin-json true]`
 
 智能体配置命令只生成可审核且不含上游密钥的计划。Codex 使用官方自定义
 `model_providers` profile 与 Responses API 基础地址；Claude Code 使用官方
@@ -103,8 +94,7 @@ OpenCode/Pi 一键脚本拒绝应用空快照。
 OpenCode 与现有全局配置合并。Pi 只写入 sidecar `models.licoup-gateway.json`
 （OpenAI Completions），不会整文件覆盖 `models.json`；一键脚本仅把
 `providers.licoup-gateway` 合并进 `~/.pi/agent/models.json`。未知智能体在其精确
-适配器加入统一运行时注册表之前一律关闭失败。OpenCode 与 Pi 的 apply 通过私有
-stdin 接收 plan 中的精确模型快照，因此预览后的上游目录变化不会改变已确认内容。
+适配器加入统一运行时注册表之前一律关闭失败。
 
 开发者一键脚本（同样的 sidecar 语义）：
 

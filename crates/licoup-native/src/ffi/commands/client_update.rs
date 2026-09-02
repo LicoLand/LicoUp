@@ -6,9 +6,7 @@ use anyhow::Result;
 pub(super) fn handle_update(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["update", action] => *action,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete update routes"),
     };
     let params = admitted_params(
         &[
@@ -77,10 +75,7 @@ mod tests {
             "true".into(),
         ]) {
             Ok(CliExecution::Json(value)) => value,
-            _ => {
-                assert!(false, "update status must be JSON");
-                serde_json::Value::Null
-            }
+            _ => panic!("update status must be JSON"),
         };
         assert_eq!(output["ok"], true);
         assert_eq!(output["currentVersion"], "1.2.3");

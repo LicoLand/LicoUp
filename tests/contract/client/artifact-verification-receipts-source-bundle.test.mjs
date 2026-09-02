@@ -161,7 +161,7 @@ test("cli, receipt build, privacy, and self-test each have one authority", async
   ]);
 });
 
-test("artifact verification receipts twenty-case self-test preserves fail-closed contracts", () => {
+test("artifact verification receipts self-test dry-run preserves fail-closed contracts", () => {
   const result = spawnSync(
     process.execPath,
     [path.join(repoRoot, facadeRef), "--self-test"],
@@ -175,6 +175,6 @@ test("artifact verification receipts twenty-case self-test preserves fail-closed
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.ok, true);
-  assert.equal(payload.caseCount, 20);
+  assert.equal(payload.caseCount, 28);
   assert.equal(payload.privatePathsIncluded, false);
 });

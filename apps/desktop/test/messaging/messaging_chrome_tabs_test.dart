@@ -4,11 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/target_management.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_chrome_tabs.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 import '../fixtures/client_controller/support/no_entry_hook_client_controller.dart';
 
@@ -188,9 +187,7 @@ void main() {
   testWidgets('tap resolves a session re-emitted under a fresh id', (
     tester,
   ) async {
-    final agentService = _ConversationTabAgentService();
-    addTearDown(agentService.dispose);
-    final controller = _controller(agentService: agentService);
+    final controller = _controller();
     addTearDown(controller.dispose);
     await _pumpStrip(tester, controller);
 
@@ -230,8 +227,8 @@ TextStyle _titleStyle(WidgetTester tester, String title) {
   return widget.style!;
 }
 
-ClientController _controller({AgentService? agentService}) {
-  return NoEntryHookClientController(agentService: agentService)
+ClientController _controller() {
+  return NoEntryHookClientController()
     ..scannedTargets = [
       TargetCandidate(
         target: 'codex',
@@ -249,17 +246,6 @@ ClientController _controller({AgentService? agentService}) {
         _session('s2', 'codex', 'Beta session', nativeId: 'native-2'),
       ],
     };
-}
-
-final class _ConversationTabAgentService extends AgentService {
-  @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
-    bool enableAgentCliModelLookup = false,
-  }) async => TargetScanBatch([
-    for (final targetId in targetIds)
-      TargetScanSlot(targetId: targetId, failed: true),
-  ]);
 }
 
 AgentConversationSession _session(

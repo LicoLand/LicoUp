@@ -1,6 +1,7 @@
 use super::errors::ProtocolFailure;
 use serde_json::Value;
 use serde_json::json;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU8, Ordering};
 #[cfg(test)]
 use std::sync::{Condvar, Mutex};
@@ -10,6 +11,8 @@ use std::time::Duration;
 /// conversation identity never use the command line.
 pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "claude-code-cli-stream-json";
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
+pub(super) const MAX_TRANSCRIPT_TURNS: usize = 64;
+pub(super) const MAX_TRANSCRIPT_BYTES: usize = 1024 * 1024;
 
 #[repr(u8)]
 enum TransportState {
@@ -120,68 +123,58 @@ impl TransportLifecycle {
 #[derive(Clone, Debug)]
 struct TranscriptTurn {
     turn_id: String,
-    prompt: String,
-    events: Vec<Value>,
     output: String,
+    output_bytes: usize,
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct CompleteTranscript {
-    turns: Vec<TranscriptTurn>,
+pub(in crate::platform) struct BoundedTranscript {
+    turns: VecDeque<TranscriptTurn>,
+    max_turns: usize,
+    max_bytes: usize,
     byte_count: usize,
 }
 
-impl CompleteTranscript {
-    pub(in crate::platform) fn new() -> Self {
+impl BoundedTranscript {
+    pub(in crate::platform) fn new(max_turns: usize, max_bytes: usize) -> Self {
         Self {
-            turns: Vec::new(),
+            turns: VecDeque::new(),
+            max_turns,
+            max_bytes,
             byte_count: 0,
         }
     }
 
-    pub(in crate::platform) fn record_success(
-        &mut self,
-        turn_id: &str,
-        prompt: &str,
-        events: Vec<Value>,
-        output: &str,
-    ) {
+    pub(in crate::platform) fn record_success(&mut self, turn_id: &str, output: &str) {
         let output_bytes = output.len();
-        if turn_id.trim().is_empty() || output.is_empty() {
+        if turn_id.trim().is_empty()
+            || output.is_empty()
+            || self.max_turns == 0
+            || output_bytes > self.max_bytes
+        {
+            if output_bytes > self.max_bytes {
+                self.clear();
+            }
             return;
         }
-        self.turns.push(TranscriptTurn {
+        self.turns.push_back(TranscriptTurn {
             turn_id: turn_id.to_string(),
-            prompt: prompt.to_string(),
-            events,
             output: output.to_string(),
+            output_bytes,
         });
         self.byte_count = self.byte_count.saturating_add(output_bytes);
+        while self.turns.len() > self.max_turns || self.byte_count > self.max_bytes {
+            if let Some(evicted) = self.turns.pop_front() {
+                self.byte_count = self.byte_count.saturating_sub(evicted.output_bytes);
+            }
+        }
     }
 
-    pub(in crate::platform) fn project_backward_page(
-        &self,
-        before: Option<usize>,
-        limit: usize,
-    ) -> (Vec<Value>, Option<usize>) {
-        let end = before.unwrap_or(self.turns.len()).min(self.turns.len());
-        let start = end.saturating_sub(limit);
-        let turns = self.turns[start..end]
+    pub(in crate::platform) fn project(&self) -> Vec<Value> {
+        self.turns
             .iter()
-            .map(|turn| {
-                json!({
-                    "turnId": turn.turn_id,
-                    "prompt": turn.prompt,
-                    "events": turn.events,
-                    "output": turn.output
-                })
-            })
-            .collect();
-        (turns, (start > 0).then_some(start))
-    }
-
-    pub(in crate::platform) fn turn_count(&self) -> usize {
-        self.turns.len()
+            .map(|turn| json!({"turnId": turn.turn_id, "output": turn.output}))
+            .collect()
     }
 
     pub(in crate::platform) fn byte_count(&self) -> usize {
@@ -208,7 +201,7 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    pub(in crate::platform) events: Vec<Value>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -229,16 +222,10 @@ impl RunResult {
         stderr_truncated: bool,
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
-        let transitions =
-            crate::platform::native_agent_parser::adapters::claude_code::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
         Self {
             ok: false,
             output: String::new(),
-            transitions,
+            events: Vec::new(),
             thread_id: failure
                 .thread_id
                 .clone()

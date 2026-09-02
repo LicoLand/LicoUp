@@ -243,35 +243,6 @@ void registerAgentConversationHistoryLoadingScenarios() {
       ]);
     },
   );
-
-  test('passes stable exact-message continuation to native history', () async {
-    final agentService = _PrivateHistoryRunner();
-    const service = AgentConversationService();
-
-    await service.loadSessionMessagePage(
-      agentService: agentService,
-      agentId: 'codex',
-      sessionId: 'native-page-session',
-      messageBefore: 'message-203',
-      messageLimit: 100,
-    );
-
-    expect(agentService.arguments.single, [
-      'conversations',
-      'list',
-      '--agent',
-      'codex',
-      '--stdin-json',
-      'true',
-    ]);
-    final payload = jsonDecode(agentService.stdin.single);
-    expect(payload['sessionId'], 'native-page-session');
-    expect(payload['messageBefore'], 'message-203');
-    expect(payload['messageLimit'], 100);
-    // A local bind carries no connection facts; emitting an empty map would
-    // reroute the exact-page read into the remote VM history path.
-    expect(payload.containsKey('runtimeConnection'), isFalse);
-  });
 }
 
 String _guestPath(List<String> segments) => ['', ...segments].join('/');

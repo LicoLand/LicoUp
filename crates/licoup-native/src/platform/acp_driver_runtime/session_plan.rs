@@ -46,20 +46,21 @@ pub(super) fn reconcile_acp_session_id(
     plan: AcpSessionPlan,
     returned_session_id: Option<String>,
 ) -> Result<String, ProtocolFailure> {
-    let returned_session_id = returned_session_id
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            ProtocolFailure::new(
-                "acp_session_id_missing",
-                "The ACP agent did not return a native conversation identifier.",
-                plan.method(&config.requested_session_id).method_name(),
-            )
-            .with_session(
-                plan.ne(&AcpSessionPlan::New)
-                    .then_some(&config.requested_session_id),
-            )
-        })?;
-    if plan != AcpSessionPlan::New && returned_session_id != config.requested_session_id {
+    if plan == AcpSessionPlan::New {
+        return returned_session_id
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                ProtocolFailure::new(
+                    "acp_session_id_missing",
+                    "The ACP agent did not return a native conversation identifier.",
+                    "session/new",
+                )
+            });
+    }
+    if returned_session_id
+        .as_deref()
+        .is_some_and(|returned| returned != config.requested_session_id)
+    {
         return Err(ProtocolFailure::new(
             "acp_session_id_mismatch",
             "The ACP agent returned a different conversation than the one requested.",
@@ -67,5 +68,5 @@ pub(super) fn reconcile_acp_session_id(
         )
         .with_session(Some(&config.requested_session_id)));
     }
-    Ok(returned_session_id)
+    Ok(config.requested_session_id.clone())
 }

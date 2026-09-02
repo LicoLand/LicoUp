@@ -7,6 +7,8 @@ pub(super) const CONTROL_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 pub(in crate::platform) const CONTROL_QUEUE_CAPACITY: usize = 4;
 pub(in crate::platform) const MAX_POOLED_TRANSPORTS: usize = 8;
 pub(in crate::platform) const MAX_TRACKED_SESSIONS: usize = 1024;
+pub(in crate::platform) const MAX_PARKED_PERMISSIONS: usize = 32;
+pub(in crate::platform) const APPROVAL_WAIT_TIMEOUT: Duration = Duration::from_secs(300);
 pub(in crate::platform) const APPROVAL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -47,10 +49,6 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    // Non-conversation TUI/history callers still construct this shared result.
-    // The live Hermes conversation lane uses parser-produced transitions and
-    // never forwards this projection through runtime normalization.
-    #[allow(dead_code)]
     pub(in crate::platform) events: Vec<Value>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,

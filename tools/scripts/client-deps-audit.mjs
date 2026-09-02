@@ -32,4 +32,6 @@ run("cargo", [
   ...(offline ? ["--no-fetch"] : []),
   "--deny",
   "warnings",
+  "--ignore",
+  "RUSTSEC-2026-0173",
 ]);

@@ -114,7 +114,6 @@ enum ConversationEventPartKind {
   artifact("artifact"),
   diagnostic("diagnostic"),
   metadata("metadata"),
-  image("image"),
   unknown('');
 
   const ConversationEventPartKind(this.wireName);
@@ -142,12 +141,6 @@ enum ConversationFailureCode {
   migrationFailed("migration_failed"),
   runtimeUnavailable("runtime_unavailable"),
   unsupportedAction("unsupported_action"),
-  profileIntentInvalid("profile_intent_invalid"),
-  profileIntentLimit("profile_intent_limit"),
-  profileRevisionStale("profile_revision_stale"),
-  profileCandidateRejected("profile_candidate_rejected"),
-  conversationRevisionStale("conversation_revision_stale"),
-  localOwnerRequired("local_owner_required"),
   unknown('');
 
   const ConversationFailureCode(this.wireName);
@@ -176,7 +169,6 @@ enum ConversationActionKind {
   conversationEventsSearch("conversation.events.search"),
   conversationEventAppend("conversation.event.append"),
   conversationMessagePost("conversation.message.post"),
-  conversationDispatchAfterPost("conversation.dispatch.after-post"),
   conversationEventPartAppend("conversation.event.part.append"),
   conversationEventFinalize("conversation.event.finalize"),
   conversationMembershipAdd("conversation.membership.add"),
@@ -184,10 +176,6 @@ enum ConversationActionKind {
   conversationMembershipLeave("conversation.membership.leave"),
   conversationExport("conversation.export"),
   conversationImport("conversation.import"),
-  conversationAssistantSet("conversation.assistant.set"),
-  conversationProfileUpdate("conversation.profile.update"),
-  conversationProfileGet("conversation.profile.get"),
-  conversationProfileCandidates("conversation.profile.candidates"),
   unknown('');
 
   const ConversationActionKind(this.wireName);

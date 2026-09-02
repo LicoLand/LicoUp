@@ -114,7 +114,7 @@ export function packageClient(
     emit(packageSuccessRecord(result, options));
     return result;
   } finally {
-    cleanupFlutterBuildCache(flutterBuildAttempted);
+    cleanupFlutterBuildCache(options, flutterBuildAttempted);
   }
 }
 
@@ -145,12 +145,9 @@ function verifyConversationParityReadiness() {
     [
       path.join(
         packageClientRuntime.workspaceRoot,
-        "tests",
-        "product-e2e",
-        "cli",
-        "agent-conversations",
-        "support",
-        "reducer-facade.mjs",
+        "tools",
+        "scripts",
+        "client-agent-conversation-parity-reducer.mjs",
       ),
       "--check",
     ],

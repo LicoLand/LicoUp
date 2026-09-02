@@ -19,11 +19,15 @@ String visibleStructuredConversationText(
   String text, {
   bool providerSummary = false,
 }) {
+  // The conversation surface is local-only: tool invocations, results,
+  // reasoning traces, and metadata are shown verbatim instead of being
+  // blanked or redacted. The character bound only keeps long timelines
+  // responsive; it never alters the payload itself.
   final trimmed = text.trim();
   if (trimmed.isEmpty) {
     return '';
   }
-  return _redactStructuredConversationText(trimmed);
+  return _truncateStructuredConversationText(trimmed);
 }
 
 bool _looksLikeRawStructuredPayload(String text) {
@@ -58,12 +62,6 @@ String _redactStructuredConversationText(String text) {
     },
   );
   final redacted = protected
-      .replaceAllMapped(
-        RegExp(r'''"([a-zA-Z][a-zA-Z0-9_.-]{1,80})"\s*:\s*"[^"]*"'''),
-        (match) => _structuredKeyIsSensitive(match.group(1)!)
-            ? '"${match.group(1)}":"[redacted]"'
-            : match.group(0)!,
-      )
       .replaceAll(
         RegExp(r'\bbearer\s+[a-z0-9._~+/-]+=*', caseSensitive: false),
         'Bearer [redacted]',
@@ -94,13 +92,6 @@ String _redactStructuredConversationText(String text) {
       .replaceAllMapped(
         RegExp(
           r'''\b((?:resume|load|open|restore|continue|delete|close|for)\s+(?:the\s+)?(?:session|thread|conversation)(?:\s+(?:id|identifier))?\s+)([a-z0-9._:-]{3,})''',
-          caseSensitive: false,
-        ),
-        (match) => '${match.group(1)}[redacted]',
-      )
-      .replaceAllMapped(
-        RegExp(
-          r'''\b((?:session|thread|conversation)(?:\s+(?:id|identifier))?\s*)["'][a-z0-9._:-]{3,}["']''',
           caseSensitive: false,
         ),
         (match) => '${match.group(1)}[redacted]',
@@ -180,7 +171,6 @@ bool _structuredKeyIsSensitive(String key) {
       normalized.contains('passwd') ||
       normalized.contains('credential') ||
       normalized.contains('accesskey') ||
-      normalized.endsWith('key') ||
       normalized.endsWith('sessionid') ||
       normalized.endsWith('threadid') ||
       normalized.endsWith('conversationid');
@@ -235,6 +225,15 @@ String stableConversationIdentity(String value) {
     hash = (hash * 0x01000193) & 0xffffffff;
   }
   return hash.toUnsigned(32).toRadixString(16).padLeft(8, '0');
+}
+
+String _truncateStructuredConversationText(String value) {
+  const maxCharacters = 1200;
+  final characters = value.runes.toList(growable: false);
+  if (characters.length <= maxCharacters) {
+    return value;
+  }
+  return '${String.fromCharCodes(characters.take(maxCharacters))}\n…';
 }
 
 String sanitizeStructuredLabel(String value, {String fallback = ''}) {

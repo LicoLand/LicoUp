@@ -451,6 +451,7 @@ bool _backgroundContextPromptText(String text) {
       lower.startsWith('<instructions>') ||
       lower.startsWith('you are codex, a coding agent') ||
       lower.startsWith('you are chatgpt') ||
+      _looksLikeDelegatedAgentPrompt(text) ||
       lower.startsWith('knowledge cutoff:') ||
       lower.startsWith('current date:') ||
       lower.startsWith('filesystem sandboxing defines') ||
@@ -466,6 +467,35 @@ bool _backgroundContextPromptText(String text) {
       lower.startsWith('<skills_instructions') ||
       lower.startsWith('<plugins_instructions') ||
       lower.startsWith('<collaboration_mode');
+}
+
+bool _looksLikeDelegatedAgentPrompt(String text) {
+  final first = text
+      .split('\n')
+      .map((line) => line.trim())
+      .firstWhere((line) => line.isNotEmpty, orElse: () => '')
+      .toLowerCase();
+  if (first.startsWith('you are a')) {
+    final rest = first.substring('you are a'.length);
+    final digits = RegExp(r'^\d+').stringMatch(rest) ?? '';
+    if (digits.isNotEmpty && rest.substring(digits.length).startsWith(':')) {
+      return true;
+    }
+  }
+  if (first.startsWith('you are agent a')) {
+    final rest = first.substring('you are agent a'.length);
+    final digits = RegExp(r'^\d+').stringMatch(rest) ?? '';
+    if (digits.isNotEmpty && rest.substring(digits.length).startsWith(':')) {
+      return true;
+    }
+  }
+  return first.startsWith('you are ') &&
+      first.contains(' worker') &&
+      (first.contains(' round-') ||
+          first.contains('worker-') ||
+          first.contains('codex security') ||
+          first.contains('you are not the coordinator') ||
+          first.contains('worker-local'));
 }
 
 String visibleAgentConversationTitle(

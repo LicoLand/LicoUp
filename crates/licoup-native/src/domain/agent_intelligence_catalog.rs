@@ -116,22 +116,6 @@ pub fn agent_model_intelligence(agent_id: &str, model_id: &str, thinking: &str) 
     agent_model_benchmark(agent_id, model_id, thinking).map(|benchmark| benchmark.intelligence)
 }
 
-/// Highest measured Coding Agent score for one exact local Agent harness and
-/// Model. A Membership Profile has no selected reasoning effort yet, so
-/// routing projects the best measured variant and leaves the exact effort to
-/// the later binding.
-pub fn agent_model_max_intelligence(agent_id: &str, model_id: &str) -> Option<i64> {
-    let harness = coding_harness_id(agent_id);
-    let model = coding_model_key(model_id);
-    AgentIntelligenceCatalog::embedded()
-        .ok()?
-        .coding_variants()
-        .iter()
-        .filter(|variant| variant.harness == harness && variant.model == model)
-        .map(|variant| variant.index_score)
-        .max()
-}
-
 pub(crate) fn agent_model_benchmark(
     agent_id: &str,
     model_id: &str,
@@ -546,19 +530,6 @@ mod tests {
         );
         assert_eq!(
             agent_model_intelligence("codex", "gpt-5-6-luna", "unknown"),
-            None
-        );
-        assert_eq!(
-            agent_model_max_intelligence("codex", "gpt-5.6-luna"),
-            catalog
-                .coding_variants()
-                .iter()
-                .filter(|variant| { variant.harness == "codex" && variant.model == "gpt-5-6-luna" })
-                .map(|variant| variant.index_score)
-                .max()
-        );
-        assert_eq!(
-            agent_model_max_intelligence("codex", "unmeasured-model"),
             None
         );
     }

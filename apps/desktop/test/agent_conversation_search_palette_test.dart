@@ -4,12 +4,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/contracts/target_management.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/client_controller/support/no_entry_hook_client_controller.dart';
@@ -68,9 +67,7 @@ void main() {
   });
 
   testWidgets('palette enter activates the top hit', (tester) async {
-    final agentService = _SearchPaletteAgentService();
-    addTearDown(agentService.dispose);
-    final controller = ClientController(agentService: agentService)
+    final controller = ClientController()
       ..scannedTargets = [_target('codex', 'ChatGPT Codex - CLI')]
       ..selectedConversationAgentId = ''
       ..selectedConversationSessionId = ''
@@ -282,17 +279,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
-}
-
-final class _SearchPaletteAgentService extends AgentService {
-  @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
-    bool enableAgentCliModelLookup = false,
-  }) async => TargetScanBatch([
-    for (final targetId in targetIds)
-      TargetScanSlot(targetId: targetId, failed: true),
-  ]);
 }
 
 TargetCandidate _target(String target, String label) {

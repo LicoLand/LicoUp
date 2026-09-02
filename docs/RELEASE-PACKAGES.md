@@ -130,8 +130,8 @@ metadata, digest mismatches, and checksum mismatches.
 
 `build` runs the target's complete native recipe before atomically staging the
 selected set. Generic and remote macOS direct builds fail closed. An explicitly
-authorized local operator uses the Apple Release-owned `client:release:macos`
-entry; the coordinator requires
+authorized local operator uses `client:verify:macos-distribution:preflight`
+followed by `client:build:macos:platform-channel`; the coordinator requires
 Developer ID, Hardened Runtime, secure timestamps, notarization, stapling, and
 Gatekeeper verification. Android direct requires its protected APK signing
 inputs. Missing platform authority fails before a
