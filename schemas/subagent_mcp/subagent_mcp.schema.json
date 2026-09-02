@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licoland.org/schemas/subagent_mcp/subagent_mcp.schema.json",
+  "$id": "https://licoland.com/schemas/subagent_mcp/subagent_mcp.schema.json",
   "title": "LicoUp Subagent MCP Public Contract",
   "type": "object",
   "additionalProperties": false,
