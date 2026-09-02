@@ -1,11 +1,17 @@
 {
   "schemaVersion": 1,
-  "allowedJsonPaths": [],
+  "allowedJsonPaths": [
+    {
+      "path": "schemas/subagent_mcp/subagent_mcp.schema.json",
+      "kind": "config-object"
+    }
+  ],
   "publicReferenceDomains": [
     "claude.ai",
     "claude.com",
     "deepseek.com",
     "formulae.brew.sh",
+    "licoland.org",
     "openclaw.ai",
     "pi.dev"
   ]
