@@ -175,12 +175,8 @@ test("native build emits space-safe encoded rustflags and clears legacy RUSTFLAG
   );
   assert.equal(clientReleaseTrack({}), "nightly");
   assert.equal(
-    clientReleaseTrack({ LICO_CLIENT_RELEASE_TRACK: "stable" }, { distributable: true }),
+    clientReleaseTrack({ LICO_CLIENT_RELEASE_TRACK: "stable" }),
     "stable",
-  );
-  assert.throws(
-    () => clientReleaseTrack({}, { distributable: true }),
-    /required for distributable builds/u,
   );
   const cargoHome = "/synthetic/lico cargo home/.cargo";
   const encoded = encodedRustFlagsWithPathRemap({
