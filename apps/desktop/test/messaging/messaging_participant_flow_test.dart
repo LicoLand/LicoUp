@@ -526,6 +526,34 @@ void main() {
   );
 
   testWidgets(
+    'an active assistant header carries the agent brand mark instead of the sparkles',
+    (tester) async {
+      final chronological = [
+        _participantMessageItem(
+          'assistant',
+          'codex',
+          'Codex',
+          'assistant answer',
+          _at(10, 0),
+          participantRole: 'assistant',
+        ),
+      ];
+      await _pumpFlow(
+        tester,
+        chronological.reversed.toList(),
+        participantTargets: [_flowTarget('codex', 'Codex')],
+        assistantActive: true,
+      );
+
+      expect(find.byKey(const Key('messaging-assistant-avatar')), findsNothing);
+      expect(
+        find.byKey(const Key('messaging-agent-avatar-well')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'hover reveals per-message timestamp outside bubble bottom-right',
     (tester) async {
       final messageAt = DateTime(2026, 7, 20, 18, 58);
@@ -1177,6 +1205,7 @@ Future<void> _pumpFlow(
   bool hasEarlier = false,
   Future<void> Function()? onLoadEarlier,
   Future<void> Function(String)? onCopyText,
+  bool assistantActive = false,
   double viewportHeight = 600,
 }) async {
   tester.view.devicePixelRatio = 1;
@@ -1211,6 +1240,7 @@ Future<void> _pumpFlow(
             ),
             participantTargets: participantTargets,
             participantRuntimeProfiles: participantRuntimeProfiles,
+            assistantActive: assistantActive,
             scrollController: scrollController,
             hasEarlier: hasEarlier,
             onLoadEarlier: onLoadEarlier,

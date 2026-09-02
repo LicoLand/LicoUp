@@ -934,6 +934,7 @@ class _ConversationWorkspaceBodyState
   }) {
     var showConversationList = false;
     var conversationListTargets = const <TargetCandidate>[];
+    var conversationListPriorityAgentId = '';
     var showConversationAgentIcons = false;
     if (_conversationListGroupId.isNotEmpty) {
       showConversationList = true;
@@ -951,6 +952,10 @@ class _ConversationWorkspaceBodyState
                   memberAgentIds.contains(target.target),
             )
             .toList(growable: false);
+        // The group's assistant thread pins to the top of the drill-in list
+        // by default.
+        conversationListPriorityAgentId =
+            selectedGroup.assistantMembership?.principal.agentId.trim() ?? '';
       }
       showConversationAgentIcons = true;
     } else if (_conversationListAgentId.isNotEmpty) {
@@ -1115,6 +1120,7 @@ class _ConversationWorkspaceBodyState
               onOpenWelcome: () => _showWelcome(controller),
               showConversationList: showConversationList,
               conversationListTargets: conversationListTargets,
+              priorityAgentId: conversationListPriorityAgentId,
               selectedSessionId:
                   controller.selectedConversationSession?.id ?? '',
               showConversationAgentIcons: showConversationAgentIcons,

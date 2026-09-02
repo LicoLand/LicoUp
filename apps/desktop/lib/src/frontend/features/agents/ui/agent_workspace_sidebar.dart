@@ -357,6 +357,7 @@ class SidebarConversationListView extends StatelessWidget {
     required this.onToggleEarlier,
     required this.onSelectSession,
     this.runningFor,
+    this.priorityAgentId = '',
     this.showAgentIcons = true,
   });
 
@@ -366,6 +367,10 @@ class SidebarConversationListView extends StatelessWidget {
   final VoidCallback onToggleEarlier;
   final void Function(String agentId, String sessionId) onSelectSession;
   final bool Function(AgentConversationSession session)? runningFor;
+
+  /// The group assistant's agent id in the group drill-in list: its latest
+  /// conversation pins to the top by default.
+  final String priorityAgentId;
   final bool showAgentIcons;
 
   @override
@@ -384,20 +389,50 @@ class SidebarConversationListView extends StatelessWidget {
     }
     final items = <Widget>[];
     final runningSessionIds = <String>{};
+    // The assistant's latest thread pins above everything else by default:
+    // entries arrive newest-first, so the first match is that conversation.
+    final priorityAgent = priorityAgentId.trim();
+    SidebarConversationEntry? pinnedEntry;
+    if (priorityAgent.isNotEmpty) {
+      for (final entry in entries) {
+        if (entry.owner.target == priorityAgent ||
+            entry.owner.id == priorityAgent) {
+          pinnedEntry = entry;
+          break;
+        }
+      }
+      if (pinnedEntry != null) {
+        runningSessionIds.add(pinnedEntry.session.id);
+      }
+    }
     final runningEntries = entries
         .where((entry) {
+          if (entry.session.id == pinnedEntry?.session.id) return false;
           final running = runningFor?.call(entry.session) ?? false;
           if (running) runningSessionIds.add(entry.session.id);
           return running;
         })
         .toList(growable: false);
-    if (runningEntries.isNotEmpty) {
+    if (pinnedEntry != null || runningEntries.isNotEmpty) {
       items.add(
         LicoGroupHeader(
           label: strings.priority,
           padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
         ),
       );
+      if (pinnedEntry != null) {
+        final pinned = pinnedEntry;
+        items.add(
+          _SidebarConversationRow(
+            key: Key('agents-sidebar-conversation-${pinned.session.id}'),
+            entry: pinned,
+            selected: pinned.session.id == selectedSessionId,
+            running: runningFor?.call(pinned.session) ?? false,
+            showAgentIcon: showAgentIcons,
+            onTap: () => onSelectSession(pinned.owner.id, pinned.session.id),
+          ),
+        );
+      }
       for (final entry in runningEntries) {
         items.add(
           _SidebarConversationRow(
