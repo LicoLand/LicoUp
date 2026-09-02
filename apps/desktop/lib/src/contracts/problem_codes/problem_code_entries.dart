@@ -481,14 +481,6 @@ const Map<String, ProblemCode> problemCodeEntries = {
     ProblemDomain.clientUpdate,
     3206,
   ),
-  'client_update_rollback_failed': ProblemCode(
-    ProblemDomain.clientUpdate,
-    3207,
-  ),
-  'client_update_rollback_invalid': ProblemCode(
-    ProblemDomain.clientUpdate,
-    3208,
-  ),
   'client_update_verify_failed': ProblemCode(ProblemDomain.clientUpdate, 3209),
   'client_update_verify_invalid': ProblemCode(ProblemDomain.clientUpdate, 3210),
   // LU-GW LLM Gateway and Telegram channel

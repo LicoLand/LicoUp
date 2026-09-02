@@ -33,10 +33,6 @@ pub fn dispatch(args: &[String], params: &Value) -> Result<Value> {
             let effective = github_context(params)?;
             super::apply::apply(&effective)
         }
-        "rollback" => {
-            let effective = github_context(params)?;
-            super::apply::rollback(&effective)
-        }
         _ => bail!("client update command is unsupported"),
     }
 }

@@ -37,9 +37,11 @@ impl VerifiedArtifact {
 
 #[derive(Clone, Debug)]
 pub(super) struct VerifiedUpdateSelection {
-    pub channel: String,
-    pub current_version: String,
+    pub running_release_track: String,
+    pub target_release_track: String,
+    pub running_version: String,
     pub version: String,
+    pub migration_frontier: Value,
     pub classification: Value,
     pub release_notes_url: Value,
     pub migration_notes: Value,
@@ -53,7 +55,9 @@ impl VerifiedUpdateSelection {
         let binding = json!({
             "schemaVersion": CLIENT_UPDATE_ARTIFACT_RECEIPT_SCHEMA,
             "manifestSha256": self.manifest_sha256,
-            "channel": self.channel,
+            "runningReleaseTrack": self.running_release_track,
+            "targetReleaseTrack": self.target_release_track,
+            "migrationFrontier": self.migration_frontier,
             "version": self.version,
             "targetId": self.artifact.target_id,
             "fileName": self.artifact.file_name,
@@ -69,8 +73,9 @@ impl VerifiedUpdateSelection {
 
 #[derive(Clone, Debug)]
 pub(super) struct VerifiedManifest {
-    pub channel: String,
-    pub current_version: String,
+    pub running_release_track: String,
+    pub target_release_track: String,
+    pub running_version: String,
     pub verified_key_ids: Vec<String>,
     pub manifest_sha256: String,
     pub selected: Option<VerifiedUpdateSelection>,
@@ -78,17 +83,20 @@ pub(super) struct VerifiedManifest {
 
 impl VerifiedManifest {
     pub(super) fn from_selection(
-        channel: String,
-        current_version: String,
+        running_release_track: String,
+        target_release_track: String,
+        running_version: String,
         verified_key_ids: Vec<String>,
         manifest: &Value,
         artifact_and_release: Option<(VerifiedArtifact, &Value)>,
     ) -> Self {
         let manifest_sha256 = canonical_unsigned_sha256(manifest);
         let selected = artifact_and_release.map(|(artifact, release)| VerifiedUpdateSelection {
-            channel: channel.clone(),
-            current_version: current_version.clone(),
+            running_release_track: running_release_track.clone(),
+            target_release_track: target_release_track.clone(),
+            running_version: running_version.clone(),
             version: release["version"].as_str().unwrap_or_default().to_string(),
+            migration_frontier: release["migrationFrontier"].clone(),
             classification: release
                 .get("classification")
                 .cloned()
@@ -106,8 +114,9 @@ impl VerifiedManifest {
             artifact,
         });
         Self {
-            channel,
-            current_version,
+            running_release_track,
+            target_release_track,
+            running_version,
             verified_key_ids,
             manifest_sha256,
             selected,

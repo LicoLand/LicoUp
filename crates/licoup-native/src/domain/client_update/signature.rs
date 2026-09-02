@@ -11,11 +11,11 @@ pub(super) fn verify_manifest_role_signatures(
     manifest: &Value,
     public_keys: &BTreeMap<String, VerifyingKey>,
     offline_root_key_id: &str,
-    online_channel_key_id: &str,
+    online_signing_key_id: &str,
 ) -> Result<Vec<String>> {
     ensure!(
-        offline_root_key_id != online_channel_key_id,
-        "client update offline root and online channel keys must be distinct"
+        offline_root_key_id != online_signing_key_id,
+        "client update offline root and online signing keys must be distinct"
     );
     let verified = verify_all_signatures(manifest, public_keys)?;
     ensure!(
@@ -23,8 +23,8 @@ pub(super) fn verify_manifest_role_signatures(
         "client update manifest requires a valid offline root signature"
     );
     ensure!(
-        verified.contains(online_channel_key_id),
-        "client update manifest requires a valid online channel signature"
+        verified.contains(online_signing_key_id),
+        "client update manifest requires a valid online signing signature"
     );
     Ok(verified.into_iter().collect())
 }

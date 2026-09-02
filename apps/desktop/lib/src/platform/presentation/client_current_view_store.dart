@@ -15,9 +15,10 @@ final class PlatformClientCurrentViewStore implements ClientCurrentViewStore {
 
   @override
   Future<ClientCurrentView?> load(Object portableData) async {
-    final decoded = await _jsonStore.read(portableData, _fileName);
+    final decoded = await _jsonStore.readCurrent(portableData, _fileName);
+    if (decoded == null) return null;
     if (decoded is! Map || decoded['schemaVersion'] != _schemaVersion) {
-      return null;
+      throw StateError('client_current_view_requires_startup_migration');
     }
     final section = _enumByName(ClientSection.values, decoded['section']);
     final conversationKind = _enumByName(

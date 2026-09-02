@@ -1,8 +1,8 @@
-//! Script-driven live apply and rollback for macOS, Windows and Linux.
+//! Script-driven forward-only live apply for macOS, Windows and Linux.
 //!
 //! The Rust core owns extraction and verification; the generated native
 //! script (executed by /bin/sh or powershell.exe) performs the exit-wait,
-//! snapshot, atomic replacement, registration and relaunch using only
+//! atomic replacement, registration and relaunch using only
 //! OS-bundled tools. The script runs detached so it survives the CLI exit;
 //! the GUI exits itself after receiving the applied response.
 
@@ -11,17 +11,19 @@ pub(super) mod plan;
 pub(super) mod script;
 mod spawn;
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use serde_json::{Value, json};
 
 use super::{
-    apply::rollback_plan,
     archive::extract_signed_archive,
     constants::CLIENT_UPDATE_MODE,
     model::VerifiedUpdateSelection,
-    tree::{checked_app_directory, remove_generated_directory, validate_tree_with_contained_links},
+    tree::{checked_app_directory, remove_generated_directory},
 };
 use plan::ApplyPlan;
 use script::{
@@ -34,7 +36,7 @@ pub(super) fn apply_live(
     staged_path: &Path,
     params: &Value,
 ) -> Result<Value> {
-    let plan = build_plan(selection, staged_path, params, ScriptAction::Apply)?;
+    let mut plan = build_plan(selection, staged_path, params, ScriptAction::Apply)?;
     remove_generated_directory(&plan.expanded_dir)?;
     fs::create_dir_all(&plan.expanded_dir)
         .context("failed to create client update extraction root")?;
@@ -42,12 +44,33 @@ pub(super) fn apply_live(
     validate_expanded_layout(&plan)?;
     let platform_authenticity_verified =
         macos_integrity::verify_platform_update_authenticity(&plan)?;
-    let snapshot_recorded = plan.target_path.exists();
-    dispatch_script(&plan)?;
+    let data_root = super::params::json_text(params, &["dataRoot", "data-root"])
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("client update data root is required for live apply"))?;
+    let prepared = crate::domain::client_state_migration::prepare_update_handoff(
+        &data_root,
+        &selection.receipt(),
+        &plan.target_path,
+    )?;
+    plan.handoff_path = Some(prepared.handoff_path.clone());
+    plan.backup_path = Some(prepared.backup_path);
+    let dispatch =
+        validate_plan_args(&plan, ScriptAction::Apply).and_then(|()| dispatch_script(&plan));
+    if let Err(error) = dispatch {
+        // Dispatch failed before ownership could pass to the candidate. The
+        // current binary remains authoritative and may clear this pre-handoff
+        // claim; after successful dispatch only forward repair is allowed.
+        crate::platform::file_security::remove_private_state_marker(&prepared.handoff_path)
+            .context("failed to clear the pre-dispatch client update handoff")?;
+        return Err(error);
+    }
     Ok(json!({
         "ok": true,
         "mode": CLIENT_UPDATE_MODE,
         "phase": "applied",
+        "runningVersion": selection.running_version,
+        "runningReleaseTrack": selection.running_release_track,
+        "targetReleaseTrack": selection.target_release_track,
         "availableVersion": selection.version,
         "targetId": selection.artifact.target_id,
         "installerStrategy": selection.artifact.installer_strategy,
@@ -58,45 +81,11 @@ pub(super) fn apply_live(
         "scriptDispatched": true,
         "platformAuthenticityVerified": platform_authenticity_verified,
         "restartRequired": true,
-        "rollback": rollback_plan(&selection.artifact.installer_strategy, snapshot_recorded),
         "preUpdateStateRecord": {
-            "currentVersion": selection.current_version,
+            "runningVersion": selection.running_version,
             "recorded": true,
-            "snapshotRecorded": snapshot_recorded,
             "pathRedacted": true,
         },
-        "productionReady": false,
-        "publicMetadataOnly": true,
-        "storeCredentialsRequired": false,
-    }))
-}
-
-pub(super) fn rollback_live(
-    selection: &VerifiedUpdateSelection,
-    staged_path: &Path,
-    params: &Value,
-) -> Result<Value> {
-    let plan = build_plan(selection, staged_path, params, ScriptAction::Rollback)?;
-    ensure!(
-        plan.snapshot_dir.is_dir(),
-        "client update rollback snapshot is unavailable"
-    );
-    validate_tree_with_contained_links(&plan.snapshot_dir)?;
-    dispatch_script(&plan)?;
-    Ok(json!({
-        "ok": true,
-        "mode": CLIENT_UPDATE_MODE,
-        "phase": "rolledBack",
-        "availableVersion": selection.version,
-        "targetId": selection.artifact.target_id,
-        "installerStrategy": selection.artifact.installer_strategy,
-        "restoredArtifactId": selection.receipt()["receiptId"],
-        "artifactSha256": selection.artifact.sha256,
-        "artifactReceipt": selection.receipt(),
-        "executed": true,
-        "scriptDispatched": true,
-        "restartRequired": true,
-        "pathRedacted": true,
         "productionReady": false,
         "publicMetadataOnly": true,
         "storeCredentialsRequired": false,
@@ -110,17 +99,33 @@ fn build_plan(
     action: ScriptAction,
 ) -> Result<ApplyPlan> {
     let plan = plan::build_apply_plan(selection, staged_path, params, action)?;
-    let argv = script_argv(&plan, action)?;
+    let path_args = [
+        plan.install_root.to_string_lossy().to_string(),
+        plan.expanded_dir.to_string_lossy().to_string(),
+    ];
+    let path_refs = path_args.iter().map(String::as_str).collect::<Vec<_>>();
+    validate_script_paths(&path_refs)?;
+    if let Some(bundle_id) = plan.bundle_id.as_deref() {
+        validate_bundle_id_arg(bundle_id)?;
+    }
+    Ok(plan)
+}
+
+fn validate_plan_args(plan: &ApplyPlan, action: ScriptAction) -> Result<()> {
+    let argv = script_argv(plan, action)?;
     let argv_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
     // The macOS app_dir is a signed relative file name, the pid is validated
     // by the plan builder and the bundle id by its own rule; every remaining
     // argv value is a path that must be absolute.
-    let mut path_args = vec![
-        plan.install_root.to_string_lossy().to_string(),
-        plan.snapshot_dir.to_string_lossy().to_string(),
-    ];
+    let mut path_args = vec![plan.install_root.to_string_lossy().to_string()];
     if action == ScriptAction::Apply {
         path_args.push(plan.expanded_dir.to_string_lossy().to_string());
+    }
+    if let Some(path) = plan.backup_path.as_ref() {
+        path_args.push(path.to_string_lossy().to_string());
+    }
+    if let Some(path) = plan.handoff_path.as_ref() {
+        path_args.push(path.to_string_lossy().to_string());
     }
     let path_refs: Vec<&str> = path_args.iter().map(String::as_str).collect();
     validate_script_paths(&path_refs)?;
@@ -128,7 +133,7 @@ fn build_plan(
     if let Some(bundle_id) = plan.bundle_id.as_deref() {
         validate_bundle_id_arg(bundle_id)?;
     }
-    Ok(plan)
+    Ok(())
 }
 
 fn dispatch_script(plan: &ApplyPlan) -> Result<()> {
@@ -183,7 +188,6 @@ fn script_argv(plan: &ApplyPlan, action: ScriptAction) -> Result<Vec<String>> {
         if action == ScriptAction::Apply {
             args.push(plan.expanded_dir.to_string_lossy().to_string());
         }
-        args.push(plan.snapshot_dir.to_string_lossy().to_string());
         args.push(plan.gui_pid.clone());
         args.push(
             plan.bundle_id
@@ -195,8 +199,23 @@ fn script_argv(plan: &ApplyPlan, action: ScriptAction) -> Result<Vec<String>> {
         if action == ScriptAction::Apply {
             args.push(plan.expanded_dir.to_string_lossy().to_string());
         }
-        args.push(plan.snapshot_dir.to_string_lossy().to_string());
         args.push(plan.gui_pid.clone());
+    }
+    if action == ScriptAction::Apply {
+        args.push(
+            plan.backup_path
+                .as_ref()
+                .ok_or_else(|| anyhow!("client update pre-claim backup path is missing"))?
+                .to_string_lossy()
+                .to_string(),
+        );
+        args.push(
+            plan.handoff_path
+                .as_ref()
+                .ok_or_else(|| anyhow!("client update handoff path is missing"))?
+                .to_string_lossy()
+                .to_string(),
+        );
     }
     Ok(args)
 }

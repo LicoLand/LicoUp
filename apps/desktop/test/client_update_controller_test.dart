@@ -95,14 +95,14 @@ void main() {
     addTearDown(controller.dispose);
 
     await controller.hydrateIdentity();
-    expect(controller.status.currentVersion, '1.0.0');
+    expect(controller.status.runningVersion, '1.0.0');
     expect(controller.sourceAddress, kClientUpdateGithubReleasesUrl);
 
     await controller.checkGithub(repo: kClientUpdateGithubRepo);
     expect(controller.source, 'github');
     expect(controller.status.phase, ClientUpdatePhase.updateAvailable);
     expect(controller.status.availableVersion, '1.1.0');
-    expect(controller.status.currentVersion, '1.0.0');
+    expect(controller.status.runningVersion, '1.0.0');
     expect(controller.canDownloadUpdate, isTrue);
     expect(controller.canApplyUpdate, isFalse);
     expect(
@@ -118,8 +118,38 @@ void main() {
     await controller.applyThenExit(() => exited = true);
     expect(controller.status.phase, ClientUpdatePhase.applied);
     expect(exited, isTrue);
+    expect(gateway.lastApplyDataRoot, '/data/lico');
     expect(gateway.calls, ['status', 'check', 'download', 'verify', 'apply']);
-    expect(gateway.currentVersions, everyElement('1.0.0'));
+  });
+
+  test('nightly can select stable and clears the previous artifact', () async {
+    final gateway = _FakeClientUpdateGateway();
+    final controller = ClientUpdateController(
+      gateway: gateway,
+      agentService: _NoopAgentCommandRunner(),
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.hydrateIdentity();
+    controller.selectTargetReleaseTrack(ReleaseTrack.stable);
+
+    expect(controller.status.targetReleaseTrack, ReleaseTrack.stable);
+    expect(controller.status.phase, ClientUpdatePhase.idle);
+
+    await controller.checkGithub();
+    expect(gateway.lastCheckTargetReleaseTrack, 'stable');
+    expect(controller.status.updateAvailable, isTrue);
+    expect(controller.artifactReceiptId, isNotEmpty);
+
+    controller.selectTargetReleaseTrack(ReleaseTrack.nightly);
+    expect(controller.status.targetReleaseTrack, ReleaseTrack.nightly);
+    expect(controller.status.phase, ClientUpdatePhase.idle);
+    expect(controller.status.updateAvailable, isFalse);
+    expect(controller.status.availableVersion, isEmpty);
+    expect(controller.artifactReceiptId, isEmpty);
+    expect(controller.canDownloadUpdate, isFalse);
+    expect(controller.canApplyUpdate, isFalse);
   });
 
   test('applyThenExit only exits after the applied phase confirms', () async {
@@ -156,13 +186,13 @@ void main() {
       addTearDown(controller.dispose);
 
       await controller.hydrateIdentity();
-      expect(controller.status.currentVersion, '1.0.0');
+      expect(controller.status.runningVersion, '1.0.0');
       expect(controller.status.phase, ClientUpdatePhase.idle);
 
       await controller.checkGithub();
       expect(controller.status.phase, ClientUpdatePhase.failed);
       expect(controller.status.errorCode, 'client_update_check_failed');
-      expect(controller.status.currentVersion, '1.0.0');
+      expect(controller.status.runningVersion, '1.0.0');
       expect(controller.status.updateAvailable, isFalse);
       expect(controller.canCheckUpdate, isTrue);
       expect(controller.canDownloadUpdate, isFalse);
@@ -173,14 +203,16 @@ void main() {
 
 final class _FakeClientUpdateGateway implements ClientUpdateGateway {
   final List<String> calls = [];
-  final List<String> currentVersions = [];
   bool failCheck = false;
   bool mismatchDownloadReceipt = false;
+  String lastApplyDataRoot = '';
+  String lastCheckTargetReleaseTrack = '';
 
   ClientUpdateStatus _status(ClientUpdatePhase phase) => ClientUpdateStatus(
     phase: phase,
-    currentVersion: '1.0.0',
-    channel: 'stable',
+    runningVersion: '1.0.0',
+    runningReleaseTrack: ReleaseTrack.nightly,
+    targetReleaseTrack: ReleaseTrack.stable,
     availableVersion: '1.1.0',
     updateAvailable: phase == ClientUpdatePhase.updateAvailable,
     artifactSha256: 'sha256:artifact',
@@ -190,11 +222,8 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     githubReleaseUrl: 'https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0',
   );
 
-  void _record(String call, String currentVersion) {
+  void _record(String call) {
     calls.add(call);
-    if (currentVersion.isNotEmpty) {
-      currentVersions.add(currentVersion);
-    }
   }
 
   @override
@@ -203,35 +232,18 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     required bool execute,
     String manifestPath = '',
     String publicKeysPath = '',
-    String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
     String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
-    String currentVersion = '',
+    String dataRoot = '',
   }) async {
-    _record('apply', currentVersion);
+    _record('apply');
+    lastApplyDataRoot = dataRoot;
     return _status(
       execute ? ClientUpdatePhase.applied : ClientUpdatePhase.applyPlanned,
     );
-  }
-
-  @override
-  Future<ClientUpdateStatus> rollback({
-    required AgentCommandRunner agentService,
-    String manifestPath = '',
-    String publicKeysPath = '',
-    String channel = 'stable',
-    String revocationPath = '',
-    String source = 'local',
-    String repo = kClientUpdateGithubRepo,
-    String stagingRoot = '',
-    String stateRoot = '',
-    String currentVersion = '',
-  }) async {
-    _record('rollback', currentVersion);
-    return _status(ClientUpdatePhase.rolledBack);
   }
 
   @override
@@ -239,15 +251,15 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     required AgentCommandRunner agentService,
     String manifestPath = '',
     String publicKeysPath = '',
-    String channel = 'stable',
+    String targetReleaseTrack = '',
     String revocationPath = '',
     String source = 'local',
     String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
-    String currentVersion = '',
   }) async {
-    _record('check', currentVersion);
+    _record('check');
+    lastCheckTargetReleaseTrack = targetReleaseTrack;
     if (failCheck) throw StateError('check_failed');
     return _status(ClientUpdatePhase.updateAvailable);
   }
@@ -258,15 +270,13 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String manifestPath = '',
     String publicKeysPath = '',
     String sourcePath = '',
-    String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
     String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
-    String currentVersion = '',
   }) async {
-    _record('download', currentVersion);
+    _record('download');
     final status = _status(ClientUpdatePhase.downloaded);
     return mismatchDownloadReceipt
         ? status.copyWith(artifactReceiptId: 'sha256:substituted')
@@ -276,17 +286,17 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
   @override
   Future<ClientUpdateStatus> status({
     required AgentCommandRunner agentService,
-    String channel = 'stable',
+    String targetReleaseTrack = '',
     String source = 'local',
     String repo = kClientUpdateGithubRepo,
     String stateRoot = '',
-    String currentVersion = '',
   }) async {
-    _record('status', currentVersion);
+    _record('status');
     return const ClientUpdateStatus(
       phase: ClientUpdatePhase.idle,
-      currentVersion: '1.0.0',
-      channel: 'stable',
+      runningVersion: '1.0.0',
+      runningReleaseTrack: ReleaseTrack.nightly,
+      targetReleaseTrack: ReleaseTrack.nightly,
     );
   }
 
@@ -295,15 +305,13 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     required AgentCommandRunner agentService,
     String manifestPath = '',
     String publicKeysPath = '',
-    String channel = 'stable',
     String revocationPath = '',
     String source = 'local',
     String repo = kClientUpdateGithubRepo,
     String stagingRoot = '',
     String stateRoot = '',
-    String currentVersion = '',
   }) async {
-    _record('verify', currentVersion);
+    _record('verify');
     return _status(ClientUpdatePhase.verified);
   }
 }

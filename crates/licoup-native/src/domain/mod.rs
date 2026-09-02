@@ -7,6 +7,7 @@ pub mod catalog_convergence;
 pub mod client_authority_registry;
 pub mod client_conversation;
 pub mod client_runtime;
+pub mod client_state_migration;
 pub mod client_update;
 pub mod collaboration_plugin;
 pub(crate) mod conversation;
