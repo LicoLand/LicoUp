@@ -42,15 +42,11 @@ Platform build commands produce runnable client build output:
 
 ```bash
 npm run client:package:plan
-npm run client:build -- --platform macos
-npm run client:build -- --platform windows
-npm run client:build -- --platform linux
-npm run client:build -- --platform android
+npm run client:build:macos
+npm run client:build:windows
+npm run client:build:linux
+npm run client:build:android
 ```
-
-`client:build` is the only client build entry. It removes inactive compiler
-output and temporary Flutter build caches after every build while preserving
-the staged runnable/package output used by platform installers.
 
 To plan one or several exact native release packages, use the shared selector:
 
@@ -81,48 +77,6 @@ Run the smallest owning module:
 
 ```bash
 npm run client:regression -- --module <module-id>
-```
-
-The complete client regression is one capability-aware staged run:
-
-```text
-foundation -> (frontend || backend) -> integration -> scenarios -> compatibility
-```
-
-Use a dedicated stage entry while developing, and use the standalone probe
-before investigating a platform or Agent runtime:
-
-```bash
-npm run client:regression:frontend
-npm run client:regression:backend
-npm run client:regression:integration
-npm run client:regression:environment -- --platform android
-npm run client:regression:environment -- --agent codex
-```
-
-Frontend and backend work run concurrently after the shared foundation.
-Locally eligible platform and Agent targets run concurrently after the core
-stages settle. Missing optional hosts, SDKs, devices, or Agent executables are
-recorded as `unverified`; they do not become false passes or fail the core.
-Agent static validation runs one shared inventory/schema contract followed by
-independent per-Agent contracts, so one broken adapter blocks only its own live
-branch. Aggregated Node tests use an anonymous numeric reporter to attribute
-failed inputs back to module IDs; a retry therefore selects the failing
-members rather than the entire batch. Incomplete attribution remains
-`attribution-pending`.
-Each command records wall time and an honest measured/unavailable resource
-schema. Rust additionally records Cargo/libtest-native timing facts, and
-Flutter reduces its JSON reporter stream to anonymous counts and durations.
-The report is written privately to
-`build/reports/client-module-regression.json` without command output, paths,
-arguments, environment values, PIDs, or runtime payloads.
-
-Redispatch only the failed, attribution-pending, or blocked core members and
-failed compatibility targets:
-
-```bash
-npm run client:regression -- \
-  --retry-report build/reports/client-module-regression.json
 ```
 
 Common focused checks are:

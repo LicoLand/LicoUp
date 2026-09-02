@@ -1,10 +1,11 @@
 use super::errors::ProtocolFailure;
+use serde_json::Value;
 use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
-const MAX_SESSION_HEADER_BYTES: usize = 64 * 1024;
+pub(super) const MAX_SESSION_SCAN_FILES: usize = 4_096;
 
 pub(super) fn resolve_session_path(session_id: &str) -> Result<PathBuf, ProtocolFailure> {
     resolve_session_path_in_roots(session_id, &session_roots())
@@ -22,10 +23,11 @@ pub(super) fn resolve_session_path_in_roots(
             "session/resume",
         ));
     }
+    let mut scanned = 0usize;
     let mut matches = Vec::new();
     for root in roots {
-        find_session_files(root, trimmed, &mut matches)?;
-        if matches.len() > 1 {
+        find_session_files(root, trimmed, &mut scanned, &mut matches);
+        if scanned >= MAX_SESSION_SCAN_FILES || matches.len() > 1 {
             break;
         }
     }
@@ -83,17 +85,22 @@ pub(super) fn session_roots_from_sources(
 pub(super) fn find_session_files(
     root: &Path,
     session_id: &str,
+    scanned: &mut usize,
     matches: &mut Vec<PathBuf>,
-) -> Result<(), ProtocolFailure> {
+) {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         if matches.len() > 1 {
-            return Ok(());
+            return;
         }
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
         };
         for entry in entries.flatten() {
+            if *scanned >= MAX_SESSION_SCAN_FILES {
+                return;
+            }
+            *scanned += 1;
             let path = entry.path();
             let Ok(file_type) = entry.file_type() else {
                 continue;
@@ -111,45 +118,34 @@ pub(super) fn find_session_files(
             if !name.ends_with(".jsonl") {
                 continue;
             }
-            if session_header_matches(&path, session_id)? {
+            if session_header_matches(&path, session_id) {
                 matches.push(path);
                 if matches.len() > 1 {
-                    return Ok(());
+                    return;
                 }
             }
         }
     }
-    Ok(())
 }
 
-pub(super) fn session_header_matches(
-    path: &Path,
-    session_id: &str,
-) -> Result<bool, ProtocolFailure> {
+pub(super) fn session_header_matches(path: &Path, session_id: &str) -> bool {
+    const MAX_HEADER_BYTES: u64 = 64 * 1024;
     let Ok(file) = fs::File::open(path) else {
-        return Ok(false);
+        return false;
     };
-    let mut bytes = Vec::with_capacity(4096);
-    let mut reader = BufReader::new(file).take((MAX_SESSION_HEADER_BYTES + 1) as u64);
-    if reader.read_until(b'\n', &mut bytes).is_err() {
-        return Ok(false);
+    let mut bytes = Vec::with_capacity(MAX_HEADER_BYTES as usize);
+    if file.take(MAX_HEADER_BYTES).read_to_end(&mut bytes).is_err() {
+        return false;
     }
-    if bytes.len() > MAX_SESSION_HEADER_BYTES {
-        return Err(ProtocolFailure::new(
-            "pi_session_header_line_too_large",
-            "Pi Agent session header exceeds the supported line size.",
-            "session/header",
-        )
-        .with_session(Some(session_id)));
-    }
-    if bytes.last() == Some(&b'\n') {
-        bytes.pop();
-        if bytes.last() == Some(&b'\r') {
-            bytes.pop();
-        }
+    let Some(newline) = bytes.iter().position(|byte| *byte == b'\n') else {
+        return false;
     };
-    let Ok(line) = std::str::from_utf8(&bytes) else {
-        return Ok(false);
+    let Ok(line) = std::str::from_utf8(&bytes[..newline]) else {
+        return false;
     };
-    Ok(crate::platform::native_agent_parser::adapters::pi::session_header_has_id(line, session_id))
+    let Ok(value) = serde_json::from_str::<Value>(line.trim_end_matches('\r')) else {
+        return false;
+    };
+    value.get("type").and_then(Value::as_str) == Some("session")
+        && value.get("id").and_then(Value::as_str) == Some(session_id)
 }

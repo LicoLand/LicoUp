@@ -241,14 +241,11 @@ mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
         includeResolved: includeResolved,
       );
 
-  bool canResolveSecureMeshApproval(String pendingOperationId) =>
-      secureMeshController.canResolveApproval(pendingOperationId);
-
   Future<void> resolveSecureMeshApproval({
     required String pendingOperationId,
     required bool allow,
-    String respondingEndpointId = '',
-    String responseNonce = '',
+    required String respondingEndpointId,
+    required String responseNonce,
   }) => secureMeshController.resolveApproval(
     pendingOperationId: pendingOperationId,
     allow: allow,

@@ -17,7 +17,7 @@ pub(crate) use auth::authorize;
 pub(super) use control::{ControlDisposition, cancel, cleanup_session};
 pub(super) use execution::execute;
 #[cfg(test)]
-pub(super) use hooks::{ensure_hook_bridge, uninstall_hook_bridge};
+pub(super) use hooks::uninstall_hook_bridge;
 pub(crate) use hooks::{hook_bridge_status, install_hook_bridge, uninstall_hook_bridge_report};
 pub(super) use model::{DRIVER_ID, RUNTIME_PROTOCOL, RunResult};
 pub(super) use probe::probe;

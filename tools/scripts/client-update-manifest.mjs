@@ -370,8 +370,8 @@ function selfTest() {
   return Object.freeze({ ok: true, schema: MANIFEST_SCHEMA });
 }
 
-export function main(argv = process.argv.slice(2)) {
-  const args = parseArgs(argv);
+function main() {
+  const args = parseArgs(process.argv.slice(2));
   if (args["self-test"] === "true") {
     process.stdout.write(`${JSON.stringify(selfTest())}\n`);
     return;

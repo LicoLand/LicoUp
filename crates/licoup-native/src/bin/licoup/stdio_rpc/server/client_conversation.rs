@@ -2,7 +2,15 @@ use super::super::*;
 use licoup_native::domain::client_conversation::ConversationService;
 
 pub(super) fn requires_worker(params: &Value) -> bool {
-    params.get("action").and_then(Value::as_str) == Some("conversation.dispatch.after-post")
+    params.get("action").and_then(Value::as_str) == Some("conversation.message.post")
+        && params
+            .get("mentionedMembershipIds")
+            .and_then(Value::as_array)
+            .is_some_and(|memberships| {
+                memberships
+                    .iter()
+                    .any(|membership| membership.as_str().is_some_and(|id| !id.trim().is_empty()))
+            })
 }
 
 pub(super) fn spawn_execute<W>(
@@ -12,22 +20,20 @@ pub(super) fn spawn_execute<W>(
     params: Value,
     service: ConversationService,
     portable_data_dir: Option<PathBuf>,
-) -> io::Result<std::thread::JoinHandle<()>>
+) -> std::thread::JoinHandle<()>
 where
     W: Write + Send + 'static,
 {
-    std::thread::Builder::new()
-        .name("conversation-after-post".to_owned())
-        .spawn(move || {
-            let _ = execute(
-                &writer,
-                &request_id,
-                &workflow_id,
-                params,
-                service,
-                portable_data_dir,
-            );
-        })
+    std::thread::spawn(move || {
+        let _ = execute(
+            &writer,
+            &request_id,
+            &workflow_id,
+            params,
+            service,
+            portable_data_dir,
+        );
+    })
 }
 
 pub(super) fn execute<W: Write>(
@@ -71,19 +77,14 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn only_after_post_dispatch_requires_a_worker() {
-        assert!(!requires_worker(&json!({
+    fn only_structured_mentioned_messages_require_a_worker() {
+        assert!(requires_worker(&json!({
             "action": "conversation.message.post",
             "mentionedMembershipIds": ["membership:agent"]
         })));
         assert!(!requires_worker(&json!({
             "action": "conversation.message.post",
             "mentionedMembershipIds": []
-        })));
-        assert!(requires_worker(&json!({
-            "action": "conversation.dispatch.after-post",
-            "eventId": "event:1",
-            "mentionedMembershipIds": ["membership:agent"]
         })));
         assert!(!requires_worker(&json!({
             "action": "conversation.list",

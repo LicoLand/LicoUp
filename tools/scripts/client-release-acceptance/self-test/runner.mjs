@@ -34,10 +34,12 @@ import {
 import {
   loadCatalog,
   validateCatalog,
+  validateReleaseFreshness,
 } from "../../model-pricing-facts.mjs";
 
 function assertPricingAuthorityReady() {
-  validateCatalog(loadCatalog(repoRoot));
+  const catalog = validateCatalog(loadCatalog(repoRoot));
+  validateReleaseFreshness(catalog);
 }
 
 export function runSelfTest({ schemaFixture = false } = {}) {

@@ -294,20 +294,13 @@ test("declared lifecycle consumers read specific projection facts", async () => 
   const lifecycle = sources[`${controllerRoot}/client_lifecycle_facade.dart`];
   assert.match(
     lifecycle,
-    /Future<void>\s+initialize\s*\(\s*\)\s*=>\s*initializeWithOptions\s*\(\s*\)\s*;/u,
-    "the default client initialization entry must delegate to the configurable entry",
+    /Future<void>\s+initialize\s*\(\s*\)\s*=>\s*lifecycleController\.initialize\s*\(/u,
+    "client initialization must enter through the coordinator",
   );
-  assert.match(
-    lifecycle,
-    /Future<void>\s+initializeWithOptions\s*\([^)]*\)\s*=>\s*lifecycleController\.initialize\s*\(/u,
-    "client initialization options must still enter through the coordinator",
-  );
-  assert.match(
-    lifecycle,
-    /initializeWithOptions[\s\S]{0,3000}sequentialSteps\s*:[\s\S]{0,2000}action\s*:\s*_initializeClientCore/u,
-    "core initialization must remain a coordinator-owned sequential step",
-  );
-  for (const functionName of ["_finalizeClientInitialization"]) {
+  for (const functionName of [
+    "_initializeClientCore",
+    "_finalizeClientInitialization",
+  ]) {
     const block = dartFunctionBlock(lifecycle, functionName);
     assert.match(
       block,
@@ -361,8 +354,8 @@ test("declared lifecycle consumers read specific projection facts", async () => 
   const run = dartFunctionBlock(product, "_run");
   assert.match(
     run,
-    /_require\s*\(\s*controller\.lifecycleProjection\.initialized\s*,/u,
-    "product acceptance must require authoritative readiness",
+    /\(\s*\)\s*=>\s*controller\.lifecycleProjection\.initialized/u,
+    "product acceptance must wait on authoritative readiness",
   );
 });
 

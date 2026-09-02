@@ -27,6 +27,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(crate) const CONVERSATION_SCHEMA_VERSION: u32 = 2;
 const MAX_HISTORY_PAGE_LIMIT: usize = 500;
+const MAX_SQLITE_ROWS_PER_TABLE: usize = 2_000;
+const ARCHIVE_SQLITE_PAGE_ROWS: usize = 2_000;
 const ARCHIVE_DISCOVERY_PREVIEW_MESSAGES: usize = 12;
 const ARCHIVE_DISCOVERY_PREVIEW_TEXT_CHARS: usize = 8_000;
 
@@ -69,11 +71,13 @@ use kimi::*;
 #[allow(unused_imports)]
 use message_projection::{
     HistoryMessageKind, background_context_prompt_text, clean_native_message_text,
-    extract_antigravity_user_request, extract_native_model, extract_native_session_id,
-    extract_role, extract_text, extract_timestamp, extract_user_image_attachments, find_string,
-    generated_control_text, history_message_kind_from_semantic, native_history_message_id,
-    native_message_timestamp, normalize_history_message_semantic, plain_history_message,
-    strip_antigravity_artifact_noise, strip_generated_context_blocks, structured_history_message,
+    delegated_subagent_prompt_message, extract_antigravity_user_request, extract_native_model,
+    extract_native_session_id, extract_role, extract_text, extract_timestamp,
+    extract_user_image_attachments, find_string, generated_control_text,
+    history_message_kind_from_semantic, looks_like_delegated_agent_prompt,
+    native_history_message_id, native_message_timestamp, normalize_history_message_semantic,
+    plain_history_message, strip_antigravity_artifact_noise, strip_generated_context_blocks,
+    structured_history_message,
 };
 #[allow(unused_imports)]
 use pi_copilot::*;
@@ -85,6 +89,7 @@ use session_merge::collect_history_model_names;
 #[allow(unused_imports)]
 use session_metadata::*;
 
+pub(crate) use catalog::conversation_list_from_catalog;
 pub(crate) use codex::parse_codex_rollout_sessions;
 pub(crate) use cursor_openagent::parse_sqlite_sessions;
 pub(crate) use generic::{parse_json_sessions, parse_jsonl_sessions, parse_text_session};
@@ -93,12 +98,13 @@ pub(crate) use pi_copilot::{
     parse_copilot_transcript_session, parse_lico_agent_session, parse_pi_session,
 };
 pub(crate) use query::{
-    conversation_append, conversation_delete, conversation_list, conversation_stream, model_catalog,
+    browse_catalog_applies, conversation_append, conversation_delete, conversation_list,
+    conversation_stream, model_catalog,
 };
 pub(crate) use session_merge::{
     apply_codex_session_index_titles, collapse_sessions_by_native_identity,
-    dedupe_history_sessions, finalize_history_sessions, paged_history_sessions,
-    sort_sessions_by_updated_at,
+    dedupe_history_sessions, finalize_history_sessions, history_session_dedupe_key,
+    paged_history_sessions, sort_sessions_by_updated_at,
 };
 
 #[cfg(test)]

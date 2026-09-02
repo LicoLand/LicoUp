@@ -74,30 +74,6 @@ its native conversation. A group Conversation is the human entry and
 membership-event projection, not a second transcript store. The retired
 ordinal Conversation Flywheel model is not read or translated.
 
-## Assistant-temporary runs
-
-An Assistant-authored Graph is a request-local immutable run object, not an
-imported catalog strategy. It may bind only exact active Agent Memberships
-from the same Conversation and may not contain script or runtime assets. The
-Assistant facade derives Profile facts from their existing owners, hard-filters
-and orders candidates deterministically, completes every locally knowable
-check, and revalidates store-owned Membership and Profile revisions before
-durable admission under the idempotency key.
-
-A rejected request returns an ordered `diagnostics` list. Every item has a
-stable code and stage; when available it also carries a safe JSON Pointer, the
-affected Membership id, and numeric actual/limit facts. The Assistant can
-therefore repair workflow shape, limits, bindings, model, readiness,
-environment, Skill, and Authority problems without parsing prose or repeating
-effects.
-
-Once admitted, actor effects use the same persistent Membership turns and
-Conversation Event/Part timeline as direct and group chat. An Assistant-run
-effect or drive failure settles one typed terminal result and cancels
-unstarted commands; it does not enter the generic retry, Fallback, or failure
-edge path. The run has no elapsed-time terminal rule and is never rewritten.
-The same Assistant may continue directly or submit a later Graph.
-
 ## Graph contract
 
 Every workflow is compiled before import against one typed transition
@@ -168,38 +144,25 @@ not user-selectable fields. Agent pickers contain only detected targets with a
 usable conversation driver; unsupported or merely known targets are omitted.
 Session-policy implementation details are not shown as role labels.
 
-Opening the editor hydrates selected workflow-role and Assistant model catalogs
-through one target batch. Rust reuses bounded discovery workers, one shared
-process/environment snapshot, and one discovery-cache commit; the client does
-not start a scanner or async runtime per role.
-
 ## Group Conversation start
 
 Only a group Conversation shows the strategy capsule. A one-to-one
 Conversation does not.
 
-The capsule above the composer defaults to **Automatic adaptation**. This is
-the Assistant's default mode, not a built-in strategy. Selecting an
+The capsule above the composer defaults to **Optional strategy**. Selecting an
 authorized revision shows the strategy name and places an `@` capsule for the
 entry-slot candidate in front of the input. Selection admits every bound Agent
 as a group Membership. It does not start a run.
 
-While Assistant mode is active, a user send always addresses the designated
-Assistant through the same Membership-scoped native lane as a one-to-one
-conversation. The Assistant may answer directly or use a workflow; that choice
-does not replace the dialogue lane. Native steer, resume, cancellation, event,
-and safe-boundary behavior remain those of the selected adapter.
-
-The first send is still a Conversation Event. Native addressing starts
-`strategy.run.start` on the persistent conversation sidecar (the Graph does not
-own a send process). Later sends stay Events: an in-flight Membership
-PersistentTurn is steered; a Waiting run is resumed. Clearing the capsule exits
+The first send hands the message to the entry slot and starts
+`strategy.run.start` with the group workspace as working directory. Later
+sends go to the sticky entry session only while the run needs human input;
+otherwise they are ordinary group messages. Clearing the `@` capsule exits
 strategy mode and does not cancel a run that is already executing.
 
-An `@mention` only selects Memberships. It uses the same PersistentTurn stream
-as strategy, Assistant, and subagent effects — not a second I/O stack. Graph actor
-and workset effects land as structured Events on the matching Membership through
-the shared conversation display.
+An `@mention` outside strategy mode remains a DirectTurn and does not start a
+Graph. Graph actor and workset effects land as structured Events on the
+matching Membership through the shared conversation display.
 
 Imported package contents, bindings, authorizations, and native run state
 remain in local client state. Do not publish raw strategy inputs, local paths,

@@ -25,54 +25,24 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
   const openCodeServePolicySource = await readText(
     "crates/licoup-native/src/platform/opencode_serve/policy.rs"
   );
-  const openCodeParserSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs"
-  );
   const kiloCodeServeFacadeSource = await readText(
     "crates/licoup-native/src/platform/kilo_code_serve.rs"
   );
   const kiloCodeServePolicySource = await readText(
     "crates/licoup-native/src/platform/kilo_code_serve/policy.rs"
   );
-  const kiloCodeParserSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/kilo_code.rs"
-  );
-  for (const [target, facade, policy, parser, foreignPolicy] of [
-    [
-      "OpenCode",
-      openCodeServeFacadeSource,
-      openCodeServePolicySource,
-      openCodeParserSource,
-      "kilo_code"
-    ],
-    [
-      "Kilo Code",
-      kiloCodeServeFacadeSource,
-      kiloCodeServePolicySource,
-      kiloCodeParserSource,
-      "opencode"
-    ]
+  for (const [target, facade, policy, foreignPolicy] of [
+    ["OpenCode", openCodeServeFacadeSource, openCodeServePolicySource, "kilo_code"],
+    ["Kilo Code", kiloCodeServeFacadeSource, kiloCodeServePolicySource, "opencode"]
   ]) {
     assert(
       facade.includes("local_service::serve::ensure") &&
-        facade.includes("local_service::sse::watch_data") &&
-        facade.includes("ServeEventParser") &&
-        facade.includes("EventStreamFailure") &&
+        facade.includes("local_service::serve::watch_session_events") &&
         !facade.includes("ureq::") &&
         !facade.includes("TcpListener") &&
         !facade.includes("Command::new") &&
         !facade.includes("read_state"),
-      `${target} serve root must retain bounded transport and its parser-owned event ingress`
-    );
-    assert(
-      parser.includes("struct ServeEventParser") &&
-        parser.includes('event_type != "message.part.updated"') &&
-        parser.includes("session_id(properties) != Some(self.session_id.as_str())") &&
-        parser.includes('Some("assistant")') &&
-        parser.includes("assistant_messages") &&
-        !parser.includes('"state": service_state') &&
-        !parser.includes('"stateDir"'),
-      `${target} parser must require exact-session assistant events and never project raw local state`
+      `${target} serve root must remain a thin facade over the shared bounded lifecycle`
     );
     assert(
       !policy.includes(foreignPolicy) &&

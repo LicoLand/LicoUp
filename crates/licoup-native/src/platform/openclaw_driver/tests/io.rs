@@ -1,12 +1,12 @@
 use super::*;
 
 #[test]
-fn protocol_reader_is_line_bounded_and_leaves_decoding_to_the_parser() {
+fn protocol_reader_is_line_bounded_and_rejects_invalid_json() {
     let (sender, receiver) = mpsc::channel();
     read_protocol_messages(Cursor::new(b"not-json\n"), Some(64), sender);
     assert!(matches!(
         receiver.recv().unwrap(),
-        TransportEvent::Frame(line) if line == b"not-json"
+        TransportEvent::InvalidJson
     ));
 
     let (sender, receiver) = mpsc::channel();

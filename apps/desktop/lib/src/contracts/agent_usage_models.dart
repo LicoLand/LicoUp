@@ -4,11 +4,13 @@ Map<String, dynamic> _map(Object? value) {
       : const {};
 }
 
-/// Current numeric-only Adaptive Flywheel Graph usage projection. A missing
-/// projection is valid; any present projection must match this exact schema.
-const String agentUsageWorkflowReportSchema = 'licoup.graph-usage-report.v2';
-const int agentUsageWorkflowLedgerSchemaVersion = 2;
-const String agentUsageWorkflowResultKind = 'graph-run-usage';
+/// The native delivery report is a separate, current-generation projection
+/// nested inside the existing agent-usage envelope.  A missing workflow
+/// projection is valid for older retained reports; a present projection must
+/// be the exact generation below and is never translated from an older shape.
+const String agentUsageWorkflowReportSchema = 'licoup.workflow-token-report.v1';
+const int agentUsageWorkflowLedgerSchemaVersion = 1;
+const String agentUsageWorkflowResultKind = 'workflow-token-usage';
 
 String _safeCode(Object? value, {int maxLength = 256}) {
   final text = value?.toString().trim() ?? '';
@@ -186,68 +188,151 @@ class AgentUsageTokenTotals {
   };
 }
 
-/// One numeric-only durable command from a topology-neutral Graph run.
-class AgentUsageWorkflowCommand {
-  const AgentUsageWorkflowCommand({
-    required this.commandId,
-    required this.stateId,
-    required this.membershipId,
-    required this.kind,
-    required this.status,
+/// One Plan/Task/dispatch row from the path-free native ledger projection.
+class AgentUsageWorkflowNode {
+  const AgentUsageWorkflowNode({
+    required this.nodeId,
+    required this.parentNodeId,
+    required this.planCode,
+    required this.planRevision,
+    required this.taskCode,
+    required this.phase,
+    required this.dispatchId,
+    required this.role,
     required this.attempt,
     required this.agentId,
     required this.model,
     required this.accuracy,
+    required this.sessionMode,
+    required this.state,
+    required this.usageSettlement,
     required this.usage,
+    required this.terminalCorrelation,
+    required this.children,
   });
 
-  final String commandId;
-  final String stateId;
-  final String? membershipId;
-  final String kind;
-  final String status;
+  final String nodeId;
+  final String? parentNodeId;
+  final String planCode;
+  final int planRevision;
+  final String? taskCode;
+  final String? phase;
+  final String dispatchId;
+  final String role;
   final int attempt;
-  final String? agentId;
-  final String? model;
+  final String agentId;
+  final String model;
   final String accuracy;
+  final String sessionMode;
+  final String state;
+  final String usageSettlement;
   final AgentUsageTokenTotals usage;
+  final String? terminalCorrelation;
+  final List<AgentUsageWorkflowNode> children;
 
-  factory AgentUsageWorkflowCommand.fromJson(Map<String, dynamic> json) {
+  AgentUsageTokenTotals get tokenTotals => usage;
+
+  bool get isMain =>
+      role.trim().toLowerCase() == 'main' || parentNodeId == null;
+
+  String get taskLabel {
+    final value = taskCode?.trim();
+    if (value != null && value.isNotEmpty) return value;
+    final phaseValue = phase?.trim();
+    if (phaseValue != null && phaseValue.isNotEmpty) return phaseValue;
+    return role;
+  }
+
+  AgentUsageWorkflowNode copyWith({
+    String? nodeId,
+    String? parentNodeId,
+    String? planCode,
+    int? planRevision,
+    String? taskCode,
+    String? phase,
+    String? dispatchId,
+    String? role,
+    int? attempt,
+    String? agentId,
+    String? model,
+    String? accuracy,
+    String? sessionMode,
+    String? state,
+    String? usageSettlement,
+    AgentUsageTokenTotals? usage,
+    String? terminalCorrelation,
+    List<AgentUsageWorkflowNode>? children,
+  }) {
+    return AgentUsageWorkflowNode(
+      nodeId: nodeId ?? this.nodeId,
+      parentNodeId: parentNodeId ?? this.parentNodeId,
+      planCode: planCode ?? this.planCode,
+      planRevision: planRevision ?? this.planRevision,
+      taskCode: taskCode ?? this.taskCode,
+      phase: phase ?? this.phase,
+      dispatchId: dispatchId ?? this.dispatchId,
+      role: role ?? this.role,
+      attempt: attempt ?? this.attempt,
+      agentId: agentId ?? this.agentId,
+      model: model ?? this.model,
+      accuracy: accuracy ?? this.accuracy,
+      sessionMode: sessionMode ?? this.sessionMode,
+      state: state ?? this.state,
+      usageSettlement: usageSettlement ?? this.usageSettlement,
+      usage: usage ?? this.usage,
+      terminalCorrelation: terminalCorrelation ?? this.terminalCorrelation,
+      children: children ?? this.children,
+    );
+  }
+
+  factory AgentUsageWorkflowNode.fromJson(Map<String, dynamic> json) {
     final accuracy = _safeCode(json['accuracy']).toLowerCase();
-    return AgentUsageWorkflowCommand(
-      commandId: _safeCode(json['commandId']),
-      stateId: _safeCode(json['stateId']),
-      membershipId: _optionalSafeCode(json['membershipId']),
-      kind: _safeCode(json['kind']),
-      status: _safeCode(json['status']),
+    final parsedChildren = _parseWorkflowNodes(json['children']);
+    return AgentUsageWorkflowNode(
+      nodeId: _safeCode(json['nodeId']),
+      parentNodeId: _optionalSafeCode(json['parentNodeId']),
+      planCode: _safeCode(json['planCode']),
+      planRevision: _nonNegativeInt(json['planRevision']),
+      taskCode: _optionalSafeCode(json['taskCode']),
+      phase: _optionalSafeCode(json['phase']),
+      dispatchId: _safeCode(json['dispatchId']),
+      role: _safeCode(json['role']),
       attempt: _nonNegativeInt(json['attempt']),
-      agentId: _optionalSafeCode(json['agentId']),
-      model: _optionalSafeLabel(json['model']),
-      accuracy: switch (accuracy) {
-        'estimated' => 'estimated',
-        'exact' => 'exact',
-        _ => 'unknown',
-      },
+      agentId: _safeCode(json['agentId']),
+      model: _safeLabel(json['model']),
+      accuracy: accuracy == 'estimated' ? 'estimated' : 'exact',
+      sessionMode: _safeCode(json['sessionMode']),
+      state: _safeCode(json['state']),
+      usageSettlement: _safeCode(json['usageSettlement']),
       usage: AgentUsageTokenTotals.fromJson(
         json['usage'],
         accuracy: accuracy,
-        countRecordWhenCoverageMissing:
-            accuracy == 'exact' || accuracy == 'estimated',
+        countRecordWhenCoverageMissing: true,
       ),
+      terminalCorrelation: _optionalSafeCode(json['terminalCorrelation']),
+      children: List.unmodifiable(parsedChildren),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'commandId': commandId,
-    'stateId': stateId,
-    if (membershipId != null) 'membershipId': membershipId,
-    'kind': kind,
-    'status': status,
+    'nodeId': nodeId,
+    if (parentNodeId != null) 'parentNodeId': parentNodeId,
+    'planCode': planCode,
+    'planRevision': planRevision,
+    if (taskCode != null) 'taskCode': taskCode,
+    if (phase != null) 'phase': phase,
+    'dispatchId': dispatchId,
+    'role': role,
     'attempt': attempt,
-    if (agentId != null) 'agentId': agentId,
-    if (model != null) 'model': model,
+    'agentId': agentId,
+    'model': model,
     'accuracy': accuracy,
+    'sessionMode': sessionMode,
+    'state': state,
+    'usageSettlement': usageSettlement,
     'usage': usage.toJson(),
+    if (terminalCorrelation != null) 'terminalCorrelation': terminalCorrelation,
+    'children': [for (final child in children) child.toJson()],
   };
 }
 
@@ -256,31 +341,29 @@ String? _optionalSafeCode(Object? value) {
   return code.isEmpty ? null : code;
 }
 
-String? _optionalSafeLabel(Object? value) {
-  final label = _safeLabel(value);
-  return label.isEmpty ? null : label;
-}
-
-/// One immutable Graph run projection. Commands are flat durable identities;
-/// the usage surface does not infer Plan, Task, Role, dispatch or topology.
+/// One retained native delivery rollup.  Workflow and node identifiers are
+/// retained for correlation only; the monitoring widgets intentionally use
+/// ordinal rows and localized labels instead of rendering raw IDs.
 class AgentUsageWorkflow {
   const AgentUsageWorkflow({
-    required this.runId,
-    required this.revisionDigest,
-    required this.conversationId,
-    required this.assistantMembershipId,
-    required this.status,
+    required this.workflowId,
+    required this.planCode,
+    required this.planRevision,
+    required this.state,
+    required this.terminalCorrelation,
     required this.totals,
-    required this.commands,
+    required this.roots,
+    required this.nodes,
   });
 
-  final String runId;
-  final String revisionDigest;
-  final String? conversationId;
-  final String? assistantMembershipId;
-  final String status;
+  final String workflowId;
+  final String planCode;
+  final int planRevision;
+  final String state;
+  final String? terminalCorrelation;
   final AgentUsageTokenTotals totals;
-  final List<AgentUsageWorkflowCommand> commands;
+  final List<AgentUsageWorkflowNode> roots;
+  final List<AgentUsageWorkflowNode> nodes;
 
   int get totalTokens => totals.totalTokens;
   int get promptTokens => totals.promptTokens;
@@ -289,54 +372,114 @@ class AgentUsageWorkflow {
   int get exactCount => totals.exactCount;
   int get estimatedCount => totals.estimatedCount;
   double get exactCoverage => totals.exactCoverage;
+  AgentUsageTokenTotals get tokenTotals => totals;
 
   factory AgentUsageWorkflow.fromJson(Map<String, dynamic> json) {
-    final commands = _parseWorkflowCommands(json['commands']);
-    final derived = commands.fold<AgentUsageTokenTotals>(
-      const AgentUsageTokenTotals(),
-      (total, command) => total + command.usage,
-    );
+    final flatNodes = _parseWorkflowNodes(json['nodes']);
+    final listedRoots = _parseWorkflowNodes(json['roots']);
+    final nodes = flatNodes.isNotEmpty ? flatNodes : _flatten(listedRoots);
+    final roots = flatNodes.isNotEmpty
+        ? _treeRoots(flatNodes)
+        : List.unmodifiable(listedRoots);
+    final derived = _sumNodeUsage(nodes);
     final reported = AgentUsageTokenTotals.fromJson(json['totals']);
+    final totals = _totalsWithDerivedCoverage(reported, derived);
     return AgentUsageWorkflow(
-      runId: _safeCode(json['runId']),
-      revisionDigest: _safeCode(json['revisionDigest']),
-      conversationId: _optionalSafeCode(json['conversationId']),
-      assistantMembershipId: _optionalSafeCode(json['assistantMembershipId']),
-      status: _safeCode(json['status']),
-      totals: _totalsWithDerivedCoverage(reported, derived),
-      commands: commands,
+      workflowId: _safeCode(json['workflowId']),
+      planCode: _safeCode(json['planCode']),
+      planRevision: _nonNegativeInt(json['planRevision']),
+      state: _safeCode(json['state']),
+      terminalCorrelation: _optionalSafeCode(json['terminalCorrelation']),
+      totals: totals,
+      roots: List.unmodifiable(roots),
+      nodes: List.unmodifiable(nodes),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'runId': runId,
-    'revisionDigest': revisionDigest,
-    if (conversationId != null) 'conversationId': conversationId,
-    if (assistantMembershipId != null)
-      'assistantMembershipId': assistantMembershipId,
-    'status': status,
+    'workflowId': workflowId,
+    'planCode': planCode,
+    'planRevision': planRevision,
+    'state': state,
+    if (terminalCorrelation != null) 'terminalCorrelation': terminalCorrelation,
     'totals': totals.toJson(),
-    'commands': [for (final command in commands) command.toJson()],
+    'roots': [for (final root in roots) root.toJson()],
+    'nodes': [for (final node in nodes) node.toJson()],
   };
 }
 
-List<AgentUsageWorkflowCommand> _parseWorkflowCommands(Object? value) {
+/// Compatibility aliases keep the contract readable at call sites that name
+/// the collection as a summary or entry while sharing one immutable model.
+typedef AgentUsageWorkflowSummary = AgentUsageWorkflow;
+typedef AgentUsageWorkflowEntry = AgentUsageWorkflow;
+typedef AgentUsageWorkflowNodeSummary = AgentUsageWorkflowNode;
+typedef AgentUsageWorkflowReport = AgentUsageWorkflow;
+typedef AgentUsageWorkflowTotals = AgentUsageTokenTotals;
+
+List<AgentUsageWorkflowNode> _parseWorkflowNodes(Object? value) {
   if (value is! List) return const [];
-  final commands = <AgentUsageWorkflowCommand>[];
+  final parsed = <AgentUsageWorkflowNode>[];
   for (final item in value) {
     if (item is! Map) continue;
-    final command = AgentUsageWorkflowCommand.fromJson(
+    final node = AgentUsageWorkflowNode.fromJson(
       Map<String, dynamic>.from(item),
     );
-    if (command.commandId.isEmpty ||
-        command.stateId.isEmpty ||
-        command.kind.isEmpty ||
-        command.status.isEmpty) {
-      continue;
-    }
-    commands.add(command);
+    if (node.nodeId.isEmpty) continue;
+    parsed.add(node);
   }
-  return List.unmodifiable(commands);
+  return List.unmodifiable(parsed);
+}
+
+List<AgentUsageWorkflowNode> _flatten(List<AgentUsageWorkflowNode> roots) {
+  final result = <AgentUsageWorkflowNode>[];
+  void visit(AgentUsageWorkflowNode node) {
+    result.add(node);
+    for (final child in node.children) {
+      visit(child);
+    }
+  }
+
+  for (final root in roots) {
+    visit(root);
+  }
+  return List.unmodifiable(result);
+}
+
+List<AgentUsageWorkflowNode> _treeRoots(List<AgentUsageWorkflowNode> flat) {
+  final byId = <String, AgentUsageWorkflowNode>{
+    for (final node in flat) node.nodeId: node,
+  };
+  final childrenByParent = <String, List<AgentUsageWorkflowNode>>{};
+  for (final node in flat) {
+    final parent = node.parentNodeId;
+    if (parent == null || !byId.containsKey(parent)) continue;
+    childrenByParent.putIfAbsent(parent, () => []).add(node);
+  }
+  AgentUsageWorkflowNode build(
+    AgentUsageWorkflowNode node,
+    Set<String> visiting,
+  ) {
+    if (!visiting.add(node.nodeId)) return node.copyWith(children: const []);
+    final children = [
+      for (final child in childrenByParent[node.nodeId] ?? const [])
+        build(child, {...visiting}),
+    ];
+    return node.copyWith(children: List.unmodifiable(children));
+  }
+
+  return List.unmodifiable([
+    for (final node in flat)
+      if (node.parentNodeId == null || !byId.containsKey(node.parentNodeId))
+        build(node, <String>{}),
+  ]);
+}
+
+AgentUsageTokenTotals _sumNodeUsage(List<AgentUsageWorkflowNode> nodes) {
+  var total = const AgentUsageTokenTotals();
+  for (final node in nodes) {
+    total += node.usage;
+  }
+  return total;
 }
 
 AgentUsageTokenTotals _totalsWithDerivedCoverage(
@@ -349,14 +492,13 @@ AgentUsageTokenTotals _totalsWithDerivedCoverage(
       reported.completionTokens > 0 ||
       reported.totalTokens > 0;
   final base = hasReportedNumbers ? reported : derived;
-  final hasReportedCoverage =
-      reported.exactCount > 0 || reported.estimatedCount > 0;
-  return base.copyWith(
-    exactCount: hasReportedCoverage ? reported.exactCount : derived.exactCount,
-    estimatedCount: hasReportedCoverage
-        ? reported.estimatedCount
-        : derived.estimatedCount,
-  );
+  final exact = reported.exactCount > 0 || reported.estimatedCount > 0
+      ? reported.exactCount
+      : derived.exactCount;
+  final estimated = reported.exactCount > 0 || reported.estimatedCount > 0
+      ? reported.estimatedCount
+      : derived.estimatedCount;
+  return base.copyWith(exactCount: exact, estimatedCount: estimated);
 }
 
 class _AgentUsageWorkflowEnvelope {
@@ -370,24 +512,38 @@ class _AgentUsageWorkflowEnvelope {
 }
 
 _AgentUsageWorkflowEnvelope _parseWorkflowEnvelope(Map<String, dynamic> json) {
-  if (!json.containsKey('workflow')) {
+  final hasNested = json.containsKey('workflow');
+  final hasCollection =
+      json.containsKey('workflows') || json.containsKey('workflowSummary');
+  if (!hasNested && !hasCollection) {
     return const _AgentUsageWorkflowEnvelope(
       workflows: [],
       summary: AgentUsageTokenTotals(),
     );
   }
   final nested = json['workflow'];
-  if (nested is! Map) {
+  if (hasNested && nested is! Map) {
     throw const FormatException('Invalid workflow usage envelope.');
   }
-  final envelope = Map<String, dynamic>.from(nested);
+  final envelope = hasNested
+      ? Map<String, dynamic>.from(nested as Map)
+      : <String, dynamic>{
+          // The native scan also projects these fields at the top level for
+          // retained-report consumers. The enclosing agent schema is the
+          // generation marker when the nested envelope is absent.
+          'schemaVersion': agentUsageWorkflowReportSchema,
+          'ledgerSchemaVersion': agentUsageWorkflowLedgerSchemaVersion,
+          'resultKind': agentUsageWorkflowResultKind,
+          'summary': json['workflowSummary'],
+          'workflows': json['workflows'],
+        };
   if (envelope['schemaVersion'] != agentUsageWorkflowReportSchema ||
       envelope['ledgerSchemaVersion'] !=
           agentUsageWorkflowLedgerSchemaVersion ||
       envelope['resultKind'] != agentUsageWorkflowResultKind) {
     throw const FormatException('Unsupported workflow usage report schema.');
   }
-  final workflows = _parseWorkflowCollection(envelope['runs']);
+  final workflows = _parseWorkflowCollection(envelope['workflows']);
   final summary = AgentUsageTokenTotals.fromJson(envelope['summary']);
   final derived = workflows.fold<AgentUsageTokenTotals>(
     const AgentUsageTokenTotals(),
@@ -401,7 +557,7 @@ _AgentUsageWorkflowEnvelope _parseWorkflowEnvelope(Map<String, dynamic> json) {
 
 List<AgentUsageWorkflow> _parseWorkflowCollection(Object? value) {
   if (value is! List) {
-    throw const FormatException('Invalid Graph usage run collection.');
+    throw const FormatException('Invalid workflow usage collection.');
   }
   final workflows = <AgentUsageWorkflow>[];
   for (final item in value) {
@@ -409,7 +565,7 @@ List<AgentUsageWorkflow> _parseWorkflowCollection(Object? value) {
     final workflow = AgentUsageWorkflow.fromJson(
       Map<String, dynamic>.from(item),
     );
-    if (workflow.runId.isEmpty || workflow.revisionDigest.isEmpty) continue;
+    if (workflow.workflowId.isEmpty || workflow.planCode.isEmpty) continue;
     workflows.add(workflow);
   }
   return List.unmodifiable(workflows);

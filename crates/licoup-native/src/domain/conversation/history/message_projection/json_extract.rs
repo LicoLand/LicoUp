@@ -2,73 +2,55 @@ use serde_json::{Map, Value};
 
 use super::antigravity::has_user_request_tag;
 use super::generated_context::generated_control_text;
+use super::semantic::looks_like_delegated_agent_prompt;
+
+const MAX_TEXT_EXTRACTION_DEPTH: usize = 16;
+const MAX_EMBEDDED_JSON_DISCOVERY_DEPTH: usize = 6;
 
 pub(in crate::domain::conversation::history) fn extract_text(value: &Value) -> Option<String> {
-    extract_text_iterative(value, true)
+    extract_text_at_depth(value, 0)
 }
 
-fn extract_text_iterative(value: &Value, decode_embedded_json: bool) -> Option<String> {
-    let mut pending = vec![value];
-    let mut parts = Vec::new();
-    while let Some(candidate) = pending.pop() {
-        match candidate {
-            Value::String(text) => {
-                let trimmed = text.trim();
-                if trimmed.is_empty()
-                    || (generated_control_text(trimmed) && !has_user_request_tag(trimmed))
-                {
-                    continue;
-                }
-                if decode_embedded_json
-                    && let Some(decoded) = parse_embedded_json_text(trimmed)
-                    && !decoded
-                        .as_object()
-                        .map(structured_content_object_is_tool_or_metadata)
-                        .unwrap_or(false)
-                    && let Some(text) = extract_text_iterative(&decoded, false)
-                    && !text.trim().is_empty()
-                    && (!generated_control_text(&text) || has_user_request_tag(&text))
-                {
-                    parts.push(text);
-                    continue;
-                }
-                parts.push(text.to_string());
-            }
-            Value::Array(items) => pending.extend(items.iter().rev()),
-            Value::Object(object) => {
-                if structured_content_object_is_tool_or_metadata(object) {
-                    continue;
-                }
-                let child = if structured_content_object_is_text(object) {
-                    object
-                        .get("text")
-                        .filter(|value| value_may_have_text(value))
-                        .or_else(|| object.get("content"))
-                } else {
-                    [
-                        "text", "content", "message", "messages", "prompt", "response", "answer",
-                        "summary", "value", "parts", "items", "turns",
-                    ]
-                    .iter()
-                    .find_map(|key| object.get(*key).filter(|value| value_may_have_text(value)))
-                };
-                if let Some(child) = child {
-                    pending.push(child);
-                }
-            }
-            _ => {}
-        }
+fn extract_text_at_depth(value: &Value, depth: usize) -> Option<String> {
+    if depth > MAX_TEXT_EXTRACTION_DEPTH {
+        return None;
     }
-    (!parts.is_empty()).then(|| parts.join("\n"))
-}
-
-fn value_may_have_text(value: &Value) -> bool {
     match value {
-        Value::Null => false,
-        Value::String(text) => !text.trim().is_empty(),
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(object) => !object.is_empty(),
-        _ => false,
+        Value::String(text) => extract_text_from_string(text, depth),
+        Value::Array(items) => {
+            let parts = items
+                .iter()
+                .filter_map(|item| extract_text_at_depth(item, depth + 1))
+                .filter(|text| !text.trim().is_empty())
+                .collect::<Vec<_>>();
+            (!parts.is_empty()).then(|| parts.join("\n"))
+        }
+        Value::Object(object) => {
+            if structured_content_object_is_tool_or_metadata(object) {
+                return None;
+            }
+            if structured_content_object_is_text(object) {
+                return object
+                    .get("text")
+                    .or_else(|| object.get("content"))
+                    .and_then(|value| extract_text_at_depth(value, depth + 1));
+            }
+            for key in [
+                "text", "content", "message", "messages", "prompt", "response", "answer",
+                "summary", "value", "parts", "items", "turns",
+            ] {
+                if let Some(text) = object
+                    .get(key)
+                    .and_then(|value| extract_text_at_depth(value, depth + 1))
+                {
+                    if !text.trim().is_empty() {
+                        return Some(text);
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 
@@ -113,6 +95,39 @@ fn structured_content_object_is_text(object: &Map<String, Value>) -> bool {
     )
 }
 
+fn extract_text_from_string(text: &str, depth: usize) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty()
+        || (generated_control_text(trimmed)
+            && !looks_like_delegated_agent_prompt(trimmed)
+            && !has_user_request_tag(trimmed))
+    {
+        return None;
+    }
+    if depth < 4 {
+        if let Some(value) = parse_embedded_json_text(trimmed) {
+            if value
+                .as_object()
+                .map(structured_content_object_is_tool_or_metadata)
+                .unwrap_or(false)
+            {
+                return None;
+            }
+            if let Some(decoded) = extract_text_at_depth(&value, depth + 1) {
+                let decoded = decoded.trim().to_string();
+                if !decoded.is_empty()
+                    && (!generated_control_text(&decoded)
+                        || looks_like_delegated_agent_prompt(&decoded)
+                        || has_user_request_tag(&decoded))
+                {
+                    return Some(decoded);
+                }
+            }
+        }
+    }
+    Some(text.to_string())
+}
+
 fn parse_embedded_json_text(text: &str) -> Option<Value> {
     let trimmed = text.trim();
     let structured = (trimmed.starts_with('{') && trimmed.ends_with('}'))
@@ -121,40 +136,40 @@ fn parse_embedded_json_text(text: &str) -> Option<Value> {
         return None;
     }
     let value = serde_json::from_str::<Value>(trimmed).ok()?;
-    embedded_json_may_hold_message_text(&value).then_some(value)
+    embedded_json_may_hold_message_text(&value, 0).then_some(value)
 }
 
-fn embedded_json_may_hold_message_text(value: &Value) -> bool {
-    let mut pending = vec![value];
-    while let Some(candidate) = pending.pop() {
-        match candidate {
-            Value::Array(items) => pending.extend(items),
-            Value::Object(object) => {
-                if object.keys().any(|key| {
-                    matches!(
-                        key.as_str(),
-                        "text"
-                            | "content"
-                            | "message"
-                            | "messages"
-                            | "prompt"
-                            | "response"
-                            | "answer"
-                            | "summary"
-                            | "value"
-                            | "parts"
-                            | "items"
-                            | "turns"
-                    )
-                }) {
-                    return true;
-                }
-                pending.extend(object.values());
-            }
-            _ => {}
-        }
+fn embedded_json_may_hold_message_text(value: &Value, depth: usize) -> bool {
+    if depth > MAX_EMBEDDED_JSON_DISCOVERY_DEPTH {
+        return false;
     }
-    false
+    match value {
+        Value::Array(items) => items
+            .iter()
+            .any(|item| embedded_json_may_hold_message_text(item, depth + 1)),
+        Value::Object(object) => {
+            object.keys().any(|key| {
+                matches!(
+                    key.as_str(),
+                    "text"
+                        | "content"
+                        | "message"
+                        | "messages"
+                        | "prompt"
+                        | "response"
+                        | "answer"
+                        | "summary"
+                        | "value"
+                        | "parts"
+                        | "items"
+                        | "turns"
+                )
+            }) || object
+                .values()
+                .any(|child| embedded_json_may_hold_message_text(child, depth + 1))
+        }
+        _ => false,
+    }
 }
 
 pub(in crate::domain::conversation::history) fn extract_role(value: &Value) -> String {
@@ -234,19 +249,25 @@ pub(in crate::domain::conversation::history) fn find_string(
     value: &Value,
     keys: &[&str],
 ) -> Option<String> {
-    let mut candidate = value;
-    loop {
-        let object = candidate.as_object()?;
-        for key in keys {
-            if let Some(text) = object.get(*key).and_then(Value::as_str) {
-                return Some(text.to_string());
-            }
-            if let Some(number) = object.get(*key).and_then(Value::as_i64) {
-                return Some(number.to_string());
-            }
-        }
-        candidate = object.get("message")?;
+    find_string_at_depth(value, keys, 0)
+}
+
+fn find_string_at_depth(value: &Value, keys: &[&str], depth: usize) -> Option<String> {
+    if depth > MAX_TEXT_EXTRACTION_DEPTH {
+        return None;
     }
+    let object = value.as_object()?;
+    for key in keys {
+        if let Some(text) = object.get(*key).and_then(Value::as_str) {
+            return Some(text.to_string());
+        }
+        if let Some(number) = object.get(*key).and_then(Value::as_i64) {
+            return Some(number.to_string());
+        }
+    }
+    object
+        .get("message")
+        .and_then(|message| find_string_at_depth(message, keys, depth + 1))
 }
 
 pub(in crate::domain::conversation::history) fn extract_native_session_id(

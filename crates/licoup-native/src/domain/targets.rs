@@ -55,12 +55,6 @@ pub fn inspect_target(target: &str) -> Result<Value> {
     discovery::inspect_target(target)
 }
 
-/// Inspect one target without executing its binary, reading its model or
-/// history stores, or refreshing persisted discovery state.
-pub fn inspect_target_read_only(target: &str) -> Result<Value> {
-    discovery::inspect_target_read_only(target)
-}
-
 pub fn inspect_target_with_params(params: &Value) -> Result<Value> {
     discovery::inspect_target_with_params(params)
 }

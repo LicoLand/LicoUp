@@ -74,47 +74,7 @@ fn session_identity_must_be_in_the_bounded_first_header_record() {
         "{\"type\":\"message\"}\n{\"type\":\"session\",\"id\":\"exact\"}\n",
     )
     .unwrap();
-    assert!(session_header_matches(&valid, "exact").unwrap());
-    assert!(!session_header_matches(&misplaced, "exact").unwrap());
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn exact_session_discovery_walks_beyond_the_former_file_cap() {
-    let root = temporary_directory("lico-pi-complete-tree");
-    fs::create_dir_all(&root).unwrap();
-    for index in 0..4_100 {
-        fs::write(
-            root.join(format!("unrelated-{index:04}.jsonl")),
-            format!("{{\"type\":\"session\",\"id\":\"other-{index}\"}}\n"),
-        )
-        .unwrap();
-    }
-    let expected = root.join("requested.jsonl");
-    fs::write(
-        &expected,
-        "{\"type\":\"session\",\"id\":\"requested-session\"}\n",
-    )
-    .unwrap();
-    assert_eq!(
-        resolve_session_path_in_roots("requested-session", std::slice::from_ref(&root)).unwrap(),
-        expected
-    );
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn oversized_session_header_is_a_named_failure_not_false_not_found() {
-    let root = temporary_directory("lico-pi-oversized-header");
-    fs::create_dir_all(&root).unwrap();
-    fs::write(
-        root.join("oversized.jsonl"),
-        format!("{{\"padding\":\"{}\"}}\n", "x".repeat(64 * 1024)),
-    )
-    .unwrap();
-    let failure = resolve_session_path_in_roots("requested-session", std::slice::from_ref(&root))
-        .unwrap_err();
-    assert_eq!(failure.code, "pi_session_header_line_too_large");
-    assert_eq!(failure.session_id.as_deref(), Some("requested-session"));
+    assert!(session_header_matches(&valid, "exact"));
+    assert!(!session_header_matches(&misplaced, "exact"));
     let _ = fs::remove_dir_all(root);
 }

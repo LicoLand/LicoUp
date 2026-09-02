@@ -249,8 +249,7 @@ mod tests {
         let CliExecution::Json(catalog) =
             crate::ffi::commands::execute_cli(vec!["adapter".into(), "catalog".into()]).unwrap()
         else {
-            assert!(false, "adapter catalog must be JSON");
-            return;
+            panic!("adapter catalog must be JSON");
         };
         assert_eq!(catalog["ok"], true);
         assert_eq!(catalog["schemaVersion"], "lico.adapter-plugin-catalog.v1");
@@ -322,8 +321,7 @@ mod tests {
             missing_binary.to_string_lossy().into_owned(),
         ])
         .unwrap() else {
-            assert!(false, "status must be JSON");
-            return;
+            panic!("status must be JSON");
         };
         assert_eq!(result["ok"], true);
         assert_eq!(result["state"], "unavailable");

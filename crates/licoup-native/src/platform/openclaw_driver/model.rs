@@ -20,7 +20,7 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    pub(in crate::platform) events: Vec<Value>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -42,16 +42,10 @@ impl RunResult {
         stderr_truncated: bool,
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
-        let transitions =
-            crate::platform::native_agent_parser::adapters::openclaw::failed_transitions(
-                &failure.code,
-                &failure.stage,
-                &failure.message,
-            );
         Self {
             ok: false,
             output: String::new(),
-            transitions,
+            events: Vec::new(),
             error: Some(failure.clone()),
             thread_id: session_id.clone(),
             session_id,
