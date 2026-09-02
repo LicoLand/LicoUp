@@ -1,11 +1,9 @@
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
-import 'package:licoup/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_context_projection.dart';
-import 'package:licoup/src/contracts/generated/conversation.g.dart';
 
 const int conversationSessionPageSize = 10;
 const int conversationSessionLoadMoreIncrement = 10;
@@ -37,8 +35,7 @@ int conversationSessionLoadMorePageSize(int completedLoadMoreCount) {
 }
 
 /// Owns deterministic session-list reconciliation and native identity binding.
-mixin AgentConversationSessionStateController
-    on AgentWorkspaceCoordinator, AgentConversationLiveProjectionController {
+mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
   bool conversationCommitCatalog(
     String agentId,
     ConversationSessionPage page, {
@@ -63,15 +60,10 @@ mixin AgentConversationSessionStateController
     // Native catalog cwd wins over a locally baked agent-workspace path when
     // a newer turn-bound projection otherwise shadows the project directory.
     next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
-    next = _conversationRetainAccumulatedMessagePages(previous, next);
     _conversationPromoteNativeTitles(agentId, page.sessions, next);
-    final projectedLive = conversationStateHolder.messagesFor(
-      conversationComposerScopeKey,
-    );
-    final liveProjection = projectedLive.isNotEmpty
-        ? projectedLive
-        : liveConversationMessagesByScope[conversationComposerScopeKey] ??
-              const <AgentConversationMessage>[];
+    final liveProjection =
+        liveConversationMessagesByScope[conversationComposerScopeKey] ??
+        const [];
     AgentConversationSession? providerReadback;
     if (previousSelected != null && liveProjection.isNotEmpty) {
       // A completed streamed turn is already an authoritative local session.
@@ -526,16 +518,12 @@ mixin AgentConversationSessionStateController
   /// clearing the live projection then silently drops every later
   /// lifecycle/evidence/reply event of that turn.
   bool _conversationScopeTurnInFlight(String scopeKey) {
-    final projected = conversationStateHolder.turnStateFor(scopeKey);
-    if (projected.phase != ConversationTurnState.unknown) {
-      return projected.active;
+    final state = conversationTurnProcessStateByScope[scopeKey];
+    if (state == null) {
+      return false;
     }
-    // Legacy state is retained only for test/readback compatibility; the
-    // renderer never consumes it after a generated delta has arrived.
-    final legacy = conversationTurnProcessStateByScope[scopeKey];
-    return legacy != null &&
-        legacy.stage != ConversationTurnProcessStage.completed &&
-        legacy.stage != ConversationTurnProcessStage.failed;
+    return state.stage != ConversationTurnProcessStage.completed &&
+        state.stage != ConversationTurnProcessStage.failed;
   }
 
   bool _conversationMessageParticipatesInReadback(
@@ -644,14 +632,6 @@ mixin AgentConversationSessionStateController
       messages: List<AgentConversationMessage>.unmodifiable(mergedMessages),
       messageCount: mergedMessages.length,
       sourceMessageCount: mergedMessages.length,
-      messagePage: AgentConversationMessagePage(
-        start: 0,
-        endExclusive: mergedMessages.length,
-        returned: mergedMessages.length,
-        total: mergedMessages.length,
-        hasEarlier: false,
-        nextBefore: '',
-      ),
       workingDirectory: _conversationTurnWorkingDirectory(
         requested: workingDirectory,
         previous: previous?.workingDirectory ?? '',
@@ -734,38 +714,6 @@ mixin AgentConversationSessionStateController
     return changed
         ? List<AgentConversationSession>.unmodifiable(recovered)
         : sessions;
-  }
-
-  List<AgentConversationSession> _conversationRetainAccumulatedMessagePages(
-    List<AgentConversationSession> previous,
-    List<AgentConversationSession> incoming,
-  ) {
-    if (previous.isEmpty || incoming.isEmpty) return incoming;
-    final previousByNativeId = <String, AgentConversationSession>{
-      for (final session in previous)
-        if (session.nativeSessionId.trim().isNotEmpty)
-          session.nativeSessionId.trim(): session,
-    };
-    var changed = false;
-    final retained = incoming
-        .map((session) {
-          final accumulated =
-              previousByNativeId[session.nativeSessionId.trim()];
-          if (accumulated == null ||
-              accumulated.messages.isEmpty ||
-              accumulated.messagePage.total == 0 ||
-              session.messagePage.total == 0 ||
-              (accumulated.messagePage.start >= session.messagePage.start &&
-                  accumulated.messages.length <= session.messages.length)) {
-            return session;
-          }
-          changed = true;
-          return accumulated.retainExactMessagesAcrossPreview(session);
-        })
-        .toList(growable: false);
-    return changed
-        ? List<AgentConversationSession>.unmodifiable(retained)
-        : incoming;
   }
 }
 

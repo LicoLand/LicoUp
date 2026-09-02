@@ -87,14 +87,15 @@ export async function checkConversationDomain(context, { agentConversationServic
     "native message projection must use one thin root and six explicitly dependent leaves"
   );
     assert(messageProjectionSources["structured_privacy.rs"].includes("OnceLock<Regex>") &&
+      messageProjectionSources["structured_privacy.rs"].includes("MAX_STRUCTURED_EVENT_TEXT_CHARS") &&
       messageProjectionSources["structured_privacy.rs"].includes("[local path hidden]") &&
       messageProjectionSources["generated_context.rs"].includes("generated_control_text") &&
       messageProjectionSources["antigravity.rs"].includes("extract_user_request") &&
-      messageProjectionSources["json_extract.rs"].includes("extract_text_iterative") &&
+      messageProjectionSources["json_extract.rs"].includes("MAX_TEXT_EXTRACTION_DEPTH") &&
       messageProjectionSources["semantic.rs"].includes("enum HistoryMessageKind") &&
       messageProjectionSources["projection.rs"].includes("SemanticLayer::Thread") &&
       messageProjectionSources["projection.rs"].includes("SemanticLayer::Execution"),
-      "message projection leaves must retain complete privacy, generated-context, Antigravity, JSON, semantic, and layer policies"
+      "message projection leaves must retain bounded privacy, generated-context, Antigravity, JSON, semantic, and layer policies"
     );
     const cursorOpenAgentRoot =
       "crates/licoup-native/src/domain/conversation/history/cursor_openagent";
@@ -122,15 +123,16 @@ export async function checkConversationDomain(context, { agentConversationServic
     );
     assert(
       cursorOpenAgentSources["codec.rs"].includes("SQLITE_OPEN_READ_ONLY") &&
-        cursorOpenAgentSources["codec.rs"].includes("sqlite_row_fields") &&
-        cursorOpenAgentSources["codec.rs"].includes("sqlite_value_text") &&
+        cursorOpenAgentSources["codec.rs"].includes("MAX_SQLITE_FIELDS_PER_ROW") &&
+        cursorOpenAgentSources["codec.rs"].includes("MAX_SQLITE_VALUE_BYTES") &&
+        cursorOpenAgentSources["codec.rs"].includes("MAX_SQLITE_ROW_BYTES") &&
         cursorOpenAgentSources["cursor.rs"].includes("parse_cursor_sqlite_sessions") &&
         cursorOpenAgentSources["cursor_projection.rs"].includes("selectedModels") &&
         cursorOpenAgentSources["openagent.rs"].includes("parse_openagent_sqlite_sessions") &&
         cursorOpenAgentSources["openagent.rs"].includes("openagent_usage_from_columns") &&
-        cursorOpenAgentSources["fallback.rs"].includes('SELECT * FROM') &&
-        cursorOpenAgentSources["fallback.rs"].includes("rows.next()"),
-      "Cursor/OpenAgent leaves must retain read-only complete codec, precise adapter parsing, usage projection, and complete generic fallback"
+        cursorOpenAgentSources["fallback.rs"].includes("ARCHIVE_SQLITE_PAGE_ROWS") &&
+        cursorOpenAgentSources["fallback.rs"].includes("MAX_SQLITE_ROWS_PER_TABLE"),
+      "Cursor/OpenAgent leaves must retain read-only bounded codec, precise adapter parsing, usage projection, and paged generic fallback"
     );
     const sessionMergeRoot =
       "crates/licoup-native/src/domain/conversation/history/session_merge";

@@ -7,9 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadePath = "crates/licoup-native/src/platform/codex_app_server.rs";
 const moduleRoot = "crates/licoup-native/src/platform/codex_app_server";
-const parserRoot = "crates/licoup-native/src/platform/native_agent_parser/adapters/codex";
 const productionLeaves = Object.freeze([
-  "active_control.rs",
   "config.rs",
   "contract.rs",
   "error.rs",
@@ -17,15 +15,13 @@ const productionLeaves = Object.freeze([
   "launch.rs",
   "limits.rs",
   "model.rs",
-  "model_catalog.rs",
+  "protocol.rs",
+  "protocol/control.rs",
+  "protocol/events.rs",
+  "protocol/helpers.rs",
+  "protocol/session.rs",
   "supervision.rs",
   "transport.rs",
-]);
-const parserLeaves = Object.freeze([
-  "control.rs",
-  "events.rs",
-  "helpers.rs",
-  "session.rs",
 ]);
 const testLeaves = Object.freeze([
   "config.rs",
@@ -33,7 +29,6 @@ const testLeaves = Object.freeze([
   "events.rs",
   "io.rs",
   "launch.rs",
-  "model_catalog.rs",
   "session.rs",
   "support.rs",
   "transport.rs",
@@ -44,21 +39,20 @@ async function read(relativePath) {
 }
 
 async function readLeaves(leaves) {
-  return Object.fromEntries(await Promise.all([
-    ...leaves.map(async (leaf) => [leaf, await read(`${moduleRoot}/${leaf}`)]),
-    ["parser.rs", await read(`${parserRoot}.rs`)],
-    ...parserLeaves.map(async (leaf) => [`parser/${leaf}`, await read(`${parserRoot}/${leaf}`)]),
-  ]));
+  return Object.fromEntries(await Promise.all(leaves.map(async (leaf) => [
+    leaf,
+    await read(`${moduleRoot}/${leaf}`),
+  ])));
 }
 
 test("Codex app-server uses a thin facade with no retired monolith", async () => {
   const facade = await read(facadePath);
   assert.deepEqual(
-    [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
+    [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
       .filter((name) => name !== "tests")
       .sort(),
-    ["active_control", "config", "contract", "error", "io", "launch", "limits", "model", "model_catalog", "supervision", "transport"],
+    ["config", "contract", "error", "io", "launch", "limits", "model", "protocol", "supervision", "transport"],
   );
   for (const implementationToken of [
     "struct CodexProtocol",
@@ -74,7 +68,7 @@ test("Codex app-server uses a thin facade with no retired monolith", async () =>
 test("Codex protocol, state, events, and approval control have single owners", async () => {
   const sources = await readLeaves(productionLeaves);
   const joined = Object.values(sources).join("\n");
-  const protocolFacade = sources["parser.rs"];
+  const protocolFacade = sources["protocol.rs"];
 
   for (const moduleName of ["control", "events", "helpers", "session"]) {
     assert.ok(protocolFacade.includes(`mod ${moduleName};`));
@@ -82,21 +76,19 @@ test("Codex protocol, state, events, and approval control have single owners", a
   assert.ok(sources["contract.rs"].includes('"codex-app-server-stdio-jsonrpc"'));
   assert.ok(sources["config.rs"].includes("ProtocolConfig::from_params") === false);
   assert.ok(sources["config.rs"].includes("fn from_params"));
-  assert.ok(sources["parser/session.rs"].includes('"thread/start"'));
-  assert.ok(sources["parser/session.rs"].includes('"thread/resume"'));
-  assert.ok(sources["parser/session.rs"].includes('"turn/start"'));
-  assert.ok(sources["parser/events.rs"].includes('"turn/completed"'));
-  assert.ok(sources["parser/events.rs"].includes("matches_current_ids"));
-  assert.ok(sources["parser/control.rs"].includes("ProtocolFailure::user_interaction"));
+  assert.ok(sources["protocol/session.rs"].includes('"thread/start"'));
+  assert.ok(sources["protocol/session.rs"].includes('"thread/resume"'));
+  assert.ok(sources["protocol/session.rs"].includes('"turn/start"'));
+  assert.ok(sources["protocol/events.rs"].includes('"turn/completed"'));
+  assert.ok(sources["protocol/events.rs"].includes("matches_current_ids"));
+  assert.ok(sources["protocol/control.rs"].includes("ProtocolFailure::user_interaction"));
   assert.ok(sources["error.rs"].includes('message: &\'static str'));
-  assert.ok(sources["parser/session.rs"].includes("self.session_id = Some(thread_id.to_string())"));
-  assert.ok(sources["parser.rs"].includes("fn parse_line"));
-  assert.equal(sources["io.rs"].includes("serde_json::from"), false);
+  assert.ok(sources["protocol/session.rs"].includes("self.session_id = Some(thread_id.to_string())"));
 
   for (const duplicatedCodec of ["AcpProtocol", "AcpSessionPlan", '"session/new"']) {
     assert.equal(joined.includes(duplicatedCodec), false);
   }
-  for (const retiredModulePattern of ["#[path", "include!("]) {
+  for (const retiredModulePattern of ["#[path", "include!(", "mod tests {"]) {
     assert.equal(joined.includes(retiredModulePattern), false);
   }
 });

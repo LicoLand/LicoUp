@@ -2,6 +2,7 @@ import 'dart:convert';
 
 const int _secureAgentSessionListMaximum = 20;
 const int _secureAgentSessionListMaximumBytes = 2 * 1024 * 1024;
+const int _secureAgentSessionListMaximumMessages = 2000;
 const int _secureAgentMessageMaximumDepth = 8;
 const int _secureAgentMessageMaximumTextLength = 256 * 1024;
 
@@ -187,6 +188,7 @@ Map<String, dynamic> resolveSecureAgentSessionListResult({
   } on Object {
     return _secureRelayFailure('secure_agent_sessions_result_invalid');
   }
+  final messageBudget = _SecureAgentMessageBudget();
   final sessionsByProjectionId = <String, Map<String, dynamic>>{};
   final sessionsByNativeId = <String, Map<String, dynamic>>{};
   for (final rawSession in rawSessions) {
@@ -204,7 +206,11 @@ Map<String, dynamic> resolveSecureAgentSessionListResult({
         session['readOnly'] != true) {
       return _secureRelayFailure('secure_agent_sessions_result_invalid');
     }
-    final projection = _secureAgentSessionProjection(session, normalizedAgent);
+    final projection = _secureAgentSessionProjection(
+      session,
+      normalizedAgent,
+      messageBudget,
+    );
     if (projection == null) {
       return _secureRelayFailure('secure_agent_sessions_result_invalid');
     }
@@ -234,6 +240,7 @@ Map<String, dynamic> resolveSecureAgentSessionListResult({
 Map<String, dynamic>? _secureAgentSessionProjection(
   Map<String, dynamic> session,
   String agentId,
+  _SecureAgentMessageBudget messageBudget,
 ) {
   final id = session['id'];
   final nativeSessionId = session['nativeSessionId'];
@@ -265,31 +272,16 @@ Map<String, dynamic>? _secureAgentSessionProjection(
   }
   final messages = <Map<String, dynamic>>[];
   for (final rawMessage in rawMessages) {
-    final message = _secureAgentMessageProjection(rawMessage, depth: 0);
+    final message = _secureAgentMessageProjection(
+      rawMessage,
+      messageBudget,
+      depth: 0,
+    );
     if (message == null) {
       return null;
     }
     messages.add(message);
   }
-  final declaredTotal = switch (session['sourceMessageCount'] ??
-      session['messageCount']) {
-    final int value when value >= messages.length => value,
-    final num value when value >= messages.length => value.toInt(),
-    _ => messages.length,
-  };
-  final rawPage = _secureRelayMap(session['messagePage']);
-  final page = rawPage == null
-      ? <String, dynamic>{
-          'start': declaredTotal - messages.length,
-          'endExclusive': declaredTotal,
-          'returned': messages.length,
-          'total': declaredTotal,
-          'hasEarlier': declaredTotal > messages.length,
-          if (declaredTotal > messages.length && messages.isNotEmpty)
-            'nextBefore': messages.first['id'],
-        }
-      : _secureAgentMessagePageProjection(rawPage, messages.length);
-  if (page == null || page['total'] != declaredTotal) return null;
   return {
     'id': id.trim(),
     'nativeSessionId': nativeSessionId.trim(),
@@ -301,17 +293,17 @@ Map<String, dynamic>? _secureAgentSessionProjection(
     'native': true,
     'readOnly': true,
     'messageCount': messages.length,
-    'sourceMessageCount': declaredTotal,
-    'messagePage': page,
     'messages': List<Map<String, dynamic>>.unmodifiable(messages),
   };
 }
 
 Map<String, dynamic>? _secureAgentMessageProjection(
-  Object? rawMessage, {
+  Object? rawMessage,
+  _SecureAgentMessageBudget budget, {
   required int depth,
 }) {
-  if (depth > _secureAgentMessageMaximumDepth) {
+  if (depth > _secureAgentMessageMaximumDepth ||
+      budget.count >= _secureAgentSessionListMaximumMessages) {
     return null;
   }
   final message = _secureRelayMap(rawMessage);
@@ -331,6 +323,7 @@ Map<String, dynamic>? _secureAgentMessageProjection(
       createdAt.length > 128) {
     return null;
   }
+  budget.count += 1;
   final projection = <String, dynamic>{
     'id': id,
     'role': role,
@@ -363,7 +356,11 @@ Map<String, dynamic>? _secureAgentMessageProjection(
     }
     final children = <Map<String, dynamic>>[];
     for (final rawChild in rawChildren) {
-      final child = _secureAgentMessageProjection(rawChild, depth: depth + 1);
+      final child = _secureAgentMessageProjection(
+        rawChild,
+        budget,
+        depth: depth + 1,
+      );
       if (child == null) {
         return null;
       }
@@ -376,45 +373,6 @@ Map<String, dynamic>? _secureAgentMessageProjection(
     }
   }
   return projection;
-}
-
-Map<String, dynamic>? _secureAgentMessagePageProjection(
-  Map<String, dynamic> page,
-  int messageCount,
-) {
-  int? integer(String key) => switch (page[key]) {
-    final int value => value,
-    final num value => value.toInt(),
-    _ => null,
-  };
-  final start = integer('start');
-  final endExclusive = integer('endExclusive');
-  final returned = integer('returned');
-  final total = integer('total');
-  final hasEarlier = page['hasEarlier'];
-  final nextBefore = (page['nextBefore'] ?? '').toString().trim();
-  if (start == null ||
-      endExclusive == null ||
-      returned == null ||
-      total == null ||
-      start < 0 ||
-      endExclusive < start ||
-      returned != messageCount ||
-      endExclusive - start != returned ||
-      total < endExclusive ||
-      hasEarlier is! bool ||
-      (hasEarlier && (start == 0 || nextBefore.isEmpty)) ||
-      (!hasEarlier && start != 0)) {
-    return null;
-  }
-  return {
-    'start': start,
-    'endExclusive': endExclusive,
-    'returned': returned,
-    'total': total,
-    'hasEarlier': hasEarlier,
-    if (nextBefore.isNotEmpty) 'nextBefore': nextBefore,
-  };
 }
 
 Map<String, dynamic> _preferredSecureAgentSessionProjection(
@@ -455,6 +413,10 @@ int _compareSecureAgentSessionProjection(
     return 1;
   }
   return (left['id'] as String).compareTo(right['id'] as String);
+}
+
+class _SecureAgentMessageBudget {
+  int count = 0;
 }
 
 Map<String, dynamic> _secureRelayFailure(String errorCode) {

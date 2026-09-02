@@ -169,32 +169,16 @@ pub(crate) fn agent_sessions_list_params(payload: &SecureCommandPayload) -> Resu
 }
 
 pub(crate) fn agent_sessions_describe_params(payload: &SecureCommandPayload) -> Result<Value> {
-    let mut allowed_fields = AGENT_SESSIONS_DESCRIBE_PAYLOAD_FIELDS.to_vec();
-    allowed_fields.extend(["messageBefore", "messageLimit"]);
-    let body = filtered_body(payload.body(), &allowed_fields)?;
+    let body = filtered_body(payload.body(), AGENT_SESSIONS_DESCRIBE_PAYLOAD_FIELDS)?;
     let agent = bound_agent_id(payload, "agent.sessions.describe")?;
     let session_id = text_from_any(&body, &["sessionId", "nativeSessionId"]).ok_or_else(|| {
         anyhow!("secure mesh command agent.sessions.describe requires session id")
     })?;
-    let message_limit = body
-        .get("messageLimit")
-        .and_then(Value::as_u64)
-        .map(usize::try_from)
-        .transpose()
-        .map_err(|_| anyhow!("secure mesh command message limit is invalid"))?;
-    if let Some(limit) = message_limit {
-        ensure!(
-            (1..=100).contains(&limit),
-            "secure mesh command message limit is invalid"
-        );
-    }
     Ok(json!({
         "agent": agent,
         "sessionId": session_id,
         "limit": 1,
         "offset": 0,
-        "messageBefore": body.get("messageBefore").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()),
-        "messageLimit": message_limit,
     }))
 }
 

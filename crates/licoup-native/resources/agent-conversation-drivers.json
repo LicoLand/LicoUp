@@ -396,37 +396,6 @@
       }
     },
     {
-      "agentId": "deepseek-harness",
-      "driverId": "deepseek-harness-sdk-jsonrpc",
-      "runtimeProtocol": "deepseek-harness-sdk-stdio-jsonrpc",
-      "officialNativeLaneKind": "public-local-protocol",
-      "historyReadable": false,
-      "driverMode": "conversation",
-      "blockerCodes": [],
-      "capabilityMatrix": {
-        "laneFamily": "rpc",
-        "openNew": true,
-        "exactResume": true,
-        "streaming": true,
-        "cancel": false,
-        "structuredEvents": true,
-        "approvals": false,
-        "multimodal": false,
-        "usageStatus": false,
-        "officialLane": true,
-        "interruptSteer": false,
-        "hostSurvivesGuiDisconnect": true,
-        "activeTurnReattach": true,
-        "orderedCursorReplay": true
-      },
-      "lifecycleEvidence": {
-        "accepted": true,
-        "processing": true,
-        "responding": true,
-        "completed": true
-      }
-    },
-    {
       "agentId": "lico-agent",
       "driverId": "lico-agent-rpc",
       "runtimeProtocol": "lico-agent-rpc-stdio-jsonl",

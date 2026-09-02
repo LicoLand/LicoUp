@@ -128,12 +128,10 @@ function ensureLicoupCli({ forceBuild = false } = {}) {
   return buildLicoupCli();
 }
 
-function runCliJson(cli, args, input) {
+function runCliJson(cli, args) {
   const result = spawnSync(cli, args, {
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024,
-    stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-    input,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -144,7 +142,7 @@ function runCliJson(cli, args, input) {
   return JSON.parse(text);
 }
 
-function applyGatewaySidecar({ cli, configRoot, port, allowEmpty = false }) {
+function applyGatewaySidecar({ cli, configRoot, port }) {
   mkdirSync(configRoot, { recursive: true, mode: 0o700 });
   const plan = runCliJson(cli, [
     "llm-gateway",
@@ -168,14 +166,6 @@ function applyGatewaySidecar({ cli, configRoot, port, allowEmpty = false }) {
       throw new Error("llm_gateway_agent_config_refuses_primary_opencode_config");
     }
   }
-  const plannedProvider = JSON.parse(plan.content)?.provider?.["licoup-gateway"];
-  const models = Object.entries(plannedProvider?.models || {}).map(([id, value]) => ({
-    id,
-    name: String(value?.name || id),
-  }));
-  if (models.length === 0 && !allowEmpty) {
-    throw new Error("llm_gateway_model_catalog_unavailable");
-  }
   const applied = runCliJson(cli, [
     "llm-gateway",
     "agent-config",
@@ -187,9 +177,7 @@ function applyGatewaySidecar({ cli, configRoot, port, allowEmpty = false }) {
     "--confirmation",
     plan.confirmationDigest,
     "--confirmed",
-    "--stdin-json",
-    "true",
-  ], JSON.stringify({ models }));
+  ]);
   const body = readFileSync(destination, "utf8");
   const parsed = JSON.parse(body);
   if (!parsed?.provider?.["licoup-gateway"]?.options?.baseURL) {
@@ -221,11 +209,10 @@ function selfTest() {
     const { destination, body } = applyGatewaySidecar({
       cli,
       configRoot: root,
-      port: "1",
-      allowEmpty: true,
+      port: "15722",
     });
     if (!existsSync(destination)) throw new Error("sidecar_missing");
-    if (!body.includes("127.0.0.1:1/v1")) throw new Error("sidecar_base_url");
+    if (!body.includes("127.0.0.1:15722/v1")) throw new Error("sidecar_base_url");
     if (!body.includes("@ai-sdk/openai-compatible")) throw new Error("sidecar_npm");
     const primaryAfter = readFileSync(primary, "utf8");
     if (!primaryAfter.includes("keep-me")) throw new Error("primary_overwritten");

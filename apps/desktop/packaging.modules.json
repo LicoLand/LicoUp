@@ -31,7 +31,7 @@
       ]
     },
     "target-adapters": {
-      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, DeepSeek Harness, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent, OpenClaw, OpenCode, and Pi Agent",
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent, OpenClaw, OpenCode, and Pi Agent",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -54,7 +54,6 @@
         "copilot",
         "kilo-code",
         "cursor",
-        "deepseek-harness",
         "hermes",
         "kimi-code",
         "pi",

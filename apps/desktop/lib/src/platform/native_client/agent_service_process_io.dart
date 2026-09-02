@@ -4,8 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
-import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 const int _privateRuntimeMaxInputBytes = 1024 * 1024;
@@ -52,22 +50,43 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     if (_processContext.requestTimeout <= Duration.zero) {
       throw Exception('licoup private runtime timeout is invalid.');
     }
-    if (_persistentStdioRpcEnabled) {
-      // Routing is driven by the schema-derived conversation protocol
-      // registry: a matching CLI shape becomes a structured method frame and
-      // the stdin JSON becomes structured params. No CLI argument array is
-      // ever passed through the persistent RPC channel; the CLI shape only
-      // selects which registered protocol method the callers mean.
-      final route = conversationProtocolCliRoute(args);
-      if (route != null) {
-        // LLM credentials stay on the same process-local authorization context
-        // as inventory reads and Gateway start. The JSON remains inside the
-        // structured stdio RPC frame and is never projected to logs.
-        return _stdioRpcTransport.executeStructured(
-          route.method.wireName,
-          _routeStdinParams(route, args, stdinText),
-        );
+    final persistentPrivateArgs = _persistentPrivateInputArgs(args, stdinText);
+    if (_persistentStdioRpcEnabled && persistentPrivateArgs != null) {
+      // LLM credentials must stay on the same process-local authorization
+      // context as inventory reads and Gateway start. The JSON remains inside
+      // the inherited stdio RPC channel and is never projected to logs.
+      return _stdioRpcTransport.execute(persistentPrivateArgs);
+    }
+    final conversationOperation = _conversationControlOperation(args);
+    if (_persistentStdioRpcEnabled && conversationOperation != null) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
       }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      return _stdioRpcTransport.executeStructured(
+        'agent.conversation.$conversationOperation',
+        request,
+      );
+    }
+    if (_persistentStdioRpcEnabled && _isClientConversationExecute(args)) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      return _stdioRpcTransport.executeStructured(
+        'client.conversation.execute',
+        request,
+      );
     }
     late Process process;
     try {
@@ -147,30 +166,25 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     List<String> args,
     String stdinText,
   ) async* {
-    if (_persistentStdioRpcEnabled) {
-      final route = conversationProtocolCliRoute(args);
-      if (route != null &&
-          conversationProtocolMethodIsStream(route.method.wireName)) {
-        final operation =
-            route.method.wireName.startsWith('agent.conversation.')
-            ? route.method.wireName.substring('agent.conversation.'.length)
-            : route.method.wireName;
-        try {
-          await for (final event in _stdioRpcTransport.streamConversation({
-            ..._routeStdinParams(route, args, stdinText),
-            // The default conversation exchange operation is 'send'; only
-            // non-default operations need an explicit operation marker.
-            if (operation != 'send') '_rpcOperation': operation,
-          })) {
-            yield event;
-          }
-        } on LicoClientRpcException catch (error) {
-          throw AgentDispatchStreamException(error.code);
-        } on Object {
-          throw const AgentDispatchStreamException('transport_failed');
-        }
-        return;
+    if (_persistentStdioRpcEnabled &&
+        args.length >= 3 &&
+        args[0] == 'agent' &&
+        args[1] == 'conversation' &&
+        (args[2] == 'send' || args[2] == 'attach')) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
       }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      yield* _stdioRpcTransport.streamConversation({
+        ...request,
+        if (args[2] == 'attach') '_rpcOperation': 'attach',
+      });
+      return;
     }
     final stdinBytes = utf8.encode(stdinText);
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
@@ -242,29 +256,50 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
   }
 }
 
-Map<String, dynamic> _routeStdinParams(
-  ConversationProtocolCliRoute route,
-  List<String> args,
-  String stdinText,
-) {
-  late dynamic request;
-  try {
-    request = jsonDecode(stdinText);
-  } on Object {
-    throw const LicoClientRpcException('invalid_request');
+List<String>? _persistentPrivateInputArgs(List<String> args, String stdinText) {
+  final create =
+      args.length == 5 &&
+      args[0] == 'llm-gateway' &&
+      args[1] == 'credentials' &&
+      args[2] == 'create' &&
+      args[3] == '--stdin-json' &&
+      args[4] == 'true';
+  final update =
+      args.length == 6 &&
+      args[0] == 'llm-gateway' &&
+      args[1] == 'credentials' &&
+      args[2] == 'update' &&
+      args[3].isNotEmpty &&
+      args[4] == '--stdin-json' &&
+      args[5] == 'true';
+  if (!create && !update) {
+    return null;
   }
-  if (request is! Map<String, dynamic>) {
-    throw const LicoClientRpcException('invalid_request');
-  }
-  final params = Map<String, dynamic>.from(request);
-  for (final alias in route.paramAliases) {
-    final value = alias.argvIndex < args.length ? args[alias.argvIndex] : '';
-    if (value.isNotEmpty && !params.containsKey(alias.param)) {
-      params[alias.param] = value;
-    }
-  }
-  return params;
+  return <String>[...args.take(args.length - 1), stdinText];
 }
+
+String? _conversationControlOperation(List<String> args) {
+  if (args.length < 3 || args[0] != 'agent' || args[1] != 'conversation') {
+    return null;
+  }
+  const controls = <String>{
+    'open',
+    'history',
+    'cleanup',
+    'capabilities',
+    'cancel',
+    'steer',
+    'active',
+  };
+  return controls.contains(args[2]) ? args[2] : null;
+}
+
+bool _isClientConversationExecute(List<String> args) =>
+    args.length == 4 &&
+    args[0] == 'conversation' &&
+    args[1] == 'execute' &&
+    args[2] == '--stdin-json' &&
+    args[3] == 'true';
 
 Future<_BoundedProcessOutput> _collectBoundedProcessOutput(
   Stream<List<int>> stream,

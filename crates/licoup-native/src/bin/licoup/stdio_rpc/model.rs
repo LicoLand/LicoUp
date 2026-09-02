@@ -22,10 +22,6 @@ pub(crate) enum StdioRpcMethod {
         params: Value,
         portable_data_dir: Option<PathBuf>,
     },
-    StrategyExecute {
-        params: Value,
-        portable_data_dir: Option<PathBuf>,
-    },
     Catalog {
         operation: String,
         params: Value,

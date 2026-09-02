@@ -1,8 +1,8 @@
 use super::params::text_param;
 use crate::platform::{
     antigravity_driver, claude_code_driver, codex_app_server, copilot_driver, cursor_driver,
-    deepseek_harness_driver, hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver,
-    openclaw_driver, opencode_driver, pi_driver,
+    hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver, openclaw_driver,
+    opencode_driver, pi_driver,
 };
 use serde_json::Value;
 
@@ -20,7 +20,6 @@ pub(crate) enum RuntimeAdapter {
     OpenCode,
     Pi,
     LicoAgent,
-    DeepSeekHarness,
 }
 
 /// Native delivery channels an agent itself ships, as opposed to a
@@ -94,7 +93,6 @@ pub(super) fn adapter_for_agent(agent_id: &str) -> Option<RuntimeAdapter> {
         "opencode" => Some(RuntimeAdapter::OpenCode),
         "pi" | "pi-agent" | "pi-coding-agent" => Some(RuntimeAdapter::Pi),
         "lico-agent" | "lico" => Some(RuntimeAdapter::LicoAgent),
-        "deepseek-harness" | "dsh" => Some(RuntimeAdapter::DeepSeekHarness),
         _ => None,
     }
 }
@@ -114,7 +112,6 @@ impl RuntimeAdapter {
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
             Self::LicoAgent => "lico-agent",
-            Self::DeepSeekHarness => "deepseek-harness",
         }
     }
 
@@ -132,7 +129,6 @@ impl RuntimeAdapter {
             Self::OpenCode => "OpenCode - CLI",
             Self::Pi => "Pi Agent - CLI",
             Self::LicoAgent => "Lico Agent - CLI",
-            Self::DeepSeekHarness => "DeepSeek Harness - SDK",
         }
     }
 
@@ -150,7 +146,6 @@ impl RuntimeAdapter {
             Self::OpenCode => "opencode-serve",
             Self::Pi => "pi-rpc",
             Self::LicoAgent => "lico-agent-rpc",
-            Self::DeepSeekHarness => deepseek_harness_driver::DRIVER_ID,
         }
     }
 
@@ -168,7 +163,6 @@ impl RuntimeAdapter {
             Self::OpenCode => opencode_driver::RUNTIME_PROTOCOL,
             Self::Pi => pi_driver::RUNTIME_PROTOCOL,
             Self::LicoAgent => lico_agent_driver::RUNTIME_PROTOCOL,
-            Self::DeepSeekHarness => deepseek_harness_driver::RUNTIME_PROTOCOL,
         }
     }
 
@@ -186,7 +180,6 @@ impl RuntimeAdapter {
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
             Self::LicoAgent => "lico-agent",
-            Self::DeepSeekHarness => "dsh-jsonrpc-agent",
         }
     }
 

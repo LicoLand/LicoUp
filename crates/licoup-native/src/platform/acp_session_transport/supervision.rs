@@ -5,7 +5,7 @@ use super::capabilities::PROCESS_POLL_INTERVAL;
 use super::command::{LaunchSpec, ProtocolConfig};
 use super::continuity::ControlRequest;
 use super::errors::ProtocolFailure;
-use super::events::{ConversationTransportEvent as TransportEvent, read_conversation_frames};
+use super::events::{TransportEvent, read_protocol_messages, request_id_matches};
 use super::io::{drain_stderr, write_message};
 use super::protocol::{INITIALIZE_REQUEST_ID, SessionProtocol};
 use crate::core::acp;
@@ -70,7 +70,7 @@ impl PersistentTransport {
         let stdin = BoundedStdinWriter::new(stdin);
         let (sender, receiver) = mpsc::channel();
         let stdout_handle =
-            thread::spawn(move || read_conversation_frames(BufReader::new(stdout), sender));
+            thread::spawn(move || read_protocol_messages(BufReader::new(stdout), sender));
         let stderr_truncated = Arc::new(AtomicBool::new(false));
         let stderr_flag = Arc::clone(&stderr_truncated);
         let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
@@ -138,7 +138,7 @@ impl PersistentTransport {
                 .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
                 .unwrap_or(PROCESS_POLL_INTERVAL);
             match self.receiver.recv_timeout(wait) {
-                Ok(TransportEvent::Frame { line, bytes }) => {
+                Ok(TransportEvent::Message { message, bytes }) => {
                     if let Some(max_stdout) = max_stdout {
                         observed_bytes = observed_bytes.saturating_add(bytes);
                         if observed_bytes > max_stdout {
@@ -149,10 +149,12 @@ impl PersistentTransport {
                             ));
                         }
                     }
-                    match crate::platform::native_agent_parser::adapters::hermes::initialize_response(&line, INITIALIZE_REQUEST_ID) {
-                        Ok(None) => continue,
-                        Ok(Some(response)) if response.capabilities.load_session => return Ok(()),
-                        Ok(Some(_)) => {
+                    if !request_id_matches(&message, INITIALIZE_REQUEST_ID) {
+                        continue;
+                    }
+                    match acp::validate_initialize_response(&message, INITIALIZE_REQUEST_ID) {
+                        Ok(response) if response.capabilities.load_session => return Ok(()),
+                        Ok(_) => {
                             return Err(ProtocolFailure::new(
                                 "hermes_acp_capability_mismatch",
                                 "Hermes ACP does not expose the required conversation lifecycle.",
@@ -170,6 +172,13 @@ impl PersistentTransport {
                             return Err(ProtocolFailure::from_acp(error, acp::INITIALIZE_METHOD));
                         }
                     }
+                }
+                Ok(TransportEvent::InvalidJson) => {
+                    return Err(ProtocolFailure::new(
+                        "hermes_acp_invalid_json",
+                        "Hermes ACP returned an invalid protocol message.",
+                        "initialize",
+                    ));
                 }
                 Ok(TransportEvent::LineLimitExceeded) => {
                     return Err(ProtocolFailure::new(

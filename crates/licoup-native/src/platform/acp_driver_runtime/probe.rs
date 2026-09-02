@@ -1,11 +1,11 @@
 use super::super::process_supervisor::{
     BoundedStdinWriter, TransportFinishFailure, finish_protocol_transport,
 };
-use super::errors::ProtocolFailure;
+use super::errors::{ProtocolFailure, failure_from_response};
 use super::events::{ACP_EVENT_CHANNEL_CAPACITY, TransportEvent, read_protocol_messages};
 use super::io::{drain_stderr, write_message};
-use super::model::{AcpDriverSpec, AcpParserKind, CapabilityProbe, PROCESS_POLL_INTERVAL};
-use super::protocol::INITIALIZE_REQUEST_ID;
+use super::model::{AcpDriverSpec, CapabilityProbe, PROCESS_POLL_INTERVAL};
+use super::protocol::{INITIALIZE_REQUEST_ID, request_id_matches};
 use super::supervision::{LaunchSpec, acp_pipe_failure};
 use crate::core::acp::{self, AcpClientCapabilities, AcpImplementation};
 use std::io::{self, BufReader};
@@ -101,25 +101,32 @@ fn probe_acp_inner(
                 ));
             }
             match receiver.recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL)) {
-                Ok(TransportEvent::Frame(line)) => {
-                    let decoded = match driver.parser {
-                        AcpParserKind::Copilot => crate::platform::native_agent_parser::adapters::copilot::initialize_response(&line, INITIALIZE_REQUEST_ID),
-                        AcpParserKind::KimiCode => crate::platform::native_agent_parser::adapters::kimi_code::initialize_response(&line, INITIALIZE_REQUEST_ID),
-                    };
-                    match decoded {
-                        Ok(Some(response)) => {
-                            break Ok(CapabilityProbe::from_initialize(&response));
-                        }
-                        Ok(None) => {}
+                Ok(TransportEvent::Message(message))
+                    if request_id_matches(&message, INITIALIZE_REQUEST_ID) =>
+                {
+                    match acp::validate_initialize_response(&message, INITIALIZE_REQUEST_ID) {
+                        Ok(response) => break Ok(CapabilityProbe::from_initialize(&response)),
                         Err(error) if error.is_remote_error() => {
-                            break Err(ProtocolFailure::new(
+                            break Err(failure_from_response(
+                                &message,
                                 "acp_initialize_rejected",
                                 "The ACP agent rejected protocol initialization.",
                                 acp::INITIALIZE_METHOD,
+                                None,
                             ));
                         }
-                        Err(error) => break Err(ProtocolFailure::from_acp(error, "protocol/read")),
+                        Err(error) => {
+                            break Err(ProtocolFailure::from_acp(error, acp::INITIALIZE_METHOD));
+                        }
                     }
+                }
+                Ok(TransportEvent::Message(_)) => {}
+                Ok(TransportEvent::InvalidJson) => {
+                    break Err(ProtocolFailure::new(
+                        "acp_protocol_invalid_json",
+                        "The ACP agent returned an invalid protocol message.",
+                        "protocol/read",
+                    ));
                 }
                 Ok(TransportEvent::StdoutLimitExceeded) => {
                     break Err(ProtocolFailure::new(

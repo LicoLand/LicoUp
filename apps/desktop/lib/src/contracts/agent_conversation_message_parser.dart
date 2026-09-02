@@ -1,18 +1,28 @@
 import 'agent_conversation_message.dart';
 import 'agent_conversation_privacy_projection.dart';
 
-final class _PendingConversationMessage {
-  _PendingConversationMessage({
-    required this.json,
-    required this.treePath,
-    required this.children,
-  });
+const int _maxConversationMessagesPerSession = 2000;
+const int _maxConversationMessageTreeNodes = 4096;
+const int _maxConversationMessageTreeDepth = 16;
 
-  final Map<String, dynamic> json;
-  final String treePath;
-  final List<Object?> children;
-  final List<AgentConversationMessage> parsedChildren = [];
-  int nextChild = 0;
+final class _ConversationMessageParseBudget {
+  _ConversationMessageParseBudget(this.remaining);
+
+  int remaining;
+  bool truncated = false;
+
+  bool consume() {
+    if (remaining <= 0) {
+      truncated = true;
+      return false;
+    }
+    remaining -= 1;
+    return true;
+  }
+
+  void markTruncated() {
+    truncated = true;
+  }
 }
 
 AgentConversationMessage parseAgentConversationMessage(
@@ -30,7 +40,7 @@ AgentConversationMessage parseAgentConversationMessage(
     sourceTool,
     hostApp,
   ].join('|');
-  return _parseAgentConversationMessageTree(
+  return _parseAgentConversationMessage(
     json,
     agentId: agentId,
     adapterId: adapterId,
@@ -39,10 +49,13 @@ AgentConversationMessage parseAgentConversationMessage(
     hostApp: hostApp,
     identityScope: identityScope,
     treePath: 'message-0',
-  );
+    depth: 0,
+    consumeBudget: false,
+    budget: _ConversationMessageParseBudget(_maxConversationMessageTreeNodes),
+  )!;
 }
 
-AgentConversationMessage _parseAgentConversationMessageTree(
+AgentConversationMessage? _parseAgentConversationMessage(
   Map<String, dynamic> json, {
   required String agentId,
   required String adapterId,
@@ -51,78 +64,17 @@ AgentConversationMessage _parseAgentConversationMessageTree(
   required String hostApp,
   required String identityScope,
   required String treePath,
+  required int depth,
+  required bool consumeBudget,
+  required _ConversationMessageParseBudget budget,
 }) {
-  final pending = <_PendingConversationMessage>[
-    _pendingConversationMessage(json, treePath),
-  ];
-  while (pending.isNotEmpty) {
-    final current = pending.last;
-    if (current.nextChild < current.children.length) {
-      final childIndex = current.nextChild;
-      current.nextChild += 1;
-      final rawChild = current.children[childIndex];
-      if (rawChild is! Map) {
-        throw const FormatException('native_history_message_child_invalid');
-      }
-      Map<String, dynamic> child;
-      try {
-        child = Map<String, dynamic>.from(rawChild);
-      } on Object {
-        throw const FormatException('native_history_message_child_invalid');
-      }
-      pending.add(
-        _pendingConversationMessage(child, '${current.treePath}/$childIndex'),
-      );
-      continue;
-    }
-    final parsed = _buildAgentConversationMessage(
-      current.json,
-      agentId: agentId,
-      adapterId: adapterId,
-      sourceClient: sourceClient,
-      sourceTool: sourceTool,
-      hostApp: hostApp,
-      identityScope: identityScope,
-      treePath: current.treePath,
-      childMessages: current.parsedChildren,
-    );
-    pending.removeLast();
-    if (pending.isEmpty) {
-      return parsed;
-    }
-    if (parsed.isDisplayable) {
-      pending.last.parsedChildren.add(parsed);
-    }
+  if (depth > _maxConversationMessageTreeDepth) {
+    budget.markTruncated();
+    return null;
   }
-  throw const FormatException('native_history_message_tree_invalid');
-}
-
-_PendingConversationMessage _pendingConversationMessage(
-  Map<String, dynamic> json,
-  String treePath,
-) {
-  final rawChildren = json['messages'];
-  if (rawChildren != null && rawChildren is! List) {
-    throw const FormatException('native_history_message_children_invalid');
+  if (consumeBudget && !budget.consume()) {
+    return null;
   }
-  return _PendingConversationMessage(
-    json: json,
-    treePath: treePath,
-    children: rawChildren is List ? rawChildren : const [],
-  );
-}
-
-AgentConversationMessage _buildAgentConversationMessage(
-  Map<String, dynamic> json, {
-  required String agentId,
-  required String adapterId,
-  required String sourceClient,
-  required String sourceTool,
-  required String hostApp,
-  required String identityScope,
-  required String treePath,
-  required List<AgentConversationMessage> childMessages,
-}) {
   final role = (json['role'] ?? 'system').toString();
   final rawCardType = (json['cardType'] ?? '').toString();
   final rawText = (json['text'] ?? '').toString();
@@ -144,6 +96,45 @@ AgentConversationMessage _buildAgentConversationMessage(
   final providerSummary =
       kind == AgentConversationMessageKind.reasoning &&
       json['providerSummary'] == true;
+  final rawChildMessages = (json['messages'] as List? ?? const [])
+      .whereType<Map<String, dynamic>>()
+      .toList(growable: false);
+  final parsedChildMessages = <AgentConversationMessage>[];
+  var childMessagesTruncated = false;
+  if (rawChildMessages.isNotEmpty &&
+      depth >= _maxConversationMessageTreeDepth) {
+    childMessagesTruncated = true;
+    budget.markTruncated();
+  } else {
+    for (var index = 0; index < rawChildMessages.length; index += 1) {
+      final parsed = _parseAgentConversationMessage(
+        rawChildMessages[index],
+        agentId: agentId,
+        adapterId: adapterId,
+        sourceClient: sourceClient,
+        sourceTool: sourceTool,
+        hostApp: hostApp,
+        identityScope: identityScope,
+        treePath: '$treePath/$index',
+        depth: depth + 1,
+        consumeBudget: true,
+        budget: budget,
+      );
+      if (parsed == null) {
+        childMessagesTruncated = true;
+        continue;
+      }
+      if (parsed.childMessagesTruncated) {
+        childMessagesTruncated = true;
+      }
+      if (parsed.isDisplayable) {
+        parsedChildMessages.add(parsed);
+      }
+    }
+  }
+  final childMessages = List<AgentConversationMessage>.unmodifiable(
+    parsedChildMessages,
+  );
   return AgentConversationMessage(
     id: projectedId,
     role: role,
@@ -187,11 +178,19 @@ AgentConversationMessage _buildAgentConversationMessage(
     participantRole: sanitizeStructuredLabel(
       (json['participantRole'] ?? '').toString(),
     ),
-    childMessagesTruncated: false,
-    childMessages: List<AgentConversationMessage>.unmodifiable(childMessages),
+    childMessagesTruncated:
+        childMessagesTruncated || json['childMessagesTruncated'] == true,
+    childMessages: childMessages,
     images: parseAgentConversationImageAttachments(json['images']),
   );
 }
+
+/// Largest inline base64 payload accepted for one image attachment
+/// (~4.5 MiB decoded); larger payloads are dropped as unrenderable.
+const int maxConversationImageBase64Chars = 6000000;
+
+/// Most image attachments carried by one message.
+const int maxConversationMessageImages = 4;
 
 /// Parses the typed image-attachment channel of a projected message. Entries
 /// without a usable source (neither inline data nor a file path) are dropped;
@@ -204,12 +203,18 @@ List<AgentConversationImageAttachment> parseAgentConversationImageAttachments(
   }
   final images = <AgentConversationImageAttachment>[];
   for (final entry in raw) {
+    if (images.length >= maxConversationMessageImages) {
+      break;
+    }
     if (entry is! Map) {
       continue;
     }
     final data = (entry['data'] ?? '').toString().trim();
     final path = (entry['path'] ?? '').toString().trim();
     if (data.isEmpty && path.isEmpty) {
+      continue;
+    }
+    if (data.length > maxConversationImageBase64Chars) {
       continue;
     }
     images.add(
@@ -248,6 +253,12 @@ AgentConversationMessageParseResult parseAgentConversationMessages(
   String sourceTool = '',
   String hostApp = '',
 }) {
+  final firstRetained = rawMessages.length > _maxConversationMessagesPerSession
+      ? rawMessages.length - _maxConversationMessagesPerSession
+      : 0;
+  final budget = _ConversationMessageParseBudget(
+    _maxConversationMessageTreeNodes,
+  );
   final identityScope = [
     sessionId,
     nativeSessionId,
@@ -258,8 +269,8 @@ AgentConversationMessageParseResult parseAgentConversationMessages(
     hostApp,
   ].join('|');
   final parsedMessages = <AgentConversationMessage>[];
-  for (var index = 0; index < rawMessages.length; index += 1) {
-    final parsed = _parseAgentConversationMessageTree(
+  for (var index = firstRetained; index < rawMessages.length; index += 1) {
+    final parsed = _parseAgentConversationMessage(
       rawMessages[index],
       agentId: agentId,
       adapterId: adapterId,
@@ -268,14 +279,17 @@ AgentConversationMessageParseResult parseAgentConversationMessages(
       hostApp: hostApp,
       identityScope: identityScope,
       treePath: 'message-$index',
+      depth: 0,
+      consumeBudget: false,
+      budget: budget,
     );
-    if (parsed.isDisplayable) {
+    if (parsed != null && parsed.isDisplayable) {
       parsedMessages.add(parsed);
     }
   }
   return AgentConversationMessageParseResult(
     messages: List<AgentConversationMessage>.unmodifiable(parsedMessages),
-    historyTruncated: false,
-    messageTreeTruncated: false,
+    historyTruncated: firstRetained > 0,
+    messageTreeTruncated: budget.truncated,
   );
 }

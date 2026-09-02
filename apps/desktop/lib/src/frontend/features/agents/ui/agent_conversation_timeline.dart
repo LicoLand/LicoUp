@@ -223,20 +223,25 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
   return List.unmodifiable(items);
 }
 
-/// The native turn key of a structured delta projection. Evidence ids carry a
-/// numeric process suffix and lifecycle ids carry a lifecycle suffix; both are
-/// stripped without requiring a Flutter-fabricated `live-*` identity.
+/// The live turn key of a structured event: the `turnId` prefix of its stable
+/// identity (`live-<agent>-<micros>`). Evidence ids carry a numeric process
+/// index suffix (`...-process-3`) that must be stripped before the turn id is
+/// recovered; lifecycle ids end in `-lifecycle`. Messages that are not live
+/// turn events (readback, other formats) return null and keep the legacy
+/// anchor-batched behavior.
 String? liveTurnKeyOf(AgentConversationMessage message) {
   if (!message.isStructuredEvent) return null;
   final identity = message.stableIdentity.trim();
-  if (identity.isEmpty) return null;
-  if (message.cardType.trim().toLowerCase() == 'lifecycle' &&
-      identity.endsWith('-lifecycle')) {
-    return identity.substring(0, identity.length - '-lifecycle'.length);
+  if (!identity.startsWith('live-')) return null;
+  var tail = identity;
+  final trailingDash = tail.lastIndexOf('-');
+  if (trailingDash > 0 &&
+      RegExp(r'^\d+$').hasMatch(tail.substring(trailingDash + 1))) {
+    tail = tail.substring(0, trailingDash);
   }
-  final process = RegExp(r'^(.*)-process-\d+$').firstMatch(identity);
-  if (process != null) return process.group(1);
-  return null;
+  final turnDash = tail.lastIndexOf('-');
+  if (turnDash <= 0) return null;
+  return tail.substring(0, turnDash);
 }
 
 bool isConversationRuntimeLogEvent(AgentConversationMessage message) {

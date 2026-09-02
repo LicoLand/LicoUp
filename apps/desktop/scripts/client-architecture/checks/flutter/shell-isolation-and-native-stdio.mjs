@@ -143,22 +143,14 @@ export async function checkShellIsolationAndNativeStdio(context) {
   for (const token of [
     "decoded['protocol'] != stdioRpcProtocol",
     "decoded['id'] != requestId",
-    "decoded['workflowId'] != workflowId"
+    "decoded['workflowId'] != workflowId",
+    "decoded['sequence'] != _expectedSequence"
   ]) {
     assert(
       nativeStdioResponseSource.includes(token),
       `native stdio RPC response codec must retain identity binding: ${token}`
     );
   }
-  // Sequence binding moved into the generated conversation protocol codec
-  // (conversation_protocol.g.dart) by the protocol-codegen foundation; verify it there.
-  const generatedProtocolSource = await readText(
-    "apps/desktop/lib/src/contracts/generated/conversation_protocol.g.dart"
-  );
-  assert(
-    generatedProtocolSource.includes("decoded['sequence'] != _expectedSequence"),
-    "generated conversation protocol must retain sequence identity binding"
-  );
   assert(
     nativeStdioSessionSource.includes("StdioRpcLineFramer") &&
       nativeStdioSessionSource.includes("stderrBytes") &&

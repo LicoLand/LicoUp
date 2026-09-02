@@ -1,4 +1,4 @@
-use crate::platform::native_agent_parser::adapters::cursor::safe_session_id;
+use super::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,6 +75,15 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
         Ok(false) => ControlDisposition::NotPersisted,
         Err(_) => ControlDisposition::TransportUnavailable,
     }
+}
+
+pub(in crate::platform) fn safe_session_id(session_id: &str) -> bool {
+    let len = session_id.len();
+    len >= MIN_SESSION_ID_LEN
+        && len <= MAX_SESSION_ID_LEN
+        && session_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
 }
 
 fn home_dir() -> Option<PathBuf> {

@@ -7,7 +7,6 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_ev
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
@@ -241,8 +240,9 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
 /// and day dividers separate local days. The same timeline data the console
 /// transcript renders, projected into a chat surface.
 ///
-/// Long transcripts remain lazy through [ListView.builder]. Reaching the
-/// oldest loaded edge asks the controller for the next native message page.
+/// Long transcripts load in pages: the newest [initialEntryWindow] flow
+/// entries render first and scrolling to the top pulls in earlier entries,
+/// so exploring history is progressive instead of truncated.
 class MessagingParticipantFlow extends StatefulWidget {
   const MessagingParticipantFlow({
     super.key,
@@ -253,18 +253,19 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.sessionKey = '',
     this.participantTargets = const [],
     this.participantConversationIds = const {},
-    this.participantRuntimeProfiles = const {},
     this.primaryConversationId = '',
     this.preferPeerAgents = false,
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
-    this.onCopyText,
-    this.messagePageLoading = false,
-    this.messagePageError = '',
-    this.hasEarlier = false,
-    this.onLoadEarlier,
   });
+
+  /// Flow entries (after author grouping) shown before the user scrolls.
+  static const int initialEntryWindow = 50;
+
+  /// Flow entries added each time the user scrolls to the top of the loaded
+  /// history.
+  static const int earlierEntryPage = 50;
 
   /// Distance from the top of the loaded history that starts loading the
   /// earlier page, so the request finishes before the user hits the edge.
@@ -280,7 +281,6 @@ class MessagingParticipantFlow extends StatefulWidget {
 
   /// Agent id → that agent's conversation id for hover metadata.
   final Map<String, String> participantConversationIds;
-  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
 
   /// Fallback conversation id when a message has no participant agent id.
   final String primaryConversationId;
@@ -298,138 +298,15 @@ class MessagingParticipantFlow extends StatefulWidget {
   /// the transcript viewport.
   final ScrollController? scrollController;
 
-  /// Clipboard write routed through the platform boundary; message rows
-  /// expose an explicit copy action when present.
-  final Future<void> Function(String)? onCopyText;
-  final bool messagePageLoading;
-  final String messagePageError;
-  final bool hasEarlier;
-  final Future<void> Function()? onLoadEarlier;
-
   @override
   State<MessagingParticipantFlow> createState() =>
       _MessagingParticipantFlowState();
 }
 
-/// Incremental patch for streamed-text revisions anywhere in the timeline.
-///
-/// A streaming reply republishes the timeline every few frames while usually
-/// only text changes. With multiple concurrent group turns, the changed
-/// message may sit anywhere in the live list, not just at the newest item.
-/// Rebuilding the whole entry list on each publish is O(history); this patch
-/// instead swaps the affected flow entries and keeps every other entry's
-/// object identity so Flutter skips their rebuild.
-///
-/// Returns null when the change is not a pure set of message text revisions —
-/// the caller then rebuilds the entry list, which stays the only path allowed
-/// to change structure.
-List<MessagingFlowEntry>? patchMessagingFlowStreamedMessages({
-  required List<ConversationTimelineItem> previousItems,
-  required List<ConversationTimelineItem> nextItems,
-  required List<MessagingFlowEntry> previousEntries,
-}) {
-  if (previousItems.length != nextItems.length || previousEntries.isEmpty) {
-    return null;
-  }
-  final changedIndices = <int>[];
-  for (var index = 0; index < nextItems.length; index += 1) {
-    if (identical(previousItems[index], nextItems[index])) continue;
-    final previous = previousItems[index];
-    final next = nextItems[index];
-    if (previous is! ConversationMessageTimelineItem ||
-        next is! ConversationMessageTimelineItem) {
-      return null;
-    }
-    if (previous.storageKey != next.storageKey) return null;
-    if (!_isStreamedTextRevision(previous.message, next.message)) return null;
-    changedIndices.add(index);
-  }
-  if (changedIndices.isEmpty) return null;
-
-  final patched = List<MessagingFlowEntry>.of(previousEntries);
-  for (final changed in changedIndices) {
-    final previousMessage =
-        (previousItems[changed] as ConversationMessageTimelineItem).message;
-    final nextMessage =
-        (nextItems[changed] as ConversationMessageTimelineItem).message;
-    final entryIndex = _entryIndexOfMessage(patched, previousMessage);
-    if (entryIndex < 0) return null;
-    patched[entryIndex] = _patchedMessageEntry(
-      patched[entryIndex],
-      previousMessage,
-      nextMessage,
-    );
-  }
-  return List<MessagingFlowEntry>.unmodifiable(patched);
-}
-
-bool _isStreamedTextRevision(
-  AgentConversationMessage previous,
-  AgentConversationMessage next,
-) {
-  return previous.id == next.id &&
-      previous.role == next.role &&
-      previous.createdAt == next.createdAt &&
-      previous.cardType == next.cardType &&
-      previous.stableIdentity == next.stableIdentity &&
-      previous.participantAgentId == next.participantAgentId &&
-      previous.participantLabel == next.participantLabel &&
-      previous.participantRole == next.participantRole &&
-      previous.childMessages.isEmpty &&
-      next.childMessages.isEmpty &&
-      !previous.isStructuredEvent &&
-      !next.isStructuredEvent;
-}
-
-int _entryIndexOfMessage(
-  List<MessagingFlowEntry> entries,
-  AgentConversationMessage message,
-) {
-  for (var index = 0; index < entries.length; index += 1) {
-    final entry = entries[index];
-    if (entry is MessagingFlowMessageGroup) {
-      for (final candidate in entry.messages) {
-        if (identical(candidate, message)) return index;
-      }
-    } else if (entry is MessagingFlowSubagent) {
-      if (identical(entry.item.message, message)) return index;
-    }
-  }
-  return -1;
-}
-
-MessagingFlowEntry _patchedMessageEntry(
-  MessagingFlowEntry entry,
-  AgentConversationMessage previousMessage,
-  AgentConversationMessage nextMessage,
-) {
-  if (entry is MessagingFlowSubagent) {
-    return MessagingFlowSubagent(
-      ConversationMessageTimelineItem(entry.item.storageKey, nextMessage),
-    );
-  }
-  final group = entry as MessagingFlowMessageGroup;
-  final messages = List<AgentConversationMessage>.of(group.messages);
-  for (var index = 0; index < messages.length; index += 1) {
-    if (identical(messages[index], previousMessage)) {
-      messages[index] = nextMessage;
-    }
-  }
-  return MessagingFlowMessageGroup(
-    authorIsUser: group.authorIsUser,
-    participantAgentId: group.participantAgentId,
-    participantLabel: group.participantLabel,
-    participantRole: group.participantRole,
-    messages: List<AgentConversationMessage>.unmodifiable(messages),
-  );
-}
-
 class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
+  late int _visibleEntryCount;
   ScrollController? _ownedScrollController;
   bool _atLatest = true;
-  List<MessagingFlowEntry>? _cachedEntries;
-  List<ConversationTimelineItem>? _cachedItems;
-  bool _pageRequestInFlight = false;
 
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
   /// as still "at latest" so the control does not flicker.
@@ -441,6 +318,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   void initState() {
     super.initState();
+    _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
     if (widget.scrollController == null) {
       _ownedScrollController = ScrollController();
     }
@@ -453,12 +331,8 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.sessionKey != widget.sessionKey) {
       // A different conversation starts from its own newest window.
+      _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
       _atLatest = true;
-      _pageRequestInFlight = false;
-    }
-    if (oldWidget.activeProcessStorageKey != widget.activeProcessStorageKey ||
-        oldWidget.preferPeerAgents != widget.preferPeerAgents) {
-      _cachedEntries = null;
     }
     if (oldWidget.scrollController != widget.scrollController) {
       (oldWidget.scrollController ?? _ownedScrollController)?.removeListener(
@@ -515,60 +389,35 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       return false;
     }
     final metrics = notification.metrics;
-    if (!widget.hasEarlier ||
-        widget.messagePageLoading ||
-        _pageRequestInFlight) {
+    final total = _displayEntries.length;
+    if (_visibleEntryCount >= total) {
       return false;
     }
     if (metrics.pixels <
         metrics.maxScrollExtent - MessagingParticipantFlow.earlierPageLeadIn) {
       return false;
     }
-    final request = widget.onLoadEarlier;
-    if (request != null) {
-      _pageRequestInFlight = true;
-      request().whenComplete(() {
-        if (mounted) _pageRequestInFlight = false;
-      });
-    }
+    setState(() {
+      _visibleEntryCount =
+          (_visibleEntryCount + MessagingParticipantFlow.earlierEntryPage)
+              .clamp(0, total);
+    });
     return false;
   }
 
   List<MessagingFlowEntry> get _displayEntries {
-    final items = widget.items;
-    final cached = _cachedEntries;
-    if (cached == null) return _rebuildEntries(items);
-    if (identical(items, _cachedItems)) return cached;
-    final patched = patchMessagingFlowStreamedMessages(
-      previousItems: _cachedItems!,
-      nextItems: items,
-      previousEntries: cached,
-    );
-    if (patched != null) {
-      _cachedItems = items;
-      _cachedEntries = patched;
-      return patched;
-    }
-    return _rebuildEntries(items);
-  }
-
-  List<MessagingFlowEntry> _rebuildEntries(
-    List<ConversationTimelineItem> items,
-  ) {
     final entries = buildMessagingFlowEntries(
-      items.reversed.toList(growable: false),
+      widget.items.reversed.toList(growable: false),
       activeProcessStorageKey: widget.activeProcessStorageKey,
       preferPeerAgents: widget.preferPeerAgents,
     );
-    final display = entries.reversed.toList(growable: false);
-    _cachedItems = items;
-    _cachedEntries = display;
-    return display;
+    return entries.reversed.toList(growable: false);
   }
 
   @override
   Widget build(BuildContext context) {
     final displayEntries = _displayEntries;
+    final visibleEntries = displayEntries.take(_visibleEntryCount).toList();
     // Conversation text must be selectable and copyable. Selection is hosted at
     // the scroll level so a drag can span several messages; it only reaches the
     // rows the list has built, which is why individual messages also expose an
@@ -594,22 +443,9 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
                     widget.adapter.assistantVerticalPadding +
                     widget.bottomOverlayInset,
               ),
-              itemCount:
-                  displayEntries.length +
-                  ((widget.hasEarlier ||
-                          widget.messagePageLoading ||
-                          widget.messagePageError.isNotEmpty)
-                      ? 1
-                      : 0),
+              itemCount: visibleEntries.length,
               itemBuilder: (context, index) {
-                if (index == displayEntries.length) {
-                  return _MessagingEarlierPageRow(
-                    loading: widget.messagePageLoading,
-                    errorCode: widget.messagePageError,
-                    onRetry: widget.onLoadEarlier,
-                  );
-                }
-                final entry = displayEntries[index];
+                final entry = visibleEntries[index];
                 // A streamed reply changes one entry per frame. Without a
                 // repaint boundary per entry the whole visible flow
                 // repaints with it.
@@ -656,8 +492,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             participantLabel: participantLabel,
             participantRole: participantRole,
             participantTarget: _participantTarget(participantAgentId),
-            runtimeProfile:
-                widget.participantRuntimeProfiles[participantAgentId],
             messages: messages,
             target: widget.target,
             adapter: widget.adapter,
@@ -667,7 +501,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               participantConversationIds: widget.participantConversationIds,
               primaryConversationId: widget.primaryConversationId,
             ),
-            onCopyText: widget.onCopyText,
           ),
         ),
       MessagingFlowProcess(:final item, :final active) => Padding(
@@ -716,43 +549,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         ),
       ),
     };
-  }
-}
-
-final class _MessagingEarlierPageRow extends StatelessWidget {
-  const _MessagingEarlierPageRow({
-    required this.loading,
-    required this.errorCode,
-    required this.onRetry,
-  });
-
-  final bool loading;
-  final String errorCode;
-  final Future<void> Function()? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 14),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-    if (errorCode.isEmpty) return const SizedBox(height: 1);
-    return Center(
-      child: TextButton.icon(
-        key: const Key('messaging-message-page-retry'),
-        onPressed: onRetry == null ? null : () => onRetry!.call(),
-        icon: const Icon(Icons.refresh_rounded, size: 17),
-        label: Text('History page failed: $errorCode'),
-      ),
-    );
   }
 }
 

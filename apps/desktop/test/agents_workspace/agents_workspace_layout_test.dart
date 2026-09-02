@@ -1,4 +1,3 @@
-import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 
 import 'support/agents_workspace_test_harness.dart';
@@ -7,9 +6,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
   testWidgets('agent workspace does not overflow in a narrow app window', (
     tester,
   ) async {
-    final agentService = _LayoutAgentService();
-    addTearDown(agentService.dispose);
-    final controller = ClientController(agentService: agentService);
+    final controller = ClientController();
     addTearDown(controller.dispose);
     final sessionUpdatedAt = DateTime.now()
         .subtract(const Duration(days: 1))
@@ -459,17 +456,6 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.text('Codex'), findsOneWidget);
     expect(find.text('添加目标'), findsNothing);
   });
-}
-
-final class _LayoutAgentService extends AgentService {
-  @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
-    bool enableAgentCliModelLookup = false,
-  }) async => TargetScanBatch([
-    for (final targetId in targetIds)
-      TargetScanSlot(targetId: targetId, failed: true),
-  ]);
 }
 
 void main() => registerAgentsWorkspaceLayoutScenarios();

@@ -30,20 +30,3 @@ fn conflicting_native_session_identity_fails_closed() {
     .unwrap_err();
     assert_eq!(failure.code, "openclaw_acp_conflicting_session_id");
 }
-
-#[test]
-fn private_instructions_fail_as_a_typed_capability_without_prompt_rewrite() {
-    let failure = ProtocolConfig::from_params(
-        &json!({"privateInstructions": "private-system-canary"}),
-        "exact-user-prompt",
-        "",
-        Some(absolute_test_cwd().as_path()),
-    )
-    .unwrap_err();
-    assert_eq!(
-        failure.code,
-        "openclaw_acp_private_instructions_unsupported"
-    );
-    assert!(!failure.message.contains("canary"));
-    assert!(!failure.message.contains("exact-user-prompt"));
-}

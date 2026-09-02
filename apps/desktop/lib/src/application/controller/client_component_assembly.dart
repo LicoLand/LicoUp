@@ -10,7 +10,6 @@ import 'package:licoup/src/application/controller/assembly/client_mobile_compone
 import 'package:licoup/src/application/controller/assembly/client_navigation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_presentation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_plugin_management_component_assembly.dart';
-import 'package:licoup/src/application/controller/assembly/client_provider_quota_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_settings_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_skill_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_target_component_assembly.dart';
@@ -22,7 +21,6 @@ import 'package:licoup/src/application/features/agents/contracts/agent_conversat
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
-import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
@@ -192,9 +190,6 @@ final class ClientComponentAssembly {
       selectedAgentId: selectedAgentId,
       reportStatus: _reportStatus,
     );
-    providerQuota = ClientProviderQuotaComponentAssembly(
-      agentService: agentService,
-    );
     agentHub = ClientAgentHubComponentAssembly(
       invoke: (arguments) => agentService.runCli(arguments),
     );
@@ -223,7 +218,6 @@ final class ClientComponentAssembly {
   late final ClientPluginManagementComponentAssembly pluginManagement;
   late final ClientMobileComponentAssembly mobile;
   late final ClientUsageComponentAssembly usage;
-  late final ClientProviderQuotaComponentAssembly providerQuota;
   late final ClientAgentHubComponentAssembly agentHub;
   late final ClientNavigationComponentAssembly navigation;
 
@@ -259,8 +253,6 @@ final class ClientComponentAssembly {
       presentation.layoutComposition;
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
-  ProviderQuotaController get providerQuotaController =>
-      providerQuota.controller;
   AgentHubCatalogController get agentHubCatalogController =>
       agentHub.controller;
   ClientNavigationController get navigationController => navigation.controller;
@@ -277,7 +269,6 @@ final class ClientComponentAssembly {
     ...pluginManagement.listenables,
     ...mobile.listenables,
     ...usage.listenables,
-    ...providerQuota.listenables,
     ...agentHub.listenables,
     ...navigation.listenables,
   ];
@@ -306,7 +297,6 @@ final class ClientComponentAssembly {
     navigation.dispose();
     agentHub.dispose();
     usage.dispose();
-    providerQuota.dispose();
     mobile.dispose();
     pluginManagement.dispose();
     settings.dispose();

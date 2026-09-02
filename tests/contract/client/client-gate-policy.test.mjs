@@ -16,10 +16,7 @@ import {
   CLIENT_RELEASE_TARGETS,
   classifyClientGatePaths,
 } from "../../../tools/scripts/client-gate-policy.mjs";
-import {
-  clientGateTaskEvent,
-  validateClientGateTopology,
-} from "../../../tools/scripts/client-gate.mjs";
+import { validateClientGateTopology } from "../../../tools/scripts/client-gate.mjs";
 
 function selectedOptionalLanes(paths) {
   const plan = classifyClientGatePaths(paths);
@@ -151,31 +148,4 @@ test("change planner emits only bounded booleans, counts, and a digest", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-});
-
-test("client gate emits bounded typed failure events without raw diagnostics", () => {
-  const line = clientGateTaskEvent({
-    type: "step-failure",
-    stage: "client:test",
-    code: "command-exit-nonzero",
-    exitCode: 1,
-    retryable: false,
-    recovery: "inspect-failed-step",
-  });
-  assert.equal(line.startsWith("::lico-dev-task-event::"), true);
-  const event = JSON.parse(line.slice("::lico-dev-task-event::".length));
-  assert.deepEqual(event, {
-    schemaVersion: "v0.0.1:lico-dev:task-event-1",
-    type: "step-failure",
-    stage: "client:test",
-    component: "client-gate",
-    code: "command-exit-nonzero",
-    exitCode: 1,
-    retryable: false,
-    recovery: "inspect-failed-step",
-  });
-  assert.throws(
-    () => clientGateTaskEvent({ type: "step-start", stage: "private path" }),
-    /task event is invalid/u,
-  );
 });

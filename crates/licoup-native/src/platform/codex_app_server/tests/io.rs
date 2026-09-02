@@ -8,8 +8,14 @@ fn stdout_reader_is_line_framed_and_enforces_total_limit() {
     let input = b"{\"id\":1,\"result\":{}}\n{\"method\":\"initialized\"}\n";
     let (sender, receiver) = mpsc::channel();
     read_protocol_messages(Cursor::new(input), Some(input.len()), sender);
-    assert!(matches!(receiver.recv().unwrap(), TransportEvent::Line(_)));
-    assert!(matches!(receiver.recv().unwrap(), TransportEvent::Line(_)));
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::Message(_)
+    ));
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::Message(_)
+    ));
     assert!(matches!(
         receiver.recv().unwrap(),
         TransportEvent::StdoutClosed
@@ -17,7 +23,10 @@ fn stdout_reader_is_line_framed_and_enforces_total_limit() {
 
     let (sender, receiver) = mpsc::channel();
     read_protocol_messages(Cursor::new(input), Some(input.len() - 1), sender);
-    assert!(matches!(receiver.recv().unwrap(), TransportEvent::Line(_)));
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::Message(_)
+    ));
     assert!(matches!(
         receiver.recv().unwrap(),
         TransportEvent::StdoutLimitExceeded

@@ -1,15 +1,3 @@
-/// Well-known [TargetCandidate.status] values. Membership-synthesized
-/// candidates use [synthesizedMembership] to mark that the native side does
-/// not project per-membership runtime readiness; they are never reported as
-/// detected/available from an installed binary.
-class TargetCandidateStatus {
-  static const String detected = 'detected';
-  static const String unavailable = 'unavailable';
-  static const String pending = 'pending';
-  static const String invalid = 'invalid';
-  static const String synthesizedMembership = 'membership-unverified';
-}
-
 class TargetCandidate {
   final String id;
   final String target;

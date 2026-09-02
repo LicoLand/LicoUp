@@ -9,39 +9,37 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const driverRoot = "crates/licoup-native/src/platform/claude_code_driver";
-const parserRoot = "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code";
 
 const productionLeaves = Object.freeze([
-  "approval.rs",
   "command.rs",
   "control.rs",
   "errors.rs",
+  "events.rs",
   "execution.rs",
   "io.rs",
   "model.rs",
   "params.rs",
   "probe.rs",
+  "protocol.rs",
   "supervision.rs",
   "transport.rs",
 ]);
-const parserLeaves = Object.freeze(["events.rs", "state.rs"]);
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
 async function sources() {
-  return Object.fromEntries(await Promise.all([
-    ...productionLeaves.map(async (leaf) => [leaf, await read(`${driverRoot}/${leaf}`)]),
-    ["parser.rs", await read(`${parserRoot}.rs`)],
-    ...parserLeaves.map(async (leaf) => [`parser/${leaf}`, await read(`${parserRoot}/${leaf}`)]),
-  ]));
+  return Object.fromEntries(await Promise.all(productionLeaves.map(async (leaf) => [
+    leaf,
+    await read(`${driverRoot}/${leaf}`),
+  ])));
 }
 
 test("Claude Code driver facade is thin and owns every production leaf", async () => {
   const facade = await read(`${driverRoot}.rs`);
   assert.deepEqual(
-    [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
+    [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
       .filter((moduleName) => moduleName !== "tests")
       .map((moduleName) => `${moduleName}.rs`)
@@ -53,7 +51,7 @@ test("Claude Code driver facade is thin and owns every production leaf", async (
   }
 });
 
-test("Claude Code keeps the fixed streaming-input lane with native resume and no shell fallback", async () => {
+test("Claude Code keeps the fixed streaming-input lane without argv resume or shell fallback", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
   assert.ok(source["model.rs"].includes(
@@ -64,13 +62,13 @@ test("Claude Code keeps the fixed streaming-input lane with native resume and no
     '"stream-json"',
     '"--output-format"',
     '"--include-partial-messages"',
+    '"--no-session-persistence"',
   ]) {
     assert.ok(source["command.rs"].includes(token), `missing fixed command token: ${token}`);
   }
   assert.ok(source["params.rs"].includes("stdin_message"));
-  assert.ok(source["command.rs"].includes('"--append-system-prompt"'));
-  assert.equal(source["params.rs"].includes("claude_code_private_instructions_unsupported"), false);
   for (const forbidden of [
+    '"--resume"',
     '"--continue"',
     'Command::new("sh")',
     'Command::new("bash")',
@@ -79,15 +77,14 @@ test("Claude Code keeps the fixed streaming-input lane with native resume and no
   ]) {
     assert.equal(joined.includes(forbidden), false);
   }
-  assert.ok(source["command.rs"].includes('"--resume"'));
 });
 
 test("Claude Code public lifecycle contract is bounded and exact-session scoped", async () => {
   const manifest = JSON.parse(await read(
     "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/claude-code.json",
   ));
-  assert.equal(manifest.transport.sessionScope, "persistent");
-  assert.equal(manifest.transport.continuityChannel, "launch-argument");
+  assert.equal(manifest.transport.sessionScope, "process");
+  assert.equal(manifest.transport.continuityChannel, "protected-mapping");
   assert.ok(Number.isSafeInteger(manifest.lifecycle.maxConcurrentTransports));
   assert.ok(manifest.lifecycle.maxConcurrentTransports > 0);
   assert.ok(manifest.lifecycle.maxConcurrentTransports <= 64);
@@ -99,7 +96,7 @@ test("Claude Code public lifecycle contract is bounded and exact-session scoped"
   assert.equal(manifest.operations.cleanup.status, "supported");
   assert.equal(manifest.operations.history.status, "supported");
   assert.equal(manifest.privacy.safeCleanup, true);
-  assert.equal(manifest.privacy.continuityIdInArguments, true);
+  assert.equal(manifest.privacy.continuityIdInArguments, false);
 });
 
 test("Claude Code IO, events, controls, probe, and failures stay bounded and redacted", async () => {
@@ -118,10 +115,7 @@ test("Claude Code IO, events, controls, probe, and failures stay bounded and red
   ]) {
     assert.ok(joined.includes(token), `missing bounded lifecycle token: ${token}`);
   }
-  assert.ok(source["parser/events.rs"].includes("processing_evidence_kind"));
-  assert.ok(source["parser.rs"].includes("fn parse_line"));
-  assert.ok(source["io.rs"].includes("Line(Vec<u8>)"));
-  assert.equal(source["io.rs"].includes("serde_json::from"), false);
+  assert.ok(source["events.rs"].includes("project_event"));
   assert.ok(source["errors.rs"].includes("message: &'static str"));
   for (const rawProjection of [
     "stderr: String",
@@ -143,30 +137,28 @@ test("Claude Code split contains no production unsafe or hidden compatibility in
   assert.equal(joined.includes("#[path"), false);
 });
 
-test("Claude Code process-local lifecycle and transcript have one complete supervisor authority", async () => {
+test("Claude Code process-local lifecycle and transcript have one bounded supervisor authority", async () => {
   const source = await sources();
   for (const token of [
     "TransportLifecycle",
     "Live",
     "Closing",
     "Closed",
-    "CompleteTranscript",
-    "project_backward_page",
+    "BoundedTranscript",
+    "VecDeque",
   ]) {
     assert.ok(
       source["model.rs"].includes(token),
       `missing process-local model token: ${token}`,
     );
   }
-  assert.equal(source["model.rs"].includes("BoundedTranscript"), false);
-  assert.equal(source["model.rs"].includes("VecDeque"), false);
-  for (const symbol of ["cleanup_session", "clear_all_for_test"]) {
+  for (const symbol of ["cleanup_session", "shutdown_all"]) {
     assert.ok(
       source["supervision.rs"].includes(symbol),
       `missing frozen lifecycle symbol: ${symbol}`,
     );
   }
-  assert.ok(source["parser/state.rs"].includes("claude_code_authentication_required"));
+  assert.ok(source["protocol.rs"].includes("claude_code_authentication_required"));
 });
 
 test("Claude Code product controls and parity use one persistent stdio RPC owner", async () => {
@@ -182,27 +174,15 @@ test("Claude Code product controls and parity use one persistent stdio RPC owner
     read("crates/licoup-native/src/bin/licoup/stdio_rpc/request.rs"),
     read("crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs"),
     read("apps/desktop/lib/src/platform/native_client/agent_service_process_io.dart"),
-    read("tests/product-e2e/cli/agent-conversations/support/parity/clients/stdio-rpc-client.mjs"),
-    read("tests/product-e2e/cli/agent-conversations/support/parity/process-local-round.mjs"),
-    read("tests/product-e2e/cli/agent-conversations/support/parity/results.mjs"),
-    read("tests/product-e2e/cli/agent-conversations/support/parity/evidence.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/clients/stdio-rpc-client.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/process-local-round.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/results.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/evidence.mjs"),
   ]);
-  const operationVariants = {
-    open: "AgentConversationOpen",
-    send: "AgentConversationSend",
-    history: "AgentConversationHistory",
-    cleanup: "AgentConversationCleanup",
-    capabilities: "AgentConversationCapabilities",
-    cancel: "AgentConversationCancel",
-  };
-  assert.ok(request.includes('strip_prefix("agent.conversation.")'));
-  for (const [operation, variant] of Object.entries(operationVariants)) {
-    assert.ok(
-      request.includes(`ConversationProtocolMethod::${variant}`),
-      `missing persistent conversation operation: ${operation}`,
-    );
+  for (const operation of ["open", "send", "history", "cleanup", "capabilities", "cancel"]) {
+    assert.ok(request.includes(`agent.conversation.${operation}`));
   }
-  assert.ok(server.includes("PersistentConversationRuntime"));
+  assert.ok(server.includes("shutdown_all"));
   assert.ok(processIo.includes("executeStructured"));
   assert.ok(rpcClient.includes('["rpc", "stdio"]'));
   assert.ok(processLocalRound.includes('continuityScope: "process-local"'));
@@ -221,7 +201,7 @@ test("Claude Code product controls and parity use one persistent stdio RPC owner
   assert.ok(evidence.includes("process_local_facts_unproven"));
 });
 
-test("Claude Code capabilities expose supervised active-turn cancel", async () => {
+test("Claude Code capabilities do not advertise queue-blocked concurrent cancel", async () => {
   const [manifestText, inventoryText] = await Promise.all([
     read("packages/contracts/client/fixtures/agent-conversation-adapter/manifests/claude-code.json"),
     read("crates/licoup-native/resources/agent-conversation-drivers.json"),
@@ -229,28 +209,28 @@ test("Claude Code capabilities expose supervised active-turn cancel", async () =
   const manifest = JSON.parse(manifestText);
   const inventory = JSON.parse(inventoryText);
   const driver = inventory.drivers.find((row) => row.agentId === "claude-code");
-  assert.equal(manifest.transport.sessionScope, "persistent");
+  assert.equal(manifest.transport.sessionScope, "process");
   assert.equal(manifest.operations.history.status, "supported");
-  assert.equal(manifest.operations.cancel.status, "supported");
+  assert.equal(manifest.operations.cancel.status, "unsupported");
   assert.equal(manifest.acceptance.continuityScope, "process-local");
   assert.equal(manifest.acceptance.nativeToArcRequired, false);
   assert.equal(manifest.acceptance.arcToNativeRequired, false);
   assert.equal(driver.capabilityMatrix.processLocalContinuation, true);
-  assert.equal(driver.capabilityMatrix.cancel, true);
+  assert.equal(driver.capabilityMatrix.cancel, false);
 });
 
-test("Claude Code routing remains model-data driven and native resume stays explicit", async () => {
+test("Claude Code routing remains model-data driven and process argv stays ephemeral", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n").toLowerCase();
   for (const forbidden of [
     "deepseek",
     "kimi k3",
     "gpt-5.6",
+    '"--resume"',
     '"--continue"',
   ]) {
     assert.equal(joined.includes(forbidden), false);
   }
   assert.ok(source["command.rs"].includes('"--model"'));
-  assert.ok(source["command.rs"].includes('"--resume"'));
-  assert.equal(source["command.rs"].includes('"--no-session-persistence"'), false);
+  assert.ok(source["command.rs"].includes('"--no-session-persistence"'));
 });

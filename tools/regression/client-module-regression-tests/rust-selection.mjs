@@ -32,7 +32,6 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
       "rust.platform.catalog-cache-store",
     ]],
     ["crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs", [
-      "regression.subagent-mcp",
       "architecture.client-boundaries",
       "rust.ffi.client-state-contract",
       "rust.ffi.catalog-convergence",

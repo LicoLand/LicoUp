@@ -40,9 +40,7 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
         });
     let (noun, action) = match route {
         ["mobile", "relay", noun, action] => (*noun, *action),
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete mobile relay routes"),
     };
     let result = match (noun, action) {
         ("config", "get") => crate::domain::mobile_relay::config_get(&params)?,
@@ -68,9 +66,7 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
         ("e2ee", "secret-store-cleanup") => {
             crate::domain::mobile_relay::e2ee_secret_store_cleanup(&params)?
         }
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers supported mobile relay actions"),
     };
     Ok(CliExecution::Json(result))
 }
@@ -111,8 +107,7 @@ mod tests {
         })
         .unwrap();
         let CliExecution::Json(output) = execution else {
-            assert!(false, "guarded disposable cleanup CLI did not return JSON");
-            return;
+            panic!("guarded disposable cleanup CLI did not return JSON");
         };
         assert_eq!(output["ok"], true);
         assert_eq!(output["disposableProof"], true);
