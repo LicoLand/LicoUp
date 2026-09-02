@@ -33,12 +33,6 @@ class _FailingConversationService extends AgentConversationService {
         'ok': false,
         'nativeSessionId': 'native-1',
         'turnStatus': 'timeout',
-        'lifecyclePrefix': <String>['submitted', 'accepted'],
-        'terminalTransition': <String, dynamic>{
-          'kind': 'failed',
-          'code': 'acp_protocol_timeout',
-          'stage': 'session/prompt',
-        },
         'error': <String, dynamic>{
           'code': 'acp_protocol_timeout',
           'message': 'The ACP agent timed out before completing the turn.',
@@ -47,7 +41,6 @@ class _FailingConversationService extends AgentConversationService {
         },
       },
     );
-    throw const AgentDispatchStreamException('transport_failed');
   }
 }
 
@@ -69,7 +62,7 @@ TargetCandidate _copilotTarget() => TargetCandidate(
 );
 
 void main() {
-  testWidgets('exact driver failure survives later observer disconnect', (
+  testWidgets('bounded driver failure closes the live turn with an error', (
     tester,
   ) async {
     final controller = ClientController(

@@ -5,15 +5,12 @@ use licoup_native::domain::client_conversation::{
 };
 use licoup_native::ffi::generated::client_error::ClientError;
 use licoup_native::platform::runtime_adapters::RuntimeAdapterError;
+#[cfg(test)]
+use std::time::Instant;
 use std::{
     collections::{HashMap, VecDeque},
-    panic::{AssertUnwindSafe, catch_unwind},
-    path::PathBuf,
-    sync::{
-        Arc, Condvar, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
-    time::{Duration, Instant},
+    sync::{Condvar, atomic::AtomicUsize},
+    time::Duration,
 };
 
 pub(super) const MAX_CONCURRENT_SENDS: usize = 16;
@@ -29,7 +26,6 @@ pub(crate) struct PersistentConversationRuntime {
 
 struct PersistentConversationRuntimeInner {
     turns: Mutex<HashMap<String, Arc<PersistentTurn>>>,
-    turns_changed: Condvar,
     clients: AtomicUsize,
     store: ConversationStore,
     cache_budget: usize,
@@ -76,7 +72,6 @@ impl PersistentConversationRuntime {
         Self {
             inner: Arc::new(PersistentConversationRuntimeInner {
                 turns: Mutex::new(HashMap::new()),
-                turns_changed: Condvar::new(),
                 clients: AtomicUsize::new(0),
                 store,
                 cache_budget,
@@ -159,7 +154,6 @@ impl PersistentConversationRuntime {
             cache_budget: self.inner.cache_budget,
         });
         turns.insert(scope.dispatch_id.clone(), Arc::clone(&turn));
-        self.inner.turns_changed.notify_all();
         Ok(turn)
     }
 
@@ -220,110 +214,15 @@ impl PersistentConversationRuntime {
         Ok(resolved)
     }
 
-    /// Open one Membership-scoped dispatch: register the PersistentTurn and
-    /// commit its Conversation facts before any native work starts. The
-    /// returned handle is the dispatch identity the caller attaches or runs.
-    pub(crate) fn open_turn(
-        &self,
-        params: &Value,
-    ) -> std::result::Result<String, RuntimeAdapterError> {
-        let turn = self.begin_accepted(params)?;
-        Ok(turn.scope.dispatch_id.clone())
-    }
-
-    /// Run one previously opened turn to its terminal state. Registration is
-    /// never repeated here; an unknown handle fails closed.
-    pub(crate) fn run_open_turn(
-        &self,
-        handle: &str,
-        params: &Value,
-        portable_data_dir: Option<PathBuf>,
-    ) -> std::result::Result<Value, RuntimeAdapterError> {
-        let Some(turn) = self.turn(handle) else {
-            return Err(RuntimeAdapterError::ConversationDispatchFailed);
-        };
-        self.run_started_turn(turn, params, portable_data_dir)
-    }
-
-    /// Settle one opened turn that will never run. The dispatch completion
-    /// authority writes the terminal state with a typed abandonment code so a
-    /// registered entry turn can never linger as active.
-    pub(crate) fn abandon_turn(&self, handle: &str) {
-        let Some(turn) = self.turn(handle) else {
-            return;
-        };
-        let settled = turn
-            .state
-            .lock()
-            .map(|state| state.terminal.is_some())
-            .unwrap_or(true);
-        if settled {
-            return;
-        }
-        let terminal = PersistentTerminal {
-            ok: false,
-            payload: json!({
-                "ok": false,
-                "error": {
-                    "code": "conversation_dispatch_failed",
-                    "stage": "conversation/dispatch",
-                }
-            }),
-        };
-        if Self::finish(&turn, terminal.clone()).is_err() {
-            Self::force_terminal(&turn, terminal);
-        }
-    }
-
-    /// Begin a Membership-scoped PersistentTurn and return immediately so the
-    /// caller can attach. Drive continues on a host thread with the same sink
-    /// as a blocking open-plus-run turn.
-    pub(crate) fn start_background(
+    /// Execute a group/direct Conversation turn through the same host-owned
+    /// registry used by desktop streaming sends. The Conversation service
+    /// remains the canonical projector for the final reply; this coordinator
+    /// owns lifecycle, replay, reattachment, and same-turn control.
+    pub(crate) fn dispatch_sync(
         &self,
         params: &Value,
         portable_data_dir: Option<PathBuf>,
     ) -> std::result::Result<Value, RuntimeAdapterError> {
-        let handle = self.open_turn(params)?;
-        let Some(turn) = self.turn(&handle) else {
-            self.abandon_turn(&handle);
-            return Err(RuntimeAdapterError::ConversationDispatchFailed);
-        };
-        let receipt = json!({
-            "ok": true,
-            "accepted": true,
-            "turnHandle": turn.scope.dispatch_id,
-            "conversationId": turn.scope.conversation_id,
-            "membershipId": turn.scope.membership_id,
-        });
-        let runtime = self.clone();
-        let params = params.clone();
-        if std::thread::Builder::new()
-            .name("conversation-dispatch".to_owned())
-            .spawn(move || {
-                let _ = runtime.run_started_turn(turn, &params, portable_data_dir);
-            })
-            .is_err()
-        {
-            self.abandon_turn(&handle);
-            return Err(RuntimeAdapterError::ConversationDispatchFailed);
-        }
-        Ok(receipt)
-    }
-
-    pub(crate) fn steer_sync(
-        &self,
-        params: &Value,
-    ) -> std::result::Result<Value, RuntimeAdapterError> {
-        let params = self
-            .scoped_control_params(params)
-            .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
-        licoup_native::platform::dispatch_lane_operation("steer", &params)
-    }
-
-    fn begin_accepted(
-        &self,
-        params: &Value,
-    ) -> std::result::Result<Arc<PersistentTurn>, RuntimeAdapterError> {
         let turn = self
             .begin(params)
             .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
@@ -333,10 +232,7 @@ impl PersistentConversationRuntime {
                 "event": "agent.turn.accepted",
                 "sessionId": "",
                 "turnId": "",
-                "payload": {
-                    "status": "accepted",
-                    "lifecyclePrefix": ["submitted", "accepted"]
-                }
+                "payload": {"status": "accepted"}
             }),
         )
         .is_err()
@@ -347,21 +243,15 @@ impl PersistentConversationRuntime {
             );
             return Err(RuntimeAdapterError::ConversationDispatchFailed);
         }
-        Ok(turn)
-    }
 
-    fn run_started_turn(
-        &self,
-        turn: Arc<PersistentTurn>,
-        params: &Value,
-        portable_data_dir: Option<PathBuf>,
-    ) -> std::result::Result<Value, RuntimeAdapterError> {
-        let continuation_dir = portable_data_dir.clone();
         let persistence_failed = Arc::new(AtomicBool::new(false));
         let sink_failed = Arc::clone(&persistence_failed);
         let sink_turn = Arc::clone(&turn);
         licoup_native::platform::install_stream_sink(Box::new(move |event| {
-            Self::persist_frame(&sink_turn, event, &sink_failed);
+            if Self::record_event(&sink_turn, event).is_err() {
+                sink_failed.store(true, Ordering::Release);
+                panic!("conversation frame persistence failed");
+            }
         }));
         let stream_guard = licoup_native::platform::StreamSinkGuard;
         let execution = catch_unwind(AssertUnwindSafe(|| {
@@ -370,7 +260,7 @@ impl PersistentConversationRuntime {
         }));
         drop(stream_guard);
 
-        let result = match execution {
+        match execution {
             Ok(Ok(value)) => {
                 if Self::finish(
                     &turn,
@@ -404,42 +294,10 @@ impl PersistentConversationRuntime {
                 );
                 Err(RuntimeAdapterError::ConversationDispatchFailed)
             }
-        };
-        self.start_next_boundary_turn(
-            &turn.scope.conversation_id,
-            &turn.scope.membership_id,
-            continuation_dir,
-        );
-        result
-    }
-
-    fn start_next_boundary_turn(
-        &self,
-        conversation_id: &str,
-        membership_id: &str,
-        portable_data_dir: Option<PathBuf>,
-    ) {
-        let Ok(Some(context)) = self
-            .inner
-            .store
-            .claim_next_pending_direct_turn(conversation_id, membership_id)
-        else {
-            return;
-        };
-        let params = direct_turn_params(&context);
-        if self.start_background(&params, portable_data_dir).is_err() {
-            let diagnostic =
-                r#"{"code":"conversation_dispatch_failed","stage":"conversation/dispatch"}"#;
-            let _ = self
-                .inner
-                .store
-                .fail_direct_turn_unless_dispatched(&context.turn.id, diagnostic);
         }
     }
 
     pub(super) fn active(&self, params: &Value) -> Value {
-        const MAX_CHANGE_WAIT: Duration = Duration::from_secs(2);
-
         let agent = params
             .get("agent")
             .and_then(Value::as_str)
@@ -455,68 +313,33 @@ impl PersistentConversationRuntime {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .trim();
-        let wait = Duration::from_millis(
-            params
-                .get("waitForChangeMs")
-                .and_then(Value::as_u64)
-                .unwrap_or(0)
-                .min(MAX_CHANGE_WAIT.as_millis() as u64),
-        );
-        let deadline = Instant::now() + wait;
-        let mut turns = self.inner.turns.lock().expect("turn registry lock");
-        loop {
-            let active = turns
-                .values()
-                .filter_map(|turn| {
-                    let state = turn.state.lock().ok()?;
-                    if state.terminal.is_some()
-                        || (!agent.is_empty() && turn.agent_id != agent)
-                        || (!conversation_id.is_empty()
-                            && turn.scope.conversation_id != conversation_id)
-                    {
-                        return None;
-                    }
-                    let turn_session = turn.session_id.lock().ok()?.clone();
-                    if !session.is_empty() && turn_session != session {
-                        return None;
-                    }
-                    Some(json!({
-                        "turnHandle": turn.scope.dispatch_id,
-                        "conversationId": turn.scope.conversation_id,
-                        "membershipId": turn.scope.membership_id,
-                        "agent": turn.agent_id,
-                        "sessionId": turn_session,
-                        "turnId": turn.turn_id.lock().ok()?.clone(),
-                        "highWater": state.high_water,
-                    }))
-                })
-                .collect::<Vec<_>>();
-            if !active.is_empty() || wait.is_zero() || Instant::now() >= deadline {
-                return json!({"turns": active});
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let (next, timed_out) = self
-                .inner
-                .turns_changed
-                .wait_timeout(turns, remaining)
-                .expect("turn registry lock");
-            turns = next;
-            if timed_out.timed_out() {
-                return json!({"turns": []});
-            }
-        }
-    }
-
-    /// Persist one emitted turn frame through the host-facing stream sink. A
-    /// SQLite write failure is recorded as a typed persistence-failure signal
-    /// and the frame is dropped; the surrounding turn then settles with a
-    /// `conversation_persistence_failed` error delta while the stdio frame
-    /// loop keeps serving. Only interior invariants may assert; frame
-    /// persistence is a store failure and must never unwind the boundary.
-    fn persist_frame(turn: &Arc<PersistentTurn>, event: Value, persistence_failed: &AtomicBool) {
-        if Self::record_event(turn, event).is_err() {
-            persistence_failed.store(true, Ordering::Release);
-        }
+        let turns = self.inner.turns.lock().expect("turn registry lock");
+        let active = turns
+            .values()
+            .filter_map(|turn| {
+                let state = turn.state.lock().ok()?;
+                if state.terminal.is_some()
+                    || (!agent.is_empty() && turn.agent_id != agent)
+                    || (!conversation_id.is_empty()
+                        && turn.scope.conversation_id != conversation_id)
+                {
+                    return None;
+                }
+                let turn_session = turn.session_id.lock().ok()?.clone();
+                if !session.is_empty() && turn_session != session {
+                    return None;
+                }
+                Some(json!({
+                    "turnHandle": turn.scope.dispatch_id,
+                    "conversationId": turn.scope.conversation_id,
+                    "agent": turn.agent_id,
+                    "sessionId": turn_session,
+                    "turnId": turn.turn_id.lock().ok()?.clone(),
+                    "highWater": state.high_water,
+                }))
+            })
+            .collect::<Vec<_>>();
+        json!({"turns": active})
     }
 
     fn record_event(
@@ -533,12 +356,7 @@ impl PersistentConversationRuntime {
                 *turn.turn_id.lock().expect("turn id lock") = turn_id.trim().to_owned();
             }
         }
-        // Serialize cursor allocation through canonical persistence and the
-        // disposable cache update. Computing the cursor under a short lock and
-        // releasing it before the store write lets concurrent adapter emitters
-        // persist the same cursor before either detects the race.
-        let mut state = turn.state.lock().expect("turn state lock");
-        let cursor = state.high_water + 1;
+        let cursor = turn.state.lock().expect("turn state lock").high_water + 1;
         if let Some(object) = event.as_object_mut() {
             object.insert(
                 "turnHandle".to_owned(),
@@ -556,6 +374,10 @@ impl PersistentConversationRuntime {
         turn.store
             .bind_runtime_session(&turn.scope, &turn.agent_id, &session_id, None, None)?;
         let encoded_bytes = serde_json::to_vec(&event)?.len();
+        let mut state = turn.state.lock().expect("turn state lock");
+        if cursor != state.high_water + 1 {
+            return Err(anyhow!("runtime_cursor_race"));
+        }
         state.high_water = cursor;
         state.cache_bytes = state.cache_bytes.saturating_add(encoded_bytes);
         state.cache.push_back(CachedFrame {
@@ -574,13 +396,6 @@ impl PersistentConversationRuntime {
     }
 
     fn finish(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) -> Result<()> {
-        // Terminal settlement is one write: serialize persistence and the
-        // in-memory projection so a later observer/transport closure cannot
-        // race and replace the first exact native outcome.
-        let mut persistent_state = turn.state.lock().expect("turn state lock");
-        if persistent_state.terminal.is_some() {
-            return Ok(());
-        }
         let response_ok = terminal
             .payload
             .get("ok")
@@ -640,67 +455,17 @@ impl PersistentConversationRuntime {
         }
         turn.store
             .finish_runtime_dispatch(&turn.scope, &terminal.payload, state, error_code)?;
-        persistent_state.terminal = Some(terminal);
+        let mut state = turn.state.lock().expect("turn state lock");
+        state.terminal = Some(terminal);
         turn.changed.notify_all();
         Ok(())
     }
 
     fn force_terminal(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) {
         let mut state = turn.state.lock().expect("turn state lock");
-        if state.terminal.is_none() {
-            state.terminal = Some(terminal);
-            turn.changed.notify_all();
-        }
+        state.terminal = Some(terminal);
+        turn.changed.notify_all();
     }
-}
-
-fn direct_turn_params(
-    context: &licoup_native::domain::client_conversation::DirectTurnExecutionContext,
-) -> Value {
-    // Assistant workflow guidance travels as harness-provided context inside
-    // the wire text. No adapter exposes a private-instruction channel, so the
-    // separate privateInstructions request field was un routable and every
-    // adapter failed closed on it.
-    let text = if let Some(instructions) = context.private_instructions() {
-        format!(
-            "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
-            instructions, context.source_content
-        )
-    } else {
-        context.source_content.clone()
-    };
-    let mut params = json!({
-        "agentId": context.agent_id,
-        "agent": context.agent_id,
-        "text": text,
-        "streamEvents": true,
-        "timeoutMs": 0,
-        "conversationId": context.turn.conversation_id,
-        "membershipId": context.turn.membership_id,
-        "causationId": context.turn.source_event_id,
-        "dispatchId": context.turn.id,
-    });
-    if !context.source_attachments.is_empty() {
-        params["attachments"] =
-            licoup_native::domain::client_conversation::dispatch_attachments_param(
-                &context.source_attachments,
-            );
-    }
-    for (key, value) in [
-        ("sessionId", context.runtime_session_id.as_deref()),
-        ("sourcePath", context.runtime_conversation_path.as_deref()),
-        ("workingDirectory", context.working_directory.as_deref()),
-        ("model", context.preferred_model.as_deref()),
-        (
-            "reasoningEffort",
-            context.preferred_reasoning_effort.as_deref(),
-        ),
-    ] {
-        if let Some(value) = value.filter(|value| !value.is_empty()) {
-            params[key] = json!(value);
-        }
-    }
-    params
 }
 
 pub(super) fn spawn_send<W>(
@@ -715,25 +480,18 @@ where
     W: Write + Send + 'static,
 {
     let turn = runtime.begin(&params)?;
-    let handle = turn.scope.dispatch_id.clone();
-    std::thread::Builder::new()
-        .name("conversation-send".to_owned())
-        .spawn(move || {
-            let _ = execute(
-                &writer,
-                &request_id,
-                &workflow_id,
-                "send",
-                params,
-                portable_data_dir,
-                true,
-                Some(turn),
-            );
-        })
-        .map_err(|_| {
-            runtime.abandon_turn(&handle);
-            stdio_rpc_client_error("agent_conversation_dispatch_failed")
-        })
+    Ok(std::thread::spawn(move || {
+        let _ = execute(
+            &writer,
+            &request_id,
+            &workflow_id,
+            "send",
+            params,
+            portable_data_dir,
+            true,
+            Some(turn),
+        );
+    }))
 }
 
 pub(super) fn spawn_attach<W>(
@@ -774,12 +532,9 @@ where
     if after_cursor > high_water {
         return Err(stdio_rpc_client_error("cursor_ahead"));
     }
-    std::thread::Builder::new()
-        .name("conversation-attach".to_owned())
-        .spawn(move || {
-            let _ = replay_turn(&writer, &request_id, &workflow_id, &turn, after_cursor);
-        })
-        .map_err(|_| stdio_rpc_client_error("agent_conversation_dispatch_failed"))
+    Ok(std::thread::spawn(move || {
+        let _ = replay_turn(&writer, &request_id, &workflow_id, &turn, after_cursor);
+    }))
 }
 
 fn replay_turn<W: Write>(
@@ -878,35 +633,6 @@ pub(super) fn execute<W>(
 where
     W: Write + Send + 'static,
 {
-    // Structured native UI replies use the already trusted, live-turn-scoped
-    // steer RPC. They never become prompt text: the callback token and exact
-    // structured response resolve one parked transport generation directly.
-    if operation == "steer"
-        && let Some(token) = params
-            .get("adapterCallbackTokenRef")
-            .and_then(Value::as_str)
-        && let Some(response) = params.get("interactionResponse").cloned()
-    {
-        let session_id = params
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| anyhow::anyhow!("native_interaction_session_id_missing"))?;
-        let turn_id = params
-            .get("turnId")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| anyhow::anyhow!("native_interaction_turn_id_missing"))?;
-        let resolved = licoup_native::platform::resolve_scoped_native_agent_interaction(
-            token,
-            Some(session_id),
-            Some(turn_id),
-            response,
-        )
-        .map_err(anyhow::Error::msg)?;
-        write_stdio_rpc_terminal_success(writer, request_id, workflow_id, 1, resolved)?;
-        return Ok(());
-    }
     let (initial_sequence, observer_is_connected) = if let Some(turn) = persistent_turn.as_ref() {
         let accepted = match PersistentConversationRuntime::record_event(
             turn,
@@ -914,10 +640,7 @@ where
                 "event": "agent.turn.accepted",
                 "sessionId": "",
                 "turnId": "",
-                "payload": {
-                    "status": "accepted",
-                    "lifecyclePrefix": ["submitted", "accepted"]
-                }
+                "payload": {"status": "accepted"}
             }),
         ) {
             Ok(accepted) => accepted,
@@ -958,12 +681,8 @@ where
                 match PersistentConversationRuntime::record_event(turn, event) {
                     Ok(event) => event,
                     Err(_) => {
-                        // A SQLite write failure is a typed persistence-failure
-                        // signal, never a panic: drop the frame and let the
-                        // turn settle with a `conversation_persistence_failed`
-                        // delta.
                         persistence_failed.store(true, Ordering::Release);
-                        return;
+                        panic!("conversation frame persistence failed");
                     }
                 }
             } else {
@@ -1137,26 +856,6 @@ pub(super) fn has_capacity(workers: &[std::thread::JoinHandle<()>]) -> bool {
     workers.len() < MAX_CONCURRENT_SENDS
 }
 
-/// The strategy drive's Conversation-dispatch port, composed once where the
-/// persistent host runtime already exists. Open registers a turn, run executes
-/// an opened turn, and abandon settles one that will never run; an absent
-/// runtime keeps the strategy service fail closed.
-pub(super) fn strategy_turn_port(
-    runtime: PersistentConversationRuntime,
-    portable_data_dir: Option<PathBuf>,
-) -> licoup_native::domain::adaptive_flywheel::ActorTurnPort {
-    let open_runtime = runtime.clone();
-    let run_runtime = runtime.clone();
-    let run_dir = portable_data_dir;
-    licoup_native::domain::adaptive_flywheel::ActorTurnPort {
-        open: Arc::new(move |params| open_runtime.open_turn(params)),
-        run: Arc::new(move |handle, params| {
-            run_runtime.run_open_turn(handle, params, run_dir.clone())
-        }),
-        abandon: Arc::new(move |handle| runtime.abandon_turn(handle)),
-    }
-}
-
 pub(super) fn join_until_completion(workers: &mut Vec<std::thread::JoinHandle<()>>) {
     while !workers.is_empty() {
         reap_finished(workers);
@@ -1196,102 +895,13 @@ pub(super) fn reap_finished(workers: &mut Vec<std::thread::JoinHandle<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use licoup_native::domain::client_conversation::{
-        ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind,
-        ImageAttachment, ImageAttachmentReference, TurnState,
-    };
+    use licoup_native::domain::client_conversation::{ConversationService, EventPartKind};
 
     fn runtime(cache_budget: usize) -> PersistentConversationRuntime {
         PersistentConversationRuntime::with_cache_budget(
             ConversationStore::open_in_memory().unwrap(),
             cache_budget,
         )
-    }
-
-    /// A boundary-queued continuation of a post with image attachments must
-    /// carry the same attachment references to the member adapter admission.
-    #[test]
-    fn direct_turn_params_carry_image_attachment_references() {
-        let mut context = DirectTurnExecutionContext {
-            turn: DirectTurn {
-                id: "turn:synthetic".to_owned(),
-                conversation_id: "conversation:synthetic".to_owned(),
-                source_event_id: "event:synthetic".to_owned(),
-                membership_id: "membership:agent".to_owned(),
-                state: TurnState::Claimed,
-                ordinal: 0,
-            },
-            agent_id: "codex".to_owned(),
-            source_content: "exact user-authored text".to_owned(),
-            source_attachments: Vec::new(),
-            is_assistant: false,
-            preferred_model: None,
-            preferred_reasoning_effort: None,
-            runtime_session_id: None,
-            runtime_conversation_path: None,
-            working_directory: None,
-        };
-        assert!(direct_turn_params(&context).get("attachments").is_none());
-
-        context.source_attachments = vec![ImageAttachmentReference {
-            part_id: "part:image-1".to_owned(),
-            attachment: ImageAttachment {
-                path: "fixtures/mockup.png".to_owned(),
-                name: "mockup.png".to_owned(),
-                media_type: "image/png".to_owned(),
-                byte_size: 12,
-            },
-        }];
-        let params = direct_turn_params(&context);
-        assert_eq!(
-            params["attachments"],
-            json!([{
-                "id": "part:image-1",
-                "name": "mockup.png",
-                "mediaType": "image/png",
-                "path": "fixtures/mockup.png",
-            }])
-        );
-    }
-
-    #[test]
-    fn assistant_boundary_continuation_keeps_guidance_private_and_user_text_exact() {
-        let context = DirectTurnExecutionContext {
-            turn: DirectTurn {
-                id: "turn:synthetic".to_owned(),
-                conversation_id: "conversation:synthetic".to_owned(),
-                source_event_id: "event:synthetic".to_owned(),
-                membership_id: "membership:assistant".to_owned(),
-                state: TurnState::Claimed,
-                ordinal: 0,
-            },
-            agent_id: "codex".to_owned(),
-            source_content: "exact user-authored text".to_owned(),
-            source_attachments: Vec::new(),
-            is_assistant: true,
-            preferred_model: None,
-            preferred_reasoning_effort: None,
-            runtime_session_id: None,
-            runtime_conversation_path: None,
-            working_directory: None,
-        };
-
-        let params = direct_turn_params(&context);
-        let text = params["text"].as_str().unwrap();
-        assert!(text.starts_with("<skills_instructions>\n"));
-        assert!(text.ends_with("exact user-authored text"));
-        let instructions = context.private_instructions().unwrap();
-        assert!(text.contains(instructions));
-        assert_eq!(params.get("privateInstructions"), None);
-
-        let mut ordinary = context;
-        ordinary.is_assistant = false;
-        let ordinary_params = direct_turn_params(&ordinary);
-        assert_eq!(
-            ordinary_params["text"].as_str().unwrap(),
-            "exact user-authored text"
-        );
-        assert!(ordinary_params.get("privateInstructions").is_none());
     }
 
     #[test]
@@ -1377,51 +987,6 @@ mod tests {
     }
 
     #[test]
-    fn persistent_runtime_serializes_concurrent_cursor_persistence() {
-        const EMITTERS: usize = 8;
-        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
-        let turn = runtime
-            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
-            .unwrap();
-        let barrier = Arc::new(std::sync::Barrier::new(EMITTERS));
-        let mut emitters = Vec::with_capacity(EMITTERS);
-        for ordinal in 0..EMITTERS {
-            let turn = Arc::clone(&turn);
-            let barrier = Arc::clone(&barrier);
-            emitters.push(std::thread::spawn(move || {
-                barrier.wait();
-                PersistentConversationRuntime::record_event(
-                    &turn,
-                    json!({
-                        "event": "agent.message.chunk",
-                        "payload": {"ordinal": ordinal}
-                    }),
-                )
-                .unwrap();
-            }));
-        }
-        for emitter in emitters {
-            emitter.join().unwrap();
-        }
-
-        let state = turn.state.lock().unwrap();
-        assert_eq!(state.high_water, EMITTERS as u64);
-        drop(state);
-        let frames = turn
-            .store
-            .runtime_frames_after(&turn.scope, 0, EMITTERS as u64, EMITTERS)
-            .unwrap();
-        assert_eq!(frames.len(), EMITTERS);
-        assert_eq!(
-            frames
-                .iter()
-                .filter_map(|frame| frame.get("cursor").and_then(Value::as_u64))
-                .collect::<Vec<_>>(),
-            (1..=EMITTERS as u64).collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
     fn persistent_runtime_active_discovery_is_scoped_without_content() {
         let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
         let turn = runtime
@@ -1451,28 +1016,6 @@ mod tests {
             active["turns"][0]["conversationId"],
             turn.scope.conversation_id
         );
-    }
-
-    #[test]
-    fn persistent_runtime_active_discovery_waits_for_registration_signal() {
-        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
-        let waiter = runtime.clone();
-        let barrier = Arc::new(std::sync::Barrier::new(2));
-        let wait_barrier = Arc::clone(&barrier);
-        let waiting = std::thread::spawn(move || {
-            wait_barrier.wait();
-            waiter.active(&json!({
-                "agent": "synthetic",
-                "waitForChangeMs": 1000
-            }))
-        });
-        barrier.wait();
-        let turn = runtime
-            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
-            .unwrap();
-
-        let active = waiting.join().unwrap();
-        assert_eq!(active["turns"][0]["turnHandle"], turn.scope.dispatch_id);
     }
 
     #[test]
@@ -1587,46 +1130,6 @@ mod tests {
     }
 
     #[test]
-    fn later_observer_failure_cannot_overwrite_first_native_terminal() {
-        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
-        let turn = runtime
-            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
-            .unwrap();
-        let exact = PersistentTerminal {
-            ok: false,
-            payload: json!({
-                "ok": false,
-                "terminalTransition": {
-                    "kind": "failed",
-                    "code": "exact_native_failure",
-                    "stage": "native/turn"
-                }
-            }),
-        };
-        PersistentConversationRuntime::finish(&turn, exact).unwrap();
-        PersistentConversationRuntime::finish(
-            &turn,
-            PersistentTerminal {
-                ok: false,
-                payload: json!({"code": "later_transport_failed"}),
-            },
-        )
-        .unwrap();
-        PersistentConversationRuntime::force_terminal(
-            &turn,
-            PersistentTerminal {
-                ok: false,
-                payload: json!({"code": "observer_disconnected"}),
-            },
-        );
-        let state = turn.state.lock().unwrap();
-        assert_eq!(
-            state.terminal.as_ref().unwrap().payload["terminalTransition"]["code"],
-            "exact_native_failure"
-        );
-    }
-
-    #[test]
     fn persistent_runtime_is_not_idle_with_client_or_active_turn() {
         let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
         assert!(runtime.idle());
@@ -1721,141 +1224,6 @@ mod tests {
         assert!(!join_until(&mut workers, Duration::from_millis(20)));
         release.send(()).unwrap();
         assert!(join_until(&mut workers, Duration::from_secs(1)));
-    }
-
-    /// SQLite write failure injected into frame persistence: the host-facing
-    /// persistence path settles the turn with a typed error delta and the
-    /// runtime keeps accepting turns instead of unwinding the process.
-    #[test]
-    fn stdio_rpc_resilience_sqlite_write_failure_emits_error_delta_and_loop_survives() {
-        let store = ConversationStore::open_in_memory().unwrap();
-        let runtime = PersistentConversationRuntime::with_cache_budget(
-            store.clone(),
-            DEFAULT_TURN_CACHE_BYTES,
-        );
-        let turn = runtime
-            .begin(&json!({"agent": "synthetic", "text": "synthetic prompt"}))
-            .unwrap();
-        // Inject the write failure behind the connection pool: remove the
-        // registered dispatch rows so the next persisted frame fails closed.
-        {
-            let connection = rusqlite::Connection::open(store.db_path()).unwrap();
-            connection
-                .execute(
-                    "DELETE FROM conversation_dispatches WHERE id=?1",
-                    [turn.scope.dispatch_id.as_str()],
-                )
-                .unwrap();
-        }
-
-        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
-        let dispatched = execute(
-            &writer,
-            "request-resilience",
-            "workflow-resilience",
-            "send",
-            json!({"agent": "synthetic", "text": "synthetic prompt"}),
-            None,
-            true,
-            Some(turn),
-        );
-        assert!(
-            dispatched.is_ok(),
-            "frame persistence failure must not unwind the loop"
-        );
-
-        let output = String::from_utf8(writer.lock().unwrap().clone()).unwrap();
-        let frames = output
-            .lines()
-            .map(|line| serde_json::from_str::<Value>(line).unwrap())
-            .collect::<Vec<_>>();
-        let terminal = frames
-            .iter()
-            .find(|frame| frame["id"] == "request-resilience")
-            .expect("terminal delta frame");
-        assert_eq!(terminal["ok"], false);
-        assert!(terminal.get("result").is_none());
-        // The known problem code degrades into the canonical ClientError
-        // vocabulary; the exact external code is the host metadata codec for
-        // frame-persistence failures.
-        assert_eq!(terminal["error"]["code"], "command_failed");
-
-        // The loop survived: the same runtime registers and persists a fresh,
-        // healthy turn afterwards.
-        let next = runtime
-            .begin(&json!({"agent": "synthetic", "text": "next prompt"}))
-            .unwrap();
-        PersistentConversationRuntime::record_event(
-            &next,
-            json!({
-                "event": "agent.message.chunk",
-                "payload": {"ordinal": 1}
-            }),
-        )
-        .unwrap();
-    }
-
-    /// A panicking dispatch is converted into a `command_panicked` error delta
-    /// at the frame-loop boundary and the loop keeps serving the next request.
-    #[test]
-    fn stdio_rpc_resilience_frame_loop_survives_panicking_dispatch() {
-        let mut input = Vec::new();
-        for frame in [
-            json!({
-                "protocol": STDIO_RPC_PROTOCOL,
-                "id": "request-panic",
-                "workflowId": "workflow-1",
-                "method": "execute",
-                "args": ["boom"],
-            }),
-            json!({
-                "protocol": STDIO_RPC_PROTOCOL,
-                "id": "request-ok",
-                "workflowId": "workflow-1",
-                "method": "execute",
-                "args": ["ok"],
-            }),
-        ] {
-            input.extend_from_slice(&serde_json::to_vec(&frame).unwrap());
-            input.push(b'\n');
-        }
-        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
-        let output =
-            serve_stdio_rpc_with_runtime(
-                std::io::Cursor::new(input),
-                Vec::new(),
-                |args,
-                 _|
-                 -> std::result::Result<
-                    licoup_native::ffi::commands::CliExecution,
-                    anyhow::Error,
-                > {
-                    if args.first().map(String::as_str) == Some("boom") {
-                        // Deliberate panic injection: the frame-loop boundary
-                        // must convert it into a `command_panicked` error
-                        // delta.
-                        std::panic::panic_any("synthetic dispatch panic");
-                    }
-                    Ok(licoup_native::ffi::commands::CliExecution::Json(
-                        json!({"ok": true}),
-                    ))
-                },
-                runtime,
-            )
-            .unwrap();
-        let text = String::from_utf8(output).unwrap();
-        let frames = text
-            .lines()
-            .map(|line| serde_json::from_str::<Value>(line).unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(frames.len(), 2);
-        assert_eq!(frames[0]["id"], "request-panic");
-        assert_eq!(frames[0]["ok"], false);
-        assert_eq!(frames[0]["error"]["code"], "command_panicked");
-        assert!(frames[0].get("result").is_none());
-        assert_eq!(frames[1]["id"], "request-ok");
-        assert_eq!(frames[1]["ok"], true);
-        assert_eq!(frames[1]["result"]["ok"], true);
     }
 
     #[test]

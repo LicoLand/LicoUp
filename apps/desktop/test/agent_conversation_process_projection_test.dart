@@ -3,7 +3,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_proces
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('process projection retains every operation and exact totals', () {
+  test('process projection bounds rendering while retaining totals', () {
     final events = [
       for (var index = 0; index < 140; index++)
         AgentConversationMessage(
@@ -21,8 +21,10 @@ void main() {
 
     final projection = projectConversationProcessEvents(events);
 
-    expect(projection.events, hasLength(140));
+    expect(projection.events, hasLength(128));
     expect(projection.totalOperations, 140);
+    expect(projection.renderTruncated, isTrue);
+    expect(projection.countTruncated, isFalse);
     expect(projection.issues, 1);
     expect(
       projection.endedAt?.difference(projection.startedAt!).inSeconds,

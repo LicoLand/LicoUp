@@ -48,17 +48,6 @@ impl ProtocolConfig {
                 "request/validate",
             ));
         }
-        if params
-            .get("privateInstructions")
-            .and_then(Value::as_str)
-            .is_some_and(|value| !value.is_empty())
-        {
-            return Err(ProtocolFailure::new(
-                "openclaw_acp_private_instructions_unsupported",
-                "OpenClaw ACP does not expose a private instruction channel.",
-                "capability/private-instructions",
-            ));
-        }
         if text_param(params, &["model", "modelId"]).is_some() {
             return Err(ProtocolFailure::new(
                 "openclaw_acp_model_override_unsupported",

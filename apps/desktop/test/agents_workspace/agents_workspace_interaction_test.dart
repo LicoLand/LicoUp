@@ -1,7 +1,5 @@
 import 'support/agents_workspace_test_harness.dart';
 
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_operations.dart';
-
 void registerAgentsWorkspaceInteractionScenarios() {
   testWidgets(
     'long process stays operable, bounded, and localized after expansion',
@@ -91,11 +89,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
       await tester.tap(find.byKey(toggleKey));
       await tester.pumpAndSettle();
 
-      expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsNothing);
-      final operationList = tester.widget<ConversationProcessOperationList>(
-        find.byType(ConversationProcessOperationList),
-      );
-      expect(operationList.operations, hasLength(130));
+      expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsOneWidget);
       // Operation rows start collapsed; the first row expands on tap to
       // reveal its recorded detail body.
       expect(find.text('Safe operation 1', findRichText: true), findsNothing);
@@ -106,26 +100,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Safe operation 1', findRichText: true), findsOneWidget);
-      const operationScrollKey = ValueKey(
-        'conversation-process-operation-scroll-long-event-0',
-      );
-      final operationScroll = find.descendant(
-        of: find.byKey(operationScrollKey),
-        matching: find.byType(Scrollable),
-      );
-      final operationPosition = tester
-          .state<ScrollableState>(operationScroll)
-          .position;
-      operationPosition.jumpTo(operationPosition.maxScrollExtent);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(
-          const ValueKey(
-            'conversation-process-operation-toggle-long-event-129',
-          ),
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Safe operation 129', findRichText: true), findsNothing);
       final listFinder = find
           .ancestor(
             of: find.byKey(toggleKey),
@@ -144,7 +119,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
   );
 
   testWidgets(
-    'hidden operation details stay explicit without legacy truncation notices',
+    'truncation and hidden operation details stay explicit and localized',
     (tester) async {
       final controller = ClientController();
       addTearDown(controller.dispose);
@@ -235,12 +210,21 @@ void registerAgentsWorkspaceInteractionScenarios() {
       const toggleKey = Key('conversation-process-toggle-tool-hidden');
       final finalMessage = find.text('最终消息仍保留。');
       final truncationNotice = find.text('较早消息和部分嵌套过程详情未载入；当前显示最近的完整对话骨架。');
+      final messageList = find
+          .ancestor(
+            of: find.byKey(toggleKey),
+            matching: find.byType(Scrollable),
+          )
+          .first;
       expect(finalMessage, findsWidgets);
-      expect(truncationNotice, findsNothing);
+      await tester.scrollUntilVisible(
+        truncationNotice,
+        120,
+        scrollable: messageList,
+      );
+      expect(truncationNotice, findsOneWidget);
       expect(find.text('调用详情已隐藏。', findRichText: true), findsNothing);
 
-      await tester.ensureVisible(find.byKey(toggleKey, skipOffstage: false));
-      await tester.pump();
       await tester.tap(find.byKey(toggleKey));
       await tester.pump();
 
@@ -255,10 +239,15 @@ void registerAgentsWorkspaceInteractionScenarios() {
       await tester.pump();
       expect(find.text('调用详情已隐藏。', findRichText: true), findsOneWidget);
       expect(find.text('Invocation details are hidden.'), findsNothing);
-      expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsNothing);
+      expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsOneWidget);
       expect(
         find.byKey(const Key('conversation-process-tool-hidden')),
         findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        finalMessage,
+        -120,
+        scrollable: messageList,
       );
       expect(finalMessage, findsWidgets);
       expect(tester.takeException(), isNull);

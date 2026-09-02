@@ -1,3 +1,4 @@
+use serde_json::{Value, json};
 use std::sync::mpsc::SyncSender;
 
 #[derive(Debug)]
@@ -22,4 +23,36 @@ pub(in crate::platform) enum ControlDisposition {
     NoActiveTurn,
     SessionUnavailable,
     TransportUnavailable,
+}
+
+pub(super) fn interrupt_request() -> Value {
+    json!({
+        "type": "control_request",
+        "request_id": uuid::Uuid::new_v4().to_string(),
+        "request": {"subtype": "interrupt"}
+    })
+}
+
+pub(super) fn steer_message(text: &str) -> Option<Value> {
+    (!text.trim().is_empty()).then(|| {
+        json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": text}]
+            }
+        })
+    })
+}
+
+pub(super) fn denied_control_response(message: &Value) -> Option<Value> {
+    let request_id = message.get("request_id").and_then(Value::as_str)?;
+    Some(json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "error",
+            "request_id": request_id,
+            "error": "Client interaction is unavailable."
+        }
+    }))
 }

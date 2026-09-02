@@ -62,15 +62,10 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
     final explicitBinary = environment['LICO_CLIENT_PATH'];
     final cargoTargetDirectory = environment['CARGO_TARGET_DIR'];
     final executableDirectory = File(executablePath).parent.path;
-    // An installed app bundle must use its sibling sidecar. Developer cargo
-    // overlays leak into `open` from a Cursor/agent shell and then outlive
-    // the product binary.
-    final insideAppBundle = executablePath.contains('.app/Contents/MacOS/');
     final candidates = <String>[
       if (explicitBinary != null && explicitBinary.trim().isNotEmpty)
         explicitBinary.trim(),
-      if (!insideAppBundle &&
-          cargoTargetDirectory != null &&
+      if (cargoTargetDirectory != null &&
           cargoTargetDirectory.trim().isNotEmpty)
         p.join(cargoTargetDirectory.trim(), 'debug', 'licoup-cli$suffix'),
       p.join(executableDirectory, 'licoup-cli$suffix'),
@@ -111,7 +106,6 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
   Future<Map<String, String>?> buildEnvironment() async {
     final environment = <String, String>{
       ..._macOSLocalAuthenticationEnvironment(),
-      'LICOUP_CLIENT_PID': '$pid',
     };
     final executablePath = Platform.environment['PATH']?.trim() ?? '';
     if (executablePath.isNotEmpty && executablePath.length <= 32 * 1024) {

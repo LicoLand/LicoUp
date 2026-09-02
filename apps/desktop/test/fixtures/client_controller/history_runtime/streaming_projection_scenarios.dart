@@ -2,26 +2,6 @@ import '../support/client_controller_scenario_dependencies.dart';
 import '../support/client_controller_scenario_json.dart';
 import '../support/fake_agent_service.dart';
 
-const _acceptedLifecyclePrefix = ['submitted', 'accepted'];
-const _processingLifecyclePrefix = ['submitted', 'accepted', 'processing'];
-const _respondingLifecyclePrefix = [
-  'submitted',
-  'accepted',
-  'processing',
-  'responding',
-];
-const _completedLifecyclePrefix = [
-  'submitted',
-  'accepted',
-  'processing',
-  'responding',
-  'completed',
-];
-const _completedTerminalTransition = {
-  'kind': 'lifecycle',
-  'stage': 'completed',
-};
-
 void registerClientHistoryRuntimeStreamingProjectionScenarios() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
@@ -43,62 +23,35 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
               'event': 'dispatch.turn.bound',
               'sessionId': 'native-codex-turn-bound',
               'turnId': 'turn-1',
-              'payload': {
-                'nativeSteer': true,
-                'lifecyclePrefix': _acceptedLifecyclePrefix,
-              },
+              'payload': {'nativeSteer': true},
             },
             {
               'event': 'agent.turn.processing',
               'sessionId': 'native-codex-turn-bound',
               'turnId': 'turn-1',
-              'payload': {
-                'evidenceKind': 'tool',
-                'lifecyclePrefix': _processingLifecyclePrefix,
-              },
+              'payload': {'evidenceKind': 'tool'},
             },
             {
               'event': 'agent.message.chunk',
-              'payload': {
-                'text': 'Hello',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'text': 'Hello'},
             },
             {
               'event': 'agent.message.chunk',
-              'payload': {
-                'text': 'Hello world',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'text': 'Hello world'},
             },
             {
               'event': 'agent.message.chunk',
-              'payload': {
-                'text': 'world',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'text': 'world'},
             },
             {
               'event': 'tool.call.started',
-              'payload': {
-                'summary': 'Inspecting workspace',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'summary': 'Inspecting workspace'},
             },
             {
               'event': 'agent.message.completed',
-              'payload': {
-                'text': 'Hello world.',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'text': 'Hello world.'},
             },
           ],
-        ]
-        ..runtimeMessageResultQueue = [
-          {
-            'lifecyclePrefix': _completedLifecyclePrefix,
-            'terminalTransition': _completedTerminalTransition,
-          },
         ];
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
@@ -185,10 +138,7 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
               'event': 'dispatch.turn.bound',
               'sessionId': 'native-codex-turn-bound',
               'turnId': 'turn-1',
-              'payload': {
-                'nativeSteer': true,
-                'lifecyclePrefix': _acceptedLifecyclePrefix,
-              },
+              'payload': {'nativeSteer': true},
             },
             {
               'event': 'agent.runtime.updating',
@@ -198,7 +148,6 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
                 'artifact': 'cursor-agent',
                 'version': '2026.08.04-aaa8809',
                 'phase': 'downloading',
-                'lifecyclePrefix': _acceptedLifecyclePrefix,
               },
             },
             {
@@ -209,7 +158,6 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
                 'artifact': 'cursor-agent',
                 'version': '2026.08.04-aaa8809',
                 'phase': 'installing',
-                'lifecyclePrefix': _acceptedLifecyclePrefix,
               },
             },
             {
@@ -219,30 +167,17 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
               'payload': {
                 'artifact': 'cursor-agent',
                 'version': '2026.08.04-aaa8809',
-                'lifecyclePrefix': _acceptedLifecyclePrefix,
               },
             },
             {
               'event': 'agent.message.chunk',
-              'payload': {
-                'text': 'Hello world.',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'text': 'Hello world.'},
             },
             {
               'event': 'agent.message.completed',
-              'payload': {
-                'text': 'Hello world.',
-                'lifecyclePrefix': _respondingLifecyclePrefix,
-              },
+              'payload': {'text': 'Hello world.'},
             },
           ],
-        ]
-        ..runtimeMessageResultQueue = [
-          {
-            'lifecyclePrefix': _completedLifecyclePrefix,
-            'terminalTransition': _completedTerminalTransition,
-          },
         ];
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
@@ -287,15 +222,11 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       expect(updateCardSubtitles, anyElement(contains('下载中')));
       expect(card.cardSubtitle, contains('2026.08.04-aaa8809'));
       // Update events must not advance the turn lifecycle beyond accepted;
-      // the later responding event proves processing was crossed before the
-      // turn completes, even when the transport coalesces that event.
+      // the later message events advance it to responding/completed as usual.
       final lifecycle = controller.selectedConversationSession!.messages
           .where((message) => message.cardType == 'lifecycle')
           .single;
-      expect(
-        lifecycle.cardSubtitle,
-        'submitted,accepted,processing,responding,completed',
-      );
+      expect(lifecycle.cardSubtitle, 'submitted,accepted,responding,completed');
       // The turn itself still converges.
       expect(
         controller.selectedConversationSession!.messages

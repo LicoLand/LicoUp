@@ -6,9 +6,9 @@ import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 typedef RpcOp<T> = Future<T> Function();
 
-/// Serializes bounded commands and shutdown for one stdio session. Unbounded
-/// PersistentTurn observers are multiplexed by the session itself and never
-/// occupy this queue.
+const _timeoutError = LicoClientRpcException('timeout');
+
+/// Serializes commands, streams, and shutdown for one stdio session.
 final class StdioRpcOperationQueue {
   final RpcOperationPendingQueue _pending = RpcOperationPendingQueue();
   var _running = false, _closing = false;
@@ -31,6 +31,36 @@ final class StdioRpcOperationQueue {
     return completer.future;
   }
 
+  Stream<T> serializeStream<T>({
+    required Stream<T> Function() operation,
+    Duration? timeout,
+    required Future<void> Function() onTimeout,
+  }) {
+    if (_closing) {
+      return Stream<T>.error(const LicoClientRpcException('service_disposed'));
+    }
+    final controller = StreamController<T>();
+    _enqueue(() async {
+      try {
+        final events = operation();
+        // A null timeout keeps the operation unbounded (agent turns run until
+        // they complete, however long that takes).
+        await for (final event
+            in timeout == null ? events : events.timeout(timeout)) {
+          controller.add(event);
+        }
+      } on TimeoutException catch (_, stackTrace) {
+        await onTimeout();
+        controller.addError(_timeoutError, stackTrace);
+      } on Object catch (error, stackTrace) {
+        controller.addError(error, stackTrace);
+      } finally {
+        await controller.close();
+      }
+    });
+    return controller.stream;
+  }
+
   Future<void> close(Future<void> Function() shutdown) {
     final existing = _closeFuture;
     if (existing != null) return existing;
@@ -46,8 +76,7 @@ final class StdioRpcOperationQueue {
   }
 
   /// Stops accepting work and releases the observer transport immediately.
-  /// The conversation host still belongs to this LicoUp process and exits
-  /// when that process is gone.
+  /// The native conversation host remains responsible for active Agent work.
   Future<void> detach(Future<void> Function() detachTransport) {
     final existing = _closeFuture;
     if (existing != null) return existing;

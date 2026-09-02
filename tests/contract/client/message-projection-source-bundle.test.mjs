@@ -59,7 +59,7 @@ test("projection leaves have explicit acyclic dependency direction", async () =>
   assert.equal(source["semantic.rs"].includes("super::"), false);
   assert.equal(source["antigravity.rs"].includes("super::"), false);
   assert.ok(source["generated_context.rs"].includes("super::antigravity"));
-  assert.equal(source["generated_context.rs"].includes("super::semantic"), false);
+  assert.ok(source["generated_context.rs"].includes("super::semantic"));
   assert.ok(source["structured_privacy.rs"].includes("super::semantic"));
   for (const forbidden of ["super::projection", "super::json_extract"] ) {
     assert.equal(source["generated_context.rs"].includes(forbidden), false);
@@ -69,9 +69,11 @@ test("projection leaves have explicit acyclic dependency direction", async () =>
   assert.ok(source["projection.rs"].includes("super::structured_privacy"));
 });
 
-test("structured privacy has one cached regex and complete redaction authority", async () => {
+test("structured privacy has one cached regex and bounded redaction authority", async () => {
   const source = (await sources())["structured_privacy.rs"];
   for (const token of [
+    "MAX_STRUCTURED_EVENT_TEXT_CHARS",
+    "MAX_REASONING_SUMMARY_DEPTH",
     "OnceLock<Regex>",
     "Bearer [redacted]",
     "[local path hidden]",
@@ -80,8 +82,6 @@ test("structured privacy has one cached regex and complete redaction authority",
   ]) {
     assert.ok(source.includes(token), `missing privacy boundary: ${token}`);
   }
-  assert.equal(source.includes("MAX_STRUCTURED_EVENT_TEXT_CHARS"), false);
-  assert.equal(source.includes("MAX_REASONING_SUMMARY_DEPTH"), false);
   assert.equal(source.includes("println!"), false);
   assert.equal(source.includes("eprintln!"), false);
   assert.equal(source.includes("dbg!"), false);
@@ -116,20 +116,21 @@ test("Antigravity and generated-context policies remain separate and fail closed
   assert.equal(sessionMetadata.includes("fn generated_control_text"), false);
 });
 
-test("iterative JSON extraction is complete and keeps role, time, and session projection", async () => {
+test("recursive JSON extraction is depth-bounded and keeps role, time, and session projection", async () => {
   const source = (await sources())["json_extract.rs"];
   for (const token of [
-    "extract_text_iterative",
+    "MAX_TEXT_EXTRACTION_DEPTH",
+    "MAX_EMBEDDED_JSON_DISCOVERY_DEPTH",
+    "depth > MAX_TEXT_EXTRACTION_DEPTH",
     "structured_content_object_is_tool_or_metadata",
     "parse_embedded_json_text",
     "fn extract_role",
     "fn extract_timestamp",
     "fn extract_native_session_id",
-    "fn find_string",
+    "find_string_at_depth",
   ]) {
     assert.ok(source.includes(token), `missing recursive extraction boundary: ${token}`);
   }
-  assert.equal(source.includes("MAX_TEXT_EXTRACTION_DEPTH"), false);
 });
 
 test("semantic classification, title policy, and layer projection retain dedicated tests", async () => {
@@ -138,14 +139,11 @@ test("semantic classification, title policy, and layer projection retain dedicat
     "enum HistoryMessageKind",
     "history_message_kind_from_semantic",
     "normalize_history_message_semantic",
+    "delegated_subagent_prompt_title",
+    "compact_title",
   ]) {
     assert.ok(source["semantic.rs"].includes(token), `missing semantic authority: ${token}`);
   }
-  assert.equal(source["semantic.rs"].includes("delegated_subagent_prompt_title"), false);
-  const queryFilter = await read(
-    "crates/licoup-native/src/domain/conversation/history/query_filter.rs",
-  );
-  assert.ok(queryFilter.includes("fn title_from_text"));
   assert.ok(source["projection.rs"].includes("SemanticLayer::Thread"));
   assert.ok(source["projection.rs"].includes("SemanticLayer::Execution"));
   assert.ok(source["projection.rs"].includes("clean_antigravity_message_text"));

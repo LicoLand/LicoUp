@@ -1,12 +1,14 @@
-pub(in crate::platform) mod approval;
-pub(in crate::platform) mod command;
+mod approval;
+mod command;
 mod control;
-pub(in crate::platform) mod errors;
+mod errors;
+mod events;
 mod execution;
 mod io;
-pub(in crate::platform) mod model;
-pub(in crate::platform) mod params;
+mod model;
+mod params;
 mod probe;
+mod protocol;
 mod supervision;
 mod transport;
 #[cfg(test)]
@@ -17,7 +19,7 @@ pub(super) use errors::ProtocolFailure;
 pub(super) use execution::execute;
 #[allow(unused_imports)]
 pub(super) use model::{
-    CapabilityProbe, CompleteTranscript, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
+    BoundedTranscript, CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
     TransportLifecycle,
 };
 pub(super) use probe::probe;

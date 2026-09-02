@@ -13,11 +13,10 @@ pub(super) const TURN_ARGS: &[&str] = &[
     "stream-json",
     "--trust",
     "--force",
-    "--stream-partial-output",
 ];
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
-pub(in crate::platform) const MAX_SESSION_ID_LEN: usize = 128;
-pub(in crate::platform) const MIN_SESSION_ID_LEN: usize = 8;
+pub(super) const MAX_SESSION_ID_LEN: usize = 128;
+pub(super) const MIN_SESSION_ID_LEN: usize = 8;
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::platform) struct EffectiveSettings {
@@ -33,7 +32,7 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    pub(in crate::platform) events: Vec<Value>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -54,16 +53,10 @@ impl RunResult {
         stderr_truncated: bool,
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
-        let transitions =
-            crate::platform::native_agent_parser::adapters::cursor::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
         Self {
             ok: false,
             output: String::new(),
-            transitions,
+            events: Vec::new(),
             thread_id: failure.thread_id.clone().unwrap_or_default(),
             session_id,
             turn_id: failure.turn_id.clone().unwrap_or_default(),

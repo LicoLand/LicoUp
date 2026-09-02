@@ -2,52 +2,18 @@ use super::model::{NormalizedEffectiveSettings, NormalizedExecution, NormalizedF
 use super::params::timestamp;
 use super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server,
-    deepseek_harness_driver, hermes_driver, lico_agent_driver, openclaw_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server, hermes_driver,
+    lico_agent_driver, openclaw_driver, pi_driver,
 };
 use serde_json::{Value, json};
 
 pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedExecution) -> Value {
     debug_assert_eq!(execution.driver_id, adapter.driver_id());
-    // Vendor frames have already crossed their isolated parser. Downstream
-    // receives only the parser-produced closed transition vocabulary.
-    let transitions = execution
-        .transitions
-        .iter()
-        .map(crate::platform::native_agent_parser::Transition::to_json)
-        .collect::<Vec<_>>();
-    let lifecycle_prefix = transitions
-        .iter()
-        .filter_map(|transition| {
-            (transition.get("kind").and_then(Value::as_str) == Some("lifecycle"))
-                .then(|| {
-                    transition
-                        .get("stage")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                })
-                .flatten()
-        })
-        .collect::<Vec<_>>();
-    let terminal_transition = transitions
-        .iter()
-        .rev()
-        .find(|transition| {
-            matches!(
-                transition.get("kind").and_then(Value::as_str),
-                Some("failed")
-            ) || transition.get("stage").and_then(Value::as_str) == Some("completed")
-        })
-        .cloned();
-    let verified_native_session_id = if adapter == RuntimeAdapter::Codex {
+    let native_session_id = if adapter == RuntimeAdapter::Codex {
         execution.thread_id.clone()
     } else {
         execution.session_id.clone()
     };
-    let native_session_id = execution
-        .ok
-        .then_some(verified_native_session_id)
-        .filter(|value| !value.trim().is_empty());
     let error = execution.error.as_ref().map(|failure| {
         json!({
             "code": failure.code,
@@ -66,31 +32,17 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         .as_ref()
         .map(|failure| failure.message.clone())
         .unwrap_or_default();
-    let effective = if native_session_id.is_some() {
-        json!({
-            "cwd": execution.effective.cwd,
-            "model": execution.effective.model,
-            "reasoningEffort": execution.effective.reasoning_effort,
-            "permissionMode": execution.effective.permission_mode,
-            "mode": execution.effective.mode,
-            "runtimeAgent": execution.effective.runtime_agent,
-            "allowAll": execution.effective.allow_all,
-            "sandbox": execution.effective.sandbox,
-            "approvalPolicy": execution.effective.approval_policy
-        })
-    } else {
-        json!({
-            "cwd": null,
-            "model": null,
-            "reasoningEffort": null,
-            "permissionMode": null,
-            "mode": null,
-            "runtimeAgent": null,
-            "allowAll": null,
-            "sandbox": null,
-            "approvalPolicy": null
-        })
-    };
+    let effective = json!({
+        "cwd": execution.effective.cwd,
+        "model": execution.effective.model,
+        "reasoningEffort": execution.effective.reasoning_effort,
+        "permissionMode": execution.effective.permission_mode,
+        "mode": execution.effective.mode,
+        "runtimeAgent": execution.effective.runtime_agent,
+        "allowAll": execution.effective.allow_all,
+        "sandbox": execution.effective.sandbox,
+        "approvalPolicy": execution.effective.approval_policy
+    });
     json!({
         "ok": execution.ok,
         "schemaVersion": RUNTIME_SCHEMA_VERSION,
@@ -111,9 +63,7 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         // contract while containing only the driver's fixed sanitized message.
         "stderr": stderr,
         "error": error,
-        "events": transitions,
-        "lifecyclePrefix": lifecycle_prefix,
-        "terminalTransition": terminal_transition,
+        "events": execution.events,
         "capabilities": execution.capabilities,
         "stdoutTruncated": execution.stdout_truncated,
         "stderrTruncated": execution.stderr_truncated,
@@ -137,7 +87,7 @@ pub(super) fn normalize_codex(execution: codex_app_server::RunResult) -> Normali
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -185,7 +135,7 @@ pub(super) fn normalize_antigravity(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -234,7 +184,7 @@ pub(super) fn normalize_claude(execution: claude_code_driver::RunResult) -> Norm
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -284,7 +234,7 @@ pub(super) fn normalize_cursor(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -348,7 +298,7 @@ pub(super) fn normalize_acp(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities,
         error: execution.error.map(|failure| {
             let failure = failure.into_payload();
@@ -410,7 +360,7 @@ pub(super) fn normalize_openclaw(execution: openclaw_driver::RunResult) -> Norma
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -446,18 +396,6 @@ pub(super) fn normalize_hermes_with_protocol(
     execution: hermes_driver::RunResult,
     runtime_protocol: &'static str,
 ) -> NormalizedExecution {
-    let transitions = match execution.error.as_ref() {
-        Some(failure) => {
-            crate::platform::native_agent_parser::adapters::hermes::failed_transitions(
-                &failure.code,
-                &failure.stage,
-                &failure.message,
-            )
-        }
-        None => crate::platform::native_agent_parser::adapters::hermes::completed_transitions(
-            &execution.output,
-        ),
-    };
     let error = execution.error.map(|failure| {
         let failure = failure.into_payload();
         let thread_id = failure.session_id.clone();
@@ -476,7 +414,7 @@ pub(super) fn normalize_hermes_with_protocol(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -527,7 +465,7 @@ pub(super) fn normalize_pi(execution: pi_driver::RunResult) -> NormalizedExecuti
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -579,7 +517,7 @@ pub(super) fn normalize_lico_agent(execution: lico_agent_driver::RunResult) -> N
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        transitions: execution.transitions,
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
@@ -609,60 +547,5 @@ pub(super) fn normalize_lico_agent(execution: lico_agent_driver::RunResult) -> N
         started_at: execution.started_at,
         runtime_protocol: lico_agent_driver::RUNTIME_PROTOCOL,
         driver_id: "lico-agent-rpc",
-    }
-}
-
-pub(super) fn normalize_deepseek_harness(
-    execution: deepseek_harness_driver::RunResult,
-) -> NormalizedExecution {
-    let error = execution.error.map(|failure| {
-        let failure = failure.into_payload();
-        NormalizedFailure {
-            code: failure.code.to_string(),
-            message: failure.message.to_string(),
-            stage: failure.stage.to_string(),
-            user_interaction_required: failure.user_interaction_required,
-            request_method: failure.request_method,
-            session_id: failure.session_id,
-            thread_id: failure.thread_id,
-            turn_id: failure.turn_id,
-            turn_status: failure.turn_status,
-        }
-    });
-    NormalizedExecution {
-        ok: execution.ok,
-        output: execution.output,
-        transitions: execution.transitions,
-        capabilities: json!({
-            "newSession": true,
-            "resumeSession": true,
-            "structuredEvents": true,
-            "interactiveApprovalBridge": false,
-            "cancel": false,
-            "interruptSteer": false,
-            "history": false,
-            "modelOverride": true,
-            "reasoningOverride": false
-        }),
-        error,
-        session_id: execution.session_id,
-        thread_id: execution.thread_id,
-        turn_id: execution.turn_id,
-        turn_status: execution.turn_status,
-        effective: NormalizedEffectiveSettings {
-            cwd: execution.effective.cwd,
-            model: execution.effective.model,
-            reasoning_effort: execution.effective.reasoning_effort,
-            permission_mode: execution.effective.permission_mode,
-            sandbox: execution.effective.sandbox,
-            approval_policy: execution.effective.approval_policy,
-            ..NormalizedEffectiveSettings::default()
-        },
-        status_code: execution.status_code,
-        stdout_truncated: execution.stdout_truncated,
-        stderr_truncated: execution.stderr_truncated,
-        started_at: execution.started_at,
-        runtime_protocol: deepseek_harness_driver::RUNTIME_PROTOCOL,
-        driver_id: deepseek_harness_driver::DRIVER_ID,
     }
 }

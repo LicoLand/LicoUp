@@ -66,10 +66,16 @@ class AgentUsageService {
   }
 }
 
-/// Retained-report responses carry the current Graph usage projection beside
-/// the report list. Unknown generations fail at this service boundary.
+/// Retained-report responses carry the native workflow projection beside the
+/// report list. Validate it at the service boundary even when no retained
+/// entry is returned, so an unknown generation cannot silently reach a cache
+/// or controller.
 void _validateWorkflowProjection(Map<String, dynamic> output) {
-  if (!output.containsKey('workflow')) return;
+  if (!output.containsKey('workflow') &&
+      !output.containsKey('workflows') &&
+      !output.containsKey('workflowSummary')) {
+    return;
+  }
   final payload = <String, dynamic>{
     'schemaVersion': AgentUsageReport.currentSchemaVersion,
     'mode': AgentUsageReport.currentMode,
@@ -77,7 +83,12 @@ void _validateWorkflowProjection(Map<String, dynamic> output) {
     'generatedAt': '',
     'summary': const <String, dynamic>{},
     'agents': const <Map<String, dynamic>>[],
-    'workflow': output['workflow'],
+    if (output.containsKey('workflow')) 'workflow': output['workflow'],
+    if (!output.containsKey('workflow') && output.containsKey('workflows'))
+      'workflows': output['workflows'],
+    if (!output.containsKey('workflow') &&
+        output.containsKey('workflowSummary'))
+      'workflowSummary': output['workflowSummary'],
   };
   AgentUsageReport.fromJson(payload);
 }

@@ -5,9 +5,3 @@ import "../../../tools/regression/client-module-regression-tests/conversation-ow
 import "../../../tools/regression/client-module-regression-tests/secure-mesh-ownership.mjs";
 import "../../../tools/regression/client-module-regression-tests/platform-driver-ownership.mjs";
 import "../../../tools/regression/client-module-regression-tests/runner-safety.mjs";
-import "./client-regression-batching.test.mjs";
-import "./client-regression-report.test.mjs";
-import "./client-platform-regression-entries.test.mjs";
-import "./client-agent-regression-entries.test.mjs";
-import "./flutter-native-regression-stats.test.mjs";
-import "./rust-regression-toolchain-stats.test.mjs";

@@ -93,8 +93,6 @@ final class SecureMeshController extends ChangeNotifier {
       _approvalController.lastAction;
   Map<String, dynamic>? get approvalAdapterCapability =>
       _approvalController.adapterCapability;
-  bool canResolveApproval(String pendingOperationId) =>
-      _approvalController.canResolve(pendingOperationId);
   SecureMeshProtocolActionState? get ktState => _protocolController.ktState;
   SecureMeshProtocolActionState? get mlsState => _protocolController.mlsState;
 

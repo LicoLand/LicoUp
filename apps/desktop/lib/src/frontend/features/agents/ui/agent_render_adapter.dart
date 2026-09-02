@@ -1,11 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 
-import 'package:licoup/src/application/features/agents/conversation/agent_render_adapter_asset_source.dart';
 import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
-
-export 'package:licoup/src/application/features/agents/conversation/agent_render_adapter_asset_source.dart'
-    show AssetAgentRenderAdapterJsonSource;
 
 enum AgentAssistantLayout { document, bubble }
 
@@ -246,6 +244,38 @@ class AgentRenderAdapterRegistry {
     }
     final loaded = byId.values.toList(growable: false);
     return loaded.isEmpty ? [AgentRenderAdapter.fallback()] : loaded;
+  }
+}
+
+class AssetAgentRenderAdapterJsonSource
+    implements AgentRenderAdapterJsonSource {
+  AssetAgentRenderAdapterJsonSource([AssetBundle? assetBundle])
+    : _assetBundle = assetBundle ?? rootBundle;
+
+  final AssetBundle _assetBundle;
+
+  @override
+  Future<List<Map<String, dynamic>>> loadAdapterJson() async {
+    try {
+      final indexRaw = await _assetBundle.loadString(
+        'assets/agent-render-adapters/index.json',
+      );
+      final index = jsonDecode(indexRaw);
+      final adapterFiles = _stringList(_map(index)['adapters']);
+      final adapters = <Map<String, dynamic>>[];
+      for (final file in adapterFiles) {
+        final raw = await _assetBundle.loadString(
+          'assets/agent-render-adapters/$file',
+        );
+        final parsed = jsonDecode(raw);
+        if (parsed is Map<String, dynamic>) {
+          adapters.add(parsed);
+        }
+      }
+      return adapters;
+    } catch (_) {
+      return const [];
+    }
   }
 }
 

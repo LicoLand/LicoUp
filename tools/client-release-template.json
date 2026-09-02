@@ -42,8 +42,7 @@
       "installer",
       "installer-digest",
       "update-archive",
-      "update-digest",
-      "update-manifest"
+      "update-digest"
     ],
     "exactDraftAssetSetRequired": true,
     "anonymousPublicInstallerDownloadRequired": true,

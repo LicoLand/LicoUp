@@ -1,18 +1,15 @@
-use super::approval::{PendingApproval, park_external_approval};
-use super::control::ControlRequest;
+use super::approval::{await_external_approval, permission_request_details};
+use super::control::{ControlRequest, denied_control_response, interrupt_request, steer_message};
 use super::errors::{ProtocolFailure, requires_transport_reset, supervisor_failure};
 use super::io::{TransportEvent, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
 use super::params::DriverConfig;
+use super::protocol::{TurnOutcome, TurnState};
 use super::supervision::{
     ManagedTransport, bind_session, lookup_session_transport, record_success, remove_transport,
     set_active_session, spawn_transport,
 };
 use super::transport::PersistentTransport;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
-use crate::platform::native_agent_parser::adapters::claude_code::{
-    ClaudeCodeParser, ClaudeEffect, ProtocolFinishReport, interrupt_request, steer_message,
-};
 use serde_json::Value;
 use std::path::Path;
 use std::sync::Arc;
@@ -163,21 +160,11 @@ pub(in crate::platform) fn execute(
                 stderr_truncated,
             );
         }
-        record_success(
-            &managed,
-            &outcome.turn_id,
-            &config.prompt,
-            outcome.events,
-            &outcome.output,
-        );
-        let transitions =
-            crate::platform::native_agent_parser::adapters::claude_code::completed_transitions(
-                &outcome.output,
-            );
+        record_success(&managed, &outcome.turn_id, &outcome.output);
         return RunResult {
             ok: true,
             output: outcome.output,
-            transitions,
+            events: outcome.events,
             error: None,
             thread_id: outcome.session_id.clone(),
             session_id: outcome.session_id,
@@ -209,12 +196,11 @@ fn run_turn_loop(
     managed: &Arc<ManagedTransport>,
     config: &DriverConfig,
     known_session: Option<String>,
-    mut deadline: Option<Instant>,
+    deadline: Option<Instant>,
     max_stdout: Option<usize>,
-) -> (Option<ProtocolFinishReport>, Option<ProtocolFailure>, bool) {
-    let mut state = ClaudeCodeParser::new(config, &managed.identity, known_session);
+) -> (Option<TurnOutcome>, Option<ProtocolFailure>, bool) {
+    let mut state = TurnState::new(config, &managed.identity, known_session);
     let mut observed_bytes = 0usize;
-    let mut pending_approval: Option<(PendingApproval, Instant)> = None;
     loop {
         if let Some(failure) = handle_control_requests(transport, &state) {
             return (None, Some(failure), false);
@@ -230,22 +216,8 @@ fn run_turn_loop(
                 false,
             );
         }
-        let resolved_approval = match pending_approval.as_ref() {
-            Some((approval, parked_at)) => match approval.try_resolve(transport) {
-                Ok(Some(_allow)) => Some(*parked_at),
-                Ok(None) => None,
-                Err(failure) => return (None, Some(failure), false),
-            },
-            None => None,
-        };
-        if let Some(parked_at) = resolved_approval {
-            if let Some(current) = deadline {
-                deadline = current.checked_add(parked_at.elapsed()).or(Some(current));
-            }
-            pending_approval.take();
-        }
         let now = Instant::now();
-        if pending_approval.is_none() && deadline.is_some_and(|deadline| now >= deadline) {
+        if deadline.is_some_and(|deadline| now >= deadline) {
             let mut failure = state.failure(
                 "claude_code_timeout",
                 "Claude Code timed out before the turn completed.",
@@ -254,16 +226,11 @@ fn run_turn_loop(
             failure.turn_status = Some("timeout".to_string());
             return (None, Some(failure), false);
         }
-        let wait = if pending_approval.is_some() {
-            PROCESS_POLL_INTERVAL
-        } else {
-            deadline
-                .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
-                .unwrap_or(PROCESS_POLL_INTERVAL)
-        };
+        let wait = deadline
+            .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+            .unwrap_or(PROCESS_POLL_INTERVAL);
         match transport.receiver.recv_timeout(wait) {
-            Ok(TransportEvent::Line(line)) => {
-                let bytes = line.len();
+            Ok(TransportEvent::Message { message, bytes }) => {
                 if let Some(max_stdout) = max_stdout {
                     observed_bytes = observed_bytes.saturating_add(bytes);
                     if observed_bytes > max_stdout {
@@ -278,54 +245,58 @@ fn run_turn_loop(
                         );
                     }
                 }
-                let effect = match state.parse_line(&line) {
-                    Ok(Some(effect)) => effect,
-                    Ok(None) => continue,
-                    Err(failure) => return (None, Some(failure), false),
-                };
-                match effect {
-                    ClaudeEffect::Permission(request) => {
-                        if pending_approval.is_some() {
-                            return (
-                                None,
-                                Some(state.failure(
-                                    "claude_code_interaction_concurrent_unsupported",
-                                    "Claude Code requested another permission before the active interaction was resolved.",
-                                    "server/request",
-                                )),
-                                false,
-                            );
-                        }
+                if message.get("type").and_then(Value::as_str) == Some("control_request") {
+                    // A permission request suspends the turn until the client
+                    // resolves the parked approval; it never fails the turn on
+                    // its own. Allowed decisions resume the loop, denied
+                    // decisions end the turn with an interaction failure.
+                    if let Some(request) = permission_request_details(&message) {
                         let session_id = state
                             .observed_session_id
                             .as_deref()
                             .or(state.expected_session_id.as_deref())
                             .unwrap_or_default();
-                        let approval =
-                            match park_external_approval(session_id, &config.turn_id, &request) {
-                                Ok(approval) => approval,
-                                Err(failure) => return (None, Some(failure), false),
-                            };
-                        pending_approval = Some((approval, Instant::now()));
-                    }
-                    ClaudeEffect::Control { response } => {
-                        if let Some(response) = response
-                            && write_message(&mut transport.stdin, &response).is_err()
-                        {
-                            return (
-                                None,
-                                Some(state.failure(
-                                    "claude_code_write_failed",
-                                    "Claude Code stopped accepting control responses.",
-                                    "permission/response",
-                                )),
-                                false,
-                            );
+                        match await_external_approval(
+                            transport,
+                            session_id,
+                            &config.turn_id,
+                            &request,
+                        ) {
+                            Ok(true) => continue,
+                            Ok(false) => {
+                                state.interaction_failure = true;
+                                return (
+                                    None,
+                                    Some(state.failure(
+                                        "claude_code_user_interaction_required",
+                                        "Claude Code requires user interaction before this turn can continue.",
+                                        "permission/request",
+                                    )),
+                                    false,
+                                );
+                            }
+                            Err(failure) => return (None, Some(failure), false),
                         }
                     }
-                    ClaudeEffect::ProtocolFinished(report) => return (Some(report), None, false),
-                    ClaudeEffect::Progress { session_id } => {
-                        if let Some(session_id) = session_id.as_deref() {
+                    state.interaction_failure = true;
+                    if let Some(response) = denied_control_response(&message)
+                        && write_message(&mut transport.stdin, &response).is_err()
+                    {
+                        return (
+                            None,
+                            Some(state.failure(
+                                "claude_code_write_failed",
+                                "Claude Code stopped accepting control responses.",
+                                "permission/response",
+                            )),
+                            false,
+                        );
+                    }
+                }
+                match state.handle(message) {
+                    Ok(Some(outcome)) => return (Some(outcome), None, false),
+                    Ok(None) => {
+                        if let Some(session_id) = state.observed_session_id.as_deref() {
                             if let Err(failure) = bind_session(managed, session_id) {
                                 return (None, Some(failure.with_turn(&config.turn_id)), false);
                             }
@@ -338,7 +309,19 @@ fn run_turn_loop(
                             );
                         }
                     }
+                    Err(failure) => return (None, Some(failure), false),
                 }
+            }
+            Ok(TransportEvent::InvalidJson) => {
+                return (
+                    None,
+                    Some(state.failure(
+                        "claude_code_invalid_json",
+                        "Claude Code returned an invalid stream event.",
+                        "protocol/read",
+                    )),
+                    false,
+                );
             }
             Ok(TransportEvent::LineLimitExceeded) => {
                 return (
@@ -380,7 +363,7 @@ fn run_turn_loop(
 
 fn handle_control_requests(
     transport: &mut PersistentTransport,
-    state: &ClaudeCodeParser<'_>,
+    state: &TurnState<'_>,
 ) -> Option<ProtocolFailure> {
     loop {
         match transport.control_receiver.try_recv() {
