@@ -1,6 +1,6 @@
 use super::{
     ConversationStore, DirectTurn, ImageAttachment, ImageAttachmentReference, MembershipAccess,
-    MembershipStatus, NewEventPart, Principal, PrincipalKind, migrate_legacy_state,
+    MembershipStatus, NewEventPart, Principal, PrincipalKind,
 };
 use crate::platform::runtime_adapters::{
     MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
@@ -64,9 +64,6 @@ impl fmt::Debug for ConversationService {
 impl ConversationService {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let store = ConversationStore::open(portable_root)?;
-        // Startup admission is migration-first. A failed migration is returned
-        // to the transport and never falls back to the retired JSON readers.
-        migrate_legacy_state(&store, portable_root)?;
         store.ensure_default_local_group()?;
         Ok(Self {
             store,
@@ -437,6 +434,99 @@ impl ConversationService {
             "conversation.import" => self
                 .store
                 .import_bundle(Path::new(required_string(object, "path")?)),
+            "conversation.subagent.edge" => {
+                let edge = self.store.subagent_mesh_edge(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "callerMembershipId")?,
+                    required_string(object, "targetMembershipId")?,
+                )?;
+                Ok(json!({
+                    "inbound": {
+                        "delegate": edge.inbound_delegate,
+                        "continue": edge.inbound_continue,
+                        "cancel": edge.inbound_cancel,
+                    },
+                    "outcomes": {
+                        "delegate": edge.delegate_outcome,
+                        "continue": edge.continue_outcome,
+                        "cancel": edge.cancel_outcome,
+                    },
+                    "claimState": edge.claim_state,
+                    "dispatchState": edge.dispatch_state,
+                }))
+            }
+            "conversation.subagent.target" => {
+                let conversation_id = required_string(object, "conversationId")?;
+                let membership_id = required_string(object, "membershipId")?;
+                let conversation = self.store.get(conversation_id)?;
+                let membership = conversation
+                    .memberships
+                    .iter()
+                    .find(|membership| membership.id == membership_id)
+                    .filter(|membership| membership.status == MembershipStatus::Active)
+                    .filter(|membership| membership.principal.kind == PrincipalKind::Agent)
+                    .ok_or_else(|| anyhow!("subagent_target_membership_inactive"))?;
+                let provider_id = membership
+                    .principal
+                    .agent_id
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("subagent_target_invalid"))?;
+                let profile = self.store.membership_profile(membership_id)?;
+                Ok(json!({
+                    "providerId": provider_id,
+                    "preferredModel": profile.as_ref().and_then(|profile| profile.preferred_model.as_deref()),
+                    "preferredReasoningEffort": profile.as_ref().and_then(|profile| profile.preferred_reasoning_effort.as_deref()),
+                }))
+            }
+            "conversation.subagent.claim" => {
+                let claim = self.store.claim_subagent_dispatch(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "callerMembershipId")?,
+                    required_string(object, "targetMembershipId")?,
+                    object.get("parentDispatchId").and_then(Value::as_str),
+                )?;
+                Ok(subagent_claim_json(&claim))
+            }
+            "conversation.subagent.claim.update" => {
+                self.store.update_subagent_claim_state(
+                    required_string(object, "dispatchId")?,
+                    subagent_claim_state(required_string(object, "state")?)?,
+                )?;
+                Ok(json!({"ok": true}))
+            }
+            "conversation.subagent.claim.active" => Ok(self
+                .store
+                .active_subagent_claim(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "callerMembershipId")?,
+                    required_string(object, "targetMembershipId")?,
+                )?
+                .as_ref()
+                .map(subagent_claim_json)
+                .unwrap_or(Value::Null)),
+            "conversation.subagent.inbound.record" => {
+                self.store.record_subagent_mcp_inbound(
+                    required_string(object, "conversationId")?,
+                    object.get("callerMembershipId").and_then(Value::as_str),
+                    object.get("targetMembershipId").and_then(Value::as_str),
+                    required_string(object, "tool")?,
+                    required_string(object, "outcome")?,
+                )?;
+                Ok(json!({"ok": true}))
+            }
+            "conversation.subagent.binding.get" => {
+                let binding = self.store.private_runtime_binding(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "membershipId")?,
+                )?;
+                Ok(binding.map_or(Value::Null, |binding| {
+                    json!({
+                        "runtimeSessionId": binding.runtime_session_id,
+                        "runtimeConversationPath": binding.runtime_conversation_path,
+                        "workingDirectory": binding.working_directory,
+                    })
+                }))
+            }
             _ => Err(anyhow!("unsupported_action")),
         }
     }
@@ -916,29 +1006,27 @@ impl ConversationService {
                 live: None,
             });
         };
-        // User-authored content stays exact in the stored Event. Assistant
-        // workflow guidance is composed into the wire text as harness-provided
-        // context: no adapter exposes a separate private-instruction channel,
-        // and the render layer collapses the marked block out of the message
-        // body.
-        let text = if let Some(instructions) = context.private_instructions() {
-            format!(
-                "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
-                instructions, context.source_content
-            )
-        } else {
-            context.source_content.clone()
-        };
+        // User-authored Event text stays exact. Generated guidance follows the
+        // adapter's declared ephemeral policy and never enters Event/Part.
+        let delivery = crate::platform::runtime_adapters::compose_generated_instruction_delivery(
+            &context.agent_id,
+            &context.source_content,
+            context.private_instructions(),
+        )
+        .map_err(anyhow::Error::msg)?;
         let mut params = json!({
             "agentId": context.agent_id,
             "agent": context.agent_id,
-            "text": text,
+            "text": delivery.text,
             "streamEvents": true,
             "conversationId": context.turn.conversation_id,
             "membershipId": context.turn.membership_id,
             "causationId": context.turn.source_event_id,
             "dispatchId": context.turn.id,
         });
+        if let (Some(field), Some(guidance)) = (delivery.field, delivery.guidance) {
+            params[field] = json!(guidance);
+        }
         if !context.source_attachments.is_empty() {
             params["attachments"] = dispatch_attachments_param(&context.source_attachments);
         }
@@ -1336,12 +1424,70 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "conversation.membership.leave" => &["action", "conversationId", "membershipId"],
         "conversation.export" => &["action", "path", "conversationIds"],
         "conversation.import" => &["action", "path"],
+        "conversation.subagent.edge" => &[
+            "action",
+            "conversationId",
+            "callerMembershipId",
+            "targetMembershipId",
+        ],
+        "conversation.subagent.target" => &["action", "conversationId", "membershipId"],
+        "conversation.subagent.claim" => &[
+            "action",
+            "conversationId",
+            "callerMembershipId",
+            "targetMembershipId",
+            "parentDispatchId",
+        ],
+        "conversation.subagent.claim.update" => &["action", "dispatchId", "state"],
+        "conversation.subagent.claim.active" => &[
+            "action",
+            "conversationId",
+            "callerMembershipId",
+            "targetMembershipId",
+        ],
+        "conversation.subagent.inbound.record" => &[
+            "action",
+            "conversationId",
+            "callerMembershipId",
+            "targetMembershipId",
+            "tool",
+            "outcome",
+        ],
+        "conversation.subagent.binding.get" => &["action", "conversationId", "membershipId"],
         _ => return Err(anyhow!("unsupported_action")),
     };
     if object.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(anyhow!("invalid_request"));
     }
     Ok(())
+}
+
+fn subagent_claim_json(claim: &licoup_conversation::SubagentDispatchClaim) -> Value {
+    json!({
+        "id": claim.id,
+        "conversationId": claim.conversation_id,
+        "callerMembershipId": claim.caller_membership_id,
+        "targetMembershipId": claim.target_membership_id,
+        "parentDispatchId": claim.parent_dispatch_id,
+        "depth": claim.depth,
+        "state": claim.state.as_str(),
+        "createdAtUnixMs": claim.created_at_unix_ms,
+        "updatedAtUnixMs": claim.updated_at_unix_ms,
+    })
+}
+
+fn subagent_claim_state(value: &str) -> Result<licoup_conversation::SubagentDispatchClaimState> {
+    use licoup_conversation::SubagentDispatchClaimState;
+    match value {
+        "claimed" => Ok(SubagentDispatchClaimState::Claimed),
+        "running" => Ok(SubagentDispatchClaimState::Running),
+        "cancel-requested" => Ok(SubagentDispatchClaimState::CancelRequested),
+        "reconciliation-required" => Ok(SubagentDispatchClaimState::ReconciliationRequired),
+        "completed" => Ok(SubagentDispatchClaimState::Completed),
+        "failed" => Ok(SubagentDispatchClaimState::Failed),
+        "cancelled" => Ok(SubagentDispatchClaimState::Cancelled),
+        _ => Err(anyhow!("subagent_dispatch_transition_invalid")),
+    }
 }
 
 fn ensure_member_fields(object: &serde_json::Map<String, Value>) -> Result<()> {
@@ -1792,11 +1938,7 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_id);
         let text = calls[0]["text"].as_str().unwrap();
-        assert!(
-            text.starts_with("<skills_instructions>")
-                && text.ends_with("</skills_instructions>\n\n"),
-            "the Assistant guidance composes around an empty user text: {text}"
-        );
+        assert!(text.contains("Respond directly to the user's request."));
         let attachments = calls[0]["attachments"].as_array().unwrap();
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0]["id"], json!(event.parts[0].id));
@@ -3379,7 +3521,7 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_one);
         let text = calls[0]["text"].as_str().unwrap();
-        assert!(text.starts_with("<skills_instructions>\n"));
+        assert!(text.starts_with("Respond directly to the user's request."));
         assert!(text.contains("Respond directly to the user's request."));
         assert!(text.contains("Use tools only when the current request requires them."));
         assert!(text.contains("Do not start, resume, or invent unrelated work."));
@@ -3492,5 +3634,69 @@ mod tests {
             "conversation_address_ambiguous"
         );
         assert!(steers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn subagent_edge_projects_inbound_without_identifiers() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let group = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Mesh edge",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [
+                    {"principal": {"id": "agent:one", "kind": "agent", "displayName": "One", "agentId": "one"}, "access": "member"},
+                    {"principal": {"id": "agent:two", "kind": "agent", "displayName": "Two", "agentId": "two"}, "access": "member"}
+                ]
+            }))
+            .unwrap();
+        let conversation_id = group["id"].as_str().unwrap().to_owned();
+        let memberships = group["memberships"].as_array().unwrap();
+        let caller = memberships
+            .iter()
+            .find(|membership| membership["principal"]["agentId"] == "one")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let target = memberships
+            .iter()
+            .find(|membership| membership["principal"]["agentId"] == "two")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        service
+            .store()
+            .record_subagent_mcp_inbound(
+                &conversation_id,
+                Some(&caller),
+                Some(&target),
+                "lico_subagent_delegate",
+                "accepted",
+            )
+            .unwrap();
+        let edge = service
+            .execute(json!({
+                "action": "conversation.subagent.edge",
+                "conversationId": conversation_id,
+                "callerMembershipId": caller,
+                "targetMembershipId": target,
+            }))
+            .unwrap();
+        assert_eq!(edge["inbound"]["delegate"], true);
+        assert_eq!(edge["inbound"]["continue"], false);
+        assert_eq!(edge["inbound"]["cancel"], false);
+        assert_eq!(edge["outcomes"]["delegate"], "accepted");
+        assert_eq!(edge["outcomes"]["continue"], Value::Null);
+        assert_eq!(edge["outcomes"]["cancel"], Value::Null);
+        assert_eq!(edge["claimState"], Value::Null);
+        assert_eq!(edge["dispatchState"], Value::Null);
+        let wire = edge.to_string();
+        assert!(!wire.contains(&conversation_id));
+        assert!(!wire.contains(&caller));
+        assert!(!wire.contains(&target));
     }
 }

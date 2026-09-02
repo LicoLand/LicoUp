@@ -93,3 +93,40 @@ flowchart TB
 1. **禁止在 Flutter 端解析厂商原始协议**：Flutter 永远只消费 Rust 持久化后的 `ClientConversationEvent` 与 `EventPart`，不感知任何 ACP、SSE 或 App Server 细节。
 2. **禁止驱动擅自判定完成**：严禁 13 个驱动各自猜完成（如依赖 100ms 静默），完成判定必须由 L1 解析器根据协议显式信号或传输 EOF 独占裁决。
 3. **私有协议隔离演进**：Codex 与 OpenCode 等私有协议的变化只影响其对应的 `adapters/<agent>/` 模块，绝对不扩散至统一 Conversation 领域层。
+
+---
+
+## 5. 供应商无关 Subagent Mesh
+
+Codex、Cursor 与 Antigravity 还会同时以已认证 caller 和 Membership 作用域
+target 身份参与客户端托管的 [Subagent MCP](../protocols/subagent-mcp.zh-CN.md)。
+
+```mermaid
+flowchart LR
+  P["供应商 MCP client"] --> C["轻量 stdio connector"]
+  C --> H["已认证回环 HTTP"]
+  H --> A["SubagentMcpApplication"]
+  A --> R["唯一 caller + runtime adapter registry"]
+  A --> S["Canonical Membership 与谱系 store"]
+  R --> T["Target PersistentTurn"]
+  T --> E["Canonical Event / Part"]
+```
+
+`core::mcp` 只负责 framing。`SubagentMcpApplication` 独占冻结的入站修订与九工具
+语义。`McpCallerIntegration` 与 `SubagentRuntimeAdapter` 是唯一供应商 port。caller
+身份与服务器自有父谱系来自已认证请求 context，绝不作为工具参数。任何 adapter
+效果前都先提交持久 active-edge claim。
+
+Codex 保持准确 App Server thread 身份与原生 developer instructions。Cursor 保持
+准确 create-chat/resume 身份、prompt acknowledgement 与 PTY 传输。Antigravity
+保持准确 Hook receipt 身份、OAuth/权限预检与 PTY 传输。Cursor 和 Antigravity 的
+生成指令只使用一段普通、无标记、临时 wire prefix，不成为 Canonical Event 内容。
+
+验证分为两条相互独立的路径。upstream 先证明服务健康，再并发检查每个供应商只读的
+标准 MCP 启动表面，不依赖自定义插件，不创建 Conversation、不发送 turn，也不修改
+配置。Codex 使用只在当前进程生效的标准声明；Cursor 与 Antigravity 使用各自支持的
+文本 `mcp list` 表面，缺少归属明确的 entry 时显式要求 Installer 配置。downstream 默认零效果；只有显式现场执行才直接发送一次已认证 delegate，并以
+Canonical 入站记录、claim、选中的 Membership 与 PersistentTurn dispatch 事实作为
+oracle。预检通过既有 target/Agent Hub 表面解析 Agent 版本、运行时就绪状态与报告的模型清单，复用共享
+验证模型权威，并在 Conversation 或付费工作前按实际 caller 身份验证服务健康。最近版本的证据按 target 建 key，并在任何付费效果前去重。自动回归只使用
+hermetic fixture，不包含现场路径。

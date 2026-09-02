@@ -86,9 +86,8 @@ final class FilePresentationPreferencesRepository
         ),
       );
     } on FormatException {
-      return PresentationPreferencesLoadResult(
-        preferences: _fallback,
-        issue: PresentationPreferencesLoadIssue.invalidDocument,
+      throw const PresentationPreferencesRepositoryException(
+        PresentationPreferencesRepositoryErrorCode.readFailed,
       );
     }
   }

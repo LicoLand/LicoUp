@@ -14,6 +14,7 @@ Thumbs.db
 # Local generated and runtime assets
 *.log
 /build/
+/.licoup-subagent-mcp-live.lock/
 /cache/
 coverage/
 .cache/
@@ -97,6 +98,7 @@ apps/desktop/windows/flutter/ephemeral/
 test-results/
 
 # Local planning, agent, and one-off work
+/report/
 /docs/plans/
 /apps/desktop/docs/plans/
 /design-qa.md

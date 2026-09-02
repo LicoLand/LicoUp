@@ -357,6 +357,7 @@ test("inventory discloses current native transports and fail-closed capability g
   const supervisedCancel = new Set([
     "antigravity",
     "claude-code",
+    "codex",
     "copilot",
     "cursor",
     "hermes",

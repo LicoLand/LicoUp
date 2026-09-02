@@ -228,6 +228,10 @@ pub struct DiscoveryFact {
     pub installed_version: String,
     #[serde(default)]
     pub latest_version: String,
+    /// Exact target-discovery binding used only by the bounded native version
+    /// probe. It is never serialized into an Agent Hub card or receipt.
+    #[serde(skip)]
+    pub(crate) executable_binding: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

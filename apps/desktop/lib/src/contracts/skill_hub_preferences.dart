@@ -57,9 +57,12 @@ class SkillHubPreferences {
   }
 
   factory SkillHubPreferences.fromJson(Map<String, dynamic> json) {
+    if ((json['schemaVersion'] as num?)?.toInt() != currentSchemaVersion) {
+      throw StateError('skill_hub_preferences_requires_startup_migration');
+    }
     final raw = json['overrides'];
     if (raw is! Map) {
-      return SkillHubPreferences.defaults();
+      throw const FormatException('skill_hub_preferences_invalid');
     }
     final overrides = <String, SkillVisualOverride>{};
     for (final entry in raw.entries) {

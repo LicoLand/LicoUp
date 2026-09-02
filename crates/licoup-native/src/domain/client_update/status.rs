@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use super::{
     constants::CLIENT_UPDATE_MODE,
-    params::{channel_name, product_version, staging_root},
+    params::{product_version, staging_root, target_release_track},
 };
 
 pub fn status(params: &Value) -> Result<Value> {
@@ -30,8 +30,9 @@ pub fn status(params: &Value) -> Result<Value> {
         "ok": true,
         "mode": CLIENT_UPDATE_MODE,
         "phase": "idle",
-        "channel": channel_name(params)?,
-        "currentVersion": product_version(params)?,
+        "runningReleaseTrack": crate::domain::client_state_migration::ReleaseTrack::running()?.as_str(),
+        "targetReleaseTrack": target_release_track(params)?.as_str(),
+        "runningVersion": product_version(params)?,
         "productionReady": false,
         "publicMetadataOnly": true,
         "storeCredentialsRequired": false,

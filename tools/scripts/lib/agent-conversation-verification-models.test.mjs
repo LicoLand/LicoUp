@@ -30,6 +30,10 @@ test("loadVerificationModels loads the repo config once", () => {
   assert.equal(first.schemaVersion, VERIFICATION_MODELS_SCHEMA);
   assert.equal(verificationModelForAgent("codex"), "gpt-5.3-codex-spark");
   assert.equal(verificationModelForAgent("cursor"), "composer-2.5");
+  assert.equal(
+    verificationModelForAgent("antigravity"),
+    "gemini-3.7-flash-medium",
+  );
   assert.equal(verificationModelForAgent("missing-agent"), "");
   assert.equal(typeof verificationModelsMap().cursor, "string");
 });

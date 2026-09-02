@@ -40,18 +40,20 @@ final class ClientUpdateController extends ChangeNotifier {
 
   ClientUpdateStatus _status = const ClientUpdateStatus(
     phase: ClientUpdatePhase.idle,
-    currentVersion: '',
-    channel: 'stable',
+    runningVersion: '',
+    runningReleaseTrack: ReleaseTrack.nightly,
+    targetReleaseTrack: ReleaseTrack.nightly,
   );
   String _manifestPath = '';
   String _publicKeysPath = '';
-  String _channel = 'stable';
+  String _targetReleaseTrack = '';
   String _revocationPath = '';
   String _artifactReceiptId = '';
   String _source = 'github';
   String _repo = kClientUpdateGithubRepo;
   String _stagingRoot = '';
   String _stateRoot = '';
+  String _dataRoot = '';
   bool _rootsResolved = false;
   bool _artifactDownloaded = false;
   bool _artifactVerified = false;
@@ -82,25 +84,55 @@ final class ClientUpdateController extends ChangeNotifier {
       (_status.phase == ClientUpdatePhase.verified ||
           _status.phase == ClientUpdatePhase.applyPlanned);
 
+  void selectTargetReleaseTrack(ReleaseTrack track) {
+    if (_busy ||
+        track == _status.targetReleaseTrack ||
+        (_status.runningReleaseTrack == ReleaseTrack.stable &&
+            track == ReleaseTrack.nightly)) {
+      return;
+    }
+    _targetReleaseTrack = track.wireName;
+    _clearArtifactBinding();
+    _status = _status.copyWith(
+      phase: ClientUpdatePhase.idle,
+      targetReleaseTrack: track,
+      availableVersion: '',
+      releaseNotesUrl: '',
+      githubReleaseUrl: '',
+      verifiedKeyIds: const [],
+      artifactSha256: '',
+      artifactReceiptId: '',
+      manifestSha256: '',
+      targetId: '',
+      stagedBytes: 0,
+      totalBytes: 0,
+      errorCode: '',
+      productionReady: false,
+      updateAvailable: false,
+      restartRequired: false,
+    );
+    notifyListeners();
+  }
+
   /// Reads the running product version from native client-update identity
   /// without treating a status failure as a user-facing check failure.
-  Future<void> hydrateIdentity({String channel = 'stable'}) async {
+  Future<void> hydrateIdentity({String targetReleaseTrack = ''}) async {
     if (!_begin()) return;
-    _channel = channel.trim().isEmpty ? 'stable' : channel.trim();
+    _targetReleaseTrack = targetReleaseTrack.trim();
     await _resolveRoots();
     try {
       final next = await _gateway.status(
         agentService: _agentService,
-        channel: _channel,
+        targetReleaseTrack: _targetReleaseTrack,
         source: 'local',
         repo: _repo,
         stateRoot: _stateRoot,
-        currentVersion: _status.currentVersion,
       );
-      if (next.currentVersion.isNotEmpty) {
+      if (next.runningVersion.isNotEmpty) {
         _status = _status.copyWith(
-          currentVersion: next.currentVersion,
-          channel: next.channel.isEmpty ? _status.channel : next.channel,
+          runningVersion: next.runningVersion,
+          runningReleaseTrack: next.runningReleaseTrack,
+          targetReleaseTrack: next.targetReleaseTrack,
         );
       }
     } catch (_) {
@@ -117,8 +149,8 @@ final class ClientUpdateController extends ChangeNotifier {
     _clearArtifactBinding();
     _source = 'github';
     _repo = repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim();
-    if (_status.currentVersion.isEmpty) {
-      await hydrateIdentity(channel: _channel);
+    if (_status.runningVersion.isEmpty) {
+      await hydrateIdentity(targetReleaseTrack: _targetReleaseTrack);
       if (_busy) return;
     }
     await _runCheck(
@@ -131,7 +163,7 @@ final class ClientUpdateController extends ChangeNotifier {
   Future<void> check({
     required String manifestPath,
     required String publicKeysPath,
-    String channel = 'stable',
+    String targetReleaseTrack = '',
     String revocationPath = '',
   }) async {
     if (_busy) return;
@@ -148,10 +180,10 @@ final class ClientUpdateController extends ChangeNotifier {
     _source = 'local';
     _manifestPath = manifestPath.trim();
     _publicKeysPath = publicKeysPath.trim();
-    _channel = channel.trim().isEmpty ? 'stable' : channel.trim();
+    _targetReleaseTrack = targetReleaseTrack.trim();
     _revocationPath = revocationPath.trim();
-    if (_status.currentVersion.isEmpty) {
-      await hydrateIdentity(channel: _channel);
+    if (_status.runningVersion.isEmpty) {
+      await hydrateIdentity(targetReleaseTrack: _targetReleaseTrack);
       if (_busy) return;
     }
     await _runCheck(
@@ -178,13 +210,12 @@ final class ClientUpdateController extends ChangeNotifier {
         agentService: _agentService,
         manifestPath: _manifestPath,
         publicKeysPath: _publicKeysPath,
-        channel: _channel,
+        targetReleaseTrack: _targetReleaseTrack,
         revocationPath: _revocationPath,
         source: _source,
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
-        currentVersion: _status.currentVersion,
       );
       if (checked.updateAvailable &&
           (checked.artifactReceiptId.isEmpty ||
@@ -258,13 +289,11 @@ final class ClientUpdateController extends ChangeNotifier {
         manifestPath: _manifestPath,
         publicKeysPath: _publicKeysPath,
         sourcePath: sourcePath,
-        channel: _channel,
         revocationPath: _revocationPath,
         source: _source,
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
-        currentVersion: _status.currentVersion,
       );
       _requireMatchingReceipt(downloaded, 'download');
       _status = _adopt(downloaded);
@@ -325,13 +354,11 @@ final class ClientUpdateController extends ChangeNotifier {
       agentService: _agentService,
       manifestPath: _manifestPath,
       publicKeysPath: _publicKeysPath,
-      channel: _channel,
       revocationPath: _revocationPath,
       source: _source,
       repo: _repo,
       stagingRoot: _stagingRoot,
       stateRoot: _stateRoot,
-      currentVersion: _status.currentVersion,
     );
     _requireMatchingReceipt(verified, 'verify');
     _status = _adopt(verified);
@@ -371,13 +398,12 @@ final class ClientUpdateController extends ChangeNotifier {
         execute: execute,
         manifestPath: _manifestPath,
         publicKeysPath: _publicKeysPath,
-        channel: _channel,
         revocationPath: _revocationPath,
         source: _source,
         repo: _repo,
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
-        currentVersion: _status.currentVersion,
+        dataRoot: _dataRoot,
       );
       _requireMatchingReceipt(applied, 'apply');
       _status = _adopt(applied);
@@ -401,55 +427,14 @@ final class ClientUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> rollback() async {
-    if (_busy) return;
-    if (_artifactReceiptId.isEmpty) {
-      _report(
-        '没有可回滚的更新安装。',
-        'There is no update install to roll back.',
-        errorCode: 'client_update_rollback_invalid',
-      );
-      notifyListeners();
-      return;
-    }
-    _begin();
-    await _resolveRoots();
-    try {
-      final rolledBack = await _gateway.rollback(
-        agentService: _agentService,
-        manifestPath: _manifestPath,
-        publicKeysPath: _publicKeysPath,
-        channel: _channel,
-        revocationPath: _revocationPath,
-        source: _source,
-        repo: _repo,
-        stagingRoot: _stagingRoot,
-        stateRoot: _stateRoot,
-        currentVersion: _status.currentVersion,
-      );
-      _requireMatchingReceipt(rolledBack, 'rollback');
-      _status = _adopt(rolledBack);
-      _report('已调度回滚，客户端即将重启。', 'Rollback scheduled; the client will restart.');
-    } catch (_) {
-      _fail('client_update_rollback_failed');
-      _report(
-        '更新回滚失败。',
-        'Update rollback failed.',
-        errorCode: 'client_update_rollback_failed',
-      );
-    } finally {
-      _end();
-    }
-  }
-
   bool get _hasCheckedArtifact =>
       (_manifestPath.isNotEmpty || _source == 'github') &&
       _artifactReceiptId.isNotEmpty &&
       _status.updateAvailable;
 
   ClientUpdateStatus _adopt(ClientUpdateStatus next) {
-    if (next.currentVersion.isNotEmpty) return next;
-    return next.copyWith(currentVersion: _status.currentVersion);
+    if (next.runningVersion.isNotEmpty) return next;
+    return next.copyWith(runningVersion: _status.runningVersion);
   }
 
   void _requireMatchingReceipt(ClientUpdateStatus next, String phase) {
@@ -471,6 +456,7 @@ final class ClientUpdateController extends ChangeNotifier {
     final resolver = _dataDirectory;
     if (resolver != null) {
       final dataDir = await resolver();
+      _dataRoot = dataDir;
       _stagingRoot = '$dataDir/client-update-staging';
       _stateRoot = '$dataDir/client-update-state';
     }

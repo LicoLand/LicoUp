@@ -41,6 +41,7 @@ pub(super) struct PersistentTurn {
     session_id: Mutex<String>,
     turn_id: Mutex<String>,
     state: Mutex<PersistentTurnState>,
+    cancel_requested: AtomicBool,
     changed: Condvar,
     store: ConversationStore,
     cache_budget: usize,
@@ -154,6 +155,7 @@ impl PersistentConversationRuntime {
             session_id: Mutex::new(session_id.to_owned()),
             turn_id: Mutex::new(String::new()),
             state: Mutex::new(PersistentTurnState::default()),
+            cancel_requested: AtomicBool::new(false),
             changed: Condvar::new(),
             store: self.inner.store.clone(),
             cache_budget: self.inner.cache_budget,
@@ -218,6 +220,65 @@ impl PersistentConversationRuntime {
             object.insert("turnId".to_owned(), Value::String(turn_id));
         }
         Ok(resolved)
+    }
+
+    /// Bind cancellation to the persistent turn immediately. Native session
+    /// discovery may finish after dispatch acceptance, so an early request is
+    /// retained and retried from the next committed runtime frame instead of
+    /// racing an empty session identity.
+    pub(super) fn request_cancel(&self, params: &Value) -> std::result::Result<Value, ClientError> {
+        let resolved = self.scoped_control_params(params)?;
+        let handle = resolved
+            .get("turnHandle")
+            .and_then(Value::as_str)
+            .ok_or_else(|| stdio_rpc_client_error("invalid_turn_handle"))?;
+        let turn = self
+            .turn(handle)
+            .ok_or_else(|| stdio_rpc_client_error("turn_not_found"))?;
+        turn.cancel_requested.store(true, Ordering::Release);
+        Ok(Self::attempt_deferred_cancel(&turn).unwrap_or_else(|| {
+            json!({
+                "ok": true,
+                "status": "cancel_requested",
+                "turnHandle": turn.scope.dispatch_id,
+            })
+        }))
+    }
+
+    fn attempt_deferred_cancel(turn: &Arc<PersistentTurn>) -> Option<Value> {
+        if turn
+            .cancel_requested
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return None;
+        }
+        let session_id = turn.session_id.lock().ok()?.clone();
+        if session_id.is_empty() {
+            turn.cancel_requested.store(true, Ordering::Release);
+            return None;
+        }
+        let response = match licoup_native::platform::dispatch_lane_operation(
+            "cancel",
+            &json!({
+                "agent": turn.agent_id.as_str(),
+                "sessionId": session_id,
+            }),
+        ) {
+            Ok(response) => response,
+            Err(_) => {
+                turn.cancel_requested.store(true, Ordering::Release);
+                return None;
+            }
+        };
+        if response.get("ok").and_then(Value::as_bool) == Some(true) {
+            return Some(response);
+        }
+        if response.get("status").and_then(Value::as_str) == Some("not_active") {
+            turn.cancel_requested.store(true, Ordering::Release);
+            return None;
+        }
+        Some(response)
     }
 
     /// Open one Membership-scoped dispatch: register the PersistentTurn and
@@ -426,7 +487,14 @@ impl PersistentConversationRuntime {
         else {
             return;
         };
-        let params = direct_turn_params(&context);
+        let Ok(params) = direct_turn_params(&context) else {
+            let diagnostic = r#"{"code":"runtime_instruction_policy_unavailable","stage":"conversation/dispatch"}"#;
+            let _ = self
+                .inner
+                .store
+                .fail_direct_turn_unless_dispatched(&context.turn.id, diagnostic);
+            return;
+        };
         if self.start_background(&params, portable_data_dir).is_err() {
             let diagnostic =
                 r#"{"code":"conversation_dispatch_failed","stage":"conversation/dispatch"}"#;
@@ -570,6 +638,8 @@ impl PersistentConversationRuntime {
             state.cache_bytes = state.cache_bytes.saturating_sub(evicted.encoded_bytes);
         }
         turn.changed.notify_all();
+        drop(state);
+        let _ = Self::attempt_deferred_cancel(turn);
         Ok(event)
     }
 
@@ -656,23 +726,17 @@ impl PersistentConversationRuntime {
 
 fn direct_turn_params(
     context: &licoup_native::domain::client_conversation::DirectTurnExecutionContext,
-) -> Value {
-    // Assistant workflow guidance travels as harness-provided context inside
-    // the wire text. No adapter exposes a private-instruction channel, so the
-    // separate privateInstructions request field was un routable and every
-    // adapter failed closed on it.
-    let text = if let Some(instructions) = context.private_instructions() {
-        format!(
-            "<skills_instructions>\n{}\n</skills_instructions>\n\n{}",
-            instructions, context.source_content
-        )
-    } else {
-        context.source_content.clone()
-    };
+) -> std::result::Result<Value, &'static str> {
+    let delivery =
+        licoup_native::platform::runtime_adapters::compose_generated_instruction_delivery(
+            &context.agent_id,
+            &context.source_content,
+            context.private_instructions(),
+        )?;
     let mut params = json!({
         "agentId": context.agent_id,
         "agent": context.agent_id,
-        "text": text,
+        "text": delivery.text,
         "streamEvents": true,
         "timeoutMs": 0,
         "conversationId": context.turn.conversation_id,
@@ -680,6 +744,9 @@ fn direct_turn_params(
         "causationId": context.turn.source_event_id,
         "dispatchId": context.turn.id,
     });
+    if let (Some(field), Some(guidance)) = (delivery.field, delivery.guidance) {
+        params[field] = json!(guidance);
+    }
     if !context.source_attachments.is_empty() {
         params["attachments"] =
             licoup_native::domain::client_conversation::dispatch_attachments_param(
@@ -700,7 +767,7 @@ fn direct_turn_params(
             params[key] = json!(value);
         }
     }
-    params
+    Ok(params)
 }
 
 pub(super) fn spawn_send<W>(
@@ -1231,7 +1298,12 @@ mod tests {
             runtime_conversation_path: None,
             working_directory: None,
         };
-        assert!(direct_turn_params(&context).get("attachments").is_none());
+        assert!(
+            direct_turn_params(&context)
+                .unwrap()
+                .get("attachments")
+                .is_none()
+        );
 
         context.source_attachments = vec![ImageAttachmentReference {
             part_id: "part:image-1".to_owned(),
@@ -1242,7 +1314,7 @@ mod tests {
                 byte_size: 12,
             },
         }];
-        let params = direct_turn_params(&context);
+        let params = direct_turn_params(&context).unwrap();
         assert_eq!(
             params["attachments"],
             json!([{
@@ -1276,17 +1348,16 @@ mod tests {
             working_directory: None,
         };
 
-        let params = direct_turn_params(&context);
+        let params = direct_turn_params(&context).unwrap();
         let text = params["text"].as_str().unwrap();
-        assert!(text.starts_with("<skills_instructions>\n"));
-        assert!(text.ends_with("exact user-authored text"));
+        assert_eq!(text, "exact user-authored text");
         let instructions = context.private_instructions().unwrap();
-        assert!(text.contains(instructions));
+        assert_eq!(params["developerInstructions"], instructions);
         assert_eq!(params.get("privateInstructions"), None);
 
         let mut ordinary = context;
         ordinary.is_assistant = false;
-        let ordinary_params = direct_turn_params(&ordinary);
+        let ordinary_params = direct_turn_params(&ordinary).unwrap();
         assert_eq!(
             ordinary_params["text"].as_str().unwrap(),
             "exact user-authored text"
@@ -1519,6 +1590,28 @@ mod tests {
                 .scoped_control_params(&json!({"turnHandle": turn.scope.dispatch_id}))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn persistent_runtime_retains_cancel_requested_before_native_binding() {
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let turn = runtime
+            .begin(&json!({
+                "agent": "cursor",
+                "text": "synthetic prompt"
+            }))
+            .unwrap();
+
+        let pending = runtime
+            .request_cancel(&json!({
+                "turnHandle": turn.scope.dispatch_id,
+                "conversationId": turn.scope.conversation_id,
+                "agentId": "cursor"
+            }))
+            .unwrap();
+        assert_eq!(pending["ok"], true);
+        assert_eq!(pending["status"], "cancel_requested");
+        assert!(turn.cancel_requested.load(Ordering::Acquire));
     }
 
     #[test]

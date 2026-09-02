@@ -42,6 +42,27 @@ impl StrategyStore {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
         crate::platform::file_security::ensure_private_dir(&root)?;
+        let db_path = root.join(DATABASE_FILE);
+        let existed = db_path.exists();
+        let store = Self {
+            db_path,
+            package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
+        };
+        store.with_connection(|connection| {
+            if existed {
+                validate_current_schema(connection)
+            } else {
+                initialize_schema(connection)
+            }
+        })?;
+        crate::platform::file_security::harden_private_path(&store.db_path)?;
+        store.purge_retired_builtin_definitions()?;
+        Ok(store)
+    }
+
+    pub(crate) fn open_for_migration(portable_root: &Path) -> Result<Self> {
+        let root = portable_root.join("client-state").join("adaptive-flywheel");
+        crate::platform::file_security::ensure_private_dir(&root)?;
         let store = Self {
             db_path: root.join(DATABASE_FILE),
             package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
@@ -1447,7 +1468,7 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS strategy_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
          );
-         INSERT INTO strategy_meta(key, value) VALUES ('version', '1')
+         INSERT INTO strategy_meta(key, value) VALUES ('version', '2')
            ON CONFLICT(key) DO NOTHING;
          CREATE TABLE IF NOT EXISTS strategy_definitions(
            definition_id TEXT NOT NULL,
@@ -1543,6 +1564,18 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
            ON strategy_runs(revision_digest, conversation_id, terminal, updated_at DESC);",
     )?;
     migrate_bindings_ordinal_primary_key(connection)?;
+    connection.execute("UPDATE strategy_meta SET value='2' WHERE key='version'", [])?;
+    Ok(())
+}
+
+fn validate_current_schema(connection: &mut Connection) -> Result<()> {
+    configure_connection(connection)?;
+    let version: String = connection.query_row(
+        "SELECT value FROM strategy_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    ensure!(version == "2", "strategy_schema_migration_required");
     Ok(())
 }
 
@@ -2115,6 +2148,25 @@ mod tests {
         assert_eq!(ordinal, 0);
         assert_eq!(active, 0);
         assert_eq!(version, "2");
+    }
+
+    #[test]
+    fn ordinary_open_rejects_a_legacy_strategy_schema() {
+        let root = std::env::temp_dir().join(format!("lico-strategy-legacy-{}", Uuid::new_v4()));
+        let database = root.join("client-state/adaptive-flywheel/strategies.sqlite3");
+        fs::create_dir_all(database.parent().unwrap()).unwrap();
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO strategy_meta(key, value) VALUES ('version', '1');",
+            )
+            .unwrap();
+        drop(connection);
+        assert!(StrategyStore::open(&root).is_err());
+        StrategyStore::open_for_migration(&root).unwrap();
+        StrategyStore::open(&root).unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

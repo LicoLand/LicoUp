@@ -312,7 +312,7 @@ test("architecture and package facades retain precise source-bundle ownership", 
     ];
     if (relativePath.includes("/bundle-resolver/") ||
         relativePath.endsWith("/resource-assembly.mjs")) {
-      expected.unshift("regression.subagent-mcp");
+      expected.unshift("regression.subagent-mcp-common");
     }
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }
@@ -483,12 +483,12 @@ test("client module regression tests retain seven ordinary owned leaves", async 
   ]);
 
   const expectedTestCounts = new Map([
-    ["catalog-integrity.mjs", 14],
+    ["catalog-integrity.mjs", 15],
     ["conversation-ownership.mjs", 6],
     ["flutter-selection.mjs", 4],
     ["platform-driver-ownership.mjs", 20],
     ["runner-safety.mjs", 14],
-    ["rust-selection.mjs", 10],
+    ["rust-selection.mjs", 11],
     ["secure-mesh-ownership.mjs", 17],
   ]);
   const registeredNames = new Set();
@@ -509,7 +509,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 85);
+  assert.equal(registeredNames.size, 87);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {
@@ -539,4 +539,33 @@ test("catalog assembly fails fast on duplicate missing and unexpected definition
     () => assembleClientModuleCatalog(["fixture.one"], [[first, second]]),
     /unexpected client module definitions/u,
   );
+});
+
+test("Subagent MCP route sources select one hermetic verification module", () => {
+  for (const relativePath of [
+    "tests/product-e2e/cli/subagent-mcp/upstream.mjs",
+    "tests/product-e2e/cli/subagent-mcp/upstream/codex-startup-recognition.mjs",
+    "tests/product-e2e/cli/subagent-mcp/downstream.mjs",
+    "tests/product-e2e/cli/subagent-mcp/interop-manifest.mjs",
+    "tests/product-e2e/cli/subagent-mcp/common-authority.test.mjs",
+    "tests/product-e2e/cli/subagent-mcp/security.test.mjs",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "regression.subagent-mcp-verification-routes",
+    ]);
+  }
+  const module = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.subagent-mcp-verification-routes");
+  assert.ok(module);
+  assert.doesNotMatch(JSON.stringify(module.command.args), /--live/u);
+  for (const relativePath of [
+    "tools/scripts/lib/agent-conversation-verification-models.mjs",
+    "tools/scripts/lib/agent-conversation-verification-models.test.mjs",
+    "tools/scripts/config/agent-conversation-verification-models.toml",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "regression.subagent-mcp-verification-routes",
+      "architecture.client-boundaries",
+    ]);
+  }
 });

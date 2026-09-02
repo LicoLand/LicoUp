@@ -94,3 +94,50 @@ Regardless of whether an agent speaks standard ACP, CLI PTY, or proprietary Code
 1. **No Vendor Protocol Parsing in Flutter**: Flutter exclusively renders persisted `ClientConversationEvent` and `EventPart` structures.
 2. **No Heuristic Completion Guessing**: Drivers never guess completion (e.g. 100ms silence); L1 parsers arbitrate completion solely via explicit EOF or terminal transitions.
 3. **Isolated Evolution for Proprietary Protocols**: Protocol changes in Codex or OpenCode remain isolated inside their respective `adapters/<agent>/` directory and never pollute upper domain layers.
+
+---
+
+## 5. Provider-Neutral Subagent Mesh
+
+Codex, Cursor, and Antigravity additionally participate in the client-owned
+[Subagent MCP](../protocols/subagent-mcp.md) as both authenticated callers and
+Membership-scoped targets.
+
+```mermaid
+flowchart LR
+  P["Provider MCP client"] --> C["Thin stdio connector"]
+  C --> H["Authenticated loopback HTTP"]
+  H --> A["SubagentMcpApplication"]
+  A --> R["One caller + runtime adapter registry"]
+  A --> S["Canonical Membership and lineage store"]
+  R --> T["Target PersistentTurn"]
+  T --> E["Canonical Event / Part"]
+```
+
+`core::mcp` is framing only. `SubagentMcpApplication` owns the frozen inbound
+revision and nine-tool semantics. `McpCallerIntegration` and
+`SubagentRuntimeAdapter` are the sole provider ports. Caller identity and
+server-owned parent lineage enter through authenticated request context, never
+tool arguments. A durable active-edge claim is committed before adapter work.
+
+Codex keeps exact App Server thread identity and native developer instructions.
+Cursor keeps exact create-chat/resume identity, prompt acknowledgement, and PTY
+transport. Antigravity keeps exact Hook receipt identity, OAuth/permission
+preflight, and PTY transport. Cursor and Antigravity receive generated guidance
+as one ordinary unmarked ephemeral prefix; it is not Canonical Event content.
+
+Verification has two independent routes. The upstream route proves service
+health, then concurrently checks each provider's read-only standard MCP startup
+surface without a custom plugin, conversation, turn, or configuration change.
+Codex uses a process-local standard declaration; Cursor and Antigravity use
+their supported text `mcp list` surfaces and explicitly require Installer
+configuration when the owned entry is absent.
+The downstream route is zero-effect by default; explicit live execution sends
+one direct authenticated delegate call and uses Canonical inbound, claim,
+selected Membership, and PersistentTurn dispatch facts as its oracle. The
+preflight resolves Agent versions, runtime readiness, and reported model inventories through the
+existing target/Agent Hub surfaces, reuses the shared verification-model
+authority, and proves caller-specific service health before Conversation or
+paid work. Latest-version evidence is target-keyed and spend-deduplicated before
+any paid effect. Automated regression uses only hermetic fixtures; the live
+route is not part of regression.

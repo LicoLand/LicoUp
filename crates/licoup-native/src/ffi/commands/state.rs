@@ -3,6 +3,7 @@ use crate::ffi::generated::client_state::{
     ClientStateCollection, ClientStateDocument, ClientStateGetRequest, ClientStateSetRequest,
 };
 use anyhow::Result;
+use std::path::Path;
 
 // Public CLI adapter: user-facing state commands immediately construct the
 // generated DTOs and do not define a second state contract.
@@ -26,6 +27,13 @@ pub(super) fn handle_state_set(command: AdmittedCommand) -> Result<CliExecution>
         document,
     })?;
     Ok(CliExecution::Json(serde_json::to_value(result)?))
+}
+
+pub(super) fn handle_state_admit(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_root = command.required_text("data-root");
+    Ok(CliExecution::Json(
+        crate::domain::client_state_migration::admission_json(Path::new(data_root))?,
+    ))
 }
 
 pub(super) fn handle_activity_list(command: AdmittedCommand) -> Result<CliExecution> {

@@ -212,7 +212,6 @@ fn generated_context_block_close_marker(lower_line: &str) -> Option<&'static str
         ("<app-context", "</app-context>"),
         ("<apps_instructions", "</apps_instructions>"),
         ("<apps-instructions", "</apps-instructions>"),
-        ("<skills_instructions", "</skills_instructions>"),
         ("<plugins_instructions", "</plugins_instructions>"),
         ("<recommended_plugins", "</recommended_plugins>"),
         ("<additional_metadata", "</additional_metadata>"),
@@ -266,7 +265,6 @@ pub(in crate::domain::conversation::history) fn background_context_prompt_text(t
         || lower.starts_with("<apps_instructions")
         || lower.starts_with("<apps-instructions")
         || lower.starts_with("<environment_context")
-        || lower.starts_with("<skills_instructions")
         || lower.starts_with("<plugins_instructions")
         || lower.starts_with("<collaboration_mode")
 }

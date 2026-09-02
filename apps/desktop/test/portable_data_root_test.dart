@@ -34,22 +34,27 @@ void main() {
     },
   );
 
-  test('renames malformed manifest and recreates a valid one', () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'lico-workspace-corrupt-',
-    );
-    addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.licoup-workspace.json');
-    await manifestFile.writeAsString('{not-json', flush: true);
+  test(
+    'rejects a malformed manifest without replacing durable state',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-workspace-corrupt-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final manifestFile = File('${directory.path}/.licoup-workspace.json');
+      await manifestFile.writeAsString('{not-json', flush: true);
 
-    final portableData = PortableDataRoot(dataDirectoryOverride: directory);
-    final manifest = await portableData.loadWorkspaceManifest();
-
-    expect(manifest.workspaceId, isNotEmpty);
-    final entries = await directory.list().map((e) => e.path).toList();
-    expect(entries.any((entry) => entry.contains('.corrupt.')), isTrue);
-    expect(manifestFile.exists(), completion(isTrue));
-  });
+      final portableData = PortableDataRoot(dataDirectoryOverride: directory);
+      await expectLater(
+        portableData.loadWorkspaceManifest(),
+        throwsA(isA<StateError>()),
+      );
+      final entries = await directory.list().map((e) => e.path).toList();
+      expect(entries.any((entry) => entry.contains('.corrupt.')), isFalse);
+      expect(manifestFile.exists(), completion(isTrue));
+      expect(await manifestFile.readAsString(), '{not-json');
+    },
+  );
 
   test('throws when workspace manifest app id is incompatible', () async {
     final directory = await Directory.systemTemp.createTemp(
@@ -131,7 +136,10 @@ void main() {
 
     expect(first.path, second.path);
     expect(first.path, p.join(home.path, '.lico-up'));
-    expect(await File('${first.path}/.licoup-workspace.json').exists(), isTrue);
+    expect(
+      await File('${first.path}/.licoup-workspace.json').exists(),
+      isFalse,
+    );
   });
 
   test('first launch creates only the canonical client state root', () async {
@@ -149,11 +157,7 @@ void main() {
 
     expect(clientState.path, p.join(directory.path, 'client-state'));
     expect(await clientState.list().isEmpty, isTrue);
-    expect(topLevelEntries, {
-      '.licoup-workspace.json',
-      '.licoup-workspace.json.lock',
-      'client-state',
-    });
+    expect(topLevelEntries, {'client-state'});
   });
 
   test(
@@ -186,7 +190,7 @@ void main() {
       expect(resolved.path, isNot(envDirectory.path));
       expect(
         await File('${resolved.path}/.licoup-workspace.json').exists(),
-        isTrue,
+        isFalse,
       );
     },
   );

@@ -195,6 +195,48 @@ fn canonical_protocol_is_cli_only() {
 }
 
 #[test]
+fn create_chat_receives_the_same_scoped_caller_context_as_the_turn() {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let (dir, executable) = compile_fake_cursor(stamp);
+    let _guard = env_lock();
+    unsafe {
+        std::env::set_var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT", "1");
+    }
+    let result = cursor_driver::execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({
+            "agentId": "cursor",
+            "conversationId": "conversation:fixture",
+            "membershipId": "membership:cursor",
+            "parentDispatchId": "subagent:parent"
+        }),
+        "caller context prompt",
+        "",
+        Some(dir.as_path()),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    unsafe {
+        std::env::remove_var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT");
+    }
+    assert!(result.ok, "Cursor CLI failure: {:?}", result.error);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn capability_probe_requires_noninteractive_mcp_approval() {
+    use super::model::CapabilityProbe;
+
+    let base = "create-chat --print --resume --output-format stream-json";
+    assert!(!CapabilityProbe::official(true, true, base).supported);
+    assert!(CapabilityProbe::official(true, true, &format!("{base} --approve-mcps")).supported);
+}
+
+#[test]
 fn pty_controls_are_isolated_before_strict_ndjson_decoding() {
     use super::io::isolate_pty_protocol_line;
     use crate::platform::cursor_driver::model::EffectiveSettings;

@@ -18,25 +18,6 @@ impl ProtocolFailure {
             turn_status: None,
         })
     }
-
-    pub(in crate::platform) fn user_interaction(
-        method: &str,
-        session_id: Option<&str>,
-        thread_id: Option<&str>,
-        turn_id: Option<&str>,
-    ) -> Self {
-        Self::from_payload(ProtocolFailurePayload {
-            code: "codex_user_interaction_required",
-            message: "Codex requires user interaction before this turn can continue.",
-            stage: "server/request",
-            user_interaction_required: true,
-            request_method: Some(method.to_string()),
-            session_id: session_id.map(str::to_string),
-            thread_id: thread_id.map(str::to_string),
-            turn_id: turn_id.map(str::to_string),
-            turn_status: None,
-        })
-    }
 }
 
 impl RunResult {

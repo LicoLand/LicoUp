@@ -5,35 +5,49 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('portable data facade uses an injected manifest store', () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'workspace-manifest-component-',
-    );
-    addTearDown(() => directory.delete(recursive: true));
-    final timestamps = <DateTime>[
-      DateTime.utc(2026, 1, 1),
-      DateTime.utc(2026, 1, 1, 0, 0, 1),
-      DateTime.utc(2026, 1, 1, 0, 0, 2),
-      DateTime.utc(2026, 1, 1, 0, 0, 3),
-    ].iterator;
-    final store = ClientWorkspaceManifestStore(
-      clock: () {
-        timestamps.moveNext();
-        return timestamps.current;
-      },
-      workspaceIdFactory: (_) => 'workspace-test-id',
-    );
-    final portableData = PortableDataRoot(
-      dataDirectoryOverride: directory,
-      workspaceManifestStore: store,
-    );
+  test(
+    'root resolution defers its injected manifest store until explicit load',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'workspace-manifest-component-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final timestamps = <DateTime>[
+        DateTime.utc(2026, 1, 1),
+        DateTime.utc(2026, 1, 1, 0, 0, 1),
+        DateTime.utc(2026, 1, 1, 0, 0, 2),
+        DateTime.utc(2026, 1, 1, 0, 0, 3),
+      ].iterator;
+      final store = ClientWorkspaceManifestStore(
+        clock: () {
+          timestamps.moveNext();
+          return timestamps.current;
+        },
+        workspaceIdFactory: (_) => 'workspace-test-id',
+      );
+      final portableData = PortableDataRoot(
+        dataDirectoryOverride: directory,
+        workspaceManifestStore: store,
+      );
 
-    final manifest = await portableData.loadWorkspaceManifest();
+      await portableData.dataDirectory();
+      final manifestFile = File(
+        '${directory.path}/${ClientWorkspaceManifestStore.fileName}',
+      );
 
-    expect(manifest.workspaceId, 'workspace-test-id');
-    expect(manifest.appId, ClientWorkspaceManifest.licoUpAppId);
-    expect(manifest.updatedAt, isNot(manifest.createdAt));
-  });
+      expect(await manifestFile.exists(), isFalse);
+
+      final manifest = await portableData.loadWorkspaceManifest();
+
+      expect(manifest.workspaceId, 'workspace-test-id');
+      expect(manifest.appId, ClientWorkspaceManifest.licoUpAppId);
+      expect(manifest.updatedAt, manifest.createdAt);
+
+      final refreshed = await portableData.loadWorkspaceManifest();
+      expect(refreshed.workspaceId, manifest.workspaceId);
+      expect(refreshed.updatedAt, isNot(manifest.updatedAt));
+    },
+  );
 
   test(
     'manifest validation fails closed without disclosing its path',

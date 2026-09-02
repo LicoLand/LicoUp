@@ -10,11 +10,11 @@ use std::{
 };
 
 const PLUGIN_NAME: &str = "lico-up-codex";
-const PLUGIN_VERSION: &str = "0.1.0";
+const PLUGIN_VERSION: &str = "0.2.0";
 const MARKETPLACE_NAME: &str = "licoup-plugins";
 const MARKETPLACE_SOURCE: &str = "LicoLand/LicoUp-Plugins";
-const MARKETPLACE_RELEASE: &str = "v0.1.0";
-const MARKETPLACE_REF: &str = "4b456c8fbf06591ee8907c6f86952d2bb49638e4";
+const MARKETPLACE_RELEASE: &str = "v0.2.0";
+const MARKETPLACE_REF: &str = "v0.2.0";
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(30);
 const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_COMMAND_OUTPUT_BYTES: usize = 64 * 1024;
@@ -182,7 +182,9 @@ fn plugin_state_from_list(value: &serde_json::Value) -> IntegrationState {
                 .get("status")
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|status| matches!(status, "disabled" | "missing" | "uninstalled"));
-        return if explicitly_disabled {
+        let exact_version =
+            object.get("version").and_then(serde_json::Value::as_str) == Some(PLUGIN_VERSION);
+        return if explicitly_disabled || !exact_version {
             IntegrationState::Missing
         } else {
             IntegrationState::Ready
@@ -195,16 +197,7 @@ pub fn install(
     plan: &CodexPluginInstallPlan,
     permit: &mut CodexPluginInstallPermit,
 ) -> Result<CodexPluginInstallReceipt, CodexPluginInstallError> {
-    if permit.consumed {
-        return Err(CodexPluginInstallError::ApprovalConsumed);
-    }
-    permit.consumed = true;
-    if permit.digest != plan.digest {
-        return Err(CodexPluginInstallError::ApprovalMismatch);
-    }
-    if release_digest() != plan.digest {
-        return Err(CodexPluginInstallError::ApprovalMismatch);
-    }
+    claim_permit(plan, permit)?;
 
     // Registration is additive. A non-success may mean the exact Git source
     // is already configured; the authoritative result is the version-bound
@@ -233,6 +226,36 @@ pub fn install(
         installed: true,
         plugin_ready_for_new_conversations: true,
     })
+}
+
+pub fn remove(
+    plan: &CodexPluginInstallPlan,
+    permit: &mut CodexPluginInstallPermit,
+) -> Result<(), CodexPluginInstallError> {
+    claim_permit(plan, permit)?;
+    let selector = format!("{PLUGIN_NAME}@{MARKETPLACE_NAME}");
+    if run_codex(
+        &plan.codex_executable,
+        ["plugin", "remove", selector.as_str(), "--json"],
+    )? {
+        Ok(())
+    } else {
+        Err(CodexPluginInstallError::InstallFailed)
+    }
+}
+
+fn claim_permit(
+    plan: &CodexPluginInstallPlan,
+    permit: &mut CodexPluginInstallPermit,
+) -> Result<(), CodexPluginInstallError> {
+    if permit.consumed {
+        return Err(CodexPluginInstallError::ApprovalConsumed);
+    }
+    permit.consumed = true;
+    if permit.digest != plan.digest || release_digest() != plan.digest {
+        return Err(CodexPluginInstallError::ApprovalMismatch);
+    }
+    Ok(())
 }
 
 fn run_codex<'a>(
@@ -378,8 +401,8 @@ mod tests {
         let plan = CodexPluginInstallPlan::prepare("codex", &codex).unwrap();
         assert_eq!(plan.digest(), release_digest());
         assert_eq!(CodexPluginInstallPlan::source(), "LicoLand/LicoUp-Plugins");
-        assert_eq!(CodexPluginInstallPlan::release(), "v0.1.0");
-        assert_eq!(CodexPluginInstallPlan::version(), "0.1.0");
+        assert_eq!(CodexPluginInstallPlan::release(), "v0.2.0");
+        assert_eq!(CodexPluginInstallPlan::version(), "0.2.0");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -387,9 +410,23 @@ mod tests {
     fn plugin_status_accepts_only_the_exact_installed_plugin() {
         assert_eq!(
             plugin_state_from_list(&serde_json::json!({
-                "installed": [{"pluginId": "lico-up-codex@licoup-plugins", "enabled": true}]
+                "installed": [{
+                    "pluginId": "lico-up-codex@licoup-plugins",
+                    "version": "0.2.0",
+                    "enabled": true
+                }]
             })),
             IntegrationState::Ready
+        );
+        assert_eq!(
+            plugin_state_from_list(&serde_json::json!({
+                "installed": [{
+                    "pluginId": "lico-up-codex@licoup-plugins",
+                    "version": "0.1.0",
+                    "enabled": true
+                }]
+            })),
+            IntegrationState::Missing
         );
         assert_eq!(
             plugin_state_from_list(&serde_json::json!({
@@ -419,11 +456,11 @@ mod tests {
             "pluginId": "lico-up-codex@licoup-plugins",
             "name": "lico-up-codex",
             "marketplaceName": "licoup-plugins",
-            "version": "0.1.0"
+            "version": "0.2.0"
         });
         assert!(plugin_install_receipt_matches(&receipt));
         let mut stale = receipt;
-        stale["version"] = serde_json::json!("0.0.9");
+        stale["version"] = serde_json::json!("0.1.0");
         assert!(!plugin_install_receipt_matches(&stale));
     }
 

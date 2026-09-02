@@ -247,6 +247,120 @@ fn cursor_parser_preserves_an_explicit_model_selector_over_the_init_label() {
 }
 
 #[test]
+fn cursor_parser_projects_each_structured_tool_call_once() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let frame = br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"lico_subagent_delegate","input":{"private":"not projected"}}]}}"#;
+    let first = parser.parse_line(frame).unwrap();
+    assert!(first.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Tool { tool_name, .. } if tool_name == "lico_subagent_delegate"
+    )));
+    assert!(
+        !first
+            .iter()
+            .any(|effect| matches!(effect, CursorEffect::Text { .. }))
+    );
+    assert!(parser.parse_line(frame).unwrap().is_empty());
+}
+
+#[test]
+fn cursor_parser_projects_current_mcp_tool_call_frames_once() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let started = br#"{"type":"tool_call","subtype":"started","session_id":"synthetic-session","tool_call":{"toolCallId":"call-1\nopaque","mcpToolCall":{"args":{"toolCallId":"call-1\nopaque","toolName":"lico_subagent_delegate","name":"land.lico.licoup.subagents-lico_subagent_delegate","args":{"private":"not projected"}}}}}"#;
+    let completed = br#"{"type":"tool_call","subtype":"completed","session_id":"synthetic-session","tool_call":{"toolCallId":"call-1\nopaque","mcpToolCall":{"args":{"toolCallId":"call-1\nopaque","toolName":"lico_subagent_delegate","name":"land.lico.licoup.subagents-lico_subagent_delegate","args":{"private":"not projected"}}}}}"#;
+
+    let first = parser.parse_line(started).unwrap();
+    assert!(first.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Tool { tool_name, .. } if tool_name == "lico_subagent_delegate"
+    )));
+    assert!(
+        !first
+            .iter()
+            .any(|effect| matches!(effect, CursorEffect::Text { .. }))
+    );
+    assert!(parser.parse_line(completed).unwrap().is_empty());
+}
+
+#[test]
+fn cursor_parser_projects_only_allowlisted_mcp_application_error_codes() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let completed = br#"{"type":"tool_call","subtype":"completed","session_id":"synthetic-session","tool_call":{"toolCallId":"call-1","mcpToolCall":{"args":{"toolCallId":"call-1","toolName":"lico_subagent_delegate","args":{"private":"never projected"}},"result":{"success":{"isError":true,"content":[{"type":"text","text":"subagent_cross_conversation_rejected private provider result"}]}}}}}"#;
+
+    let first = parser.parse_line(completed).unwrap();
+    assert!(first.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::ToolError { tool_name, error_code, .. }
+            if tool_name == "lico_subagent_delegate"
+                && *error_code == "subagent_cross_conversation_rejected"
+    )));
+    assert!(
+        !first
+            .iter()
+            .any(|effect| matches!(effect, CursorEffect::Text { .. }))
+    );
+    assert!(parser.parse_line(completed).unwrap().is_empty());
+}
+
+#[test]
+fn cursor_parser_projects_membership_authorization_mcp_error_codes() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let completed = br#"{"type":"tool_call","subtype":"completed","session_id":"synthetic-session","tool_call":{"toolCallId":"call-1","mcpToolCall":{"args":{"toolCallId":"call-1","toolName":"lico_subagent_delegate","args":{"private":"never projected"}},"result":{"success":{"isError":true,"content":[{"type":"text","text":"caller_membership_not_authorized"}]}}}}}"#;
+
+    let first = parser.parse_line(completed).unwrap();
+    assert!(first.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::ToolError { tool_name, error_code, .. }
+            if tool_name == "lico_subagent_delegate"
+                && *error_code == "caller_membership_not_authorized"
+    )));
+}
+
+#[test]
+fn cursor_parser_ignores_internal_mcp_catalog_calls() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let effects = parser
+        .parse_line(br#"{"type":"tool_call","subtype":"started","session_id":"synthetic-session","tool_call":{"toolCallId":"catalog-1","getMcpToolsToolCall":{"args":{"server":"land.lico.licoup.subagents","toolName":"lico_subagent_delegate"}}}}"#)
+        .unwrap();
+
+    assert!(
+        !effects
+            .iter()
+            .any(|effect| matches!(effect, CursorEffect::Tool { .. }))
+    );
+}
+
+#[test]
 fn native_agent_parser_closes_lifecycle_prefix_and_keeps_first_failure() {
     let mut reducer = TransitionReducer::default();
     let stages = reducer.advance(LifecycleStage::Responding);

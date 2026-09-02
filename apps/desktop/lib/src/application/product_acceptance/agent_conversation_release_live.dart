@@ -69,6 +69,11 @@ Future<void> _run(ClientController controller) async {
           const Duration(seconds: 45),
           onTimeout: () => throw StateError('release_ui_initialize_timeout'),
         );
+    await _waitFor(
+      () => controller.lifecycleProjection.initialized,
+      reasonCode: 'client_not_initialized',
+      timeout: const Duration(seconds: 5),
+    );
     _require(
       controller.lifecycleProjection.initialized,
       _initializeFailureReason(controller),

@@ -11,6 +11,7 @@ const productionLeaves = Object.freeze([
   "accessors.rs",
   "activity.rs",
   "collections.rs",
+  "migration.rs",
   "operations.rs",
   "paths.rs",
   "policy.rs",
@@ -136,7 +137,7 @@ test("serialization and path helpers own all bounded filesystem details", async 
 });
 
 test("all external consumers use only the restricted client state facade", async () => {
-  const internalModules = "accessors|activity|collections|operations|paths|policy|redaction|serialization|snapshots";
+  const internalModules = "accessors|activity|collections|migration|operations|paths|policy|redaction|serialization|snapshots";
   const internalPath = new RegExp(`client_state::(?:${internalModules})::`, "u");
   const consumers = (await sourceFiles("crates/licoup-native/src"))
     .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));

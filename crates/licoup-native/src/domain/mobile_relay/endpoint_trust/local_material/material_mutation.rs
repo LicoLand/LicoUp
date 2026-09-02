@@ -2,7 +2,7 @@ use super::identity_generation::{
     generate_endpoint_id, generate_identity_material, generate_pairing_secret, generate_session_id,
 };
 use super::prekey_inventory::ensure_mobile_relay_pqxdh_material;
-use super::protocol_reset::reset_incompatible_local_pairwise_protocol;
+use super::protocol_reset::ensure_local_pairwise_protocol_compatible;
 use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::domain::mobile_relay::relay_operations::current_mailbox_rotation_epoch;
 use crate::domain::mobile_relay::secret_custody::{
@@ -17,11 +17,7 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
     secret_material: &mut RuntimeSecretMaterial,
     endpoint_kind: &str,
 ) -> Result<()> {
-    if reset_incompatible_local_pairwise_protocol(config) {
-        for field in MobileRelayE2eeSecretField::ALL {
-            secret_material.remove_e2ee_secret(field);
-        }
-    }
+    ensure_local_pairwise_protocol_compatible(config)?;
     if config
         .get("mobileRelayE2ee")
         .and_then(Value::as_object)
