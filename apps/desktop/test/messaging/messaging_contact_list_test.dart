@@ -791,6 +791,10 @@ void main() {
 
       await tester.tap(plus);
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('messaging-create-conversation')),
+        findsOneWidget,
+      );
       final menu = find.byKey(const Key('messaging-create-conversation-menu'));
       expect(menu, findsOneWidget);
       expect(
