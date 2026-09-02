@@ -26,7 +26,8 @@
     "conversation.assistant.set",
     "conversation.profile.update",
     "conversation.profile.get",
-    "conversation.profile.candidates"
+    "conversation.profile.candidates",
+    "conversation.subagent.edge"
   ],
   "principalKinds": [
     "human",

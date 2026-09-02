@@ -55,7 +55,11 @@ fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>
         return Ok(None);
     };
     let trimmed = value.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty()
+        || trimmed.starts_with('$')
+        || trimmed.contains("${")
+        || trimmed.contains("${env:")
+    {
         return Ok(None);
     }
     Ok(Some(PathBuf::from(trimmed)))
@@ -173,6 +177,20 @@ mod tests {
             portable_data_dir_from_value(Some("   ".to_string())).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn unexpanded_interpolation_does_not_select_a_path() {
+        for value in [
+            "${LICOUP_PORTABLE_DIR}",
+            "$LICOUP_PORTABLE_DIR",
+            "${env:LICOUP_PORTABLE_DIR}",
+        ] {
+            assert_eq!(
+                portable_data_dir_from_value(Some(value.to_string())).unwrap(),
+                None
+            );
+        }
     }
 
     #[test]

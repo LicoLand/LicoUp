@@ -369,6 +369,7 @@ function readConversationSchema(family) {
     "conversation.profile.update",
     "conversation.profile.get",
     "conversation.profile.candidates",
+    "conversation.subagent.edge",
   ];
   if (
     !isRecord(schema) ||

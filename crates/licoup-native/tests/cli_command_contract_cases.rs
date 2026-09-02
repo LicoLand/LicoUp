@@ -11,7 +11,7 @@ use licoup_native::ffi::commands::{
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -1419,6 +1419,63 @@ fn run_lico_client_conversation_rpc(args: Vec<String>, portable_root: &Path) -> 
         .expect("the real persistent conversation RPC subprocess must finish")
 }
 
+#[test]
+fn persistent_conversation_rpc_accepts_a_request_after_its_first_response() {
+    let portable_root = temporary_directory("licoup-conversation-rpc-sequential");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+        .args(["rpc", "conversation"])
+        .env("LICOUP_PORTABLE_DIR", &portable_root)
+        .env_remove("LICOUP_CLIENT_PID")
+        .env_remove("RUST_LOG")
+        .env_remove("RUST_BACKTRACE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the persistent conversation RPC subprocess must start");
+    let mut input = child.stdin.take().expect("RPC stdin must be piped");
+    let mut output = BufReader::new(child.stdout.take().expect("RPC stdout must be piped"));
+
+    for index in 1..=2 {
+        let request_id = format!("sequential-{index}");
+        let request = json!({
+            "protocol": "licoup.stdio.v1",
+            "id": request_id,
+            "workflowId": "cli-conversation-sequential",
+            "method": "client.conversation.execute",
+            "params": {
+                "action": "conversation.list",
+                "includeArchived": false,
+            },
+        });
+        input
+            .write_all(format!("{request}\n").as_bytes())
+            .expect("each RPC request must remain writable");
+        input.flush().expect("each RPC request must be flushed");
+
+        let mut line = String::new();
+        assert_ne!(
+            output
+                .read_line(&mut line)
+                .expect("RPC response must be readable"),
+            0,
+            "the proxy must remain connected for sequential response {index}"
+        );
+        let response: Value = serde_json::from_str(&line).expect("RPC response must be JSON");
+        assert_eq!(response["id"], request_id);
+        assert_eq!(response["ok"], true);
+    }
+
+    drop(input);
+    assert!(
+        child
+            .wait()
+            .expect("the persistent conversation RPC subprocess must finish")
+            .success()
+    );
+    let _ = fs::remove_dir_all(portable_root);
+}
+
 fn rpc_response(output: &Output) -> Value {
     let line = std::str::from_utf8(&output.stdout)
         .expect("RPC stdout must be UTF-8")
@@ -1760,7 +1817,10 @@ fn route_authorities() -> Vec<RouteAuthority> {
         path: "conversation execute",
         required: &[],
         cardinality: Options,
-        options: vec![value_option("stdin-json", Json, true)],
+        options: vec![
+            value_option("stdin-json", Json, true),
+            boolean_option("require-running-host"),
+        ],
         constraints: &[],
     });
     routes.push(RouteAuthority {
@@ -2579,11 +2639,13 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("agent-id", Text, true),
             value_option("binary-path", Text, false),
             value_option("mcp-binary-path", Text, false),
+            value_option("config-path", Text, false),
         ],
         "adapter subagent-mcp install" => &[
             value_option("agent-id", Text, true),
             value_option("binary-path", Text, false),
             value_option("mcp-binary-path", Text, false),
+            value_option("config-path", Text, false),
             value_option("confirmation", Text, true),
             OptionAuthority {
                 name: "confirmed",
@@ -2667,7 +2729,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         | "agent conversation cleanup"
         | "agent conversation capabilities"
         | "agent conversation stream" => &[value_option("stdin-json", Json, false)],
-        "conversation execute" | "strategy execute" => &[value_option("stdin-json", Json, true)],
+        "conversation execute" => &[
+            value_option("stdin-json", Json, true),
+            boolean_option("require-running-host"),
+        ],
+        "strategy execute" => &[value_option("stdin-json", Json, true)],
         "agents pair request"
         | "agents pair approve"
         | "agents pair revoke"

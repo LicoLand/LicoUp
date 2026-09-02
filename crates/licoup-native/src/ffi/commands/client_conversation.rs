@@ -13,11 +13,20 @@ static CONVERSATION_SERVICES: OnceLock<Mutex<VecDeque<(PathBuf, ConversationServ
     OnceLock::new();
 
 pub(super) fn handle_conversation_execute(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let require_running_host = command.option_flag("require-running-host");
     let input = match command.take_option_json("stdin-json") {
         Some(Value::Object(input)) => Value::Object(input),
         Some(_) => return Err(anyhow!("conversation_request_invalid")),
         None => return Err(anyhow!("conversation_request_required")),
     };
+    if require_running_host {
+        return Ok(CliExecution::Json(
+            crate::platform::subagent_mcp_host_client::execute_existing(
+                "client.conversation.execute",
+                &input,
+            )?,
+        ));
+    }
     // Dispatch-type work needs the persistent host runtime. A one-shot
     // process would open a turn no observer can attach, so it fails closed
     // with the typed transport rejection and performs no Agent work.
@@ -32,6 +41,36 @@ pub(super) fn handle_conversation_execute(mut command: AdmittedCommand) -> Resul
         "ok": true,
         "result": service.execute(input)?,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::execute_cli;
+    use crate::platform::paths::set_portable_data_dir_override;
+
+    #[test]
+    fn required_host_mode_never_opens_a_local_conversation_store() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-required-conversation-host-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = set_portable_data_dir_override(Some(root.clone()));
+        let error = execute_cli(vec![
+            "conversation".into(),
+            "execute".into(),
+            "--require-running-host".into(),
+            "--stdin-json".into(),
+            r#"{"action":"conversation.list"}"#.into(),
+        ])
+        .expect_err("a missing persistent host must fail closed");
+        set_portable_data_dir_override(previous);
+
+        assert_eq!(
+            error.to_string(),
+            "persistent_conversation_transport_required"
+        );
+        assert!(!root.exists());
+    }
 }
 
 fn conversation_service(root: &Path) -> Result<ConversationService> {

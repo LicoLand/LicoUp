@@ -1,4 +1,4 @@
-use super::control::{clear_active_turn, register_active_turn};
+use super::control::{cancel_claimed, clear_active_turn, register_active_turn, take_cancelled};
 use super::errors::ProtocolFailure;
 use super::hooks::{ensure_hook_bridge, read_conversation_id, receipt_path_for_turn};
 use super::model::{EffectiveSettings, PROCESS_POLL_INTERVAL, RECEIPT_ENV, RunResult};
@@ -74,6 +74,8 @@ pub(in crate::platform) fn execute(
     };
     let mut command = Command::new(executable);
     config.apply_to(&mut command, &receipt);
+    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
+    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
 
     let turn_id = format!(
         "agy-{}",
@@ -82,17 +84,34 @@ pub(in crate::platform) fn execute(
             .unwrap_or_default()
             .as_millis()
     );
+    let control_session_id = if config.requested_session_id.is_empty() {
+        params
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .and_then(|dispatch_id| dispatch_id.rsplit(':').next())
+            .filter(|candidate| valid_session_id(candidate))
+            .unwrap_or_default()
+    } else {
+        config.requested_session_id.as_str()
+    };
+    // A new Antigravity conversation receives its native identity only from
+    // the terminal Stop-hook receipt. Keep provider cancellation keyed by the
+    // private control identity, but never publish that provisional identity as
+    // a canonical stream session.
+    let event_session_id = config.requested_session_id.as_str();
     let outcome = match run_turn_process(
         command,
         timeout_ms,
         max_stdout,
         max_stderr,
-        &config.requested_session_id,
+        control_session_id,
+        event_session_id,
         &turn_id,
     ) {
         Ok(outcome) => outcome,
         Err(failure) => {
             let _ = std::fs::remove_file(&receipt);
+            let _ = take_cancelled(control_session_id);
             return RunResult::failed(
                 failure.with_session(Some(session_id)),
                 started_at,
@@ -106,6 +125,28 @@ pub(in crate::platform) fn execute(
     let status_code = outcome.status.as_ref().and_then(ExitStatus::code);
     let receipt_session = read_conversation_id(&receipt).unwrap_or_default();
     let _ = std::fs::remove_file(&receipt);
+    if take_cancelled(control_session_id) {
+        let bound = [
+            config.requested_session_id.as_str(),
+            receipt_session.as_str(),
+            control_session_id,
+        ]
+        .into_iter()
+        .find(|candidate| valid_session_id(candidate))
+        .unwrap_or_default();
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "antigravity_cli_cancelled",
+                "Antigravity CLI turn was cancelled.",
+                "turn/cancelled",
+            )
+            .with_session((!bound.is_empty()).then_some(bound))
+            .with_turn_status("cancelled"),
+            started_at,
+            stdout_truncated,
+            stderr_truncated,
+        );
+    }
     let terminal = match classify_terminal(TerminalFacts {
         requested_session: &config.requested_session_id,
         receipt_session: (!receipt_session.is_empty()).then_some(receipt_session.as_str()),
@@ -127,10 +168,25 @@ pub(in crate::platform) fn execute(
     let native_session = terminal.session_id;
     let output = terminal.output;
     let transitions = terminal.transitions;
-    // Progressive chunks are emitted by the unix run_turn_process as the pty
-    // stream arrives; the post-hoc events remain the terminal response envelope.
+    // Resumed conversations emit progressive chunks while the pty stream
+    // arrives because their native identity is already known. A new
+    // conversation is buffered until the Stop-hook binds the native identity;
+    // publish one valid final chunk before completion instead of leaking an
+    // empty or provisional session id.
     #[cfg(unix)]
-    crate::platform::emit_agent_message_completed(&native_session, &turn_id, &output);
+    {
+        if event_session_id.is_empty() {
+            crate::platform::emit_turn_event(
+                "agent.turn.accepted",
+                &native_session,
+                &turn_id,
+                json!({ "evidenceKind": "native-event" }),
+            );
+            crate::platform::emit_agent_processing(&native_session, &turn_id, "activity", None);
+            crate::platform::emit_agent_message_chunk(&native_session, &turn_id, &output);
+        }
+        crate::platform::emit_agent_message_completed(&native_session, &turn_id, &output);
+    }
     RunResult {
         ok: true,
         transitions,
@@ -166,7 +222,8 @@ fn run_turn_process(
     timeout_ms: u64,
     max_stdout: Option<usize>,
     max_stderr: usize,
-    requested_session: &str,
+    control_session_id: &str,
+    event_session_id: &str,
     turn_id: &str,
 ) -> Result<ProcessOutcome, ProtocolFailure> {
     let (mut child, master) = crate::platform::pty_transport::spawn(command).map_err(|_| {
@@ -176,13 +233,13 @@ fn run_turn_process(
             "process/start",
         )
     })?;
-    let registered = !requested_session.is_empty();
+    let registered = !control_session_id.is_empty();
     if registered {
-        register_active_turn(requested_session, child.pid());
+        register_active_turn(control_session_id, child.pid());
     }
     let Some(stderr) = child.stderr() else {
         if registered {
-            clear_active_turn(requested_session);
+            clear_active_turn(control_session_id);
         }
         let _ = child.terminate_tree();
         return Err(ProtocolFailure::new(
@@ -191,12 +248,14 @@ fn run_turn_process(
             "process/start",
         ));
     };
-    crate::platform::emit_turn_event(
-        "agent.turn.accepted",
-        requested_session,
-        turn_id,
-        json!({ "evidenceKind": "native-event" }),
-    );
+    if !event_session_id.is_empty() {
+        crate::platform::emit_turn_event(
+            "agent.turn.accepted",
+            event_session_id,
+            turn_id,
+            json!({ "evidenceKind": "native-event" }),
+        );
+    }
     let stderr_handle = thread::spawn(move || count_stderr(stderr, max_stderr));
     let (sender, receiver) = mpsc::channel();
     let reader_handle = thread::spawn(move || {
@@ -219,11 +278,7 @@ fn run_turn_process(
             Ok(PtyEvent::Data(bytes)) => {
                 if !stdout_truncated {
                     if let Some(text) = parser.push(&bytes) {
-                        crate::platform::emit_agent_message_chunk(
-                            requested_session,
-                            turn_id,
-                            &text,
-                        );
+                        emit_resume_chunk(event_session_id, control_session_id, turn_id, &text);
                     }
                 }
             }
@@ -236,7 +291,7 @@ fn run_turn_process(
     }
     let status = child.terminate_tree().ok().flatten();
     if registered {
-        clear_active_turn(requested_session);
+        clear_active_turn(control_session_id);
     }
     let _ = join_bounded(reader_handle, IO_THREAD_EXIT_GRACE);
     let stderr_truncated = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE)
@@ -245,7 +300,7 @@ fn run_turn_process(
     if !stdout_truncated {
         let (output, tail) = parser.finish();
         if let Some(tail) = tail {
-            crate::platform::emit_agent_message_chunk(requested_session, turn_id, &tail);
+            emit_resume_chunk(event_session_id, control_session_id, turn_id, &tail);
         }
         return Ok(ProcessOutcome {
             output,
@@ -263,6 +318,17 @@ fn run_turn_process(
         stderr_truncated,
         timed_out,
     })
+}
+
+/// Resume turns stream live because the native identity is already known.
+/// After cancel is accepted, further stdout (Stop-hook drain, tail flush) must
+/// not become assistant text. Pre-cancel chunks already emitted stay.
+#[cfg(unix)]
+fn emit_resume_chunk(event_session_id: &str, control_session_id: &str, turn_id: &str, text: &str) {
+    if event_session_id.is_empty() || cancel_claimed(control_session_id) {
+        return;
+    }
+    crate::platform::emit_agent_message_chunk(event_session_id, turn_id, text);
 }
 
 /// Counts stderr bytes up to `max_stderr` and reports whether the cap was hit.
@@ -295,7 +361,8 @@ fn run_turn_process(
     timeout_ms: u64,
     max_stdout: Option<usize>,
     max_stderr: usize,
-    requested_session: &str,
+    control_session_id: &str,
+    _event_session_id: &str,
     _turn_id: &str,
 ) -> Result<ProcessOutcome, ProtocolFailure> {
     let mut command = command;
@@ -323,9 +390,9 @@ fn run_turn_process(
             "process/start",
         ));
     };
-    let registered = !requested_session.is_empty();
+    let registered = !control_session_id.is_empty();
     if registered {
-        register_active_turn(requested_session, child.pid());
+        register_active_turn(control_session_id, child.pid());
     }
     let stdout_handle = thread::spawn(move || read_bounded(stdout, max_stdout));
     let stderr_handle = thread::spawn(move || read_bounded(stderr, Some(max_stderr)));
@@ -343,7 +410,7 @@ fn run_turn_process(
         deadline.is_some() && (!stdout_handle.is_finished() || !stderr_handle.is_finished());
     let status = child.terminate_tree().ok().flatten();
     if registered {
-        clear_active_turn(requested_session);
+        clear_active_turn(control_session_id);
     }
     let stdout = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE).ok();
     let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE).ok();

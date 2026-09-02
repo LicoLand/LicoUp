@@ -59,13 +59,15 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
 
     final suffix = Platform.isWindows ? '.exe' : '';
     final selfPath = await _canonicalPath(File(executablePath));
-    final explicitBinary = environment['LICO_CLIENT_PATH'];
-    final cargoTargetDirectory = environment['CARGO_TARGET_DIR'];
     final executableDirectory = File(executablePath).parent.path;
-    // An installed app bundle must use its sibling sidecar. Developer cargo
-    // overlays leak into `open` from a Cursor/agent shell and then outlive
-    // the product binary.
+    // An installed app bundle must use its sibling sidecar. Developer CLI and
+    // cargo overlays leak into `open` from an Agent shell and can outlive the
+    // exact installed product binary.
     final insideAppBundle = executablePath.contains('.app/Contents/MacOS/');
+    final explicitBinary = insideAppBundle
+        ? null
+        : environment['LICO_CLIENT_PATH'];
+    final cargoTargetDirectory = environment['CARGO_TARGET_DIR'];
     final candidates = <String>[
       if (explicitBinary != null && explicitBinary.trim().isNotEmpty)
         explicitBinary.trim(),

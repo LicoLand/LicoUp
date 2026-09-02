@@ -188,6 +188,7 @@ enum ConversationActionKind {
   conversationProfileUpdate("conversation.profile.update"),
   conversationProfileGet("conversation.profile.get"),
   conversationProfileCandidates("conversation.profile.candidates"),
+  conversationSubagentEdge("conversation.subagent.edge"),
   unknown('');
 
   const ConversationActionKind(this.wireName);

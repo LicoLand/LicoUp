@@ -6,7 +6,12 @@ import { runBoundedProcess } from "../process.mjs";
 
 function parseStreamLine(message, state) {
   if (message?.subtype === "init" || message?.type === "init") {
-    if (typeof message?.model === "string" && message.model.length > 0) state.model = message.model;
+    if (!state.model && typeof message?.model === "string" && message.model.length > 0) {
+      // Cursor may report a display label here even when the launch used a
+      // stable model slug. Keep the explicit request authoritative so the
+      // native and sidecar lanes compare the same selector namespace.
+      state.model = message.model;
+    }
     if (typeof message?.permissionMode === "string" && message.permissionMode.length > 0) {
       state.permissionMode = message.permissionMode;
     }
