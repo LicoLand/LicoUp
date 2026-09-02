@@ -429,41 +429,41 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> Submitted: 用户发起 (RPC Post)
-    
+
     state Submitted {
         note right of Submitted: 【受控调用】SQLite: 写入定稿 Human Event
     }
-    
+
     Submitted --> Accepted: 调度门准入 (Dispatch After-Post)
-    
+
     state Accepted {
         note right of Accepted: 【受控调用】DynamicConfig: 检索可执行文件与环境
     }
-    
+
     Accepted --> Processing: 进程/连接启动
-    
+
     state Processing {
         note right of Processing: 【受控调用】PTY / Network: 启动进程、打开管道并建立流监听
     }
-    
+
     Processing --> Streaming: L1 解析到数据
-    
+
     state Streaming {
         note right of Streaming: 【受控调用】SQLite: 追加 EventPart · 上行推流
     }
-    
+
     Streaming --> WaitingForHuman: L1 识别到交互审批请求
-    
+
     state WaitingForHuman {
         note right of WaitingForHuman: 【受控调用】L2 交互路由: 生成 Token 挂起，通知前端弹窗
     }
-    
+
     WaitingForHuman --> Processing: 用户响应批准
-    
+
     Streaming --> Completed: 收到显式 Finish / EOF
     Processing --> Failed: 进程异常崩溃 / 校验失败
     Processing --> Cancelled: 用户取消
-    
+
     state Completed {
         note right of Completed: 【受控调用】SQLite Finalize · L3 进程优雅退出
     }
@@ -518,14 +518,14 @@ sequenceDiagram
 
     User->>UI: 1. 在 Composer 输入正文并点击“发送”
     Note over UI: 前端状态锁定：<br/>• _sending = true<br/>• 锁住输入框防重发
-    
+
     UI->>Bridge: 2. 下行行为事件：conversation.message.post { conversationId, authorMembershipId, content }
     Bridge->>Domain: 3. 路由至 persist_posted_message
     Domain->>Domain: 4. 【后端落库】写入已 Finalize 的 Human Event
     Domain-->>Bridge: 5. 返回确认 { eventId }
     Bridge-->>UI: 6. 前端收到落库确认
     Note over UI: 前端释放草稿：<br/>• _draft = ''<br/>• 刷新本地事件列表
-    
+
     UI->>Bridge: 7. 下行行为事件：conversation.dispatch.after-post { conversationId, eventId }
     Bridge->>Dispatch: 8. 传入已持久化的 (conversationId, eventId)
     Dispatch->>Domain: 9. 从库中读取文本，解析 @mention / 绑定的 Flywheel Graph
@@ -555,7 +555,7 @@ sequenceDiagram
     Domain->>Domain: 5. 递增游标水位并持久化
     Domain-->>UI: 6. 上行推送真实增量事件 (Observer Stream)
     Note over UI: 前端响应式更新：<br/>• 流式追加气泡文字<br/>• 渲染过程黑板推理状态
-    
+
     Driver->>L3: 7. 进程退出 / 协议显式 Finish
     L3->>L1: 8. 投递 EOF / 完成信号
     L1->>L1: 9. 终态仲裁器判定完成 (Terminal Transition)
@@ -583,7 +583,7 @@ sequenceDiagram
     L2->>Domain: 3. 激活轮次状态为 WaitingForHuman
     Domain-->>UI: 4. 上行推送审批卡片事件 (包含脱敏后的参数摘要)
     Note over UI: 前端展示审批确认弹窗/卡片
-    
+
     User->>UI: 5. 点击“批准”或“拒绝”
     UI->>L2: 6. 下行行为事件：interaction.respond { token, approved: true/false }
     Note over L2: 校验 Token 合法性与单次使用约束
@@ -610,7 +610,7 @@ sequenceDiagram
     UI->>Bridge: 2. 下行行为事件：agent.conversation.cancel { turnHandle }
     Bridge->>L3: 3. 触发进程监督梯队
     Note over L3: 进程监督阶梯：<br/>① 发送 Graceful Cancel 协议包<br/>② 等待宽限期 (Grace Period)<br/>③ 发送 SIGTERM<br/>④ 仍未退出则 SIGKILL 强制回收
-    
+
     L3->>L1: 4. 报告进程中断
     L1->>L1: 5. 仲裁器生成 Cancelled Terminal Transition (独立于 Failed)
     L1->>Domain: 6. 写入终态状态：Cancelled

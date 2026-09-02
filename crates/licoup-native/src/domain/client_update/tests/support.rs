@@ -23,7 +23,7 @@ pub(super) use std::{
 };
 
 pub(super) const OFFLINE_KEY_ID: &str = "offline-root-test";
-pub(super) const ONLINE_KEY_ID: &str = "online-channel-test";
+pub(super) const ONLINE_KEY_ID: &str = "online-signing-test";
 pub(super) const TARGET_ID: &str = "test-target";
 
 pub(super) struct UpdateFixture {
@@ -66,11 +66,10 @@ impl UpdateFixture {
     pub(super) fn unsigned_manifest(&self, releases: Value) -> Value {
         json!({
             "schemaVersion": CLIENT_UPDATE_MANIFEST_SCHEMA,
-            "channel": "stable",
-            "channelPolicy": {
+            "releaseTrack": "stable",
+            "releaseTrackPolicy": {
                 "offlineRootKeyId": OFFLINE_KEY_ID,
-                "onlineChannelKeyId": ONLINE_KEY_ID,
-                "allowDowngrade": false,
+                "onlineSigningKeyId": ONLINE_KEY_ID,
             },
             "releases": releases,
         })
@@ -83,6 +82,7 @@ impl UpdateFixture {
             "classification": "optional",
             "releaseNotesUrl": "https://updates.invalid/999.0.0",
             "migrationNotes": [],
+            "migrationFrontier": crate::domain::client_state_migration::frontier_projection().unwrap(),
             "artifacts": [self.artifact(TARGET_ID)],
         }])))
     }
@@ -114,11 +114,22 @@ impl UpdateFixture {
         json!({
             "manifestJson": manifest,
             "publicKeys": self.public_keys(),
-            "channel": "stable",
+            "targetReleaseTrack": "stable",
             "targetId": TARGET_ID,
             "sourcePath": self.source,
             "stagingRoot": self.staging,
+            "stateRoot": self.root.join("state"),
         })
+    }
+
+    pub(super) fn checked_params(&self, manifest: Value) -> Value {
+        let mut params = self.params(manifest);
+        super::super::check::check(&params).unwrap();
+        params
+            .as_object_mut()
+            .expect("test params must be an object")
+            .remove("targetReleaseTrack");
+        params
     }
 
     pub(super) fn signed_revocation(&self, body: Value) -> Value {
@@ -159,6 +170,7 @@ pub(super) fn release(version: &str, artifact: Value) -> Value {
         "classification": "optional",
         "releaseNotesUrl": format!("https://updates.invalid/{version}"),
         "migrationNotes": [],
+        "migrationFrontier": crate::domain::client_state_migration::frontier_projection().unwrap(),
         "artifacts": [artifact],
     })
 }
@@ -166,7 +178,7 @@ pub(super) fn release(version: &str, artifact: Value) -> Value {
 pub(super) fn revocation_body() -> Value {
     json!({
         "schemaVersion": CLIENT_UPDATE_REVOCATION_SCHEMA,
-        "channel": "stable",
+        "releaseTrack": "stable",
         "offlineRootKeyId": OFFLINE_KEY_ID,
         "revokedKeyIds": [],
         "revokedVersions": [],
@@ -179,6 +191,5 @@ pub(super) fn assert_redacted(value: &Value, root: &Path) {
     assert!(!serialized.contains(&root.to_string_lossy().to_string()));
     assert!(value.get("installedAppPath").is_none());
     assert!(value.get("stagedAppPath").is_none());
-    assert!(value.get("restoredFrom").is_none());
     assert!(value.get("sourcePath").is_none());
 }

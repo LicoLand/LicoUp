@@ -15,8 +15,8 @@ const dartPrefix = "apps/desktop/lib/src/contracts/generated/";
 const allowedNonBridgeOutputs = new Set([
   `${rustPrefix}mod.rs`,
   `${dartPrefix}README.md`,
-  `${dartPrefix}secure_mesh_capability_catalog.g.dart`,
   `${dartPrefix}conversation_protocol.g.dart`,
+  `${dartPrefix}secure_mesh_capability_catalog.g.dart`,
 ]);
 const maximumDiagnostics = 20;
 const maximumManifestBytes = 64 * 1024;
@@ -262,13 +262,21 @@ function readStateSchema(family) {
         typeof value !== "string" ||
         !/^[a-z][a-z0-9-]{0,63}$/u.test(value),
     ) ||
-    JSON.stringify(schema.operations) !== JSON.stringify(["get", "set"]) ||
+    JSON.stringify(schema.operations) !== JSON.stringify(["get", "set", "admit"]) ||
     !Array.isArray(schema.failureCodes) ||
     JSON.stringify(schema.failureCodes) !==
       JSON.stringify([
         "invalid_collection",
         "invalid_document",
         "state_operation_failed",
+        "migration_lock_unavailable",
+        "migration_ledger_invalid",
+        "state_newer_than_binary",
+        "migration_frontier_incomplete",
+        "migration_step_failed",
+        "migration_postcondition_failed",
+        "update_handoff_mismatch",
+        "unsupported_state_shape",
       ])
   ) {
     fail(`unsupported active bridge schema: ${family.schema}`);

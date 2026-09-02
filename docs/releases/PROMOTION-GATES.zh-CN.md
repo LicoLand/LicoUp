@@ -29,12 +29,18 @@ npm run client:promotion -- advance --head stable --base release
 
 ## Apple 委托发布
 
+Nightly 与 Stable 是同一 LicoUp 身份的发布轨道。Nightly 从 `nightly` 使用
+`tools/apple-release/macos-direct-arm64-nightly.json` 和固定的 `nightly` 预发布；
+Stable 从 `release` 使用现有配置和不可变的 `v{version}` 标签。两者清单都绑定轨道
+和准确的内嵌迁移前沿。Stable 必须不是预发布且版本严格更新；相同版本不会提供给
+Nightly。参见[客户端更新与状态迁移](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)。
+
 晋升就绪不等于公开发布。仓库流程终止于已验证的 `origin/release` 源码切分。
 macOS Developer ID 的发布后流程通过
 `tools/apple-release/macos-direct-arm64.json` 委托给本机 Apple Release 引擎。
 
-委托发布运行从已授权的精确 `origin/release` revision 切出一个
-`release-candidate/v{version}` 分支，等待其 Required Checks 通过，并从该候选
+委托发布运行从已授权的精确 `origin/release` revision 切出固定的
+`macos-release-candidate` 分支，等待其 Required Checks 通过，并从该候选
 发布声明的公开 tag、Release 与五项制品契约。第五项资产是签名更新清单：由配置的
 update 命令在构建期生成，随其余资产一并上传，并通过同样的公网未鉴权下载核验。
 引擎永不改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks；其允许
@@ -48,15 +54,19 @@ npm run client:release:status -- --job <job-id>
 ```
 
 另有一条授权前置条件：配置前先把两把更新签名钥
-（`LICO_UPDATE_OFFLINE_ROOT_KEY` 与 `LICO_UPDATE_ONLINE_CHANNEL_KEY`，Ed25519
+（`LICO_UPDATE_OFFLINE_ROOT_KEY` 与 `LICO_UPDATE_ONLINE_SIGNING_KEY`，Ed25519
 PEM）导出到环境变量，以便登记进 Keychain；之后可取消导出。缺少任意一把密钥的
 运行会在预检阶段被拦截。
 
 只有得到明确授权后才使用以下命令发起公开发布：
 
 ```sh
+npm run client:release:macos:nightly:publish
 npm run client:release:macos:publish
 ```
+
+第一条命令从 `nightly` 更新固定的 Nightly 预发布；第二条命令从 `release` 发布不可变的
+Stable 版本。
 
 版本号与构建号取自冻结 `release` 修订上的版本文档。
 `npm run client:release:macos -- --version <version> --build <build>` 仍是交互变体，

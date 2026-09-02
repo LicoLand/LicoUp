@@ -1,5 +1,4 @@
-//! Focused provider-quota tests over relative fixture paths with clearly
-//! synthetic placeholder credentials.
+//! Focused provider-quota tests over synthetic inputs constructed in memory.
 
 use super::command::{self, QuotaSource};
 use super::contract::{
@@ -9,28 +8,150 @@ use super::contract::{
 use super::persistence::{client_state_store, load_retained};
 use super::scheduler::{self, RefreshGate};
 use super::{antigravity, codex, cursor, kimi_code, redaction};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::OffsetDateTime;
 
-const FIXTURE_NOW: &str = "2026-08-29T00:00:00Z";
-const CODEX_FIXTURE_TOKEN: &str = "fixture-codex-access-token-not-a-real-credential";
+const SYNTHETIC_NOW: &str = "2026-08-29T00:00:00Z";
 
-fn fixture_path(relative: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/domain/provider_quota/tests/fixtures")
-        .join(relative)
+fn synthetic_credential(provider: &str, role: &str) -> String {
+    [provider, role, "synthetic"].join("-")
 }
 
-fn fixture_json(relative: &str) -> Value {
-    let text = std::fs::read_to_string(fixture_path(relative)).unwrap();
-    serde_json::from_str(&text).unwrap()
+fn synthetic_jwt(claims: Value) -> String {
+    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
+    let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+    let signature = ["synthetic", "signature"].concat();
+    [header, payload, signature].join(".")
+}
+
+fn codex_usage_payload() -> Value {
+    json!({
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 42.5,
+                "limit_window_seconds": 18_000,
+                "reset_at": 2_000_000_000
+            },
+            "secondary_window": {
+                "used_percent": 110.0,
+                "limit_window_seconds": 604_800,
+                "reset_at": 2_000_003_600
+            }
+        }
+    })
+}
+
+fn cursor_usage_payload() -> Value {
+    json!({
+        "individualUsage": {
+            "plan": {
+                "totalPercentUsed": 42.5,
+                "autoPercentUsed": 50.0,
+                "apiPercentUsed": 10.0
+            }
+        },
+        "billingCycleStart": "2033-05-01T00:00:00Z",
+        "billingCycleEnd": "2033-06-01T00:00:00Z",
+        "membershipType": "pro"
+    })
+}
+
+fn kimi_usage_payload() -> Value {
+    json!({
+        "usage": {
+            "limit": 100,
+            "used": 31,
+            "resetTime": "2033-06-01T00:00:00Z"
+        },
+        "limits": [{
+            "window": {"duration": 5, "timeUnit": "TIME_UNIT_HOUR"},
+            "detail": {
+                "limit": 100,
+                "used": 10,
+                "resetTime": "2033-05-01T05:00:00Z"
+            }
+        }],
+        "user": {"membership": {"level": "LEVEL_ADVANCED"}}
+    })
+}
+
+fn kimi_string_counter_payload() -> Value {
+    json!({
+        "usage": {
+            "limit": "200",
+            "used": "50",
+            "resetTime": "2033-06-01T00:00:00Z"
+        },
+        "user": {"membership": {"level": "LEVEL_FREE"}}
+    })
+}
+
+fn active_cursor_token() -> String {
+    synthetic_jwt(json!({
+        "sub": "auth0|fixture-cursor-user",
+        "email": "fixture@example.invalid",
+        "exp": 2_000_000_000_i64
+    }))
+}
+
+struct SyntheticKimiCredentials {
+    document: String,
+    access_token: String,
+    refresh_token: String,
+}
+
+fn synthetic_kimi_credentials(expiry: i64) -> SyntheticKimiCredentials {
+    let access_token = synthetic_jwt(json!({
+        "sub": "fixture-kimi-user",
+        "exp": expiry
+    }));
+    let refresh_token = synthetic_credential("kimi", "refresh");
+    let document = json!({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": expiry
+    })
+    .to_string();
+    SyntheticKimiCredentials {
+        document,
+        access_token,
+        refresh_token,
+    }
+}
+
+fn write_codex_auth(root: &Path) -> (PathBuf, String) {
+    std::fs::create_dir_all(root).unwrap();
+    let auth_path = root.join("auth.json");
+    let access_token = synthetic_credential("codex", "access");
+    let id_token = synthetic_jwt(json!({
+        "email": "fixture@example.invalid",
+        "chatgpt_plan_type": "plus"
+    }));
+    std::fs::write(
+        &auth_path,
+        json!({
+            "tokens": {
+                "access_token": access_token,
+                "id_token": id_token
+            }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    (auth_path, access_token)
 }
 
 fn fixed_now() -> OffsetDateTime {
-    OffsetDateTime::parse(FIXTURE_NOW, &time::format_description::well_known::Rfc3339).unwrap()
+    OffsetDateTime::parse(
+        SYNTHETIC_NOW,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .unwrap()
 }
 
 fn temp_root(label: &str) -> PathBuf {
@@ -60,13 +181,17 @@ fn write_cursor_state_db(root: &Path, token: &str) -> PathBuf {
     db_path
 }
 
-fn codex_source_with_payload(payload: Value) -> codex::CodexSource {
+fn codex_source_with_payload(
+    auth_path: PathBuf,
+    expected_token: String,
+    payload: Value,
+) -> codex::CodexSource {
     codex::CodexSource::for_testing(
-        Some(fixture_path("codex/auth.json")),
+        Some(auth_path),
         None,
         Box::new(move |url, bearer| {
             assert_eq!(url, "https://chatgpt.com/backend-api/wham/usage");
-            assert_eq!(bearer, CODEX_FIXTURE_TOKEN);
+            assert_eq!(bearer, expected_token);
             Ok(payload.clone())
         }),
         Box::new(|_| panic!("app-server fallback must not run for the hosted lane")),
@@ -74,14 +199,16 @@ fn codex_source_with_payload(payload: Value) -> codex::CodexSource {
 }
 
 #[test]
-fn provider_quota_codex_source_normalizes_hosted_fixture() {
-    let source = codex_source_with_payload(fixture_json("codex/wham-usage.json"));
+fn provider_quota_codex_source_normalizes_synthetic_hosted_payload() {
+    let root = temp_root("codex-source");
+    let (auth_path, access_token) = write_codex_auth(&root);
+    let source = codex_source_with_payload(auth_path, access_token.clone(), codex_usage_payload());
     let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
 
     assert_eq!(snapshot.agent_id, "codex");
     assert_eq!(snapshot.provider, QuotaProvider::Codex);
     assert_eq!(snapshot.status, QuotaStatus::Live);
-    assert_eq!(snapshot.captured_at, FIXTURE_NOW);
+    assert_eq!(snapshot.captured_at, SYNTHETIC_NOW);
     assert_eq!(snapshot.windows.len(), 2);
     let session = &snapshot.windows[0];
     assert_eq!(session.label, "session");
@@ -102,7 +229,8 @@ fn provider_quota_codex_source_normalizes_hosted_fixture() {
     assert_eq!(snapshot.identity.plan.as_deref(), Some("plus"));
 
     let wire = snapshot.wire_value().to_string();
-    assert!(!wire.contains(CODEX_FIXTURE_TOKEN));
+    assert!(!wire.contains(&access_token));
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -115,7 +243,7 @@ fn provider_quota_codex_source_falls_back_to_app_server_lane() {
     });
     let source = codex::CodexSource::for_testing(
         // No auth artifact: the hosted lane cannot run without a token.
-        Some(fixture_path("codex/absent-auth.json")),
+        Some(temp_root("codex-fallback").join("absent-auth.json")),
         Some(PathBuf::from("fixture-codex-executable")),
         Box::new(|_, _| Err(QuotaFetchError::new("quota_endpoint_request_failed"))),
         Box::new(move |executable| {
@@ -135,7 +263,25 @@ fn provider_quota_codex_source_falls_back_to_app_server_lane() {
 
 #[test]
 fn provider_quota_codex_app_server_response_skips_notifications() {
-    let bytes = std::fs::read(fixture_path("codex/app-server-rate-limits.jsonl")).unwrap();
+    let messages = [
+        json!({"jsonrpc": "2.0", "method": "account/updated", "params": {}}),
+        json!({"jsonrpc": "2.0", "id": 1, "result": {"ready": true}}),
+        json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 17.0}
+                }
+            }
+        }),
+    ];
+    let bytes = messages
+        .iter()
+        .map(|message| serde_json::to_string(message).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .into_bytes();
     let result = codex::parse_rate_limits_response(&bytes).unwrap();
     assert_eq!(
         result["rateLimits"]["primary"]["usedPercent"].as_f64(),
@@ -145,11 +291,11 @@ fn provider_quota_codex_app_server_response_skips_notifications() {
 }
 
 #[test]
-fn provider_quota_cursor_source_normalizes_fixture() {
+fn provider_quota_cursor_source_normalizes_synthetic_payload() {
     let root = temp_root("cursor-source");
-    let token = std::fs::read_to_string(fixture_path("cursor/access-token.jwt")).unwrap();
-    let db_path = write_cursor_state_db(&root, token.trim());
-    let expected_token = token.trim().to_owned();
+    let token = active_cursor_token();
+    let db_path = write_cursor_state_db(&root, &token);
+    let expected_token = token.clone();
     let source = cursor::CursorSource::for_testing(
         Some(db_path),
         Box::new(move |url, cookie| {
@@ -160,9 +306,7 @@ fn provider_quota_cursor_source_normalizes_fixture() {
                 format!("WorkosCursorSessionToken=fixture-cursor-user%3A%3A{expected_token}")
             );
             match url {
-                "https://cursor.com/api/usage-summary" => {
-                    Ok(fixture_json("cursor/usage-summary.json"))
-                }
+                "https://cursor.com/api/usage-summary" => Ok(cursor_usage_payload()),
                 "https://cursor.com/api/auth/me" => Ok(json!({"email": "fixture@example.invalid"})),
                 _ => panic!("unexpected cursor endpoint: {url}"),
             }
@@ -173,7 +317,7 @@ fn provider_quota_cursor_source_normalizes_fixture() {
     assert_eq!(snapshot.agent_id, "cursor");
     assert_eq!(snapshot.provider, QuotaProvider::Cursor);
     assert_eq!(snapshot.status, QuotaStatus::Live);
-    assert_eq!(snapshot.captured_at, FIXTURE_NOW);
+    assert_eq!(snapshot.captured_at, SYNTHETIC_NOW);
     assert_eq!(snapshot.windows.len(), 3);
     let plan = &snapshot.windows[0];
     assert_eq!(plan.label, "plan");
@@ -191,7 +335,7 @@ fn provider_quota_cursor_source_normalizes_fixture() {
     );
 
     let wire = snapshot.wire_value().to_string();
-    assert!(!wire.contains(token.trim()));
+    assert!(!wire.contains(&token));
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -199,12 +343,11 @@ fn provider_quota_cursor_source_normalizes_fixture() {
 fn provider_quota_cursor_source_rejects_token_without_user_id() {
     let root = temp_root("cursor-no-user-id");
     // Well-formed JWT whose payload carries an expiry but no `sub` claim.
-    let token = concat!(
-        "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.",
-        "eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS5pbnZhbGlkIiwiZXhwIjoyMDAwMDAwMDAwfQ.",
-        "fixture-signature"
-    );
-    let db_path = write_cursor_state_db(&root, token);
+    let token = synthetic_jwt(json!({
+        "email": "fixture@example.invalid",
+        "exp": 2_000_000_000_i64
+    }));
+    let db_path = write_cursor_state_db(&root, &token);
     let fetch_called = std::sync::Arc::new(AtomicBool::new(false));
     let fetch_flag = std::sync::Arc::clone(&fetch_called);
     let source = cursor::CursorSource::for_testing(
@@ -223,15 +366,15 @@ fn provider_quota_cursor_source_rejects_token_without_user_id() {
 #[test]
 fn provider_quota_cursor_source_identity_fetch_is_best_effort() {
     let root = temp_root("cursor-identity-best-effort");
-    let token = std::fs::read_to_string(fixture_path("cursor/access-token.jwt")).unwrap();
-    let db_path = write_cursor_state_db(&root, token.trim());
+    let token = active_cursor_token();
+    let db_path = write_cursor_state_db(&root, &token);
     let source = cursor::CursorSource::for_testing(
         Some(db_path),
         Box::new(move |url, _| {
             if url == "https://cursor.com/api/auth/me" {
                 return Err(QuotaFetchError::new("identity endpoint down"));
             }
-            Ok(fixture_json("cursor/usage-summary.json"))
+            Ok(cursor_usage_payload())
         }),
     );
     let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
@@ -246,20 +389,16 @@ fn provider_quota_cursor_source_identity_fetch_is_best_effort() {
 }
 
 #[test]
-fn provider_quota_kimi_code_source_normalizes_fixture() {
+fn provider_quota_kimi_code_source_normalizes_synthetic_payload() {
     let root = temp_root("kimi-code-source");
-    let credentials = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credentials = synthetic_kimi_credentials(2_000_000_000);
     let credentials_dir = root.join("credentials");
     std::fs::create_dir_all(&credentials_dir).unwrap();
     let credentials_path = credentials_dir.join("kimi-code.json");
-    std::fs::write(&credentials_path, &credentials).unwrap();
+    std::fs::write(&credentials_path, &credentials.document).unwrap();
     let device_id_path = root.join("device_id");
     std::fs::write(&device_id_path, "fixture-device-id").unwrap();
-    let credential_document: Value = serde_json::from_str(&credentials).unwrap();
-    let expected_token = credential_document["access_token"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let expected_token = credentials.access_token.clone();
     let source = kimi_code::KimiCodeSource::for_testing(
         Some(credentials_path),
         Some(device_id_path),
@@ -281,7 +420,7 @@ fn provider_quota_kimi_code_source_normalizes_fixture() {
                 "X-Msh-Device-Id".to_string(),
                 "fixture-device-id".to_string()
             )));
-            Ok(fixture_json("kimi-code/usages.json"))
+            Ok(kimi_usage_payload())
         }),
     );
     let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
@@ -307,14 +446,8 @@ fn provider_quota_kimi_code_source_normalizes_fixture() {
     );
 
     let wire = snapshot.wire_value().to_string();
-    let credential_text =
-        std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
-    let access_token = serde_json::from_str::<Value>(&credential_text).unwrap()["access_token"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    assert!(!wire.contains(&access_token));
-    assert!(!wire.contains("fixture-refresh-token-not-a-real-credential"));
+    assert!(!wire.contains(&credentials.access_token));
+    assert!(!wire.contains(&credentials.refresh_token));
     assert!(!wire.contains("fixture-device-id"));
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -322,15 +455,15 @@ fn provider_quota_kimi_code_source_normalizes_fixture() {
 #[test]
 fn provider_quota_kimi_code_source_accepts_string_counters() {
     let root = temp_root("kimi-code-string-counters");
-    let credentials = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credentials = synthetic_kimi_credentials(2_000_000_000);
     let credentials_dir = root.join("credentials");
     std::fs::create_dir_all(&credentials_dir).unwrap();
     let credentials_path = credentials_dir.join("kimi-code.json");
-    std::fs::write(&credentials_path, &credentials).unwrap();
+    std::fs::write(&credentials_path, credentials.document).unwrap();
     let source = kimi_code::KimiCodeSource::for_testing(
         Some(credentials_path),
         Some(root.join("device_id")),
-        Box::new(move |_, _| Ok(fixture_json("kimi-code/usages-string-counters.json"))),
+        Box::new(move |_, _| Ok(kimi_string_counter_payload())),
     );
     let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
     assert_eq!(snapshot.status, QuotaStatus::Live);
@@ -346,15 +479,8 @@ fn provider_quota_kimi_code_source_rejects_expired_token_without_fetching() {
     let credentials_dir = root.join("credentials");
     std::fs::create_dir_all(&credentials_dir).unwrap();
     let credentials_path = credentials_dir.join("kimi-code.json");
-    std::fs::write(
-        &credentials_path,
-        concat!(
-            "{\"access_token\": \"eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.",
-            "eyJzdWIiOiJmaXh0dXJlLWtpbWktdXNlciIsImV4cCI6OTQ2Njg0ODAwfQ.",
-            "fixture-signature\", \"expires_at\": 946684800}"
-        ),
-    )
-    .unwrap();
+    let credentials = synthetic_kimi_credentials(946_684_800);
+    std::fs::write(&credentials_path, credentials.document).unwrap();
     let fetch_called = std::sync::Arc::new(AtomicBool::new(false));
     let fetch_flag = std::sync::Arc::clone(&fetch_called);
     let source = kimi_code::KimiCodeSource::for_testing(
@@ -382,11 +508,11 @@ fn provider_quota_kimi_code_source_missing_credentials_and_windows() {
     let error = missing.fetch_snapshot(fixed_now()).unwrap_err();
     assert_eq!(error.code, "kimi_code_credentials_unreadable");
 
-    let credentials = std::fs::read_to_string(fixture_path("kimi-code/credentials.json")).unwrap();
+    let credentials = synthetic_kimi_credentials(2_000_000_000);
     let credentials_dir = root.join("credentials");
     std::fs::create_dir_all(&credentials_dir).unwrap();
     let credentials_path = credentials_dir.join("kimi-code.json");
-    std::fs::write(&credentials_path, &credentials).unwrap();
+    std::fs::write(&credentials_path, credentials.document).unwrap();
     let empty = kimi_code::KimiCodeSource::for_testing(
         Some(credentials_path),
         None,
@@ -400,8 +526,12 @@ fn provider_quota_kimi_code_source_missing_credentials_and_windows() {
 #[test]
 fn provider_quota_cursor_source_rejects_expired_token_without_fetching() {
     let root = temp_root("cursor-expired");
-    let token = std::fs::read_to_string(fixture_path("cursor/expired-access-token.jwt")).unwrap();
-    let db_path = write_cursor_state_db(&root, token.trim());
+    let token = synthetic_jwt(json!({
+        "sub": "auth0|fixture-cursor-user",
+        "email": "fixture@example.invalid",
+        "exp": 946_684_800_i64
+    }));
+    let db_path = write_cursor_state_db(&root, &token);
     let fetch_called = std::sync::Arc::new(AtomicBool::new(false));
     let fetch_flag = std::sync::Arc::clone(&fetch_called);
     let source = cursor::CursorSource::for_testing(
@@ -509,7 +639,7 @@ impl QuotaSource for FixtureSource {
     }
 }
 
-fn fixture_snapshot(provider: QuotaProvider, resets_at: Option<&str>) -> ProviderQuotaSnapshot {
+fn synthetic_snapshot(provider: QuotaProvider, resets_at: Option<&str>) -> ProviderQuotaSnapshot {
     ProviderQuotaSnapshot {
         agent_id: provider.agent_id().to_owned(),
         provider,
@@ -522,7 +652,7 @@ fn fixture_snapshot(provider: QuotaProvider, resets_at: Option<&str>) -> Provide
             reset_description: "5-hour window".to_owned(),
         }],
         identity: Default::default(),
-        captured_at: FIXTURE_NOW.to_owned(),
+        captured_at: SYNTHETIC_NOW.to_owned(),
         stale_after_seconds: 3600,
     }
 }
@@ -559,17 +689,17 @@ fn provider_quota_projection_emits_fixed_wire_shape() {
     let sources = registry(vec![
         (
             QuotaProvider::Codex,
-            fixture_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
+            synthetic_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
         ),
         (
             QuotaProvider::Cursor,
-            fixture_snapshot(QuotaProvider::Cursor, None),
+            synthetic_snapshot(QuotaProvider::Cursor, None),
         ),
     ]);
     let result = command::snapshot_with_sources(
         &json!({
             "stateRoot": root.to_string_lossy(),
-            "now": FIXTURE_NOW,
+            "now": SYNTHETIC_NOW,
             "forceRefresh": true
         }),
         &sources,
@@ -579,7 +709,7 @@ fn provider_quota_projection_emits_fixed_wire_shape() {
 
     assert_eq!(result["ok"], true);
     assert_eq!(result["schemaVersion"], "v0.0.1:provider-quota-snapshots-1");
-    assert_eq!(result["generatedAt"], FIXTURE_NOW);
+    assert_eq!(result["generatedAt"], SYNTHETIC_NOW);
     let snapshots = result["snapshots"].as_array().unwrap();
     assert_eq!(snapshots.len(), 2);
     for snapshot in snapshots {
@@ -620,12 +750,12 @@ fn provider_quota_agents_without_a_source_are_absent_from_snapshots() {
     let root = temp_root("absent-source");
     let sources = registry(vec![(
         QuotaProvider::Codex,
-        fixture_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
+        synthetic_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
     )]);
     let result = command::snapshot_with_sources(
         &json!({
             "stateRoot": root.to_string_lossy(),
-            "now": FIXTURE_NOW,
+            "now": SYNTHETIC_NOW,
             "agent": "opencode",
             "forceRefresh": true
         }),
@@ -649,7 +779,7 @@ fn provider_quota_refresh_failure_retains_stale_snapshot_with_backoff() {
     let root = temp_root("stale-retention");
     let live_sources = registry(vec![(
         QuotaProvider::Codex,
-        fixture_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
+        synthetic_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
     )]);
     command::snapshot_with_sources(
         &json!({
@@ -708,12 +838,12 @@ fn provider_quota_refresh_backfills_missing_reset_from_cache() {
     let root = temp_root("reset-backfill");
     let with_reset = registry(vec![(
         QuotaProvider::Cursor,
-        fixture_snapshot(QuotaProvider::Cursor, Some("2033-06-01T00:00:00Z")),
+        synthetic_snapshot(QuotaProvider::Cursor, Some("2033-06-01T00:00:00Z")),
     )]);
     command::snapshot_with_sources(
         &json!({
             "stateRoot": root.to_string_lossy(),
-            "now": FIXTURE_NOW,
+            "now": SYNTHETIC_NOW,
             "forceRefresh": true
         }),
         &with_reset,
@@ -724,12 +854,12 @@ fn provider_quota_refresh_backfills_missing_reset_from_cache() {
     // The next fetch omits the reset timestamp; the cached value backfills.
     let without_reset = registry(vec![(
         QuotaProvider::Cursor,
-        fixture_snapshot(QuotaProvider::Cursor, None),
+        synthetic_snapshot(QuotaProvider::Cursor, None),
     )]);
     let result = command::snapshot_with_sources(
         &json!({
             "stateRoot": root.to_string_lossy(),
-            "now": FIXTURE_NOW,
+            "now": SYNTHETIC_NOW,
             "forceRefresh": true
         }),
         &without_reset,
@@ -748,12 +878,12 @@ fn provider_quota_coalescing_guard_serves_retained_while_refresh_runs() {
     let root = temp_root("coalescing");
     let live_sources = registry(vec![(
         QuotaProvider::Antigravity,
-        fixture_snapshot(QuotaProvider::Antigravity, Some("2033-05-19T03:33:20Z")),
+        synthetic_snapshot(QuotaProvider::Antigravity, Some("2033-05-19T03:33:20Z")),
     )]);
     command::snapshot_with_sources(
         &json!({
             "stateRoot": root.to_string_lossy(),
-            "now": FIXTURE_NOW,
+            "now": SYNTHETIC_NOW,
             "forceRefresh": true
         }),
         &live_sources,
@@ -774,7 +904,7 @@ fn provider_quota_coalescing_guard_serves_retained_while_refresh_runs() {
     let result = command::snapshot_with_sources(
         &json!({
             "stateRoot": root.to_string_lossy(),
-            "now": FIXTURE_NOW,
+            "now": SYNTHETIC_NOW,
             "forceRefresh": true
         }),
         &must_not_fetch,
@@ -819,7 +949,7 @@ fn provider_quota_backoff_skips_refetch_until_due_without_a_snapshot() {
     // First tick fetches, fails, and records the consecutive-failure backoff;
     // the projection carries an explicit unavailable entry, never fake quota.
     let first = command::snapshot_with_sources(
-        &json!({"stateRoot": root.to_string_lossy(), "now": FIXTURE_NOW}),
+        &json!({"stateRoot": root.to_string_lossy(), "now": SYNTHETIC_NOW}),
         &failing,
         &gate,
     )
@@ -884,11 +1014,11 @@ fn provider_quota_emitted_artifacts_carry_no_credential_material() {
     let root = temp_root("privacy-boundary");
     let sources = registry(vec![(
         QuotaProvider::Codex,
-        fixture_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
+        synthetic_snapshot(QuotaProvider::Codex, Some("2033-05-18T03:33:20Z")),
     )]);
     let params = json!({
         "stateRoot": root.to_string_lossy(),
-        "now": FIXTURE_NOW,
+        "now": SYNTHETIC_NOW,
         "forceRefresh": true
     });
     let result = command::snapshot_with_sources(&params, &sources, &RefreshGate::new()).unwrap();
@@ -899,7 +1029,7 @@ fn provider_quota_emitted_artifacts_carry_no_credential_material() {
     let retained = store.read_collection(SNAPSHOT_COLLECTION).unwrap();
     let serialized = serde_json::to_string(&retained).unwrap();
     for needle in [
-        CODEX_FIXTURE_TOKEN,
+        "codex-access-synthetic",
         "access_token",
         "refresh_token",
         "Bearer",

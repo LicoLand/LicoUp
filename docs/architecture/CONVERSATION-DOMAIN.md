@@ -430,41 +430,41 @@ The Session Manager executes a **strict Finite State Machine (FSM)**. All underl
 ```mermaid
 stateDiagram-v2
     [*] --> Submitted: User Post (RPC Post)
-    
+
     state Submitted {
         note right of Submitted: [Controlled Call] SQLite: Write finalized Human Event
     }
-    
+
     Submitted --> Accepted: Dispatch Admission (Dispatch After-Post)
-    
+
     state Accepted {
         note right of Accepted: [Controlled Call] DynamicConfig: Resolve binaries & env
     }
-    
+
     Accepted --> Processing: Launch Process / Connect Stream
-    
+
     state Processing {
         note right of Processing: [Controlled Call] PTY / Network: Open pipes & attach listeners
     }
-    
+
     Processing --> Streaming: L1 Parser Emits Content
-    
+
     state Streaming {
         note right of Streaming: [Controlled Call] SQLite: Append EventPart & Stream Uplink
     }
-    
+
     Streaming --> WaitingForHuman: L1 Detects Tool Approval Request
-    
+
     state WaitingForHuman {
         note right of WaitingForHuman: [Controlled Call] L2 Interaction: Park Token & Prompt UI Modal
     }
-    
+
     WaitingForHuman --> Processing: User Approves
-    
+
     Streaming --> Completed: Explicit Finish / EOF Received
     Processing --> Failed: Process Crash / Unrecoverable Error
     Processing --> Cancelled: User Cancels
-    
+
     state Completed {
         note right of Completed: [Controlled Call] SQLite Finalize · Graceful Process Exit
     }
@@ -517,14 +517,14 @@ sequenceDiagram
 
     User->>UI: 1. Input message in Composer and click Send
     Note over UI: UI State Locked:<br/>• _sending = true<br/>• Input locked against duplicate clicks
-    
+
     UI->>Bridge: 2. Downlink action: conversation.message.post { conversationId, authorMembershipId, content }
     Bridge->>Domain: 3. Route to persist_posted_message
     Domain->>Domain: 4. [Backend Persistence] Commit finalized Human Event to SQLite
     Domain-->>Bridge: 5. Return confirmation { eventId }
     Bridge-->>UI: 6. Confirmation received
     Note over UI: Release Draft:<br/>• _draft = ''<br/>• Refresh local list
-    
+
     UI->>Bridge: 7. Downlink action: conversation.dispatch.after-post { conversationId, eventId }
     Bridge->>Dispatch: 8. Pass committed (conversationId, eventId)
     Dispatch->>Domain: 9. Read text from DB, parse @mention / bound Flywheel Graph
@@ -554,7 +554,7 @@ sequenceDiagram
     Domain->>Domain: 5. Advance cursor watermark & commit
     Domain-->>UI: 6. Stream incremental event uplink (Observer Stream)
     Note over UI: UI Updates:<br/>• Stream text into bubble<br/>• Render reasoning in blackboard
-    
+
     Driver->>L3: 7. Process exit / protocol EOF
     L3->>L1: 8. Deliver EOF / finish signal
     L1->>L1: 9. Settlement arbiter resolves Terminal outcome
@@ -582,7 +582,7 @@ sequenceDiagram
     L2->>Domain: 3. Set turn state to WaitingForHuman
     Domain-->>UI: 4. Uplink approval card event (sanitized parameter summary)
     Note over UI: Popup interactive approval card
-    
+
     User->>UI: 5. Click "Approve" or "Reject"
     UI->>L2: 6. Downlink action: interaction.respond { token, approved: true/false }
     Note over L2: Validate Token authenticity & single-use invariant
@@ -609,7 +609,7 @@ sequenceDiagram
     UI->>Bridge: 2. Downlink action: agent.conversation.cancel { turnHandle }
     Bridge->>L3: 3. Trigger process supervision ladder
     Note over L3: Supervision Ladder:<br/>① Graceful cancel frame<br/>② Wait grace period<br/>③ Send SIGTERM<br/>④ Force SIGKILL if still alive
-    
+
     L3->>L1: 4. Report process interrupt
     L1->>L1: 5. Arbiter produces Cancelled Terminal Transition
     L1->>Domain: 6. Commit final state: Cancelled

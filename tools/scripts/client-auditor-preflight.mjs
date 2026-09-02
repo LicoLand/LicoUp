@@ -45,25 +45,38 @@ export function validateGovernanceDeclarations(files) {
     release: ["Branch flow", "Commit identity", "Release ready", "Auditor"],
   }),
   "audit_required_checks_mismatch");
-  const config = JSON.parse(
-    files["tools/apple-release/macos-direct-arm64.json"] || "null",
-  );
-  const candidate = config?.candidate;
-  const updateManifestArtifact = Array.isArray(config?.artifacts)
-    ? config.artifacts.filter((entry) => entry?.role === "update-manifest")
-    : [];
-  requireValue(
-    config?.schema === "apple-release.config.v1" &&
-      config?.source?.branch === "release" &&
-      candidate?.branch === "macos-release-candidate" &&
-      Array.isArray(candidate?.requiredChecks) && candidate.requiredChecks.length > 0 &&
-      config?.github?.repository === "LicoLand/LicoUp" &&
-      config?.apple?.target === "macos-direct-arm64" &&
-      Array.isArray(config?.update?.command) && config.update.command.length > 0 &&
-      updateManifestArtifact.length === 1 &&
-      updateManifestArtifact[0]?.publicName === "LicoUp-update-manifest.json",
-    "audit_release_service_contract_invalid",
-  );
+  const profiles = [
+    ["tools/apple-release/macos-direct-arm64.json", "release",
+      "macos-release-candidate", "stable"],
+    ["tools/apple-release/macos-direct-arm64-nightly.json", "nightly",
+      "macos-nightly-release-candidate", "nightly"],
+  ];
+  for (const [file, sourceBranch, candidateBranch, releaseTrack] of profiles) {
+    const config = JSON.parse(files[file] || "null");
+    const candidate = config?.candidate;
+    const updateManifestArtifact = Array.isArray(config?.artifacts)
+      ? config.artifacts.filter((entry) => entry?.role === "update-manifest")
+      : [];
+    requireValue(
+      config?.schema === "apple-release.config.v1" &&
+        config?.source?.branch === sourceBranch &&
+        candidate?.branch === candidateBranch &&
+        candidate?.template === undefined &&
+        Array.isArray(candidate?.requiredChecks) && candidate.requiredChecks.length > 0 &&
+        config?.github?.repository === "LicoLand/LicoUp" &&
+        config?.apple?.target === "macos-direct-arm64" &&
+        JSON.stringify(config?.build?.command) === JSON.stringify([
+          "env", `LICO_CLIENT_RELEASE_TRACK=${releaseTrack}`,
+          "npm", "run", "client:build", "--", "--platform", "macos",
+        ]) &&
+        Array.isArray(config?.update?.command) &&
+        config.update.command.includes("--release-track") &&
+        config.update.command.includes(releaseTrack) &&
+        updateManifestArtifact.length === 1 &&
+        updateManifestArtifact[0]?.publicName === "LicoUp-update-manifest.json",
+      "audit_release_service_contract_invalid",
+    );
+  }
   return true;
 }
 
@@ -72,6 +85,7 @@ function main() {
   const paths = [
     ...expectedChecks.map(([file]) => file),
     "tools/apple-release/macos-direct-arm64.json",
+    "tools/apple-release/macos-direct-arm64-nightly.json",
   ];
   validateGovernanceDeclarations(Object.fromEntries(paths.map((file) => [
     file, readFileSync(path.join(repoRoot, file), "utf8"),

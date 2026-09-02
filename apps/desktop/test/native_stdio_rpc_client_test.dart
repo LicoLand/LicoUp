@@ -211,6 +211,50 @@ done
   );
 
   test(
+    'client state migration admission may outwait the ordinary RPC timeout',
+    () async {
+      if (Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-stdio-migration-admit-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final executable = File('${directory.path}/licoup');
+      await executable.writeAsString(r'''#!/bin/sh
+while IFS= read -r line; do
+  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"execute"'*'"state","admit"'*)
+      sleep 1
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"phase":"admitted"}}\n' "$request_id" "$workflow_id"
+      ;;
+    *'"method":"shutdown"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
+      exit 0
+      ;;
+  esac
+done
+''');
+      final chmod = await Process.run('chmod', ['+x', executable.path]);
+      expect(chmod.exitCode, 0);
+      final context = _LiveProcessContext(
+        executable,
+        requestTimeout: const Duration(milliseconds: 100),
+      );
+      final client = NativeStdioRpcClient(processContext: context);
+      addTearDown(client.dispose);
+
+      final result = await client
+          .execute(const ['state', 'admit', '/fixture/data'])
+          .timeout(const Duration(seconds: 3));
+
+      expect(result['ok'], isTrue);
+      expect(result['phase'], 'admitted');
+      expect(context.startCount, 1);
+    },
+  );
+
+  test(
     'conversation command EOF reconnects once without replaying the command',
     () async {
       if (Platform.isWindows) return;

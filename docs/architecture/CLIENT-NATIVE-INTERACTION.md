@@ -26,4 +26,3 @@ The implementation authorities for the Bridging Contract Layer are:
 - **Client Agent Services**: `apps/desktop/lib/src/backend/features/agents/services/`
 - **Native Frame Router**: `crates/licoup-native/src/bin/licoup/stdio_rpc/`
 - **Mobile FFI Bridges**: `crates/licoup-native/src/ffi/` (`android_ffi.rs`, `ios_ffi.rs`)
-

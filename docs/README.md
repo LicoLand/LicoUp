@@ -26,6 +26,8 @@ authority.
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
+- [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
+  [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
 - [Agent adapters and runtime architecture](architecture/AGENT-ADAPTERS-ARCHITECTURE.md) · [智能体适配器架构规范](architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)
 - [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.zh-CN.md)

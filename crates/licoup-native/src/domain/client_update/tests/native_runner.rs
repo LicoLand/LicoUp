@@ -18,7 +18,7 @@ fn client_update_native_runner_rejects_unsigned_macos_candidate_before_replaceme
     let artifact = app_bundle_artifact(&archive);
     let manifest =
         fixture.sign_manifest(fixture.unsigned_manifest(json!([release("999.0.0", artifact,)])));
-    let mut params = fixture.params(manifest);
+    let mut params = fixture.checked_params(manifest);
     params["sourcePath"] = json!(archive);
     download(&params).unwrap();
     let _ = verify_staged_selection(&params).unwrap();
@@ -126,9 +126,7 @@ fn client_update_native_runner_scripts_use_only_bundled_tools() {
     use super::super::native_runner::script::{ScriptAction, platform_script_for_test};
     for (platform, action) in [
         ("macos", ScriptAction::Apply),
-        ("macos", ScriptAction::Rollback),
         ("linux", ScriptAction::Apply),
-        ("linux", ScriptAction::Rollback),
     ] {
         let script = platform_script_for_test(platform, action);
         for banned in [
@@ -145,8 +143,7 @@ fn client_update_native_runner_scripts_use_only_bundled_tools() {
         assert!(script.contains("--"));
     }
     let windows_apply = platform_script_for_test("windows", ScriptAction::Apply);
-    let windows_rollback = platform_script_for_test("windows", ScriptAction::Rollback);
-    for script in [windows_apply, windows_rollback] {
+    for script in [windows_apply] {
         for banned in [
             "curl",
             "wget",
@@ -163,9 +160,11 @@ fn client_update_native_runner_scripts_use_only_bundled_tools() {
         for required in [
             "Get-Process",
             "Start-Sleep",
-            "Copy-Item",
             "Remove-Item",
             "Start-Process",
+            "-PassThru",
+            "$handoff.rejected",
+            "'claimed'",
         ] {
             assert!(
                 script.contains(required),
@@ -174,12 +173,17 @@ fn client_update_native_runner_scripts_use_only_bundled_tools() {
         }
     }
     assert!(windows_apply.contains("Test-Path"));
-    assert!(!windows_rollback.contains("Test-Path"));
     let macos_apply = platform_script_for_test("macos", ScriptAction::Apply);
     for required in [
         "/usr/bin/codesign --verify --deep --strict",
         "/usr/bin/xcrun stapler validate",
         "/usr/sbin/spctl --assess --type execute",
+        "restore_pre_claim",
+        "BACKUP=\"$6\"",
+        "HANDOFF=\"$7\"",
+        "REJECTED=\"$HANDOFF.rejected\"",
+        "/usr/bin/open -W",
+        "'\"state\":\"claimed\"'",
     ] {
         assert!(macos_apply.contains(required));
     }

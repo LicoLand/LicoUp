@@ -458,9 +458,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                           child: Focus(
                             onKeyEvent: _handleMentionKey,
                             child: TextField(
-                              key: const Key(
-                                'agent-conversation-composer-input',
-                              ),
+                              key: const Key('agent-conversation-composer-input'),
                               controller: _controller,
                               focusNode: _focusNode,
                               minLines: 1,
