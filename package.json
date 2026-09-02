@@ -33,7 +33,6 @@
     "client:contracts:generate": "node tools/scripts/generate-client-bridge-contracts.mjs",
     "client:contracts:check": "node tools/scripts/generate-client-bridge-contracts.mjs --check",
     "client:pricing:check": "node tools/scripts/model-pricing-facts.mjs check",
-    "client:pricing:release-check": "node tools/scripts/model-pricing-facts.mjs release-check",
     "client:pricing:self-test": "node tools/scripts/model-pricing-facts.mjs self-test",
     "repo:docs": "node tools/verify-documentation.mjs",
     "repo:local-info-hygiene": "node tools/scripts/repo-local-info-hygiene.mjs",

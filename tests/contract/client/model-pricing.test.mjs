@@ -9,7 +9,6 @@ import {
   loadCatalog,
   runSelfTest,
   validateCatalog,
-  validateReleaseFreshness,
 } from "../../../tools/scripts/model-pricing-facts.mjs";
 import {
   CLIENT_GATE_LANES,
@@ -147,22 +146,6 @@ test("catalog validation rejects malformed or incomplete facts", () => {
   rejects(() => validateCatalog(ambiguous), "pricing_default_tier_ambiguous");
 });
 
-test("release freshness is inclusive for seven days", () => {
-  const current = loadCatalog();
-  assert.equal(validateReleaseFreshness(current, "2026-08-22"), true);
-
-  const sevenDays = clone(current);
-  sevenDays.providers[0].routes[0].verified_on = "2026-08-15";
-  assert.equal(validateReleaseFreshness(validateCatalog(sevenDays), "2026-08-22"), true);
-
-  const stale = clone(current);
-  stale.providers[0].routes[0].verified_on = "2026-08-14";
-  rejects(
-    () => validateReleaseFreshness(validateCatalog(stale), "2026-08-22"),
-    "pricing_verification_stale",
-  );
-});
-
 test("Rust and release commands consume only the canonical catalog", () => {
   assert.match(rust, /pricing_catalog\.json/u);
   assert.match(rust, /valid_date\(&catalog\.last_updated\)/u);
@@ -172,7 +155,9 @@ test("Rust and release commands consume only the canonical catalog", () => {
   );
   assert.doesNotMatch(source, /writeFileSync|mkdirSync|rmSync/u);
   assert.equal(packageJson.scripts[["client", "pricing", "generate"].join(":")], undefined);
-  assert.ok(CLIENT_GATE_LANES["release-policy"].includes("client:pricing:release-check"));
+  assert.equal(packageJson.scripts["client:pricing:release-check"], undefined);
+  assert.ok(CLIENT_GATE_LANES["release-policy"].includes("client:pricing:check"));
+  assert.doesNotMatch(source, /pricing_verification_stale|release-check/u);
   const selection = classifyClientGatePaths([
     "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json",
     "tools/scripts/model-pricing-facts.mjs",
