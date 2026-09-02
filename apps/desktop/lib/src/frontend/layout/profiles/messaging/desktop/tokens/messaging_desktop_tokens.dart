@@ -82,6 +82,13 @@ abstract final class MessagingDesktopMetrics {
   /// Glyph size inside a [conversationAvatarExtent] identity circle.
   static const double conversationAvatarMarkExtent = 22;
 
+  /// Assistant control inside the composer field capsule: circular extent and
+  /// its mark size (smaller than the avatar family; it lives inside the
+  /// field's text row). The extent slightly exceeds the single-line text row
+  /// so the control keeps equal frame insets on top, bottom, and left.
+  static const double conversationComposerAssistantExtent = 32;
+  static const double conversationComposerAssistantMarkExtent = 16;
+
   /// Empty bands between the group roster and the floating header/composer.
   static const double groupRosterHeaderGap = 10;
   static const double groupRosterComposerGap = 10;
