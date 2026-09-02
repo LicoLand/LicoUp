@@ -134,7 +134,7 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
         .unwrap_or("15722")
         .parse::<u16>()?;
     let helper = local_token_helper()?;
-    let models = confirmed_agent_models(&mut command, target)?;
+    let models = confirmed_agent_models(command.take_option_json("stdin-json"), target)?;
     let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
         target, &root, port, &helper, &models,
     )?;
@@ -175,10 +175,9 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
 }
 
 fn confirmed_agent_models(
-    command: &mut AdmittedCommand,
+    supplied: Option<Value>,
     target: crate::domain::llm_gateway_agent_config::GatewayAgentTarget,
 ) -> Result<Vec<crate::domain::llm_gateway_agent_config::GatewayAgentModel>> {
-    let supplied = command.take_option_json("stdin-json");
     if !target.embeds_model_catalog() {
         ensure!(
             supplied.is_none(),

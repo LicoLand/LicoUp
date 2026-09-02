@@ -21,6 +21,9 @@
 - A Compatible untrusted station is transport only. The sender emits a Five-field Lico Arc envelope; peer identity, freshness, replay rejection, and authenticated final receipt remain endpoint decisions.
 - Local paths, logs, histories, usage records, credentials, and raw runtime data stay on the device. Only approved protected peer content and the protocol's minimal routing fields cross the station boundary.
 - Current platform key custody uses operating-system secure storage when available or explicit memory-only custody. Caller-supplied flags or ordinary state files are not proof of approval; protected effects require a platform-held authorization session.
+- For an approved peer transfer, the sender encrypts before network I/O; the relay never receives plaintext or endpoint keys.
+- Optional collaboration is absent from default startup and navigation. Its signing key is imported through a separate action and is never a trust root derived from package download; execution uses the fixed signed external runner on loopback.
+- The bridge may stage an exact preview, but it performs no exchange and cannot approve it. A native command requests fresh platform user presence for the canonical digest, then atomically claims the matching short-lived preview exactly once.
 - The client accepts no executable crypto patches from a relay or service, and there is no runtime crypto-patch loader.
 
 Agent conversations remain Rust-hosted. New and native continued sessions keep process-local, wakeable progress; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Observer loss is not cancellation or settlement. Subagent MCP addresses only canonical Conversation and Membership identities, while native continuation locations remain private.
