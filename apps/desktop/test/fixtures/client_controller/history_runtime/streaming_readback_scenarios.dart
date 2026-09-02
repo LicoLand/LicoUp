@@ -2,6 +2,20 @@ import '../support/client_controller_scenario_dependencies.dart';
 import '../support/client_controller_scenario_json.dart';
 import '../support/fake_agent_service.dart';
 
+const _respondingLifecyclePrefix = [
+  'submitted',
+  'accepted',
+  'processing',
+  'responding',
+];
+const _completedLifecyclePrefix = [
+  'submitted',
+  'accepted',
+  'processing',
+  'responding',
+  'completed',
+];
+
 void registerClientHistoryRuntimeStreamingReadbackScenarios() {
   test(
     'completed streamed reply remains visible until native history catches up',
@@ -34,9 +48,18 @@ void registerClientHistoryRuntimeStreamingReadbackScenarios() {
           [
             {
               'event': 'agent.message.completed',
-              'payload': {'text': 'Synthetic Claude reply'},
+              'payload': {
+                'text': 'Synthetic Claude reply',
+                'lifecyclePrefix': _respondingLifecyclePrefix,
+              },
             },
           ],
+        ]
+        ..runtimeMessageResultQueue = [
+          {
+            'lifecyclePrefix': _completedLifecyclePrefix,
+            'terminalTransition': {'kind': 'lifecycle', 'stage': 'completed'},
+          },
         ]
         ..recordRuntimeMessageInHistory = false;
       final controller = ClientController(agentService: service);

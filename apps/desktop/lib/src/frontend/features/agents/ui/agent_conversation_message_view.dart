@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
@@ -22,22 +23,34 @@ class AgentConversationMessageList extends StatefulWidget {
     required this.loading,
     required this.session,
     required this.target,
+    this.messagePageLoading = false,
+    this.messagePageError = '',
+    this.onLoadEarlier,
     this.turnActive = false,
     this.liveMessages = const [],
     this.messageStyle = AgentsMessageStyle.documentTranscript,
     this.processStyle = AgentsProcessStyle.processCard,
     this.participantTargets = const [],
     this.participantConversationIds = const {},
+    this.participantRuntimeProfiles = const {},
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
+    this.onCopyText,
   });
 
   final bool loading;
   final AgentConversationSession? session;
   final TargetCandidate target;
+  final bool messagePageLoading;
+  final String messagePageError;
+  final Future<void> Function()? onLoadEarlier;
   final bool turnActive;
   final List<AgentConversationMessage> liveMessages;
+
+  /// Clipboard write routed through the platform boundary (client clipboard
+  /// service); message rows expose an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
 
   /// How messages render: the shared document transcript or the messaging
   /// participant flow.
@@ -49,6 +62,7 @@ class AgentConversationMessageList extends StatefulWidget {
 
   /// Agent id → conversation id used on hover next to message timestamps.
   final Map<String, String> participantConversationIds;
+  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
 
   /// Extra top padding when a floating header overlays the transcript.
   final double topOverlayInset;
@@ -80,20 +94,12 @@ class AgentConversationMessageListState
   List<AgentSemanticArtifactRef> _artifacts = const [];
   int _footerCount = 0;
 
-  /// Flow entries (after author grouping) shown before the user scrolls.
-  static const int _initialEntryWindow = 50;
-
-  /// Flow entries added each time the user scrolls to the top of the loaded
-  /// history.
-  static const int _earlierEntryPage = 50;
-
   /// Distance from the top of the loaded history that starts loading the
   /// earlier page.
   static const double _earlierPageLeadIn = 120;
 
-  int _visibleItemCount = 0;
-  bool _loadingEarlier = false;
   int _timelineTotal = 0;
+  bool _pageRequestInFlight = false;
   String _activeProcessStorageKey = '';
   bool _hasMessages = false;
 
@@ -144,12 +150,16 @@ class AgentConversationMessageListState
       session?.id ?? '',
       session?.nativeSessionId ?? '',
     ].join('|');
+    if (_timelineSessionIdentity.isNotEmpty &&
+        _timelineSessionIdentity != sessionIdentity) {
+      _pageRequestInFlight = false;
+    }
     if (identical(_timelineSession, session) &&
         identical(_timelineLiveMessages, widget.liveMessages) &&
         _timelineSessionIdentity == sessionIdentity) {
       return false;
     }
-    if (_reuseTimelineForStreamedTail(session, sessionIdentity)) {
+    if (_reuseTimelineForStreamedText(session, sessionIdentity)) {
       return true;
     }
 
@@ -160,8 +170,6 @@ class AgentConversationMessageListState
     final timelineItems = buildConversationTimelineItems(
       messages,
       sessionIdentity,
-      historyTruncated: session?.historyTruncated ?? false,
-      messageTreeTruncated: session?.messageTreeTruncated ?? false,
     ).reversed.toList(growable: false);
     final artifacts = session?.artifacts ?? const <AgentSemanticArtifactRef>[];
     final hasDiagnostics = session?.hasDiagnostics ?? false;
@@ -188,8 +196,6 @@ class AgentConversationMessageListState
         .toRadixString(16);
     _timelineItems = timelineItems;
     _timelineTotal = timelineItems.length + footerCount;
-    _visibleItemCount = _timelineTotal.clamp(0, _initialEntryWindow);
-    _loadingEarlier = false;
     _timelineIndexByStorageKey = Map<String, int>.unmodifiable(
       indexByStorageKey,
     );
@@ -199,19 +205,21 @@ class AgentConversationMessageListState
     return true;
   }
 
-  /// Reuse the built timeline while a reply streams in.
+  /// Reuse the built timeline while replies stream in.
   ///
-  /// A streamed turn republishes the live list every few frames, and only the
-  /// text of its last message changes. Rebuilding the whole timeline each time
-  /// re-derives every item, every storage key, and the whole key index for a
-  /// conversation that can hold hundreds of messages, which is work proportional
-  /// to history length on every frame of every reply. Timeline identity is
-  /// derived from message id, timestamp, role, and card type — never from text —
-  /// so the tail item can be swapped in place and every key stays stable.
+  /// A streamed turn republishes the live list every few frames, and usually
+  /// only text changes: with multiple concurrent group turns the changed
+  /// message may sit anywhere in the live list, not just at the tail. A full
+  /// rebuild re-derives every item, every storage key, and the whole key index
+  /// for a conversation that can hold hundreds of messages, which is work
+  /// proportional to history length on every frame of every reply. Timeline
+  /// identity is derived from message id, timestamp, role, and card type —
+  /// never from text — so a changed message item can be swapped in place and
+  /// every key stays stable.
   ///
-  /// Returns false whenever anything but the last live message text differs, so
+  /// Returns false whenever anything but message text revisions differs, so
   /// the full rebuild stays the only path that can change structure.
-  bool _reuseTimelineForStreamedTail(
+  bool _reuseTimelineForStreamedText(
     AgentConversationSession? session,
     String sessionIdentity,
   ) {
@@ -221,39 +229,53 @@ class AgentConversationMessageListState
     }
     final previous = _timelineLiveMessages;
     final next = widget.liveMessages;
-    if (previous == null ||
-        previous.isEmpty ||
-        previous.length != next.length) {
+    if (previous == null || previous.length != next.length) {
       return false;
     }
-    for (var index = 0; index < previous.length - 1; index += 1) {
-      if (!identical(previous[index], next[index])) {
+    final changedIndices = <int>[];
+    for (var index = 0; index < next.length; index += 1) {
+      if (identical(previous[index], next[index])) continue;
+      if (!_isStreamedTextRevision(previous[index], next[index])) {
         return false;
       }
+      changedIndices.add(index);
     }
-    final previousTail = previous.last;
-    final nextTail = next.last;
-    if (identical(previousTail, nextTail)) {
-      return false;
-    }
-    if (!_isStreamedTextRevision(previousTail, nextTail)) {
-      return false;
-    }
-    // The tail item must already be the last timeline item; the list is stored
-    // reversed for the reverse-scrolling viewport, so that is index 0.
-    if (_timelineItems.isEmpty) {
-      return false;
-    }
-    final head = _timelineItems.first;
-    if (head is! ConversationMessageTimelineItem ||
-        !identical(head.message, previousTail)) {
-      return false;
+    if (changedIndices.isEmpty) {
+      // The wrapper list was replaced (for example by an immutable copy made
+      // while assembling pane state) but every message object is identical:
+      // adopt the new reference and skip the rebuild entirely.
+      _timelineLiveMessages = next;
+      return true;
     }
     final items = List<ConversationTimelineItem>.of(_timelineItems);
-    items[0] = ConversationMessageTimelineItem(head.storageKey, nextTail);
-    _timelineItems = List.unmodifiable(items);
+    for (final changed in changedIndices) {
+      final previousMessage = previous[changed];
+      final itemIndex = _timelineIndexOfMessage(items, previousMessage);
+      if (itemIndex < 0) return false;
+      final item = items[itemIndex];
+      if (item is! ConversationMessageTimelineItem) return false;
+      items[itemIndex] = ConversationMessageTimelineItem(
+        item.storageKey,
+        next[changed],
+      );
+    }
+    _timelineItems = List<ConversationTimelineItem>.unmodifiable(items);
     _timelineLiveMessages = next;
     return true;
+  }
+
+  int _timelineIndexOfMessage(
+    List<ConversationTimelineItem> items,
+    AgentConversationMessage message,
+  ) {
+    for (var index = 0; index < items.length; index += 1) {
+      final item = items[index];
+      if (item is ConversationMessageTimelineItem &&
+          identical(item.message, message)) {
+        return index;
+      }
+    }
+    return -1;
   }
 
   /// Whether two versions of one live message differ only in streamed content.
@@ -291,7 +313,7 @@ class AgentConversationMessageListState
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    if (widget.loading && !_hasMessages) {
+    if ((widget.loading || widget.messagePageLoading) && !_hasMessages) {
       return const Center(child: CircularProgressIndicator());
     }
     if (!_hasMessages) {
@@ -325,16 +347,23 @@ class AgentConversationMessageListState
               sessionKey: _timelineSessionKey,
               participantTargets: widget.participantTargets,
               participantConversationIds: widget.participantConversationIds,
+              participantRuntimeProfiles: widget.participantRuntimeProfiles,
               primaryConversationId: primaryConversationId,
               preferPeerAgents: false,
               topOverlayInset: widget.topOverlayInset,
               bottomOverlayInset: widget.bottomOverlayInset,
+              messagePageLoading: widget.messagePageLoading,
+              messagePageError: widget.messagePageError,
+              hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
+              onLoadEarlier: widget.onLoadEarlier,
+              onCopyText: widget.onCopyText,
             ),
           );
         }
-        final itemCount = _visibleItemCount;
-        final showLoadingIndicator =
-            _loadingEarlier && itemCount < _timelineTotal;
+        final showPageRow =
+            (widget.session?.messagePage.hasEarlier ?? false) ||
+            widget.messagePageLoading ||
+            widget.messagePageError.isNotEmpty;
         return SelectionArea(
           child: NotificationListener<ScrollNotification>(
             onNotification: _loadEarlierOnScroll,
@@ -358,18 +387,13 @@ class AgentConversationMessageListState
                 }
                 return null;
               },
-              itemCount: itemCount + (showLoadingIndicator ? 1 : 0),
+              itemCount: _timelineTotal + (showPageRow ? 1 : 0),
               itemBuilder: (context, index) {
-                if (showLoadingIndicator && index == itemCount) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    child: Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
+                if (showPageRow && index == _timelineTotal) {
+                  return _ConversationEarlierPageRow(
+                    loading: widget.messagePageLoading,
+                    errorCode: widget.messagePageError,
+                    onRetry: widget.onLoadEarlier,
                   );
                 }
                 return _buildConsoleRow(context, adapter, index);
@@ -382,29 +406,25 @@ class AgentConversationMessageListState
   }
 
   bool _loadEarlierOnScroll(ScrollNotification notification) {
-    if (notification.depth != 0 || _loadingEarlier) {
+    if (notification.depth != 0 ||
+        widget.messagePageLoading ||
+        _pageRequestInFlight) {
       return false;
     }
     final metrics = notification.metrics;
-    if (_visibleItemCount >= _timelineTotal) {
+    if (!(widget.session?.messagePage.hasEarlier ?? false)) {
       return false;
     }
     if (metrics.pixels < metrics.maxScrollExtent - _earlierPageLeadIn) {
       return false;
     }
-    setState(() => _loadingEarlier = true);
-    Future<void>.delayed(const Duration(milliseconds: 180), () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _visibleItemCount = (_visibleItemCount + _earlierEntryPage).clamp(
-          0,
-          _timelineTotal,
-        );
-        _loadingEarlier = false;
+    final request = widget.onLoadEarlier;
+    if (request != null) {
+      _pageRequestInFlight = true;
+      request().whenComplete(() {
+        if (mounted) _pageRequestInFlight = false;
       });
-    });
+    }
     return false;
   }
 
@@ -494,6 +514,46 @@ class AgentConversationMessageListState
             : 0,
       ),
       child: RepaintBoundary(child: content),
+    );
+  }
+}
+
+final class _ConversationEarlierPageRow extends StatelessWidget {
+  const _ConversationEarlierPageRow({
+    required this.loading,
+    required this.errorCode,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final String errorCode;
+  final Future<void> Function()? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (errorCode.isEmpty) return const SizedBox(height: 1);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: TextButton.icon(
+          key: const Key('conversation-message-page-retry'),
+          onPressed: onRetry == null ? null : () => onRetry!.call(),
+          icon: const Icon(Icons.refresh_rounded, size: 17),
+          label: Text('History page failed: $errorCode'),
+        ),
+      ),
     );
   }
 }

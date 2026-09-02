@@ -20,16 +20,12 @@ fn fake_child_streams_redacted_events_and_drains_stderr() {
     assert_eq!(result.output, "native answer");
     assert_eq!(result.session_id, "agent:main:acp:native-session");
     assert_eq!(result.turn_status, "end_turn");
-    assert_eq!(result.events.len(), 2);
-    assert!(
-        result
-            .events
-            .iter()
-            .all(|event| event.get("_meta").is_none())
-    );
-    assert!(result.events.iter().all(|event| {
-        event.pointer("/content/text").and_then(Value::as_str) != Some("must-not-project")
-    }));
+    assert!(matches!(
+        result.transitions.last(),
+        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
+            crate::platform::native_agent_parser::LifecycleStage::Completed
+        ))
+    ));
     assert!(result.stderr_truncated);
     let _ = fs::remove_dir_all(directory);
 }

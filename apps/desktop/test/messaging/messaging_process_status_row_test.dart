@@ -70,16 +70,28 @@ void main() {
       lessThanOrEqualTo(conversationProcessExpandedBodyMaxHeight(700)),
     );
     final headerTop = tester.getTopLeft(find.byKey(toggleKey)).dy;
-    final firstOperation = find.byKey(
-      const ValueKey('conversation-process-operation-bounded-0'),
+    const firstOperationKey = ValueKey(
+      'conversation-process-operation-bounded-0',
     );
-    final firstOperationTop = tester.getTopLeft(firstOperation).dy;
+    expect(find.byKey(firstOperationKey), findsOneWidget);
+    final operationScrollable = find.descendant(
+      of: scroll,
+      matching: find.byType(Scrollable),
+    );
+    final initialPixels = tester
+        .state<ScrollableState>(operationScrollable)
+        .position
+        .pixels;
 
     await tester.drag(scroll, const Offset(0, -280));
     await tester.pumpAndSettle();
 
     expect(tester.getTopLeft(find.byKey(toggleKey)).dy, headerTop);
-    expect(tester.getTopLeft(firstOperation).dy, lessThan(firstOperationTop));
+    expect(
+      tester.state<ScrollableState>(operationScrollable).position.pixels,
+      greaterThan(initialPixels),
+    );
+    expect(find.byKey(firstOperationKey), findsNothing);
 
     await tester.tap(find.byKey(toggleKey));
     await tester.pumpAndSettle();

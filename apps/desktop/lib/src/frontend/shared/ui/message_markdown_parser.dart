@@ -1,6 +1,32 @@
+import 'dart:collection';
+
 import 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
 
+/// Bounded content-addressed cache for block parses. Streaming reparses the
+/// newest reply on every publish; keeping recent parses keyed by content makes
+/// every other visible row a cache hit even after full projection rebuilds.
+/// Parsing is a pure function of the input string, so sharing the immutable
+/// result across widgets is safe.
+final LinkedHashMap<String, List<MessageMarkdownBlock>> _parseCache =
+    LinkedHashMap();
+const int _parseCacheLimit = 256;
+
 List<MessageMarkdownBlock> parseMessageMarkdownBlocks(String data) {
+  final cached = _parseCache.remove(data);
+  if (cached != null) {
+    // Refresh recency: LRU eviction drops the least recently used entry.
+    _parseCache[data] = cached;
+    return cached;
+  }
+  final parsed = _parseMessageMarkdownBlocks(data);
+  if (_parseCache.length >= _parseCacheLimit) {
+    _parseCache.remove(_parseCache.keys.first);
+  }
+  _parseCache[data] = parsed;
+  return parsed;
+}
+
+List<MessageMarkdownBlock> _parseMessageMarkdownBlocks(String data) {
   final lines = data
       .replaceAll('\r\n', '\n')
       .replaceAll('\r', '\n')

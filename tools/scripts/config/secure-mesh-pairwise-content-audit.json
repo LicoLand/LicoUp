@@ -31,18 +31,23 @@
     {
       "id": "pairwise-relay-header-uses-double-ratchet-header-encryption",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_relay_envelope/constants.rs",
-        "crates/licoup-native/src/core/secure_mesh_relay_envelope/private_header.rs",
-        "crates/licoup-native/src/core/secure_mesh_relay_envelope/tests/header.rs"
+        "crates/licoup-native/src/core/licoarc_relay/constants.rs",
+        "crates/licoup-native/src/core/licoarc_relay/aad.rs",
+        "crates/licoup-native/src/core/licoarc_relay/private_header_frame.rs",
+        "crates/licoup-native/src/core/licoarc_relay/private_header.rs",
+        "crates/licoup-native/src/core/licoarc_relay/tests/header.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs"
       ],
       "tokens": [
         "RELAY_HEADER_FRAME_MAGIC",
         "OUTER_AAD_MAGIC",
-        "SECURE_MESH_ENCRYPTED_HEADER_BUCKET_BYTES",
+        "LICOARC_ENCRYPTED_HEADER_BYTES",
         "seal_private_relay_header_with_nonce",
         "open_private_relay_header",
-        "fixed_private_header_round_trip_authenticates_outer_fields_and_hides_canaries",
-        "private_header_rejects_nonce_ciphertext_and_tag_tampering"
+        "private_header_round_trip_preserves_fixed_size_and_zeroizing_payload",
+        "private_header_authentication_binds_identifiers_expiry_and_carrier_lengths",
+        "secure_mesh_pairwise_encrypted_relay_header_hides_ratchet_structure_and_rejects_tamper"
       ],
       "forbiddenTokens": [
         "LCOSM-PAIRWISE-RELAY-v1"
@@ -332,7 +337,7 @@
       "tokens": [
         "fn open_mobile_relay_payload",
         "open_mobile_relay_payload_with_pairwise_operation",
-        "SecureMeshRelayEnvelope::from_json(&wire)?",
+        "LicoArcRelayEnvelope::from_json(&wire)?",
         ".open_payload_envelope(&pairwise_envelope, kind)?",
         "pairwise_operation.commit()?",
         "commit_session_with_authorized_session"

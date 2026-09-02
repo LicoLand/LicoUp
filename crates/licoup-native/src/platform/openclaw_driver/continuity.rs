@@ -57,12 +57,21 @@ impl SessionBinding {
         stage: &'static str,
     ) -> Result<(), ProtocolFailure> {
         let session_id = returned_session_id
-            .or_else(|| {
-                config
-                    .is_resume()
-                    .then(|| config.requested_session_id.clone())
-            })
-            .unwrap_or_default();
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                ProtocolFailure::new(
+                    "openclaw_acp_session_id_missing",
+                    "OpenClaw ACP did not return a native conversation identifier.",
+                    stage,
+                )
+            })?;
+        if config.is_resume() && session_id != config.requested_session_id {
+            return Err(ProtocolFailure::new(
+                "openclaw_acp_session_mismatch",
+                "OpenClaw ACP returned a different conversation than requested.",
+                stage,
+            ));
+        }
         if self
             .protocol_session_id
             .as_deref()
@@ -72,13 +81,6 @@ impl SessionBinding {
                 "openclaw_acp_session_mismatch",
                 "OpenClaw ACP associated updates with a different conversation.",
                 stage,
-            ));
-        }
-        if session_id.is_empty() {
-            return Err(ProtocolFailure::new(
-                "openclaw_acp_session_id_missing",
-                "OpenClaw ACP did not return a native conversation identifier.",
-                "session/open",
             ));
         }
         self.protocol_session_id = Some(session_id);

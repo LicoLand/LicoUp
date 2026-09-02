@@ -4,7 +4,6 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::antigravity::system_boilerplate_text;
-use super::semantic::looks_like_delegated_agent_prompt;
 
 pub(super) fn extract_user_authored_text(text: &str) -> String {
     let request_text = if let Some(index) = find_case_insensitive(text, "## My request for Codex:")
@@ -255,7 +254,6 @@ pub(in crate::domain::conversation::history) fn background_context_prompt_text(t
         || lower.starts_with("<instructions>")
         || lower.starts_with("you are codex, a coding agent")
         || lower.starts_with("you are chatgpt")
-        || looks_like_delegated_agent_prompt(text)
         || lower.starts_with("knowledge cutoff:")
         || lower.starts_with("current date:")
         || lower.starts_with("filesystem sandboxing defines")

@@ -1,256 +1,38 @@
-//! Canonical client-owned Conversation authority.
+//! Native host composition for the independent Canonical Conversation crate.
 //!
-//! A Conversation is the only durable owner for direct and group chat facts.
-//! Human and Agent principals are peers; access, runtime availability, and
-//! collaboration roles are intentionally represented by separate values.
+//! Durable records and SQLite state are owned by `licoup-conversation`; this
+//! module retains only host-specific migration, snapshot authorities, runtime
+//! closures, and the stable FFI-facing re-export.
 
 mod migration;
+mod profile_snapshot;
+pub(crate) mod projection_delta;
 mod service;
+#[allow(hidden_glob_reexports)]
 mod store;
 
+pub use licoup_conversation::*;
 pub use migration::{MigrationReport, migrate_legacy_state};
-pub use service::ConversationService;
-pub use store::{
-    ConversationRuntimeScope, ConversationStore, DEFAULT_EVENT_PAGE_SIZE, MAX_EVENT_PAGE_SIZE,
-    NewEventPart, StoreError, StoreResult,
+pub use profile_snapshot::{
+    CandidateFilters, PriceFacts, ProfileSnapshotAuthority, SharedSnapshotAuthority, TargetFacts,
+    production_snapshot_authority, project_profile_snapshot, project_profile_snapshots,
+    rank_candidates,
 };
+pub(crate) use service::route_receipt;
+pub use service::{ConversationService, dispatch_attachments_param};
 
-use serde::{Deserialize, Serialize};
+/// Product-owned private dispatch guidance remains composed by the native host
+/// and is never written into Conversation Event text.
+pub(crate) const ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE: &str =
+    include_str!("../../../resources/assistant-workflow-authoring/SKILL.md");
 
-pub const CONVERSATION_SCHEMA_VERSION: &str = "lico.conversation.v1";
-pub const DEFAULT_LOCAL_AGENT_GROUP_ID: &str = "lico-group-default";
-pub const DEFAULT_LOCAL_AGENT_GROUP_TITLE: &str = "Local";
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PrincipalKind {
-    Human,
-    Agent,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MembershipAccess {
-    Owner,
-    Member,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MembershipStatus {
-    Active,
-    Left,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Principal {
-    pub id: String,
-    pub kind: PrincipalKind,
-    pub display_name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<String>,
-    pub created_at_unix_ms: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Conversation {
-    pub id: String,
-    pub title: String,
-    pub archived: bool,
-    pub pinned: bool,
-    pub is_group: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strategy_revision: Option<String>,
-    pub revision: i64,
-    pub created_at_unix_ms: i64,
-    pub updated_at_unix_ms: i64,
-    pub memberships: Vec<Membership>,
-    pub event_count: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConversationSummary {
-    pub id: String,
-    pub title: String,
-    pub archived: bool,
-    pub pinned: bool,
-    pub is_group: bool,
-    pub revision: i64,
-    pub updated_at_unix_ms: i64,
-    pub membership_count: i64,
-    pub event_count: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Membership {
-    pub id: String,
-    pub conversation_id: String,
-    pub principal: Principal,
-    pub access: MembershipAccess,
-    pub status: MembershipStatus,
-    pub joined_at_unix_ms: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub left_at_unix_ms: Option<i64>,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum EventKind {
-    Message,
-    MembershipChanged,
-    Availability,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum EventPartKind {
-    Text,
-    Reasoning,
-    ToolCall,
-    ToolResult,
-    Artifact,
-    Diagnostic,
-    Metadata,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConversationEvent {
-    pub id: String,
-    pub conversation_id: String,
-    pub sequence: i64,
-    pub author_membership_id: Option<String>,
-    pub kind: EventKind,
-    pub causation_id: Option<String>,
-    pub correlation_id: Option<String>,
-    pub created_at_unix_ms: i64,
-    pub finalized: bool,
-    pub parts: Vec<EventPart>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EventPart {
-    pub id: String,
-    pub event_id: String,
-    pub ordinal: i64,
-    pub kind: EventPartKind,
-    pub content: String,
-    pub created_at_unix_ms: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EventPage {
-    pub events: Vec<ConversationEvent>,
-    pub next_cursor: Option<String>,
-    pub total_count: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SourceLink {
-    pub id: String,
-    pub conversation_id: String,
-    pub source_kind: String,
-    pub native_identity: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeBinding {
-    pub id: String,
-    pub conversation_id: String,
-    pub membership_id: String,
-    pub lane: String,
-    pub availability: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub safe_reason: Option<String>,
-}
-
-/// Private execution state for one membership-scoped Agent dispatch. Runtime
-/// locations stay inside the native Conversation database and are never part
-/// of the client-facing Conversation contract.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ConversationDispatch {
-    pub id: String,
-    pub conversation_id: String,
-    pub membership_id: String,
-    pub operation: String,
-    pub state: DispatchState,
-    pub session_mode: DispatchSessionMode,
-    pub runtime_conversation_path: Option<String>,
-    pub error_code: Option<String>,
-    pub created_at_unix_ms: i64,
-    pub updated_at_unix_ms: i64,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DispatchState {
-    Accepted,
-    Running,
-    Completed,
-    Failed,
-    CancelRequested,
-    Cancelled,
-}
-
-impl DispatchState {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Accepted => "accepted",
-            Self::Running => "running",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::CancelRequested => "cancel-requested",
-            Self::Cancelled => "cancelled",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DispatchSessionMode {
-    New,
-    Resume,
-}
-
-impl DispatchSessionMode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::New => "new",
-            Self::Resume => "resume",
-        }
-    }
-}
-
-/// One exact structured mention dispatch. It is deliberately independent of
-/// a strategy run: posting an ordinary message never starts Adaptive Flywheel.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DirectTurn {
-    pub id: String,
-    pub conversation_id: String,
-    pub source_event_id: String,
-    pub membership_id: String,
-    pub state: TurnState,
-    pub ordinal: i64,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TurnState {
-    Pending,
-    Claimed,
-    Running,
-    WaitingForHuman,
-    Succeeded,
-    Failed,
-    Interrupted,
-    Cancelled,
+#[cfg(test)]
+pub(crate) fn assistant_workflow_authoring_prompt() -> &'static str {
+    let source = ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE.trim();
+    source
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n"))
+        .map(|(_, prompt)| prompt.trim())
+        .filter(|prompt| !prompt.is_empty())
+        .unwrap_or(source)
 }

@@ -3,10 +3,11 @@
 use super::super::process_supervisor::BoundedStdinWriter;
 use super::io::write_message;
 use crate::core::acp;
-use std::collections::HashMap;
+use crate::platform::native_agent_parser::adapters::driver_registry::{
+    registry_get, registry_insert, registry_remove_if,
+};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 const MAX_ACTIVE_TURNS: usize = 128;
@@ -49,12 +50,12 @@ pub(in crate::platform) struct ActiveAcpControl {
     binding: Option<Binding>,
 }
 
-static ACTIVE_TURNS: OnceLock<Mutex<HashMap<(&'static str, String), RegistryEntry>>> =
-    OnceLock::new();
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
-fn active_turns() -> &'static Mutex<HashMap<(&'static str, String), RegistryEntry>> {
-    ACTIVE_TURNS.get_or_init(|| Mutex::new(HashMap::new()))
+const REGISTRY_NAMESPACE: &str = "acp-active-turn";
+
+fn registry_key(driver_id: &str, session_id: &str) -> String {
+    format!("{driver_id}\0{session_id}")
 }
 
 impl ActiveAcpControl {
@@ -94,18 +95,15 @@ impl ActiveAcpControl {
             return Ok(());
         };
         let generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
-        let key = (self.driver_id, external_session_id.to_owned());
-        let mut registry = active_turns().lock().map_err(|_| ())?;
-        if registry.len() >= MAX_ACTIVE_TURNS && !registry.contains_key(&key) {
-            return Err(());
-        }
-        registry.insert(
-            key,
+        registry_insert(
+            REGISTRY_NAMESPACE,
+            &registry_key(self.driver_id, external_session_id),
             RegistryEntry {
                 sender: self.sender.clone(),
                 generation,
             },
-        );
+            MAX_ACTIVE_TURNS,
+        )?;
         self.binding = Some(Binding {
             external_session_id: external_session_id.to_owned(),
             protocol_session_id: protocol_session_id.to_owned(),
@@ -152,15 +150,11 @@ impl ActiveAcpControl {
         let Some(binding) = self.binding.take() else {
             return;
         };
-        if let Ok(mut registry) = active_turns().lock() {
-            let key = (self.driver_id, binding.external_session_id);
-            if registry
-                .get(&key)
-                .is_some_and(|entry| entry.generation == binding.generation)
-            {
-                registry.remove(&key);
-            }
-        }
+        registry_remove_if::<RegistryEntry>(
+            REGISTRY_NAMESPACE,
+            &registry_key(self.driver_id, &binding.external_session_id),
+            |entry| entry.generation == binding.generation,
+        );
     }
 }
 
@@ -177,11 +171,9 @@ pub(in crate::platform) fn cancel_active_turn(
     if session_id.is_empty() || session_id.len() > 256 {
         return ControlDisposition::SessionUnavailable;
     }
-    let sender = active_turns()
-        .lock()
-        .ok()
-        .and_then(|registry| registry.get(&(driver_id, session_id.to_owned())).cloned())
-        .map(|entry| entry.sender);
+    let sender =
+        registry_get::<RegistryEntry>(REGISTRY_NAMESPACE, &registry_key(driver_id, session_id))
+            .map(|entry| entry.sender);
     let Some(sender) = sender else {
         return ControlDisposition::NoActiveTurn;
     };

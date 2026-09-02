@@ -73,30 +73,33 @@ void main() {
     expect(models, contains("export 'agent_conversation_session.dart';"));
   });
 
-  test('message batch owns bounded parsing independently from sessions', () {
-    final rawMessages = List<Map<String, dynamic>>.generate(
-      2001,
-      (index) => {
-        'id': 'message-$index',
-        'role': 'user',
-        'text': 'message $index',
-        'createdAt': '2026-07-15T00:00:00Z',
-      },
-      growable: false,
-    );
+  test(
+    'message batch preserves complete parsing independently from sessions',
+    () {
+      final rawMessages = List<Map<String, dynamic>>.generate(
+        2001,
+        (index) => {
+          'id': 'message-$index',
+          'role': 'user',
+          'text': 'message $index',
+          'createdAt': '2026-07-15T00:00:00Z',
+        },
+        growable: false,
+      );
 
-    final parsed = parseAgentConversationMessages(
-      rawMessages,
-      sessionId: 'session-1',
-      agentId: 'local-agent',
-    );
+      final parsed = parseAgentConversationMessages(
+        rawMessages,
+        sessionId: 'session-1',
+        agentId: 'local-agent',
+      );
 
-    expect(parsed.messages, hasLength(2000));
-    expect(parsed.messages.first.id, 'message-1');
-    expect(parsed.messages.last.id, 'message-2000');
-    expect(parsed.historyTruncated, isTrue);
-    expect(parsed.messageTreeTruncated, isFalse);
-  });
+      expect(parsed.messages, hasLength(2001));
+      expect(parsed.messages.first.id, 'message-0');
+      expect(parsed.messages.last.id, 'message-2000');
+      expect(parsed.historyTruncated, isFalse);
+      expect(parsed.messageTreeTruncated, isFalse);
+    },
+  );
 
   test('session composes message projection without owning its parser', () {
     final session = AgentConversationSession.fromJson({

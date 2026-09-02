@@ -143,6 +143,7 @@ pub(super) struct CodexRolloutGroup {
     matched_terms: BTreeSet<String>,
     message_count: usize,
     preview_count: usize,
+    opening_user_title: Option<String>,
 }
 
 pub(crate) fn parse_codex_rollout_sessions(
@@ -155,36 +156,20 @@ pub(crate) fn parse_codex_rollout_sessions(
     let mut current_session_id = rollout_session_id_from_filename(path);
     let mut saw_rollout_record = false;
 
-    if scan_config.archive_mode {
-        let file = fs::File::open(path).ok()?;
-        let reader = BufReader::new(file);
-        for (index, line) in reader.lines().enumerate() {
-            let Ok(line) = line else {
-                continue;
-            };
-            parse_codex_rollout_line(
-                path,
-                index,
-                &line,
-                &scan_config,
-                &mut current_session_id,
-                &mut saw_rollout_record,
-                &mut groups,
-            );
-        }
-    } else {
-        let raw = fs::read_to_string(path).ok()?;
-        for (index, line) in raw.lines().enumerate() {
-            parse_codex_rollout_line(
-                path,
-                index,
-                line,
-                &scan_config,
-                &mut current_session_id,
-                &mut saw_rollout_record,
-                &mut groups,
-            );
-        }
+    let file = fs::File::open(path).ok()?;
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        let Ok(line) = line else {
+            continue;
+        };
+        parse_codex_rollout_line(
+            path,
+            index,
+            &line,
+            &scan_config,
+            &mut current_session_id,
+            &mut saw_rollout_record,
+            &mut groups,
+        );
     }
 
     if !saw_rollout_record {
@@ -194,9 +179,46 @@ pub(crate) fn parse_codex_rollout_sessions(
     codex_rollout_groups_to_sessions(groups, path, metadata, source_kind, &scan_config)
 }
 
-/// Project parsed rollout groups into session DTOs. Shared by the whole-file
-/// parser and the bounded-tail browse reader so both paths keep identical
-/// identity, count, and truncation semantics.
+/// Catalog-only streaming fold. It scans every record for exact count and
+/// opening facts while retaining only the requested newest projection ring.
+pub(super) fn parse_codex_rollout_browse_sessions(
+    path: &Path,
+    source_kind: &str,
+    metadata: &fs::Metadata,
+    scan_config: HistoryScanConfig,
+    message_limit: usize,
+) -> Option<Vec<Value>> {
+    let mut groups = Vec::<CodexRolloutGroup>::new();
+    let mut current_session_id = rollout_session_id_from_filename(path);
+    let mut saw_rollout_record = false;
+    let file = fs::File::open(path).ok()?;
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        let Ok(line) = line else {
+            continue;
+        };
+        parse_codex_rollout_line(
+            path,
+            index,
+            &line,
+            &scan_config,
+            &mut current_session_id,
+            &mut saw_rollout_record,
+            &mut groups,
+        );
+        for group in &mut groups {
+            let overflow = group.messages.len().saturating_sub(message_limit);
+            if overflow > 0 {
+                group.messages.drain(0..overflow);
+            }
+        }
+    }
+    if !saw_rollout_record {
+        return None;
+    }
+    codex_rollout_groups_to_sessions(groups, path, metadata, source_kind, &scan_config)
+}
+
+/// Project parsed rollout groups into session DTOs.
 pub(super) fn codex_rollout_groups_to_sessions(
     groups: Vec<CodexRolloutGroup>,
     path: &Path,
@@ -213,13 +235,14 @@ pub(super) fn codex_rollout_groups_to_sessions(
             })
             .map(|group| {
                 let message_count = group.message_count.max(group.messages.len());
-                let mut session = session_from_messages(
+                let mut session = session_from_messages_with_title(
                     HistoryAdapter::Codex,
                     path,
                     metadata,
                     source_kind,
                     group.session_id,
                     group.messages,
+                    group.opening_user_title,
                 );
                 if let Some(object) = session.as_object_mut() {
                     object.insert("messageCount".to_string(), json!(message_count));
@@ -332,6 +355,7 @@ pub(super) fn update_codex_rollout_group_cwd(
         matched_terms: BTreeSet::new(),
         message_count: 0,
         preview_count: 0,
+        opening_user_title: None,
     });
 }
 
@@ -372,46 +396,42 @@ pub(super) fn update_codex_rollout_group_lineage(
     );
 }
 
-pub(super) fn find_nested_string(value: &Value, keys: &[&str], depth: usize) -> Option<String> {
-    if depth > 8 {
-        return None;
-    }
-    match value {
-        Value::Object(object) => {
-            for key in keys {
-                if let Some(text) = object.get(*key).and_then(Value::as_str) {
-                    if !text.trim().is_empty() {
-                        return Some(text.to_string());
+pub(super) fn find_nested_string(value: &Value, keys: &[&str], _depth: usize) -> Option<String> {
+    let mut pending = vec![value];
+    while let Some(candidate) = pending.pop() {
+        match candidate {
+            Value::Object(object) => {
+                for key in keys {
+                    if let Some(text) = object.get(*key).and_then(Value::as_str) {
+                        if !text.trim().is_empty() {
+                            return Some(text.to_string());
+                        }
                     }
                 }
+                pending.extend(object.values().rev());
             }
-            object
-                .values()
-                .find_map(|child| find_nested_string(child, keys, depth + 1))
+            Value::Array(items) => pending.extend(items.iter().rev()),
+            _ => {}
         }
-        Value::Array(items) => items
-            .iter()
-            .find_map(|child| find_nested_string(child, keys, depth + 1)),
-        _ => None,
     }
+    None
 }
 
-pub(super) fn contains_nested_key(value: &Value, needle: &str, depth: usize) -> bool {
-    if depth > 8 {
-        return false;
-    }
-    match value {
-        Value::Object(object) => {
-            object.contains_key(needle)
-                || object
-                    .values()
-                    .any(|child| contains_nested_key(child, needle, depth + 1))
+pub(super) fn contains_nested_key(value: &Value, needle: &str, _depth: usize) -> bool {
+    let mut pending = vec![value];
+    while let Some(candidate) = pending.pop() {
+        match candidate {
+            Value::Object(object) => {
+                if object.contains_key(needle) {
+                    return true;
+                }
+                pending.extend(object.values());
+            }
+            Value::Array(items) => pending.extend(items),
+            _ => {}
         }
-        Value::Array(items) => items
-            .iter()
-            .any(|child| contains_nested_key(child, needle, depth + 1)),
-        _ => false,
     }
+    false
 }
 
 pub(super) fn push_codex_rollout_message(
@@ -442,6 +462,7 @@ pub(super) fn push_codex_rollout_message(
         matched_terms: BTreeSet::new(),
         message_count: 0,
         preview_count: 0,
+        opening_user_title: None,
     };
     push_codex_rollout_message_into_group(&mut group, message, matched_terms, scan_config);
     groups.push(group);
@@ -454,8 +475,17 @@ pub(super) fn push_codex_rollout_message_into_group(
     scan_config: &HistoryScanConfig,
 ) {
     let is_conversation = history_message_is_matchable(&message);
-    if is_conversation {
-        group.message_count += 1;
+    group.message_count += 1;
+    if group.opening_user_title.is_none()
+        && matches!(
+            message.get("role").and_then(Value::as_str),
+            Some("user" | "human")
+        )
+    {
+        group.opening_user_title = message
+            .get("text")
+            .and_then(Value::as_str)
+            .map(title_from_text);
     }
     for term in matched_terms {
         group.matched_terms.insert(term);
@@ -608,20 +638,6 @@ pub(super) fn codex_response_item_message(
             .and_then(extract_text),
     }?;
     let role = extract_role(payload);
-    if let Some(mut message) = delegated_subagent_prompt_message(
-        HistoryAdapter::Codex,
-        path,
-        index,
-        &role,
-        &text,
-        extract_timestamp(raw_value),
-    ) {
-        if let Some(object) = message.as_object_mut() {
-            object.insert("sourceEventType".to_string(), json!("response_item"));
-            object.insert("sourceItemType".to_string(), json!(item_type));
-        }
-        return Some(message);
-    }
     let images = if matches!(role.as_str(), "user" | "human") {
         extract_user_image_attachments(&text)
     } else {
