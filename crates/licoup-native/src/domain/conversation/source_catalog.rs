@@ -5,6 +5,8 @@ use serde_json::Value;
 use std::env;
 use std::path::{Path, PathBuf};
 
+pub(crate) const COPILOT_CHAT_SESSIONS_KEY: &str = "github.copilot-chat.chatsessions";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HistoryAdapter {
     Antigravity,
@@ -126,7 +128,11 @@ impl HistoryAdapter {
                     | "db"
                     | "vscdb"
             ),
-            Self::Cursor | Self::Copilot => matches!(
+            Self::Cursor => matches!(
+                extension,
+                "jsonl" | "ndjson" | "json" | "sqlite" | "sqlite3" | "db" | "vscdb"
+            ),
+            Self::Copilot => matches!(
                 extension,
                 "jsonl" | "ndjson" | "json" | "sqlite" | "sqlite3" | "db" | "vscdb"
             ),
@@ -193,7 +199,6 @@ impl HistoryAdapter {
         row_text: &str,
     ) -> bool {
         let key = key.unwrap_or_default().to_ascii_lowercase();
-        let text = row_text.to_ascii_lowercase();
         match self {
             Self::Code => {
                 key.contains("chat")
@@ -205,10 +210,7 @@ impl HistoryAdapter {
                     || looks_like_history_text(row_text)
             }
             Self::Copilot => {
-                key.contains("github.copilot")
-                    || key.contains("copilot")
-                    || key.contains("chatsessions")
-                    || text.contains("copilot")
+                table.eq_ignore_ascii_case("ItemTable") && key == COPILOT_CHAT_SESSIONS_KEY
             }
             Self::Cursor => {
                 key.contains("aichat")
@@ -412,6 +414,41 @@ mod tests {
         assert!(!HistoryAdapter::Cursor.sqlite_table_may_hold_history("chat_fts"));
         assert!(!HistoryAdapter::KiloCode.sqlite_table_may_hold_history("account"));
         assert!(HistoryAdapter::Code.sqlite_table_may_hold_history("ItemTable"));
+        assert!(HistoryAdapter::Copilot.accepts_file(Path::new("transcript.jsonl"), "jsonl"));
+    }
+
+    #[test]
+    fn claude_configuration_is_not_a_history_root() {
+        let home = PathBuf::from("synthetic-home");
+        let roots = history_roots(
+            HistoryAdapter::ClaudeCode,
+            &json!({"homeDir": home.clone()}),
+        );
+        assert!(
+            roots
+                .iter()
+                .all(|root| !root.path.ends_with(".claude.json"))
+        );
+        assert!(roots.iter().any(|root| {
+            root.source_kind == "claude-project-transcripts"
+                && root.path == home.join(".claude/projects")
+        }));
+    }
+
+    #[test]
+    fn copilot_sqlite_rows_require_the_native_conversation_key() {
+        for key in ["storage", "redhat.optin", "github.copilot.telemetry"] {
+            assert!(!HistoryAdapter::Copilot.sqlite_row_may_hold_history(
+                "ItemTable",
+                Some(key),
+                &format!("key: {key}\nvalue: {{\"scope\":\"copilot\"}}"),
+            ));
+        }
+        assert!(HistoryAdapter::Copilot.sqlite_row_may_hold_history(
+            "ItemTable",
+            Some("github.copilot-chat.chatSessions"),
+            "key: github.copilot-chat.chatSessions\nvalue: {\"chatSessions\":[]}",
+        ));
     }
 
     #[test]

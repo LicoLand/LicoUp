@@ -1,10 +1,45 @@
 use super::support::*;
 
+use base64::{Engine as _, engine::general_purpose};
 use std::{
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     thread::{self, JoinHandle},
 };
+
+#[test]
+fn bundled_public_keys_document_parses_with_decodable_ed25519_keys() {
+    let document = super::super::github_source::bundled_public_keys_document().unwrap();
+    let keys = document["keys"].as_object().unwrap();
+    assert_eq!(keys.len(), 2);
+    for entry in keys.values() {
+        let encoded = entry["publicKey"].as_str().unwrap();
+        let bytes = general_purpose::STANDARD.decode(encoded).unwrap();
+        assert_eq!(bytes.len(), 32);
+        ed25519_dalek::VerifyingKey::from_bytes(&bytes.try_into().unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn redirect_host_allowlist_rejects_foreign_hosts_and_accepts_github_and_loopback() {
+    for url in [
+        "https://evil.example.com/steal",
+        "https://github.com.evil.example/steal",
+        "http://foreign.example.test/steal",
+    ] {
+        assert!(super::super::github_source::validate_redirect_host_allowed_for_test(url).is_err());
+    }
+    for url in [
+        "https://github.com/LicoLand/LicoUp/releases/download/v1/a.zip",
+        "https://objects.githubusercontent.com/x",
+        "https://api.github.com/x",
+        "https://raw.githubusercontent.com/x",
+        "http://127.0.0.1:54321/a",
+        "http://localhost:54321/a",
+    ] {
+        assert!(super::super::github_source::validate_redirect_host_allowed_for_test(url).is_ok());
+    }
+}
 
 enum FixtureReply {
     Body(String),

@@ -59,6 +59,58 @@ fn scan_includes_required_first_targets() {
 }
 
 #[test]
+fn selected_target_batch_is_deduplicated_and_keeps_request_order() {
+    let dir = temp_test_dir("selected-target-batch");
+    let scan = scan_targets_with_params(&json!({
+        "portableDir": dir.to_string_lossy(),
+        "stateRoot": display_path(dir.join("client-state")),
+        "targetIds": ["cursor", "codex", "cursor"],
+        "runningProcessNames": [],
+        "targetScanConcurrency": 2
+    }))
+    .unwrap();
+    assert!(scan.get("candidates").is_none());
+    assert_eq!(
+        scan["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|slot| slot["targetId"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["cursor", "codex"]
+    );
+    assert!(
+        scan["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|slot| { slot["ok"] == true && slot["candidate"]["target"] == slot["targetId"] })
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn selected_target_batch_keeps_unknown_targets_as_fixed_failed_slots() {
+    let dir = temp_test_dir("selected-target-partial");
+    let scan = scan_targets_with_params(&json!({
+        "portableDir": dir.to_string_lossy(),
+        "stateRoot": display_path(dir.join("client-state")),
+        "targetIds": ["vscode", "unknown-adapter", "code"],
+        "modelCatalogTargetIds": ["vscode"],
+        "runningProcessNames": []
+    }))
+    .unwrap();
+    let results = scan["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0]["targetId"], "code");
+    assert_eq!(results[0]["ok"], true);
+    assert_eq!(results[1]["targetId"], "unknown-adapter");
+    assert_eq!(results[1]["ok"], false);
+    assert_eq!(results[1]["error"]["code"], "target_scan_failed");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn target_ids_are_unique_and_runtime_projection_matches_packaging_authority() {
     let definitions = target_defs();
     let unique = definitions

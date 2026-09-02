@@ -20,7 +20,7 @@ Visible request
     expect(message.text, isNot(contains('private machine context')));
   });
 
-  test('structured projection shows local payloads verbatim', () {
+  test('structured projection retains shape while redacting secrets', () {
     final secretValue = ['synthetic', 'secret', 'value'].join('-');
     final message = parseAgentConversationMessage({
       'role': 'tool_result',
@@ -30,7 +30,8 @@ Visible request
     });
 
     expect(message.kind, AgentConversationMessageKind.toolResult);
-    expect(message.text, '{"token":"$secretValue","status":"ready"}');
+    expect(message.text, '{"token":"[redacted]","status":"ready"}');
+    expect(message.text, isNot(contains(secretValue)));
   });
 
   test('title projection falls back to visible user-authored content', () {
