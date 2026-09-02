@@ -23,9 +23,10 @@ where
     W: Write + Send + 'static,
     F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
 {
-    serve_stdio_rpc_inner(reader, writer, execute, None)
+    serve_stdio_rpc_inner(reader, writer, execute, None, None)
 }
 
+#[cfg(test)]
 pub(crate) fn serve_stdio_rpc_with_runtime<R, W, F>(
     reader: R,
     writer: W,
@@ -37,7 +38,28 @@ where
     W: Write + Send + 'static,
     F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
 {
-    serve_stdio_rpc_inner(reader, writer, execute, Some(conversation_runtime))
+    serve_stdio_rpc_inner(reader, writer, execute, Some(conversation_runtime), None)
+}
+
+pub(crate) fn serve_stdio_rpc_with_persistent_conversation<R, W, F>(
+    reader: R,
+    writer: W,
+    execute: F,
+    conversation_runtime: PersistentConversationRuntime,
+    conversation_service: ConversationService,
+) -> Result<W>
+where
+    R: BufRead,
+    W: Write + Send + 'static,
+    F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
+{
+    serve_stdio_rpc_inner(
+        reader,
+        writer,
+        execute,
+        Some(conversation_runtime),
+        Some(conversation_service),
+    )
 }
 
 fn serve_stdio_rpc_inner<R, W, F>(
@@ -45,6 +67,7 @@ fn serve_stdio_rpc_inner<R, W, F>(
     writer: W,
     mut execute: F,
     conversation_runtime: Option<PersistentConversationRuntime>,
+    initial_conversation_service: Option<ConversationService>,
 ) -> Result<W>
 where
     R: BufRead,
@@ -55,6 +78,9 @@ where
     let mut bound_workflow_id: Option<String> = None;
     let mut conversation_workers = Vec::new();
     let mut conversation_services = ConversationServices::default();
+    if let Some(service) = initial_conversation_service {
+        conversation_services.entries.push_back((None, service));
+    }
     loop {
         conversation::reap_finished(&mut conversation_workers);
         let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
@@ -257,8 +283,27 @@ where
                             &request.workflow_id,
                             runtime.active(&params),
                         )?;
+                    } else if operation == "cancel" {
+                        let runtime = conversation_runtime
+                            .as_ref()
+                            .expect("persistent operation validated");
+                        match runtime.request_cancel(&params) {
+                            Ok(value) => write_stdio_rpc_success_shared(
+                                &writer,
+                                &request.id,
+                                &request.workflow_id,
+                                value,
+                            )?,
+                            Err(error) => write_stdio_rpc_terminal_error(
+                                &writer,
+                                &request.id,
+                                &request.workflow_id,
+                                1,
+                                &error,
+                            )?,
+                        }
                     } else {
-                        let params = if matches!(operation.as_str(), "steer" | "cancel") {
+                        let params = if operation == "steer" {
                             let runtime = conversation_runtime
                                 .as_ref()
                                 .expect("persistent operation validated");

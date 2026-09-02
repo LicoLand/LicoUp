@@ -137,7 +137,14 @@ export async function nativeReadback(context, sessionId) {
     if (context.config.cliReadbackKind === "none") {
       return {
         text: "",
-        settings: { cwd: context.cwd, model: parityModelForAgent(context.config.id) || null },
+        settings: {
+          cwd: context.cwd,
+          model: parityModelForAgent(context.config.id) || null,
+          reasoningEffort: null,
+          mode: null,
+          runtimeAgent: null,
+          allowAll: null,
+        },
         boundedOutput: true,
       };
     }

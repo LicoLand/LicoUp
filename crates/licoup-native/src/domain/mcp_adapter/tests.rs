@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::mcp::PROTOCOL_REVISION;
+use crate::core::mcp::OUTBOUND_TRANSFER_PROTOCOL_REVISION;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -31,7 +31,7 @@ fn request_params() -> serde_json::Value {
         "direction": "request",
         "destination": "https://example.invalid/mcp",
         "purpose": "invoke an explicitly selected tool",
-        "protocolVersion": PROTOCOL_REVISION,
+        "protocolVersion": OUTBOUND_TRANSFER_PROTOCOL_REVISION,
         "messageJson": r#"{"jsonrpc":"2.0","id":"req-1","method":"tools/call","params":{"name":"selected","arguments":{}}}"#,
         "requestOrigin": "direct-user"
     })
@@ -102,7 +102,7 @@ fn forwarded_response_requires_empty_202_acceptance() {
         "direction": "response",
         "destination": "https://example.invalid/mcp",
         "purpose": "return the approved MCP result",
-        "protocolVersion": PROTOCOL_REVISION,
+        "protocolVersion": OUTBOUND_TRANSFER_PROTOCOL_REVISION,
         "messageJson": r#"{"jsonrpc":"2.0","id":"req-1","result":{"content":[]}}"#,
         "requestOrigin": "direct-user"
     });

@@ -60,4 +60,14 @@ void main() {
     expect(restored.overrideFor('impeccable').colorToken, 'violet');
     expect(restored.overrideFor('missing').isEmpty, isTrue);
   });
+
+  test('SkillHubPreferences rejects documents awaiting startup migration', () {
+    expect(
+      () => SkillHubPreferences.fromJson(const {
+        'schemaVersion': 0,
+        'overrides': <String, Object?>{},
+      }),
+      throwsStateError,
+    );
+  });
 }

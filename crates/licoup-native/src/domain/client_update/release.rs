@@ -22,6 +22,7 @@ pub(super) fn select_highest_release<'a>(
     manifest: &'a Value,
     current_version: &str,
     target_id: &str,
+    stable_track: bool,
 ) -> Result<Option<SelectedRelease<'a>>> {
     let current = Version::parse(current_version)
         .map_err(|_| anyhow!("current client version is not valid semantic versioning"))?;
@@ -33,10 +34,6 @@ pub(super) fn select_highest_release<'a>(
         !releases.is_empty(),
         "client update manifest has no releases"
     );
-    let allow_downgrade = manifest
-        .pointer("/channelPolicy/allowDowngrade")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
     let mut seen_versions = BTreeSet::new();
     let mut candidates = Vec::new();
     for (index, release) in releases.iter().enumerate() {
@@ -44,6 +41,10 @@ pub(super) fn select_highest_release<'a>(
         let version = Version::parse(version_text).map_err(|_| {
             anyhow!("client update release version is not valid semantic versioning")
         })?;
+        ensure!(
+            !stable_track || version.pre.is_empty(),
+            "client update stable manifest contains a prerelease version"
+        );
         ensure!(
             seen_versions.insert(version_text.to_string()),
             "client update manifest contains a duplicate release version"
@@ -76,7 +77,7 @@ pub(super) fn select_highest_release<'a>(
                 selected_artifact = Some(parsed);
             }
         }
-        if current < minimum || version == current || (!allow_downgrade && version < current) {
+        if current < minimum || version <= current {
             continue;
         }
         if let Some(artifact) = selected_artifact {

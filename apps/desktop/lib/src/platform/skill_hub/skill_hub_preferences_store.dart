@@ -12,7 +12,7 @@ class PlatformSkillHubPreferencesStore implements SkillHubPreferencesStore {
 
   @override
   Future<Object?> read(Object portableData) {
-    return _jsonStore.read(portableData, fileName);
+    return _jsonStore.readCurrent(portableData, fileName);
   }
 
   @override

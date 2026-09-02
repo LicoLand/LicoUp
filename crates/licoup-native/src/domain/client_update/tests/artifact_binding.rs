@@ -4,7 +4,7 @@ use super::support::*;
 fn client_update_verification_uses_only_the_signed_artifact_digest_and_name() {
     let fixture = UpdateFixture::new();
     let manifest = fixture.manifest();
-    let params = fixture.params(manifest.clone());
+    let params = fixture.checked_params(manifest.clone());
     download(&params).unwrap();
     let verified = verify(&params).unwrap();
     assert_eq!(verified["digestMatched"], true);
@@ -13,7 +13,7 @@ fn client_update_verification_uses_only_the_signed_artifact_digest_and_name() {
         fixture.artifact(TARGET_ID)["sha256"]
     );
 
-    let mut sha_override = fixture.params(manifest.clone());
+    let mut sha_override = params.clone();
     sha_override["sha256"] = json!(sha256_hex(b"caller-override"));
     assert!(
         verify(&sha_override)
@@ -21,7 +21,7 @@ fn client_update_verification_uses_only_the_signed_artifact_digest_and_name() {
             .to_string()
             .contains("overrides are forbidden")
     );
-    let mut name_override = fixture.params(manifest);
+    let mut name_override = params;
     name_override["stagedFileName"] = json!("other.bin");
     assert!(
         verify(&name_override)
@@ -34,7 +34,7 @@ fn client_update_verification_uses_only_the_signed_artifact_digest_and_name() {
 #[test]
 fn client_update_rejects_tampering_after_download() {
     let fixture = UpdateFixture::new();
-    let params = fixture.params(fixture.manifest());
+    let params = fixture.checked_params(fixture.manifest());
     download(&params).unwrap();
     fs::write(fixture.staging.join("artifact.bin"), b"tampered-update").unwrap();
     assert!(

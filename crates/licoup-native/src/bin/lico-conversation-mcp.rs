@@ -1,19 +1,16 @@
-//! Local MCP server for the canonical client-owned Conversation authority.
-//!
-//! Tools: list / get / search / export / import against the parent-owned
-//! indexed SQLite store. Does not rewrite third-party native agent history.
+//! Local MCP binding for the canonical client-owned Conversation authority.
+//! Framing and server semantics are shared through `core::mcp`.
 
+use licoup_native::core::mcp::{
+    McpApplication, McpApplicationError, McpServerDefinition, McpServerEngine, McpToolCallContext,
+    serve_stdio,
+};
 use licoup_native::domain::client_conversation::ConversationService;
 use licoup_native::platform::paths::portable_data_dir;
 use serde_json::{Map, Value, json};
-use std::{
-    io::{self, BufRead, Write},
-    process::ExitCode,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::io;
+use std::process::ExitCode;
+use std::sync::Mutex;
 
 const MCP_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "lico-up-conversations";
@@ -21,457 +18,220 @@ const SERVER_VERSION: &str = "0.1.0";
 const MAX_MCP_FRAME_BYTES: usize = 64 * 1024;
 
 fn main() -> ExitCode {
-    let shared = Arc::new(ServerState::new());
-    let stdin = io::stdin();
-    let mut reader = stdin.lock();
-    loop {
-        match read_line_bounded(&mut reader) {
-            InputFrame::Eof => break,
-            InputFrame::Oversized(prefix) => {
-                write_json(&shared.output, rpc_error(extract_id(&prefix), -32600));
-            }
-            InputFrame::Line(line) => process_line(&shared, &line),
-        }
-    }
-    ExitCode::SUCCESS
-}
-
-struct ServerState {
-    initialized: AtomicBool,
-    output: Mutex<io::Stdout>,
-    conversation_service: Mutex<Option<ConversationService>>,
-}
-
-impl ServerState {
-    fn new() -> Self {
-        Self {
-            initialized: AtomicBool::new(false),
-            output: Mutex::new(io::stdout()),
-            conversation_service: Mutex::new(None),
-        }
-    }
-}
-
-enum InputFrame {
-    Eof,
-    Line(Vec<u8>),
-    Oversized(Vec<u8>),
-}
-
-fn read_line_bounded(reader: &mut impl BufRead) -> InputFrame {
-    let mut bytes = Vec::with_capacity(1024);
-    let mut oversized = false;
-    loop {
-        let available = match reader.fill_buf() {
-            Ok(value) => value,
-            Err(_) => return InputFrame::Eof,
-        };
-        if available.is_empty() {
-            if bytes.is_empty() && !oversized {
-                return InputFrame::Eof;
-            }
-            return if oversized {
-                InputFrame::Oversized(bytes)
-            } else {
-                InputFrame::Line(bytes)
-            };
-        }
-        let consumed = available
-            .iter()
-            .position(|byte| *byte == b'\n')
-            .map_or(available.len(), |index| index + 1);
-        let slice = &available[..consumed];
-        if !oversized {
-            let remaining = MAX_MCP_FRAME_BYTES
-                .saturating_add(1)
-                .saturating_sub(bytes.len());
-            bytes.extend_from_slice(&slice[..slice.len().min(remaining)]);
-            oversized = bytes.len() > MAX_MCP_FRAME_BYTES || slice.len() > remaining;
-        }
-        let reached_newline = slice.last() == Some(&b'\n');
-        reader.consume(consumed);
-        if reached_newline {
-            if bytes.last() == Some(&b'\n') {
-                bytes.pop();
-            }
-            return if oversized {
-                InputFrame::Oversized(bytes)
-            } else {
-                InputFrame::Line(bytes)
-            };
-        }
-    }
-}
-
-fn process_line(shared: &Arc<ServerState>, line: &[u8]) {
-    let value: Value = match serde_json::from_slice(line) {
-        Ok(value) => value,
-        Err(_) => {
-            write_json(&shared.output, rpc_error(Value::Null, -32700));
-            return;
-        }
-    };
-    let Some(object) = value.as_object() else {
-        write_json(&shared.output, rpc_error(Value::Null, -32600));
-        return;
-    };
-    let id = object.get("id").cloned();
-    let method = object.get("method").and_then(Value::as_str);
-    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") || method.is_none() {
-        write_json(&shared.output, rpc_error(id.unwrap_or(Value::Null), -32600));
-        return;
-    }
-    let method = method.unwrap_or_default();
-    if id.is_none() {
-        if method == "notifications/initialized" || method == "notifications/cancelled" {
-            return;
-        }
-        return;
-    }
-    let id = id.unwrap_or(Value::Null);
-    match method {
-        "initialize" => initialize(shared, id, object.get("params")),
-        "ping" => write_json(&shared.output, rpc_success(id, json!({}))),
-        "tools/list" => {
-            if !shared.initialized.load(Ordering::Acquire) {
-                write_json(&shared.output, rpc_error(id, -32002));
-            } else if !empty_object(object.get("params")) {
-                write_json(&shared.output, rpc_error(id, -32602));
-            } else {
-                write_json(
-                    &shared.output,
-                    rpc_success(id, json!({"tools": tool_catalog()})),
-                );
-            }
-        }
-        "tools/call" => call_tool(shared, id, object.get("params")),
-        _ => write_json(&shared.output, rpc_error(id, -32601)),
-    }
-}
-
-fn initialize(shared: &ServerState, id: Value, params: Option<&Value>) {
-    let Some(object) = params.and_then(Value::as_object) else {
-        write_json(&shared.output, rpc_error(id, -32602));
-        return;
-    };
-    if object.get("protocolVersion").and_then(Value::as_str) != Some(MCP_VERSION)
-        || !object.get("capabilities").is_some_and(Value::is_object)
-        || !object.get("clientInfo").is_some_and(Value::is_object)
-    {
-        write_json(&shared.output, rpc_error(id, -32602));
-        return;
-    }
-    shared.initialized.store(true, Ordering::Release);
-    write_json(
-        &shared.output,
-        rpc_success(
-            id,
-            json!({
-                "protocolVersion": MCP_VERSION,
-                "capabilities": {"tools": {"listChanged": false}},
-                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
-            }),
-        ),
+    let engine = McpServerEngine::new(
+        McpServerDefinition {
+            protocol_revision: MCP_VERSION,
+            compatible_protocol_revisions: &[],
+            server_name: SERVER_NAME,
+            server_version: SERVER_VERSION,
+            max_message_bytes: MAX_MCP_FRAME_BYTES,
+        },
+        ConversationMcpApplication {
+            service: Mutex::new(None),
+        },
     );
+    let Ok(engine) = engine else {
+        return ExitCode::FAILURE;
+    };
+    let stdin = io::stdin();
+    match serve_stdio(&engine, &(), stdin.lock(), io::stdout()) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
+    }
 }
 
-fn call_tool(shared: &ServerState, id: Value, params: Option<&Value>) {
-    if !shared.initialized.load(Ordering::Acquire) {
-        write_json(&shared.output, rpc_error(id, -32002));
-        return;
-    }
-    let Some(object) = params.and_then(Value::as_object) else {
-        write_json(&shared.output, rpc_error(id, -32602));
-        return;
-    };
-    let Some(name) = object.get("name").and_then(Value::as_str) else {
-        write_json(&shared.output, rpc_error(id, -32602));
-        return;
-    };
-    let arguments = object
-        .get("arguments")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-    if !arguments.is_object() {
-        write_json(&shared.output, rpc_error(id, -32602));
-        return;
-    }
-    let response = match execute_tool(shared, name, &arguments) {
-        Ok(value) => tool_success(id, value),
-        Err(code) => tool_error(id, code),
-    };
-    write_json(&shared.output, response);
+struct ConversationMcpApplication {
+    service: Mutex<Option<ConversationService>>,
 }
 
-fn execute_tool(shared: &ServerState, name: &str, arguments: &Value) -> Result<Value, String> {
-    let object = arguments
-        .as_object()
-        .ok_or_else(|| "invalid_arguments".to_owned())?;
-    match name {
-        "lico_conversation_list" => {
-            ensure_only_keys(object, &["limit", "includeArchived"])?;
-            let value = service_execute(
-                shared,
-                json!({
+impl ConversationMcpApplication {
+    fn execute(&self, request: Value) -> Result<Value, McpApplicationError> {
+        let mut slot = self
+            .service
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let service = match slot.as_ref() {
+            Some(service) => service.clone(),
+            None => {
+                let root = portable_data_dir().map_err(|_| state_unavailable())?;
+                let service = ConversationService::open(&root).map_err(|_| state_unavailable())?;
+                *slot = Some(service.clone());
+                service
+            }
+        };
+        drop(slot);
+        service.execute(request).map_err(|_| state_unavailable())
+    }
+}
+
+impl McpApplication for ConversationMcpApplication {
+    type CallerContext = ();
+
+    fn tool_catalog(&self) -> Vec<Value> {
+        tool_catalog()
+    }
+
+    fn validate_tool_arguments(&self, name: &str, arguments: &Map<String, Value>) -> bool {
+        validate(name, arguments)
+    }
+
+    fn call_tool(
+        &self,
+        _context: McpToolCallContext<'_, Self::CallerContext>,
+        name: &str,
+        arguments: &Map<String, Value>,
+    ) -> Result<Value, McpApplicationError> {
+        match name {
+            "lico_conversation_list" => {
+                let value = self.execute(json!({
                     "action": "conversation.list",
-                    "includeArchived": object.get("includeArchived").and_then(Value::as_bool).unwrap_or(false)
-                }),
-            )?;
-            let limit = object
-                .get("limit")
-                .and_then(Value::as_u64)
-                .unwrap_or(50)
-                .clamp(1, 100) as usize;
-            let conversations = value.as_array().cloned().unwrap_or_default();
-            Ok(json!({
-                "ok": true,
-                "total": conversations.len(),
-                "count": conversations.len().min(limit),
-                "conversations": conversations.into_iter().take(limit).collect::<Vec<_>>()
-            }))
-        }
-        "lico_conversation_get" => {
-            ensure_only_keys(object, &["conversationId"])?;
-            let id = object
-                .get("conversationId")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if id.trim().is_empty() {
-                return Err("conversation_id_required".into());
+                    "includeArchived": arguments.get("includeArchived").and_then(Value::as_bool).unwrap_or(false),
+                }))?;
+                let limit = arguments.get("limit").and_then(Value::as_u64).unwrap_or(50) as usize;
+                let conversations = value.as_array().cloned().unwrap_or_default();
+                Ok(json!({
+                    "ok": true,
+                    "total": conversations.len(),
+                    "count": conversations.len().min(limit),
+                    "conversations": conversations.into_iter().take(limit).collect::<Vec<_>>(),
+                }))
             }
-            service_execute(
-                shared,
-                json!({"action": "conversation.get", "conversationId": id}),
-            )
-        }
-        "lico_conversation_search" => {
-            ensure_only_keys(object, &["query", "limit"])?;
-            let query = object
-                .get("query")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if query.trim().is_empty() {
-                return Err("query_required".into());
+            "lico_conversation_get" => self.execute(json!({
+                "action": "conversation.get",
+                "conversationId": arguments["conversationId"],
+            })),
+            "lico_conversation_search" => {
+                let value = self.execute(json!({
+                    "action": "conversation.events.search",
+                    "query": arguments["query"],
+                    "limit": arguments.get("limit").and_then(Value::as_u64).unwrap_or(50),
+                }))?;
+                Ok(json!({
+                    "ok": true,
+                    "count": value.as_array().map(Vec::len).unwrap_or(0),
+                    "events": value,
+                }))
             }
-            let limit = object
-                .get("limit")
-                .and_then(Value::as_u64)
-                .unwrap_or(50)
-                .min(100) as usize;
-            let events = service_execute(
-                shared,
-                json!({"action": "conversation.events.search", "query": query, "limit": limit}),
-            )?;
-            let count = events.as_array().map(Vec::len).unwrap_or(0);
-            Ok(json!({"ok": true, "count": count, "events": events}))
+            "lico_conversation_export" => self.execute(json!({
+                "action": "conversation.export",
+                "path": arguments["path"],
+                "conversationIds": arguments.get("conversationIds").cloned().unwrap_or_else(|| json!([])),
+            })),
+            "lico_conversation_import" => self.execute(json!({
+                "action": "conversation.import",
+                "path": arguments["path"],
+            })),
+            _ => Err(McpApplicationError::permanent("tool_not_found", "tool/select")),
         }
-        "lico_conversation_export" => {
-            ensure_only_keys(object, &["path", "conversationIds"])?;
-            let path = object
-                .get("path")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if path.trim().is_empty() {
-                return Err("path_required".into());
-            }
-            let ids = object
-                .get("conversationIds")
-                .and_then(Value::as_array)
-                .map(|values| {
-                    values
-                        .iter()
-                        .filter_map(|value| value.as_str().map(str::to_owned))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            service_execute(
-                shared,
-                json!({"action": "conversation.export", "path": path, "conversationIds": ids}),
-            )
-        }
-        "lico_conversation_import" => {
-            ensure_only_keys(object, &["path"])?;
-            let path = object
-                .get("path")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if path.trim().is_empty() {
-                return Err("path_required".into());
-            }
-            service_execute(
-                shared,
-                json!({"action": "conversation.import", "path": path}),
-            )
-        }
-        _ => Err("tool_not_found".into()),
     }
 }
 
-/// Execute through the single process-owned Conversation service, opening it
-/// lazily on the first tool call so every request reuses the same bounded
-/// SQLite pool instead of opening per-call connections.
-fn service_execute(shared: &ServerState, request: Value) -> Result<Value, String> {
-    let mut slot = shared
-        .conversation_service
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner());
-    let service = match slot.as_ref() {
-        Some(service) => service.clone(),
-        None => {
-            let root =
-                portable_data_dir().map_err(|_| "conversation_state_unavailable".to_owned())?;
-            let service = ConversationService::open(&root).map_err(|error| error.to_string())?;
-            *slot = Some(service.clone());
-            service
-        }
-    };
-    drop(slot);
-    service.execute(request).map_err(|error| error.to_string())
-}
-
-fn ensure_only_keys(object: &Map<String, Value>, allowed: &[&str]) -> Result<(), String> {
-    for key in object.keys() {
-        if !allowed.contains(&key.as_str()) {
-            return Err(format!("unexpected_argument:{key}"));
-        }
-    }
-    Ok(())
+fn state_unavailable() -> McpApplicationError {
+    McpApplicationError::retryable("conversation_state_unavailable", "conversation/store")
 }
 
 fn tool_catalog() -> Vec<Value> {
     vec![
-        json!({
-            "name": "lico_conversation_list",
-            "description": "List canonical client-owned Conversations with exact indexed counts.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 100}
-                },
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "lico_conversation_get",
-            "description": "Exact lookup of one canonical Conversation by stable id.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "conversationId": {"type": "string", "minLength": 1, "maxLength": 256}
-                },
-                "required": ["conversationId"],
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "lico_conversation_search",
-            "description": "Search canonical structured Event text through the bounded FTS index.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "minLength": 1, "maxLength": 4096},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 100}
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "lico_conversation_export",
-            "description": "Export LicoUp-owned conversations to a JSON bundle path. Omit conversationIds to export all (bounded).",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "minLength": 1, "maxLength": 4096},
-                    "conversationIds": {
-                        "type": "array",
-                        "items": {"type": "string", "minLength": 1, "maxLength": 256},
-                        "maxItems": 500
-                    }
-                },
-                "required": ["path"],
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "lico_conversation_import",
-            "description": "Import a current canonical Conversation bundle without overwriting an identity collision. Never writes third-party native history.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "minLength": 1, "maxLength": 4096}
-                },
-                "required": ["path"],
-                "additionalProperties": false
-            }
-        }),
+        tool(
+            "lico_conversation_list",
+            json!({
+                "limit": {"type":"integer", "minimum":1, "maximum":100},
+                "includeArchived": {"type":"boolean"}
+            }),
+            &[],
+        ),
+        tool(
+            "lico_conversation_get",
+            json!({
+                "conversationId": {"type":"string", "minLength":1, "maxLength":256}
+            }),
+            &["conversationId"],
+        ),
+        tool(
+            "lico_conversation_search",
+            json!({
+                "query": {"type":"string", "minLength":1, "maxLength":4096},
+                "limit": {"type":"integer", "minimum":1, "maximum":100}
+            }),
+            &["query"],
+        ),
+        tool(
+            "lico_conversation_export",
+            json!({
+                "path": {"type":"string", "minLength":1, "maxLength":4096},
+                "conversationIds": {"type":"array", "maxItems":500}
+            }),
+            &["path"],
+        ),
+        tool(
+            "lico_conversation_import",
+            json!({
+                "path": {"type":"string", "minLength":1, "maxLength":4096}
+            }),
+            &["path"],
+        ),
     ]
 }
 
-fn tool_success(id: Value, payload: Value) -> Value {
-    rpc_success(
-        id,
-        json!({
-            "content": [{
-                "type": "text",
-                "text": payload.to_string()
-            }],
-            "structuredContent": payload,
-            "isError": false
-        }),
-    )
+fn tool(name: &str, properties: Value, required: &[&str]) -> Value {
+    json!({
+        "name": name,
+        "description": name,
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": properties,
+            "required": required,
+        }
+    })
 }
 
-fn tool_error(id: Value, code: String) -> Value {
-    rpc_success(
-        id,
-        json!({
-            "content": [{
-                "type": "text",
-                "text": json!({"ok": false, "code": code}).to_string()
-            }],
-            "structuredContent": {"ok": false, "code": code},
-            "isError": true
-        }),
-    )
-}
-
-fn empty_object(params: Option<&Value>) -> bool {
-    match params {
-        None => true,
-        Some(Value::Object(object)) => object.is_empty(),
-        Some(Value::Null) => true,
+fn validate(name: &str, arguments: &Map<String, Value>) -> bool {
+    let allowed: &[&str] = match name {
+        "lico_conversation_list" => &["limit", "includeArchived"],
+        "lico_conversation_get" => &["conversationId"],
+        "lico_conversation_search" => &["query", "limit"],
+        "lico_conversation_export" => &["path", "conversationIds"],
+        "lico_conversation_import" => &["path"],
+        _ => return false,
+    };
+    if arguments.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return false;
+    }
+    match name {
+        "lico_conversation_list" => {
+            optional_limit(arguments)
+                && arguments
+                    .get("includeArchived")
+                    .is_none_or(Value::is_boolean)
+        }
+        "lico_conversation_get" => bounded_text(arguments.get("conversationId"), 256),
+        "lico_conversation_search" => {
+            bounded_text(arguments.get("query"), 4096) && optional_limit(arguments)
+        }
+        "lico_conversation_export" => {
+            bounded_text(arguments.get("path"), 4096)
+                && arguments
+                    .get("conversationIds")
+                    .is_none_or(|value| value.as_array().is_some_and(|values| values.len() <= 500))
+        }
+        "lico_conversation_import" => bounded_text(arguments.get("path"), 4096),
         _ => false,
     }
 }
 
-fn write_json(output: &Mutex<io::Stdout>, value: Value) {
-    let mut guard = output.lock().unwrap_or_else(|error| error.into_inner());
-    let _ = writeln!(guard, "{value}");
-    let _ = guard.flush();
+fn bounded_text(value: Option<&Value>, max: usize) -> bool {
+    value
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.is_empty() && value.len() <= max)
 }
 
-fn rpc_success(id: Value, result: Value) -> Value {
-    json!({"jsonrpc": "2.0", "id": id, "result": result})
-}
-
-fn rpc_error(id: Value, code: i64) -> Value {
-    let message = match code {
-        -32700 => "Parse error",
-        -32600 => "Invalid Request",
-        -32601 => "Method not found",
-        -32602 => "Invalid params",
-        -32002 => "Server not initialized",
-        _ => "Internal error",
-    };
-    json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
-}
-
-fn extract_id(prefix: &[u8]) -> Value {
-    serde_json::from_slice::<Value>(prefix)
-        .ok()
-        .and_then(|value| value.get("id").cloned())
-        .unwrap_or(Value::Null)
+fn optional_limit(arguments: &Map<String, Value>) -> bool {
+    arguments.get("limit").is_none_or(|value| {
+        value
+            .as_u64()
+            .is_some_and(|value| (1..=100).contains(&value))
+    })
 }
 
 #[cfg(test)]
@@ -479,14 +239,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_catalog_names_are_stable() {
-        let names: Vec<_> = tool_catalog()
-            .into_iter()
-            .filter_map(|tool| tool.get("name").and_then(Value::as_str).map(str::to_owned))
-            .collect();
+    fn conversation_binding_keeps_exact_catalog_order() {
         assert_eq!(
-            names,
-            vec![
+            tool_catalog()
+                .iter()
+                .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+                .collect::<Vec<_>>(),
+            [
                 "lico_conversation_list",
                 "lico_conversation_get",
                 "lico_conversation_search",

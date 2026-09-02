@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
@@ -80,6 +81,43 @@ void main() {
 
     expect(await store.load(portableData), isNull);
   });
+
+  test('rejects a document awaiting startup migration', () async {
+    final dataDir = await portableData.clientDirectory();
+    final file = File('${dataDir.path}/current-client-view.json');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      '{"schemaVersion":0,"section":"agents",'
+      '"conversationKind":"welcome"}',
+    );
+
+    await expectLater(store.load(portableData), throwsStateError);
+  });
+
+  test(
+    'durable JSON readers reject corruption instead of projecting absence',
+    () async {
+      final dataDir = await portableData.clientDirectory();
+      final file = File('${dataDir.path}/current-client-view.json');
+      await file.writeAsString('{invalid');
+
+      await expectLater(store.load(portableData), throwsFormatException);
+    },
+  );
+
+  test(
+    'agent tab order accepts only the startup-admitted current schema',
+    () async {
+      final dataDir = await portableData.clientDirectory();
+      final file = File('${dataDir.path}/agent-tab-order.json');
+      await file.writeAsString('["codex"]');
+
+      await expectLater(
+        const PlatformAgentTabOrderStore().load(portableData),
+        throwsStateError,
+      );
+    },
+  );
 
   test('a user switch during startup wins over the restored view', () async {
     final delayedStore = _DelayedCurrentViewStore(

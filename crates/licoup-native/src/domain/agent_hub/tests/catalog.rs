@@ -15,7 +15,8 @@ fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
             "status": "detected",
             "present": true,
             "location": "local",
-            "scanSource": "package-manager"
+            "scanSource": "package-manager",
+            "binaryPath": "private-binary-canary"
         },
         {
             "target": "openclaw",
@@ -274,6 +275,27 @@ fn catalog_uses_dedicated_version_probes_and_keeps_absent_cards_blank() {
         assert_ne!(version, "unknown");
         assert_ne!(version, "未知");
     }
+}
+
+#[test]
+fn contradictory_cursor_presence_admits_strong_discovery_and_version_probe() {
+    let mut params = portable_params("cursor-contradictory-presence").1;
+    params["discoveryCandidates"] = serde_json::json!([{
+        "target": "cursor",
+        "status": "detected",
+        "present": false,
+        "location": "local",
+        "binaryPath": "private-binary-canary"
+    }]);
+    params["versionProbes"] = serde_json::json!({
+        "cursor": "cursor-agent 2026.08.25-3e8eec8"
+    });
+
+    let catalog = catalog(&params).unwrap();
+    let cursor = card(&catalog, "cursor");
+    assert_eq!(cursor["present"], true);
+    assert_eq!(cursor["installedVersion"], "2026.08.25-3e8eec8");
+    assert!(cursor.get("binaryPath").is_none());
 }
 
 #[test]

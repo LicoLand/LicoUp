@@ -4,6 +4,7 @@ use crate::platform::cursor_driver::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_L
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
 use crate::platform::native_agent_parser::{TextForm, TextReconciler};
 use serde_json::Value;
+use std::collections::BTreeSet;
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("cursor", "strict-lf-ndjson");
 
 pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
@@ -72,6 +73,8 @@ pub(in crate::platform) struct CursorParser {
     effective: EffectiveSettings,
     text: TextReconciler,
     accepted: bool,
+    observed_tool_call_ids: BTreeSet<String>,
+    observed_tool_error_ids: BTreeSet<String>,
 }
 
 pub(in crate::platform) enum CursorEffect {
@@ -83,6 +86,17 @@ pub(in crate::platform) enum CursorEffect {
         session_id: String,
         turn_id: String,
         text: String,
+    },
+    Tool {
+        session_id: String,
+        turn_id: String,
+        tool_name: String,
+    },
+    ToolError {
+        session_id: String,
+        turn_id: String,
+        tool_name: String,
+        error_code: &'static str,
     },
     Complete(CursorOutcome),
 }
@@ -118,6 +132,8 @@ impl CursorParser {
             effective,
             text: TextReconciler::default(),
             accepted: false,
+            observed_tool_call_ids: BTreeSet::new(),
+            observed_tool_error_ids: BTreeSet::new(),
         }
     }
 
@@ -193,11 +209,35 @@ impl NativeLineParser for CursorParser {
         if terminal_failed {
             return Err(CursorParseFailure::TurnFailed);
         }
+        let structured_tool_calls = structured_tool_calls(&message);
         // A system/init frame proves only that the process started. Delivery
         // belongs exclusively to Cursor's exact user prompt echo. Never show
         // assistant output or success for an unacknowledged input.
-        if !self.accepted && (is_assistant_frame(&message) || terminal.is_some()) {
+        if !self.accepted
+            && (is_assistant_frame(&message)
+                || !structured_tool_calls.is_empty()
+                || terminal.is_some())
+        {
             return Err(CursorParseFailure::PromptAcknowledgementMissing);
+        }
+        for (call_id, tool_name) in structured_tool_calls {
+            if self.observed_tool_call_ids.insert(call_id.to_owned()) {
+                effects.push(CursorEffect::Tool {
+                    session_id: self.observed_session.clone(),
+                    turn_id: self.turn_id.clone(),
+                    tool_name: tool_name.to_owned(),
+                });
+            }
+        }
+        if let Some((call_id, tool_name, error_code)) = completed_mcp_tool_error(&message)
+            && self.observed_tool_error_ids.insert(call_id.to_owned())
+        {
+            effects.push(CursorEffect::ToolError {
+                session_id: self.observed_session.clone(),
+                turn_id: self.turn_id.clone(),
+                tool_name: tool_name.to_owned(),
+                error_code,
+            });
         }
         if is_assistant_frame(&message) {
             if let Some(text) = assistant_text(&message) {
@@ -315,6 +355,115 @@ fn user_prompt_text(message: &Value) -> Option<String> {
 
 fn assistant_text(message: &Value) -> Option<String> {
     text_blocks(message)
+}
+
+fn structured_tool_calls(message: &Value) -> Vec<(&str, &str)> {
+    let mut calls = message
+        .pointer("/message/content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"))
+        .filter_map(|block| {
+            let call_id = block
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|value| valid_tool_call_id(value))?;
+            let tool_name = block
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|value| valid_tool_identifier(value))?;
+            Some((call_id, tool_name))
+        })
+        .collect::<Vec<_>>();
+    if message.get("type").and_then(Value::as_str) == Some("tool_call")
+        && let Some(arguments) = message
+            .pointer("/tool_call/mcpToolCall/args")
+            .and_then(Value::as_object)
+    {
+        let call_id = arguments
+            .get("toolCallId")
+            .or_else(|| message.pointer("/tool_call/toolCallId"))
+            .or_else(|| message.get("call_id"))
+            .and_then(Value::as_str)
+            .filter(|value| valid_tool_call_id(value));
+        let tool_name = arguments
+            .get("toolName")
+            .or_else(|| arguments.get("name"))
+            .and_then(Value::as_str)
+            .filter(|value| valid_tool_identifier(value));
+        if let (Some(call_id), Some(tool_name)) = (call_id, tool_name) {
+            calls.push((call_id, tool_name));
+        }
+    }
+    calls
+}
+
+fn valid_tool_call_id(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 512 && !value.contains('\0')
+}
+
+fn valid_tool_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b':' | b'/')
+        })
+}
+
+fn completed_mcp_tool_error(message: &Value) -> Option<(&str, &str, &'static str)> {
+    if message.get("type").and_then(Value::as_str) != Some("tool_call")
+        || message.get("subtype").and_then(Value::as_str) != Some("completed")
+    {
+        return None;
+    }
+    let arguments = message
+        .pointer("/tool_call/mcpToolCall/args")
+        .and_then(Value::as_object)?;
+    let call_id = arguments
+        .get("toolCallId")
+        .or_else(|| message.pointer("/tool_call/toolCallId"))
+        .and_then(Value::as_str)
+        .filter(|value| valid_tool_call_id(value))?;
+    let tool_name = arguments
+        .get("toolName")
+        .or_else(|| arguments.get("name"))
+        .and_then(Value::as_str)
+        .filter(|value| valid_tool_identifier(value))?;
+    let result = message.pointer("/tool_call/mcpToolCall/result")?;
+    let wire = serde_json::to_string(result).ok()?;
+    const APPLICATION_CODES: &[&str] = &[
+        "caller_authentication_required",
+        "caller_membership_binding_required",
+        "caller_membership_not_authorized",
+        "conversation_not_found",
+        "conversation_state_unavailable",
+        "conversation_working_directory_mismatch",
+        "dispatch_reconciliation_required",
+        "invalid_working_directory",
+        "subagent_adapter_unavailable",
+        "subagent_capability_unavailable",
+        "subagent_caller_membership_inactive",
+        "subagent_cross_conversation_rejected",
+        "subagent_depth_exceeded",
+        "subagent_dispatch_receipt_invalid",
+        "subagent_dispatch_transition_invalid",
+        "subagent_dispatch_uncertain",
+        "subagent_duplicate_active_edge",
+        "subagent_lineage_caller_mismatch",
+        "subagent_lineage_cycle",
+        "subagent_parent_dispatch_unavailable",
+        "subagent_readiness_rejected",
+        "subagent_resume_unavailable",
+        "subagent_self_call_rejected",
+        "subagent_target_invalid",
+        "subagent_target_membership_inactive",
+    ];
+    APPLICATION_CODES
+        .iter()
+        .copied()
+        .find(|code| wire.contains(code))
+        .map(|code| (call_id, tool_name, code))
 }
 
 fn text_blocks(message: &Value) -> Option<String> {

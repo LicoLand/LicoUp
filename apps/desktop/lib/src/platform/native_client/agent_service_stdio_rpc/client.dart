@@ -42,22 +42,27 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       return _rpcFailure('invalid_request');
     }
     final requestArgs = List<String>.unmodifiable(args);
-    return _operations.serialize(
-      priority: currentRpcPriorityToken(),
-      () =>
-          executeStdioRpcCommand(
-            args: requestArgs,
-            requestId: _nextRequestId(),
-            workflowId: _workflowId,
-            sessionManager: _sessionManager,
-          ).timeout(
-            _processContext.requestTimeout,
-            onTimeout: () async {
-              await _sessionManager.invalidateAndDiscard();
-              throw const LicoClientRpcException('timeout');
-            },
-          ),
-    );
+    return _operations.serialize(priority: currentRpcPriorityToken(), () {
+      final execution = executeStdioRpcCommand(
+        args: requestArgs,
+        requestId: _nextRequestId(),
+        workflowId: _workflowId,
+        sessionManager: _sessionManager,
+      );
+      // Migration owns a cross-process lock and deliberately waits for the
+      // current holder. Interrupting that wait can strand startup between
+      // durable schema steps, so this single startup gate is unbounded.
+      if (_isClientStateMigrationAdmission(requestArgs)) {
+        return execution;
+      }
+      return execution.timeout(
+        _processContext.requestTimeout,
+        onTimeout: () async {
+          await _sessionManager.invalidateAndDiscard();
+          throw const LicoClientRpcException('timeout');
+        },
+      );
+    });
   }
 
   @override
@@ -155,3 +160,6 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
     ]);
   }
 }
+
+bool _isClientStateMigrationAdmission(List<String> args) =>
+    args.length == 3 && args[0] == 'state' && args[1] == 'admit';

@@ -129,7 +129,7 @@
         "openNew": true,
         "exactResume": true,
         "streaming": true,
-        "cancel": false,
+        "cancel": true,
         "structuredEvents": true,
         "approvals": false,
         "multimodal": true,

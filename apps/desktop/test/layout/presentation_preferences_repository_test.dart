@@ -81,24 +81,29 @@ void main() {
     expect(decoded['layoutProfileId'], 'atlas');
   });
 
-  test('corrupt documents recover to fallback and converge on write', () async {
-    final file = await preferencesFile(portableData);
-    await file.writeAsString('{invalid');
-    final repository = FilePresentationPreferencesRepository(
-      portableData: portableData,
-      fallback: fallback,
-    );
+  test(
+    'corrupt documents fail closed without resetting durable preferences',
+    () async {
+      final file = await preferencesFile(portableData);
+      await file.writeAsString('{invalid');
+      final repository = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
 
-    final loaded = await repository.load();
-    expect(loaded.recovered, isTrue);
-    expect(loaded.issue, PresentationPreferencesLoadIssue.invalidDocument);
-    expect(loaded.preferences, fallback);
-
-    await repository.setLocalePreference('en');
-    final converged = jsonDecode(await file.readAsString()) as Map;
-    expect(converged['layoutProfileId'], 'dashboard');
-    expect(converged['localePreference'], 'en');
-  });
+      await expectLater(
+        repository.load(),
+        throwsA(
+          isA<PresentationPreferencesRepositoryException>().having(
+            (error) => error.code,
+            'code',
+            PresentationPreferencesRepositoryErrorCode.readFailed,
+          ),
+        ),
+      );
+      expect(await file.readAsString(), '{invalid');
+    },
+  );
 
   test(
     'replacement keeps old destination visible until flushed temp wins',

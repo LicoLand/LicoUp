@@ -21,9 +21,10 @@ pub(super) struct ApplyPlan {
     pub bundle_id: Option<String>,
     pub target_path: PathBuf,
     pub expanded_dir: PathBuf,
-    pub snapshot_dir: PathBuf,
     pub script_path: PathBuf,
     pub log_path: PathBuf,
+    pub handoff_path: Option<PathBuf>,
+    pub backup_path: Option<PathBuf>,
     pub gui_pid: String,
     pub wait: bool,
 }
@@ -78,12 +79,13 @@ pub(super) fn build_apply_plan(
         bundle_id,
         target_path,
         expanded_dir: staging_root.join(format!(".expanded-{binding}")),
-        snapshot_dir: staging_root.join(format!(".rollback-{binding}")),
         script_path: staging_root.join(".scripts").join(format!(
             "apply-{binding}.{}",
             super::script::script_extension()
         )),
         log_path: staging_root.join(format!("apply-{binding}.log")),
+        handoff_path: None,
+        backup_path: None,
         gui_pid: resolved_gui_pid(params)?,
         wait: bool_param(params, "waitForScript")?,
     })

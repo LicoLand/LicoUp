@@ -43,6 +43,7 @@ pub(in crate::domain::mobile_relay) fn read_persisted_config() -> Result<Option<
         parsed.is_object(),
         "mobile relay config exists but is not an object"
     );
+    crate::domain::mobile_relay::validate_current_config_document(&parsed)?;
     validate_config_generations(&parsed)?;
     Ok(Some(parsed))
 }

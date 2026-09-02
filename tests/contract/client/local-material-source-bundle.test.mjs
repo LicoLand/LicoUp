@@ -69,7 +69,7 @@ test("generation is separate from configuration mutation", async () => {
   const source = await sources();
   const generationLeaves = ["identity_generation.rs", "prekey_generation.rs"];
   const mutationLeaves = [
-    "material_mutation.rs", "prekey_inventory.rs", "protocol_reset.rs", "rotation.rs",
+    "material_mutation.rs", "prekey_inventory.rs", "rotation.rs",
   ];
   for (const leaf of generationLeaves) {
     for (const mutationToken of ["&mut Value", ".insert(", ".remove(", "as_object_mut"]) {
@@ -87,17 +87,18 @@ test("generation is separate from configuration mutation", async () => {
   assert.ok(source["prekey_inventory.rs"].includes("prekeyPublicationVersion"));
 });
 
-test("protocol reset and state codec fail closed on exact protocol-bound state", async () => {
+test("protocol compatibility and state codec fail closed on exact protocol-bound state", async () => {
   const source = await sources();
   for (const token of [
     "MOBILE_RELAY_E2EE_PROTOCOL_VERSION",
-    'config["mobileRelayE2ee"] = json!({})',
-    'config["pairingId"] = json!("")',
-    'config["paired"] = json!(false)',
-    'config["relayEnabled"] = json!(false)',
-    "clear_pairing_presentation",
+    "ensure_local_pairwise_protocol_compatible",
+    "config: &Value",
+    "requires explicit startup migration",
   ]) {
     assert.ok(source["protocol_reset.rs"].includes(token), token);
+  }
+  for (const forbiddenMutation of ["&mut Value", ".insert(", ".remove(", "as_object_mut"]) {
+    assert.equal(source["protocol_reset.rs"].includes(forbiddenMutation), false);
   }
   for (const requiredSecretField of [
     "PrivateKey",

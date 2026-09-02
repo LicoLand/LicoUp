@@ -14,35 +14,48 @@ pub(super) fn enforce_revocation_policy(
     revocation: Option<&Value>,
     public_keys: &BTreeMap<String, VerifyingKey>,
     offline_root_key_id: &str,
-    online_channel_key_id: &str,
-    channel: &str,
+    online_signing_key_id: &str,
+    release_track: &str,
     selection: Option<&VerifiedUpdateSelection>,
 ) -> Result<()> {
     let required = manifest
-        .pointer("/channelPolicy/revokePolicy")
+        .pointer("/releaseTrackPolicy/revocationPolicy")
         .and_then(Value::as_str)
         == Some("signed-revocation-list-required");
     if required {
         ensure!(
             revocation.is_some(),
-            "client update signed revocation list is required by channel policy"
+            "client update signed revocation list is required by release track policy"
         );
     }
     let Some(document) = revocation else {
         return Ok(());
     };
+    super::selection::ensure_exact_object_keys(
+        document,
+        &[
+            "schemaVersion",
+            "releaseTrack",
+            "offlineRootKeyId",
+            "revokedKeyIds",
+            "revokedVersions",
+            "revokedArtifactDigests",
+            "signatures",
+        ],
+        "client update revocation list contract is not closed",
+    )?;
     ensure!(
         document.get("schemaVersion").and_then(Value::as_str)
             == Some(CLIENT_UPDATE_REVOCATION_SCHEMA),
         "client update revocation list schema is unsupported"
     );
     ensure!(
-        document.get("channel").and_then(Value::as_str) == Some(channel),
-        "client update revocation list channel does not match the selected channel"
+        document.get("releaseTrack").and_then(Value::as_str) == Some(release_track),
+        "client update revocation list release track does not match"
     );
     ensure!(
         document.get("offlineRootKeyId").and_then(Value::as_str) == Some(offline_root_key_id),
-        "client update revocation list offline root key does not match channel policy"
+        "client update revocation list offline root key does not match release track policy"
     );
     verify_required_signature(
         document,
@@ -54,8 +67,8 @@ pub(super) fn enforce_revocation_policy(
     ensure!(
         !revoked_keys
             .iter()
-            .any(|key| key == offline_root_key_id || key == online_channel_key_id),
-        "client update channel signing key is revoked"
+            .any(|key| key == offline_root_key_id || key == online_signing_key_id),
+        "client update release signing key is revoked"
     );
     let revoked_versions = string_array(document, "revokedVersions")?;
     let revoked_digests = string_array(document, "revokedArtifactDigests")?;

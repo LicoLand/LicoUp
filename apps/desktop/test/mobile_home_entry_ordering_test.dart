@@ -62,4 +62,14 @@ void main() {
     expect(mobileHomePreviewText('  safe\n preview  '), 'safe preview');
     expect(parseMobileHomeSortTime('invalid'), 0);
   });
+
+  test('mobile home layout rejects documents awaiting startup migration', () {
+    expect(
+      () => MobileHomeLayout.fromJson(const {
+        'schemaVersion': 1,
+        'order': <String>[],
+      }),
+      throwsStateError,
+    );
+  });
 }

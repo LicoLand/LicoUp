@@ -4,7 +4,9 @@
 //! owns only endpoint validation, protocol headers, bounded concurrency and
 //! bounded HTTP response collection.
 
-use crate::core::mcp::{DEFAULT_MAX_MESSAGE_BYTES, McpTransferPacket, PROTOCOL_REVISION};
+use crate::core::mcp::{
+    DEFAULT_MAX_MESSAGE_BYTES, McpTransferPacket, OUTBOUND_TRANSFER_PROTOCOL_REVISION,
+};
 use anyhow::{Result, anyhow, ensure};
 use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -42,7 +44,7 @@ pub(crate) fn exchange(
         .post(endpoint.as_str())
         .set("accept", "application/json, text/event-stream")
         .set("content-type", "application/json")
-        .set("mcp-protocol-version", PROTOCOL_REVISION);
+        .set("mcp-protocol-version", OUTBOUND_TRANSFER_PROTOCOL_REVISION);
     if let Some(session_id) = session_id {
         request = request.set("mcp-session-id", session_id);
     }

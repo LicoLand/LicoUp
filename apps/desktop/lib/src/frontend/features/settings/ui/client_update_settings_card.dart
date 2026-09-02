@@ -108,11 +108,20 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
           const SizedBox(height: LicoContentSpacing.item),
           _InfoLine(
             label: strings.version,
-            value: status.currentVersion.isEmpty
+            value: status.runningVersion.isEmpty
                 ? strings.notSelected
-                : status.currentVersion,
+                : status.runningVersion,
           ),
-          _InfoLine(label: strings.channel, value: status.channel),
+          if (status.runningReleaseTrack == ReleaseTrack.nightly)
+            _ReleaseTrackSelector(
+              selected: status.targetReleaseTrack,
+              enabled: !busy,
+              nightlyLabel: strings.nightlyChannel,
+              stableLabel: strings.stableChannel,
+              onSelected: controller.selectClientUpdateReleaseTrack,
+            )
+          else
+            _InfoLine(label: strings.channel, value: strings.stableChannel),
           _InfoLine(
             label: strings.updateSource,
             value: strings.updateSourceGithub,
@@ -150,6 +159,67 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
                 child: Text(strings.updateAndRestart),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReleaseTrackSelector extends StatelessWidget {
+  const _ReleaseTrackSelector({
+    required this.selected,
+    required this.enabled,
+    required this.nightlyLabel,
+    required this.stableLabel,
+    required this.onSelected,
+  });
+
+  final ReleaseTrack selected;
+  final bool enabled;
+  final String nightlyLabel;
+  final String stableLabel;
+  final ValueChanged<ReleaseTrack> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: LicoContentSpacing.inline),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              LicoStrings.of(context).channel,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+            ),
+          ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SegmentedButton<ReleaseTrack>(
+                key: const Key('client-update-release-track'),
+                segments: [
+                  ButtonSegment(
+                    value: ReleaseTrack.nightly,
+                    label: Text(nightlyLabel),
+                  ),
+                  ButtonSegment(
+                    value: ReleaseTrack.stable,
+                    label: Text(stableLabel),
+                  ),
+                ],
+                selected: {selected},
+                showSelectedIcon: false,
+                onSelectionChanged: enabled
+                    ? (selection) => onSelected(selection.single)
+                    : null,
+              ),
+            ),
           ),
         ],
       ),

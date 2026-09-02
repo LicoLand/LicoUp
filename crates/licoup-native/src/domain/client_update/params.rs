@@ -3,17 +3,14 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Result, bail, ensure};
 use serde_json::Value;
 
+use crate::domain::client_state_migration::ReleaseTrack;
+
 pub(super) fn product_version(params: &Value) -> Result<String> {
-    if let Some(override_version) = json_text(params, &["currentVersion", "current-version"]) {
-        ensure!(
-            semver::Version::parse(&override_version).is_ok(),
-            "client update currentVersion is not valid semantic versioning"
-        );
-        return Ok(override_version);
-    }
-    Ok(option_env!("LICO_CLIENT_PRODUCT_VERSION")
-        .unwrap_or("0.0.1-alpha")
-        .to_string())
+    ensure!(
+        params.get("currentVersion").is_none() && params.get("current-version").is_none(),
+        "client update currentVersion is caller-controlled and unsupported"
+    );
+    Ok(crate::domain::client_state_migration::running_product_version()?.to_owned())
 }
 
 pub(super) fn json_text(params: &Value, keys: &[&str]) -> Option<String> {
@@ -27,16 +24,44 @@ pub(super) fn json_text(params: &Value, keys: &[&str]) -> Option<String> {
     })
 }
 
-pub(super) fn channel_name(params: &Value) -> Result<String> {
-    let channel = json_text(params, &["channel"]).unwrap_or_else(|| "stable".to_string());
+pub(super) fn target_release_track(params: &Value) -> Result<ReleaseTrack> {
     ensure!(
-        channel.len() <= 64
-            && channel
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')),
-        "client update channel is invalid"
+        params.get("channel").is_none(),
+        "client update channel is unsupported"
     );
-    Ok(channel)
+    let running = ReleaseTrack::running()?;
+    let requested = json_text(params, &["targetReleaseTrack", "target-release-track"]);
+    let bound = json_text(params, &["boundTargetReleaseTrack"]);
+    ensure!(
+        requested.is_none() || bound.is_none(),
+        "client update target release track is ambiguous"
+    );
+    let target = match requested.or(bound).as_deref() {
+        None => running,
+        Some("nightly") => ReleaseTrack::Nightly,
+        Some("stable") => ReleaseTrack::Stable,
+        Some(_) => bail!("client update target release track is invalid"),
+    };
+    ensure!(
+        allowed_transition(running, target),
+        "client update release track transition is forbidden"
+    );
+    Ok(target)
+}
+
+pub(super) fn state_root(params: &Value) -> PathBuf {
+    json_text(params, &["stateRoot", "state-root"])
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(".licoup-update-state"))
+}
+
+pub(super) const fn allowed_transition(running: ReleaseTrack, target: ReleaseTrack) -> bool {
+    matches!(
+        (running, target),
+        (ReleaseTrack::Nightly, ReleaseTrack::Nightly)
+            | (ReleaseTrack::Nightly, ReleaseTrack::Stable)
+            | (ReleaseTrack::Stable, ReleaseTrack::Stable)
+    )
 }
 
 pub(super) fn staging_root(params: &Value) -> Result<PathBuf> {

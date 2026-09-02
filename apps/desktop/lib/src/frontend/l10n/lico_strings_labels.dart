@@ -41,6 +41,8 @@ extension LicoStringsLabels on LicoStrings {
   String get updateSourceGithub => isChinese ? 'GitHub 发布源' : 'GitHub releases';
   String get sourceAddress => isChinese ? '源地址' : 'Source address';
   String get channel => isChinese ? '通道' : 'Channel';
+  String get nightlyChannel => isChinese ? 'Nightly' : 'Nightly';
+  String get stableChannel => isChinese ? '稳定版' : 'Stable';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
   String get digest => isChinese ? '摘要' : 'Digest';
   String get done => isChinese ? '完成' : 'Done';

@@ -13,6 +13,7 @@ pub(super) const TURN_ARGS: &[&str] = &[
     "stream-json",
     "--trust",
     "--force",
+    "--approve-mcps",
     "--stream-partial-output",
 ];
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -98,12 +99,14 @@ impl CapabilityProbe {
         let print_turn = help_lower.contains("--print");
         let resume_session = help_lower.contains("--resume");
         let structured_stream = help_lower.contains("stream-json");
+        let approve_mcps = help_lower.contains("--approve-mcps");
         let supported = version_ok
             && help_ok
             && create_chat
             && print_turn
             && resume_session
-            && structured_stream;
+            && structured_stream
+            && approve_mcps;
         Self {
             available: version_ok || help_ok,
             supported,

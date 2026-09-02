@@ -25,7 +25,7 @@ class MobileHomeLayout {
 
   factory MobileHomeLayout.fromJson(Map<String, dynamic> json) {
     if ((json['schemaVersion'] as num?)?.toInt() != currentSchemaVersion) {
-      return defaults();
+      throw StateError('mobile_home_layout_requires_startup_migration');
     }
     final rawOrder = json['order'];
     final rawPinned = json['pinnedEntryIds'];
