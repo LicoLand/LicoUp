@@ -33,8 +33,8 @@ npm run client:promotion -- advance --head stable --base release
 macOS Developer ID 的发布后流程通过
 `tools/apple-release/macos-direct-arm64.json` 委托给本机 Apple Release 引擎。
 
-委托发布运行从已授权的精确 `origin/release` revision 切出一个
-`release-candidate/v{version}` 分支，等待其 Required Checks 通过，并从该候选
+委托发布运行从已授权的精确 `origin/release` revision 切出固定的
+`macos-release-candidate` 分支，等待其 Required Checks 通过，并从该候选
 发布声明的公开 tag、Release 与五项制品契约。第五项资产是签名更新清单：由配置的
 update 命令在构建期生成，随其余资产一并上传，并通过同样的公网未鉴权下载核验。
 引擎永不改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks；其允许
