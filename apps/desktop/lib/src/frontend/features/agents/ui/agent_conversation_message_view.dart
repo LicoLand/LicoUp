@@ -33,6 +33,7 @@ class AgentConversationMessageList extends StatefulWidget {
     this.participantTargets = const [],
     this.participantConversationIds = const {},
     this.participantRuntimeProfiles = const {},
+    this.assistantActive = false,
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
@@ -63,6 +64,10 @@ class AgentConversationMessageList extends StatefulWidget {
   /// Agent id → conversation id used on hover next to message timestamps.
   final Map<String, String> participantConversationIds;
   final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
+
+  /// Whether the group assistant lane is active; assistant message headers
+  /// render the agent's brand mark while active, the sparkles mark otherwise.
+  final bool assistantActive;
 
   /// Extra top padding when a floating header overlays the transcript.
   final double topOverlayInset;
@@ -348,6 +353,7 @@ class AgentConversationMessageListState
               participantTargets: widget.participantTargets,
               participantConversationIds: widget.participantConversationIds,
               participantRuntimeProfiles: widget.participantRuntimeProfiles,
+              assistantActive: widget.assistantActive,
               primaryConversationId: primaryConversationId,
               preferPeerAgents: false,
               topOverlayInset: widget.topOverlayInset,

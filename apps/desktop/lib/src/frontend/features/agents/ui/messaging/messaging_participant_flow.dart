@@ -254,6 +254,7 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.participantTargets = const [],
     this.participantConversationIds = const {},
     this.participantRuntimeProfiles = const {},
+    this.assistantActive = false,
     this.primaryConversationId = '',
     this.preferPeerAgents = false,
     this.topOverlayInset = 0,
@@ -281,6 +282,10 @@ class MessagingParticipantFlow extends StatefulWidget {
   /// Agent id → that agent's conversation id for hover metadata.
   final Map<String, String> participantConversationIds;
   final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
+
+  /// Whether the group assistant lane is active; forwarded to assistant
+  /// message groups so the header mark follows the toggle.
+  final bool assistantActive;
 
   /// Fallback conversation id when a message has no participant agent id.
   final String primaryConversationId;
@@ -656,6 +661,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             participantLabel: participantLabel,
             participantRole: participantRole,
             participantTarget: _participantTarget(participantAgentId),
+            assistantActive: widget.assistantActive,
             runtimeProfile:
                 widget.participantRuntimeProfiles[participantAgentId],
             messages: messages,

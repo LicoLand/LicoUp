@@ -52,6 +52,7 @@ final class AgentConversationPaneState {
     this.composerFlywheel,
     this.composerLeading,
     this.composerFieldLeading,
+    this.assistantActive = false,
     bool? composerBusy,
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
@@ -115,6 +116,11 @@ final class AgentConversationPaneState {
   /// Compact control rendered inside the composer field capsule, left of the
   /// text input (the group assistant toggle lives there).
   final Widget? composerFieldLeading;
+
+  /// Whether the group assistant lane is active; assistant message headers
+  /// render the agent's brand mark while active and the sparkles mark while
+  /// paused or unconfigured.
+  final bool assistantActive;
   final bool composerBusy;
 }
 
