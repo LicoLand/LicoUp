@@ -53,12 +53,6 @@ fn first_batch_recipes_load_with_fixed_ids_and_adaptation_tags() {
         vec!["homebrew", "npm", "winget", "official-artifact"]
     );
     assert_eq!(cursor.binary_names, vec!["cursor-agent"]);
-    let deepseek = registry
-        .agents
-        .iter()
-        .find(|agent| agent.id == "deepseek-harness")
-        .unwrap();
-    assert_eq!(deepseek.binary_names, vec!["dsh"]);
     let openclaw = registry
         .agents
         .iter()

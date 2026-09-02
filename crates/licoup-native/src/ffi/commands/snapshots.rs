@@ -33,17 +33,13 @@ pub(super) fn handle_snapshots_collect(command: AdmittedCommand) -> Result<CliEx
 pub(super) fn handle_snapshots_root(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["snapshots", "root", action] => *action,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete snapshot root routes"),
     };
     let params = admitted_params(&[("path", command.option_text("path"))], &[], &[]);
     let result = match action {
         "get" => crate::domain::conversation_snapshots::root_get(&params)?,
         "set" => crate::domain::conversation_snapshots::root_set(&params)?,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers supported snapshot root actions"),
     };
     Ok(CliExecution::Json(result))
 }
@@ -51,9 +47,7 @@ pub(super) fn handle_snapshots_root(command: AdmittedCommand) -> Result<CliExecu
 pub(super) fn handle_snapshots_profiles(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["snapshots", "profiles", action] => *action,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete snapshot profile routes"),
     };
     let params = admitted_params(
         &[
@@ -67,9 +61,7 @@ pub(super) fn handle_snapshots_profiles(command: AdmittedCommand) -> Result<CliE
         "list" => crate::domain::conversation_snapshots::profiles_list(&params)?,
         "get" => crate::domain::conversation_snapshots::profile_get(&params)?,
         "import" => crate::domain::conversation_snapshots::profile_import(&params)?,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers supported snapshot profile actions"),
     };
     Ok(CliExecution::Json(result))
 }
@@ -127,9 +119,7 @@ pub(super) fn handle_snapshots_archive(command: AdmittedCommand) -> Result<CliEx
         ["snapshots", "archive", "jobs", "drain"] => {
             crate::domain::conversation_archive_jobs::drain(&params)?
         }
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers supported snapshot archive actions"),
     };
     Ok(CliExecution::Json(result))
 }
@@ -148,9 +138,7 @@ pub(super) fn handle_snapshots_collections(command: AdmittedCommand) -> Result<C
 pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["conversations", action] => *action,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers concrete conversation routes"),
     };
     let mut params = admitted_params(
         &[
@@ -184,8 +172,6 @@ pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecut
             "limit",
             "offset",
             "sessionId",
-            "messageBefore",
-            "messageLimit",
             "runtimeConnection",
             "workingDirectory",
         ] {
@@ -202,9 +188,7 @@ pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecut
         }
         "append" => crate::domain::conversations::conversation_append(&params)?,
         "delete" => crate::domain::conversations::conversation_delete(&params)?,
-        _ => {
-            return Err(super::handler_error("command_failed", "use_cli_help").into());
-        }
+        _ => unreachable!("admission only registers supported conversation actions"),
     };
     Ok(CliExecution::Json(result))
 }

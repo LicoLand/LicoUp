@@ -45,8 +45,7 @@ private keys, Provider configuration, plaintext, history, backups, trust
 decisions, approvals, and local effects.
 
 Packaged targets currently include Antigravity, Claude Code, Codex, Cursor,
-DeepSeek Harness, Copilot, Hermes, Kilo Code, Kimi Code, Lico Agent, OpenClaw,
-OpenCode, and Pi Agent.
+Copilot, Hermes, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi Agent.
 Discovery, readable history, or a synthetic check does not establish
 conversation support. Send remains enabled only for an adapter that passes
 native-conversation parity acceptance. Native drivers and the readiness
@@ -157,15 +156,11 @@ module-specific regression entry points.
 
 ```bash
 npm run client:package:plan
-npm run client:build -- --platform macos
-npm run client:build -- --platform windows
-npm run client:build -- --platform linux
-npm run client:build -- --platform android
+npm run client:build:macos
+npm run client:build:windows
+npm run client:build:linux
+npm run client:build:android
 ```
-
-`client:build` is the only build entry. It automatically removes inactive
-compiler output and temporary Flutter build caches without removing runnable
-or packaged output needed by installers.
 
 Builds for macOS, Windows, Ubuntu, Android, and iOS; ordinary verification;
 GitHub Release; and each platform store are independent claims. Missing

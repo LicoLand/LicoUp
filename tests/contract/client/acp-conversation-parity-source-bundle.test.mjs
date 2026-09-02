@@ -9,8 +9,8 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const facadeRef = "tests/product-e2e/cli/agent-conversations/support/parity-facade.mjs";
-const moduleRoot = "tests/product-e2e/cli/agent-conversations/support/parity";
+const facadeRef = "tools/scripts/client-acp-conversation-parity.mjs";
+const moduleRoot = "tools/scripts/client-acp-conversation-parity";
 const leaves = Object.freeze([
   "agent-ids.mjs",
   "cli.mjs",
@@ -140,7 +140,7 @@ test("acp conversation parity owns exactly twenty-nine bounded ordinary modules"
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {
-    assert.equal(source[leaf].includes("../../parity-facade.mjs"), false);
+    assert.equal(source[leaf].includes("../client-acp-conversation-parity.mjs"), false);
   }
   assert.equal(findImportCycle(source), null);
 });

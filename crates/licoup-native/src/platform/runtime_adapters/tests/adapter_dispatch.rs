@@ -1,7 +1,7 @@
 use super::super::adapter::adapter_for_agent;
 use super::super::dispatch::{params_with_workspace, send_message};
 use super::super::params::message_param;
-use super::super::{RuntimeAdapter, RuntimeAdapterError};
+use super::super::{MAX_MESSAGE_BYTES, RuntimeAdapter, RuntimeAdapterError};
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -84,19 +84,6 @@ fn codex_params(
         "attachments": attachments,
         "cwd": fixture.directory.to_string_lossy()
     })
-}
-
-#[test]
-fn deepseek_send_is_rejected_before_launch_while_carrier_is_unverified() {
-    let error = send_message(&json!({
-        "agent": "deepseek-harness",
-        "text": "must not launch",
-        "model": "profile-authorized-model",
-        "binaryPath": "must-not-run"
-    }))
-    .unwrap_err();
-
-    assert_eq!(error, RuntimeAdapterError::RuntimeProfileUnavailable);
 }
 
 #[cfg(unix)]
@@ -375,8 +362,8 @@ fn message_body_is_not_normalized() {
 }
 
 #[test]
-fn message_beyond_the_removed_shared_cap_reaches_native_admission() {
-    let oversized = "x".repeat(1024 * 1024 + 1);
+fn oversized_message_is_rejected_before_runtime_launch() {
+    let oversized = "x".repeat(MAX_MESSAGE_BYTES + 1);
     let error = send_message(&json!({
         "agent": "codex",
         "text": oversized,
@@ -384,7 +371,10 @@ fn message_beyond_the_removed_shared_cap_reaches_native_admission() {
     }))
     .unwrap_err();
 
-    assert_eq!(error.to_string(), "native agent executable is unavailable");
+    assert_eq!(
+        error.to_string(),
+        "agent message request exceeds the input limit"
+    );
 }
 
 #[test]
@@ -398,29 +388,7 @@ fn configured_command_fallback_has_been_removed() {
     }))
     .unwrap_err();
 
-    assert_eq!(error, RuntimeAdapterError::LegacyLaunchConfiguration);
-}
-
-#[test]
-fn invalid_explicit_runtime_bounds_are_rejected_instead_of_clamped() {
-    for (field, value) in [
-        ("timeoutMs", json!(999)),
-        ("timeoutMs", json!(30 * 60 * 1_000_u64 + 1)),
-        ("maxStdoutBytes", json!(0)),
-        ("maxStdoutBytes", json!(64 * 1024 * 1024_u64 + 1)),
-        ("maxStderrBytes", json!(0)),
-    ] {
-        let mut request = json!({
-            "agent": "claude-code",
-            "text": "synthetic prompt",
-            "binary": "/runtime/must-not-launch"
-        });
-        request[field] = value;
-        assert_eq!(
-            send_message(&request).unwrap_err(),
-            RuntimeAdapterError::InvalidRuntimeSetting { field }
-        );
-    }
+    assert_eq!(error.to_string(), "native agent executable is unavailable");
 }
 
 /// Every driver reads its working directory from the request, so the resolved

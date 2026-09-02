@@ -521,37 +521,20 @@ class _Gateway implements TargetManagementGateway {
   final List<bool> catalogLookups = [];
 
   @override
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
     bool enableAgentCliModelLookup = false,
   }) async {
     catalogLookups.add(enableAgentCliModelLookup);
-    final slots = await Future.wait([
-      for (final targetId in targetIds)
-        _scanTarget(
-          targetId,
-          enableAgentCliModelLookup: enableAgentCliModelLookup,
-        ),
-    ]);
-    return TargetScanBatch(slots);
-  }
-
-  Future<TargetScanSlot> _scanTarget(
-    String targetId, {
-    required bool enableAgentCliModelLookup,
-  }) async {
     scanCounts.update(targetId, (count) => count + 1, ifAbsent: () => 1);
     _inFlight += 1;
     maxInFlight = _inFlight > maxInFlight ? _inFlight : maxInFlight;
     try {
       await Future<void>.delayed(delays[targetId] ?? Duration.zero);
       if (enableAgentCliModelLookup && selectedProbes.containsKey(targetId)) {
-        return TargetScanSlot(
-          targetId: targetId,
-          candidate: selectedProbes[targetId],
-        );
+        return selectedProbes[targetId];
       }
-      return TargetScanSlot(targetId: targetId, candidate: probes[targetId]);
+      return probes[targetId];
     } finally {
       _inFlight -= 1;
     }

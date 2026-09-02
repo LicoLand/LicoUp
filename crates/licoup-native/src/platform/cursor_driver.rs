@@ -1,8 +1,9 @@
 mod control;
 mod errors;
+mod events;
 mod execution;
 mod io;
-pub(in crate::platform) mod model;
+mod model;
 mod probe;
 mod update_watcher;
 

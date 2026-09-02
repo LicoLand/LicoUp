@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:4c769375206079ee7275371786d8b6c9fb17917d3f22cc8b5f3909f9ca77187a"
+      "digest": "sha256:0db94a46a7320b26683e41c1eef08e147511c2d5708553e68df794dd19519c26"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -38,7 +38,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_shell.dart",
-      "digest": "sha256:54eff9599890ff8ec8836e217ac7ae271ad978f7403555e6311be2970995714c"
+      "digest": "sha256:7d53015456f8d9b6671b1dcc698700cb01ff0e69ac393d6f3c728b9920f3d202"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart",
@@ -54,7 +54,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_mobile_settings_presentation.dart",
-      "digest": "sha256:85c2c8d6ea57eb699d2a79db5cd0ffe8cd09579b4b47de31a660a5ebe13549fd"
+      "digest": "sha256:21db626b3c28f63fe971be6bd616ee93650c07356556968ed8917b16ca5d14ea"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_pairing_destination.dart",
@@ -70,7 +70,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/dashboard/mobile/settings.png",
-      "digest": "sha256:36a46fc895f099afe8fdff6e1e6c7d5e5451eaf4538f5827bcc4c31f12e88e46"
+      "digest": "sha256:54f191be73e34f65ac6fecb6095bca46419f60343dd30509fea58a097e87cbb4"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_bundle_test.dart",
@@ -97,5 +97,5 @@
       "digest": "sha256:350f9cc0a533d494ba86f4253a907165f9a1dd6af81f43b078623a943ae8b0db"
     }
   ],
-  "manifestDigest": "sha256:41ee1dcf99212e7d3d563dfc78f11180d6b8a421cc4b91209727eafa5cefb0a7"
+  "manifestDigest": "sha256:6872142137749a2d4448966311adeb3bb6daf42987ca8def39dcf23ea8a8345b"
 }

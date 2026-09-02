@@ -47,35 +47,3 @@ fn stdout_jsonl_reader_enforces_the_aggregate_capacity() {
         TransportEvent::StdoutLimitExceeded
     ));
 }
-
-#[test]
-fn stdout_reader_leaves_jsonl_decoding_to_the_parser() {
-    let (sender, receiver) = mpsc::channel();
-    read_protocol_messages(
-        std::io::BufReader::new(Cursor::new(b"not-json\n")),
-        None,
-        sender,
-    );
-    assert!(matches!(
-        receiver.recv().unwrap(),
-        TransportEvent::Line { line, .. } if line == "not-json\n"
-    ));
-}
-
-#[test]
-fn parser_accepts_lf_or_crlf_without_splitting_unicode_separators() {
-    let separator = char::from_u32(0x2028).unwrap();
-    assert_eq!(
-        decode_jsonl_line(&format!("{{\"text\":\"left{separator}right\"}}\n"))
-            .unwrap()
-            .unwrap()["text"],
-        format!("left{separator}right")
-    );
-    assert_eq!(
-        decode_jsonl_line("{\"type\":\"event\"}\r\n")
-            .unwrap()
-            .unwrap()["type"],
-        "event"
-    );
-    assert!(decode_jsonl_line("{not-json}\n").is_err());
-}

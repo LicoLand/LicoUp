@@ -47,9 +47,7 @@ following in a single local release run:
 2. Every nested executable and the outer app are signed with Developer ID,
    Hardened Runtime, and a secure timestamp.
 3. The app is notarized, stapled, and accepted by Gatekeeper.
-4. The update ZIP is created only after the accepted app state; the configured
-   update command then generates and signs the update manifest that becomes the
-   fifth release asset.
+4. The update ZIP is created only after the accepted app state.
 5. The final DMG is signed, notarized, stapled, verified, and accepted by
    Gatekeeper.
 6. Privacy, license, open-source notice, and third-party notices exist in the
@@ -59,58 +57,39 @@ following in a single local release run:
    stable-launch verification.
 
 No remote workflow may publish a macOS direct artifact. The local Apple Release
-engine may upload and publish only the exact mutations in its one immutable
+service may upload and publish only the exact mutations in its one immutable
 per-release authorization.
 
-## Local authority
+## Local service
 
 Install the private `apple-release` CLI from its standalone checkout first
-(`npm install --global .` there), then configure the release authority once on
-a release workstation:
+(`npm install --global .` there), then install and configure the per-user
+service once on a release workstation:
 
 ```sh
-npm run client:release:authority:configure
+npm run client:release:service:install
+npm run client:release:service:configure
 ```
 
 Configuration selects the Developer ID provisioning profile and the names of
-the existing signing identity and `notarytool` Keychain profile. The CLI keeps
-the profile copy in its permission-bounded authority directory; signing keys,
-notarization credentials, and GitHub authentication stay in their owning
+the existing signing identity and `notarytool` Keychain profile. The service
+keeps the profile copy in its permission-bounded authority directory; signing
+keys, notarization credentials, and GitHub authentication stay in their owning
 secure stores. Public output retains no certificate, account, provider,
 credential, raw-output, or local-path value.
 
-Update-manifest signing adds one authorization precondition: export the two
-Ed25519 PEM keys into the environment before configuration so the CLI registers
-them into the Keychain, then unset them:
+An Agent starts one exact release with:
 
 ```sh
-export LICO_UPDATE_OFFLINE_ROOT_KEY=<offline-root-ed25519-pem>
-export LICO_UPDATE_ONLINE_CHANNEL_KEY=<online-channel-ed25519-pem>
-npm run client:release:authority:configure
-unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_CHANNEL_KEY
+npm run client:release:macos -- --version <version> --build <build>
 ```
-
-A release run with either key missing is blocked at preflight.
-
-An Agent starts one exact release with a single command:
-
-```sh
-npm run client:release:macos:publish
-```
-
-The command derives the version and build from the version document at the
-frozen `release` revision, authorizes once, and follows the release to its
-terminal receipt. `npm run client:release:macos` remains the interactive
-variant.
 
 Read-only preflight runs before the only authorization prompt. After acceptance,
-the CLI launches a detached runner that owns the exact accepted release source, publication gates,
+the service owns the exact accepted release source, publication gates,
 Developer ID package, app and DMG notarization/stapling/Gatekeeper checks, exact asset reconciliation,
 publication, anonymous public download, install, and stable launch. It asks no
 second question. The final receipt binds the immutable release source,
-the five public artifact digests, Apple results, and public installation proof.
-The signed update manifest is uploaded with the other assets and verified by
-the same anonymous public download.
+the four public artifact digests, Apple results, and public installation proof.
 
 ## Primary Apple references
 

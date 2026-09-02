@@ -41,7 +41,7 @@ void registerClientTargetManagementScenarios() {
       expect(service.addedConfigPath, 'test-data/openclaw.json');
       expect(service.addedHistoryRoot, 'test-data/openclaw-history');
       expect(
-        service.scanBatchSlotCalls,
+        service.scanOneTargetCalls,
         AgentService.packagedScanTargetIds.length,
       );
       expect(
@@ -50,9 +50,9 @@ void registerClientTargetManagementScenarios() {
       );
 
       service.scanTargetsCalls = 0;
-      service.scanBatchSlotCalls = 0;
+      service.scanOneTargetCalls = 0;
       await controller.addManualTarget(target: '   ');
-      expect(service.scanBatchSlotCalls, 0);
+      expect(service.scanOneTargetCalls, 0);
       expect(controller.lastError, isEmpty);
     },
   );

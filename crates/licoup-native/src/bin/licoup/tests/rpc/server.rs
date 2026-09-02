@@ -117,32 +117,38 @@ fn ordinary_stdio_rpc_rejects_every_conversation_dispatch_entry_point() {
         execute_request(
             "request-2",
             "workflow-1",
-            &["agent", "conversation", "send", "--stdin-json", "{}"],
+            &["agent", "conversation", "send"],
         ),
         execute_request(
             "request-3",
             "workflow-1",
+            &[
+                "agent",
+                "conversation",
+                "send",
+                "--stdin-json",
+                r#"{"invalid""#,
+            ],
+        ),
+        execute_request(
+            "request-4",
+            "workflow-1",
             &["conversation", "execute", "--stdin-json", "{}"],
+        ),
+        execute_request(
+            "request-5",
+            "workflow-1",
+            &["conversation", "execute", "--stdin-json", r#"{"invalid""#],
         ),
         json!({
             "protocol": STDIO_RPC_PROTOCOL,
-            "id": "request-4",
+            "id": "request-6",
             "workflowId": "workflow-1",
             "method": "client.conversation.execute",
             "params": {
-                "action": "conversation.dispatch.after-post",
-                "conversationId": "conversation:group",
-                "eventId": "event:1",
-                "content": "hi",
+                "action": "conversation.message.post",
                 "mentionedMembershipIds": ["membership:agent"]
             },
-        }),
-        json!({
-            "protocol": STDIO_RPC_PROTOCOL,
-            "id": "request-5",
-            "workflowId": "workflow-1",
-            "method": "strategy.execute",
-            "params": {"action": "strategy.run.start"},
         }),
     ]);
     let output = serve_stdio_rpc(input, Vec::new(), |_, _| -> anyhow::Result<_> {
@@ -151,14 +157,10 @@ fn ordinary_stdio_rpc_rejects_every_conversation_dispatch_entry_point() {
     .unwrap();
 
     let frames = rpc_output(output);
-    assert_eq!(frames.len(), 5);
+    assert_eq!(frames.len(), 6);
     for frame in frames {
-        assert_eq!(frame["ok"], true);
-        assert_eq!(
-            frame["result"]["error"]["code"],
-            "persistent_conversation_transport_required"
-        );
-        assert_eq!(frame["result"]["ok"], false);
+        assert_eq!(frame["error"]["code"], "command_failed");
+        assert_eq!(frame["error"]["component"], "native_cli");
     }
 }
 
@@ -246,17 +248,11 @@ fn persistent_conversation_rpc_projects_admission_without_execute_fallback() {
         assert_eq!(frame["error"]["stage"], "cli/admission");
         assert_eq!(frame["error"]["component"], "native_cli");
     }
-    assert_eq!(
-        frames[4]["result"]["error"]["code"],
-        "persistent_conversation_transport_required"
-    );
+    assert_eq!(frames[4]["error"]["code"], "command_failed");
     assert_eq!(frames[5]["error"]["code"], "cli_json_invalid");
     assert_eq!(frames[5]["error"]["stage"], "cli/admission");
     assert_eq!(frames[5]["error"]["component"], "native_cli");
-    assert_eq!(
-        frames[6]["result"]["error"]["code"],
-        "persistent_conversation_transport_required"
-    );
+    assert_eq!(frames[6]["error"]["code"], "command_failed");
     drop(service);
     let _ = fs::remove_dir_all(portable);
 }
@@ -272,7 +268,7 @@ fn stdio_rpc_executes_client_conversation_actions_on_the_bound_portable_root() {
             "workflowId": "workflow-1",
             "method": "client.conversation.execute",
             "params": {"action": "conversation.list", "includeArchived": false},
-            "portableDataDir": portable.clone(),
+            "portableDataDir": portable,
         }),
         json!({
             "protocol": STDIO_RPC_PROTOCOL,
@@ -307,173 +303,5 @@ fn stdio_rpc_executes_client_conversation_actions_on_the_bound_portable_root() {
         conversations[0].get("updatedAtUnixMs").is_some(),
         "canonical Local projection keeps its recency fact"
     );
-    let _ = fs::remove_dir_all(portable);
-}
-
-#[test]
-fn strategy_definition_actions_do_not_require_persistent_runtime() {
-    assert!(!strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.definition.list"
-    })));
-    assert!(!strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.definition.inspect"
-    })));
-    assert!(strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.run.start"
-    })));
-    assert!(!strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.run.active"
-    })));
-    assert!(!strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.run.inspect"
-    })));
-    assert!(!strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.run.cancel"
-    })));
-    assert!(strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.run.resume"
-    })));
-    assert!(strategy_requires_persistent_runtime(&json!({
-        "action": "strategy.run.retry"
-    })));
-}
-
-#[test]
-fn persistent_rpc_dispatches_after_post_by_identity_and_returns_the_entry_handle() {
-    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
-    let portable = temp_cli_dir("persistent-conversation-dispatch-rpc");
-    let service = ConversationService::open(&portable).unwrap();
-    let created = service
-        .execute(json!({
-            "action": "conversation.create",
-            "title": "Group",
-            "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
-            "members": [
-                {"principal": {"id": "agent:synthetic", "kind": "agent", "displayName": "Synthetic", "agentId": "synthetic"}, "access": "member"}
-            ]
-        }))
-        .unwrap();
-    let conversation_id = created["id"].as_str().unwrap().to_owned();
-    let owner_id = created["memberships"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|membership| membership["principal"]["kind"] == "human")
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let membership_id = created["memberships"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|membership| membership["principal"]["kind"] == "agent")
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let runtime = PersistentConversationRuntime::new(service.store().clone());
-    let input = rpc_input(&[
-        json!({
-            "protocol": STDIO_RPC_PROTOCOL,
-            "id": "request-1",
-            "workflowId": "workflow-1",
-            "method": "client.conversation.execute",
-            "params": {
-                "action": "conversation.message.post",
-                "conversationId": conversation_id,
-                "authorMembershipId": owner_id,
-                "content": "@Synthetic please answer"
-            },
-            "portableDataDir": portable.clone(),
-        }),
-        json!({
-            "protocol": STDIO_RPC_PROTOCOL,
-            "id": "request-2",
-            "workflowId": "workflow-1",
-            "method": "shutdown",
-        }),
-    ]);
-    // Post first so the dispatch can address the stored Event by identity.
-    let output = serve_stdio_rpc_with_runtime(
-        input,
-        Vec::new(),
-        |_, _| -> anyhow::Result<_> {
-            panic!("structured client conversation must not reach execute")
-        },
-        runtime.clone(),
-    )
-    .unwrap();
-    let frames = rpc_output(output);
-    assert_eq!(frames[0]["ok"], true);
-    let event_id = frames[0]["result"]["result"]["event"]["id"]
-        .as_str()
-        .expect("posted event id")
-        .to_owned();
-
-    let dispatch_input = rpc_input(&[
-        json!({
-            "protocol": STDIO_RPC_PROTOCOL,
-            "id": "request-3",
-            "workflowId": "workflow-1",
-            "method": "client.conversation.execute",
-            "params": {
-                "action": "conversation.dispatch.after-post",
-                "conversationId": conversation_id,
-                "eventId": event_id,
-            },
-            "portableDataDir": portable.clone(),
-        }),
-        json!({
-            "protocol": STDIO_RPC_PROTOCOL,
-            "id": "request-4",
-            "workflowId": "workflow-1",
-            "method": "shutdown",
-        }),
-    ]);
-    let output = serve_stdio_rpc_with_runtime(
-        dispatch_input,
-        Vec::new(),
-        |_, _| -> anyhow::Result<_> {
-            panic!("structured client conversation must not reach execute")
-        },
-        runtime.clone(),
-    )
-    .unwrap();
-    let frames = rpc_output(output);
-    // The dispatch runs on a worker, so the shutdown acknowledgement can be
-    // written first; select the dispatch frame by request id.
-    let dispatch_frame = frames
-        .iter()
-        .find(|frame| frame["id"] == "request-3")
-        .expect("dispatch response frame");
-    assert_eq!(dispatch_frame["ok"], true);
-    let result = &dispatch_frame["result"]["result"];
-    assert_eq!(result["dispatchPending"], true);
-    let turns = result["turns"].as_array().expect("live turns");
-    assert_eq!(turns.len(), 1);
-    let handle = turns[0]["turnHandle"].as_str().unwrap();
-    assert!(!handle.is_empty(), "the returned handle is attachable");
-    assert_eq!(turns[0]["membershipId"], membership_id);
-    assert_eq!(
-        result["directTurns"][0]["id"].as_str().unwrap(),
-        handle,
-        "the mention turn identity is the dispatch handle"
-    );
-    assert!(
-        dispatch_frame.to_string().contains("synthetic"),
-        "native addressing resolved the Membership from the stored Event text"
-    );
-    // The detached turn settles its unsupported-adapter failure through the
-    // completion authority; wait for the registry to go idle before cleanup.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !runtime.idle() {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the dispatched turn did not settle"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    drop(service);
     let _ = fs::remove_dir_all(portable);
 }

@@ -9,7 +9,6 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -19,49 +18,6 @@ import 'fixtures/secure_mesh_capability_projection.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  testWidgets('approval buttons use retained secrets without exposing them', (
-    tester,
-  ) async {
-    final controller = ClientController();
-    addTearDown(controller.dispose);
-    controller.secureMeshApprovalInbox = const [
-      SecureMeshApprovalRequest(
-        pendingOperationId: 'operation-actionable',
-        requesterAgentId: 'claude-code',
-        targetClientId: 'local-client',
-        originEndpointId: 'local-desktop',
-        riskLevel: 'local_effect',
-        displaySummary: 'Approve a bounded tool call',
-        expiresAt: '2099-01-01T00:00:00Z',
-        responseNonce: 'private-nonce',
-        adapterCallbackTokenRef: 'private-token',
-        adapterStyle: 'callback',
-        status: SecureMeshApprovalStatus.pending,
-      ),
-    ];
-
-    final public = controller.secureMeshApprovalInbox.single;
-    expect(public.originEndpointId, isEmpty);
-    expect(public.responseNonce, isEmpty);
-    expect(public.adapterCallbackTokenRef, isEmpty);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-        home: Scaffold(body: SecureMeshApprovalCard(controller: controller)),
-      ),
-    );
-
-    final allow = tester.widget<FilledButton>(
-      find.byKey(const Key('secure-mesh-approval-allow-operation-actionable')),
-    );
-    final deny = tester.widget<OutlinedButton>(
-      find.byKey(const Key('secure-mesh-approval-deny-operation-actionable')),
-    );
-    expect(allow.onPressed, isNotNull);
-    expect(deny.onPressed, isNotNull);
-  });
 
   testWidgets(
     'MobileRelayPanel hides diagnostics and exposes pairing controls',

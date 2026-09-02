@@ -2,11 +2,9 @@ import path from "node:path";
 
 const flutterLibRoot = "apps/desktop/lib";
 const flutterSrcRoot = "apps/desktop/lib/src";
-const requiredFlutterFlowDirs = ["events", "projections", "display", "protocol", "shared"];
-const retainedFlutterMigrationDirs = ["application", "frontend", "backend", "platform", "contracts"];
+const requiredFlutterPhysicalDirs = ["application", "frontend", "backend", "platform", "contracts"];
 const allowedFlutterTopLevelDirs = new Set([
-  ...requiredFlutterFlowDirs,
-  ...retainedFlutterMigrationDirs
+  ...requiredFlutterPhysicalDirs
 ]);
 const requiredFrontendFeatureDirs = [
   "agents",
@@ -20,35 +18,6 @@ const requiredBackendFeatureDirs = [
   "mobile_relay"
 ];
 const flutterLayerImportRules = [
-  {
-    root: `${flutterSrcRoot}/events`,
-    forbiddenTokens: [
-      "package:licoup/src/application/",
-      "package:licoup/src/backend/",
-      "package:licoup/src/display/",
-      "package:licoup/src/frontend/"
-    ],
-    message: "events must serialize generated commands through protocol without depending on legacy orchestration or display"
-  },
-  {
-    root: `${flutterSrcRoot}/projections`,
-    forbiddenTokens: [
-      "package:licoup/src/backend/",
-      "package:licoup/src/display/",
-      "package:licoup/src/frontend/"
-    ],
-    message: "projection consumers must not depend on backend adapters or display widgets"
-  },
-  {
-    root: `${flutterSrcRoot}/protocol`,
-    forbiddenTokens: [
-      "package:licoup/src/application/",
-      "package:licoup/src/backend/",
-      "package:licoup/src/display/",
-      "package:licoup/src/frontend/"
-    ],
-    message: "protocol frame management must remain independent of orchestration and display"
-  },
   {
     root: `${flutterSrcRoot}/application`,
     forbiddenTokens: [
@@ -439,16 +408,10 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     sameSet,
   } = context;
   const flutterTopLevelDirs = await readImmediateDirectoryNames(flutterSrcRoot);
-  for (const requiredDir of requiredFlutterFlowDirs) {
+  for (const requiredDir of requiredFlutterPhysicalDirs) {
     assert(
       flutterTopLevelDirs.includes(requiredDir),
-      `${flutterSrcRoot}/${requiredDir} must exist for the Flutter event/projection/display/protocol flow architecture`
-    );
-  }
-  for (const retainedDir of retainedFlutterMigrationDirs) {
-    assert(
-      flutterTopLevelDirs.includes(retainedDir),
-      `${flutterSrcRoot}/${retainedDir} remains required while deprecated ClientController dependents are migrated`
+      `${flutterSrcRoot}/${requiredDir} must exist for hard frontend/backend/platform architecture`
     );
   }
   for (const topLevelDir of flutterTopLevelDirs) {
@@ -471,111 +434,6 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       `${flutterSrcRoot}/backend/features/${featureDir} must exist as a backend feature directory`
     );
   }
-  const migratedConversationFacade =
-    `${flutterSrcRoot}/frontend/features/conversations/canonical_group_conversation_pane.dart`;
-  const migratedConversationRoot =
-    `${flutterSrcRoot}/display/conversation/canonical_group_conversation_pane.dart`;
-  const migratedConversationLeafRoot =
-    `${flutterSrcRoot}/display/conversation/canonical_group_conversation_pane`;
-  const migratedConversationLeaves = [
-    "create_dialog.dart",
-    "header.dart",
-    "pane.dart",
-    "projection.dart",
-    "reveal.dart",
-    "roster.dart",
-    "sidebar.dart",
-    "strategy.dart",
-    "support.dart"
-  ];
-  const migratedConversationFacadeSource = await readText(migratedConversationFacade);
-  assert(
-    migratedConversationFacadeSource.trim() ===
-      "export 'package:licoup/src/display/conversation/canonical_group_conversation_pane.dart';",
-    "the legacy canonical group pane path must remain only a thin migration export"
-  );
-  const migratedConversationRootSource = await readText(migratedConversationRoot);
-  const migratedConversationExports = [...migratedConversationRootSource.matchAll(
-    /^export 'canonical_group_conversation_pane\/([^']+)';$/gmu
-  )].map((match) => match[1]);
-  assert(
-    sameSet(migratedConversationExports, [
-      "create_dialog.dart",
-      "header.dart",
-      "pane.dart",
-      "projection.dart",
-      "roster.dart",
-      "sidebar.dart"
-    ]),
-    "the canonical group pane root must expose only its six public display libraries"
-  );
-  assert(
-    sameSet(
-      await collectSourceFiles(migratedConversationLeafRoot, ".dart"),
-      migratedConversationLeaves.map((leaf) => `${migratedConversationLeafRoot}/${leaf}`)
-    ),
-    "the canonical group pane must remain split into the architecture-owned nine-leaf set"
-  );
-  for (const leaf of migratedConversationLeaves) {
-    const source = await readText(`${migratedConversationLeafRoot}/${leaf}`);
-    assert(
-      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source),
-      `${leaf} must remain an independently importable conversation display library`
-    );
-  }
-  const sharedL10nRoot = `${flutterSrcRoot}/shared/l10n`;
-  assert(
-    sameSet(await collectSourceFiles(sharedL10nRoot, ".dart"), [
-      `${sharedL10nRoot}/lico_strings_catalog.dart`
-    ]),
-    "shared/l10n must expose one canonical custom localization entry"
-  );
-  const sharedL10nCatalogSource = await readText(
-    `${sharedL10nRoot}/lico_strings_catalog.dart`
-  );
-  assert(
-    sharedL10nCatalogSource.trim() ===
-      "export 'package:licoup/src/frontend/l10n/lico_strings.dart';",
-    "the shared localization entry must resolve to the single custom catalog"
-  );
-  assert(
-    sameSet(await collectSourceFiles(`${flutterSrcRoot}/frontend/l10n`, ".dart"), [
-      `${flutterSrcRoot}/frontend/l10n/lico_strings.dart`,
-      `${flutterSrcRoot}/frontend/l10n/lico_strings_base.dart`,
-      `${flutterSrcRoot}/frontend/l10n/lico_strings_labels.dart`
-    ]),
-    "custom localization must retain exactly one implementation table"
-  );
-  for (const l10nLeaf of [
-    "lico_strings.dart",
-    "lico_strings_base.dart",
-    "lico_strings_labels.dart"
-  ]) {
-    const source = await readText(`${flutterSrcRoot}/frontend/l10n/${l10nLeaf}`);
-    assert(
-      !source.includes("ClientApplicationStrings"),
-      `${l10nLeaf} must belong only to the unified LicoStrings catalog`
-    );
-  }
-  const applicationStringsSource = await readText(
-    `${flutterSrcRoot}/application/localization/client_application_strings.dart`
-  );
-  assert(
-    applicationStringsSource.includes("final class ClientApplicationStrings") &&
-      applicationStringsSource.includes("final LicoStrings _strings;") &&
-      !applicationStringsSource.includes("isChinese ?") &&
-      !applicationStringsSource.includes("switch (error.code)"),
-    "application localization compatibility must delegate to the single LicoStrings catalog without owning translated values"
-  );
-  const clientControllerSource = await readText(
-    `${flutterSrcRoot}/application/controller/client_controller.dart`
-  );
-  assert(
-    clientControllerSource.includes("@Deprecated(") &&
-      clientControllerSource.includes("events/EventSender") &&
-      clientControllerSource.includes("projections/*ProjectionConsumer"),
-    "ClientController must remain explicitly deprecated toward EventSender and per-domain ProjectionConsumers"
-  );
   await enforceFlutterLayerIsolation(context);
   await enforceNormalDartLibraries(context);
   await enforceSplitTestLibraries(context);

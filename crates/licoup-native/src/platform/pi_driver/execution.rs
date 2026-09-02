@@ -6,11 +6,8 @@ use super::errors::ProtocolFailure;
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
 use super::params::ProtocolConfig;
+use super::protocol::{PiProtocol, ProtocolEffect, ProtocolOutcome};
 use super::supervision::LaunchSpec;
-use crate::platform::native_agent_parser::adapters::pi::{
-    PendingInteraction, PiProtocol, ProtocolEffect, ProtocolOutcome, classify_steer_response,
-    completed_transitions, decode_jsonl_line, encode_steer,
-};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, BufReader};
@@ -153,8 +150,8 @@ pub(in crate::platform) fn execute(
     if let Some(outcome) = outcome {
         return RunResult {
             ok: true,
-            transitions: completed_transitions(&outcome.output),
             output: outcome.output,
+            events: outcome.events,
             error: None,
             thread_id: outcome.session_id.clone(),
             session_id: outcome.session_id,
@@ -188,7 +185,7 @@ pub(super) fn run_protocol_loop(
     control_sender: &SyncSender<SteerRequest>,
     control_receiver: &Receiver<SteerRequest>,
     protocol: &mut PiProtocol,
-    mut deadline: Option<Instant>,
+    deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
@@ -197,7 +194,6 @@ pub(super) fn run_protocol_loop(
 ) {
     let mut active_guard: Option<ActiveTurnGuard> = None;
     let mut pending_steers = HashMap::<String, SyncSender<bool>>::new();
-    let mut pending_interaction: Option<(PendingInteraction, Instant)> = None;
     loop {
         if let Some((session_id, turn_id)) = protocol.active_turn_binding() {
             if active_guard.is_none() {
@@ -214,8 +210,7 @@ pub(super) fn run_protocol_loop(
             loop {
                 match control_receiver.try_recv() {
                     Ok(request) => {
-                        let (text, acknowledged) = request.into_parts();
-                        let (request_id, message) = encode_steer(text);
+                        let (request_id, message, acknowledged) = request.into_protocol();
                         if write_message(stdin, &message).is_err() {
                             let _ = acknowledged.send(false);
                             return (
@@ -248,84 +243,25 @@ pub(super) fn run_protocol_loop(
                 false,
             );
         }
-        let resolved_interaction = match pending_interaction.as_ref() {
-            Some((interaction, parked_at)) => match interaction.try_response(protocol) {
-                Ok(Some(response)) => Some((response, *parked_at)),
-                Ok(None) => None,
-                Err(failure) => return (None, Some(failure), None, false),
-            },
-            None => None,
-        };
-        if let Some((response, parked_at)) = resolved_interaction {
-            deadline = extend_deadline_for_pause(deadline, parked_at, Instant::now());
-            pending_interaction.take();
-            if write_message(stdin, &response).is_err() {
-                return (
-                    None,
-                    Some(protocol.failure_with_ids(
-                        "pi_rpc_write_failed",
-                        "Pi RPC stopped accepting the interaction response.",
-                        "extension-ui/response",
-                    )),
-                    None,
-                    false,
-                );
-            }
+        let now = Instant::now();
+        if deadline.is_some_and(|deadline| now >= deadline) {
+            return (
+                None,
+                Some(protocol.failure_with_ids(
+                    "pi_rpc_timeout",
+                    "Pi RPC timed out before the turn completed.",
+                    "turn/wait",
+                )),
+                None,
+                false,
+            );
         }
-        let received = match receiver.try_recv() {
-            Ok(event) => Ok(event),
-            Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
-            Err(TryRecvError::Empty) => {
-                let now = Instant::now();
-                if pending_interaction.is_none() && deadline.is_some_and(|deadline| now >= deadline)
-                {
-                    return (
-                        None,
-                        Some(protocol.failure_with_ids(
-                            "pi_rpc_timeout",
-                            "Pi RPC timed out before the turn completed.",
-                            "turn/wait",
-                        )),
-                        None,
-                        false,
-                    );
-                }
-                let wait = if pending_interaction.is_some() {
-                    PROCESS_POLL_INTERVAL
-                } else {
-                    deadline
-                        .map(|deadline| {
-                            deadline
-                                .saturating_duration_since(now)
-                                .min(PROCESS_POLL_INTERVAL)
-                        })
-                        .unwrap_or(PROCESS_POLL_INTERVAL)
-                };
-                receiver.recv_timeout(wait)
-            }
-        };
-        match received {
-            Ok(TransportEvent::Line { line, received_at }) => {
-                let message = match decode_jsonl_line(&line) {
-                    Ok(Some(message)) => message,
-                    Ok(None) => continue,
-                    Err(()) => {
-                        return (
-                            None,
-                            Some(protocol.failure_with_ids(
-                                "pi_rpc_invalid_json",
-                                "Pi RPC returned an invalid protocol frame.",
-                                "protocol/read",
-                            )),
-                            None,
-                            false,
-                        );
-                    }
-                };
-                if let Some(response) = classify_steer_response(&message)
-                    && let Some(acknowledged) = pending_steers.remove(&response.request_id)
-                {
-                    let _ = acknowledged.send(response.accepted);
+        let wait = deadline
+            .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+            .unwrap_or(PROCESS_POLL_INTERVAL);
+        match receiver.recv_timeout(wait) {
+            Ok(TransportEvent::Message(message)) => {
+                if acknowledge_steer_response(&message, &mut pending_steers) {
                     continue;
                 }
                 for effect in protocol.handle_message(message) {
@@ -344,24 +280,6 @@ pub(super) fn run_protocol_loop(
                                 );
                             }
                         }
-                        ProtocolEffect::Interact(interaction) => {
-                            if pending_interaction.is_some() {
-                                return (
-                                    None,
-                                    Some(protocol.failure_with_ids(
-                                        "pi_interaction_concurrent_unsupported",
-                                        "Pi Agent requested another dialog before the active interaction was resolved.",
-                                        "extension-ui/request",
-                                    )),
-                                    None,
-                                    false,
-                                );
-                            }
-                            // The turn budget pauses when the interaction frame
-                            // reaches the transport, not when a busy executor
-                            // thread eventually observes the queued frame.
-                            pending_interaction = Some((interaction, received_at));
-                        }
                         ProtocolEffect::Complete(outcome) => {
                             return (Some(*outcome), None, None, false);
                         }
@@ -370,6 +288,18 @@ pub(super) fn run_protocol_loop(
                         }
                     }
                 }
+            }
+            Ok(TransportEvent::InvalidJson) => {
+                return (
+                    None,
+                    Some(protocol.failure_with_ids(
+                        "pi_rpc_invalid_json",
+                        "Pi RPC returned an invalid protocol frame.",
+                        "protocol/read",
+                    )),
+                    None,
+                    false,
+                );
             }
             Ok(TransportEvent::StdoutLimitExceeded) => {
                 return (
@@ -424,17 +354,20 @@ pub(super) fn run_protocol_loop(
     }
 }
 
-pub(super) fn extend_deadline_for_pause(
-    deadline: Option<Instant>,
-    parked_at: Instant,
-    resumed_at: Instant,
-) -> Option<Instant> {
-    let deadline = deadline?;
-    Some(
-        deadline
-            .checked_add(resumed_at.saturating_duration_since(parked_at))
-            .unwrap_or(deadline),
-    )
+fn acknowledge_steer_response(
+    message: &Value,
+    pending_steers: &mut HashMap<String, SyncSender<bool>>,
+) -> bool {
+    let Some(request_id) = message.get("id").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(acknowledged) = pending_steers.remove(request_id) else {
+        return false;
+    };
+    let accepted = message.get("type").and_then(Value::as_str) == Some("response")
+        && message.get("success").and_then(Value::as_bool) == Some(true);
+    let _ = acknowledged.send(accepted);
+    true
 }
 
 pub(super) fn pipe_failure(

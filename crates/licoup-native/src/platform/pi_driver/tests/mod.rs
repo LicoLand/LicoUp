@@ -1,32 +1,31 @@
 mod composition;
 mod errors;
+mod events;
 mod execution;
 mod interaction;
 mod io;
 mod model;
 mod params;
-mod parser_events;
-mod parser_protocol;
 mod probe;
+mod protocol;
 mod sessions;
 mod settings;
 mod supervision;
 mod support;
 
 use super::errors::ProtocolFailure;
-use super::execution::{execute, extend_deadline_for_pause};
+use super::events::sanitized_event;
+use super::execution::execute;
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
 use super::model::{CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult};
 use super::params::ProtocolConfig;
 use super::probe::probe;
+use super::protocol::{PiProtocol, ProtocolEffect};
 use super::sessions::{
     resolve_session_path_in_roots, session_header_matches, session_roots_from_sources,
 };
 use super::supervision::{LAUNCH_ARGS, LaunchSpec};
 use super::{ControlDisposition, steer};
-use crate::platform::native_agent_parser::adapters::pi::{
-    PiProtocol, ProtocolEffect, decode_jsonl_line, sanitized_event,
-};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};

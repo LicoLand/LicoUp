@@ -147,10 +147,9 @@ impl AgentUpdateWatcher {
         let state = std::mem::replace(&mut self.state, WatchState::Idle);
         let (next_state, change) = match state {
             WatchState::Idle => {
-                // A staging directory is supporting phase/version evidence,
-                // not start authority. Interrupted installs may leave one
-                // behind indefinitely, so require a live lock or updater.
-                let starting = observation.lock_fresh || observation.update_process.is_some();
+                let starting = observation.lock_fresh
+                    || observation.staging.is_some()
+                    || observation.update_process.is_some();
                 if starting {
                     let (version, phase) = observe_phase(&observation);
                     (
@@ -180,18 +179,6 @@ impl AgentUpdateWatcher {
                     // Lock and staging gone: the install finished (the CLI may
                     // re-exec, so the process tree is not the ground truth).
                     (WatchState::Idle, Some(UpdateChange::Completed { version }))
-                } else if !observation.lock_fresh && observation.update_process.is_none() {
-                    // A staging directory can survive an interrupted install.
-                    // Without a fresh lock or updater process it is residue,
-                    // not evidence that this turn is still updating.
-                    if observation.lock_modified.is_some() {
-                        let _ = std::fs::remove_file(&lock_path);
-                    }
-                    let version = observation.staging.or(version);
-                    (
-                        WatchState::Idle,
-                        Some(UpdateChange::Interrupted { version }),
-                    )
                 } else if observation.lock_modified.is_some()
                     && observation.staging.is_none()
                     && observation.update_process.is_none()
@@ -520,16 +507,6 @@ mod tests {
     }
 
     #[test]
-    fn orphaned_staging_dir_does_not_start_an_update() {
-        let root = temp_root("orphaned-staging");
-        staging(&root, "2026.08.04-aaa8809");
-        let mut watcher = AgentUpdateWatcher::with_process_reader(root.clone(), || vec![]);
-        assert_eq!(watcher.watch(1001), None);
-        assert_eq!(watcher.watch(1001), None);
-        fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
     fn curl_to_tar_transitions_phase_in_one_watcher() {
         let root = temp_root("curl-tar");
         touch_lock(&root);
@@ -631,25 +608,6 @@ mod tests {
         assert_eq!(
             watcher.watch(1001),
             Some(UpdateChange::Interrupted { version: None })
-        );
-        assert!(!root.join(".install.lock").exists());
-        assert_eq!(watcher.watch(1001), None);
-        fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn stale_lock_with_orphaned_staging_interrupts_once() {
-        let root = temp_root("stale-staging");
-        touch_lock(&root);
-        staging(&root, "2026.08.04-aaa8809");
-        let mut watcher = AgentUpdateWatcher::with_process_reader(root.clone(), || vec![]);
-        assert!(watcher.watch(1001).is_some());
-        backdate_lock(&root, Duration::from_secs(60));
-        assert_eq!(
-            watcher.watch(1001),
-            Some(UpdateChange::Interrupted {
-                version: Some("2026.08.04-aaa8809".to_string()),
-            })
         );
         assert!(!root.join(".install.lock").exists());
         assert_eq!(watcher.watch(1001), None);

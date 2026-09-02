@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,14 +8,11 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -85,47 +80,6 @@ void main() {
       expect(groups.last.participantLabel, 'Backend Worker');
     });
 
-    test('keeps Assistant and Subagent bubbles in canonical message order', () {
-      final entries = buildMessagingFlowEntries([
-        _participantMessageItem(
-          'assistant-1',
-          'codex',
-          'Assistant',
-          'plan',
-          _at(10, 0),
-          participantRole: 'assistant',
-        ),
-        _participantMessageItem(
-          'worker-1',
-          'worker-a',
-          'Worker A',
-          'implementation',
-          _at(10, 1),
-          participantRole: 'member',
-        ),
-        _participantMessageItem(
-          'assistant-2',
-          'codex',
-          'Assistant',
-          'review',
-          _at(10, 2),
-          participantRole: 'assistant',
-        ),
-      ]);
-
-      final groups = entries.whereType<MessagingFlowMessageGroup>().toList();
-      expect(groups.map((group) => group.participantRole), [
-        'assistant',
-        'member',
-        'assistant',
-      ]);
-      expect(groups.map((group) => group.messages.single.text), [
-        'plan',
-        'implementation',
-        'review',
-      ]);
-    });
-
     test('marks the active process entry from its storage key', () {
       final entries = buildMessagingFlowEntries([
         _processItem('p1', [_event('e1', _at(10, 1))]),
@@ -174,140 +128,6 @@ void main() {
     });
   });
 
-  group('patchMessagingFlowStreamedMessages', () {
-    test(
-      'patches only the newest group and preserves older entry identity',
-      () {
-        // Newest-first timeline order, matching the message-list cache.
-        final previousItems = [
-          _messageItem('k-new', 'assistant', 'partial', _at(10, 2)),
-          _messageItem('k-mid', 'user', 'question', _at(10, 1)),
-          _messageItem('k-old', 'assistant', 'earlier answer', _at(10, 0)),
-        ];
-        final base = buildMessagingFlowEntries(
-          previousItems.reversed.toList(),
-        ).reversed.toList();
-
-        final revised = ConversationMessageTimelineItem(
-          'k-new',
-          AgentConversationMessage(
-            id: 'k-new',
-            role: 'assistant',
-            text: 'partial plus more',
-            createdAt: _at(10, 2),
-          ),
-        );
-        final nextItems = [revised, previousItems[1], previousItems[2]];
-
-        final patched = patchMessagingFlowStreamedMessages(
-          previousItems: previousItems,
-          nextItems: nextItems,
-          previousEntries: base,
-        );
-
-        expect(patched, isNotNull);
-        expect(patched!.length, base.length);
-        // The newest group is the only replaced entry; every older entry keeps
-        // object identity so the list view does not rebuild them.
-        for (var index = 1; index < patched.length; index += 1) {
-          expect(identical(patched[index], base[index]), isTrue);
-        }
-        final newest = patched.first as MessagingFlowMessageGroup;
-        expect(newest.messages.last.text, 'partial plus more');
-        // The day divider and older groups were never re-derived.
-        expect(identical(patched.first, base.first), isFalse);
-      },
-    );
-
-    test('patches a mid-list streamed text revision (multi-agent turns)', () {
-      // With two concurrent turns, the changed reply is not the newest item;
-      // the patch must still apply because only text advanced.
-      final previousItems = [
-        _messageItem('k-b', 'assistant', 'partial B', _at(10, 2)),
-        _messageItem('k-a', 'assistant', 'partial A', _at(10, 1)),
-      ];
-      final base = buildMessagingFlowEntries(
-        previousItems.reversed.toList(),
-      ).reversed.toList();
-
-      final nextItems = [
-        previousItems[0],
-        ConversationMessageTimelineItem(
-          'k-a',
-          AgentConversationMessage(
-            id: 'k-a',
-            role: 'assistant',
-            text: 'partial A and more',
-            createdAt: _at(10, 1),
-          ),
-        ),
-      ];
-
-      final patched = patchMessagingFlowStreamedMessages(
-        previousItems: previousItems,
-        nextItems: nextItems,
-        previousEntries: base,
-      );
-
-      expect(patched, isNotNull);
-      expect(patched!.length, base.length);
-      final updated = patched.whereType<MessagingFlowMessageGroup>().firstWhere(
-        (group) => group.messages.any((m) => m.id == 'k-a'),
-      );
-      expect(
-        updated.messages.firstWhere((m) => m.id == 'k-a').text,
-        'partial A and more',
-      );
-    });
-
-    test('rejects structural changes so the caller rebuilds', () {
-      final previousItems = [
-        _messageItem('k-new', 'assistant', 'partial', _at(10, 2)),
-        _messageItem('k-old', 'user', 'question', _at(10, 1)),
-      ];
-      final base = buildMessagingFlowEntries(
-        previousItems.reversed.toList(),
-      ).reversed.toList();
-
-      // Length change (a new message arrived) is structural.
-      final grown = [
-        _messageItem('k-newest', 'user', 'follow-up', _at(10, 3)),
-        ...previousItems,
-      ];
-      expect(
-        patchMessagingFlowStreamedMessages(
-          previousItems: previousItems,
-          nextItems: grown,
-          previousEntries: base,
-        ),
-        isNull,
-      );
-
-      // A role change at the same key is structural even though the list
-      // length and storage keys stay the same.
-      final roleChanged = [
-        previousItems[0],
-        ConversationMessageTimelineItem(
-          'k-old',
-          AgentConversationMessage(
-            id: 'k-old',
-            role: 'assistant',
-            text: 'question',
-            createdAt: _at(10, 1),
-          ),
-        ),
-      ];
-      expect(
-        patchMessagingFlowStreamedMessages(
-          previousItems: previousItems,
-          nextItems: roleChanged,
-          previousEntries: base,
-        ),
-        isNull,
-      );
-    });
-  });
-
   testWidgets('flow renders group headers, agent badge, and day dividers', (
     tester,
   ) async {
@@ -325,11 +145,7 @@ void main() {
       _messageItem('k3', 'assistant', 'new answer', todayAt.toIso8601String()),
       _messageItem('k4', 'user', 'new request', todayAt.toIso8601String()),
     ];
-    await _pumpFlow(
-      tester,
-      chronological.reversed.toList(),
-      viewportHeight: 900,
-    );
+    await _pumpFlow(tester, chronological.reversed.toList());
 
     expect(find.text('You'), findsNWidgets(2));
     expect(find.text('Codex'), findsNWidgets(2));
@@ -349,64 +165,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'copy action hangs at the bubble bottom-left, timestamp at bottom-right',
-    (tester) async {
-      final chronological = [
-        _messageItem('k1', 'assistant', 'agent reply', _at(10, 0)),
-        _messageItem('k2', 'user', 'user request', _at(10, 1)),
-      ];
-      final copied = <String>[];
-      await _pumpFlow(
-        tester,
-        chronological.reversed.toList(),
-        onCopyText: (text) async => copied.add(text),
-      );
-
-      final bubbles = find.byKey(const Key('messaging-message-bubble'));
-      final copyActions = find.byKey(
-        const Key('messaging-message-copy-action'),
-      );
-      final timestamps = find.byKey(
-        const Key('messaging-message-hover-timestamp'),
-      );
-      expect(bubbles, findsNWidgets(2));
-      expect(copyActions, findsNWidgets(2));
-      expect(timestamps, findsNWidgets(2));
-      // Bubbles hug their group's own edge: agent left, user right — the
-      // hover meta never widens the group and pushes the bubble off it.
-      final agentGroup = find.byKey(const Key('messaging-agent-message-group'));
-      final userGroup = find.byKey(const Key('messaging-user-message-group'));
-      expect(
-        tester.getRect(find.descendant(of: agentGroup, matching: bubbles)).left,
-        closeTo(tester.getRect(agentGroup).left, 0.1),
-      );
-      expect(
-        tester.getRect(find.descendant(of: userGroup, matching: bubbles)).right,
-        closeTo(tester.getRect(userGroup).right, 0.1),
-      );
-      for (var index = 0; index < 2; index += 1) {
-        final bubbleRect = tester.getRect(bubbles.at(index));
-        final copyRect = tester.getRect(copyActions.at(index));
-        final timestampRect = tester.getRect(timestamps.at(index));
-        // Copy sits under the bubble's bottom-left corner with a clear gap.
-        expect(copyRect.left, closeTo(bubbleRect.left, 0.1));
-        expect(copyRect.top, greaterThanOrEqualTo(bubbleRect.bottom + 4));
-        expect(copyRect.bottom, lessThanOrEqualTo(bubbleRect.bottom + 26));
-        // The timestamp mirrors it at the bottom-right corner.
-        expect(timestampRect.right, closeTo(bubbleRect.right, 0.5));
-        expect(timestampRect.top, greaterThanOrEqualTo(bubbleRect.bottom - 1));
-      }
-      // The corner copy action stays tappable (it lives inside the hover
-      // band's layout bounds, not in painted-only overflow).
-      for (var index = 0; index < 2; index += 1) {
-        await tester.tap(copyActions.at(index));
-      }
-      expect(copied, unorderedEquals(<String>['agent reply', 'user request']));
-      expect(tester.takeException(), isNull);
-    },
-  );
 
   testWidgets('group headers omit timestamps', (tester) async {
     final messageAt = DateTime(2026, 7, 20, 18, 58);
@@ -434,96 +192,6 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'Assistant bubble is distinct while Subagent shows model and reasoning effort',
-    (tester) async {
-      final chronological = [
-        _participantMessageItem(
-          'assistant',
-          'codex',
-          'Assistant',
-          'assistant answer',
-          _at(10, 0),
-          participantRole: 'assistant',
-        ),
-        _participantMessageItem(
-          'worker',
-          'worker-a',
-          'Worker A',
-          'subagent answer',
-          _at(10, 1),
-          participantRole: 'member',
-        ),
-      ];
-      await _pumpFlow(
-        tester,
-        chronological.reversed.toList(),
-        participantTargets: [
-          _flowTarget('codex', 'Codex'),
-          _flowTarget('worker-a', 'Worker A'),
-        ],
-        participantRuntimeProfiles: const {
-          'worker-a': AgentParticipantRuntimeProfile(
-            model: 'worker-model',
-            reasoningEffort: 'high',
-          ),
-        },
-      );
-
-      expect(find.text('ASSISTANT'), findsOneWidget);
-      expect(find.text('SUBAGENT'), findsOneWidget);
-      expect(
-        find.byKey(const Key('messaging-assistant-avatar')),
-        findsOneWidget,
-      );
-      expect(find.text('worker-model · High'), findsOneWidget);
-
-      // Agent-side bubbles share one edge-lit veil: light on the rim, never
-      // a solid accentSurface fill.
-      final assistantBubble = tester.widget<MessagingAgentBubble>(
-        find
-            .ancestor(
-              of: find.text('assistant answer', findRichText: true),
-              matching: find.byType(MessagingAgentBubble),
-            )
-            .first,
-      );
-      final subagentBubble = tester.widget<MessagingAgentBubble>(
-        find
-            .ancestor(
-              of: find.text('subagent answer', findRichText: true),
-              matching: find.byType(MessagingAgentBubble),
-            )
-            .first,
-      );
-      expect(assistantBubble.hovered, isFalse);
-      expect(subagentBubble.hovered, isFalse);
-
-      BoxDecoration bubbleDecoration(MessagingAgentBubble bubble) {
-        final animated = tester.widget<AnimatedContainer>(
-          find.descendant(
-            of: find.byWidget(bubble),
-            matching: find.byType(AnimatedContainer),
-          ),
-        );
-        return animated.decoration! as BoxDecoration;
-      }
-
-      final themeColors = Theme.of(
-        tester.element(find.byWidget(assistantBubble)),
-      ).extension<LicoThemeColors>()!;
-      final expectedVeil = MessagingDesktopMetrics.agentBubbleVeilFill(
-        isDark: themeColors.isDark,
-      );
-      for (final bubble in [assistantBubble, subagentBubble]) {
-        final decoration = bubbleDecoration(bubble);
-        expect(decoration.color, expectedVeil);
-        expect(decoration.color, isNot(equals(themeColors.accentSurface)));
-        expect(decoration.gradient, isNull);
-      }
-    },
-  );
 
   testWidgets(
     'hover reveals per-message timestamp outside bubble bottom-right',
@@ -762,68 +430,13 @@ void main() {
       ),
     );
     final decoration = animated.decoration! as BoxDecoration;
-    expect(decoration.color, Colors.transparent);
-    expect(decoration.gradient, isNull);
     expect(decoration.color, isNot(themeColors.brandSurface));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'streamed newest message text updates in place without losing order',
-    (tester) async {
-      final first = _messageItem('k1', 'assistant', 'he', _at(10, 0, 0));
-      final second = _messageItem('k2', 'user', 'question', _at(10, 0, 1));
-      // Newest first: the streamed assistant reply is the first item (index 0).
-      final newestFirst = [first, second];
-      await _pumpFlow(tester, newestFirst);
-      expect(find.text('he'), findsOneWidget);
-
-      // A streamed update replaces the newest item content (same identity key,
-      // new message object, same list identity). The flow must re-derive the
-      // newest entry and render the new text.
-      final updated = ConversationMessageTimelineItem(
-        'k1',
-        AgentConversationMessage(
-          id: 'k1',
-          role: 'assistant',
-          text: 'hello world',
-          createdAt: '2026-08-24T02:00:00.000Z',
-          stableIdentity: 'k1',
-        ),
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('en'),
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 600,
-              child: MessagingParticipantFlow(
-                items: [updated, second],
-                adapter: AgentRenderAdapter.fallback(),
-                target: _flowTarget('codex', 'Codex'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      expect(find.text('hello world'), findsOneWidget);
-      expect(find.text('he'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('long transcripts keep every lazy list row', (tester) async {
-    final controller = ScrollController();
-    addTearDown(controller.dispose);
+  testWidgets('long transcripts page in as the user scrolls to the top', (
+    tester,
+  ) async {
     final chronological = [
       for (var index = 0; index < 120; index++)
         _messageItem(
@@ -833,11 +446,7 @@ void main() {
           _at(1, 0, index),
         ),
     ];
-    await _pumpFlow(
-      tester,
-      chronological.reversed.toList(),
-      scrollController: controller,
-    );
+    await _pumpFlow(tester, chronological.reversed.toList());
 
     int listItemCount() =>
         (tester.widget<ListView>(find.byType(ListView)).childrenDelegate
@@ -845,46 +454,21 @@ void main() {
             .estimatedChildCount ??
         0;
 
-    // Every row belongs to the lazy delegate, while only the viewport builds.
+    // The newest window renders first; older entries are not in the list yet.
     expect(find.text('message-119', findRichText: true), findsOneWidget);
-    expect(listItemCount(), 121);
-    expect(find.text('message-0', findRichText: true), findsNothing);
+    expect(listItemCount(), 50);
 
-    // Scrolling builds the oldest retained row without changing the delegate.
-    controller.jumpTo(controller.position.maxScrollExtent);
+    // Scrolling to the top loads earlier pages; one long scroll can pull
+    // several pages, and reaching the new top again loads the rest.
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    await tester.pumpAndSettle();
+    expect(listItemCount(), greaterThan(50));
+
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
     await tester.pumpAndSettle();
     expect(listItemCount(), 121);
     expect(find.text('message-0', findRichText: true), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('oldest edge requests one native message page', (tester) async {
-    final pending = Completer<void>();
-    var calls = 0;
-    final chronological = [
-      for (var index = 0; index < 80; index++)
-        _messageItem(
-          'page-$index',
-          index.isEven ? 'user' : 'assistant',
-          'page-message-$index',
-          _at(1, 0, index),
-        ),
-    ];
-    await _pumpFlow(
-      tester,
-      chronological.reversed.toList(),
-      hasEarlier: true,
-      onLoadEarlier: () {
-        calls += 1;
-        return pending.future;
-      },
-    );
-
-    await tester.drag(find.byType(ListView), const Offset(0, 12000));
-    await tester.pump();
-    expect(calls, 1);
-    pending.complete();
-    await tester.pump();
   });
 
   testWidgets(
@@ -935,7 +519,7 @@ void main() {
     },
   );
 
-  testWidgets('subagent cards in the lazy history appear on scroll', (
+  testWidgets('subagent cards inside the paging window appear on scroll', (
     tester,
   ) async {
     final chronological = <ConversationTimelineItem>[
@@ -946,7 +530,7 @@ void main() {
           'message-$index',
           _at(1, 0, index),
         ),
-      // A delegated card sits near the start, outside the initial viewport.
+      // A delegated card sits near the start, well outside the first window.
       ConversationMessageTimelineItem(
         'k-card',
         AgentConversationMessage(
@@ -968,10 +552,10 @@ void main() {
     ];
     await _pumpFlow(tester, chronological.reversed.toList());
 
-    // The card is outside the initial viewport: not built yet.
+    // The card is outside the initial window: not built yet.
     expect(find.byType(AgentConversationSubagentCardBlock), findsNothing);
 
-    // Scrolling to the top builds it from the complete lazy delegate.
+    // Scrolling to the top loads it.
     await tester.drag(find.byType(ListView), const Offset(0, 12000));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView), const Offset(0, 12000));
@@ -1111,9 +695,8 @@ ConversationMessageTimelineItem _participantMessageItem(
   String participantAgentId,
   String participantLabel,
   String text,
-  String createdAt, {
-  String? participantRole,
-}) {
+  String createdAt,
+) {
   return ConversationMessageTimelineItem(
     key,
     AgentConversationMessage(
@@ -1123,7 +706,7 @@ ConversationMessageTimelineItem _participantMessageItem(
       createdAt: createdAt,
       participantAgentId: participantAgentId,
       participantLabel: participantLabel,
-      participantRole: participantRole ?? participantAgentId,
+      participantRole: participantAgentId,
     ),
   );
 }
@@ -1171,18 +754,7 @@ Future<void> _pumpFlow(
   WidgetTester tester,
   List<ConversationTimelineItem> newestFirst, {
   ScrollController? scrollController,
-  List<TargetCandidate> participantTargets = const [],
-  Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
-      const {},
-  bool hasEarlier = false,
-  Future<void> Function()? onLoadEarlier,
-  Future<void> Function(String)? onCopyText,
-  double viewportHeight = 600,
 }) async {
-  tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = Size(800, viewportHeight);
-  addTearDown(tester.view.resetDevicePixelRatio);
-  addTearDown(tester.view.resetPhysicalSize);
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -1196,7 +768,7 @@ Future<void> _pumpFlow(
       home: Scaffold(
         body: SizedBox(
           width: 800,
-          height: viewportHeight,
+          height: 600,
           child: MessagingParticipantFlow(
             items: newestFirst,
             adapter: AgentRenderAdapter.fallback(),
@@ -1209,12 +781,7 @@ Future<void> _pumpFlow(
               confidence: 1,
               adapterStatus: 'implemented',
             ),
-            participantTargets: participantTargets,
-            participantRuntimeProfiles: participantRuntimeProfiles,
             scrollController: scrollController,
-            hasEarlier: hasEarlier,
-            onLoadEarlier: onLoadEarlier,
-            onCopyText: onCopyText,
           ),
         ),
       ),
@@ -1222,13 +789,3 @@ Future<void> _pumpFlow(
   );
   await tester.pump();
 }
-
-TargetCandidate _flowTarget(String id, String label) => TargetCandidate(
-  target: id,
-  label: label,
-  kind: 'cli',
-  status: 'detected',
-  configured: true,
-  confidence: 1,
-  adapterStatus: 'implemented',
-);

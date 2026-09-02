@@ -179,8 +179,9 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
   }
 }
 
-/// The workflow view projects only topology-neutral Graph run, command,
-/// Membership and checked numeric usage facts.
+/// The workflow view is deliberately a projection-only peer of the existing
+/// Agent and Model timeline. It renders native numeric facts and hierarchy,
+/// while every role, state, empty, and disclosure label comes from l10n.
 class AgentUsageWorkflowSection extends StatefulWidget {
   const AgentUsageWorkflowSection({
     super.key,
@@ -202,7 +203,8 @@ class AgentUsageWorkflowSection extends StatefulWidget {
 
 final class _AgentUsageWorkflowSectionState
     extends State<AgentUsageWorkflowSection> {
-  final Set<int> _expandedRuns = <int>{};
+  final Set<int> _expandedPlans = <int>{};
+  final Set<String> _expandedTasks = <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -210,10 +212,6 @@ final class _AgentUsageWorkflowSectionState
     final workflows = [...widget.workflows]
       ..sort((a, b) => b.totalTokens.compareTo(a.totalTokens));
     final summary = _summaryFor(workflows, widget.summary);
-    final commandCount = workflows.fold<int>(
-      0,
-      (total, workflow) => total + workflow.commands.length,
-    );
     return Column(
       key: const ValueKey('agent-usage-workflow-view'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,18 +240,28 @@ final class _AgentUsageWorkflowSectionState
         else ...[
           _WorkflowTotalsHeader(
             totals: summary,
-            runCount: workflows.length,
-            commandCount: commandCount,
+            mainTokens: _mainWorkflowTokens(workflows),
+            subordinateTokens: _subordinateWorkflowTokens(workflows),
           ),
           const SizedBox(height: 16),
           for (var index = 0; index < workflows.length; index += 1) ...[
-            _WorkflowRunCard(
-              key: ValueKey('agent-usage-workflow-run-$index'),
+            _WorkflowPlanCard(
+              key: ValueKey('agent-usage-workflow-plan-$index'),
               workflow: workflows[index],
-              ordinal: index + 1,
-              expanded: _expandedRuns.contains(index),
-              onToggle: () => setState(() {
-                if (!_expandedRuns.add(index)) _expandedRuns.remove(index);
+              expansionPrefix: '$index',
+              expanded: _expandedPlans.contains(index),
+              expandedTasks: _expandedTasks,
+              onPlanToggle: () => setState(() {
+                if (!_expandedPlans.add(index)) {
+                  _expandedPlans.remove(index);
+                  _expandedTasks.removeWhere(
+                    (key) => key.startsWith('$index:'),
+                  );
+                }
+              }),
+              onTaskToggle: (taskKey) => setState(() {
+                final key = '$index:$taskKey';
+                if (!_expandedTasks.add(key)) _expandedTasks.remove(key);
               }),
             ),
             if (index < workflows.length - 1) const SizedBox(height: 10),
@@ -280,13 +288,13 @@ final class _AgentUsageWorkflowSectionState
 class _WorkflowTotalsHeader extends StatelessWidget {
   const _WorkflowTotalsHeader({
     required this.totals,
-    required this.runCount,
-    required this.commandCount,
+    required this.mainTokens,
+    required this.subordinateTokens,
   });
 
   final AgentUsageTokenTotals totals;
-  final int runCount;
-  final int commandCount;
+  final int mainTokens;
+  final int subordinateTokens;
 
   @override
   Widget build(BuildContext context) {
@@ -319,12 +327,12 @@ class _WorkflowTotalsHeader extends StatelessWidget {
               ),
             ),
             _WorkflowMetric(
-              label: strings.workflowRuns,
-              value: formatAgentUsageNumber(runCount),
+              label: strings.workflowMainShare,
+              value: formatAgentUsageNumber(mainTokens),
             ),
             _WorkflowMetric(
-              label: strings.workflowCommands,
-              value: formatAgentUsageNumber(commandCount),
+              label: strings.workflowSubordinateShare,
+              value: formatAgentUsageNumber(subordinateTokens),
             ),
           ],
         ),
@@ -345,6 +353,24 @@ class _WorkflowTotalsHeader extends StatelessWidget {
       ],
     );
   }
+}
+
+int _mainWorkflowTokens(List<AgentUsageWorkflow> workflows) {
+  var total = 0;
+  for (final workflow in workflows) {
+    for (final root in workflow.roots) {
+      if (root.isMain) total += root.usage.totalTokens;
+    }
+  }
+  return total;
+}
+
+int _subordinateWorkflowTokens(List<AgentUsageWorkflow> workflows) {
+  final all = workflows.fold<int>(
+    0,
+    (total, workflow) => total + workflow.totalTokens,
+  );
+  return (all - _mainWorkflowTokens(workflows)).clamp(0, 0x7fffffff);
 }
 
 class _WorkflowMetric extends StatelessWidget {
@@ -424,24 +450,52 @@ class _WorkflowComponentValue extends StatelessWidget {
   }
 }
 
-class _WorkflowRunCard extends StatelessWidget {
-  const _WorkflowRunCard({
+class _WorkflowPlanCard extends StatelessWidget {
+  const _WorkflowPlanCard({
     super.key,
     required this.workflow,
-    required this.ordinal,
+    required this.expansionPrefix,
     required this.expanded,
-    required this.onToggle,
+    required this.expandedTasks,
+    required this.onPlanToggle,
+    required this.onTaskToggle,
   });
 
   final AgentUsageWorkflow workflow;
-  final int ordinal;
+  final String expansionPrefix;
   final bool expanded;
-  final VoidCallback onToggle;
+  final Set<String> expandedTasks;
+  final VoidCallback onPlanToggle;
+  final ValueChanged<String> onTaskToggle;
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
+    final mainNodes = workflow.roots.where((node) => node.isMain).toList();
+    final subordinateNodes = [
+      for (final root in workflow.roots) ...[
+        if (!root.isMain) root,
+        ...root.children,
+      ],
+    ];
+    final mainTotal = mainNodes.fold<int>(
+      0,
+      (total, node) => total + node.usage.totalTokens,
+    );
+    final subordinateTotal = (workflow.totalTokens - mainTotal).clamp(
+      0,
+      0x7fffffff,
+    );
+    final taskGroups = <String, List<AgentUsageWorkflowNode>>{};
+    for (final node in subordinateNodes) {
+      final task = node.taskLabel.trim().isEmpty
+          ? strings.workflowTask
+          : node.taskLabel;
+      taskGroups.putIfAbsent(task, () => []).add(node);
+    }
+    final taskEntries = taskGroups.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceLow.withAlpha(colors.isDark ? 90 : 120),
@@ -452,34 +506,42 @@ class _WorkflowRunCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _WorkflowDisclosureRow(
-            key: const ValueKey('agent-usage-workflow-run-row'),
+            key: const ValueKey('agent-usage-workflow-plan-row'),
             expanded: expanded,
-            onTap: onToggle,
-            title: strings.workflowRunLabel(ordinal),
+            onTap: onPlanToggle,
+            title: strings.workflowPlanLabel(
+              workflow.planCode,
+              workflow.planRevision,
+            ),
             trailing: formatAgentUsageNumber(workflow.totalTokens),
           ),
           if (expanded) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(37, 0, 12, 8),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 11),
               child: Wrap(
-                spacing: 10,
-                runSpacing: 3,
+                spacing: 12,
+                runSpacing: 5,
                 children: [
-                  _WorkflowFactLabel(
-                    value: strings.workflowStatusLabel(workflow.status),
+                  Text(
+                    '${strings.workflowMainShare}: ${formatAgentUsageNumber(mainTotal)}',
+                    style: TextStyle(color: colors.textMuted, fontSize: 11),
                   ),
-                  _WorkflowFactLabel(
-                    value: strings.workflowRevisionLabel(
-                      _workflowDisplayLabel(workflow.revisionDigest, strings),
-                    ),
+                  Text(
+                    '${strings.workflowSubordinateShare}: ${formatAgentUsageNumber(subordinateTotal)}',
+                    style: TextStyle(color: colors.textMuted, fontSize: 11),
                   ),
                 ],
               ),
             ),
-            for (var index = 0; index < workflow.commands.length; index += 1)
-              _WorkflowCommandRow(
-                command: workflow.commands[index],
-                ordinal: index + 1,
+            for (final root in mainNodes) _WorkflowMainRow(node: root),
+            for (var index = 0; index < taskEntries.length; index += 1)
+              _WorkflowTaskGroup(
+                taskCode: taskEntries[index].key,
+                nodes: taskEntries[index].value,
+                expanded: expandedTasks.contains(
+                  '$expansionPrefix:${taskEntries[index].key}',
+                ),
+                onTap: () => onTaskToggle(taskEntries[index].key),
               ),
           ],
         ],
@@ -547,11 +609,10 @@ class _WorkflowDisclosureRow extends StatelessWidget {
   }
 }
 
-class _WorkflowCommandRow extends StatelessWidget {
-  const _WorkflowCommandRow({required this.command, required this.ordinal});
+class _WorkflowMainRow extends StatelessWidget {
+  const _WorkflowMainRow({required this.node});
 
-  final AgentUsageWorkflowCommand command;
-  final int ordinal;
+  final AgentUsageWorkflowNode node;
 
   @override
   Widget build(BuildContext context) {
@@ -559,26 +620,61 @@ class _WorkflowCommandRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(37, 0, 12, 10),
       child: _WorkflowFactRow(
-        label: strings.workflowCommandLabel(ordinal),
-        kind: strings.workflowKindLabel(command.kind),
-        membership: command.membershipId == null
-            ? null
-            : strings.workflowMembershipLabel(
-                _workflowDisplayLabel(command.membershipId!, strings),
-              ),
-        agent: command.agentId == null
-            ? null
-            : strings.workflowAgentLabel(
-                _workflowDisplayLabel(command.agentId!, strings),
-              ),
-        model: command.model == null
-            ? null
-            : strings.workflowModelLabel(
-                _workflowDisplayLabel(command.model!, strings),
-              ),
-        status: strings.workflowStatusLabel(command.status),
-        totals: command.usage,
+        label: strings.workflowMainConversation,
+        role: strings.workflowRoleLabel(node.role),
+        agent: _workflowDisplayLabel(node.agentId, strings),
+        model: _workflowDisplayLabel(node.model, strings),
+        status: strings.workflowStatusLabel(node.state),
+        totals: node.usage,
       ),
+    );
+  }
+}
+
+class _WorkflowTaskGroup extends StatelessWidget {
+  const _WorkflowTaskGroup({
+    required this.taskCode,
+    required this.nodes,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final String taskCode;
+  final List<AgentUsageWorkflowNode> nodes;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final total = nodes.fold<int>(
+      0,
+      (value, node) => value + node.usage.totalTokens,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _WorkflowDisclosureRow(
+          key: ValueKey('agent-usage-workflow-task-$taskCode'),
+          expanded: expanded,
+          onTap: onTap,
+          title: strings.workflowTaskLabel(taskCode),
+          trailing: formatAgentUsageNumber(total),
+        ),
+        if (expanded)
+          for (var index = 0; index < nodes.length; index += 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(61, 0, 12, 9),
+              child: _WorkflowFactRow(
+                label: strings.workflowDispatchLabel(index + 1),
+                role: strings.workflowRoleLabel(nodes[index].role),
+                agent: _workflowDisplayLabel(nodes[index].agentId, strings),
+                model: _workflowDisplayLabel(nodes[index].model, strings),
+                status: strings.workflowStatusLabel(nodes[index].state),
+                totals: nodes[index].usage,
+              ),
+            ),
+      ],
     );
   }
 }
@@ -586,8 +682,7 @@ class _WorkflowCommandRow extends StatelessWidget {
 class _WorkflowFactRow extends StatelessWidget {
   const _WorkflowFactRow({
     required this.label,
-    required this.kind,
-    required this.membership,
+    required this.role,
     required this.agent,
     required this.model,
     required this.status,
@@ -595,10 +690,9 @@ class _WorkflowFactRow extends StatelessWidget {
   });
 
   final String label;
-  final String kind;
-  final String? membership;
-  final String? agent;
-  final String? model;
+  final String role;
+  final String agent;
+  final String model;
   final String status;
   final AgentUsageTokenTotals totals;
 
@@ -645,10 +739,9 @@ class _WorkflowFactRow extends StatelessWidget {
               spacing: 10,
               runSpacing: 3,
               children: [
-                _WorkflowFactLabel(value: kind),
-                if (membership != null) _WorkflowFactLabel(value: membership!),
-                if (agent != null) _WorkflowFactLabel(value: agent!),
-                if (model != null) _WorkflowFactLabel(value: model!),
+                _WorkflowFactLabel(value: role),
+                _WorkflowFactLabel(value: agent),
+                _WorkflowFactLabel(value: model),
                 _WorkflowFactLabel(value: status),
                 _WorkflowFactLabel(
                   value:

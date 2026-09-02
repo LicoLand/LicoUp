@@ -135,6 +135,26 @@ void main() {
     },
   );
 
+  test('conversation stream occupies the queue until it closes', () async {
+    final queue = StdioRpcOperationQueue();
+    final order = <String>[];
+
+    final stream = queue.serializeStream<String>(
+      operation: () => Stream.fromIterable(const ['a', 'b']),
+      timeout: const Duration(seconds: 5),
+      onTimeout: () async {},
+    );
+    final after = queue.serialize(() async {
+      order.add('after');
+    });
+
+    final events = await stream.toList();
+    await after;
+
+    expect(events, ['a', 'b']);
+    expect(order, ['after']);
+  });
+
   test(
     'detach releases the observer without waiting for active work',
     () async {

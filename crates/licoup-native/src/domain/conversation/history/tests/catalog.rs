@@ -105,7 +105,7 @@ fn codex_catalog_uses_state_threads_and_supplements_fresh_rollouts() {
                 "Archived thread",
                 1,
             ),
-            // Older Agent-owned threads remain pageable.
+            // Threads outside the thirty-day window are not loaded.
             (
                 "019f0000-0000-7000-8000-0000000000d4",
                 "/missing/old.jsonl",
@@ -125,11 +125,10 @@ fn codex_catalog_uses_state_threads_and_supplements_fresh_rollouts() {
     .unwrap();
 
     let ids = session_ids(&listed);
-    assert_eq!(ids.len(), 3);
+    assert_eq!(ids.len(), 2);
     assert!(ids.contains(&recent_id.to_string()));
     assert!(ids.contains(&fresh_id.to_string()));
-    assert!(ids.contains(&"019f0000-0000-7000-8000-0000000000d4".to_string()));
-    assert_eq!(listed["page"]["totalSessions"], 3);
+    assert_eq!(listed["page"]["totalSessions"], 2);
     let sessions = listed["sessions"].as_array().unwrap();
     let recent = sessions
         .iter()
@@ -322,56 +321,6 @@ fn codex_catalog_paginates_and_hydrates_only_the_returned_page() {
     assert_eq!(page_two["page"]["hasMore"], false);
 }
 
-#[test]
-fn catalog_pages_include_old_agent_owned_sessions() {
-    let home = temp_dir("catalog-old-pages");
-    fs::create_dir_all(home.join(".codex/sessions")).unwrap();
-    let database = home.join(".codex/state_5.sqlite");
-    let connection = Connection::open(&database).unwrap();
-    connection
-        .execute(
-            "CREATE TABLE threads (
-                id TEXT PRIMARY KEY, rollout_path TEXT, created_at INTEGER,
-                updated_at INTEGER, title TEXT, archived INTEGER, cwd TEXT, model TEXT
-            )",
-            [],
-        )
-        .unwrap();
-    let now = now_epoch_seconds();
-    for index in 0..75 {
-        let id = format!("synthetic-old-{index:03}");
-        let updated = now - (index as i64 + 40) * 86_400;
-        connection
-            .execute(
-                "INSERT INTO threads VALUES (?1, ?2, ?3, ?3, ?4, 0, '/synthetic/workspace', 'synthetic-model')",
-                (
-                    &id,
-                    format!("/synthetic/missing/{id}.jsonl"),
-                    updated,
-                    format!("Old session {index}"),
-                ),
-            )
-            .unwrap();
-    }
-    drop(connection);
-
-    let mut identities = Vec::new();
-    for offset in [0, 20, 40, 60] {
-        let listed = conversation_list(&json!({
-            "agent": "codex",
-            "homeDir": display_path(&home),
-            "offset": offset,
-            "limit": 20
-        }))
-        .unwrap();
-        identities.extend(session_ids(&listed));
-        assert_eq!(listed["page"]["totalSessions"], 75);
-        assert_eq!(listed["page"]["hasMore"], offset < 60);
-    }
-    assert_eq!(identities.len(), 75);
-    assert_eq!(identities.iter().collect::<BTreeSet<_>>().len(), 75);
-}
-
 fn create_openagent_catalog_db(path: &Path) {
     let connection = Connection::open(path).unwrap();
     connection
@@ -412,7 +361,7 @@ fn create_openagent_catalog_db(path: &Path) {
 }
 
 #[test]
-fn opencode_catalog_filters_sub_sessions_and_archived_but_keeps_old() {
+fn opencode_catalog_filters_sub_sessions_alongside_archived_and_old() {
     let home = temp_dir("opencode-catalog");
     let data_dir = home.join(".local/share/opencode");
     fs::create_dir_all(&data_dir).unwrap();
@@ -429,7 +378,7 @@ fn opencode_catalog_filters_sub_sessions_and_archived_but_keeps_old() {
     ids.sort();
     // Sub-agent sessions stay reachable through their parent's transcript,
     // matching the kilo catalog rule.
-    assert_eq!(ids, vec!["ses_keep".to_string(), "ses_old".to_string()]);
+    assert_eq!(ids, vec!["ses_keep".to_string()]);
     let sessions = listed["sessions"].as_array().unwrap();
     let keep = sessions
         .iter()
@@ -441,7 +390,7 @@ fn opencode_catalog_filters_sub_sessions_and_archived_but_keeps_old() {
 }
 
 #[test]
-fn kilo_catalog_filters_sub_sessions_and_archived_but_keeps_old() {
+fn kilo_catalog_filters_sub_sessions_alongside_archived_and_old() {
     let home = temp_dir("kilo-catalog");
     let data_dir = home.join(".local/share/kilo");
     fs::create_dir_all(&data_dir).unwrap();
@@ -454,112 +403,7 @@ fn kilo_catalog_filters_sub_sessions_and_archived_but_keeps_old() {
     }))
     .unwrap();
 
-    let mut ids = session_ids(&listed);
-    ids.sort();
-    assert_eq!(ids, vec!["ses_keep".to_string(), "ses_old".to_string()]);
-}
-
-#[test]
-fn openagent_explicit_parent_folds_identically_in_browse_and_exact_reads() {
-    let home = temp_dir("openagent-parent-parity");
-    let data_dir = home.join(".local/share/opencode");
-    fs::create_dir_all(&data_dir).unwrap();
-    let database = data_dir.join("opencode.db");
-    let connection = Connection::open(&database).unwrap();
-    connection
-        .execute_batch(
-            "CREATE TABLE session (
-                id TEXT PRIMARY KEY, parent_id TEXT, title TEXT, directory TEXT,
-                time_created INTEGER, time_updated INTEGER, time_archived INTEGER
-             );
-             CREATE TABLE message (
-                id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER,
-                time_updated INTEGER, data TEXT
-             );
-             CREATE TABLE part (
-                id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT,
-                time_created INTEGER, data TEXT
-             );",
-        )
-        .unwrap();
-    let now = now_epoch_millis();
-    connection
-        .execute(
-            "INSERT INTO session VALUES ('parent', NULL, 'Parent', '/synthetic/workspace', ?1, ?1, NULL)",
-            [now],
-        )
-        .unwrap();
-    connection
-        .execute(
-            "INSERT INTO session VALUES ('child', 'parent', 'Child task', '/synthetic/workspace', ?1, ?1, NULL)",
-            [now],
-        )
-        .unwrap();
-    for (id, session, created, data) in [
-        (
-            "parent-user",
-            "parent",
-            now,
-            r#"{"role":"user","text":"Parent prompt"}"#,
-        ),
-        (
-            "parent-agent",
-            "parent",
-            now + 1,
-            r#"{"role":"assistant","text":"Parent reply"}"#,
-        ),
-        (
-            "child-tool",
-            "child",
-            now + 2,
-            r#"{"role":"tool_result","type":"tool_result","result":"Tool-only child result"}"#,
-        ),
-    ] {
-        connection
-            .execute(
-                "INSERT INTO message VALUES (?1, ?2, ?3, ?3, ?4)",
-                (id, session, created, data),
-            )
-            .unwrap();
-    }
-    drop(connection);
-
-    let browse = conversation_list(&json!({
-        "agent": "opencode",
-        "homeDir": display_path(&home),
-        "limit": 20
-    }))
-    .unwrap();
-    let exact = conversation_list(&json!({
-        "agent": "opencode",
-        "homeDir": display_path(&home),
-        "sessionId": "parent",
-        "messageLimit": 50
-    }))
-    .unwrap();
-    assert_eq!(browse["sessions"].as_array().unwrap().len(), 1);
-    assert_eq!(exact["sessions"].as_array().unwrap().len(), 1);
-    for session in [&browse["sessions"][0], &exact["sessions"][0]] {
-        assert_eq!(session["nativeSessionId"], "parent");
-        let cards = session["messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|message| message["role"] == "subagent")
-            .collect::<Vec<_>>();
-        assert_eq!(cards.len(), 1);
-        assert!(
-            cards[0]["messages"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|message| {
-                    message["text"]
-                        .as_str()
-                        .is_some_and(|text| text.contains("Tool-only child result"))
-                })
-        );
-    }
+    assert_eq!(session_ids(&listed), vec!["ses_keep".to_string()]);
 }
 
 #[test]
@@ -669,13 +513,6 @@ fn browse_cache_serves_warm_pages_identically_and_counts_work() {
     assert_eq!(warm.cache_hits, 1);
     assert_eq!(warm.cache_misses, 0);
     assert_eq!(first["sessions"], second["sessions"]);
-    let without_cache = conversation_list(&json!({
-        "agent": "codex",
-        "homeDir": display_path(&home),
-        "limit": 20
-    }))
-    .unwrap();
-    assert_eq!(first["sessions"], without_cache["sessions"]);
     assert!(
         cache_root.join("history-projections.json").is_file(),
         "the cache file is written beneath the requested root"
@@ -788,13 +625,16 @@ fn browse_cache_discards_whole_cache_on_schema_mismatch() {
 }
 
 #[test]
-fn codex_large_rollout_keeps_opening_turn_exact_count_and_stable_ids() {
-    let home = temp_dir("codex-complete-browse");
+fn codex_oversized_rollout_hydrates_from_a_bounded_tail_with_exact_message_ids() {
+    let home = temp_dir("codex-tail-browse");
     let sessions_dir = home.join(".codex/sessions/2026/08/01");
     fs::create_dir_all(&sessions_dir).unwrap();
     let id = "019f0000-0000-7000-8000-0000000000e4";
     let rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{id}.jsonl"));
 
+    // A rollout larger than the tail budget: the header and a wall of
+    // bookkeeping records push the conversation itself past the window, so the
+    // browse row must come from the bounded tail alone.
     let header = format!(
         r#"{{"timestamp":"2026-08-01T00:00:00Z","type":"session_meta","payload":{{"id":"{id}","cwd":"/workspace/catalog"}}}}"#
     );
@@ -805,14 +645,12 @@ fn codex_large_rollout_keeps_opening_turn_exact_count_and_stable_ids() {
             "
 ",
         );
-    let opening = r#"{"timestamp":"2026-08-01T00:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Opening prompt"}]}}"#;
-    let user = r#"{"timestamp":"2026-08-01T00:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Final prompt"}]}}"#;
-    let assistant = r#"{"timestamp":"2026-08-01T00:00:03Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Final reply"}]}}"#;
+    let user = r#"{"timestamp":"2026-08-01T00:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Tail prompt"}]}}"#;
+    let assistant = r#"{"timestamp":"2026-08-01T00:00:03Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Tail reply"}]}}"#;
     fs::write(
         &rollout,
         format!(
             "{header}
-{opening}
 {filler}
 {user}
 {assistant}
@@ -833,28 +671,35 @@ fn codex_large_rollout_keeps_opening_turn_exact_count_and_stable_ids() {
             0,
         )],
     );
-    let cache_root = temp_dir("codex-complete-cache-root");
+    let cache_root = temp_dir("codex-tail-cache-root");
 
     let (listed, counters) = browse_with_counters(&home, &cache_root);
+    assert!(
+        counters.tail_bytes > 0,
+        "the oversized rollout used the tail reader"
+    );
+    assert!(counters.tail_records > 0);
+    assert!(counters.tail_scanned_bytes > 0);
     assert_eq!(counters.cache_misses, 1);
 
     let sessions = listed["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0]["nativeSessionId"], id);
     assert_eq!(
-        sessions[0]["sourceMessageCount"], 3,
-        "browse count is exact for the complete logical transcript"
+        sessions[0]["messageCount"], 2,
+        "tail counts stay exact within the window"
     );
     let messages = sessions[0]["messages"].as_array().unwrap();
     let texts = messages
         .iter()
         .map(|message| message["text"].as_str().unwrap().to_string())
         .collect::<Vec<_>>();
-    assert!(texts.contains(&"Opening prompt".to_string()));
-    assert!(texts.contains(&"Final prompt".to_string()));
-    assert!(texts.contains(&"Final reply".to_string()));
+    assert!(texts.contains(&"Tail prompt".to_string()));
+    assert!(texts.contains(&"Tail reply".to_string()));
 
-    // Browse and exact read serialize the same finalized identities.
+    // The single-session read parses the same file whole; message ids derive
+    // from absolute line indices, so the tail row and the whole-file row must
+    // name every message identically.
     let whole = conversation_list(&json!({
         "agent": "codex",
         "homeDir": display_path(&home),
@@ -869,12 +714,34 @@ fn codex_large_rollout_keeps_opening_turn_exact_count_and_stable_ids() {
         .iter()
         .map(|message| message["id"].as_str().unwrap().to_string())
         .collect::<Vec<_>>();
-    let browse_ids = messages
+    let tail_ids = messages
         .iter()
         .map(|message| message["id"].as_str().unwrap().to_string())
         .collect::<Vec<_>>();
-    assert_eq!(browse_ids, whole_ids, "browse and exact ids agree");
-    assert_eq!(whole_sessions[0]["sourceMessageCount"], 3);
+    assert_eq!(
+        tail_ids, whole_ids,
+        "bounded-tail message ids anchor to file-absolute indices"
+    );
+    assert_eq!(whole_sessions[0]["messageCount"], 2);
+}
+
+#[test]
+fn bounded_tail_drops_a_multibyte_prefix_without_losing_complete_records() {
+    let root = temp_dir("tail-multibyte-boundary");
+    let path = root.join("records.jsonl");
+    let content = "épartial\nfirst\nsecond\n";
+    fs::write(&path, content).unwrap();
+    let metadata = fs::metadata(&path).unwrap();
+
+    // Skip the first byte of the multibyte prefix. The incomplete first line
+    // is discarded as bytes; the two complete UTF-8 records retain their
+    // whole-file absolute line indices.
+    let tail =
+        super::super::catalog::read_bounded_tail(&path, &metadata, metadata.len() - 1, 8).unwrap();
+    assert_eq!(
+        tail.lines,
+        vec![(1, "first".to_string()), (2, "second".to_string())]
+    );
 }
 
 #[test]
@@ -961,7 +828,7 @@ fn cursor_catalog_reads_project_workspace_path_for_agent_transcripts() {
 }
 
 #[test]
-fn claude_catalog_probes_head_titles_and_keeps_old_sessions() {
+fn claude_catalog_probes_head_titles_and_applies_the_recency_window() {
     let home = temp_dir("claude-catalog");
     let project_dir = home.join(".claude/projects/-workspace-project");
     fs::create_dir_all(&project_dir).unwrap();
@@ -997,15 +864,11 @@ fn claude_catalog_probes_head_titles_and_keeps_old_sessions() {
     .unwrap();
 
     let ids = session_ids(&listed);
-    assert_eq!(ids.len(), 2);
-    assert!(ids.contains(&"cd2442dd-a04c-4503-8ce3-1d114047ce63".to_string()));
-    assert!(ids.contains(&"00000000-0000-4000-8000-000000000000".to_string()));
-    let session = listed["sessions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|session| session["nativeSessionId"] == "cd2442dd-a04c-4503-8ce3-1d114047ce63")
-        .unwrap();
+    assert_eq!(
+        ids,
+        vec!["cd2442dd-a04c-4503-8ce3-1d114047ce63".to_string()]
+    );
+    let session = &listed["sessions"][0];
     assert_eq!(session["title"], "Claude catalog prompt");
     assert!(
         session["messages"]
@@ -1195,40 +1058,6 @@ fn codex_delegated_threads_fold_into_the_conversation_that_spawned_them() {
         listed["sessions"][0]["workingDirectory"], "/workspace/catalog",
         "the thread record keeps the project directory"
     );
-}
-
-#[test]
-fn codex_exact_lineage_reaches_every_explicit_child_without_a_total_cap() {
-    let home = temp_dir("codex-all-explicit-children");
-    fs::create_dir_all(home.join(".codex/sessions")).unwrap();
-    let database = home.join(".codex/state_5.sqlite");
-    let connection = Connection::open(&database).unwrap();
-    connection
-        .execute(
-            "CREATE TABLE thread_spawn_edges (
-                parent_thread_id TEXT NOT NULL,
-                child_thread_id TEXT NOT NULL,
-                status TEXT NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-    for index in 0..65 {
-        connection
-            .execute(
-                "INSERT INTO thread_spawn_edges VALUES ('parent-thread', ?1, 'closed')",
-                [format!("child-thread-{index:03}")],
-            )
-            .unwrap();
-    }
-    drop(connection);
-
-    let children = super::super::catalog::codex_delegated_thread_ids(
-        &json!({"homeDir": display_path(&home)}),
-        &["parent-thread".to_string()],
-    );
-    assert_eq!(children.len(), 65);
-    assert_eq!(children.iter().collect::<BTreeSet<_>>().len(), 65);
 }
 
 #[test]

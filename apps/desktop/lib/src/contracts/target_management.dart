@@ -2,8 +2,8 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Narrow native boundary used by target discovery and configuration.
 abstract interface class TargetManagementGateway {
-  Future<TargetScanBatch> scanTargetsBatch(
-    List<String> targetIds, {
+  Future<TargetCandidate?> scanOneTarget(
+    String targetId, {
     bool enableAgentCliModelLookup = false,
   });
 
@@ -19,24 +19,6 @@ abstract interface class TargetManagementGateway {
   Future<Map<String, dynamic>> inspectTarget(String target);
 
   Future<Map<String, dynamic>> restoreSnapshot(String snapshotId);
-}
-
-final class TargetScanBatch {
-  const TargetScanBatch(this.slots);
-
-  final List<TargetScanSlot> slots;
-}
-
-final class TargetScanSlot {
-  const TargetScanSlot({
-    required this.targetId,
-    this.candidate,
-    this.failed = false,
-  });
-
-  final String targetId;
-  final TargetCandidate? candidate;
-  final bool failed;
 }
 
 /// Durable cache boundary for the last visible target snapshot.
