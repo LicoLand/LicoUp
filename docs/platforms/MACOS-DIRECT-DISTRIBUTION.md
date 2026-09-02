@@ -85,9 +85,9 @@ them into the Keychain, then unset them:
 
 ```sh
 export LICO_UPDATE_OFFLINE_ROOT_KEY=<offline-root-ed25519-pem>
-export LICO_UPDATE_ONLINE_CHANNEL_KEY=<online-channel-ed25519-pem>
+export LICO_UPDATE_ONLINE_SIGNING_KEY=<online-signing-ed25519-pem>
 npm run client:release:authority:configure
-unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_CHANNEL_KEY
+unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_SIGNING_KEY
 ```
 
 A release run with either key missing is blocked at preflight.

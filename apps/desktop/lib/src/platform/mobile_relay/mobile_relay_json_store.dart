@@ -27,6 +27,25 @@ class MobileRelayJsonStore {
     }
   }
 
+  /// Reads a startup-admitted durable document. Missing is allowed for a
+  /// fresh domain; an existing empty or malformed file is never projected as
+  /// absence because that would silently reset durable state.
+  Future<Object?> readCurrent(Object portableData, String fileName) async {
+    final file = await _file(portableData, fileName);
+    if (!await file.exists()) {
+      return null;
+    }
+    final raw = await file.readAsString();
+    if (raw.trim().isEmpty) {
+      throw const FormatException('durable_state_document_invalid');
+    }
+    try {
+      return jsonDecode(raw);
+    } on FormatException {
+      throw const FormatException('durable_state_document_invalid');
+    }
+  }
+
   Future<void> write(
     Object portableData,
     String fileName,

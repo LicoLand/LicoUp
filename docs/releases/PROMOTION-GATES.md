@@ -31,6 +31,14 @@ promote a later `nightly` tip into the same in-flight publication.
 
 ## Delegated Apple publication
 
+Nightly and Stable are tracks of one LicoUp identity. Nightly uses
+`tools/apple-release/macos-direct-arm64-nightly.json` from `nightly` and the
+fixed `nightly` prerelease. Stable uses the existing profile from `release`
+and immutable `v{version}` tags. Both manifests bind their track and exact
+embedded migration frontier. Stable promotion must be non-prerelease and
+strictly newer; a same-version Stable is not offered to Nightly. See
+[client update and state migration](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md).
+
 Promotion readiness is not publication. The repository stops at a verified
 `origin/release` source cut. Post-release macOS Developer ID publication is
 delegated to the local Apple Release engine through
@@ -54,15 +62,19 @@ npm run client:release:status -- --job <job-id>
 ```
 
 One authorization precondition applies: export the two update signing keys
-(`LICO_UPDATE_OFFLINE_ROOT_KEY` and `LICO_UPDATE_ONLINE_CHANNEL_KEY`, Ed25519
+(`LICO_UPDATE_OFFLINE_ROOT_KEY` and `LICO_UPDATE_ONLINE_SIGNING_KEY`, Ed25519
 PEM) before configuration so they are registered into the Keychain; they may be
 unset afterwards. A run with either key missing is blocked at preflight.
 
 An explicitly authorized publication starts with one command:
 
 ```sh
+npm run client:release:macos:nightly:publish
 npm run client:release:macos:publish
 ```
+
+The first command updates the fixed Nightly prerelease from `nightly`; the
+second publishes an immutable Stable release from `release`.
 
 The version and build come from the version document at the frozen `release`
 revision. `npm run client:release:macos -- --version <version> --build <build>`
@@ -79,4 +91,4 @@ requires exact public-asset reconciliation, anonymous installer download,
 digest verification, installation, and stable launch.
 
 Branch promotion never starts a release run and never creates or publishes a
-GitHub Release, tag, asset, notarization submission, or update-channel record.
+GitHub Release, tag, asset, notarization submission, or release-track record.

@@ -69,9 +69,9 @@ npm run client:release:authority:configure
 
 ```sh
 export LICO_UPDATE_OFFLINE_ROOT_KEY=<offline-root-ed25519-pem>
-export LICO_UPDATE_ONLINE_CHANNEL_KEY=<online-channel-ed25519-pem>
+export LICO_UPDATE_ONLINE_SIGNING_KEY=<online-signing-ed25519-pem>
 npm run client:release:authority:configure
-unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_CHANNEL_KEY
+unset LICO_UPDATE_OFFLINE_ROOT_KEY LICO_UPDATE_ONLINE_SIGNING_KEY
 ```
 
 缺少任意一把密钥的发布运行会在预检阶段被拦截。

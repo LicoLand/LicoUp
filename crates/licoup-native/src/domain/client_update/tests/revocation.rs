@@ -1,11 +1,11 @@
 use super::support::*;
 
 #[test]
-fn client_update_requires_signed_revocation_metadata_when_channel_policy_demands_it() {
+fn client_update_requires_signed_revocation_metadata_when_track_policy_demands_it() {
     let fixture = UpdateFixture::new();
     let mut manifest =
         fixture.unsigned_manifest(json!([release("999.0.0", fixture.artifact(TARGET_ID),)]));
-    manifest["channelPolicy"]["revokePolicy"] = json!("signed-revocation-list-required");
+    manifest["releaseTrackPolicy"]["revocationPolicy"] = json!("signed-revocation-list-required");
     let params = fixture.params(fixture.sign_manifest(manifest));
     assert!(
         check(&params)
@@ -24,7 +24,22 @@ fn client_update_rejects_unsigned_revocation_metadata() {
         check(&params)
             .unwrap_err()
             .to_string()
-            .contains("signatures are required")
+            .contains("contract is not closed")
+    );
+}
+
+#[test]
+fn client_update_rejects_unknown_signed_revocation_fields() {
+    let fixture = UpdateFixture::new();
+    let mut body = revocation_body();
+    body["allowVersion"] = json!("999.0.0");
+    let mut params = fixture.params(fixture.manifest());
+    params["revocationList"] = fixture.signed_revocation(body);
+    assert!(
+        check(&params)
+            .unwrap_err()
+            .to_string()
+            .contains("contract is not closed")
     );
 }
 
