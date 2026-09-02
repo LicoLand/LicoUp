@@ -34,9 +34,7 @@ export function buildNativeSidecars(selected, options) {
   if (options.mode === "release") {
     environment.LICO_CLIENT_PRODUCT_VERSION = clientProductVersion();
   }
-  environment.LICO_CLIENT_RELEASE_TRACK = clientReleaseTrack(process.env, {
-    distributable: options.mode === "release",
-  });
+  environment.LICO_CLIENT_RELEASE_TRACK = clientReleaseTrack(process.env);
   runPackageProcess(process.execPath, args, {
     failureCode: "native_sidecar_build_failed",
     stage: "native-build",
@@ -44,15 +42,8 @@ export function buildNativeSidecars(selected, options) {
   });
 }
 
-export function clientReleaseTrack(
-  environment = process.env,
-  { distributable = false } = {},
-) {
-  const configured = environment.LICO_CLIENT_RELEASE_TRACK;
-  if (distributable && !String(configured || "").trim()) {
-    throw new Error("LICO_CLIENT_RELEASE_TRACK is required for distributable builds");
-  }
-  const value = String(configured || "nightly").trim();
+export function clientReleaseTrack(environment = process.env) {
+  const value = String(environment.LICO_CLIENT_RELEASE_TRACK || "nightly").trim();
   if (value !== "nightly" && value !== "stable") {
     throw new Error("LICO_CLIENT_RELEASE_TRACK must be nightly or stable");
   }
