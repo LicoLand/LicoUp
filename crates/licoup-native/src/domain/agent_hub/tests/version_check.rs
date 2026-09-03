@@ -1,4 +1,5 @@
-use crate::domain::agent_hub::version_check::parse_output;
+use crate::domain::agent_hub::recipes::{agent_recipe, registry};
+use crate::domain::agent_hub::version_check::{installed_version, parse_output};
 
 #[test]
 fn each_agent_has_a_dedicated_parser() {
@@ -6,6 +7,10 @@ fn each_agent_has_a_dedicated_parser() {
     assert_eq!(
         parse_output("cursor", "cursor-agent 2026.8.9\n", ""),
         "2026.8.9"
+    );
+    assert_eq!(
+        parse_output("cursor", "cursor-agent 2026.08.25-3e8eec8\n", ""),
+        "2026.08.25-3e8eec8"
     );
     assert_eq!(parse_output("opencode", "OpenCode 1.2.3\n", ""), "1.2.3");
     assert_eq!(
@@ -31,4 +36,77 @@ fn unknown_tokens_and_empty_probes_stay_blank() {
 #[test]
 fn stderr_is_used_when_stdout_is_empty() {
     assert_eq!(parse_output("claude-code", "", "claude 1.2.3\n"), "1.2.3");
+}
+
+#[test]
+fn unsafe_and_malformed_native_versions_stay_blank() {
+    assert_eq!(
+        parse_output("cursor", "cursor-agent not-a-version\n", ""),
+        ""
+    );
+    assert_eq!(
+        parse_output("cursor", "cursor-agent release-next\n", ""),
+        ""
+    );
+    for malformed in [
+        "cursor-agent 2026.08.32-3e8eec8\n",
+        "cursor-agent 2026.08.25-3e8eec\n",
+        "cursor-agent 2026.08.25-3e8eec8/path\n",
+        "cursor-agent 2026.08.25-3e8eec8 extra\n",
+    ] {
+        assert_eq!(parse_output("cursor", malformed, ""), "");
+    }
+    assert_eq!(
+        parse_output("antigravity", "agy 3.7.0 extra/path\n", ""),
+        ""
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn installed_version_executes_only_the_exact_bound_target_binary() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!("licoup-bound-version-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let executable = root.join("cursor-agent");
+    fs::write(
+        &executable,
+        "#!/bin/sh\nprintf 'cursor-agent 2026.8.9\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let registry = registry().unwrap();
+    let agent = agent_recipe(registry, "cursor").unwrap();
+    let channel = agent
+        .channels
+        .iter()
+        .find(|channel| channel.id == "homebrew")
+        .unwrap();
+    let version = installed_version(
+        agent,
+        Some(channel),
+        true,
+        true,
+        &serde_json::json!({}),
+        Some(&executable),
+    );
+    assert_eq!(version, "2026.8.9");
+
+    let wrong_binding = root.join("unrelated-agent");
+    fs::rename(&executable, &wrong_binding).unwrap();
+    assert_eq!(
+        installed_version(
+            agent,
+            Some(channel),
+            true,
+            true,
+            &serde_json::json!({}),
+            Some(&wrong_binding),
+        ),
+        ""
+    );
+    fs::remove_dir_all(root).unwrap();
 }

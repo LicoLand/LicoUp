@@ -1,3 +1,4 @@
+import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
@@ -27,7 +28,7 @@ Future<void> shutdownStdioRpcSession({
     'protocol': stdioRpcProtocol,
     'id': requestId,
     'workflowId': workflowId,
-    'method': 'shutdown',
+    'method': ConversationProtocolMethod.shutdown.wireName,
   });
   var acknowledged = false;
   try {

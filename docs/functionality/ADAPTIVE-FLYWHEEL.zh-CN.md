@@ -53,6 +53,23 @@ LicoUp 只持久化 Graph、绑定、run 与 locator 摘要。各 Agent 持有�
 是人机入口和成员事件投影，不是第二份 transcript 仓库。已经退役的 Conversation 序号式
 Flywheel 模型不会被读取或翻译。
 
+## Assistant 临时运行
+
+Assistant 编写的 Graph 是请求本地的不可变 run 对象，不是导入的目录策略。它只能绑定
+同一 Conversation 中准确且活动的 Agent Membership，不能包含 script 或 runtime 资产。
+Assistant facade 从既有权威派生 Profile 事实，先硬过滤再确定性排序候选，完成所有本地
+可知检查，并在幂等键下持久准入前重新校验存储自有的 Membership 与 Profile 版本。
+
+拒绝请求会返回有序的 `diagnostics` 列表。每项都有稳定 code 与 stage；可用时还包含
+安全 JSON Pointer、受影响 Membership id，以及 actual/limit 数字事实。Assistant 因此可
+直接修正 workflow 结构、资源限制、绑定、model、readiness、环境、Skill 与 Authority，
+无需解析散文错误或重复产生效果。
+
+准入后，actor 效果与单聊、群聊共用同一持久 Membership turn 及 Conversation
+Event/Part 时间线。Assistant run 的效果或 drive 失败只结算一个 typed 终态结果并取消
+尚未启动的 command；不会进入通用重试、Fallback 或 failure edge 路径。run 不存在按
+经过时间推断终态的规则，也不会被改写。同一 Assistant 可以直接继续，或提交后续 Graph。
+
 ## Graph 契约
 
 每个工作流在导入前都会按一份类型化转换契约编译。转换只能携带 `complete`、
@@ -107,19 +124,30 @@ Python 与 Node 运行时由后台自动检测和绑定，不提供用户选择�
 已检测到且具备可用 Conversation Driver 的目标；未适配或只是登记过的目标不会出现。
 会话策略等实现细节也不再作为角色标注展示。
 
+打开编辑器时，工作流角色与 Assistant 的已选 model 目录通过一次 target batch 加载。
+Rust 复用既有有界发现 worker、同一份进程/环境快照和一次发现缓存提交；客户端不会为每个
+角色分别启动扫描器或异步 runtime。
+
 ## 群聊启动
 
 只有群聊显示策略胶囊；一对一 Conversation 不出现。
 
-输入框上方的胶囊默认是**可选策略**。选中已授权版本后显示策略名，并在输入框前放入
+输入框上方的胶囊默认是**自动适配**。它表示 Assistant 的默认模式，不是内置策略。
+选中已授权版本后显示策略名，并在输入框前放入
 入口槽当前候选的 `@` 胶囊。选策略会把所有已绑定 Agent（含 Fallback 列表）加入该群
 Membership，但不会启动 run。
 
-第一条发送把文本交给入口槽并执行 `strategy.run.start`，工作目录为群工作区。之后仅在
-run 需要人输入时把发送交给入口槽的 sticky 会话；否则只发普通群消息。叉掉 `@` 胶囊
-只退出策略模式，不取消已经在跑的 run。
+Assistant 模式开启时，每次用户发送都通过与原生一对一对话相同的 Membership 作用域通道
+寻址指定 Assistant。Assistant 可直接回复，也可使用工作流；这个选择不会替换对话通道。
+steer、resume、cancel、事件与安全边界行为仍准确遵循所选 adapter 的原生能力。
 
-未进策略模式的 `@mention` 仍走 DirectTurn，不启动 Graph。Graph 的 actor 与 workset
+第一条发送仍是 Conversation Event。原生寻址在持久 conversation sidecar 上启动
+`strategy.run.start`（Graph 不拥有发送进程）。之后的发送仍是 Event：若 Membership
+上有进行中的 PersistentTurn 则 steer；若 run 处于 Waiting 则 resume。叉掉胶囊只退出
+策略模式，不取消已经在跑的 run。
+
+`@mention` 只负责选出 Membership，与策略、Assistant、Subagent 共用同一套
+PersistentTurn 流式 I/O，而不是第二套发送协议。Graph 的 actor 与 workset
 效果作为对应 Membership 上的结构化 Event，走共享 conversation display。
 
 导入包内容、绑定、授权与原生运行状态都保留在本地客户端状态。不要把原始策略输入、

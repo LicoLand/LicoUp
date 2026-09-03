@@ -1,7 +1,12 @@
-//! Independent Agent runtime adapter registry stub.
+//! Provider-neutral production Subagent Mesh adapter registry.
 //!
-//! The registry starts empty. Later nodes register concrete adapters; this crate
-//! only owns the lookup surface so composition can depend on a stable type.
+//! Concrete provider code remains in the composing host. This crate owns the
+//! sole lookup surface for caller and target ports, eliminating provider
+//! conditionals and duplicate inventories from the MCP application.
+
+use licoup_agent_runtime::{McpCallerIntegration, ProviderId, SubagentRuntimeAdapter};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// Opaque adapter identity. Values are static catalog names, never paths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,29 +24,67 @@ impl AdapterId {
     }
 }
 
-/// Static adapter registry. Empty until a later node fills entries.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// One immutable-by-clone registry. Registration rejects duplicates and
+/// requires each provider to expose both directions before it can be used by
+/// the common application.
+#[derive(Clone, Default)]
 pub struct AdapterRegistry {
-    adapters: Vec<AdapterId>,
+    callers: BTreeMap<ProviderId, Arc<dyn McpCallerIntegration>>,
+    runtimes: BTreeMap<ProviderId, Arc<dyn SubagentRuntimeAdapter>>,
 }
 
 impl AdapterRegistry {
     pub fn empty() -> Self {
         Self {
-            adapters: Vec::new(),
+            callers: BTreeMap::new(),
+            runtimes: BTreeMap::new(),
         }
     }
 
+    /// Compatibility lookup for the semantic authority registry. Production
+    /// dispatch uses `runtime` and `caller` below.
     pub fn get(&self, id: AdapterId) -> Option<AdapterId> {
-        self.adapters.iter().copied().find(|entry| *entry == id)
+        self.runtimes
+            .keys()
+            .any(|entry| entry.as_str() == id.as_str())
+            .then_some(id)
     }
 
     pub fn len(&self) -> usize {
-        self.adapters.len()
+        self.runtimes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.adapters.is_empty()
+        self.runtimes.is_empty()
+    }
+
+    pub fn register_pair(
+        &mut self,
+        caller: Arc<dyn McpCallerIntegration>,
+        runtime: Arc<dyn SubagentRuntimeAdapter>,
+    ) -> Result<(), &'static str> {
+        let provider = caller.provider_id().clone();
+        if runtime.provider_id() != &provider {
+            return Err("adapter_provider_identity_mismatch");
+        }
+        if self.callers.contains_key(&provider) || self.runtimes.contains_key(&provider) {
+            return Err("adapter_provider_duplicate");
+        }
+        self.callers.insert(provider.clone(), caller);
+        self.runtimes.insert(provider, runtime);
+        Ok(())
+    }
+
+    pub fn caller(&self, provider: &ProviderId) -> Option<Arc<dyn McpCallerIntegration>> {
+        self.callers.get(provider).cloned()
+    }
+
+    pub fn runtime(&self, provider: &ProviderId) -> Option<Arc<dyn SubagentRuntimeAdapter>> {
+        self.runtimes.get(provider).cloned()
+    }
+
+    pub fn providers(&self) -> impl ExactSizeIterator<Item = &ProviderId> {
+        self.runtimes.keys()
     }
 }
 

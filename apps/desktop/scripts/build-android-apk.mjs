@@ -38,7 +38,6 @@ const clientSourceRoots = CANONICAL_CLIENT_SOURCE_ROOTS;
 function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     mode: "debug",
-    keepLocalBuild: defaultKeepLocalBuild(),
     passthrough: []
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -49,22 +48,11 @@ function parseArgs(argv = process.argv.slice(2)) {
       index += 1;
     } else if (["--debug", "--profile", "--release"].includes(arg)) {
       options.mode = normalizeMode(arg.slice(2));
-    } else if (arg === "--keep-local-build" || arg === "--keep-flutter-build-cache") {
-      options.keepLocalBuild = true;
-    } else if (arg === "--clean-local-build" || arg === "--clean-flutter-build-cache") {
-      options.keepLocalBuild = false;
     } else {
       options.passthrough.push(arg);
     }
   }
   return options;
-}
-
-function defaultKeepLocalBuild() {
-  if (process.env.LICO_CLEAN_FLUTTER_BUILD_CACHE === "1") {
-    return false;
-  }
-  return process.env.LICO_KEEP_FLUTTER_BUILD_CACHE !== "0";
 }
 
 function normalizeMode(value) {
@@ -359,10 +347,7 @@ function stageApks(options, sourceStateDigest, reproducibility = null) {
   return { mode: options.mode, artifactCount: 1, manifestRef, manifest, facts: stagedFacts };
 }
 
-function cleanupLocalBuild(options, { force = false } = {}) {
-  if (options.keepLocalBuild && !force) {
-    return;
-  }
+function cleanupLocalBuild() {
   rmSync(localFlutterBuildRoot, { recursive: true, force: true });
   rmSync(localAndroidBuildRoot, { recursive: true, force: true });
 }
@@ -376,7 +361,7 @@ function main() {
   });
   assertReleaseSigning(options);
   clearInvocationOutputs(options);
-  cleanupLocalBuild(options);
+  cleanupLocalBuild();
   const env = withClientToolchainEnv();
   prepareFlutterDependencies(env);
   pruneAndroidDevOnlyPluginsForRelease(options);
@@ -409,7 +394,7 @@ function main() {
       });
       const firstPayloadFacts = androidApkReproduciblePayloadFacts(firstSnapshot);
       assertAndroidApkFactsEqual(first.facts, firstFacts);
-      cleanupLocalBuild(options, { force: true });
+      cleanupLocalBuild();
       runFlutterBuild(options, env);
       const second = inspectProducedApks(options);
       const secondPayloadFacts = androidApkReproduciblePayloadFacts(second.apk);
@@ -441,7 +426,7 @@ function main() {
     if (reproducibilityRoot) {
       rmSync(reproducibilityRoot, { recursive: true, force: true });
     }
-    cleanupLocalBuild(options);
+    cleanupLocalBuild();
   }
   console.log(JSON.stringify({
     ok: true,

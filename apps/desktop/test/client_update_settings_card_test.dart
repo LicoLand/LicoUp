@@ -17,8 +17,9 @@ void main() {
     final controller = _UpdateController(
       status: const ClientUpdateStatus(
         phase: ClientUpdatePhase.idle,
-        currentVersion: '0.1.0',
-        channel: 'stable',
+        runningVersion: '0.1.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
       ),
     );
     addTearDown(controller.dispose);
@@ -29,6 +30,12 @@ void main() {
     expect(find.text('下载到本地'), findsOneWidget);
     expect(find.text('更新并重启'), findsOneWidget);
     expect(find.text('0.1.0'), findsOneWidget);
+    expect(
+      find.byKey(const Key('client-update-release-track')),
+      findsOneWidget,
+    );
+    expect(find.text('Nightly'), findsOneWidget);
+    expect(find.text('稳定版'), findsOneWidget);
     expect(find.text('未选择'), findsNothing);
     expect(find.text('源地址'), findsOneWidget);
     expect(find.text(kClientUpdateGithubReleasesUrl), findsOneWidget);
@@ -56,20 +63,40 @@ void main() {
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
 
+  testWidgets('nightly can select the stable update track', (tester) async {
+    final controller = _UpdateController(
+      status: const ClientUpdateStatus(
+        phase: ClientUpdatePhase.idle,
+        runningVersion: '1.2.0-nightly.3',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+      ),
+    );
+    addTearDown(controller.dispose);
+
+    await _pumpCard(tester, controller);
+    await tester.tap(find.text('Stable'));
+    await tester.pump();
+
+    expect(controller.selectedTracks, [ReleaseTrack.stable]);
+  });
+
   testWidgets('download stays disabled without a newer signed release', (
     tester,
   ) async {
     final controller = _UpdateController(
       status: const ClientUpdateStatus(
         phase: ClientUpdatePhase.upToDate,
-        currentVersion: '1.0.0',
-        channel: 'stable',
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
       ),
     );
     addTearDown(controller.dispose);
 
     await _pumpCard(tester, controller);
 
+    expect(find.byKey(const Key('client-update-release-track')), findsNothing);
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
@@ -81,8 +108,9 @@ void main() {
     final controller = _UpdateController(
       status: const ClientUpdateStatus(
         phase: ClientUpdatePhase.updateAvailable,
-        currentVersion: '1.0.0',
-        channel: 'stable',
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
         availableVersion: '1.1.0',
         updateAvailable: true,
         githubReleaseUrl:
@@ -108,8 +136,9 @@ void main() {
     final controller = _UpdateController(
       status: const ClientUpdateStatus(
         phase: ClientUpdatePhase.failed,
-        currentVersion: '0.1.0',
-        channel: 'stable',
+        runningVersion: '0.1.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
         errorCode: 'client_update_check_failed',
       ),
     );
@@ -133,8 +162,9 @@ void main() {
       processLifecycle: lifecycle,
       status: const ClientUpdateStatus(
         phase: ClientUpdatePhase.verified,
-        currentVersion: '1.0.0',
-        channel: 'stable',
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
         availableVersion: '1.1.0',
         updateAvailable: true,
       ),
@@ -190,6 +220,7 @@ final class _UpdateController extends ClientController {
 
   final ClientUpdateStatus status;
   int applyCalls = 0;
+  final List<ReleaseTrack> selectedTracks = [];
 
   @override
   ClientUpdateStatus get clientUpdateStatus => status;
@@ -204,7 +235,14 @@ final class _UpdateController extends ClientController {
   String get clientUpdateRepo => kClientUpdateGithubRepo;
 
   @override
-  Future<void> hydrateClientUpdateIdentity({String channel = 'stable'}) async {}
+  Future<void> hydrateClientUpdateIdentity({
+    String targetReleaseTrack = '',
+  }) async {}
+
+  @override
+  void selectClientUpdateReleaseTrack(ReleaseTrack track) {
+    selectedTracks.add(track);
+  }
 
   @override
   Future<void> applyClientUpdateThenExit(void Function() exitClient) async {

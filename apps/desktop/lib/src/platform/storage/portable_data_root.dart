@@ -120,7 +120,6 @@ class PortableDataRoot {
 
   Future<Directory> _prepareDataDirectory(Directory directory) async {
     await directory.create(recursive: true);
-    await _workspaceManifestStore.loadOrCreate(directory);
     return directory;
   }
 

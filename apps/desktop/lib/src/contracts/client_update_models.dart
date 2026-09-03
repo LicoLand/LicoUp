@@ -39,15 +39,29 @@ enum ClientUpdatePhase {
   verified,
   applyPlanned,
   applied,
-  rolledBack,
   failed,
+}
+
+enum ReleaseTrack {
+  nightly('nightly'),
+  stable('stable');
+
+  const ReleaseTrack(this.wireName);
+  final String wireName;
+
+  static ReleaseTrack parse(Object? value) => switch (value) {
+    'nightly' => ReleaseTrack.nightly,
+    'stable' => ReleaseTrack.stable,
+    _ => throw FormatException('Unsupported client release track: $value'),
+  };
 }
 
 final class ClientUpdateStatus {
   const ClientUpdateStatus({
     required this.phase,
-    required this.currentVersion,
-    required this.channel,
+    required this.runningVersion,
+    required this.runningReleaseTrack,
+    required this.targetReleaseTrack,
     this.availableVersion = '',
     this.releaseNotesUrl = '',
     this.githubReleaseUrl = '',
@@ -65,8 +79,9 @@ final class ClientUpdateStatus {
   });
 
   final ClientUpdatePhase phase;
-  final String currentVersion;
-  final String channel;
+  final String runningVersion;
+  final ReleaseTrack runningReleaseTrack;
+  final ReleaseTrack targetReleaseTrack;
   final String availableVersion;
   final String releaseNotesUrl;
   final String githubReleaseUrl;
@@ -83,13 +98,15 @@ final class ClientUpdateStatus {
   final bool restartRequired;
 
   factory ClientUpdateStatus.idle({
-    String currentVersion = '',
-    String channel = 'stable',
+    String runningVersion = '',
+    ReleaseTrack runningReleaseTrack = ReleaseTrack.nightly,
+    ReleaseTrack targetReleaseTrack = ReleaseTrack.nightly,
   }) {
     return ClientUpdateStatus(
       phase: ClientUpdatePhase.idle,
-      currentVersion: currentVersion,
-      channel: channel,
+      runningVersion: runningVersion,
+      runningReleaseTrack: runningReleaseTrack,
+      targetReleaseTrack: targetReleaseTrack,
     );
   }
 
@@ -110,12 +127,12 @@ final class ClientUpdateStatus {
         'verified' => ClientUpdatePhase.verified,
         'applyPlanned' => ClientUpdatePhase.applyPlanned,
         'applied' => ClientUpdatePhase.applied,
-        'rolledBack' => ClientUpdatePhase.rolledBack,
         'failed' => ClientUpdatePhase.failed,
         _ => ClientUpdatePhase.idle,
       },
-      currentVersion: (json['currentVersion'] as String?)?.trim() ?? '',
-      channel: (json['channel'] as String?)?.trim() ?? 'stable',
+      runningVersion: (json['runningVersion'] as String?)?.trim() ?? '',
+      runningReleaseTrack: ReleaseTrack.parse(json['runningReleaseTrack']),
+      targetReleaseTrack: ReleaseTrack.parse(json['targetReleaseTrack']),
       availableVersion: (json['availableVersion'] as String?)?.trim() ?? '',
       releaseNotesUrl: (json['releaseNotesUrl'] as String?)?.trim() ?? '',
       githubReleaseUrl: (json['githubReleaseUrl'] as String?)?.trim() ?? '',
@@ -152,8 +169,9 @@ final class ClientUpdateStatus {
 
   ClientUpdateStatus copyWith({
     ClientUpdatePhase? phase,
-    String? currentVersion,
-    String? channel,
+    String? runningVersion,
+    ReleaseTrack? runningReleaseTrack,
+    ReleaseTrack? targetReleaseTrack,
     String? availableVersion,
     String? releaseNotesUrl,
     String? githubReleaseUrl,
@@ -171,8 +189,9 @@ final class ClientUpdateStatus {
   }) {
     return ClientUpdateStatus(
       phase: phase ?? this.phase,
-      currentVersion: currentVersion ?? this.currentVersion,
-      channel: channel ?? this.channel,
+      runningVersion: runningVersion ?? this.runningVersion,
+      runningReleaseTrack: runningReleaseTrack ?? this.runningReleaseTrack,
+      targetReleaseTrack: targetReleaseTrack ?? this.targetReleaseTrack,
       availableVersion: availableVersion ?? this.availableVersion,
       releaseNotesUrl: releaseNotesUrl ?? this.releaseNotesUrl,
       githubReleaseUrl: githubReleaseUrl ?? this.githubReleaseUrl,

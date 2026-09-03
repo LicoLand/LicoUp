@@ -1,0 +1,26 @@
+# Latest LicoUp App Version Subagent MCP direct verification evidence.
+# One privacy-safe row per Target Agent; live execution atomically upserts rows.
+
+- App Version: "0.1.1"
+  Caller Agent: "cursor"
+  Caller Agent Version: "2026.08.25-3e8eec8"
+  Target Agent: "codex"
+  Target Agent Version: "0.151.0-alpha.7.2"
+  Results: "passed"
+  Notes: ""
+
+- App Version: "0.1.1"
+  Caller Agent: "codex"
+  Caller Agent Version: "0.151.0-alpha.7.2"
+  Target Agent: "cursor"
+  Target Agent Version: "2026.08.25-3e8eec8"
+  Results: "passed"
+  Notes: ""
+
+- App Version: "0.1.1"
+  Caller Agent: "codex"
+  Caller Agent Version: "0.151.0-alpha.7.2"
+  Target Agent: "antigravity"
+  Target Agent Version: "1.1.22"
+  Results: "passed"
+  Notes: ""

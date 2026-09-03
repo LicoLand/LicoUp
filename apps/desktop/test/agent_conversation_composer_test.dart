@@ -6,7 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -48,6 +51,10 @@ void main() {
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       '',
+    );
+    expect(
+      find.byKey(const Key('agent-conversation-composer-input')),
+      findsOneWidget,
     );
   });
 
@@ -331,6 +338,230 @@ void main() {
       'retry this request',
     );
   });
+
+  testWidgets('slash-new command with a handler runs it and never sends', (
+    tester,
+  ) async {
+    var handlerCount = 0;
+    var sendCount = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            sendCount += 1;
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(handlerCount, 1);
+    expect(sendCount, 0);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+  });
+
+  testWidgets('slash-new command intercepts the keyboard submit too', (
+    tester,
+  ) async {
+    var handlerCount = 0;
+    var sendCount = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            sendCount += 1;
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(handlerCount, 1);
+    expect(sendCount, 0);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+  });
+
+  testWidgets('slash-new with a trailing argument posts verbatim', (
+    tester,
+  ) async {
+    var handlerCount = 0;
+    final submissions = <String>[];
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new continue');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(handlerCount, 0);
+    expect(submissions, ['/new continue']);
+  });
+
+  testWidgets('slash-new uppercase variant posts verbatim', (tester) async {
+    var handlerCount = 0;
+    final submissions = <String>[];
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+          onSlashNewConversation: () => handlerCount += 1,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/NEW');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(handlerCount, 0);
+    expect(submissions, ['/NEW']);
+  });
+
+  testWidgets('slash-new without a handler posts verbatim', (tester) async {
+    final submissions = <String>[];
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '/new');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+
+    expect(submissions, ['/new']);
+  });
+
+  testWidgets(
+    'disabled composer holding the slash-new command ignores submit',
+    (tester) async {
+      var handlerCount = 0;
+      var sendCount = 0;
+      await tester.pumpWidget(
+        _ComposerTestApp(
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '/new',
+            busy: false,
+            enabled: false,
+            modelOptions: const [],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: (_) {},
+            onReasoningEffortChanged: (_) {},
+            onDraftChanged: (_) {},
+            onSend: (text) async {
+              sendCount += 1;
+              return true;
+            },
+            onSlashNewConversation: () => handlerCount += 1,
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      expect(handlerCount, 0);
+      expect(sendCount, 0);
+    },
+  );
 
   testWidgets('composer embeds the runtime settings bar by default', (
     tester,
@@ -671,6 +902,113 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+    'floating capsule morphs into a rounded rectangle on wrap and keeps the leading control at the interior top-left',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(700, 400);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      BorderRadius fieldRadius(WidgetTester tester) {
+        return tester
+            .widget<MessagingConversationOverlayGlass>(
+              find.descendant(
+                of: find.byKey(const Key('agent-conversation-composer-field')),
+                matching: find.byType(MessagingConversationOverlayGlass),
+              ),
+            )
+            .borderRadius;
+      }
+
+      await tester.pumpWidget(
+        _ComposerTestApp(
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: false,
+            enabled: true,
+            modelOptions: const [],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: (_) {},
+            onReasoningEffortChanged: (_) {},
+            onDraftChanged: (_) {},
+            onSend: (_) async => true,
+            floatingMatteCapsule: true,
+            fieldLeading: const SizedBox.square(
+              key: Key('test-field-leading'),
+              dimension: 32,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // One line: full stadium capsule.
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+        ),
+      );
+      final leadingSingle = tester.getRect(
+        find.byKey(const Key('test-field-leading')),
+      );
+      final fieldSingle = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(
+        leadingSingle.top,
+        closeTo(fieldSingle.top + LicoRadius.composerInset, 0.5),
+      );
+
+      // Wrapping draft: the capsule grows upward as a rounded rectangle while
+      // the leading control stays pinned to the interior top-left.
+      await tester.enterText(
+        find.byType(TextField),
+        'lico up composer wrap check ' * 12,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(LicoRadius.composerField),
+      );
+      final leadingMulti = tester.getRect(
+        find.byKey(const Key('test-field-leading')),
+      );
+      final fieldMulti = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(fieldMulti.height, greaterThan(fieldSingle.height));
+      expect(
+        leadingMulti.top,
+        closeTo(fieldMulti.top + LicoRadius.composerInset, 0.5),
+      );
+      expect(
+        leadingMulti.bottom,
+        lessThan(fieldMulti.bottom - LicoRadius.composerInset),
+      );
+
+      // An explicit newline morphs too, and clearing restores the stadium.
+      await tester.enterText(find.byType(TextField), 'first\nsecond');
+      await tester.pumpAndSettle();
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(LicoRadius.composerField),
+      );
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      expect(
+        fieldRadius(tester),
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+        ),
+      );
+    },
+  );
 }
 
 Color contextPrimaryColor(WidgetTester tester) => Theme.of(

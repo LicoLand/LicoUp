@@ -4,7 +4,7 @@ use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
 use crate::domain::llm_gateway::{CompiledGateway, GatewayResponse, MAX_GATEWAY_BODY_BYTES};
 use crate::platform::llm_gateway_transport::{
-    GatewayExchange, GatewayStreamSink, GatewayTransportError, exchange_to_sink,
+    GatewayExchange, GatewayStreamSink, GatewayTransportError, exchange_to_sink, list_models,
 };
 use crate::platform::llm_gateway_usage::GatewayUsageRecorder;
 use std::collections::BTreeMap;
@@ -159,10 +159,31 @@ fn handle_connection(
                 &GatewayResponse {
                     status: 200,
                     content_type: "application/json",
-                    body: br#"{"ok":true,"service":"licoup-llm-gateway","protocols":["openai-responses","openai-chat-completions","anthropic-messages"],"clientAuth":"bearer-or-x-api-key"}"#.to_vec(),
+                    body: br#"{"ok":true,"service":"licoup-llm-gateway","protocols":["openai-responses","openai-chat-completions","anthropic-messages","live-provider-models"],"clientAuth":"bearer-or-x-api-key"}"#.to_vec(),
                 },
                 keep_alive,
             );
+            if !keep_alive {
+                return;
+            }
+            continue;
+        }
+        if request.method == "GET"
+            && matches!(request.path.trim_end_matches('/'), "/v1/models" | "/models")
+        {
+            if !request_is_authorized(&request.headers, client_token) {
+                let _ = write_error(stream, 401, "gateway_client_unauthorized", keep_alive);
+            } else {
+                match list_models(gateway, credentials) {
+                    Ok(response) => {
+                        let _ = write_response(stream, &response, keep_alive);
+                    }
+                    Err(error) => {
+                        let (status, code) = transport_error(error);
+                        let _ = write_error(stream, status, code, keep_alive);
+                    }
+                }
+            }
             if !keep_alive {
                 return;
             }
@@ -691,6 +712,53 @@ mod tests {
         assert_eq!(request.path, "/v1/responses");
         assert_eq!(request.body.len(), body.len());
         assert!(carry.is_empty());
+    }
+
+    #[test]
+    fn model_catalog_requires_local_auth_and_is_empty_without_provider_credentials() {
+        let upstream = TcpListener::bind("127.0.0.1:0").unwrap();
+        let gateway = Arc::new(fixture_gateway(upstream.local_addr().unwrap()));
+        let credentials = Arc::new(GatewayCredentialSlot::disconnected());
+        let token = Arc::new(client_token());
+        let usage_root = std::env::temp_dir().join(format!(
+            "licoup-gateway-model-server-usage-{}",
+            uuid::Uuid::new_v4()
+        ));
+        crate::platform::file_security::ensure_private_dir(&usage_root).unwrap();
+        let usage = Arc::new(GatewayUsageRecorder::open(usage_root.join("usage.json")).unwrap());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server_address = listener.local_addr().unwrap();
+        let server_thread = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            handle_connection(&mut stream, &gateway, &credentials, &token, &usage);
+        });
+        let mut client = TcpStream::connect(server_address).unwrap();
+        client
+            .write_all(
+                format!(
+                    "GET /v1/models HTTP/1.1\r\nhost: {server_address}\r\nconnection: keep-alive\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let (status, _, _) = read_http_response(&mut client);
+        assert_eq!(status, 401);
+        client
+            .write_all(
+                format!(
+                    "GET /v1/models HTTP/1.1\r\nhost: {server_address}\r\nauthorization: Bearer {}\r\nconnection: close\r\n\r\n",
+                    "a".repeat(43)
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let (status, _, body) = read_http_response(&mut client);
+        assert_eq!(status, 200);
+        let document: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(document["data"], serde_json::json!([]));
+        drop(client);
+        server_thread.join().unwrap();
+        let _ = std::fs::remove_dir_all(usage_root);
     }
 
     #[test]

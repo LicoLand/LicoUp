@@ -141,7 +141,7 @@ impl StrategyEffectPermit {
         })
     }
 
-    fn consume(
+    pub(crate) fn consume(
         &mut self,
         command: &RunCommand,
         authorization_digest: &str,
@@ -402,6 +402,7 @@ fn actor_failure_code(response: &Value) -> String {
     let blob = format!("{code}\n{message}");
     if [
         "quota",
+        "usage_limit",
         "credit",
         "rate_limit",
         "rate-limit",

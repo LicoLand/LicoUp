@@ -40,7 +40,7 @@ final class PresentationPreferences {
     required PresentationPreferences fallback,
   }) {
     final schema = json['schemaVersion'];
-    if (schema != null && schema != schemaVersion) {
+    if (schema != schemaVersion) {
       throw const FormatException('presentation_schema_unsupported');
     }
     final rawLayout = json['layoutProfileId'];

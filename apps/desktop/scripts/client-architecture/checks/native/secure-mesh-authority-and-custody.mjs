@@ -416,7 +416,8 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ...await collectSourceFiles(
       "crates/licoup-native/src/platform/codex_app_server",
       ".rs"
-    )
+    ),
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/control.rs",
   ]);
   assert(runtimeAdaptersRustSource.includes("enum RuntimeAdapter") &&
     runtimeAdaptersRustSource.includes('"runtime-adapter"') &&
@@ -432,7 +433,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     codexAppServerRustSource.includes('"thread/resume"') &&
     codexAppServerRustSource.includes('"turn/start"') &&
     codexAppServerRustSource.includes('"turn/completed"') &&
-    codexAppServerRustSource.includes("codex_user_interaction_required") &&
+    codexAppServerRustSource.includes("decline_server_request") &&
     codexAppServerRustSource.includes("finish_protocol_transport") &&
     codexAppServerRustSource.includes("StdoutLimitExceeded") &&
     !codexAppServerRustSource.includes("struct AcpProtocol"),

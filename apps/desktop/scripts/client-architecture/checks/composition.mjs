@@ -19,8 +19,21 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     runJson,
     sameSet,
   } = context;
+  const driverInventory = await readJson(
+    "crates/licoup-native/resources/agent-conversation-drivers.json"
+  );
+  const driverProfiles = new Map(
+    (driverInventory.drivers || []).map((driver) => [driver.agentId, driver])
+  );
   for (const target of packagedTargets) {
-    assert(conversationSourceCatalogRustSource.includes(`"${target}"`), `native history adapter catalog must include packaged target: ${target}`);
+    const driver = driverProfiles.get(target);
+    assert(driver, `packaged target must have a conversation driver profile: ${target}`);
+    assert(typeof driver?.historyReadable === "boolean",
+      `conversation driver must declare history readability: ${target}`);
+    assert(
+      conversationSourceCatalogRustSource.includes(`"${target}"`) === driver?.historyReadable,
+      `native history adapter availability must match the conversation driver profile: ${target}`
+    );
   }
   const agentConversationGatewaySource = await readDartSourceByBasename(
     "agent_conversation_gateway.dart"

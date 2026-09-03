@@ -15,6 +15,9 @@ pub fn apply(params: &Value) -> Result<Value> {
             "ok": true,
             "mode": CLIENT_UPDATE_MODE,
             "phase": "applyPlanned",
+            "runningVersion": selection.running_version,
+            "runningReleaseTrack": selection.running_release_track,
+            "targetReleaseTrack": selection.target_release_track,
             "availableVersion": selection.version,
             "targetId": selection.artifact.target_id,
             "installerStrategy": selection.artifact.installer_strategy,
@@ -23,9 +26,8 @@ pub fn apply(params: &Value) -> Result<Value> {
             "artifactReceipt": selection.receipt(),
             "executed": false,
             "restartRequired": true,
-            "rollback": rollback_plan(&selection.artifact.installer_strategy, false),
             "preUpdateStateRecord": {
-                "currentVersion": selection.current_version,
+                "runningVersion": selection.running_version,
                 "recorded": true,
                 "pathRedacted": true,
             },
@@ -35,27 +37,4 @@ pub fn apply(params: &Value) -> Result<Value> {
         }));
     }
     super::native_runner::apply_live(&selection, &staged_path, params)
-}
-
-pub fn rollback(params: &Value) -> Result<Value> {
-    reject_artifact_overrides(params)?;
-    let (selection, staged_path) = verify_staged_selection(params)?;
-    super::native_runner::rollback_live(&selection, &staged_path, params)
-}
-
-pub(super) fn rollback_plan(strategy: &str, snapshot_recorded: bool) -> Value {
-    match strategy {
-        "app-bundle-replacement" => json!({
-            "feasibility": if snapshot_recorded {
-                "restore-previous-app-bundle"
-            } else {
-                "platform-dependent"
-            },
-            "pathRedacted": true,
-        }),
-        _ => json!({
-            "feasibility": "platform-dependent",
-            "pathRedacted": true,
-        }),
-    }
 }

@@ -11,7 +11,7 @@ use licoup_native::ffi::commands::{
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 161;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 162;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1419,6 +1419,63 @@ fn run_lico_client_conversation_rpc(args: Vec<String>, portable_root: &Path) -> 
         .expect("the real persistent conversation RPC subprocess must finish")
 }
 
+#[test]
+fn persistent_conversation_rpc_accepts_a_request_after_its_first_response() {
+    let portable_root = temporary_directory("licoup-conversation-rpc-sequential");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+        .args(["rpc", "conversation"])
+        .env("LICOUP_PORTABLE_DIR", &portable_root)
+        .env_remove("LICOUP_CLIENT_PID")
+        .env_remove("RUST_LOG")
+        .env_remove("RUST_BACKTRACE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the persistent conversation RPC subprocess must start");
+    let mut input = child.stdin.take().expect("RPC stdin must be piped");
+    let mut output = BufReader::new(child.stdout.take().expect("RPC stdout must be piped"));
+
+    for index in 1..=2 {
+        let request_id = format!("sequential-{index}");
+        let request = json!({
+            "protocol": "licoup.stdio.v1",
+            "id": request_id,
+            "workflowId": "cli-conversation-sequential",
+            "method": "client.conversation.execute",
+            "params": {
+                "action": "conversation.list",
+                "includeArchived": false,
+            },
+        });
+        input
+            .write_all(format!("{request}\n").as_bytes())
+            .expect("each RPC request must remain writable");
+        input.flush().expect("each RPC request must be flushed");
+
+        let mut line = String::new();
+        assert_ne!(
+            output
+                .read_line(&mut line)
+                .expect("RPC response must be readable"),
+            0,
+            "the proxy must remain connected for sequential response {index}"
+        );
+        let response: Value = serde_json::from_str(&line).expect("RPC response must be JSON");
+        assert_eq!(response["id"], request_id);
+        assert_eq!(response["ok"], true);
+    }
+
+    drop(input);
+    assert!(
+        child
+            .wait()
+            .expect("the persistent conversation RPC subprocess must finish")
+            .success()
+    );
+    let _ = fs::remove_dir_all(portable_root);
+}
+
 fn rpc_response(output: &Output) -> Value {
     let line = std::str::from_utf8(&output.stdout)
         .expect("RPC stdout must be UTF-8")
@@ -1760,7 +1817,10 @@ fn route_authorities() -> Vec<RouteAuthority> {
         path: "conversation execute",
         required: &[],
         cardinality: Options,
-        options: vec![value_option("stdin-json", Json, true)],
+        options: vec![
+            value_option("stdin-json", Json, true),
+            boolean_option("require-running-host"),
+        ],
         constraints: &[],
     });
     routes.push(RouteAuthority {
@@ -1821,6 +1881,13 @@ fn route_authorities() -> Vec<RouteAuthority> {
     );
     add_authority_routes(
         &mut routes,
+        "provider_quota.rs",
+        "handle_provider_quota_snapshot",
+        &["provider-quota snapshot"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
         "resource_usage.rs",
         "handle_resource_usage_scan",
         &["resource-usage scan"],
@@ -1836,7 +1903,6 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "update download",
             "update verify",
             "update apply",
-            "update rollback",
         ],
         Options,
     );
@@ -2092,6 +2158,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
                 value_kind: Text,
                 required: true,
             },
+            value_option("stdin-json", Json, false),
         ],
         constraints: &[],
     });
@@ -2311,6 +2378,15 @@ fn route_authorities() -> Vec<RouteAuthority> {
             options: vec![],
             constraints: &[],
         },
+        RouteAuthority {
+            module: "state.rs",
+            handler: "handle_state_admit",
+            path: "state admit",
+            required: &[("data-root", Text)],
+            cardinality: Exact,
+            options: vec![],
+            constraints: &[],
+        },
     ]);
     add_authority_routes(
         &mut routes,
@@ -2428,6 +2504,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
                 value_kind: Text,
                 required: true,
             },
+            value_option("stdin-json", Json, false),
         ],
         "llm-gateway service status"
         | "llm-gateway service initialize"
@@ -2545,6 +2622,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("limit", Text, false),
             value_option("state-root", Text, false),
         ],
+        "provider-quota snapshot" => &[
+            value_option("agent", Text, false),
+            boolean_option("force-refresh"),
+            value_option("state-root", Text, false),
+        ],
         "resource-usage scan" => &[value_option("state-root", Text, false)],
         "adapter antigravity authorize" => &[value_option("binary-path", Text, false)],
         "adapter codex plugin status" | "adapter codex plugin plan" => {
@@ -2565,11 +2647,13 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("agent-id", Text, true),
             value_option("binary-path", Text, false),
             value_option("mcp-binary-path", Text, false),
+            value_option("config-path", Text, false),
         ],
         "adapter subagent-mcp install" => &[
             value_option("agent-id", Text, true),
             value_option("binary-path", Text, false),
             value_option("mcp-binary-path", Text, false),
+            value_option("config-path", Text, false),
             value_option("confirmation", Text, true),
             OptionAuthority {
                 name: "confirmed",
@@ -2580,9 +2664,8 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             },
         ],
         "mcp http preview" | "mcp http execute" => &[value_option("stdin-json", Json, true)],
-        "update status" | "update check" | "update download" | "update verify" | "update apply"
-        | "update rollback" => &[
-            value_option("channel", Text, false),
+        "update status" | "update check" => &[
+            value_option("target-release-track", Text, false),
             value_option("manifest-path", Text, false),
             value_option("public-keys-path", Text, false),
             value_option("revocation-path", Text, false),
@@ -2591,7 +2674,35 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("repo", Text, false),
             value_option("staging-root", Text, false),
             value_option("state-root", Text, false),
-            value_option("current-version", Text, false),
+            value_option("execute", Text, false),
+            value_option("install-root", Text, false),
+            value_option("gui-pid", Text, false),
+            value_option("wait-for-script", Text, false),
+        ],
+        "update download" | "update verify" => &[
+            value_option("manifest-path", Text, false),
+            value_option("public-keys-path", Text, false),
+            value_option("revocation-path", Text, false),
+            value_option("source-path", Text, false),
+            value_option("source", Text, false),
+            value_option("repo", Text, false),
+            value_option("staging-root", Text, false),
+            value_option("state-root", Text, false),
+            value_option("execute", Text, false),
+            value_option("install-root", Text, false),
+            value_option("gui-pid", Text, false),
+            value_option("wait-for-script", Text, false),
+        ],
+        "update apply" => &[
+            value_option("manifest-path", Text, false),
+            value_option("public-keys-path", Text, false),
+            value_option("revocation-path", Text, false),
+            value_option("source-path", Text, false),
+            value_option("source", Text, false),
+            value_option("repo", Text, false),
+            value_option("staging-root", Text, false),
+            value_option("state-root", Text, false),
+            value_option("data-root", Text, false),
             value_option("execute", Text, false),
             value_option("install-root", Text, false),
             value_option("gui-pid", Text, false),
@@ -2653,7 +2764,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         | "agent conversation cleanup"
         | "agent conversation capabilities"
         | "agent conversation stream" => &[value_option("stdin-json", Json, false)],
-        "conversation execute" | "strategy execute" => &[value_option("stdin-json", Json, true)],
+        "conversation execute" => &[
+            value_option("stdin-json", Json, true),
+            boolean_option("require-running-host"),
+        ],
+        "strategy execute" => &[value_option("stdin-json", Json, true)],
         "agents pair request"
         | "agents pair approve"
         | "agents pair revoke"
@@ -2696,6 +2811,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("include-accessible-environments", Text, false),
             value_option("include-history-model-catalog", Text, false),
             value_option("enable-agent-cli-model-lookup", Text, false),
+            value_option("stdin-json", Json, false),
         ],
         "targets add" => &[
             value_option("target", Text, true),
@@ -2793,11 +2909,16 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         ],
         "secure-mesh approval request"
         | "secure-mesh approval fanout"
-        | "secure-mesh approval respond"
         | "secure-mesh approval inbox"
         | "secure-mesh approval adapter-capability" => &[
             value_option("pending-operation-id", Text, false),
             value_option("decision", Text, false),
+        ],
+        "secure-mesh approval respond" => &[
+            value_option("pending-operation-id", Text, true),
+            value_option("decision", Text, true),
+            value_option("responding-endpoint-id", Text, true),
+            value_option("response-nonce", Text, true),
         ],
         _ => &[],
     };
@@ -2807,23 +2928,24 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
 fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
     use OptionConstraintKind::{ConditionalRequired, MutuallyExclusive, OneOf};
     match path {
-        "update status" | "update check" | "update download" | "update verify" | "update apply"
-        | "update rollback" => &[
-            ConstraintAuthority {
-                kind: MutuallyExclusive,
-                members: &["source-path", "source"],
-                condition_option: None,
-                condition_value: None,
-                required_option: None,
-            },
-            ConstraintAuthority {
-                kind: MutuallyExclusive,
-                members: &["source-path", "repo"],
-                condition_option: None,
-                condition_value: None,
-                required_option: None,
-            },
-        ],
+        "update status" | "update check" | "update download" | "update verify" | "update apply" => {
+            &[
+                ConstraintAuthority {
+                    kind: MutuallyExclusive,
+                    members: &["source-path", "source"],
+                    condition_option: None,
+                    condition_value: None,
+                    required_option: None,
+                },
+                ConstraintAuthority {
+                    kind: MutuallyExclusive,
+                    members: &["source-path", "repo"],
+                    condition_option: None,
+                    condition_value: None,
+                    required_option: None,
+                },
+            ]
+        }
         "snapshots profiles list" | "snapshots profiles get" | "snapshots profiles import" => {
             &[ConstraintAuthority {
                 kind: MutuallyExclusive,

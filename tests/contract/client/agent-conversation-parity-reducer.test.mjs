@@ -21,7 +21,7 @@ import {
   reduceConversationParity,
   registryDigestFor,
   runCli,
-} from "../../../tools/scripts/client-agent-conversation-parity-reducer.mjs";
+} from "../../../tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs";
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(TEST_DIRECTORY, "../../..");
@@ -255,6 +255,20 @@ test("inventory and official-lane blockers reduce to blocked", () => {
   assert.equal(resultFor(missingLane).status, "blocked");
 });
 
+test("DeepSeek conversation readiness depends on current evidence, not inventory blockers", () => {
+  const result = reduceConversationParity({
+    packagingRegistry,
+    inventory,
+    evidence: fullEvidence("deepseek-harness"),
+  });
+  const deepseek = resultFor(result, "deepseek-harness");
+  assert.equal(deepseek.status, "ready");
+  assert.equal(deepseek.sendEnabled, true);
+  assert.deepEqual(deepseek.summaryCodes, [
+    "all_required_evidence_passed",
+  ]);
+});
+
 test("no-persistence cleanup can promote while declared unsafe cleanup stays blocked", () => {
   const claude = reduceConversationParity({
     packagingRegistry,
@@ -337,10 +351,13 @@ test("inventory discloses current native transports and fail-closed capability g
   assert.deepEqual(byId.get("kimi-code")?.blockerCodes, []);
   assert.equal(byId.get("pi")?.driverMode, "conversation");
   assert.deepEqual(byId.get("pi")?.blockerCodes, []);
+  assert.equal(byId.get("deepseek-harness")?.driverMode, "conversation");
+  assert.deepEqual(byId.get("deepseek-harness")?.blockerCodes, []);
 
   const supervisedCancel = new Set([
     "antigravity",
     "claude-code",
+    "codex",
     "copilot",
     "cursor",
     "hermes",
@@ -438,12 +455,12 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
   });
   assert.deepEqual(result, readinessResource);
   assert.deepEqual(result.summary, {
-    total: 12,
+    total: 13,
     ready: 0,
     partial: 0,
     failed: 0,
     blocked: 0,
-    unverified: 12,
+    unverified: 13,
     historyOnly: 0,
     sendEnabled: 0,
   });

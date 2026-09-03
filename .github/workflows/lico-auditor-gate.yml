@@ -7,6 +7,7 @@ on:
       - nightly
       - stable
       - release
+      - macos-release-candidate
   workflow_dispatch:
 
 permissions:
@@ -14,17 +15,19 @@ permissions:
 
 jobs:
   auditor:
+    if: github.event.deleted != true
     name: Auditor
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
           path: target
 
       - name: Select the author README fast path
+        if: github.ref_name != 'macos-release-candidate'
         id: readme
         working-directory: target
         env:
@@ -40,7 +43,7 @@ jobs:
           fi
 
       - name: Checkout audit source of truth
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: LicoLand/Lico-Auditor
           ref: only
@@ -48,7 +51,7 @@ jobs:
           path: lico-auditor
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 
