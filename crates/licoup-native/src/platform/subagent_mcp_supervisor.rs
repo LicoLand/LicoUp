@@ -256,9 +256,11 @@ impl SubagentMcpSupervisor {
     }
 }
 
-/// Desktop-owned supervision for the Subagent MCP service. Starting the
-/// supervision never fails: a start failure degrades MCP readiness while the
-/// monitor keeps retrying with bounded backoff. An unexpected exit or a failed
+/// Desktop-owned supervision for the Subagent MCP service. The first service
+/// is constructed before `start` returns, so a provider cannot race its MCP
+/// `initialize` against an empty discovery slot. Starting supervision still
+/// never fails: an initial construction failure degrades MCP readiness while
+/// the monitor retries with bounded backoff. An unexpected exit or a failed
 /// initialize + exact-tools/list health probe triggers a bounded restart.
 /// Dropping the supervision stops the monitor and removes live discovery state.
 pub struct SubagentMcpService {
@@ -276,7 +278,12 @@ impl SubagentMcpService {
         factory: impl Fn() -> Result<SubagentMcpSupervisor> + Send + 'static,
     ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
-        let current: Arc<Mutex<Option<Arc<SubagentMcpSupervisor>>>> = Arc::new(Mutex::new(None));
+        // Publish the first healthy instance synchronously. Previously the
+        // monitor slept for RESTART_BACKOFF_MIN before its first construction;
+        // an Agent starting in that window observed discovery EOF even though
+        // the service became reachable moments later.
+        let initial = factory().ok().map(Arc::new);
+        let current: Arc<Mutex<Option<Arc<SubagentMcpSupervisor>>>> = Arc::new(Mutex::new(initial));
         let monitor_stop = Arc::clone(&stop);
         let monitor_current = Arc::clone(&current);
         let monitor = thread::Builder::new()
@@ -1142,6 +1149,38 @@ mod tests {
         }
     }
 
+    fn assert_connector_initialize_succeeds(provider: &str) {
+        let discovery = load_connector_discovery(provider).unwrap();
+        let initialize = encode_http_body(
+            &McpMessage::request(
+                McpRequestId::from(1_i64),
+                "initialize",
+                Some(
+                    json!({
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "fixture", "version": "1"}
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            )
+            .unwrap(),
+            MAX_MCP_FRAME_BYTES,
+        )
+        .unwrap();
+        let (status, session, _) = connector_exchange(
+            &discovery,
+            None,
+            crate::domain::subagent_mcp::PROTOCOL_REVISION,
+            &initialize,
+        )
+        .unwrap();
+        assert_eq!(status, 200);
+        connector_close_session(&discovery, session.as_deref().unwrap()).unwrap();
+    }
+
     #[test]
     fn authenticated_loopback_service_lists_common_catalog_and_cleans_discovery() {
         let root =
@@ -1388,20 +1427,14 @@ mod tests {
                 Arc::new(FixtureTargets),
             ))
         });
-        let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        let first_generation = loop {
-            if let Some(document) = read_discovery(&discovery_path().unwrap())
-                .ok()
-                .filter(|_| service.healthy())
-            {
-                break document.generation;
-            }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "first start timed out"
-            );
-            thread::sleep(Duration::from_millis(25));
-        };
+        assert!(
+            service.healthy(),
+            "the initial service must be ready when start returns"
+        );
+        let first_generation = read_discovery(&discovery_path().unwrap())
+            .expect("initial discovery must be published before start returns")
+            .generation;
+        assert_connector_initialize_succeeds("antigravity");
         service.force_exit_for_test();
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
         loop {
@@ -1415,34 +1448,7 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "restart timed out");
             thread::sleep(Duration::from_millis(25));
         }
-        let discovery = load_connector_discovery("antigravity").unwrap();
-        let initialize = encode_http_body(
-            &McpMessage::request(
-                McpRequestId::from(1_i64),
-                "initialize",
-                Some(
-                    json!({
-                        "protocolVersion": "2025-06-18",
-                        "capabilities": {},
-                        "clientInfo": {"name": "fixture", "version": "1"}
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )
-            .unwrap(),
-            MAX_MCP_FRAME_BYTES,
-        )
-        .unwrap();
-        let (status, _, _) = connector_exchange(
-            &discovery,
-            None,
-            crate::domain::subagent_mcp::PROTOCOL_REVISION,
-            &initialize,
-        )
-        .unwrap();
-        assert_eq!(status, 200);
+        assert_connector_initialize_succeeds("antigravity");
         let discovery_file = discovery_path().unwrap();
         drop(service);
         assert!(!discovery_file.exists());

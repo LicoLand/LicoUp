@@ -54,11 +54,12 @@ void main() {
 
       final picker = find.byKey(const Key('canonical-group-strategy-picker'));
       expect(picker, findsOneWidget);
-      // Codex with preferred model gpt-5.4 and reasoning effort high.
+      // The expected label is derived from the mutable backend fixture. The
+      // regression must never encode a real Agent + Model pairing.
       expect(
         find.descendant(
           of: picker,
-          matching: find.text('Codex · gpt-5.4 · High'),
+          matching: find.text(runner.assistantIdentityLabel),
         ),
         findsOneWidget,
       );
@@ -81,7 +82,61 @@ void main() {
       expect(
         find.descendant(
           of: picker,
-          matching: find.text('Codex · gpt-5.4 · High'),
+          matching: find.text(runner.assistantIdentityLabel),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'capsule reloads the current backend Assistant Profile after editing',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _AssistantSurfaceRunner();
+      final controller = ClientConversationController(runner: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPane(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            onOpenAdaptiveFlywheel: (_) async {
+              runner.configureAssistantProfile(
+                preferredModel: 'backend-selected-model',
+                preferredReasoningEffort: 'medium',
+              );
+            },
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
+      expect(
+        find.descendant(
+          of: picker,
+          matching: find.text(runner.assistantIdentityLabel),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: picker,
+          matching: find.text(runner.assistantIdentityLabel),
         ),
         findsOneWidget,
       );
@@ -181,7 +236,6 @@ void main() {
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
-
     await tester.pumpWidget(
       _groupApp(
         CanonicalGroupConversationPane(
@@ -340,14 +394,14 @@ void main() {
     expect(
       find.descendant(
         of: picker,
-        matching: find.text('Codex · gpt-5.4 · High'),
+        matching: find.text(runner.assistantIdentityLabel),
       ),
       findsOneWidget,
     );
     expect(_dotColor(tester, 'waiting'), colors.accent);
   });
 
-  testWidgets('failure fixture keeps the identity label behind a red light', (
+  testWidgets('usage-limit failure keeps identity and shows safe recovery', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -373,7 +427,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    controller.surfaceFailure('send', 'adapter_offline');
+    controller.surfaceFailure(
+      'turn/completed',
+      'codex_usage_limit_exceeded',
+      component: 'native_cli',
+      retryable: false,
+      recovery: 'select_available_model_or_wait_for_quota_reset',
+    );
     await tester.pumpAndSettle();
 
     final picker = find.byKey(const Key('canonical-group-strategy-picker'));
@@ -381,12 +441,20 @@ void main() {
     expect(
       find.descendant(
         of: picker,
-        matching: find.text('Codex · gpt-5.4 · High'),
+        matching: find.text(runner.assistantIdentityLabel),
       ),
       findsOneWidget,
     );
     expect(_dotColor(tester, 'failure'), colors.error);
     expect(find.byKey(const Key('canonical-group-failure')), findsOneWidget);
+    expect(
+      find.textContaining('Codex model usage limit reached'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Choose another available model'),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -505,6 +573,11 @@ void main() {
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
+    final originalMembershipId = runner.assistantMembershipId;
+    final originalAgentId = runner.assistantAgentId;
+    final originalDisplayName = runner.assistantDisplayName;
+    final originalModel = runner.assistantPreferredModel;
+    final originalEffort = runner.assistantPreferredReasoningEffort;
 
     await tester.pumpWidget(
       _groupApp(
@@ -550,17 +623,17 @@ void main() {
     final leave = runner.requests.firstWhere(
       (request) => request['action'] == 'conversation.membership.leave',
     );
-    expect(leave['membershipId'], 'membership:codex');
+    expect(leave['membershipId'], originalMembershipId);
     final add = runner.requests.firstWhere(
       (request) => request['action'] == 'conversation.membership.add',
     );
     final principal = Map<String, dynamic>.from(add['principal'] as Map);
-    expect(principal['id'], 'agent:codex');
-    expect(principal['agentId'], 'codex');
-    expect(principal['displayName'], 'Codex');
+    expect(principal['id'], 'agent:$originalAgentId');
+    expect(principal['agentId'], originalAgentId);
+    expect(principal['displayName'], originalDisplayName);
 
     final rotatedId = runner.assistantMembershipId;
-    expect(rotatedId, isNot('membership:codex'));
+    expect(rotatedId, isNot(originalMembershipId));
     final assistantSet = runner.requests.firstWhere(
       (request) => request['action'] == 'conversation.assistant.set',
     );
@@ -570,8 +643,8 @@ void main() {
     );
     expect(profileUpdate['membershipId'], rotatedId);
     final intent = Map<String, dynamic>.from(profileUpdate['intent'] as Map);
-    expect(intent['preferredModel'], 'gpt-5.4');
-    expect(intent['preferredReasoningEffort'], 'high');
+    expect(intent['preferredModel'], originalModel);
+    expect(intent['preferredReasoningEffort'], originalEffort);
 
     // The pane never leaves the group: same id, same agent, new Membership.
     expect(controller.selectedConversationId, 'conversation:group');
@@ -579,7 +652,7 @@ void main() {
     expect(reloaded, isNotNull);
     expect(reloaded!.id, 'conversation:group');
     expect(reloaded.assistantMembership?.id, rotatedId);
-    expect(reloaded.assistantMembership?.principal.agentId, 'codex');
+    expect(reloaded.assistantMembership?.principal.agentId, originalAgentId);
     expect(controller.failureCode, isEmpty);
     expect(
       find.byKey(const Key('canonical-group-conversation-pane')),
@@ -590,7 +663,7 @@ void main() {
     expect(
       find.descendant(
         of: picker,
-        matching: find.text('Codex · gpt-5.4 · High'),
+        matching: find.text(runner.assistantIdentityLabel),
       ),
       findsOneWidget,
     );
@@ -605,6 +678,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
+      final originalAgentId = runner.assistantAgentId;
       final controller = ClientConversationController(runner: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -654,7 +728,7 @@ void main() {
       expect(controller.selectedConversationId, 'conversation:group');
       expect(
         controller.selectedConversation?.assistantMembership?.principal.agentId,
-        'codex',
+        originalAgentId,
       );
     },
   );
@@ -667,13 +741,14 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
 
-    final runner = _AssistantSurfaceRunner()
+    final runner = _AssistantSurfaceRunner();
+    runner
       ..postTurns = [
         {
           'turnHandle': 'dispatch:live',
           'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
+          'membershipId': runner.assistantMembershipId,
+          'agent': runner.assistantAgentId,
         },
       ]
       ..dispatchPending = true;
@@ -1038,6 +1113,59 @@ final class _AssistantSurfaceRunner implements AgentCommandRunner {
       agentId: 'claude-code',
     ),
   ];
+
+  String get assistantIdentityLabel {
+    final membership = _memberships.firstWhere(
+      (item) => item['id'] == assistantMembershipId,
+    );
+    final principal = Map<String, dynamic>.from(membership['principal'] as Map);
+    final profile = _profiles[assistantMembershipId] ?? const {};
+    final effort = (profile['preferredReasoningEffort'] ?? '').toString();
+    final formattedEffort = effort.isEmpty
+        ? ''
+        : '${effort[0].toUpperCase()}${effort.substring(1)}';
+    return [
+      (principal['displayName'] ?? '').toString(),
+      (profile['preferredModel'] ?? '').toString(),
+      formattedEffort,
+    ].where((segment) => segment.isNotEmpty).join(' · ');
+  }
+
+  String get assistantAgentId {
+    final membership = _memberships.firstWhere(
+      (item) => item['id'] == assistantMembershipId,
+    );
+    final principal = Map<String, dynamic>.from(membership['principal'] as Map);
+    return (principal['agentId'] ?? '').toString();
+  }
+
+  String get assistantDisplayName {
+    final membership = _memberships.firstWhere(
+      (item) => item['id'] == assistantMembershipId,
+    );
+    final principal = Map<String, dynamic>.from(membership['principal'] as Map);
+    return (principal['displayName'] ?? '').toString();
+  }
+
+  String get assistantPreferredModel =>
+      (_profiles[assistantMembershipId]?['preferredModel'] ?? '').toString();
+
+  String get assistantPreferredReasoningEffort =>
+      (_profiles[assistantMembershipId]?['preferredReasoningEffort'] ?? '')
+          .toString();
+
+  void configureAssistantProfile({
+    required String preferredModel,
+    required String preferredReasoningEffort,
+  }) {
+    final current = _profiles[assistantMembershipId] ?? const {};
+    _profiles[assistantMembershipId] = {
+      ...current,
+      'revision': ((current['revision'] as num?)?.toInt() ?? 0) + 1,
+      'preferredModel': preferredModel,
+      'preferredReasoningEffort': preferredReasoningEffort,
+    };
+  }
 
   Iterable<Map<String, dynamic>> get _activeMemberships =>
       _memberships.where((membership) => membership['status'] == 'active');

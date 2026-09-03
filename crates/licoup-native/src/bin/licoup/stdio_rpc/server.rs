@@ -79,6 +79,10 @@ where
     let mut conversation_workers = Vec::new();
     let mut conversation_services = ConversationServices::default();
     if let Some(service) = initial_conversation_service {
+        let service = match conversation_runtime.as_ref() {
+            Some(runtime) => bind_conversation_runtime(service, runtime, None),
+            None => service,
+        };
         conversation_services.entries.push_back((None, service));
     }
     loop {
@@ -665,31 +669,11 @@ fn conversation_service(
     }
     let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
     let root = licoup_native::platform::paths::portable_data_dir()?;
-    let mut service = ConversationService::open(&root)?;
-    if let Some(runtime) = runtime {
-        let send_runtime = runtime.clone();
-        let send_dir = portable_data_dir.clone();
-        let active_runtime = runtime.clone();
-        let steer_runtime = runtime.clone();
-        let actor_runtime = runtime.clone();
-        let actor_dir = portable_data_dir.clone();
-        let strategy_root = root.clone();
-        service = service
-            .with_native_turn_sender(move |params| {
-                send_runtime.start_background(params, send_dir.clone())
-            })
-            .with_active_turns(move |conversation_id| {
-                active_runtime.active(&json!({ "conversationId": conversation_id }))
-            })
-            .with_steer_turn(move |params| steer_runtime.steer_sync(params))
-            .with_strategy_execute(move |request| {
-                let port =
-                    conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
-                licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
-                    .with_actor_turn_port(port)
-                    .execute(request)
-            });
-    }
+    let service = ConversationService::open(&root)?;
+    let service = match runtime {
+        Some(runtime) => bind_conversation_runtime(service, runtime, portable_data_dir.clone()),
+        None => service,
+    };
     if services.entries.len() == MAX_CONVERSATION_SERVICE_ROOTS {
         services.entries.pop_front();
     }
@@ -697,4 +681,41 @@ fn conversation_service(
         .entries
         .push_back((portable_data_dir, service.clone()));
     Ok(service)
+}
+
+/// Attach every host-only execution port to one service instance. The
+/// pre-opened host service and lazily opened portable-root services must be
+/// indistinguishable; otherwise requests without an explicit portable root
+/// can persist a message but fail before reaching the selected Agent.
+fn bind_conversation_runtime(
+    service: ConversationService,
+    runtime: &PersistentConversationRuntime,
+    portable_data_dir: Option<PathBuf>,
+) -> ConversationService {
+    let send_runtime = runtime.clone();
+    let send_dir = portable_data_dir.clone();
+    let active_runtime = runtime.clone();
+    let steer_runtime = runtime.clone();
+    let actor_runtime = runtime.clone();
+    let actor_dir = portable_data_dir;
+    let strategy_root = service
+        .store()
+        .db_path()
+        .parent()
+        .expect("Conversation database always has a parent")
+        .to_path_buf();
+    service
+        .with_native_turn_sender(move |params| {
+            send_runtime.start_background(params, send_dir.clone())
+        })
+        .with_active_turns(move |conversation_id| {
+            active_runtime.active(&json!({ "conversationId": conversation_id }))
+        })
+        .with_steer_turn(move |params| steer_runtime.steer_sync(params))
+        .with_strategy_execute(move |request| {
+            let port = conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
+            licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
+                .with_actor_turn_port(port)
+                .execute(request)
+        })
 }

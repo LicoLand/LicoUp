@@ -10,6 +10,9 @@ impl ProtocolFailure {
             code,
             message,
             stage,
+            component: None,
+            retryable: None,
+            recovery: None,
             user_interaction_required: false,
             request_method: None,
             session_id: None,
@@ -17,6 +20,18 @@ impl ProtocolFailure {
             turn_id: None,
             turn_status: None,
         })
+    }
+
+    pub(in crate::platform) fn with_resolution(
+        mut self,
+        component: &'static str,
+        retryable: bool,
+        recovery: &'static str,
+    ) -> Self {
+        self.component = Some(component);
+        self.retryable = Some(retryable);
+        self.recovery = Some(recovery);
+        self
     }
 }
 

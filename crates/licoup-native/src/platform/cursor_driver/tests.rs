@@ -646,6 +646,95 @@ fn crashed_cli_after_partial_output_is_reported_as_failed() {
     assert_ne!(result.turn_status, "completed");
 }
 
+#[test]
+fn non_error_terminal_subtype_keeps_the_completed_reply() {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let (dir, executable) = compile_fake_cursor(stamp);
+    let _guard = env_lock();
+    let result = cursor_driver::execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "answer normally __lico_non_error_subtype__",
+        "",
+        Some(dir.as_path()),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    drop(_guard);
+    let _ = fs::remove_dir_all(dir);
+    assert!(result.ok, "valid Cursor reply failed: {:?}", result.error);
+    assert_eq!(result.output, "fake Cursor final answer");
+}
+
+#[test]
+fn stderr_failure_is_classified_without_exposing_vendor_prose() {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let (dir, executable) = compile_fake_cursor(stamp);
+    let _guard = env_lock();
+    let result = cursor_driver::execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "trigger bounded stderr __lico_stderr_usage__",
+        "",
+        Some(dir.as_path()),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    drop(_guard);
+    let _ = fs::remove_dir_all(dir);
+    let failure = result.error.expect("stderr failure must be classified");
+    assert_eq!(failure.code, "cursor_cli_usage_limit_exceeded");
+    assert_eq!(failure.component, Some("native_cli"));
+    assert_eq!(failure.retryable, Some(false));
+    assert_eq!(
+        failure.recovery,
+        Some("select_available_model_or_wait_for_quota_reset")
+    );
+    let encoded = format!("{failure:?}");
+    assert!(!encoded.contains("private fixture account context"));
+}
+
+#[test]
+fn stderr_classifier_uses_only_the_closed_cursor_failure_vocabulary() {
+    use super::errors::CursorFailureKind;
+
+    let cases = [
+        (
+            "Please log in before continuing: private account detail",
+            CursorFailureKind::AuthenticationRequired,
+        ),
+        (
+            "Quota exceeded for private account detail",
+            CursorFailureKind::UsageLimitExceeded,
+        ),
+        (
+            "Too many requests for private account detail",
+            CursorFailureKind::RateLimited,
+        ),
+        (
+            "Selected model is not available: private model detail",
+            CursorFailureKind::ModelUnavailable,
+        ),
+    ];
+    for (stderr, expected) in cases {
+        assert_eq!(CursorFailureKind::from_stderr(stderr), Some(expected));
+        let failure = expected.failure(Some("synthetic-session"));
+        assert!(!format!("{failure:?}").contains("private"));
+    }
+    assert_eq!(
+        CursorFailureKind::from_stderr("arbitrary private vendor prose"),
+        None
+    );
+}
+
 /// M11: a user-cancelled turn must be reported as cancelled, never as
 /// completed with truncated output.
 #[cfg(unix)]

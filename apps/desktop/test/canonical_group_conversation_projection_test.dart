@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
@@ -244,6 +245,75 @@ void main() {
       isEmpty,
     );
   });
+
+  test(
+    'failed turn decorates its source user message without replacing it',
+    () {
+      final conversation = ClientConversation.fromJson({
+        'id': 'conversation:group',
+        'title': 'Lico',
+        'archived': false,
+        'isGroup': true,
+        'revision': 2,
+        'createdAtUnixMs': 1,
+        'updatedAtUnixMs': 20,
+        'eventCount': 2,
+        'memberships': [
+          _membership(
+            id: 'membership:owner',
+            principalId: 'human:local',
+            kind: 'human',
+            label: 'Local User',
+            access: 'owner',
+          ),
+          _membership(
+            id: 'membership:agent',
+            principalId: 'agent:fixture',
+            kind: 'agent',
+            label: 'Fixture Agent',
+            agentId: 'fixture-agent',
+          ),
+        ],
+      });
+      final session = canonicalGroupConversationSession(conversation, [
+        ClientConversationEvent.fromJson({
+          'id': 'event:user',
+          'conversationId': conversation.id,
+          'sequence': 1,
+          'authorMembershipId': 'membership:owner',
+          'kind': 'message',
+          'createdAtUnixMs': 10,
+          'finalized': true,
+          'parts': [_part('part:user', 0, 'text', 'retry me')],
+        }),
+        ClientConversationEvent.fromJson({
+          'id': 'event:failed-turn',
+          'conversationId': conversation.id,
+          'sequence': 2,
+          'authorMembershipId': 'membership:agent',
+          'kind': 'message',
+          'causationId': 'event:user',
+          'correlationId': 'turn:failed',
+          'createdAtUnixMs': 20,
+          'finalized': true,
+          'parts': [
+            _part(
+              'part:failed',
+              0,
+              'diagnostic',
+              '{"code":"fixture_turn_failed"}',
+            ),
+          ],
+        }),
+      ], LicoStrings.forLocale(const Locale('en')));
+
+      final user = session.messages.singleWhere(
+        (message) => message.id == 'event:user',
+      );
+      expect(user.text, 'retry me');
+      expect(user.deliveryState, AgentConversationMessageDeliveryState.failed);
+    },
+  );
 
   test('canonical group merges streamed text parts on one event', () {
     final conversation = ClientConversation.fromJson({

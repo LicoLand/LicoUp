@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -7,6 +8,7 @@ import 'package:licoup/src/application/features/conversations/client_conversatio
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/problem_codes/problem_codes.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
@@ -33,6 +35,9 @@ final class ClientConversationController extends ChangeNotifier {
   String _draft = '';
   String _failureStage = '';
   String _failureCode = '';
+  String _failureComponent = '';
+  bool? _failureRetryable;
+  String _failureRecovery = '';
   String _failureRef = '';
   String _failureOccurredAt = '';
   String _failureStrategyCode = '';
@@ -54,6 +59,9 @@ final class ClientConversationController extends ChangeNotifier {
   String get draft => _draft;
   String get failureStage => _failureStage;
   String get failureCode => _failureCode;
+  String get failureComponent => _failureComponent;
+  bool? get failureRetryable => _failureRetryable;
+  String get failureRecovery => _failureRecovery;
   String get failureRef => _failureRef;
   String get failureProblemCode => ProblemCodeCopy.problemCode(_failureCode);
   String get failureCopyBlob => ProblemCodeCopy.copyableDetail(
@@ -62,6 +70,9 @@ final class ClientConversationController extends ChangeNotifier {
     occurrenceId: _failureRef,
     occurredAt: _failureOccurredAt,
     strategyCode: _failureStrategyCode,
+    component: _failureComponent,
+    retryable: _failureRetryable,
+    recovery: _failureRecovery,
   );
 
   List<Map<String, dynamic>> get liveTurns => _liveTurns;
@@ -85,27 +96,52 @@ final class ClientConversationController extends ChangeNotifier {
       _archivedSummaries;
 
   /// Surfaces a group-operation failure on the conversation banner.
-  void surfaceFailure(String stage, String code) {
+  void surfaceFailure(
+    String stage,
+    String code, {
+    String component = '',
+    bool? retryable,
+    String recovery = '',
+  }) {
     if (_disposed) return;
     final nextStage = stage.trim();
     final nextCode = code.trim();
     if (nextStage.isEmpty || nextCode.isEmpty) return;
-    _recordFailure(nextStage, nextCode);
+    _recordFailure(
+      nextStage,
+      nextCode,
+      component: component,
+      retryable: retryable,
+      recovery: recovery,
+    );
     _notifyListeners();
   }
 
   void _clearFailure() {
     _failureStage = '';
     _failureCode = '';
+    _failureComponent = '';
+    _failureRetryable = null;
+    _failureRecovery = '';
     _failureRef = '';
     _failureOccurredAt = '';
     _failureStrategyCode = '';
   }
 
-  void _recordFailure(String stage, String code, {String strategyCode = ''}) {
+  void _recordFailure(
+    String stage,
+    String code, {
+    String strategyCode = '',
+    String component = '',
+    bool? retryable,
+    String recovery = '',
+  }) {
     _failureStage = stage;
     _failureCode = code;
     _failureStrategyCode = strategyCode;
+    _failureComponent = component.trim();
+    _failureRetryable = retryable;
+    _failureRecovery = recovery.trim();
     _failureOccurredAt = DateTime.now().toUtc().toIso8601String();
     _failureSeq = (_failureSeq + 1) & 0xFFFF;
     final mixed =
@@ -553,9 +589,19 @@ final class ClientConversationController extends ChangeNotifier {
           }
         } on ClientConversationServiceFailure catch (failure) {
           _recordFailure('send', failure.code);
+          await _persistDispatchFailure(
+            conversationId: conversation.id,
+            eventId: eventId,
+            code: failure.code,
+          );
           _liveTurns = const [];
           _dispatchPending = false;
         } catch (_) {
+          await _persistDispatchFailure(
+            conversationId: conversation.id,
+            eventId: eventId,
+            code: 'conversation_dispatch_failed',
+          );
           _liveTurns = const [];
           _dispatchPending = false;
         }
@@ -580,6 +626,112 @@ final class ClientConversationController extends ChangeNotifier {
       _notifyListeners();
     }
   }
+
+  /// Preserve the split persist-then-dispatch outcome. If transport fails
+  /// after the user Event committed, a causal diagnostic makes that ordinary
+  /// bubble durably retryable after refresh or relaunch.
+  Future<void> _persistDispatchFailure({
+    required String conversationId,
+    required String eventId,
+    required String code,
+  }) async {
+    try {
+      await _service.execute(_runner, {
+        'action': 'conversation.event.append',
+        'conversationId': conversationId,
+        'kind': 'message',
+        'parts': [
+          {
+            'kind': 'diagnostic',
+            'content': jsonEncode({
+              'code': code.trim().isEmpty
+                  ? 'conversation_dispatch_failed'
+                  : code.trim(),
+              'stage': 'send',
+            }),
+          },
+        ],
+        'causationId': eventId,
+        'finalized': true,
+      });
+    } catch (_) {
+      // The original dispatch failure remains authoritative. Best-effort
+      // diagnostic persistence must never replace or mask it.
+    }
+  }
+
+  Future<bool> retryMessage(String eventId) async {
+    final event = _eventById(eventId);
+    if (event == null || !_eventHasFailedTurn(event.id)) return false;
+    final text = event.parts
+        .where((part) => part.kind == ConversationEventPartKind.text)
+        .map((part) => part.content)
+        .join();
+    final attachments = <ConversationAttachment>[];
+    for (final part in event.parts) {
+      if (part.kind != ConversationEventPartKind.image) continue;
+      try {
+        final decoded = jsonDecode(part.content);
+        if (decoded is! Map) continue;
+        final path = (decoded['path'] ?? '').toString().trim();
+        if (path.isEmpty) continue;
+        attachments.add(
+          ConversationAttachment(
+            id: part.id,
+            name: (decoded['name'] ?? '').toString().trim(),
+            mediaType: (decoded['mediaType'] ?? '').toString().trim(),
+            path: path,
+          ),
+        );
+      } catch (_) {
+        continue;
+      }
+    }
+    final posted = await postMessage(text, attachments: attachments);
+    if (!posted) return false;
+    return deleteMessage(eventId);
+  }
+
+  Future<bool> deleteMessage(String eventId) {
+    final conversation = _selectedConversation;
+    final owner = conversation?.localOwnerMembership;
+    if (conversation == null || owner == null || _eventById(eventId) == null) {
+      return Future.value(false);
+    }
+    return _guard('delete', () async {
+      await _service.execute(_runner, {
+        'action': 'conversation.message.delete',
+        'conversationId': conversation.id,
+        'eventId': eventId,
+        'ownerMembershipId': owner.id,
+      });
+      await _refreshCatalogWithoutGuard();
+      await _loadSelected();
+    });
+  }
+
+  ClientConversationEvent? _eventById(String eventId) {
+    for (final event in _events) {
+      if (event.id == eventId) return event;
+    }
+    return null;
+  }
+
+  bool _eventHasFailedTurn(String eventId) => _events.any(
+    (event) =>
+        event.finalized &&
+        event.causationId == eventId &&
+        event.parts.any((part) {
+          if (part.kind != ConversationEventPartKind.diagnostic) return false;
+          try {
+            final decoded = jsonDecode(part.content);
+            return decoded is Map &&
+                (decoded['code'] ?? '').toString().trim().isNotEmpty;
+          } catch (_) {
+            return false;
+          }
+        }),
+  );
 
   Future<bool> createGroup({
     required String title,
@@ -633,15 +785,22 @@ final class ClientConversationController extends ChangeNotifier {
   }
 
   Future<void> archiveSelected() async {
-    await _guard('archive', () async {
-      final id = _selectedConversationId;
-      if (id.isEmpty) return;
+    await archiveConversation(_selectedConversationId);
+  }
+
+  Future<bool> archiveConversation(String conversationId) async {
+    await _waitUntilIdle();
+    final id = conversationId.trim();
+    if (id.isEmpty) return false;
+    return _guard('archive', () async {
       await _service.execute(_runner, {
         'action': 'conversation.archive',
         'conversationId': id,
         'archived': true,
       });
-      _clearSelection();
+      if (_selectedConversationId == id) {
+        _clearSelection();
+      }
       await _refreshCatalogWithoutGuard();
     });
   }

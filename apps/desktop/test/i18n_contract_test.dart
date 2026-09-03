@@ -133,6 +133,11 @@ void main() {
     expect(english.localePreferenceLabel('en'), 'English');
   });
 
+  test('conversation list labels distinguish unrelated conversations', () {
+    expect(chinese.otherConversations, '其它对话');
+    expect(english.otherConversations, 'Other conversations');
+  });
+
   test(
     'controller status display switches locale without rewriting source state',
     () {

@@ -254,6 +254,17 @@ class _ConversationWorkspaceBodyState
   }
 
   void _returnToPreviousConversationList() {
+    if (_showAgentDetailInsideGroupList &&
+        _conversationListGroupId.isNotEmpty) {
+      final groupId = _conversationListGroupId;
+      setState(() => _showAgentDetailInsideGroupList = false);
+      unawaited(
+        widget.controller.clientConversationController.selectConversation(
+          groupId,
+        ),
+      );
+      return;
+    }
     final previous = _conversationListHistory.isEmpty
         ? (agentId: '', groupId: '')
         : _conversationListHistory.removeLast();
@@ -934,6 +945,7 @@ class _ConversationWorkspaceBodyState
   }) {
     var showConversationList = false;
     var conversationListTargets = const <TargetCandidate>[];
+    Set<String>? conversationListRelatedAgentIds;
     var conversationListPriorityAgentId = '';
     var showConversationAgentIcons = false;
     if (_conversationListGroupId.isNotEmpty) {
@@ -941,17 +953,24 @@ class _ConversationWorkspaceBodyState
       final selectedGroup =
           controller.clientConversationController.selectedConversation;
       if (selectedGroup?.id == _conversationListGroupId) {
-        final memberAgentIds = {
-          for (final membership in selectedGroup!.activeAgentMemberships)
-            membership.principal.agentId,
+        final memberProductIds = {
+          for (final membership in selectedGroup!.memberships)
+            if (membership.principal.agentId.trim().isNotEmpty)
+              agentConversationProductId(membership.principal.agentId.trim()),
         };
         conversationListTargets = widget.targets
-            .where(
-              (target) =>
-                  target.isConversationAgent &&
-                  memberAgentIds.contains(target.target),
-            )
+            .where((target) => target.isConversationAgent)
             .toList(growable: false);
+        conversationListRelatedAgentIds = <String>{};
+        for (final target in conversationListTargets) {
+          if (memberProductIds.contains(
+            agentConversationProductId(target.target),
+          )) {
+            conversationListRelatedAgentIds
+              ..add(target.id)
+              ..add(target.target);
+          }
+        }
         // The group's assistant thread pins to the top of the drill-in list
         // by default.
         conversationListPriorityAgentId =
@@ -1090,6 +1109,23 @@ class _ConversationWorkspaceBodyState
                       pinned,
                     ),
                   ),
+              onArchiveGroupConversation: (conversationId) {
+                if (controller
+                        .clientConversationController
+                        .selectedConversationId ==
+                    conversationId) {
+                  setState(() {
+                    _showAgentDetailInsideGroupList = false;
+                    _conversationListHistory.clear();
+                    _applyConversationListLocation((agentId: '', groupId: ''));
+                  });
+                }
+                unawaited(
+                  controller.clientConversationController.archiveConversation(
+                    conversationId,
+                  ),
+                );
+              },
               onNewGroupConversation: () => unawaited(
                 showCreateCanonicalGroupConversationDialog(
                   context: context,
@@ -1120,6 +1156,7 @@ class _ConversationWorkspaceBodyState
               onOpenWelcome: () => _showWelcome(controller),
               showConversationList: showConversationList,
               conversationListTargets: conversationListTargets,
+              conversationListRelatedAgentIds: conversationListRelatedAgentIds,
               priorityAgentId: conversationListPriorityAgentId,
               selectedSessionId:
                   controller.selectedConversationSession?.id ?? '',
