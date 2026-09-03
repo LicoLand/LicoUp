@@ -11,8 +11,9 @@ fn state_limits_and_collection_authority_are_explicit() {
     assert_eq!(super::super::policy::MAX_ACTIVITY_EVENTS, 10_000);
     assert_eq!(super::super::policy::MAX_REDACTION_DEPTH, 64);
     assert_eq!(super::super::policy::MAX_REDACTION_PATHS, 4_096);
-    assert_eq!(super::super::policy::COLLECTIONS.len(), 15);
+    assert_eq!(super::super::policy::COLLECTIONS.len(), 16);
     assert!(super::super::policy::COLLECTIONS.contains(&"settings"));
+    assert!(super::super::policy::COLLECTIONS.contains(&"provider-quota-snapshots"));
     assert!(super::super::policy::COLLECTIONS.contains(&"conversation-archive-profiles"));
     assert!(super::super::policy::COLLECTIONS.contains(&"target-discovery-cache"));
     assert!(super::super::policy::COLLECTIONS.contains(&"local-server-assemblies"));

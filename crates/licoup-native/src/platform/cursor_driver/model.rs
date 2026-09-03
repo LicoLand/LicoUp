@@ -13,10 +13,12 @@ pub(super) const TURN_ARGS: &[&str] = &[
     "stream-json",
     "--trust",
     "--force",
+    "--approve-mcps",
+    "--stream-partial-output",
 ];
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
-pub(super) const MAX_SESSION_ID_LEN: usize = 128;
-pub(super) const MIN_SESSION_ID_LEN: usize = 8;
+pub(in crate::platform) const MAX_SESSION_ID_LEN: usize = 128;
+pub(in crate::platform) const MIN_SESSION_ID_LEN: usize = 8;
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::platform) struct EffectiveSettings {
@@ -32,7 +34,7 @@ pub(in crate::platform) struct EffectiveSettings {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) events: Vec<Value>,
+    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -53,10 +55,16 @@ impl RunResult {
         stderr_truncated: bool,
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
+        let transitions =
+            crate::platform::native_agent_parser::adapters::cursor::failure_transitions(
+                failure.code,
+                failure.stage,
+                failure.message,
+            );
         Self {
             ok: false,
             output: String::new(),
-            events: Vec::new(),
+            transitions,
             thread_id: failure.thread_id.clone().unwrap_or_default(),
             session_id,
             turn_id: failure.turn_id.clone().unwrap_or_default(),
@@ -91,12 +99,14 @@ impl CapabilityProbe {
         let print_turn = help_lower.contains("--print");
         let resume_session = help_lower.contains("--resume");
         let structured_stream = help_lower.contains("stream-json");
+        let approve_mcps = help_lower.contains("--approve-mcps");
         let supported = version_ok
             && help_ok
             && create_chat
             && print_turn
             && resume_session
-            && structured_stream;
+            && structured_stream
+            && approve_mcps;
         Self {
             available: version_ok || help_ok,
             supported,

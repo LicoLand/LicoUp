@@ -44,7 +44,14 @@ pub(super) fn add_target(params: &Value) -> Result<Value> {
 }
 
 pub(super) fn manual_targets(store: &ClientStateStore) -> Result<Vec<ManualTarget>> {
-    let document = store.read_collection("targets")?;
+    manual_targets_from_document(store.read_collection("targets")?)
+}
+
+pub(super) fn manual_targets_read_only(store: &ClientStateStore) -> Result<Vec<ManualTarget>> {
+    manual_targets_from_document(store.read_collection_read_only("targets")?)
+}
+
+fn manual_targets_from_document(document: Value) -> Result<Vec<ManualTarget>> {
     let items = document
         .get("items")
         .and_then(Value::as_array)

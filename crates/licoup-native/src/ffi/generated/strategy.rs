@@ -123,6 +123,250 @@ pub enum StrategyFailureCode {
     EffectInDoubt,
     #[serde(rename = "unsupported_action")]
     UnsupportedAction,
+    #[serde(rename = "graph_invalid")]
+    GraphInvalid,
+    #[serde(rename = "graph_preflight_rejected")]
+    GraphPreflightRejected,
+    #[serde(rename = "graph_identity_rejected")]
+    GraphIdentityRejected,
+    #[serde(rename = "graph_route_stale")]
+    GraphRouteStale,
+    #[serde(rename = "strategy_idempotency_conflict")]
+    StrategyIdempotencyConflict,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyWorkflowDiagnosticStage {
+    #[serde(rename = "workflow/parse")]
+    WorkflowParse,
+    #[serde(rename = "workflow/compile")]
+    WorkflowCompile,
+    #[serde(rename = "package/validate")]
+    PackageValidate,
+    #[serde(rename = "assistant-workflow/preflight")]
+    AssistantWorkflowPreflight,
+    #[serde(rename = "assistant-workflow/revalidate")]
+    AssistantWorkflowRevalidate,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyWorkflowDiagnosticCode {
+    #[serde(rename = "workflow_syntax_invalid")]
+    WorkflowSyntaxInvalid,
+    #[serde(rename = "workflow_shape_invalid")]
+    WorkflowShapeInvalid,
+    #[serde(rename = "workflow_required_field_missing")]
+    WorkflowRequiredFieldMissing,
+    #[serde(rename = "workflow_field_type_invalid")]
+    WorkflowFieldTypeInvalid,
+    #[serde(rename = "workflow_field_value_invalid")]
+    WorkflowFieldValueInvalid,
+    #[serde(rename = "workflow_unknown_field")]
+    WorkflowUnknownField,
+    #[serde(rename = "workflow_schema_unsupported")]
+    WorkflowSchemaUnsupported,
+    #[serde(rename = "workflow_metadata_id_invalid")]
+    WorkflowMetadataIdInvalid,
+    #[serde(rename = "workflow_metadata_name_invalid")]
+    WorkflowMetadataNameInvalid,
+    #[serde(rename = "workflow_metadata_version_invalid")]
+    WorkflowMetadataVersionInvalid,
+    #[serde(rename = "workflow_state_limit")]
+    WorkflowStateLimit,
+    #[serde(rename = "workflow_transition_limit")]
+    WorkflowTransitionLimit,
+    #[serde(rename = "workflow_binding_limit")]
+    WorkflowBindingLimit,
+    #[serde(rename = "workflow_runtime_limit")]
+    WorkflowRuntimeLimit,
+    #[serde(rename = "workflow_parallelism_invalid")]
+    WorkflowParallelismInvalid,
+    #[serde(rename = "workflow_workset_limit_invalid")]
+    WorkflowWorksetLimitInvalid,
+    #[serde(rename = "workflow_retry_limit_invalid")]
+    WorkflowRetryLimitInvalid,
+    #[serde(rename = "workflow_binding_id_invalid")]
+    WorkflowBindingIdInvalid,
+    #[serde(rename = "workflow_binding_duplicate")]
+    WorkflowBindingDuplicate,
+    #[serde(rename = "workflow_binding_label_invalid")]
+    WorkflowBindingLabelInvalid,
+    #[serde(rename = "workflow_fallback_invalid")]
+    WorkflowFallbackInvalid,
+    #[serde(rename = "workflow_entry_slot_invalid")]
+    WorkflowEntrySlotInvalid,
+    #[serde(rename = "workflow_runtime_id_invalid")]
+    WorkflowRuntimeIdInvalid,
+    #[serde(rename = "workflow_runtime_binding_invalid")]
+    WorkflowRuntimeBindingInvalid,
+    #[serde(rename = "workflow_workset_id_invalid")]
+    WorkflowWorksetIdInvalid,
+    #[serde(rename = "workflow_workset_item_binding_invalid")]
+    WorkflowWorksetItemBindingInvalid,
+    #[serde(rename = "workflow_workset_predecessor_field_invalid")]
+    WorkflowWorksetPredecessorFieldInvalid,
+    #[serde(rename = "workflow_workset_field_conflict")]
+    WorkflowWorksetFieldConflict,
+    #[serde(rename = "workflow_state_id_invalid")]
+    WorkflowStateIdInvalid,
+    #[serde(rename = "workflow_state_label_invalid")]
+    WorkflowStateLabelInvalid,
+    #[serde(rename = "workflow_state_instruction_invalid")]
+    WorkflowStateInstructionInvalid,
+    #[serde(rename = "workflow_state_duplicate")]
+    WorkflowStateDuplicate,
+    #[serde(rename = "workflow_state_retry_invalid")]
+    WorkflowStateRetryInvalid,
+    #[serde(rename = "workflow_actor_binding_invalid")]
+    WorkflowActorBindingInvalid,
+    #[serde(rename = "workflow_state_field_invalid")]
+    WorkflowStateFieldInvalid,
+    #[serde(rename = "workflow_script_runtime_invalid")]
+    WorkflowScriptRuntimeInvalid,
+    #[serde(rename = "workflow_script_entry_missing")]
+    WorkflowScriptEntryMissing,
+    #[serde(rename = "workflow_script_entry_invalid")]
+    WorkflowScriptEntryInvalid,
+    #[serde(rename = "workflow_workset_reference_invalid")]
+    WorkflowWorksetReferenceInvalid,
+    #[serde(rename = "workflow_workset_binding_invalid")]
+    WorkflowWorksetBindingInvalid,
+    #[serde(rename = "workflow_initial_unknown")]
+    WorkflowInitialUnknown,
+    #[serde(rename = "workflow_transition_id_invalid")]
+    WorkflowTransitionIdInvalid,
+    #[serde(rename = "workflow_transition_duplicate")]
+    WorkflowTransitionDuplicate,
+    #[serde(rename = "workflow_transition_state_unknown")]
+    WorkflowTransitionStateUnknown,
+    #[serde(rename = "workflow_guard_invalid")]
+    WorkflowGuardInvalid,
+    #[serde(rename = "workflow_guard_ambiguous")]
+    WorkflowGuardAmbiguous,
+    #[serde(rename = "workflow_routing_invalid")]
+    WorkflowRoutingInvalid,
+    #[serde(rename = "workflow_topology_invalid")]
+    WorkflowTopologyInvalid,
+    #[serde(rename = "workflow_state_unreachable")]
+    WorkflowStateUnreachable,
+    #[serde(rename = "workflow_terminal_unreachable")]
+    WorkflowTerminalUnreachable,
+    #[serde(rename = "workflow_effect_cycle")]
+    WorkflowEffectCycle,
+    #[serde(rename = "workflow_invalid")]
+    WorkflowInvalid,
+    #[serde(rename = "graph_identity_not_assistant_temporary")]
+    GraphIdentityNotAssistantTemporary,
+    #[serde(rename = "graph_runtime_asset_unavailable")]
+    GraphRuntimeAssetUnavailable,
+    #[serde(rename = "graph_assistant_membership_rejected")]
+    GraphAssistantMembershipRejected,
+    #[serde(rename = "graph_assistant_designation_rejected")]
+    GraphAssistantDesignationRejected,
+    #[serde(rename = "graph_assistant_skill_unavailable")]
+    GraphAssistantSkillUnavailable,
+    #[serde(rename = "graph_authority_rejected")]
+    GraphAuthorityRejected,
+    #[serde(rename = "graph_binding_duplicate")]
+    GraphBindingDuplicate,
+    #[serde(rename = "graph_binding_unknown")]
+    GraphBindingUnknown,
+    #[serde(rename = "graph_binding_kind_rejected")]
+    GraphBindingKindRejected,
+    #[serde(rename = "graph_binding_incomplete")]
+    GraphBindingIncomplete,
+    #[serde(rename = "graph_membership_rejected")]
+    GraphMembershipRejected,
+    #[serde(rename = "graph_model_unavailable")]
+    GraphModelUnavailable,
+    #[serde(rename = "graph_model_rejected")]
+    GraphModelRejected,
+    #[serde(rename = "graph_readiness_rejected")]
+    GraphReadinessRejected,
+    #[serde(rename = "graph_environment_unavailable")]
+    GraphEnvironmentUnavailable,
+    #[serde(rename = "graph_profile_rejected")]
+    GraphProfileRejected,
+    #[serde(rename = "conversation_state_unavailable")]
+    ConversationStateUnavailable,
+    #[serde(rename = "conversation_not_found")]
+    ConversationNotFound,
+    #[serde(rename = "graph_route_stale")]
+    GraphRouteStale,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyWorkflowDiagnosticRecovery {
+    #[serde(rename = "add_required_field")]
+    AddRequiredField,
+    #[serde(rename = "correct_field")]
+    CorrectField,
+    #[serde(rename = "remove_unknown_field")]
+    RemoveUnknownField,
+    #[serde(rename = "remove_duplicate")]
+    RemoveDuplicate,
+    #[serde(rename = "correct_reference")]
+    CorrectReference,
+    #[serde(rename = "reduce_resource")]
+    ReduceResource,
+    #[serde(rename = "correct_routing")]
+    CorrectRouting,
+    #[serde(rename = "correct_topology")]
+    CorrectTopology,
+    #[serde(rename = "update_assistant_profile")]
+    UpdateAssistantProfile,
+    #[serde(rename = "update_binding")]
+    UpdateBinding,
+    #[serde(rename = "refresh_conversation_state")]
+    RefreshConversationState,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyWorkflowDiagnosticExpected {
+    #[serde(rename = "object")]
+    Object,
+    #[serde(rename = "array")]
+    Array,
+    #[serde(rename = "string")]
+    String,
+    #[serde(rename = "integer")]
+    Integer,
+    #[serde(rename = "boolean")]
+    Boolean,
+    #[serde(rename = "enum_value")]
+    EnumValue,
+    #[serde(rename = "identifier")]
+    Identifier,
+    #[serde(rename = "non_empty_text")]
+    NonEmptyText,
+    #[serde(rename = "unique_id")]
+    UniqueId,
+    #[serde(rename = "existing_reference")]
+    ExistingReference,
+    #[serde(rename = "supported_schema")]
+    SupportedSchema,
+    #[serde(rename = "valid_routing")]
+    ValidRouting,
+    #[serde(rename = "valid_topology")]
+    ValidTopology,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyWorkflowDiagnosticActualKind {
+    #[serde(rename = "missing")]
+    Missing,
+    #[serde(rename = "null")]
+    Null,
+    #[serde(rename = "object")]
+    Object,
+    #[serde(rename = "array")]
+    Array,
+    #[serde(rename = "string")]
+    String,
+    #[serde(rename = "number")]
+    Number,
+    #[serde(rename = "boolean")]
+    Boolean,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -163,6 +407,12 @@ pub enum StrategyActionKind {
     StrategyRunCancel,
     #[serde(rename = "strategy.run.retry")]
     StrategyRunRetry,
+    #[serde(rename = "strategy.assistant.workflow.execute")]
+    StrategyAssistantWorkflowExecute,
+    #[serde(rename = "strategy.assistant.workflow.inspect")]
+    StrategyAssistantWorkflowInspect,
+    #[serde(rename = "strategy.assistant.workflow.cancel")]
+    StrategyAssistantWorkflowCancel,
 }
 
 pub const STRATEGY_BRIDGE_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.bridge.v1";
@@ -171,3 +421,6 @@ pub const STRATEGY_BRIDGE_MAX_PACKAGE_BYTES: usize = 8388608;
 pub const STRATEGY_BRIDGE_MAX_STATES: usize = 512;
 pub const STRATEGY_BRIDGE_MAX_TRANSITIONS: usize = 2048;
 pub const STRATEGY_BRIDGE_MAX_PARALLELISM: usize = 8;
+pub const STRATEGY_WORKFLOW_MAX_DIAGNOSTICS: usize = 128;
+pub const STRATEGY_WORKFLOW_MAX_DIAGNOSTIC_PATH_BYTES: usize = 256;
+pub const STRATEGY_WORKFLOW_MAX_RELATED_PATHS: usize = 8;

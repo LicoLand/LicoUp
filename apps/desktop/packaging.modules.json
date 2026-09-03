@@ -31,7 +31,7 @@
       ]
     },
     "target-adapters": {
-      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent, OpenClaw, OpenCode, and Pi Agent",
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, DeepSeek Harness, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent, OpenClaw, OpenCode, and Pi Agent",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -54,6 +54,7 @@
         "copilot",
         "kilo-code",
         "cursor",
+        "deepseek-harness",
         "hermes",
         "kimi-code",
         "pi",
@@ -179,7 +180,7 @@
       "cargoBin": "licoup-cli"
     },
     "subagents-mcp": {
-      "label": "LicoUp local subagent MCP",
+      "label": "LicoUp authenticated local Subagent Mesh connector and desktop-owned service",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -191,7 +192,9 @@
       "packaging": "sidecar-binary",
       "cargoBin": "lico-subagent-mcp",
       "requires": [
-        "native-sidecar"
+        "native-sidecar",
+        "target-adapters",
+        "skill-hub"
       ]
     },
     "conversations-mcp": {
@@ -244,7 +247,7 @@
       ]
     },
     "codex-plugin": {
-      "label": "LicoUp Codex Plugin companion runtime",
+      "label": "LicoUp Codex Plugin 0.2.0 thin connector",
       "category": "agents",
       "enabled": true,
       "required": true,

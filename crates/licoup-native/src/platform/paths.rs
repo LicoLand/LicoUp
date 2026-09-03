@@ -22,15 +22,23 @@ pub fn set_portable_data_dir_override(path: Option<PathBuf>) -> Option<PathBuf> 
 /// environment variables, executable-adjacent roots, and old product
 /// namespaces are deliberately never inspected or migrated.
 pub fn portable_data_dir() -> Result<PathBuf> {
+    prepare_current_root(portable_data_dir_read_only()?)
+}
+
+/// Resolve the current LicoUp state root lexically without creating or
+/// hardening it. Read-only observers use this before opening existing state.
+pub(crate) fn portable_data_dir_read_only() -> Result<PathBuf> {
     if let Some(path) = portable_data_dir_override() {
-        return prepare_current_root(path);
+        return Ok(path);
     }
 
     if let Some(path) = portable_data_dir_from_value(env::var("LICOUP_PORTABLE_DIR").ok())? {
-        return prepare_current_root(path);
+        return Ok(path);
     }
 
-    home_portable_data_dir()
+    let home =
+        user_home_from_env().ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
+    Ok(home.join(".lico-up"))
 }
 
 fn portable_data_dir_override() -> Option<PathBuf> {
@@ -47,7 +55,11 @@ fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>
         return Ok(None);
     };
     let trimmed = value.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty()
+        || trimmed.starts_with('$')
+        || trimmed.contains("${")
+        || trimmed.contains("${env:")
+    {
         return Ok(None);
     }
     Ok(Some(PathBuf::from(trimmed)))
@@ -110,12 +122,7 @@ where
         .map(PathBuf::from)
 }
 
-fn home_portable_data_dir() -> Result<PathBuf> {
-    let home =
-        user_home_from_env().ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
-    home_portable_data_dir_from_home(&home)
-}
-
+#[cfg(test)]
 fn home_portable_data_dir_from_home(home: &Path) -> Result<PathBuf> {
     prepare_current_root(home.join(".lico-up"))
 }
@@ -170,6 +177,20 @@ mod tests {
             portable_data_dir_from_value(Some("   ".to_string())).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn unexpanded_interpolation_does_not_select_a_path() {
+        for value in [
+            "${LICOUP_PORTABLE_DIR}",
+            "$LICOUP_PORTABLE_DIR",
+            "${env:LICOUP_PORTABLE_DIR}",
+        ] {
+            assert_eq!(
+                portable_data_dir_from_value(Some(value.to_string())).unwrap(),
+                None
+            );
+        }
     }
 
     #[test]

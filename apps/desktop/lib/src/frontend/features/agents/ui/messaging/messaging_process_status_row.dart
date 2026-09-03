@@ -121,7 +121,7 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
         ? conversationProcessSemanticTitle(operations, strings)
         : conversationLifecycleStageLabel(lifecycle.stage, strings);
     final summary = lifecycle == null
-        ? '${_working ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, projection.countTruncated, strings)}'
+        ? '${_working ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, false, strings)}'
         : lifecycle.terminal
         ? '$durationTitle · ${strings.lifecycleObserved(lifecycle.observedStages.length, 5)}'
         : strings.lifecycleObserved(lifecycle.observedStages.length, 5);
@@ -150,7 +150,6 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
       operations: operations,
       adapter: widget.adapter,
       detailsBuilder: widget.detailsBuilder,
-      truncated: projection.renderTruncated,
       activeStepIndex: widget.active ? operations.length - 1 : -1,
     );
     final expandedBody = ConversationProcessOperationViewport(

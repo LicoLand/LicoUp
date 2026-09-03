@@ -14,14 +14,12 @@ void main() {
         manifestPath: 'manifest.json',
         publicKeysPath: 'keys.json',
         sourcePath: 'artifact.bin',
-        channel: 'stable',
         revocationPath: 'revocation.json',
       );
       await service.verify(
         agentService: runner,
         manifestPath: 'manifest.json',
         publicKeysPath: 'keys.json',
-        channel: 'stable',
         revocationPath: 'revocation.json',
       );
       await service.apply(
@@ -29,15 +27,15 @@ void main() {
         execute: false,
         manifestPath: 'manifest.json',
         publicKeysPath: 'keys.json',
-        channel: 'stable',
         revocationPath: 'revocation.json',
+        dataRoot: '/data/lico',
       );
 
       expect(runner.calls, hasLength(3));
       for (final args in runner.calls) {
         expect(args, containsAll(['--manifest-path', 'manifest.json']));
         expect(args, containsAll(['--public-keys-path', 'keys.json']));
-        expect(args, containsAll(['--channel', 'stable']));
+        expect(args, isNot(contains('--target-release-track')));
         expect(args, containsAll(['--revocation-path', 'revocation.json']));
         expect(args, containsAll(['--source', 'local']));
         expect(args, isNot(contains('--staged-file-name')));
@@ -47,6 +45,9 @@ void main() {
       expect(runner.calls[0], containsAll(['--source-path', 'artifact.bin']));
       expect(runner.calls[1], isNot(contains('--source-path')));
       expect(runner.calls[2], containsAll(['--execute', 'false']));
+      expect(runner.calls[0], isNot(contains('--data-root')));
+      expect(runner.calls[1], isNot(contains('--data-root')));
+      expect(runner.calls[2], containsAll(['--data-root', '/data/lico']));
     },
   );
 
@@ -62,7 +63,6 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
-        currentVersion: '1.0.0',
       );
       await service.download(
         agentService: runner,
@@ -70,7 +70,6 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
-        currentVersion: '1.0.0',
       );
       await service.apply(
         agentService: runner,
@@ -79,18 +78,9 @@ void main() {
         repo: 'LicoLand/LicoUp',
         stagingRoot: '/data/client-update-staging',
         stateRoot: '/data/client-update-state',
-        currentVersion: '1.0.0',
+        dataRoot: '/data/lico',
       );
-      await service.rollback(
-        agentService: runner,
-        source: 'github',
-        repo: 'LicoLand/LicoUp',
-        stagingRoot: '/data/client-update-staging',
-        stateRoot: '/data/client-update-state',
-        currentVersion: '1.0.0',
-      );
-
-      expect(runner.calls, hasLength(4));
+      expect(runner.calls, hasLength(3));
       for (final args in runner.calls) {
         expect(args, containsAll(['--source', 'github']));
         expect(args, containsAll(['--repo', 'LicoLand/LicoUp']));
@@ -104,9 +94,12 @@ void main() {
         );
         expect(args, isNot(contains('--manifest-path')));
         expect(args, isNot(contains('--public-keys-path')));
-        expect(args, containsAll(['--current-version', '1.0.0']));
+        expect(args, isNot(contains('--target-release-track')));
       }
       expect(runner.calls[2], containsAll(['--execute', 'true']));
+      expect(runner.calls[0], isNot(contains('--data-root')));
+      expect(runner.calls[1], isNot(contains('--data-root')));
+      expect(runner.calls[2], containsAll(['--data-root', '/data/lico']));
     },
   );
 }
@@ -119,6 +112,8 @@ final class _RecordingCommandRunner implements AgentCommandRunner {
     calls.add(List<String>.of(args));
     return const {
       'phase': 'verified',
+      'runningReleaseTrack': 'nightly',
+      'targetReleaseTrack': 'stable',
       'artifactSha256': 'sha256:artifact',
       'artifactReceipt': {
         'receiptId': 'sha256:receipt',

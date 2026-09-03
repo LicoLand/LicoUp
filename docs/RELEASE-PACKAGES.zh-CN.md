@@ -3,6 +3,10 @@
 [English（规范版本）](RELEASE-PACKAGES.md) · 简体中文（本地化） ·
 [兼容性](COMPATIBILITY.zh-CN.md) · [运行手册](RUNBOOK.md)
 
+Nightly 与 Stable 发布包保留同一个应用身份和数据根。签名更新清单使用 manifest-v2，
+并绑定制品的发布轨道与状态迁移前沿。参见
+[客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)。
+
 LicoUp 不存在“万能发布压缩包”。一次发布请求可以选择一个或多个精确发布
 包目标；每个目标分别生成自己的原生安装包、渠道元数据、校验和与包级清单。
 
@@ -116,9 +120,8 @@ npm run client:release:verify -- \
 文件、符号链接、陈旧包元数据、摘要不匹配和校验和不匹配。
 
 `build` 会先执行目标的完整原生配方，再原子暂存整个所选集合。通用或远程
-macOS 直发会直接失败；获得明确授权的本机操作方先运行
-`client:verify:macos-distribution:preflight`，再运行
-`client:build:macos:platform-channel`。该协调器强制 Developer ID、Hardened Runtime、
+macOS 直发会直接失败；获得明确授权的本机操作方使用 Apple Release 所拥有的
+`client:release:macos` 入口。该协调器强制 Developer ID、Hardened Runtime、
 安全时间戳、公证、票据装订和 Gatekeeper 验收。Android 直发要求受保护
 的 APK 签名输入。缺少平台权威时，会在替换任何标准包叶子前失败。
 

@@ -30,7 +30,7 @@ void registerClientBootstrapScenarios() {
       expect(controller.initialized, isTrue);
       expect(controller.portableDataPath, directory.path);
       expect(
-        service.scanOneTargetCalls,
+        service.scanBatchSlotCalls,
         AgentService.packagedScanTargetIds.length,
       );
       expect(controller.scannedTargets, hasLength(1));
@@ -62,7 +62,7 @@ void registerClientBootstrapScenarios() {
 
     expect(controller.initialized, isTrue);
     expect(
-      service.scanOneTargetCalls,
+      service.scanBatchSlotCalls,
       AgentService.packagedScanTargetIds.length,
     );
     expect(controller.scannedTargets, isEmpty);
@@ -462,7 +462,7 @@ void registerClientBootstrapScenarios() {
 
       controller.selectSection(ClientSection.agents);
       for (var attempt = 0; attempt < 40; attempt += 1) {
-        if (service.scanOneTargetCalls ==
+        if (service.scanBatchSlotCalls ==
             AgentService.packagedScanTargetIds.length) {
           break;
         }
@@ -476,12 +476,12 @@ void registerClientBootstrapScenarios() {
       // Conversation re-entry starts a fresh Hook cycle, but the target scan
       // stays incremental: the already-known adapter is never probed twice.
       expect(
-        service.scannedOneTargetIds.where((id) => id == 'codex').length,
+        service.scannedBatchTargetIds.where((id) => id == 'codex').length,
         1,
       );
-      expect(service.scanOneTargetCalls, greaterThanOrEqualTo(14));
+      expect(service.scanBatchSlotCalls, greaterThanOrEqualTo(14));
       expect(
-        service.scanOneTargetCalls,
+        service.scanBatchSlotCalls,
         lessThan(AgentService.packagedScanTargetIds.length * 2),
       );
     },

@@ -16,7 +16,6 @@ pub(super) const HERMES_SESSION_DRIVER: AcpSessionDriverSpec =
 pub(super) use super::acp_session_transport::RunResult;
 #[cfg(test)]
 pub(super) use execution::execute;
-pub use execution::resolve_parked_permission;
 pub(super) use execution::{cancel, cleanup_session, execute_with_connection};
 pub(super) use probe::probe;
 

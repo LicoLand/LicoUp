@@ -1,18 +1,24 @@
 use super::errors::ProtocolFailure;
 use super::model::{EffectiveSettings, RunResult};
-use crate::domain::lico_agent::AgentProfileKind;
-use crate::platform::file_security::{append_private_line, ensure_private_dir};
+use crate::domain::lico_agent::{Agent, AgentProfileKind};
+use crate::platform::agent_workspace::{
+    default_local_agent_workspace, resolve_local_agent_workspace,
+};
+use crate::platform::file_security::ensure_private_dir;
+use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use crate::platform::native_agent_parser::adapters::lico_agent::{
+    RpcEffect, RpcParser, encode_request,
+};
 use crate::platform::paths::portable_data_dir;
 use crate::platform::process_sandbox::lico_agent_plan_command;
-use crate::platform::process_supervisor::{SupervisedChild, join_bounded};
+use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
+use uuid::Uuid;
 
 /// Upper bound for the `get_state` readiness handshake. Lico Agent is expected
 /// to answer immediately after start; a hang (auto-update, gateway startup)
@@ -74,31 +80,54 @@ fn execute_with_handshake_bound(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    _max_stdout: Option<usize>,
-    _max_stderr: usize,
+    max_stdout: Option<usize>,
+    max_stderr: usize,
     handshake_bound: Duration,
 ) -> RunResult {
     let started_at = timestamp();
-    let workspace = cwd
-        .map(Path::to_path_buf)
-        .or_else(|| {
-            params
-                .get("cwd")
-                .or_else(|| params.get("workingDirectory"))
-                .and_then(Value::as_str)
-                .map(PathBuf::from)
-        })
-        .filter(|p| p.is_absolute());
-    let Some(workspace) = workspace else {
+    if params
+        .get("privateInstructions")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
         return RunResult::failed(
             ProtocolFailure::new(
-                "lico_agent_absolute_cwd_required",
-                "Lico Agent requires an absolute workspace directory.",
-                "params/cwd",
+                "lico_agent_private_instructions_unsupported",
+                "Lico Agent RPC does not expose a separate private-instruction channel.",
+                "params/privateInstructions",
             ),
             started_at,
         );
+    }
+    let workspace = match resolve_workspace(params, cwd) {
+        Ok(workspace) => workspace,
+        Err(failure) => return RunResult::failed(failure, started_at),
     };
+    let (native_session_id, resume, _transcript_path) = match prepare_session(session_id) {
+        Ok(session) => session,
+        Err(failure) => {
+            let mut result = RunResult::failed(failure, started_at);
+            if !session_id.trim().is_empty() {
+                if let Some(error) = result.error.as_mut() {
+                    error.session_id = Some(session_id.trim().to_string());
+                }
+                result.session_id = session_id.trim().to_string();
+                result.thread_id = result.session_id.clone();
+            }
+            return result;
+        }
+    };
+    if workspace.as_os_str().is_empty() {
+        return failed_for_session(
+            ProtocolFailure::new(
+                "lico_agent_workspace_rejected",
+                "Lico Agent requires a bounded, present project workspace.",
+                "params/cwd",
+            ),
+            started_at,
+            &native_session_id,
+        );
+    }
     let model = params
         .get("model")
         .and_then(Value::as_str)
@@ -106,13 +135,14 @@ fn execute_with_handshake_bound(
         .trim()
         .to_string();
     if model.is_empty() {
-        return RunResult::failed(
+        return failed_for_session(
             ProtocolFailure::new(
                 "lico_agent_model_required",
                 "Lico Agent requires a Gateway model id.",
                 "params/model",
             ),
             started_at,
+            &native_session_id,
         );
     }
     let profile = params
@@ -136,71 +166,107 @@ fn execute_with_handshake_bound(
         &workspace,
         plan_path.as_deref(),
         gateway_port,
+        &native_session_id,
+        resume,
     ) {
         Ok(child) => child,
-        Err(failure) => return RunResult::failed(failure, started_at),
+        Err(failure) => return failed_for_session(failure, started_at, &native_session_id),
     };
 
     let Some(mut stdin) = child.stdin() else {
         let _ = child.terminate_tree();
-        return RunResult::failed(
+        return failed_for_session(
             ProtocolFailure::new(
                 "lico_agent_rpc_start_failed",
                 "Lico Agent stdin is unavailable.",
                 "process/start",
             ),
             started_at,
+            &native_session_id,
         );
     };
     let Some(stdout) = child.stdout() else {
         let _ = child.terminate_tree();
-        return RunResult::failed(
+        return failed_for_session(
             ProtocolFailure::new(
                 "lico_agent_rpc_start_failed",
                 "Lico Agent stdout is unavailable.",
                 "process/start",
             ),
             started_at,
+            &native_session_id,
         );
     };
+    let Some(stderr) = child.stderr() else {
+        let _ = child.terminate_tree();
+        return failed_for_session(
+            ProtocolFailure::new(
+                "lico_agent_rpc_start_failed",
+                "Lico Agent stderr is unavailable.",
+                "process/start",
+            ),
+            started_at,
+            &native_session_id,
+        );
+    };
+    let mut stderr_handle = Some(thread::spawn(move || {
+        drain_nonprojecting_stderr(stderr, max_stderr)
+    }));
 
     let reader = BufReader::new(stdout);
     if write_line(&mut stdin, &json!({"id":"lico-1","type":"get_state"})).is_err() {
-        let _ = child.terminate_tree();
-        return RunResult::failed(
+        cleanup_process(&mut child, &mut stderr_handle);
+        return failed_for_session(
             ProtocolFailure::new(
                 "lico_agent_rpc_write_failed",
                 "Lico Agent stopped accepting protocol messages.",
                 "protocol/write",
             ),
             started_at,
+            &native_session_id,
         );
     }
-    let mut reader = match handshake(reader, handshake_bound) {
-        Ok(reader) => reader,
+    let (mut reader, observed_session_id) = match handshake(reader, handshake_bound) {
+        Ok(handshake) => handshake,
         Err(HandshakeFailure::TimedOut) => {
-            let _ = child.terminate_tree();
-            return RunResult::failed(
+            cleanup_process(&mut child, &mut stderr_handle);
+            return failed_for_session(
                 ProtocolFailure::new(
                     "lico_agent_rpc_handshake_timeout",
                     "Lico Agent did not answer the readiness handshake in time.",
                     "protocol/handshake",
                 ),
                 started_at,
+                &native_session_id,
             );
         }
-        Err(HandshakeFailure::Unavailable | HandshakeFailure::Rejected) => {
-            let _ = child.terminate_tree();
-            return RunResult::failed(
+        Err(
+            HandshakeFailure::Unavailable | HandshakeFailure::Rejected | HandshakeFailure::Invalid,
+        ) => {
+            cleanup_process(&mut child, &mut stderr_handle);
+            return failed_for_session(
                 ProtocolFailure::new(
                     "lico_agent_rpc_handshake_failed",
                     "Lico Agent rejected the readiness handshake.",
                     "protocol/handshake",
                 ),
                 started_at,
+                &native_session_id,
             );
         }
     };
+    if observed_session_id.as_deref() != Some(native_session_id.as_str()) {
+        cleanup_process(&mut child, &mut stderr_handle);
+        return failed_for_session(
+            ProtocolFailure::new(
+                "lico_agent_session_identity_mismatch",
+                "Lico Agent reported a different native session identity.",
+                "protocol/handshake",
+            ),
+            started_at,
+            &native_session_id,
+        );
+    }
 
     if write_line(
         &mut stdin,
@@ -208,14 +274,15 @@ fn execute_with_handshake_bound(
     )
     .is_err()
     {
-        let _ = child.terminate_tree();
-        return RunResult::failed(
+        cleanup_process(&mut child, &mut stderr_handle);
+        return failed_for_session(
             ProtocolFailure::new(
                 "lico_agent_rpc_write_failed",
                 "Lico Agent stopped accepting prompt.",
                 "protocol/write",
             ),
             started_at,
+            &native_session_id,
         );
     }
 
@@ -223,55 +290,104 @@ fn execute_with_handshake_bound(
     // so only a non-zero window gets a concrete deadline.
     let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let mut output = String::new();
-    let mut events = Vec::new();
+    let mut saw_processing = false;
+    let mut controls = Vec::new();
     loop {
         if deadline.is_some_and(|deadline| Instant::now() > deadline) {
-            let _ = child.terminate_tree();
-            return RunResult::failed(
+            cleanup_process(&mut child, &mut stderr_handle);
+            return failed_for_session(
                 ProtocolFailure::new(
                     "lico_agent_timeout",
                     "Lico Agent turn timed out.",
                     "protocol/timeout",
                 ),
                 started_at,
+                &native_session_id,
             );
         }
-        let Some(event) = read_line_value(&mut reader) else {
-            break;
+        let effect = match read_effect(&mut reader) {
+            Ok(Some(effect)) => effect,
+            Ok(None) => {
+                cleanup_process(&mut child, &mut stderr_handle);
+                return failed_for_session(
+                    ProtocolFailure::new(
+                        "lico_agent_rpc_ended_early",
+                        "Lico Agent ended before completing the turn.",
+                        "protocol/read",
+                    ),
+                    started_at,
+                    &native_session_id,
+                );
+            }
+            Err(()) => {
+                cleanup_process(&mut child, &mut stderr_handle);
+                return failed_for_session(
+                    ProtocolFailure::new(
+                        "lico_agent_rpc_invalid_frame",
+                        "Lico Agent returned a malformed protocol line.",
+                        "protocol/read",
+                    ),
+                    started_at,
+                    &native_session_id,
+                );
+            }
         };
-        events.push(event.clone());
-        if let Some(delta) = event
-            .pointer("/assistantMessageEvent/delta")
-            .and_then(Value::as_str)
-        {
-            output.push_str(delta);
-        }
-        if event.get("type").and_then(Value::as_str) == Some("agent_end") {
-            break;
-        }
-        if event.get("type").and_then(Value::as_str) == Some("error") {
-            let _ = child.terminate_tree();
-            return RunResult::failed(
-                ProtocolFailure::new(
-                    "lico_agent_turn_failed",
-                    "Lico Agent reported an error.",
-                    "protocol/error",
-                ),
-                started_at,
-            );
+        match effect {
+            RpcEffect::Text { delta } => {
+                if max_stdout.is_some_and(|limit| output.len().saturating_add(delta.len()) > limit)
+                {
+                    cleanup_process(&mut child, &mut stderr_handle);
+                    return failed_for_session(
+                        ProtocolFailure::new(
+                            "lico_agent_output_limit_exceeded",
+                            "Lico Agent output exceeded the caller-requested bound.",
+                            "protocol/output",
+                        ),
+                        started_at,
+                        &native_session_id,
+                    );
+                }
+                saw_processing = true;
+                output.push_str(&delta);
+            }
+            RpcEffect::Processing => saw_processing = true,
+            RpcEffect::Control { method } => {
+                saw_processing = true;
+                controls.push(method);
+            }
+            RpcEffect::Completed => break,
+            RpcEffect::Failed { code } => {
+                cleanup_process(&mut child, &mut stderr_handle);
+                let failure = if code.as_deref() == Some("lico_agent_transcript_persist_failed") {
+                    ProtocolFailure::new(
+                        "lico_agent_transcript_persist_failed",
+                        "Lico Agent could not persist the completed turn.",
+                        "session/persist",
+                    )
+                } else {
+                    ProtocolFailure::new(
+                        "lico_agent_turn_failed",
+                        "Lico Agent reported an error.",
+                        "protocol/error",
+                    )
+                };
+                return failed_for_session(failure, started_at, &native_session_id);
+            }
+            RpcEffect::Ignored => {}
+            RpcEffect::Handshake { .. } => {}
         }
     }
-    let _ = child.terminate_tree();
-    let sid = if session_id.trim().is_empty() {
-        format!("lico-agent-{}", started_at)
-    } else {
-        session_id.to_string()
-    };
-    append_parent_transcript(&sid, prompt, &output, &workspace);
+    let stderr_truncated = cleanup_process(&mut child, &mut stderr_handle);
+    let sid = native_session_id;
     RunResult {
         ok: true,
+        transitions:
+            crate::platform::native_agent_parser::adapters::lico_agent::success_transitions(
+                &output,
+                saw_processing,
+                &controls,
+            ),
         output,
-        events,
         error: None,
         session_id: sid.clone(),
         thread_id: sid,
@@ -285,7 +401,7 @@ fn execute_with_handshake_bound(
         },
         status_code: Some(0),
         stdout_truncated: false,
-        stderr_truncated: false,
+        stderr_truncated,
         started_at,
     }
 }
@@ -298,6 +414,8 @@ fn spawn_agent(
     workspace: &Path,
     plan_path: Option<&Path>,
     gateway_port: u16,
+    session_id: &str,
+    resume: bool,
 ) -> Result<SupervisedChild, ProtocolFailure> {
     let exe = PathBuf::from(executable);
     let mut args = vec![
@@ -311,7 +429,12 @@ fn spawn_agent(
         model.into(),
         "--workspace".into(),
         workspace.to_string_lossy().into_owned(),
+        "--session-id".into(),
+        session_id.into(),
     ];
+    if resume {
+        args.push("--resume".into());
+    }
     if let Some(plan) = plan_path {
         args.push("--plan-path".into());
         args.push(plan.to_string_lossy().into_owned());
@@ -373,30 +496,158 @@ fn resolve_plan_path(params: &Value) -> Option<PathBuf> {
     })
 }
 
+fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Result<PathBuf, ProtocolFailure> {
+    let requested = cwd.map(Path::to_path_buf).or_else(|| {
+        params
+            .get("cwd")
+            .or_else(|| params.get("workingDirectory"))
+            .and_then(Value::as_str)
+            .map(PathBuf::from)
+    });
+    let Some(requested) = requested else {
+        return Err(workspace_failure());
+    };
+    let resolved = resolve_local_agent_workspace("lico-agent", Some(&requested))
+        .ok_or_else(workspace_failure)?;
+    let fallback = default_local_agent_workspace("lico-agent");
+    if resolved != requested
+        || fallback
+            .as_deref()
+            .is_some_and(|fallback| resolved.starts_with(fallback))
+    {
+        return Err(workspace_failure());
+    }
+    Ok(resolved)
+}
+
+fn workspace_failure() -> ProtocolFailure {
+    ProtocolFailure::new(
+        "lico_agent_workspace_rejected",
+        "Lico Agent requires a bounded, present project workspace.",
+        "params/cwd",
+    )
+}
+
+fn prepare_session(session_id: &str) -> Result<(String, bool, PathBuf), ProtocolFailure> {
+    let sessions_dir = portable_data_dir()
+        .map_err(|_| session_store_failure())?
+        .join("client-state")
+        .join("lico-agent")
+        .join("sessions");
+    ensure_private_dir(&sessions_dir).map_err(|_| session_store_failure())?;
+    if !session_id.trim().is_empty() {
+        let session_id = canonical_session_id(session_id)?;
+        let path = sessions_dir.join(format!("{session_id}.jsonl"));
+        Agent::load_persisted_history(&path, &session_id).map_err(transcript_failure)?;
+        return Ok((session_id, true, path));
+    }
+    for _ in 0..8 {
+        let session_id = Uuid::new_v4().to_string();
+        let path = sessions_dir.join(format!("{session_id}.jsonl"));
+        if !path.exists() {
+            return Ok((session_id, false, path));
+        }
+    }
+    Err(ProtocolFailure::new(
+        "lico_agent_session_id_unavailable",
+        "Lico Agent could not allocate a new native session identity.",
+        "session/create",
+    ))
+}
+
+fn canonical_session_id(session_id: &str) -> Result<String, ProtocolFailure> {
+    let trimmed = session_id.trim();
+    let canonical = Uuid::parse_str(trimmed)
+        .map_err(|_| {
+            ProtocolFailure::new(
+                "lico_agent_session_id_invalid",
+                "Lico Agent requires a valid native session identity.",
+                "session/resume",
+            )
+        })?
+        .to_string();
+    if canonical != trimmed {
+        return Err(ProtocolFailure::new(
+            "lico_agent_session_id_invalid",
+            "Lico Agent requires a valid native session identity.",
+            "session/resume",
+        ));
+    }
+    Ok(canonical)
+}
+
+fn transcript_failure(code: &'static str) -> ProtocolFailure {
+    match code {
+        "lico_agent_transcript_missing" => ProtocolFailure::new(
+            "lico_agent_transcript_missing",
+            "The requested Lico Agent conversation does not exist.",
+            "session/resume",
+        ),
+        "lico_agent_transcript_identity_mismatch" => ProtocolFailure::new(
+            "lico_agent_transcript_identity_mismatch",
+            "The persisted Lico Agent conversation has a different native identity.",
+            "session/resume",
+        ),
+        _ => ProtocolFailure::new(
+            "lico_agent_transcript_invalid",
+            "The persisted Lico Agent conversation is malformed.",
+            "session/resume",
+        ),
+    }
+}
+
+fn session_store_failure() -> ProtocolFailure {
+    ProtocolFailure::new(
+        "lico_agent_session_store_unavailable",
+        "Lico Agent session storage is unavailable.",
+        "session/store",
+    )
+}
+
+fn failed_for_session(
+    mut failure: ProtocolFailure,
+    started_at: String,
+    session_id: &str,
+) -> RunResult {
+    failure.session_id = Some(session_id.to_string());
+    let mut result = RunResult::failed(failure, started_at);
+    result.session_id = session_id.to_string();
+    result.thread_id = session_id.to_string();
+    result
+}
+
 fn write_line(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
-    let mut line = serde_json::to_string(value)?;
-    line.push('\n');
-    stdin.write_all(line.as_bytes())?;
+    let encoded = encode_request(value).map_err(std::io::Error::other)?;
+    stdin.write_all(&encoded)?;
     stdin.flush()
 }
 
-fn read_line_value(reader: &mut impl BufRead) -> Option<Value> {
+fn read_effect(reader: &mut impl BufRead) -> Result<Option<RpcEffect>, ()> {
     let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
-    if line.trim().is_empty() {
-        return None;
+    let read = reader.read_line(&mut line).map_err(|_| ())?;
+    if read == 0 {
+        return Ok(None);
     }
-    serde_json::from_str(line.trim()).ok()
+    RpcParser
+        .parse_line(line.as_bytes())
+        .map(Some)
+        .map_err(|_| ())
 }
 
-fn read_until(reader: &mut impl BufRead, pred: impl Fn(&Value) -> bool) -> Option<Value> {
+fn read_handshake(reader: &mut impl BufRead) -> Result<Option<(bool, Option<String>)>, ()> {
     for _ in 0..32 {
-        let value = read_line_value(reader)?;
-        if pred(&value) {
-            return Some(value);
+        let Some(effect) = read_effect(reader)? else {
+            return Ok(None);
+        };
+        if let RpcEffect::Handshake {
+            accepted,
+            session_id,
+        } = effect
+        {
+            return Ok(Some((accepted, session_id)));
         }
     }
-    None
+    Ok(None)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -407,6 +658,8 @@ enum HandshakeFailure {
     Unavailable,
     /// The agent answered without `"success": true`.
     Rejected,
+    /// The agent returned a malformed handshake frame.
+    Invalid,
 }
 
 /// Bounded `get_state` readiness handshake. The agent is expected to answer
@@ -419,22 +672,21 @@ enum HandshakeFailure {
 fn handshake<R: Read + Send + 'static>(
     mut reader: BufReader<R>,
     bound: Duration,
-) -> Result<BufReader<R>, HandshakeFailure> {
+) -> Result<(BufReader<R>, Option<String>), HandshakeFailure> {
     let handle = thread::spawn(move || {
-        let response = read_until(&mut reader, |v| {
-            v.get("type").and_then(Value::as_str) == Some("response")
-        });
+        let response = read_handshake(&mut reader);
         (response, reader)
     });
     match join_bounded(handle, bound) {
-        Ok((Some(response), reader)) => {
-            if response.get("success").and_then(Value::as_bool) == Some(true) {
-                Ok(reader)
+        Ok((Ok(Some((accepted, session_id))), reader)) => {
+            if accepted {
+                Ok((reader, session_id))
             } else {
                 Err(HandshakeFailure::Rejected)
             }
         }
-        Ok((None, _)) => Err(HandshakeFailure::Unavailable),
+        Ok((Ok(None), _)) => Err(HandshakeFailure::Unavailable),
+        Ok((Err(()), _)) => Err(HandshakeFailure::Invalid),
         Err(_) => Err(HandshakeFailure::TimedOut),
     }
 }
@@ -446,45 +698,25 @@ fn timestamp() -> String {
         .unwrap_or_else(|_| "0".into())
 }
 
-fn append_parent_transcript(session_id: &str, prompt: &str, output: &str, workspace: &Path) {
-    let Ok(portable) = portable_data_dir() else {
-        return;
-    };
-    let sessions_dir = portable
-        .join("client-state")
-        .join("lico-agent")
-        .join("sessions");
-    if ensure_private_dir(&sessions_dir).is_err() {
-        return;
-    }
-    let path = sessions_dir.join(format!("{session_id}.jsonl"));
-    let is_new = !path.is_file();
-    let timestamp = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
-    if is_new {
-        let header = json!({
-            "type": "session",
-            "id": session_id,
-            "cwd": workspace.to_string_lossy(),
-            "timestamp": timestamp,
-        });
-        if append_private_line(&path, &header.to_string()).is_err() {
-            return;
+fn drain_nonprojecting_stderr(mut stderr: impl Read, max_bytes: usize) -> bool {
+    let mut buffer = [0_u8; 8192];
+    let mut total = 0_usize;
+    loop {
+        match stderr.read(&mut buffer) {
+            Ok(0) => return total > max_bytes,
+            Ok(read) => total = total.saturating_add(read),
+            Err(_) => return total > max_bytes,
         }
     }
-    let user_line = json!({
-        "type": "message",
-        "role": "user",
-        "text": prompt,
-        "timestamp": timestamp,
-    });
-    let assistant_line = json!({
-        "type": "message",
-        "role": "assistant",
-        "text": output,
-        "timestamp": timestamp,
-    });
-    let _ = append_private_line(&path, &user_line.to_string());
-    let _ = append_private_line(&path, &assistant_line.to_string());
+}
+
+fn cleanup_process(
+    child: &mut SupervisedChild,
+    stderr_handle: &mut Option<thread::JoinHandle<bool>>,
+) -> bool {
+    let _ = child.terminate_tree();
+    stderr_handle
+        .take()
+        .and_then(|handle| join_bounded(handle, IO_THREAD_EXIT_GRACE).ok())
+        .unwrap_or(false)
 }

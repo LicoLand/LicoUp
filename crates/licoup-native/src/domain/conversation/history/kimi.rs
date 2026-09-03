@@ -266,6 +266,7 @@ pub(crate) fn parse_kimi_code_wire_session(
     if messages.is_empty() {
         return Vec::new();
     }
+    super::generic::backfill_transcript_message_times(&mut messages, path);
     let session_root = path.ancestors().nth(3);
     let state = session_root
         .map(|root| root.join("state.json"))

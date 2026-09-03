@@ -28,6 +28,13 @@ final class SecureMeshApprovalController extends ChangeNotifier {
   Map<String, dynamic>? get lastAction => _lastAction;
   Map<String, dynamic>? get adapterCapability => _adapterCapability;
 
+  bool canResolve(String pendingOperationId) {
+    final retained = _secrets[pendingOperationId.trim()];
+    return retained != null &&
+        retained.originEndpointId.trim().isNotEmpty &&
+        retained.responseNonce.trim().isNotEmpty;
+  }
+
   void replaceInbox(List<SecureMeshApprovalRequest> value) {
     final public = <SecureMeshApprovalRequest>[];
     for (final request in value) {

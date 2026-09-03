@@ -8,8 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -28,6 +31,7 @@ void main() {
         'createdAtUnixMs': 1,
         'updatedAtUnixMs': 20,
         'eventCount': 2,
+        'assistantMembershipId': 'membership:codex',
         'memberships': [
           _membership(
             id: 'membership:owner',
@@ -101,6 +105,7 @@ void main() {
       expect(session.messages, hasLength(5));
       expect(session.messages[0].participantAgentId, 'codex');
       expect(session.messages[0].participantLabel, 'Codex');
+      expect(session.messages[0].participantRole, 'assistant');
       expect(session.messages[0].text, 'answer');
       expect(session.messages[1].cardType, 'reasoning');
       expect(session.messages[2].cardType, 'tool-call');
@@ -114,6 +119,537 @@ void main() {
       expect(session.messages[4].text, 'Added member: Claude Code');
     },
   );
+
+  test('posted image parts project as typed message attachments', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 30,
+      'eventCount': 3,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+      ],
+    });
+    Map<String, dynamic> imagePart(
+      String eventId,
+      String partId,
+      int ordinal,
+      String content,
+    ) => {
+      'id': partId,
+      'eventId': eventId,
+      'ordinal': ordinal,
+      'kind': 'image',
+      'content': content,
+      'createdAtUnixMs': 10,
+    };
+    final events = [
+      // A text-plus-image post: the image lands on the text message.
+      ClientConversationEvent.fromJson({
+        'id': 'event:with-text',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          {
+            'id': 'part:with-text',
+            'eventId': 'event:with-text',
+            'ordinal': 0,
+            'kind': 'text',
+            'content': 'see the mockup',
+            'createdAtUnixMs': 10,
+          },
+          imagePart(
+            'event:with-text',
+            'part:mockup',
+            1,
+            '{"path":"fixtures/mockup.png","name":"mockup.png",'
+                '"mediaType":"image/png","byteSize":12}',
+          ),
+        ],
+      }),
+      // An image-only post: no text part, the images stand alone.
+      ClientConversationEvent.fromJson({
+        'id': 'event:image-only',
+        'conversationId': conversation.id,
+        'sequence': 2,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 20,
+        'finalized': true,
+        'parts': [
+          imagePart(
+            'event:image-only',
+            'part:only',
+            0,
+            '{"path":"fixtures/only.png","name":"only.png",'
+                '"mediaType":"image/png","byteSize":7}',
+          ),
+        ],
+      }),
+      // Unreadable attachment metadata tolerates the generic card fallback.
+      ClientConversationEvent.fromJson({
+        'id': 'event:malformed-image',
+        'conversationId': conversation.id,
+        'sequence': 3,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 30,
+        'finalized': true,
+        'parts': [
+          imagePart('event:malformed-image', 'part:broken', 0, 'not-json'),
+        ],
+      }),
+    ];
+
+    final session = canonicalGroupConversationSession(
+      conversation,
+      events,
+      LicoStrings.forLocale(const Locale('en')),
+    );
+
+    expect(session.messages, hasLength(3));
+    final withText = session.messages[0];
+    expect(withText.role, 'user');
+    expect(withText.text, 'see the mockup');
+    expect(withText.images, hasLength(1));
+    expect(withText.images.single.filePath, 'fixtures/mockup.png');
+    expect(withText.images.single.name, 'mockup.png');
+    expect(withText.images.single.mediaType, 'image/png');
+
+    final imageOnly = session.messages[1];
+    expect(imageOnly.role, 'user');
+    expect(imageOnly.text, '');
+    expect(imageOnly.images.single.filePath, 'fixtures/only.png');
+
+    // The malformed part keeps the honest generic trace instead of
+    // vanishing, and no well-formed image leaks its raw metadata JSON.
+    final fallback = session.messages[2];
+    expect(fallback.cardType, 'event');
+    expect(fallback.text, 'not-json');
+    expect(
+      session.messages.where((message) => message.text.contains('byteSize')),
+      isEmpty,
+    );
+  });
+
+  test(
+    'failed turn decorates its source user message without replacing it',
+    () {
+      final conversation = ClientConversation.fromJson({
+        'id': 'conversation:group',
+        'title': 'Lico',
+        'archived': false,
+        'isGroup': true,
+        'revision': 2,
+        'createdAtUnixMs': 1,
+        'updatedAtUnixMs': 20,
+        'eventCount': 2,
+        'memberships': [
+          _membership(
+            id: 'membership:owner',
+            principalId: 'human:local',
+            kind: 'human',
+            label: 'Local User',
+            access: 'owner',
+          ),
+          _membership(
+            id: 'membership:agent',
+            principalId: 'agent:fixture',
+            kind: 'agent',
+            label: 'Fixture Agent',
+            agentId: 'fixture-agent',
+          ),
+        ],
+      });
+      final session = canonicalGroupConversationSession(conversation, [
+        ClientConversationEvent.fromJson({
+          'id': 'event:user',
+          'conversationId': conversation.id,
+          'sequence': 1,
+          'authorMembershipId': 'membership:owner',
+          'kind': 'message',
+          'createdAtUnixMs': 10,
+          'finalized': true,
+          'parts': [_part('part:user', 0, 'text', 'retry me')],
+        }),
+        ClientConversationEvent.fromJson({
+          'id': 'event:failed-turn',
+          'conversationId': conversation.id,
+          'sequence': 2,
+          'authorMembershipId': 'membership:agent',
+          'kind': 'message',
+          'causationId': 'event:user',
+          'correlationId': 'turn:failed',
+          'createdAtUnixMs': 20,
+          'finalized': true,
+          'parts': [
+            _part(
+              'part:failed',
+              0,
+              'diagnostic',
+              '{"code":"fixture_turn_failed"}',
+            ),
+          ],
+        }),
+      ], LicoStrings.forLocale(const Locale('en')));
+
+      final user = session.messages.singleWhere(
+        (message) => message.id == 'event:user',
+      );
+      expect(user.text, 'retry me');
+      expect(user.deliveryState, AgentConversationMessageDeliveryState.failed);
+    },
+  );
+
+  test('canonical group merges streamed text parts on one event', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:stream',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': false,
+        'parts': [
+          _part('part:a', 0, 'text', 'Hel'),
+          _part('part:b', 1, 'text', 'lo'),
+          _part('part:life', 2, 'metadata', '{"lifecycle":"accepted"}'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+    expect(session.messages, hasLength(2));
+    final reply = session.messages.singleWhere(
+      (message) => !message.isStructuredEvent,
+    );
+    expect(reply.id, 'event:stream');
+    expect(reply.role, 'assistant');
+    expect(reply.text, 'Hello');
+    final lifecycle = session.messages.singleWhere(
+      (message) => message.isStructuredEvent,
+    );
+    expect(lifecycle.cardType, 'lifecycle');
+    expect(lifecycle.cardTitle, 'lifecycle.accepted');
+  });
+
+  test('canonical group hides an exact legacy completed-text snapshot', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:legacy-stream',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'correlationId': 'dispatch:legacy',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:a', 0, 'text', 'Hel'),
+          _part('part:b', 1, 'text', 'lo'),
+          _part('part:completed', 2, 'metadata', '{"lifecycle":"completed"}'),
+          _part('part:snapshot', 3, 'text', 'Hello'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+
+    expect(
+      session.messages
+          .where((message) => !message.isStructuredEvent)
+          .map((message) => message.text),
+      ['Hello'],
+    );
+  });
+
+  test('canonical group renders each message unit as a separate bubble', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:claude',
+          principalId: 'agent:claude-code',
+          kind: 'agent',
+          label: 'Claude Code',
+          agentId: 'claude-code',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:segmented',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:claude',
+        'kind': 'message',
+        'correlationId': 'dispatch:segmented',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:unit:1', 0, 'metadata', '{"messageUnit":"1"}'),
+          _part('part:text:1a', 1, 'text', '第一'),
+          _part('part:tool:1', 2, 'tool-call', 'Bash'),
+          _part('part:completed:1', 3, 'metadata', '{"lifecycle":"completed"}'),
+          _part('part:text:1b', 4, 'text', '段'),
+          _part('part:unit:2', 5, 'metadata', '{"messageUnit":"2"}'),
+          _part('part:text:2a', 6, 'text', '第二'),
+          _part('part:text:2b', 7, 'text', '段'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+
+    expect(
+      session.messages
+          .where((message) => !message.isStructuredEvent)
+          .map((message) => message.text),
+      ['第一段', '第二段'],
+    );
+    final structured = session.messages
+        .where((message) => message.isStructuredEvent)
+        .toList();
+    expect(structured, hasLength(2));
+    expect(
+      structured.map((message) => message.cardTitle),
+      contains('lifecycle.completed'),
+    );
+  });
+
+  test(
+    'canonical group keeps dispatch identity and every persisted operation',
+    () {
+      final conversation = ClientConversation.fromJson({
+        'id': 'conversation:group',
+        'title': 'Lico',
+        'archived': false,
+        'isGroup': true,
+        'revision': 4,
+        'createdAtUnixMs': 1,
+        'updatedAtUnixMs': 20,
+        'eventCount': 1,
+        'memberships': [
+          _membership(
+            id: 'membership:owner',
+            principalId: 'human:local',
+            kind: 'human',
+            label: 'Local User',
+            access: 'owner',
+          ),
+          _membership(
+            id: 'membership:codex',
+            principalId: 'agent:codex',
+            kind: 'agent',
+            label: 'Codex',
+            agentId: 'codex',
+          ),
+        ],
+      });
+      final event = ClientConversationEvent.fromJson({
+        'id': 'event:stream',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'causationId': 'event:user',
+        'correlationId': 'dispatch:one',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:lifecycle', 0, 'metadata', '{"lifecycle":"processing"}'),
+          for (var index = 1; index <= 300; index += 1)
+            _part('part:reasoning:$index', index, 'reasoning', 'reasoning'),
+          _part('part:tool:1', 301, 'tool-call', 'Bash'),
+          _part('part:tool:2', 302, 'tool-call', 'Bash'),
+          _part('part:text', 303, 'text', 'done'),
+        ],
+      });
+
+      expect(event.causationId, 'event:user');
+      expect(event.correlationId, 'dispatch:one');
+      final session = canonicalGroupConversationSession(conversation, [
+        event,
+      ], LicoStrings.forLocale(const Locale('en')));
+      final process = projectConversationProcessEvents(session.messages);
+      expect(process.totalOperations, 303);
+      expect(
+        session.messages
+            .where((message) => message.isStructuredEvent)
+            .map((message) => liveTurnKeyOf(message)),
+        everyElement('live-dispatch:one'),
+      );
+    },
+  );
+
+  test('canonical group keeps accepted and failed lifecycle parts', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:agent',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:accepted', 0, 'metadata', '{"lifecycle":"accepted"}'),
+          _part(
+            'part:diag',
+            1,
+            'diagnostic',
+            '{"code":"codex_turn_not_completed","stage":"turn/completed","turnStatus":"failed/Unauthorized"}',
+          ),
+          _part('part:failed', 2, 'metadata', '{"lifecycle":"failed"}'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+    expect(session.messages.map((message) => message.cardTitle), [
+      'lifecycle.accepted',
+      '',
+      'lifecycle.failed',
+    ]);
+    expect(session.messages[1].text, contains('failed/Unauthorized'));
+  });
+
+  test('canonical group does not translate retired lifecycle aliases', () {
+    final conversation = ClientConversation.fromJson({
+      'id': 'conversation:group',
+      'title': 'Lico',
+      'archived': false,
+      'isGroup': true,
+      'revision': 4,
+      'createdAtUnixMs': 1,
+      'updatedAtUnixMs': 20,
+      'eventCount': 1,
+      'memberships': [
+        _membership(
+          id: 'membership:owner',
+          principalId: 'human:local',
+          kind: 'human',
+          label: 'Local User',
+          access: 'owner',
+        ),
+        _membership(
+          id: 'membership:codex',
+          principalId: 'agent:codex',
+          kind: 'agent',
+          label: 'Codex',
+          agentId: 'codex',
+        ),
+      ],
+    });
+    final session = canonicalGroupConversationSession(conversation, [
+      ClientConversationEvent.fromJson({
+        'id': 'event:agent',
+        'conversationId': conversation.id,
+        'sequence': 1,
+        'authorMembershipId': 'membership:codex',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [
+          _part('part:running', 0, 'metadata', '{"lifecycle":"running"}'),
+          _part('part:cancelled', 1, 'metadata', '{"lifecycle":"cancelled"}'),
+        ],
+      }),
+    ], LicoStrings.forLocale(const Locale('en')));
+    expect(session.messages.map((message) => message.cardType), [
+      'metadata',
+      'metadata',
+    ]);
+    expect(
+      session.messages.map((message) => message.cardTitle),
+      everyElement(isEmpty),
+    );
+  });
 
   test('canonical group history explains every non-message event', () {
     final conversation = ClientConversation.fromJson({
@@ -375,7 +911,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Lico'), findsOneWidget);
-    expect(find.text('3 members'), findsOneWidget);
+    expect(find.text('3 members'), findsNothing);
     expect(find.textContaining('@'), findsNothing);
     expect(find.byKey(const Key('canonical-group-archive')), findsNothing);
     expect(
@@ -389,8 +925,9 @@ void main() {
       find.byKey(const Key('canonical-group-header-avatar')),
     );
     expect((headerAvatar.decoration! as BoxDecoration).color, Colors.black);
-    expect(find.text('Codex'), findsOneWidget);
-    expect(find.text('Claude'), findsOneWidget);
+    // Member names live in tooltips only — the capsule shows bare avatars.
+    expect(find.text('Codex'), findsNothing);
+    expect(find.text('Claude'), findsNothing);
     expect(find.text('Claude Code'), findsNothing);
     expect(
       tester

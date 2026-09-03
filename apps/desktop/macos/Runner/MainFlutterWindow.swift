@@ -49,13 +49,14 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     // True Dock-style frosted glass: a system visual-effect view behind the
     // Flutter content, so transparent Flutter regions (the Messaging
     // profile's window chrome) blur the desktop beneath the window while
-    // opaque regions render unchanged. `.underWindowBackground` follows the
-    // system appearance in both light and dark presets.
+    // opaque regions render unchanged. `.popover` reads as deep dark glass in
+    // the dark preset — `.underWindowBackground` rendered a flat gray haze —
+    // and still follows the system appearance in both light and dark presets.
     let visualEffectView = NSVisualEffectView(
       frame: flutterViewController.view.frame
     )
     visualEffectView.autoresizingMask = [.width, .height]
-    visualEffectView.material = .underWindowBackground
+    visualEffectView.material = .popover
     visualEffectView.blendingMode = .behindWindow
     visualEffectView.state = .active
     applyTransparentLayer(to: visualEffectView)

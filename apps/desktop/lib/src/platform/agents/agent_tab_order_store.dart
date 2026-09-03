@@ -69,14 +69,14 @@ class PlatformAgentTabOrderStore implements AgentTabOrderStore {
   }
 
   Future<Map<String, dynamic>?> _readDocument(Object portableData) async {
-    final decoded = await _jsonStore.read(portableData, _fileName);
-    if (decoded is Map) {
-      return Map<String, dynamic>.from(decoded);
+    final decoded = await _jsonStore.readCurrent(portableData, _fileName);
+    if (decoded == null) {
+      return null;
     }
-    if (decoded is List) {
-      return <String, dynamic>{'order': decoded};
+    if (decoded is! Map || decoded['schemaVersion'] != 1) {
+      throw StateError('agent_tab_order_requires_startup_migration');
     }
-    return null;
+    return Map<String, dynamic>.from(decoded);
   }
 
   List<String> _normalizeOrder(Object? value) {

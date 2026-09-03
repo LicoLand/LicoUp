@@ -10,8 +10,9 @@ const read = (relative) => readFileSync(path.join(root, relative), "utf8");
 const contract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const manifest = JSON.parse(read("schemas/client_bridge/manifest.json"));
 const state = JSON.parse(read("schemas/client_bridge/state.json"));
-const domain = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
-const store = read("crates/licoup-native/src/domain/client_conversation/store.rs");
+const canonicalDomain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
+const canonicalStore = read("crates/licoup-conversation/src/store/mod.rs");
+const nativeFacade = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const service = read("crates/licoup-native/src/domain/client_conversation/service.rs");
 const migration = read("crates/licoup-native/src/domain/client_conversation/migration.rs");
 const conversationMcp = read("crates/licoup-native/src/bin/lico-conversation-mcp.rs");
@@ -70,10 +71,10 @@ test("explicit-membership boundary binds Flutter and generated bindings", () => 
     flutterController,
     new RegExp(retiredFlutterSyncMethod, "u"),
   );
-  assert.doesNotMatch(store, new RegExp(retiredRustSyncWriter, "u"));
+  assert.doesNotMatch(canonicalStore, new RegExp(retiredRustSyncWriter, "u"));
 });
 
-test("native Conversation store owns messaging and membership facts only", () => {
+test("Canonical Conversation crate owns messaging and membership facts only", () => {
   for (const table of [
     "principals",
     "conversations",
@@ -84,8 +85,13 @@ test("native Conversation store owns messaging and membership facts only", () =>
     "source_links",
     "runtime_bindings",
     "conversation_dispatches",
+    "subagent_dispatch_claims",
+    "subagent_mcp_inbound",
   ]) {
-    assert.match(store, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`, "u"));
+    assert.match(
+      canonicalStore,
+      new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`, "u"),
+    );
   }
   for (const retired of [
     "conversation_roles",
@@ -95,15 +101,26 @@ test("native Conversation store owns messaging and membership facts only", () =>
     "run_stage_snapshots",
     "run_candidate_snapshots",
   ]) {
-    assert.doesNotMatch(store, new RegExp(`CREATE TABLE IF NOT EXISTS ${retired}`, "u"));
+    assert.doesNotMatch(
+      canonicalStore,
+      new RegExp(`CREATE TABLE IF NOT EXISTS ${retired}`, "u"),
+    );
   }
-  assert.match(store, /DROP TABLE IF EXISTS flywheels/u);
-  assert.match(store, /PRAGMA journal_mode=WAL/u);
-  assert.match(store, /CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5/u);
-  assert.match(domain, /pub enum PrincipalKind/u);
-  assert.match(domain, /pub struct Membership/u);
-  assert.match(domain, /pub struct DirectTurn/u);
-  assert.doesNotMatch(domain, /ConversationRole|AdaptiveFlywheel|FlywheelRun/u);
+  assert.match(canonicalStore, /DROP TABLE IF EXISTS flywheels/u);
+  assert.match(canonicalStore, /PRAGMA journal_mode=WAL/u);
+  assert.match(
+    canonicalStore,
+    /CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5/u,
+  );
+  assert.match(canonicalDomain, /pub enum PrincipalKind/u);
+  assert.match(canonicalDomain, /pub struct Membership/u);
+  assert.match(canonicalDomain, /pub struct DirectTurn/u);
+  assert.doesNotMatch(
+    canonicalDomain,
+    /ConversationRole|AdaptiveFlywheel|FlywheelRun/u,
+  );
+  assert.match(nativeFacade, /pub use licoup_conversation::\*;/u);
+  assert.doesNotMatch(nativeFacade, /CREATE TABLE|rusqlite/u);
 });
 
 test("retired ordinal configuration is cleaned without reinterpretation", () => {
@@ -112,8 +129,8 @@ test("retired ordinal configuration is cleaned without reinterpretation", () => 
     migration,
     /LegacyMigrationRoleSpec|LegacyMigrationFlywheelSpec|migrate_flywheel/u,
   );
-  assert.doesNotMatch(store, /migrate_legacy_flywheel_configuration/u);
-  assert.match(store, /migration_provenance/u);
+  assert.doesNotMatch(canonicalStore, /migrate_legacy_flywheel_configuration/u);
+  assert.match(canonicalStore, /migration_provenance/u);
 });
 
 test("superseded operational stores and fixed workflow owners stay removed", () => {

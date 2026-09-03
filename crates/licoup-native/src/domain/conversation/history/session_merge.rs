@@ -10,8 +10,7 @@ mod stable_order;
 
 pub(crate) use composition::finalize_history_sessions;
 pub(crate) use dedupe_paging::{
-    collapse_sessions_by_native_identity, dedupe_history_sessions, history_session_dedupe_key,
-    paged_history_sessions,
+    collapse_sessions_by_native_identity, dedupe_history_sessions, paged_history_sessions,
 };
 pub(super) use model_names::collect_history_model_names;
 pub(crate) use session_index::apply_codex_session_index_titles;

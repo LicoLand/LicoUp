@@ -17,6 +17,9 @@ pub(in crate::platform) struct ProtocolFailurePayload {
     pub(in crate::platform) code: &'static str,
     pub(in crate::platform) message: &'static str,
     pub(in crate::platform) stage: &'static str,
+    pub(in crate::platform) component: Option<&'static str>,
+    pub(in crate::platform) retryable: Option<bool>,
+    pub(in crate::platform) recovery: Option<&'static str>,
     pub(in crate::platform) user_interaction_required: bool,
     pub(in crate::platform) request_method: Option<String>,
     pub(in crate::platform) session_id: Option<String>,
@@ -53,7 +56,7 @@ impl std::ops::DerefMut for ProtocolFailure {
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
     pub(in crate::platform) output: String,
-    pub(in crate::platform) events: Vec<Value>,
+    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
     pub(in crate::platform) error: Option<ProtocolFailure>,
     pub(in crate::platform) session_id: String,
     pub(in crate::platform) thread_id: String,
@@ -67,27 +70,27 @@ pub(in crate::platform) struct RunResult {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ProtocolOutcome {
-    pub(super) output: String,
-    pub(super) events: Vec<Value>,
-    pub(super) session_id: String,
-    pub(super) thread_id: String,
-    pub(super) turn_id: String,
-    pub(super) turn_status: String,
-    pub(super) effective: EffectiveSettings,
+pub(in crate::platform) struct ProtocolOutcome {
+    pub(in crate::platform) output: String,
+    pub(in crate::platform) session_id: String,
+    pub(in crate::platform) thread_id: String,
+    pub(in crate::platform) turn_id: String,
+    pub(in crate::platform) turn_status: String,
+    pub(in crate::platform) effective: EffectiveSettings,
 }
 
 #[derive(Debug)]
-pub(super) enum ProtocolEffect {
+pub(in crate::platform) enum ProtocolEffect {
     Send(Value),
     Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ProtocolPhase {
+pub(in crate::platform) enum ProtocolPhase {
     AwaitInitialize,
     AwaitThread,
+    AwaitThreadUnarchive,
     AwaitTurnStart,
     AwaitTurnCompleted,
     Finished,

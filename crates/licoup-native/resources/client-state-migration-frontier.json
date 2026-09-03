@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v0.0.1:client-state-migration-frontier-1",
+  "frontierId": "licoup-state-0.1.1",
+  "domains": [
+    { "domainId": "adaptive-flywheel", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "adaptive-flywheel.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "agent-tab-order", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "agent-tab-order.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "agent-tool-allowlist", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "agent-tool-allowlist.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "appearance-presentation", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "appearance-presentation.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "canonical-conversation", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "canonical-conversation.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "client-state", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "client-state.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "current-view", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "current-view.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "mobile-home-layout", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "mobile-home-layout.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "mobile-relay", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "mobile-relay.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "skill-hub-preferences", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "skill-hub-preferences.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "workspace-manifest", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "workspace-manifest.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] }
+  ]
+}

@@ -1,4 +1,5 @@
 use super::super::process_supervisor::SupervisedChild;
+use serde_json::Value;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -22,6 +23,10 @@ impl CodexLaunchSpec {
     }
 
     pub(super) fn spawn(&self) -> io::Result<SupervisedChild> {
+        self.spawn_with_context(None)
+    }
+
+    pub(super) fn spawn_with_context(&self, params: Option<&Value>) -> io::Result<SupervisedChild> {
         let mut command = Command::new(&self.executable);
         command
             .args(&self.args)
@@ -31,6 +36,18 @@ impl CodexLaunchSpec {
         if let Some(cwd) = self.cwd.as_ref() {
             command.current_dir(cwd);
         }
+        apply_launch_environment(&mut command, params);
         SupervisedChild::spawn(&mut command)
+    }
+}
+
+/// Membership headers must be present on the plugin MCP child. The portable
+/// data root is inherited from the sidecar: the Codex plugin already lists
+/// `LICOUP_PORTABLE_DIR` in `env_vars`. Re-binding it through
+/// `portable_data_dir()` at launch races two app-servers that share one plugin
+/// home.
+pub(super) fn apply_launch_environment(command: &mut Command, params: Option<&Value>) {
+    if let Some(params) = params {
+        crate::platform::runtime_adapters::apply_subagent_caller_context(command, params);
     }
 }

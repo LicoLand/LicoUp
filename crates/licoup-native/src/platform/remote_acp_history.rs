@@ -11,7 +11,7 @@ use crate::core::acp::{
 };
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::io::BufReader;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,12 +24,8 @@ const FIRST_SESSION_REQUEST_ID: i64 = 2;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const LOAD_DRAIN_QUIET: Duration = Duration::from_millis(100);
-const MAX_STDOUT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 512 * 1024;
-const MAX_LIST_PAGES: usize = 64;
 const MAX_PAGE_LIMIT: usize = 500;
-const MAX_REPLAY_MESSAGES: usize = 2_000;
-const MAX_REPLAY_TEXT_BYTES: usize = 2 * 1024 * 1024;
 
 pub(crate) fn conversation_list(params: &Value) -> Result<Value> {
     let target = params
@@ -57,6 +53,20 @@ pub(crate) fn conversation_list(params: &Value) -> Result<Value> {
     let limit = unsigned_param(params, "limit")
         .unwrap_or(MAX_PAGE_LIMIT)
         .clamp(1, MAX_PAGE_LIMIT);
+    let message_before = params
+        .get("messageBefore")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if message_before.is_some() && session_id.is_none() {
+        return Err(anyhow!(
+            "native_history_message_page_requires_exact_session"
+        ));
+    }
+    let message_limit = unsigned_param(params, "messageLimit").unwrap_or(50);
+    if !(1..=100).contains(&message_limit) {
+        return Err(anyhow!("native_history_message_limit_invalid"));
+    }
 
     let mut client = RemoteAcpClient::connect(target, &connection)?;
     let capabilities = client.initialize()?;
@@ -64,7 +74,14 @@ pub(crate) fn conversation_list(params: &Value) -> Result<Value> {
         if !capabilities.load_session {
             return Err(anyhow!("remote_acp_session_load_unsupported"));
         }
-        vec![client.load_session(target, session_id, connection.working_directory(), None)?]
+        vec![client.load_session(
+            target,
+            session_id,
+            connection.working_directory(),
+            None,
+            message_before,
+            message_limit,
+        )?]
     } else {
         if !capabilities.list_sessions {
             return Err(anyhow!("remote_acp_session_list_unsupported"));
@@ -121,9 +138,15 @@ pub(crate) fn conversation_list(params: &Value) -> Result<Value> {
 }
 
 pub(crate) fn has_runtime_connection(params: &Value) -> bool {
-    params
-        .get("runtimeConnection")
-        .is_some_and(|value| !value.is_null())
+    // Absent means local history. Null, an empty object, or an empty string
+    // carries no connection facts, so it must not reroute a local exact read
+    // into the VM path; any other value is validated by the remote reader.
+    match params.get("runtimeConnection") {
+        None | Some(Value::Null) => false,
+        Some(Value::Object(map)) => !map.is_empty(),
+        Some(Value::String(text)) => !text.trim().is_empty(),
+        Some(_) => true,
+    }
 }
 
 struct RemoteAcpClient {
@@ -133,7 +156,6 @@ struct RemoteAcpClient {
     stdout_handle: Option<thread::JoinHandle<()>>,
     stderr_handle: Option<thread::JoinHandle<()>>,
     stderr_truncated: Arc<AtomicBool>,
-    observed_stdout_bytes: usize,
     next_request_id: i64,
     finished: bool,
 }
@@ -174,7 +196,6 @@ impl RemoteAcpClient {
             stdout_handle: Some(stdout_handle),
             stderr_handle: Some(stderr_handle),
             stderr_truncated,
-            observed_stdout_bytes: 0,
             next_request_id: FIRST_SESSION_REQUEST_ID,
             finished: false,
         })
@@ -205,7 +226,7 @@ impl RemoteAcpClient {
         let mut cursor = None::<String>;
         let mut seen_cursors = HashSet::new();
         let mut listed = Vec::new();
-        for _ in 0..MAX_LIST_PAGES {
+        loop {
             let request_id = self.next_id();
             let request = acp::session_list_request(request_id, None, cursor.as_deref())
                 .map_err(|_| anyhow!("remote_acp_session_list_request_invalid"))?;
@@ -213,6 +234,7 @@ impl RemoteAcpClient {
             let response = self.receive_response(request_id, |_| Ok(()))?;
             let page = acp::validate_session_list_response(&response, request_id)
                 .map_err(|_| anyhow!("remote_acp_session_list_failed"))?;
+            let page_count = page.sessions.len();
             listed.extend(page.sessions);
             if listed.len() >= wanted {
                 break;
@@ -220,6 +242,9 @@ impl RemoteAcpClient {
             let Some(next_cursor) = page.next_cursor else {
                 break;
             };
+            if page_count == 0 {
+                return Err(anyhow!("remote_acp_session_cursor_no_progress"));
+            }
             if !seen_cursors.insert(next_cursor.clone()) {
                 return Err(anyhow!("remote_acp_session_cursor_repeated"));
             }
@@ -229,7 +254,7 @@ impl RemoteAcpClient {
             .into_iter()
             .skip(offset)
             .take(limit.saturating_add(1))
-            .map(|info| session_projection(target, &info, Vec::new(), can_load))
+            .map(|info| session_projection(target, &info, MessagePageProjection::empty(), can_load))
             .collect())
     }
 
@@ -239,6 +264,8 @@ impl RemoteAcpClient {
         session_id: &str,
         fallback_cwd: &str,
         known_info: Option<&AcpSessionInfo>,
+        message_before: Option<&str>,
+        message_limit: usize,
     ) -> Result<Value> {
         let cwd = known_info
             .map(|info| info.cwd.as_str())
@@ -251,7 +278,7 @@ impl RemoteAcpClient {
         )
         .map_err(|_| anyhow!("remote_acp_session_load_request_invalid"))?;
         self.send(&request)?;
-        let mut replay = ReplayCollector::default();
+        let mut replay = ReplayCollector::new(message_before, message_limit)?;
         let response =
             self.receive_response(request_id, |message| replay.observe(message, session_id))?;
         acp::validate_session_response(&response, request_id, AcpSessionMethod::Load(session_id))
@@ -265,12 +292,7 @@ impl RemoteAcpClient {
             updated_at: replay.updated_at.clone(),
             meta: None,
         });
-        Ok(session_projection(
-            target,
-            &info,
-            replay.into_messages(),
-            true,
-        ))
+        Ok(session_projection(target, &info, replay.into_page()?, true))
     }
 
     fn send(&mut self, message: &Value) -> Result<()> {
@@ -296,7 +318,7 @@ impl RemoteAcpClient {
                 .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
             {
                 Ok(TransportEvent::Message { message, bytes }) => {
-                    self.observe_stdout(bytes)?;
+                    let _ = bytes;
                     if request_id_matches(&message, request_id) {
                         return Ok(message);
                     }
@@ -336,7 +358,7 @@ impl RemoteAcpClient {
             }
             match self.receiver.recv_timeout(deadline - now) {
                 Ok(TransportEvent::Message { message, bytes }) => {
-                    self.observe_stdout(bytes)?;
+                    let _ = bytes;
                     if is_server_request(&message) {
                         self.reject_server_request(&message)?;
                     } else {
@@ -372,15 +394,6 @@ impl RemoteAcpClient {
                 "message": "Client method is not available during history access."
             }
         }))
-    }
-
-    fn observe_stdout(&mut self, bytes: usize) -> Result<()> {
-        self.observed_stdout_bytes = self.observed_stdout_bytes.saturating_add(bytes);
-        if self.observed_stdout_bytes > MAX_STDOUT_BYTES {
-            Err(anyhow!("remote_acp_protocol_output_limit"))
-        } else {
-            Ok(())
-        }
     }
 
     fn next_id(&mut self) -> i64 {
@@ -424,15 +437,32 @@ impl Drop for RemoteAcpClient {
     }
 }
 
-#[derive(Default)]
 struct ReplayCollector {
-    messages: Vec<ReplayMessage>,
-    text_bytes: usize,
+    retained: VecDeque<(usize, ReplayMessage)>,
+    current: Option<ReplayMessage>,
+    logical_count: usize,
+    before_index: Option<usize>,
+    limit: usize,
     title: Option<String>,
     updated_at: Option<String>,
 }
 
 impl ReplayCollector {
+    fn new(message_before: Option<&str>, limit: usize) -> Result<Self> {
+        let before_index = message_before
+            .map(parse_remote_acp_message_index)
+            .transpose()?;
+        Ok(Self {
+            retained: VecDeque::with_capacity(limit),
+            current: None,
+            logical_count: 0,
+            before_index,
+            limit,
+            title: None,
+            updated_at: None,
+        })
+    }
+
     fn observe(&mut self, message: &Value, session_id: &str) -> Result<()> {
         if message.get("method").and_then(Value::as_str) != Some(acp::SESSION_UPDATE_METHOD) {
             return Ok(());
@@ -465,30 +495,47 @@ impl ReplayCollector {
     }
 
     fn push(&mut self, role: &'static str, text: &str) -> Result<()> {
-        self.text_bytes = self.text_bytes.saturating_add(text.len());
-        if self.text_bytes > MAX_REPLAY_TEXT_BYTES {
-            return Err(anyhow!("remote_acp_session_replay_limit"));
-        }
-        if let Some(last) = self.messages.last_mut()
+        if let Some(last) = self.current.as_mut()
             && last.role == role
         {
             last.text.push_str(text);
             return Ok(());
         }
-        if self.messages.len() >= MAX_REPLAY_MESSAGES {
-            return Err(anyhow!("remote_acp_session_replay_limit"));
-        }
-        self.messages.push(ReplayMessage {
+        self.finish_current();
+        self.current = Some(ReplayMessage {
             role,
             text: text.to_string(),
         });
         Ok(())
     }
 
-    fn into_messages(self) -> Vec<Value> {
-        self.messages
+    fn finish_current(&mut self) {
+        let Some(message) = self.current.take() else {
+            return;
+        };
+        let index = self.logical_count;
+        self.logical_count = self.logical_count.saturating_add(1);
+        if self.before_index.is_none_or(|before| index < before) {
+            self.retained.push_back((index, message));
+            while self.retained.len() > self.limit {
+                self.retained.pop_front();
+            }
+        }
+    }
+
+    fn into_page(mut self) -> Result<MessagePageProjection> {
+        self.finish_current();
+        if self
+            .before_index
+            .is_some_and(|before| before >= self.logical_count)
+        {
+            return Err(anyhow!("native_history_message_anchor_stale"));
+        }
+        let end = self.before_index.unwrap_or(self.logical_count);
+        let start = end.saturating_sub(self.retained.len());
+        let messages = self
+            .retained
             .into_iter()
-            .enumerate()
             .map(|(index, message)| {
                 json!({
                     "id": format!("remote-acp-message-{index}"),
@@ -498,8 +545,21 @@ impl ReplayCollector {
                     "layer": "thread"
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        Ok(MessagePageProjection {
+            messages,
+            start,
+            end,
+            total: self.logical_count,
+        })
     }
+}
+
+fn parse_remote_acp_message_index(value: &str) -> Result<usize> {
+    value
+        .strip_prefix("remote-acp-message-")
+        .and_then(|index| index.parse::<usize>().ok())
+        .ok_or_else(|| anyhow!("native_history_message_anchor_stale"))
 }
 
 struct ReplayMessage {
@@ -510,7 +570,7 @@ struct ReplayMessage {
 fn session_projection(
     target: &str,
     info: &AcpSessionInfo,
-    messages: Vec<Value>,
+    page: MessagePageProjection,
     exact_resume: bool,
 ) -> Value {
     let title = info
@@ -540,9 +600,37 @@ fn session_projection(
         "native": true,
         "readOnly": true,
         "exactResume": exact_resume,
-        "messageCount": messages.len(),
-        "messages": messages
+        "messageCount": page.messages.len(),
+        "sourceMessageCount": page.total,
+        "messagePage": {
+            "start": page.start,
+            "endExclusive": page.end,
+            "returned": page.messages.len(),
+            "total": page.total,
+            "hasEarlier": page.start > 0,
+            "nextBefore": (page.start > 0 && !page.messages.is_empty())
+                .then(|| page.messages[0]["id"].clone()),
+        },
+        "messages": page.messages
     })
+}
+
+struct MessagePageProjection {
+    messages: Vec<Value>,
+    start: usize,
+    end: usize,
+    total: usize,
+}
+
+impl MessagePageProjection {
+    fn empty() -> Self {
+        Self {
+            messages: Vec::new(),
+            start: 0,
+            end: 0,
+            total: 0,
+        }
+    }
 }
 
 fn is_server_request(message: &Value) -> bool {
@@ -586,8 +674,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn empty_runtime_connection_values_stay_on_local_history() {
+        for params in [
+            json!({}),
+            json!({"runtimeConnection": null}),
+            json!({"runtimeConnection": {}}),
+            json!({"runtimeConnection": ""}),
+            json!({"runtimeConnection": "   "}),
+        ] {
+            assert!(
+                !has_runtime_connection(&params),
+                "absent connection facts must not reroute local history: {params}"
+            );
+        }
+        assert!(has_runtime_connection(
+            &json!({"runtimeConnection": {"kind": "ssh", "host": "vm.example"}})
+        ));
+    }
+
+    #[test]
     fn replay_merges_adjacent_chunks_without_exposing_transport_metadata() {
-        let mut replay = ReplayCollector::default();
+        let mut replay = ReplayCollector::new(None, 50).unwrap();
         for text in ["hello", " world"] {
             replay
                 .observe(
@@ -606,9 +713,44 @@ mod tests {
                 )
                 .unwrap();
         }
-        let messages = replay.into_messages();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0]["text"], "hello world");
-        assert!(messages[0].get("host").is_none());
+        let page = replay.into_page().unwrap();
+        assert_eq!(page.messages.len(), 1);
+        assert_eq!(page.messages[0]["text"], "hello world");
+        assert!(page.messages[0].get("host").is_none());
+    }
+
+    #[test]
+    fn replay_pages_cover_complete_session_without_default_totals() {
+        fn page(before: Option<&str>, limit: usize) -> MessagePageProjection {
+            let mut replay = ReplayCollector::new(before, limit).unwrap();
+            for index in 0..253 {
+                let role = if index % 2 == 0 { "user" } else { "agent" };
+                replay.push(role, &format!("message-{index}")).unwrap();
+            }
+            replay.into_page().unwrap()
+        }
+
+        let newest = page(None, 50);
+        let second = page(Some("remote-acp-message-203"), 50);
+        let third = page(Some("remote-acp-message-153"), 100);
+        let oldest = page(Some("remote-acp-message-53"), 100);
+        let ids = [oldest, third, second, newest]
+            .into_iter()
+            .flat_map(|page| {
+                page.messages
+                    .into_iter()
+                    .map(|message| message["id"].as_str().unwrap_or_default().to_string())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ids.len(), 253);
+        assert_eq!(
+            ids.first().map(String::as_str),
+            Some("remote-acp-message-0")
+        );
+        assert_eq!(
+            ids.last().map(String::as_str),
+            Some("remote-acp-message-252")
+        );
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), 253);
     }
 }

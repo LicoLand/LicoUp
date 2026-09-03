@@ -139,12 +139,15 @@ pub(super) fn handle_subagent_mcp_status(command: AdmittedCommand) -> Result<Cli
     let agent_id = command.option_text("agent-id").unwrap_or_default();
     let binary = command.option_text("binary-path").map(Path::new);
     let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
-    let state = crate::platform::subagent_mcp_ensure::status(&agent_id, binary, mcp_binary);
+    let config_path = command.option_text("config-path").map(Path::new);
+    let state =
+        crate::platform::subagent_mcp_ensure::status(&agent_id, binary, mcp_binary, config_path);
     Ok(CliExecution::Json(serde_json::json!({
         "ok": true,
         "agentId": agent_id,
         "state": state.as_str(),
         "ready": state.ready(),
+        "configPathExplicit": config_path.is_some(),
         "orchestrationOwner": if state.ready() { "main-agent-plugin" } else { "licoup" },
     })))
 }
@@ -153,8 +156,11 @@ pub(super) fn handle_subagent_mcp_plan(command: AdmittedCommand) -> Result<CliEx
     let agent_id = command.option_text("agent-id").unwrap_or_default();
     let binary = command.option_text("binary-path").map(Path::new);
     let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
+    let config_path = command.option_text("config-path").map(Path::new);
+    let explicit = config_path.is_some();
     Ok(CliExecution::Json(
-        match crate::platform::subagent_mcp_ensure::plan(&agent_id, binary, mcp_binary) {
+        match crate::platform::subagent_mcp_ensure::plan(&agent_id, binary, mcp_binary, config_path)
+        {
             Ok(plan) => serde_json::json!({
                 "ok": true,
                 "agentId": plan.agent_id,
@@ -163,6 +169,7 @@ pub(super) fn handle_subagent_mcp_plan(command: AdmittedCommand) -> Result<CliEx
                 "marketplaceSource": plan.source,
                 "marketplaceRelease": plan.release,
                 "requiresConfirmation": plan.requires_confirmation,
+                "configPathExplicit": explicit,
                 "fallbackOwner": "licoup",
             }),
             Err(error) => subagent_mcp_error(error),
@@ -174,6 +181,7 @@ pub(super) fn handle_subagent_mcp_install(command: AdmittedCommand) -> Result<Cl
     let agent_id = command.option_text("agent-id").unwrap_or_default();
     let binary = command.option_text("binary-path").map(Path::new);
     let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
+    let config_path = command.option_text("config-path").map(Path::new);
     let confirmation = command.option_text("confirmation").unwrap_or_default();
     let confirmed = command.option_flag("confirmed");
     Ok(CliExecution::Json(
@@ -183,6 +191,7 @@ pub(super) fn handle_subagent_mcp_install(command: AdmittedCommand) -> Result<Cl
             mcp_binary,
             &confirmation,
             confirmed,
+            config_path,
         ) {
             Ok((installed, ready)) => serde_json::json!({
                 "ok": true,
@@ -249,7 +258,8 @@ mod tests {
         let CliExecution::Json(catalog) =
             crate::ffi::commands::execute_cli(vec!["adapter".into(), "catalog".into()]).unwrap()
         else {
-            panic!("adapter catalog must be JSON");
+            assert!(false, "adapter catalog must be JSON");
+            return;
         };
         assert_eq!(catalog["ok"], true);
         assert_eq!(catalog["schemaVersion"], "lico.adapter-plugin-catalog.v1");
@@ -321,7 +331,8 @@ mod tests {
             missing_binary.to_string_lossy().into_owned(),
         ])
         .unwrap() else {
-            panic!("status must be JSON");
+            assert!(false, "status must be JSON");
+            return;
         };
         assert_eq!(result["ok"], true);
         assert_eq!(result["state"], "unavailable");

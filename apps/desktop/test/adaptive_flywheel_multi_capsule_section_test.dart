@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -237,5 +238,204 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('filters models by a case-insensitive contains query', (
+    tester,
+  ) async {
+    await _pumpSection(
+      tester,
+      targets: [
+        _target(
+          id: 'claude-code',
+          label: 'Claude Code',
+          models: const [
+            {
+              'name': 'claude-opus-5',
+              'displayName': 'Claude Opus 5',
+              'reasoningEfforts': ['high'],
+            },
+            {
+              'name': 'claude-sonnet-5',
+              'displayName': 'Claude Sonnet 5',
+              'reasoningEfforts': ['high'],
+            },
+            {
+              'name': 'gpt-5.5',
+              'displayName': 'GPT-5.5',
+              'reasoningEfforts': ['low'],
+            },
+          ],
+        ),
+      ],
+    );
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Claude Opus 5'), findsOneWidget);
+    expect(find.text('Claude Sonnet 5'), findsOneWidget);
+    expect(find.text('GPT-5.5'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('flywheel-actors-model-search')),
+      'CLAUDE',
+    );
+    await tester.pump();
+
+    expect(find.text('Claude Opus 5'), findsOneWidget);
+    expect(find.text('Claude Sonnet 5'), findsOneWidget);
+    expect(find.text('GPT-5.5'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('flywheel-actors-model-search-clear')),
+    );
+    await tester.pump();
+    expect(find.text('GPT-5.5'), findsOneWidget);
+  });
+
+  testWidgets('keeps the confirmed model efforts while hovering other models', (
+    tester,
+  ) async {
+    await _pumpSection(
+      tester,
+      targets: [
+        _target(
+          id: 'codex',
+          label: 'Codex',
+          models: const [
+            {
+              'name': 'm-a',
+              'displayName': 'Model A',
+              'reasoningEfforts': ['low'],
+            },
+            {
+              'name': 'm-b',
+              'displayName': 'Model B',
+              'reasoningEfforts': ['xhigh'],
+            },
+          ],
+        ),
+      ],
+    );
+
+    await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+    await tester.pumpAndSettle();
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+
+    // Before any model is confirmed, hovering previews that model's efforts.
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const Key('flywheel-actors-model-codex-m-b')),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('flywheel-actors-effort-codex-xhigh')),
+      findsOneWidget,
+    );
+
+    // Confirm Model A: the effort card now belongs to the confirmed model.
+    await tester.tap(find.byKey(const Key('flywheel-actors-model-codex-m-a')));
+    await tester.pump();
+    expect(
+      find.byKey(const Key('flywheel-actors-effort-codex-low')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('flywheel-actors-effort-codex-xhigh')),
+      findsNothing,
+    );
+
+    // Sliding the mouse over another model must not re-point the effort card.
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const Key('flywheel-actors-model-codex-m-a')),
+      ),
+    );
+    await tester.pump();
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const Key('flywheel-actors-model-codex-m-b')),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('flywheel-actors-effort-codex-low')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('flywheel-actors-effort-codex-xhigh')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('scrolls each column to the persisted selection on open', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final models = <Map<String, dynamic>>[
+      for (var index = 0; index < 24; index += 1)
+        {
+          'name': 'model-$index',
+          'displayName': 'Model $index',
+          'reasoningEfforts': ['low', 'high'],
+        },
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Center(
+            child: AgentRuntimeAssignmentCascadeCards(
+              keyPrefix: 'assistant',
+              showFast: false,
+              borderRadius: BorderRadius.circular(12),
+              maxHeight: 190,
+              targets: [
+                _target(
+                  id: 'claude-code',
+                  label: 'Claude Code',
+                  models: models,
+                ),
+              ],
+              draft: const DailyConversationAgentAssignment(
+                agentId: 'claude-code',
+                modelName: 'model-23',
+                reasoningEffort: 'high',
+              ),
+              selectedAgentIds: const {'claude-code'},
+              onDraftChanged: (_) {},
+              revealSelectionOnOpen: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Without the reveal, the last of 24 models sits below the viewport.
+    final modelCard = tester.getRect(
+      find.byKey(const Key('assistant-model-card')),
+    );
+    final selectedModel = tester.getRect(
+      find.byKey(const Key('assistant-model-claude-code-model-23')),
+    );
+    expect(selectedModel.top, greaterThanOrEqualTo(modelCard.top));
+    expect(selectedModel.bottom, lessThanOrEqualTo(modelCard.bottom));
   });
 }

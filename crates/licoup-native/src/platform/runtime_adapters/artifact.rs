@@ -51,6 +51,22 @@ pub(super) fn runtime_executable(
     }
     let requested_path = Path::new(requested);
     if !requested_path.is_absolute() {
+        // Group Conversation turns intentionally persist only the Agent id,
+        // never an executable path. When such a turn carries the adapter's
+        // default command, recover the exact executable from the same native
+        // discovery authority used by one-to-one chat. This is especially
+        // important for product-bundled runtimes such as Kilo Code, whose
+        // official CLI may live inside an editor extension instead of PATH.
+        if requested == adapter.default_binary()
+            && let Some(discovered) =
+                crate::domain::targets::available_runtime_executable(adapter.id())
+                    .or_else(|| crate::domain::targets::agent_cli_executable(adapter.id()))
+        {
+            return discovered
+                .to_str()
+                .map(str::to_string)
+                .ok_or(RuntimeAdapterError::ExecutableUnavailable);
+        }
         return Ok(requested.to_string());
     }
     let canonical =

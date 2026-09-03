@@ -110,7 +110,7 @@ test("persistence secret context and projection dependencies are one way", async
   for (const forbidden of ["secret_custody", "ClientStateStore", "file_security", "save_config"]){
     assert.equal(source["projection.rs"].includes(forbidden), false);
   }
-  assert.ok(source["projection.rs"].includes('"privateKeyMaterial": "redacted"'));
+  assert.equal(source["projection.rs"].includes('"privateKeyMaterial"'), false);
   assert.equal(joined.includes("use super::*"), false);
   assert.equal(joined.includes("use crate::*"), false);
   for (const retired of ["#[path", "include!(", "mod tests {"]) {
