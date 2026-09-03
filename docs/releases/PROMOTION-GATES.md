@@ -29,6 +29,38 @@ its exact head, and stops on the first invalid topology or failed check.
 `nightly` remains open for later ordinary work. Once a snapshot is cut, do not
 promote a later `nightly` tip into the same in-flight publication.
 
+## Local macOS installation
+
+Build and install a local client with:
+
+```sh
+npm run client:build -- --platform macos
+npm run client:install:macos -- --launch-installed --verify-stable
+```
+
+The installer validates the existing release output, prepares the new payload,
+quits running copies and replaces `LicoUp.app` in `/Applications`. Set
+`LICO_CLIENT_INSTALL_DIR` for a different destination. Both this command and the
+packager's `--install` use the same replacement flow. Other LicoUp copies in the
+system, user and selected application directories are removed. Deleted and build
+copies are unregistered from LaunchServices; after successful installation,
+generated macOS app bundles in this checkout's runnable, bundle and Flutter
+product directories are deleted so Spotlight cannot list them as extra apps.
+The installed app and package manifest remain. Build again before another
+installation or packaging operation that needs those generated app bundles.
+Compiler and dependency caches are not removed by the installer.
+
+```sh
+npm run client:uninstall:macos
+```
+
+Uninstall requires no build. It removes those installed and generated app copies,
+the installed package metadata and their system registrations. Repeating it is
+safe. Installation and uninstallation preserve personal histories, settings,
+keys and other user data. Applications with another product name are not removed
+even if they reuse LicoUp's bundle identifier. External archives, mounted images,
+and build outputs in other checkouts are not deleted.
+
 ## Delegated Apple publication
 
 Nightly and Stable are tracks of one LicoUp identity. Nightly uses
