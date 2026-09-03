@@ -21,30 +21,18 @@
   },
   "gates": [
     [
-      "npm",
-      "ci"
+      "node",
+      "tools/scripts/macos-release/gate-source.mjs"
     ],
     [
-      "npm",
-      "run",
-      "client:gate:source"
-    ],
-    [
-      "npm",
-      "run",
-      "client:gate:release-policy"
+      "node",
+      "tools/scripts/macos-release/gate-release-policy.mjs"
     ]
   ],
   "build": {
     "command": [
-      "env",
-      "LICO_CLIENT_RELEASE_TRACK=stable",
-      "npm",
-      "run",
-      "client:build",
-      "--",
-      "--platform",
-      "macos"
+      "node",
+      "tools/scripts/macos-release/build.mjs"
     ],
     "app": "build/apps/desktop/runnable/macos/release/LicoUp.app",
     "materials": [
@@ -79,19 +67,13 @@
   "update": {
     "command": [
       "node",
-      "tools/scripts/client-update-manifest.mjs",
-      "--assets",
-      "build/apple-release",
+      "tools/scripts/macos-release/write-update-manifest.mjs",
       "--tag",
       "{tag}",
-      "--repo",
+      "--repository",
       "{repository}",
-      "--targets",
-      "macos-direct-arm64",
-      "--release-track",
-      "stable",
-      "--minimum-supported-version",
-      "0.0.0"
+      "--version",
+      "{version}"
     ]
   },
   "artifacts": [

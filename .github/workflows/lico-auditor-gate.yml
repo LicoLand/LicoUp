@@ -7,6 +7,7 @@ on:
       - nightly
       - stable
       - release
+      - macos-release-candidate
   workflow_dispatch:
 
 permissions:
@@ -14,6 +15,7 @@ permissions:
 
 jobs:
   auditor:
+    if: github.event.deleted != true
     name: Auditor
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -25,6 +27,7 @@ jobs:
           path: target
 
       - name: Select the author README fast path
+        if: github.ref_name != 'macos-release-candidate'
         id: readme
         working-directory: target
         env:

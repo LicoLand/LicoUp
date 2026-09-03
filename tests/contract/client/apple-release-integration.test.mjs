@@ -18,33 +18,13 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(config.version.allowedPaths, undefined);
   assert.equal(config.apple.target, "macos-direct-arm64");
   assert.equal(config.github.repository, "LicoLand/LicoUp");
-  assert.deepEqual(config.gates[0], ["npm", "ci"]);
-  assert.deepEqual(config.build?.command, [
-    "env",
-    "LICO_CLIENT_RELEASE_TRACK=stable",
-    "npm",
-    "run",
-    "client:build",
-    "--",
-    "--platform",
-    "macos",
+  assert.deepEqual(config.gates, [
+    ["node", "tools/scripts/macos-release/gate-source.mjs"],
+    ["node", "tools/scripts/macos-release/gate-release-policy.mjs"],
   ]);
-  assert.deepEqual(config.update?.command, [
-    "node",
-    "tools/scripts/client-update-manifest.mjs",
-    "--assets",
-    "build/apple-release",
-    "--tag",
-    "{tag}",
-    "--repo",
-    "{repository}",
-    "--targets",
-    "macos-direct-arm64",
-    "--release-track",
-    "stable",
-    "--minimum-supported-version",
-    "0.0.0",
-  ]);
+  assert.deepEqual(config.build.command, ["node", "tools/scripts/macos-release/build.mjs"]);
+  assert.deepEqual(config.update.command, ["node", "tools/scripts/macos-release/write-update-manifest.mjs",
+    "--tag", "{tag}", "--repository", "{repository}", "--version", "{version}"]);
   assert.deepEqual(config.artifacts.map(({ role, publicName }) => ({ role, publicName })), [
     { role: "installer", publicName: "LicoUp-macos-arm64.dmg" },
     { role: "installer-digest", publicName: "LicoUp-macos-arm64.dmg.sha256" },
@@ -65,7 +45,7 @@ test("Nightly publication is a second track profile of the same app identity", (
   assert.equal(nightly.source.branch, "nightly");
   assert.equal(nightly.candidate?.branch, "macos-nightly-release-candidate");
   assert.equal(nightly.candidate?.template, undefined);
-  assert.deepEqual(nightly.gates, stable.gates);
+  assert.deepEqual(nightly.gates, [["npm", "ci"], ["npm", "run", "client:gate:source"], ["npm", "run", "client:gate:release-policy"]]);
   assert.deepEqual(nightly.build.command, [
     "env",
     "LICO_CLIENT_RELEASE_TRACK=nightly",
