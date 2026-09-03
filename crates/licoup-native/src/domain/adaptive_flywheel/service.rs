@@ -2174,7 +2174,8 @@ fn classify_effect_error(message: &str) -> (FailureClass, &'static str) {
         (FailureClass::Sandbox, "sandbox_unavailable")
     } else if message.contains("authorization") || message.contains("permit") {
         (FailureClass::Authority, "authorization_required")
-    } else if message.contains("quota_exhausted")
+    } else if message.contains("usage_limit_exceeded")
+        || message.contains("quota_exhausted")
         || message.contains("strategy_actor_quota_exhausted")
     {
         (FailureClass::Permanent, "quota_exhausted")
@@ -2823,6 +2824,16 @@ mod tests {
         assert_eq!(
             super::classify_effect_error("strategy_actor_dispatch_failed"),
             (FailureClass::Transient, "effect_temporarily_unavailable")
+        );
+        assert_eq!(
+            super::actor_output_failure(
+                &command,
+                &json!({
+                    "ok": false,
+                    "error": {"code": "codex_usage_limit_exceeded"}
+                }),
+            ),
+            Some((FailureClass::Permanent, "quota_exhausted"))
         );
     }
 

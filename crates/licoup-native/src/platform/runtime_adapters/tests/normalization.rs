@@ -1,5 +1,5 @@
 use super::super::model::{NormalizedEffectiveSettings, NormalizedExecution};
-use super::super::normalization::{execution_response, normalize_codex};
+use super::super::normalization::{execution_response, normalize_codex, normalize_cursor};
 use super::super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use crate::platform::{codex_app_server, opencode_driver};
 use serde_json::json;
@@ -45,6 +45,80 @@ fn codex_response_uses_the_canonical_shape() {
     assert_eq!(response["sessionId"], "thread-1");
     assert_eq!(response["effective"]["model"], "model-1");
     assert_eq!(response["approvalOwner"], "user");
+}
+
+#[test]
+fn codex_usage_limit_response_preserves_safe_resolution_contract() {
+    let failure = codex_app_server::model::ProtocolFailure::new(
+        "codex_usage_limit_exceeded",
+        "Codex usage limit exceeded.",
+        "turn/completed",
+    )
+    .with_resolution(
+        "native_cli",
+        false,
+        "select_available_model_or_wait_for_quota_reset",
+    );
+    let response = execution_response(
+        RuntimeAdapter::Codex,
+        normalize_codex(codex_app_server::RunResult {
+            ok: false,
+            output: String::new(),
+            transitions: Vec::new(),
+            error: Some(failure),
+            session_id: String::new(),
+            thread_id: String::new(),
+            turn_id: String::new(),
+            turn_status: "failed/UsageLimitExceeded".to_string(),
+            effective: codex_app_server::EffectiveSettings::default(),
+            status_code: None,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            started_at: "1".to_string(),
+        }),
+    );
+
+    assert_eq!(response["error"]["code"], "codex_usage_limit_exceeded");
+    assert_eq!(response["error"]["component"], "native_cli");
+    assert_eq!(response["error"]["retryable"], false);
+    assert_eq!(
+        response["error"]["recovery"],
+        "select_available_model_or_wait_for_quota_reset"
+    );
+    assert_eq!(response["error"]["message"], "Codex usage limit exceeded.");
+}
+
+#[test]
+fn cursor_usage_limit_response_preserves_safe_resolution_contract() {
+    let failure = crate::platform::cursor_driver::errors::CursorFailureKind::UsageLimitExceeded
+        .failure(Some("synthetic-session"));
+    let response = execution_response(
+        RuntimeAdapter::Cursor,
+        normalize_cursor(crate::platform::cursor_driver::RunResult {
+            ok: false,
+            output: String::new(),
+            transitions: Vec::new(),
+            error: Some(failure),
+            session_id: "synthetic-session".to_owned(),
+            thread_id: "synthetic-session".to_owned(),
+            turn_id: String::new(),
+            turn_status: "usage_limit_exceeded".to_owned(),
+            effective: crate::platform::cursor_driver::model::EffectiveSettings::default(),
+            status_code: Some(1),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            started_at: "1".to_owned(),
+        }),
+    );
+
+    assert_eq!(response["error"]["code"], "cursor_cli_usage_limit_exceeded");
+    assert_eq!(response["error"]["component"], "native_cli");
+    assert_eq!(response["error"]["retryable"], false);
+    assert_eq!(
+        response["error"]["recovery"],
+        "select_available_model_or_wait_for_quota_reset"
+    );
+    assert_eq!(response["error"]["turnStatus"], "usage_limit_exceeded");
 }
 
 #[test]

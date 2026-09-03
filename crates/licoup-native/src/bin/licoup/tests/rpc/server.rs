@@ -385,7 +385,6 @@ fn persistent_rpc_dispatches_after_post_by_identity_and_returns_the_entry_handle
                 "authorMembershipId": owner_id,
                 "content": "@Synthetic please answer"
             },
-            "portableDataDir": portable.clone(),
         }),
         json!({
             "protocol": STDIO_RPC_PROTOCOL,
@@ -395,13 +394,14 @@ fn persistent_rpc_dispatches_after_post_by_identity_and_returns_the_entry_handle
         }),
     ]);
     // Post first so the dispatch can address the stored Event by identity.
-    let output = serve_stdio_rpc_with_runtime(
+    let output = serve_stdio_rpc_with_persistent_conversation(
         input,
         Vec::new(),
         |_, _| -> anyhow::Result<_> {
             panic!("structured client conversation must not reach execute")
         },
         runtime.clone(),
+        service.clone(),
     )
     .unwrap();
     let frames = rpc_output(output);
@@ -422,7 +422,6 @@ fn persistent_rpc_dispatches_after_post_by_identity_and_returns_the_entry_handle
                 "conversationId": conversation_id,
                 "eventId": event_id,
             },
-            "portableDataDir": portable.clone(),
         }),
         json!({
             "protocol": STDIO_RPC_PROTOCOL,
@@ -431,13 +430,14 @@ fn persistent_rpc_dispatches_after_post_by_identity_and_returns_the_entry_handle
             "method": "shutdown",
         }),
     ]);
-    let output = serve_stdio_rpc_with_runtime(
+    let output = serve_stdio_rpc_with_persistent_conversation(
         dispatch_input,
         Vec::new(),
         |_, _| -> anyhow::Result<_> {
             panic!("structured client conversation must not reach execute")
         },
         runtime.clone(),
+        service.clone(),
     )
     .unwrap();
     let frames = rpc_output(output);

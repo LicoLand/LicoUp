@@ -758,6 +758,7 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'codex_thread_open_failed': ProblemCode(ProblemDomain.nativeAgent, 3995),
   'codex_turn_not_completed': ProblemCode(ProblemDomain.nativeAgent, 3996),
   'codex_turn_start_failed': ProblemCode(ProblemDomain.nativeAgent, 3997),
+  'codex_usage_limit_exceeded': ProblemCode(ProblemDomain.nativeAgent, 4239),
   'codex_user_interaction_required': ProblemCode(
     ProblemDomain.nativeAgent,
     3998,
@@ -769,6 +770,10 @@ const Map<String, ProblemCode> problemCodeEntries = {
     4001,
   ),
   'cursor_cli_cancelled': ProblemCode(ProblemDomain.nativeAgent, 4002),
+  'cursor_cli_authentication_required': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4240,
+  ),
   'cursor_cli_capability_incomplete': ProblemCode(
     ProblemDomain.nativeAgent,
     4003,
@@ -783,12 +788,14 @@ const Map<String, ProblemCode> problemCodeEntries = {
     4006,
   ),
   'cursor_cli_empty_prompt': ProblemCode(ProblemDomain.nativeAgent, 4007),
+  'cursor_cli_execution_failed': ProblemCode(ProblemDomain.nativeAgent, 4241),
   'cursor_cli_invalid_json': ProblemCode(ProblemDomain.nativeAgent, 4008),
   'cursor_cli_private_instructions_unsupported': ProblemCode(
     ProblemDomain.nativeAgent,
     4233,
   ),
   'cursor_cli_output_limit': ProblemCode(ProblemDomain.nativeAgent, 4009),
+  'cursor_cli_model_unavailable': ProblemCode(ProblemDomain.nativeAgent, 4242),
   'cursor_cli_prompt_acknowledgement_missing': ProblemCode(
     ProblemDomain.nativeAgent,
     4237,
@@ -798,6 +805,7 @@ const Map<String, ProblemCode> problemCodeEntries = {
     4238,
   ),
   'cursor_cli_read_failed': ProblemCode(ProblemDomain.nativeAgent, 4010),
+  'cursor_cli_rate_limited': ProblemCode(ProblemDomain.nativeAgent, 4243),
   'cursor_cli_session_identity_mismatch': ProblemCode(
     ProblemDomain.nativeAgent,
     4234,
@@ -809,6 +817,10 @@ const Map<String, ProblemCode> problemCodeEntries = {
   ),
   'cursor_cli_timeout': ProblemCode(ProblemDomain.nativeAgent, 4012),
   'cursor_cli_turn_failed': ProblemCode(ProblemDomain.nativeAgent, 4013),
+  'cursor_cli_usage_limit_exceeded': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4244,
+  ),
   'cursor_cli_unterminated_json': ProblemCode(ProblemDomain.nativeAgent, 4236),
   'cursor_cli_workspace_unavailable': ProblemCode(
     ProblemDomain.nativeAgent,

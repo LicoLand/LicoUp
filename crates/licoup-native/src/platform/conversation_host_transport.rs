@@ -4,13 +4,67 @@
 
 use anyhow::{Context, Result, anyhow};
 use interprocess::local_socket::{GenericNamespaced, Stream, ToNsName as _, traits::Stream as _};
+use sha2::{Digest, Sha256};
 use std::{
-    fs,
+    env, fs,
     io::{self, Write},
     path::Path,
+    sync::OnceLock,
 };
 
 pub const STDIO_RPC_PROTOCOL: &str = "licoup.stdio.v1";
+
+static EXECUTABLE_GENERATION: OnceLock<Option<String>> = OnceLock::new();
+
+fn metadata_identity(metadata: &fs::Metadata) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        format!(
+            "{}:{}:{}:{}:{}",
+            metadata.dev(),
+            metadata.ino(),
+            metadata.len(),
+            metadata.mtime(),
+            metadata.mtime_nsec()
+        )
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+        format!(
+            "{}:{}:{}",
+            metadata.file_index().unwrap_or(0),
+            metadata.len(),
+            metadata.last_write_time()
+        )
+    }
+}
+
+/// Opaque generation of the executable backing this process.
+///
+/// The first lookup is retained for the process lifetime. If an installer
+/// replaces the file at the same path, an older host therefore keeps using
+/// its original endpoint while the newly launched binary selects a new one.
+pub fn executable_generation() -> io::Result<String> {
+    EXECUTABLE_GENERATION
+        .get_or_init(|| {
+            env::current_exe()
+                .and_then(fs::metadata)
+                .map(|metadata| endpoint_generation(&metadata_identity(&metadata)))
+                .ok()
+        })
+        .clone()
+        .ok_or_else(|| io::Error::other("conversation host unavailable"))
+}
+
+fn endpoint_generation(identity: &str) -> String {
+    let digest = Sha256::digest(identity.as_bytes());
+    digest[..8]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
 
 pub fn endpoint_name() -> Result<interprocess::local_socket::Name<'static>> {
     let root = super::paths::portable_data_dir()?;
@@ -33,7 +87,14 @@ fn read_endpoint_token(token_path: &Path) -> Result<String> {
 }
 
 fn endpoint_name_from_token(token: &str) -> Result<interprocess::local_socket::Name<'static>> {
-    format!("licoup-conversation-{token}")
+    endpoint_name_from_token_and_generation(token, &executable_generation()?)
+}
+
+fn endpoint_name_from_token_and_generation(
+    token: &str,
+    generation: &str,
+) -> Result<interprocess::local_socket::Name<'static>> {
+    format!("licoup-conversation-{token}-{generation}")
         .to_ns_name::<GenericNamespaced>()
         .context("conversation endpoint unavailable")
 }
@@ -108,6 +169,31 @@ mod tests {
         assert_eq!(token.len(), 32);
         assert!(token.bytes().all(|byte| byte.is_ascii_hexdigit()));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn endpoint_isolated_by_executable_generation() {
+        let token = "0".repeat(32);
+        let current_generation = endpoint_generation("fixture-build-current");
+        let stale_generation = endpoint_generation("fixture-build-stale");
+        let current = endpoint_name_from_token_and_generation(&token, &current_generation).unwrap();
+        let stale = endpoint_name_from_token_and_generation(&token, &stale_generation).unwrap();
+
+        assert_ne!(current, stale);
+        assert_eq!(
+            current,
+            endpoint_name_from_token_and_generation(&token, &current_generation).unwrap()
+        );
+        assert_eq!(current_generation.len(), 16);
+    }
+
+    #[test]
+    fn executable_generation_is_stable_for_the_process() {
+        let first = executable_generation().unwrap();
+        let second = executable_generation().unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 16);
+        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 
     #[test]

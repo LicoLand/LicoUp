@@ -1,4 +1,5 @@
 use super::{AdapterContract, NativeLineParser};
+use crate::platform::cursor_driver::errors::CursorFailureKind;
 use crate::platform::cursor_driver::model::EffectiveSettings;
 use crate::platform::cursor_driver::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
@@ -115,7 +116,7 @@ pub(in crate::platform) enum CursorParseFailure {
     TextSnapshotDiverged,
     PromptAcknowledgementMissing,
     PromptAcknowledgementMismatch,
-    TurnFailed,
+    TurnFailed(CursorFailureKind),
 }
 
 impl CursorParser {
@@ -207,7 +208,11 @@ impl NativeLineParser for CursorParser {
         let terminal = terminal_result(&message).map(str::to_owned);
         let terminal_failed = terminal.is_some() && is_error_result(&message);
         if terminal_failed {
-            return Err(CursorParseFailure::TurnFailed);
+            return Err(CursorParseFailure::TurnFailed(
+                CursorFailureKind::from_terminal_subtype(
+                    message.get("subtype").and_then(Value::as_str),
+                ),
+            ));
         }
         let structured_tool_calls = structured_tool_calls(&message);
         // A system/init frame proves only that the process started. Delivery
@@ -488,12 +493,18 @@ fn terminal_result(message: &Value) -> Option<&str> {
 }
 
 fn is_error_result(message: &Value) -> bool {
+    // `is_error` is the protocol's explicit terminal authority. Cursor can
+    // report a non-success subtype after a recoverable tool problem while
+    // still returning a valid final answer with `is_error: false`; treating
+    // the subtype alone as fatal discards that answer. Older frames without
+    // the flag keep the conservative subtype fallback.
     message
         .get("is_error")
         .and_then(Value::as_bool)
-        .unwrap_or(false)
-        || message
-            .get("subtype")
-            .and_then(Value::as_str)
-            .is_some_and(|value| value != "success")
+        .unwrap_or_else(|| {
+            message
+                .get("subtype")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value != "success")
+        })
 }

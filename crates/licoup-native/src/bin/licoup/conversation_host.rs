@@ -33,52 +33,24 @@ const OWNER_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(300);
 const CLIENT_PID_ENV: &str = "LICOUP_CLIENT_PID";
 
-fn host_identity_path(root: &Path) -> PathBuf {
+fn host_generation_path(root: &Path) -> PathBuf {
     root.join("client-state")
         .join("conversation-runtime")
-        .join("host-identity")
+        .join("host-generation")
 }
 
-fn metadata_identity(metadata: &fs::Metadata) -> String {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        format!(
-            "{}:{}:{}:{}",
-            metadata.dev(),
-            metadata.ino(),
-            metadata.len(),
-            metadata.mtime()
-        )
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt as _;
-        format!(
-            "{}:{}:{}",
-            metadata.file_index().unwrap_or(0),
-            metadata.len(),
-            metadata.last_write_time()
-        )
-    }
+fn executable_generation() -> io::Result<String> {
+    licoup_native::platform::conversation_host_transport::executable_generation()
 }
 
-fn executable_identity() -> io::Result<String> {
-    let executable = env::current_exe()?;
-    Ok(metadata_identity(&fs::metadata(executable)?))
+fn valid_host_generation(value: &str) -> bool {
+    value.len() == 16 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-fn valid_host_identity(value: &str) -> bool {
-    (1..=96).contains(&value.len())
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'.'))
-}
-
-fn parse_host_record(text: &str) -> Option<(String, Option<u32>, Option<u32>)> {
+fn parse_host_generation_record(text: &str) -> Option<(String, Option<u32>, Option<u32>)> {
     let mut lines = text.lines();
     let identity = lines.next()?.trim();
-    if !valid_host_identity(identity) {
+    if !valid_host_generation(identity) {
         return None;
     }
     let host_pid = match lines.next().map(str::trim).filter(|line| !line.is_empty()) {
@@ -96,20 +68,20 @@ fn parse_host_record(text: &str) -> Option<(String, Option<u32>, Option<u32>)> {
     Some((identity.to_owned(), host_pid, client_pid))
 }
 
-fn read_host_record() -> Option<(String, Option<u32>, Option<u32>)> {
+fn read_host_generation_record() -> Option<(String, Option<u32>, Option<u32>)> {
     let root = licoup_native::platform::paths::portable_data_dir().ok()?;
-    let text = fs::read_to_string(host_identity_path(&root)).ok()?;
-    parse_host_record(&text)
+    let text = fs::read_to_string(host_generation_path(&root)).ok()?;
+    parse_host_generation_record(&text)
 }
 
-fn write_host_identity() -> Result<()> {
+fn write_host_generation() -> Result<()> {
     let root = licoup_native::platform::paths::portable_data_dir()?;
-    let path = host_identity_path(&root);
+    let path = host_generation_path(&root);
     if let Some(parent) = path.parent() {
         licoup_native::platform::file_security::ensure_private_dir(parent)?;
     }
-    let identity = executable_identity().context("conversation host unavailable")?;
-    let mut body = format!("{identity}\n{}\n", std::process::id());
+    let generation = executable_generation().context("conversation host unavailable")?;
+    let mut body = format!("{generation}\n{}\n", std::process::id());
     if let Some(client_pid) = configured_client_pid() {
         body.push_str(&format!("{client_pid}\n"));
     }
@@ -126,13 +98,13 @@ fn write_host_identity() -> Result<()> {
 }
 
 fn host_is_current() -> bool {
-    let Ok(identity) = executable_identity() else {
+    let Ok(generation) = executable_generation() else {
         return false;
     };
-    let Some((recorded, Some(host_pid), recorded_client)) = read_host_record() else {
+    let Some((recorded, Some(host_pid), recorded_client)) = read_host_generation_record() else {
         return false;
     };
-    if recorded != identity || process_liveness(host_pid) == ProcessLiveness::Dead {
+    if recorded != generation || process_liveness(host_pid) == ProcessLiveness::Dead {
         return false;
     }
     match configured_client_pid() {
@@ -380,7 +352,7 @@ pub(super) fn serve_host() -> Result<()> {
         }
         Err(error) => return Err(error).context("conversation host listener failed"),
     };
-    write_host_identity()?;
+    write_host_generation()?;
     let root = licoup_native::platform::paths::portable_data_dir()?;
     // The persistent Conversation host and Gateway must admit the same
     // evidence-bound adapters. The Gateway persists hot reloads in this
@@ -473,25 +445,25 @@ mod tests {
     }
 
     #[test]
-    fn host_identity_rejects_paths_and_keeps_a_pid() {
+    fn host_generation_rejects_paths_and_keeps_a_pid() {
+        let generation = "0".repeat(16);
         assert_eq!(
-            parse_host_record("1:2:3:4\n12\n"),
-            Some(("1:2:3:4".into(), Some(12), None))
+            parse_host_generation_record(&format!("{generation}\n12\n")),
+            Some((generation.clone(), Some(12), None))
         );
         assert_eq!(
-            parse_host_record("1:2:3:4\n12\n99\n"),
-            Some(("1:2:3:4".into(), Some(12), Some(99)))
+            parse_host_generation_record(&format!("{generation}\n12\n99\n")),
+            Some((generation.clone(), Some(12), Some(99)))
         );
         assert_eq!(
-            parse_host_record("1:2:3:4\n"),
-            Some(("1:2:3:4".into(), None, None))
+            parse_host_generation_record(&format!("{generation}\n")),
+            Some((generation.clone(), None, None))
         );
-        assert!(parse_host_record("/Applications/LicoUp.app\n12\n").is_none());
-        assert!(parse_host_record("1:2:3:4\n12\nextra\n").is_none());
-        assert!(parse_host_record("1:2:3:4\n12\n1\n").is_none());
-        let metadata = fs::metadata(env::current_exe().unwrap()).unwrap();
-        let identity = metadata_identity(&metadata);
-        assert!(valid_host_identity(&identity));
-        assert_eq!(identity, metadata_identity(&metadata));
+        assert!(parse_host_generation_record("/Applications/LicoUp.app\n12\n").is_none());
+        assert!(parse_host_generation_record(&format!("{generation}\n12\nextra\n")).is_none());
+        assert!(parse_host_generation_record(&format!("{generation}\n12\n1\n")).is_none());
+        let generation = executable_generation().unwrap();
+        assert!(valid_host_generation(&generation));
+        assert_eq!(generation, executable_generation().unwrap());
     }
 }

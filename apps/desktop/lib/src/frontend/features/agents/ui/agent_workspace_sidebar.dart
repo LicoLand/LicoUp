@@ -358,6 +358,9 @@ class SidebarConversationListView extends StatelessWidget {
     required this.onSelectSession,
     this.runningFor,
     this.priorityAgentId = '',
+    this.relatedAgentIds,
+    this.otherConversationsExpanded = false,
+    this.onToggleOtherConversations,
     this.showAgentIcons = true,
   });
 
@@ -371,6 +374,13 @@ class SidebarConversationListView extends StatelessWidget {
   /// The group assistant's agent id in the group drill-in list: its latest
   /// conversation pins to the top by default.
   final String priorityAgentId;
+
+  /// When present, conversations owned by these current or historical group
+  /// Agents stay in the main timeline. Every unrelated Agent conversation is
+  /// kept under the collapsed "Other conversations" section.
+  final Set<String>? relatedAgentIds;
+  final bool otherConversationsExpanded;
+  final VoidCallback? onToggleOtherConversations;
   final bool showAgentIcons;
 
   @override
@@ -387,6 +397,19 @@ class SidebarConversationListView extends StatelessWidget {
         ),
       );
     }
+    final relatedAgentIds = this.relatedAgentIds;
+    bool isRelated(SidebarConversationEntry entry) {
+      if (relatedAgentIds == null) return true;
+      return relatedAgentIds.contains(entry.owner.id) ||
+          relatedAgentIds.contains(entry.owner.target) ||
+          relatedAgentIds.contains(entry.brandTarget.id) ||
+          relatedAgentIds.contains(entry.brandTarget.target);
+    }
+
+    final primaryEntries = entries.where(isRelated).toList(growable: false);
+    final otherEntries = relatedAgentIds == null
+        ? const <SidebarConversationEntry>[]
+        : entries.where((entry) => !isRelated(entry)).toList(growable: false);
     final items = <Widget>[];
     final runningSessionIds = <String>{};
     // The assistant's latest thread pins above everything else by default:
@@ -394,7 +417,7 @@ class SidebarConversationListView extends StatelessWidget {
     final priorityAgent = priorityAgentId.trim();
     SidebarConversationEntry? pinnedEntry;
     if (priorityAgent.isNotEmpty) {
-      for (final entry in entries) {
+      for (final entry in primaryEntries) {
         if (entry.owner.target == priorityAgent ||
             entry.owner.id == priorityAgent) {
           pinnedEntry = entry;
@@ -405,7 +428,7 @@ class SidebarConversationListView extends StatelessWidget {
         runningSessionIds.add(pinnedEntry.session.id);
       }
     }
-    final runningEntries = entries
+    final runningEntries = primaryEntries
         .where((entry) {
           if (entry.session.id == pinnedEntry?.session.id) return false;
           final running = runningFor?.call(entry.session) ?? false;
@@ -452,7 +475,7 @@ class SidebarConversationListView extends StatelessWidget {
     // A selected conversation stays visible: when it lives in Earlier, the
     // group renders expanded even before the user opens it.
     var earlierContainsSelected = false;
-    for (final entry in entries) {
+    for (final entry in primaryEntries) {
       if (runningSessionIds.contains(entry.session.id)) {
         continue;
       }
@@ -522,6 +545,36 @@ class SidebarConversationListView extends StatelessWidget {
         toggleKey: const Key('agents-sidebar-earlier-toggle'),
         padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
       );
+    }
+    if (otherEntries.isNotEmpty) {
+      final containsSelected = otherEntries.any(
+        (entry) => entry.session.id == selectedSessionId,
+      );
+      final expanded = otherConversationsExpanded || containsSelected;
+      items.add(
+        LicoGroupHeader(
+          label: strings.otherConversations,
+          count: otherEntries.length,
+          expanded: expanded,
+          onToggle: onToggleOtherConversations,
+          toggleKey: const Key('agents-sidebar-other-conversations-toggle'),
+          padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
+        ),
+      );
+      if (expanded) {
+        for (final entry in otherEntries) {
+          items.add(
+            _SidebarConversationRow(
+              key: Key('agents-sidebar-conversation-${entry.session.id}'),
+              entry: entry,
+              selected: entry.session.id == selectedSessionId,
+              running: runningFor?.call(entry.session) ?? false,
+              showAgentIcon: showAgentIcons,
+              onTap: () => onSelectSession(entry.owner.id, entry.session.id),
+            ),
+          );
+        }
+      }
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),

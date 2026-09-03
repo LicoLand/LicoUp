@@ -235,9 +235,12 @@ class _CanonicalGroupConversationPaneState
   /// Loads the assistant Membership's persistent Profile intent, keyed by
   /// Membership id so the rotation's new Membership reloads cleanly and a
   /// superseded load can never overwrite a newer one.
-  void _queueAssistantProfileLoad(ClientConversation conversation) {
+  void _queueAssistantProfileLoad(
+    ClientConversation conversation, {
+    bool force = false,
+  }) {
     final membershipId = conversation.assistantMembership?.id.trim() ?? '';
-    if (membershipId == _assistantProfileMembershipId) return;
+    if (!force && membershipId == _assistantProfileMembershipId) return;
     _assistantProfileMembershipId = membershipId;
     _assistantProfileIntent = null;
     if (membershipId.isEmpty) return;
@@ -300,6 +303,10 @@ class _CanonicalGroupConversationPaneState
     if (open == null) return;
     await open(revisionDigest);
     if (!mounted) return;
+    final selected = widget.controller.selectedConversation;
+    if (selected != null) {
+      _queueAssistantProfileLoad(selected, force: true);
+    }
     await _loadAuthorizedStrategies();
   }
 
@@ -443,12 +450,11 @@ class _CanonicalGroupConversationPaneState
   );
 
   /// Composed assistant identity: the real agent name, then model and
-  /// reasoning-effort segments from the selected strategy's runtime profile,
-  /// falling back to the assistant Membership's persistent Profile, then the
-  /// bare display name. A Fast segment appears only when a source reports it;
-  /// no current group source does. Agent, model, and effort segments render
-  /// in their human-readable display forms (brand name, catalog display name,
-  /// token-aware effort casing).
+  /// reasoning-effort segments from the assistant Membership's persistent
+  /// Profile. A strategy binding is not the Assistant configuration authority
+  /// and must never replace the model the user actually selected. While the
+  /// Profile is loading or intentionally leaves either field empty, the
+  /// capsule omits that segment instead of projecting a plausible default.
   String _assistantIdentityLabel(ClientConversation conversation) {
     final membership = conversation.assistantMembership;
     if (membership == null) return '';
@@ -462,14 +468,9 @@ class _CanonicalGroupConversationPaneState
         : agentId.isNotEmpty
         ? agentId
         : membership.id;
-    final runtime = agentId.isEmpty ? null : _strategyRuntimeProfiles[agentId];
     final intent = _assistantProfileIntent;
-    final model = runtime != null && runtime.model.trim().isNotEmpty
-        ? runtime.model
-        : (intent?['preferredModel'] ?? '').toString();
-    final effort = runtime != null && runtime.reasoningEffort.trim().isNotEmpty
-        ? runtime.reasoningEffort
-        : (intent?['preferredReasoningEffort'] ?? '').toString();
+    final model = (intent?['preferredModel'] ?? '').toString();
+    final effort = (intent?['preferredReasoningEffort'] ?? '').toString();
     return composeOrchestrationAssignmentCapsuleLabel(
       agentLabel: agentLabel,
       modelName: model,
@@ -599,6 +600,7 @@ class _CanonicalGroupConversationPaneState
     return CanonicalGroupFailureCapsule(
       code: controller.failureCode,
       failureRef: controller.failureRef,
+      recovery: controller.failureRecovery,
       copyBlob: controller.failureCopyBlob,
       onCopy: widget.onCopyText,
     );
@@ -867,9 +869,15 @@ class _CanonicalGroupConversationPaneState
     final event = widget.controller.events.last;
     for (final part in event.parts.reversed) {
       if (part.kind != ConversationEventPartKind.diagnostic) continue;
-      final code = persistentTurnDiagnosticFailureCode(part.content);
-      if (code == null) continue;
-      widget.controller.surfaceFailure('turn', code);
+      final failure = persistentTurnDiagnosticFailure(part.content);
+      if (failure == null) continue;
+      widget.controller.surfaceFailure(
+        failure.stage.isEmpty ? 'turn' : failure.stage,
+        failure.code,
+        component: failure.component,
+        retryable: failure.retryable,
+        recovery: failure.recovery,
+      );
       return;
     }
   }
@@ -1161,6 +1169,12 @@ class _CanonicalGroupConversationPaneState
       onCancel: _cancelVisibleTurn,
       onSelectSession: (_) {},
       onCopyText: widget.onCopyText,
+      onRetryMessage: (eventId) async {
+        await controller.retryMessage(eventId);
+      },
+      onDeleteMessage: (eventId) async {
+        await controller.deleteMessage(eventId);
+      },
       onNewConversation: _refreshAssistantThread,
     );
     final pane = AgentConversationActivePane(

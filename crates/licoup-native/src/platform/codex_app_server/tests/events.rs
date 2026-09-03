@@ -381,16 +381,31 @@ fn failed_turn_classifies_current_codex_error_shapes() {
     let cases = [
         (
             json!("serverOverloaded"),
+            "codex_turn_not_completed",
             "failed/ServerOverloaded",
             "Codex is temporarily overloaded.",
+            None,
         ),
         (
             json!({"responseStreamDisconnected": {"httpStatusCode": 502}}),
+            "codex_turn_not_completed",
             "failed/ResponseStreamDisconnected",
             "Codex response stream disconnected.",
+            None,
+        ),
+        (
+            json!({"usageLimitExceeded": {"resetAt": "redacted fixture"}}),
+            "codex_usage_limit_exceeded",
+            "failed/UsageLimitExceeded",
+            "Codex usage limit exceeded.",
+            Some((
+                "native_cli",
+                false,
+                "select_available_model_or_wait_for_quota_reset",
+            )),
         ),
     ];
-    for (error_info, expected_status, expected_message) in cases {
+    for (error_info, expected_code, expected_status, expected_message, resolution) in cases {
         let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
         initialize(&mut protocol);
         open_thread(&mut protocol);
@@ -410,10 +425,23 @@ fn failed_turn_classifies_current_codex_error_shapes() {
                 }
             }
         })));
-        assert_eq!(failure.code, "codex_turn_not_completed");
+        assert_eq!(failure.code, expected_code);
         assert_eq!(failure.turn_status.as_deref(), Some(expected_status));
         assert_eq!(failure.message, expected_message);
+        match resolution {
+            Some((component, retryable, recovery)) => {
+                assert_eq!(failure.component, Some(component));
+                assert_eq!(failure.retryable, Some(retryable));
+                assert_eq!(failure.recovery, Some(recovery));
+            }
+            None => {
+                assert_eq!(failure.component, None);
+                assert_eq!(failure.retryable, None);
+                assert_eq!(failure.recovery, None);
+            }
+        }
         assert!(!format!("{failure:?}").contains("private fixture detail"));
+        assert!(!format!("{failure:?}").contains("redacted fixture"));
     }
 }
 

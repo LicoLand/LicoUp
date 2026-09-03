@@ -190,6 +190,9 @@ AgentConversationMessage _buildAgentConversationMessage(
     childMessagesTruncated: false,
     childMessages: List<AgentConversationMessage>.unmodifiable(childMessages),
     images: parseAgentConversationImageAttachments(json['images']),
+    deliveryState: (json['deliveryState'] ?? '').toString() == 'failed'
+        ? AgentConversationMessageDeliveryState.failed
+        : AgentConversationMessageDeliveryState.ordinary,
   );
 }
 
