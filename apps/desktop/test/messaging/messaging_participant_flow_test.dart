@@ -351,6 +351,54 @@ void main() {
   });
 
   testWidgets(
+    'failed user message keeps the ordinary bubble and adds retry plus delete',
+    (tester) async {
+      final retried = <String>[];
+      final deleted = <String>[];
+      final message = AgentConversationMessage(
+        id: 'failed-message',
+        role: 'user',
+        text: 'try again',
+        createdAt: _at(10, 0),
+        deliveryState: AgentConversationMessageDeliveryState.failed,
+      );
+      await _pumpFlow(
+        tester,
+        [ConversationMessageTimelineItem('failed-message', message)],
+        onRetryMessage: (id) async => retried.add(id),
+        onDeleteMessage: (id) async => deleted.add(id),
+      );
+
+      final bubble = find.byKey(const Key('messaging-message-bubble'));
+      final retry = find.byKey(
+        const Key('messaging-message-retry-action-failed-message'),
+      );
+      expect(bubble, findsOneWidget);
+      expect(find.byType(MessagingUserBubbleGlass), findsOneWidget);
+      expect(retry, findsOneWidget);
+      expect(
+        tester.getRect(retry).right,
+        lessThan(tester.getRect(bubble).left),
+      );
+
+      await tester.tap(retry);
+      await tester.pump();
+      expect(retried, ['failed-message']);
+
+      await tester.tap(bubble, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('messaging-message-context-menu')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('messaging-glass-menu-delete')));
+      await tester.pumpAndSettle();
+      expect(deleted, ['failed-message']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'copy action hangs at the bubble bottom-left, timestamp at bottom-right',
     (tester) async {
       final chronological = [
@@ -1205,6 +1253,8 @@ Future<void> _pumpFlow(
   bool hasEarlier = false,
   Future<void> Function()? onLoadEarlier,
   Future<void> Function(String)? onCopyText,
+  Future<void> Function(String)? onRetryMessage,
+  Future<void> Function(String)? onDeleteMessage,
   bool assistantActive = false,
   double viewportHeight = 600,
 }) async {
@@ -1245,6 +1295,8 @@ Future<void> _pumpFlow(
             hasEarlier: hasEarlier,
             onLoadEarlier: onLoadEarlier,
             onCopyText: onCopyText,
+            onRetryMessage: onRetryMessage,
+            onDeleteMessage: onDeleteMessage,
           ),
         ),
       ),

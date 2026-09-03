@@ -190,6 +190,50 @@ fn cursor_parser_accepts_an_explicit_empty_success_result() {
 }
 
 #[test]
+fn cursor_parser_keeps_a_valid_reply_when_is_error_is_explicitly_false() {
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new(
+        "synthetic-session",
+        "prompt",
+        crate::platform::cursor_driver::model::EffectiveSettings::default(),
+    );
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    let effects = parser
+        .parse_line(br#"{"type":"result","subtype":"error_during_execution","is_error":false,"session_id":"synthetic-session","result":"usable final reply"}"#)
+        .unwrap();
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Complete(outcome) if outcome.output == "usable final reply"
+    )));
+}
+
+#[test]
+fn cursor_parser_classifies_an_explicit_terminal_execution_failure() {
+    use crate::platform::cursor_driver::errors::CursorFailureKind;
+    use crate::platform::native_agent_parser::adapters::cursor::{
+        CursorParseFailure, CursorParser,
+    };
+
+    let mut parser = CursorParser::new(
+        "synthetic-session",
+        "prompt",
+        crate::platform::cursor_driver::model::EffectiveSettings::default(),
+    );
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    assert!(matches!(
+        parser.parse_line(br#"{"type":"result","subtype":"error_during_execution","is_error":true,"session_id":"synthetic-session","result":"private vendor detail"}"#),
+        Err(CursorParseFailure::TurnFailed(
+            CursorFailureKind::ExecutionFailed
+        ))
+    ));
+}
+
+#[test]
 fn cursor_parser_rejects_missing_or_different_prompt_acknowledgement() {
     use crate::platform::cursor_driver::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{

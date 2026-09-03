@@ -263,6 +263,28 @@ void main() {
   );
 
   test(
+    'archives the requested canonical conversation without reselection',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+
+      await controller.initialize();
+      expect(
+        await controller.archiveConversation('conversation:group'),
+        isTrue,
+      );
+
+      final request = runner.requests.singleWhere(
+        (entry) => entry['action'] == 'conversation.archive',
+      );
+      expect(request['conversationId'], 'conversation:group');
+      expect(request['archived'], isTrue);
+      expect(controller.groupConversations, isEmpty);
+      expect(controller.failureCode, isEmpty);
+    },
+  );
+
+  test(
     'lists archived conversations and restores one canonical item',
     () async {
       final runner = _ConversationRunner(groupArchived: true);
@@ -312,6 +334,40 @@ void main() {
     expect(controller.failureCopyBlob, contains('problemCode: LU-ST-1923'));
     expect(controller.failureCopyBlob, contains('domain: strategy'));
   });
+
+  test(
+    'keeps the structured resolution for a persisted usage-limit failure',
+    () {
+      final controller = ClientConversationController(
+        runner: _ConversationRunner(),
+      );
+      controller.surfaceFailure(
+        'turn/completed',
+        'codex_usage_limit_exceeded',
+        component: 'native_cli',
+        retryable: false,
+        recovery: 'select_available_model_or_wait_for_quota_reset',
+      );
+
+      expect(controller.failureProblemCode, 'LU-NA-4239');
+      expect(controller.failureComponent, 'native_cli');
+      expect(controller.failureRetryable, isFalse);
+      expect(
+        controller.failureRecovery,
+        'select_available_model_or_wait_for_quota_reset',
+      );
+      expect(controller.failureCopyBlob, contains('component: native_cli'));
+      expect(controller.failureCopyBlob, contains('retryable: false'));
+      expect(
+        controller.failureCopyBlob,
+        contains('recovery: select_available_model_or_wait_for_quota_reset'),
+      );
+      expect(
+        controller.failureCopyBlob,
+        isNot(contains('runtime fixture detail')),
+      );
+    },
+  );
 
   test('records a copyable failure ref when post transport fails', () async {
     final runner = _ConversationRunner()..failPostCode = 'transport_failed';
@@ -367,20 +423,38 @@ void main() {
     },
   );
 
-  test('keeps the persisted event when after-post dispatch fails', () async {
-    final runner = _ConversationRunner()..failDispatchCode = 'transport_failed';
-    final controller = ClientConversationController(runner: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-    final before = controller.events.map((event) => event.id).toList();
+  test(
+    'marks a persisted event retryable when after-post dispatch fails',
+    () async {
+      final runner = _ConversationRunner()
+        ..failDispatchCode = 'transport_failed';
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
 
-    expect(await controller.postMessage('hi'), isTrue);
-    expect(controller.events.map((event) => event.id), before);
-    expect(controller.failureStage, 'send');
-    expect(controller.failureCode, 'transport_failed');
-    expect(controller.liveTurns, isEmpty);
-    expect(controller.dispatchPending, isFalse);
-  });
+      expect(await controller.postMessage('hi'), isTrue);
+      final marker = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.event.append',
+      );
+      expect(marker['conversationId'], 'conversation:group');
+      expect(marker['causationId'], 'event:existing');
+      expect(marker['finalized'], isTrue);
+      expect(
+        jsonDecode(
+          ((marker['parts'] as List).single as Map)['content'] as String,
+        ),
+        {'code': 'transport_failed', 'stage': 'send'},
+      );
+      expect(
+        controller.events.map((event) => event.id),
+        containsAll(['event:existing', 'event:failed-turn']),
+      );
+      expect(controller.failureStage, 'send');
+      expect(controller.failureCode, 'transport_failed');
+      expect(controller.liveTurns, isEmpty);
+      expect(controller.dispatchPending, isFalse);
+    },
+  );
 
   test(
     'does not synthesize a code for an untyped dispatch exception',
@@ -467,6 +541,61 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'failed message retry reposts its content then deletes the settled attempt',
+    () async {
+      final runner = _ConversationRunner()..includeFailedTurn = true;
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(await controller.retryMessage('event:existing'), isTrue);
+
+      final actions = runner.requests
+          .map((request) => request['action'])
+          .where(
+            (action) =>
+                action == 'conversation.message.post' ||
+                action == 'conversation.dispatch.after-post' ||
+                action == 'conversation.message.delete',
+          )
+          .toList();
+      expect(actions, [
+        'conversation.message.post',
+        'conversation.dispatch.after-post',
+        'conversation.message.delete',
+      ]);
+      final repost = runner.requests.firstWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      );
+      expect(repost['content'], 'hello');
+      final deletion = runner.requests.firstWhere(
+        (request) => request['action'] == 'conversation.message.delete',
+      );
+      expect(deletion['eventId'], 'event:existing');
+      expect(deletion['ownerMembershipId'], 'membership:owner');
+    },
+  );
+
+  test('deletes a local message through the canonical store action', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(await controller.deleteMessage('event:existing'), isTrue);
+
+    final deletion = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.message.delete',
+    );
+    expect(deletion.keys.toSet(), {
+      'action',
+      'conversationId',
+      'eventId',
+      'ownerMembershipId',
+    });
+  });
 }
 
 final class _ConversationRunner implements AgentCommandRunner {
@@ -480,6 +609,9 @@ final class _ConversationRunner implements AgentCommandRunner {
   bool dispatchPending = false;
   bool throwUntypedDispatch = false;
   bool malformedPost = false;
+  bool includeFailedTurn = false;
+  bool appendedFailure = false;
+  bool messageDeleted = false;
   String failPostCode = '';
   String failDispatchCode = '';
   String strategyRevision = '';
@@ -508,6 +640,12 @@ final class _ConversationRunner implements AgentCommandRunner {
     }
     if (action == 'conversation.strategy.set') {
       strategyRevision = (request['strategyRevision'] ?? '').toString();
+    }
+    if (action == 'conversation.message.delete') {
+      messageDeleted = true;
+    }
+    if (action == 'conversation.event.append') {
+      appendedFailure = true;
     }
     if (action == 'conversation.message.post' && failPostCode.isNotEmpty) {
       return {
@@ -538,7 +676,12 @@ final class _ConversationRunner implements AgentCommandRunner {
         'conversation.events.page' => {
           'events': request['conversationId'] == 'conversation:created'
               ? <Map<String, dynamic>>[]
-              : [_event()],
+              : messageDeleted
+              ? <Map<String, dynamic>>[]
+              : [
+                  _event(),
+                  if (includeFailedTurn || appendedFailure) _failedTurnEvent(),
+                ],
           'nextCursor': null,
           'totalCount': request['conversationId'] == 'conversation:created'
               ? 0
@@ -564,6 +707,8 @@ final class _ConversationRunner implements AgentCommandRunner {
               'stage': 'strategy/start',
             },
         },
+        'conversation.event.append' => _failedTurnEvent(),
+        'conversation.message.delete' => <String, dynamic>{},
         'conversation.membership.add' => <String, dynamic>{},
         _ => <String, dynamic>{},
       },
@@ -703,6 +848,28 @@ Map<String, dynamic> _event() => {
       'kind': 'text',
       'content': 'hello',
       'createdAtUnixMs': 10,
+    },
+  ],
+};
+
+Map<String, dynamic> _failedTurnEvent() => {
+  'id': 'event:failed-turn',
+  'conversationId': 'conversation:group',
+  'sequence': 2,
+  'authorMembershipId': 'membership:codex',
+  'kind': 'message',
+  'causationId': 'event:existing',
+  'correlationId': 'turn:failed',
+  'createdAtUnixMs': 11,
+  'finalized': true,
+  'parts': [
+    {
+      'id': 'part:diagnostic',
+      'eventId': 'event:failed-turn',
+      'ordinal': 0,
+      'kind': 'diagnostic',
+      'content': '{"code":"fixture_turn_failed"}',
+      'createdAtUnixMs': 11,
     },
   ],
 };

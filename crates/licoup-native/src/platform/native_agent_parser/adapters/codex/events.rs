@@ -199,8 +199,17 @@ impl CodexParser {
                     "code": code,
                 }),
             );
-            let mut failure =
-                self.contextualize(ProtocolFailure::new(code, message, "turn/completed"));
+            let failure = ProtocolFailure::new(code, message, "turn/completed");
+            let failure = if code == "codex_usage_limit_exceeded" {
+                failure.with_resolution(
+                    "native_cli",
+                    false,
+                    "select_available_model_or_wait_for_quota_reset",
+                )
+            } else {
+                failure
+            };
+            let mut failure = self.contextualize(failure);
             failure.turn_status = Some(turn_status);
             return vec![ProtocolEffect::Fail(failure)];
         }
@@ -315,7 +324,11 @@ fn turn_failure(status: &str, class: Option<&str>) -> (&'static str, &'static st
         (_, Some("ActiveTurnNotSteerable")) => "Codex could not steer the active turn.",
         _ => "Codex did not complete the requested turn.",
     };
-    ("codex_turn_not_completed", message)
+    let code = match class {
+        Some("UsageLimitExceeded") => "codex_usage_limit_exceeded",
+        _ => "codex_turn_not_completed",
+    };
+    (code, message)
 }
 
 fn turn_status_token(status: &str, class: Option<&str>) -> String {

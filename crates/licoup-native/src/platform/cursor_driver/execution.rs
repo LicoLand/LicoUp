@@ -1,6 +1,7 @@
 use super::control::{clear_active_turn, register_active_turn};
+use super::errors::CursorFailureKind;
 use super::errors::ProtocolFailure;
-use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
+use super::io::{TransportEvent, read_protocol_messages};
 use super::model::{CREATE_CHAT_ARGS, PROCESS_POLL_INTERVAL, RunResult, TURN_ARGS};
 use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
@@ -13,8 +14,7 @@ use serde_json::Value;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -341,15 +341,10 @@ fn run_turn(
     let (sender, receiver) = mpsc::channel();
     let stdout_handle =
         thread::spawn(move || read_protocol_messages(BufReader::new(stdout), sender));
-    let stderr_truncated = Arc::new(AtomicBool::new(false));
-    let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_handle = thread::spawn(move || {
-        let mut truncated = false;
-        drain_stderr(stderr, max_stderr, &mut truncated);
-        if truncated {
-            stderr_flag.store(true, Ordering::Relaxed);
-        }
-    });
+    // Cursor's documented failure channel is a non-zero exit plus stderr,
+    // often without a terminal stream-json frame. Keep a bounded copy only
+    // until this turn is classified; raw provider prose never leaves here.
+    let stderr_handle = thread::spawn(move || read_bounded(stderr, Some(max_stderr)));
     // The deadline already spans the whole turn, including any create-chat
     // phase, so the turn phase simply keeps consuming the same window.
     let (outcome, failure, stdout_truncated) = consume_turn_stream(
@@ -367,9 +362,12 @@ fn run_turn(
         .ok()
         .flatten();
     let _ = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE);
-    let _ = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE);
+    let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE).ok();
     clear_active_turn(session_id);
-    let stderr_was_truncated = stderr_truncated.load(Ordering::Relaxed);
+    let stderr_was_truncated = stderr.as_ref().is_some_and(|report| report.truncated);
+    let stderr_failure = stderr
+        .as_ref()
+        .and_then(|report| CursorFailureKind::from_stderr(&report.text));
     if let Some(outcome) = outcome {
         let transitions =
             crate::platform::native_agent_parser::adapters::cursor::completed_transitions(
@@ -392,6 +390,18 @@ fn run_turn(
         };
     }
     if let Some(failure) = failure {
+        if matches!(
+            failure.code,
+            "cursor_cli_turn_failed" | "cursor_cli_execution_failed"
+        ) && let Some(kind) = stderr_failure
+        {
+            return RunResult::failed(
+                kind.failure(Some(session_id)),
+                started_at,
+                stdout_truncated,
+                stderr_was_truncated,
+            );
+        }
         return RunResult::failed(failure, started_at, stdout_truncated, stderr_was_truncated);
     }
     // consume_turn_stream returned no outcome and no protocol failure: stdout
@@ -418,6 +428,14 @@ fn run_turn(
         }
     }
     if !status.is_some_and(|status| status.success()) {
+        if let Some(kind) = stderr_failure {
+            return RunResult::failed(
+                kind.failure(Some(session_id)),
+                started_at,
+                stdout_truncated,
+                stderr_was_truncated,
+            );
+        }
         return RunResult::failed(
             ProtocolFailure::new(
                 "cursor_cli_turn_failed",
@@ -581,11 +599,13 @@ fn consume_turn_stream(
                                 "Cursor Agent CLI acknowledged different prompt content.",
                                 "turn/deliver",
                             ),
-                            CursorParseFailure::TurnFailed => (
-                                "cursor_cli_turn_failed",
-                                "Cursor Agent CLI reported a failed turn result.",
-                                "turn/completed",
-                            ),
+                            CursorParseFailure::TurnFailed(kind) => {
+                                return (
+                                    None,
+                                    Some(kind.failure(Some(parser.session_id()))),
+                                    false,
+                                );
+                            }
                         };
                         return (
                             None,

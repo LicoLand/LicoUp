@@ -183,7 +183,7 @@ fn fresh_desktop_bridge_lane_exposes_discovery_and_frozen_catalog_before_any_con
     token_holders.sort();
     assert_eq!(token_holders, ["antigravity", "codex", "cursor"]);
 
-    let frames = connector_session(&root, "codex");
+    let frames = connector_session(&root, "antigravity");
     let frames = frames.as_array().expect("frame list");
     let initialize = frames
         .iter()

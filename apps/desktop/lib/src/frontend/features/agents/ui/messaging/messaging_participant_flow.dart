@@ -261,6 +261,8 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.bottomOverlayInset = 0,
     this.scrollController,
     this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
     this.messagePageLoading = false,
     this.messagePageError = '',
     this.hasEarlier = false,
@@ -306,6 +308,8 @@ class MessagingParticipantFlow extends StatefulWidget {
   /// Clipboard write routed through the platform boundary; message rows
   /// expose an explicit copy action when present.
   final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
   final bool messagePageLoading;
   final String messagePageError;
   final bool hasEarlier;
@@ -674,6 +678,8 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               primaryConversationId: widget.primaryConversationId,
             ),
             onCopyText: widget.onCopyText,
+            onRetryMessage: widget.onRetryMessage,
+            onDeleteMessage: widget.onDeleteMessage,
           ),
         ),
       MessagingFlowProcess(:final item, :final active) => Padding(

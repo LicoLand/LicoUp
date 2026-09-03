@@ -356,6 +356,14 @@ impl ConversationService {
                     &attachments,
                 )
             }
+            "conversation.message.delete" => {
+                self.store.delete_posted_message(
+                    required_string(object, "conversationId")?,
+                    required_string(object, "eventId")?,
+                    required_string(object, "ownerMembershipId")?,
+                )?;
+                Ok(json!({"ok": true}))
+            }
             "conversation.dispatch.after-post" => {
                 let conversation_id = required_string(object, "conversationId")?;
                 let event_id = required_string(object, "eventId")?;
@@ -1414,6 +1422,9 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
             "mentionedMembershipIds",
             "attachments",
         ],
+        "conversation.message.delete" => {
+            &["action", "conversationId", "eventId", "ownerMembershipId"]
+        }
         "conversation.dispatch.after-post" => &["action", "conversationId", "eventId"],
         "conversation.event.part.append" => &["action", "eventId", "part"],
         "conversation.event.finalize" => &["action", "eventId"],
@@ -2171,6 +2182,93 @@ mod tests {
         assert_eq!(
             before, after,
             "no Agent work and no settlement happened without the host"
+        );
+    }
+
+    #[test]
+    fn owner_can_delete_a_settled_post_through_the_canonical_action() {
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            |_| Err(crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One remove this failed attempt"
+            }),
+        );
+        let event_id = posted["event"]["id"].as_str().unwrap().to_owned();
+        let before = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        assert!(
+            before
+                .iter()
+                .any(|event| event.causation_id.as_deref() == Some(event_id.as_str())),
+            "fixture includes the derived failure"
+        );
+
+        service
+            .execute(json!({
+                "action": "conversation.message.delete",
+                "conversationId": conversation_id,
+                "eventId": event_id,
+                "ownerMembershipId": owner_id,
+            }))
+            .unwrap();
+
+        let after = service
+            .store()
+            .page_events(&conversation_id, None, 20)
+            .unwrap()
+            .events;
+        assert!(after.iter().all(|event| {
+            event.id != event_id && event.causation_id.as_deref() != Some(event_id.as_str())
+        }));
+    }
+
+    #[test]
+    fn owner_cannot_delete_a_post_while_its_turn_is_active() {
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            |params| Ok(accepted_receipt(params)),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One keep running"
+            }),
+        );
+        let event_id = posted["event"]["id"].as_str().unwrap();
+
+        let error = service
+            .execute(json!({
+                "action": "conversation.message.delete",
+                "conversationId": conversation_id,
+                "eventId": event_id,
+                "ownerMembershipId": owner_id,
+            }))
+            .expect_err("active work must not be deleted");
+
+        assert_eq!(error.to_string(), "message_turn_active");
+        assert!(
+            service
+                .store()
+                .page_events(&conversation_id, None, 20)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.id == event_id)
         );
     }
 

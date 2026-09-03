@@ -13,12 +13,14 @@ class CanonicalGroupFailureCapsule extends StatelessWidget {
     super.key,
     required this.code,
     required this.failureRef,
+    required this.recovery,
     required this.copyBlob,
     required this.onCopy,
   });
 
   final String code;
   final String failureRef;
+  final String recovery;
   final String copyBlob;
   final Future<void> Function(String) onCopy;
 
@@ -26,10 +28,12 @@ class CanonicalGroupFailureCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final reference = failureRef.isEmpty ? code : failureRef;
+    final guidance = strings.groupConversationFailureRecovery(recovery);
     const radius =
         MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius;
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 360),
+      constraints: const BoxConstraints(maxWidth: 420),
       child: DecoratedBox(
         key: const Key('canonical-group-failure'),
         decoration: BoxDecoration(
@@ -43,17 +47,34 @@ class CanonicalGroupFailureCapsule extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
-                child: Text(
-                  strings.groupConversationFailureCapsule(
-                    failureRef.isEmpty ? code : failureRef,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.error,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      strings.groupConversationFailureSummary(code, reference),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.error,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (guidance.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        guidance,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 11,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 4),

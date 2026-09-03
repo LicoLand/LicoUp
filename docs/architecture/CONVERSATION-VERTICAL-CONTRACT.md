@@ -459,7 +459,9 @@ This means:
 ### Invariants
 
 1. Every state mutation emits exactly one delta (or atomic batch for multi-field changes)
-2. `messages[]` is append-only; once created, a Message is never removed (only state changes)
+2. `messages[]` is append-only except for an explicit local-owner delete command. That
+   command atomically removes the selected user message and its derived turn subtree, and
+   rejects while any derived turn is active.
 3. State mutations are atomic with persistence (same SQLite transaction)
 4. Commands from unknown conversation_id → `ErrorOccurred` delta
 5. `ConversationState` per conversation is fully independent — zero shared mutable state
@@ -662,6 +664,32 @@ Widget build(BuildContext context) {
    - Streaming text: only rebuild the text widget, not the message list
    - Use `AnimatedBuilder` or `ValueListenableBuilder` for fine-grained rebuilds
    - `StreamContentAppend` delta → append to string, re-render one widget
+
+4. **Assistant identity test authority**:
+   - Tests derive expected Agent, model, and reasoning labels from a mutable
+     backend Membership Profile fixture.
+   - Tests must not hard-code a real Agent + model pairing as the asserted UI
+     result. Catalog choices can change without changing this projection
+     contract; the UI must always equal the backend Profile currently read.
+
+5. **Failed-message composition**:
+   - A failed user message continues to use the ordinary user-message bubble.
+   - A transport failure after the user Event commits writes a causal diagnostic,
+     so retry state survives refresh and relaunch.
+   - Retry is an adjacent child affordance of that message row, never a replacement
+     failure bubble or a duplicate transcript item.
+   - Right-click delete targets the canonical message id and is available only for
+     local-owner messages.
+
+6. **Terminal failure projection**:
+   - The runtime parser owns the first stable failure code. A recognized provider
+     quota failure must not be collapsed into a generic incomplete-turn code.
+   - Canonical diagnostics retain only the safe code, stage, component,
+     retryability, recovery token, and closed turn-status class. Raw provider
+     messages, reset timestamps, paths, and runtime identities are never stored.
+   - The group-chat banner localizes that contract into a concise cause and an
+     actionable recovery. Tests assert the typed class without fixing a real
+     Agent + model pairing.
 
 ---
 
