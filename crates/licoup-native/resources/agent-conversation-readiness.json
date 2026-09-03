@@ -3,12 +3,12 @@
   "contractVersion": "CL-06",
   "minimumConsecutivePasses": 1,
   "summary": {
-    "total": 12,
+    "total": 13,
     "ready": 0,
     "partial": 0,
     "failed": 0,
     "blocked": 0,
-    "unverified": 12,
+    "unverified": 13,
     "historyOnly": 0,
     "sendEnabled": 0
   },
@@ -73,7 +73,7 @@
       "conversationGatePassed": true,
       "cleanupPassed": true,
       "privacyPassed": true,
-      "consecutivePasses": 3,
+      "consecutivePasses": 1,
       "coreChecks": {
         "required": 10,
         "passed": 10,
@@ -81,14 +81,30 @@
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 3,
-        "passed": 3,
+        "nativeSupported": 4,
+        "passed": 2,
         "gaps": 0,
         "failed": 0
       },
-      "evidenceBinding": null,
+      "evidenceBinding": {
+        "agentId": "codex",
+        "driverId": "codex-app-server",
+        "runtimeProtocol": "codex-app-server-stdio-jsonrpc",
+        "harnessVersion": "dispatch-lane-unified-1",
+        "runtimeVersionClass": "verified-release",
+        "runtimeVersionDigest": "sha256:67ea03c98e7726eeebd161bc3bc92d8937f412f1899790a28e4ee9b80803c4d7",
+        "capabilitySnapshotDigest": "sha256:40dd1b8cb9595f97873b2065b91000f59a77429b2241904870805df7bc813c02",
+        "adapterManifestDigest": "sha256:03dbf45578577d9f715c271b377280587c74d04a19d441e27d78c01820648e4f",
+        "releaseArtifactDigest": "sha256:f92c31fbd5b717308c52478110f3de201921185abac80adea34d6d2136aa6140",
+        "releaseSidecarDigest": "sha256:3591dacd27e44ae06ae8f7cf442def1f7c79e0a0e06903cc26cb6b751251cce3",
+        "productContinuityBindingDigest": "sha256:93781b5a7c65e661f3973f7e8bba0e31a7af229e86bcf5669274f472f1f38c4c",
+        "runtimeSourceClass": "discovered-binary",
+        "registryDigest": "sha256:a24748a585dff9325b7db163cea05be0052055f5cb7332c15555f9072854acfa",
+        "driverInventoryDigest": "sha256:ecc5195059c13bc615d743cc7a5f7be5abb3f07775924c9a2a2fb098fba7f418",
+        "evidenceDigest": "sha256:f54c2819f72f8109b7e4cfa9791cfc6b8537ac5e7719adb31d85fa7b5de0585c"
+      },
       "summaryCodes": [
-        "evidence_stale_or_incomplete"
+        "evidence_incomplete"
       ]
     },
     {
@@ -219,6 +235,32 @@
       "evidenceBinding": null,
       "summaryCodes": [
         "evidence_stale_or_incomplete"
+      ]
+    },
+    {
+      "agentId": "deepseek-harness",
+      "status": "unverified",
+      "sendEnabled": false,
+      "officialNativeLaneProven": false,
+      "conversationGatePassed": false,
+      "cleanupPassed": false,
+      "privacyPassed": false,
+      "consecutivePasses": 0,
+      "coreChecks": {
+        "required": 10,
+        "passed": 0,
+        "failed": 0
+      },
+      "conditionalChecks": {
+        "total": 6,
+        "nativeSupported": 0,
+        "passed": 0,
+        "gaps": 0,
+        "failed": 0
+      },
+      "evidenceBinding": null,
+      "summaryCodes": [
+        "evidence_missing"
       ]
     },
     {

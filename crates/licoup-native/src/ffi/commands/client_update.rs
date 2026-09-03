@@ -1,4 +1,4 @@
-// update commands: update status|check|download|verify|apply|rollback
+// update commands: update status|check|download|verify|apply
 
 use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
@@ -6,11 +6,16 @@ use anyhow::Result;
 pub(super) fn handle_update(command: AdmittedCommand) -> Result<CliExecution> {
     let action = match command.path() {
         ["update", action] => *action,
-        _ => unreachable!("admission only registers concrete update routes"),
+        _ => {
+            return Err(super::handler_error("command_failed", "use_cli_help").into());
+        }
     };
     let params = admitted_params(
         &[
-            ("channel", command.option_text("channel")),
+            (
+                "targetReleaseTrack",
+                command.option_text("target-release-track"),
+            ),
             ("manifestPath", command.option_text("manifest-path")),
             ("publicKeysPath", command.option_text("public-keys-path")),
             ("revocationPath", command.option_text("revocation-path")),
@@ -19,7 +24,12 @@ pub(super) fn handle_update(command: AdmittedCommand) -> Result<CliExecution> {
             ("repo", command.option_text("repo")),
             ("stagingRoot", command.option_text("staging-root")),
             ("stateRoot", command.option_text("state-root")),
-            ("currentVersion", command.option_text("current-version")),
+            (
+                "dataRoot",
+                (action == "apply")
+                    .then(|| command.option_text("data-root"))
+                    .flatten(),
+            ),
             ("execute", command.option_text("execute")),
             ("installRoot", command.option_text("install-root")),
             ("guiPid", command.option_text("gui-pid")),
@@ -49,11 +59,11 @@ mod tests {
     }
 
     #[test]
-    fn update_status_admits_full_option_surface() {
+    fn update_status_admits_non_apply_option_surface() {
         let output = match execute_cli(vec![
             "update".into(),
             "status".into(),
-            "--channel".into(),
+            "--target-release-track".into(),
             "stable".into(),
             "--source".into(),
             "github".into(),
@@ -63,8 +73,6 @@ mod tests {
             "/fixture-root/licoup-staging".into(),
             "--state-root".into(),
             "/fixture-root/licoup-state".into(),
-            "--current-version".into(),
-            "1.2.3".into(),
             "--execute".into(),
             "true".into(),
             "--install-root".into(),
@@ -75,10 +83,55 @@ mod tests {
             "true".into(),
         ]) {
             Ok(CliExecution::Json(value)) => value,
-            _ => panic!("update status must be JSON"),
+            _ => {
+                assert!(false, "update status must be JSON");
+                serde_json::Value::Null
+            }
         };
         assert_eq!(output["ok"], true);
-        assert_eq!(output["currentVersion"], "1.2.3");
+        assert_eq!(output["runningReleaseTrack"], "nightly");
+    }
+
+    #[test]
+    fn update_data_root_is_admitted_only_for_apply() {
+        for action in ["status", "check", "download", "verify"] {
+            let result = execute_cli(vec![
+                "update".into(),
+                action.into(),
+                "--data-root".into(),
+                "/fixture-root/licoup-data".into(),
+            ]);
+            assert_eq!(admission_code(&result), Some("cli_option_unknown"));
+        }
+        let result = execute_cli(vec![
+            "update".into(),
+            "apply".into(),
+            "--data-root".into(),
+            "/fixture-root/licoup-data".into(),
+        ]);
+        assert_ne!(admission_code(&result), Some("cli_option_unknown"));
+    }
+
+    #[test]
+    fn update_track_override_is_admitted_only_for_status_and_check() {
+        for action in ["download", "verify", "apply"] {
+            let result = execute_cli(vec![
+                "update".into(),
+                action.into(),
+                "--target-release-track".into(),
+                "stable".into(),
+            ]);
+            assert_eq!(admission_code(&result), Some("cli_option_unknown"));
+        }
+        for action in ["status", "check"] {
+            let result = execute_cli(vec![
+                "update".into(),
+                action.into(),
+                "--target-release-track".into(),
+                "stable".into(),
+            ]);
+            assert_ne!(admission_code(&result), Some("cli_option_unknown"));
+        }
     }
 
     #[test]
@@ -90,22 +143,12 @@ mod tests {
             "github".into(),
             "--repo".into(),
             "LicoLand/LicoUp".into(),
-            "--channel".into(),
+            "--target-release-track".into(),
             "stable".into(),
         ]);
         // Reaches the domain layer: GitHub fetch is not expected to succeed
         // here, so any outcome other than an admission rejection is proof of
         // admission.
-        assert_ne!(admission_code(&result), Some("cli_option_unknown"));
-    }
-
-    #[test]
-    fn update_rollback_route_is_registered() {
-        let result = execute_cli(vec!["update".into(), "rollback".into()]);
-        // The rollback route must reach the domain layer; without a signed
-        // manifest the domain rejects it with its own error, not an admission
-        // error.
-        assert_ne!(admission_code(&result), Some("cli_operation_unsupported"));
         assert_ne!(admission_code(&result), Some("cli_option_unknown"));
     }
 

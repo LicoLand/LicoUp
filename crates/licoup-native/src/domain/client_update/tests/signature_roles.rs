@@ -17,7 +17,7 @@ fn client_update_requires_distinct_offline_and_online_role_signatures() {
         check(&fixture.params(offline_only))
             .unwrap_err()
             .to_string()
-            .contains("online channel signature")
+            .contains("online signing signature")
     );
 }
 

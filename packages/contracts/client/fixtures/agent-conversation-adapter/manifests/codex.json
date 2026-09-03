@@ -67,8 +67,8 @@
       "method": "turn event notifications before terminal result"
     },
     "cancel": {
-      "status": "unsupported",
-      "method": "official lane does not expose a durable active-turn cancel handle"
+      "status": "supported",
+      "method": "App Server turn/interrupt with exact threadId and bound active turnId"
     },
     "interruptSteer": {
       "status": "supported",
@@ -112,7 +112,7 @@
   "lifecycle": {
     "supervision": "process-tree",
     "cleanupScope": "disposable-root",
-    "cancelHandleScope": "unavailable",
+    "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
     "maxTrackedSessions": 1024,
     "survivesGuiDisconnect": true,

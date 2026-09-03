@@ -4,7 +4,7 @@
 // clients verify against the bundled public keys
 // (crates/licoup-native/resources/client-update-public-keys.json) before
 // selecting an update artifact. The manifest schema is
-// v0.0.1:client-update:manifest-1 and the signatures must match the Rust
+// v0.0.1:client-update:manifest-2 and the signatures must match the Rust
 // canonical stable-stringify used by crates/licoup-native.
 
 import {
@@ -33,7 +33,7 @@ import {
   selectClientReleaseTargets,
 } from "./lib/client-release-targets.mjs";
 
-const MANIFEST_SCHEMA = "v0.0.1:client-update:manifest-1";
+const MANIFEST_SCHEMA = "v0.0.1:client-update:manifest-2";
 const MANIFEST_NAME = "LicoUp-update-manifest.json";
 const PUBLIC_KEYS_NAME = "LicoUp-update-public-keys.json";
 const MAX_MANIFEST_BYTES = 1024 * 1024;
@@ -48,6 +48,13 @@ const bundledPublicKeysPath = path.join(
 );
 const MACOS_APPLICATION_NAME = "LicoUp.app";
 const MACOS_BUNDLE_ID = "land.lico.licoup";
+const migrationFrontierPath = path.join(
+  repoRoot,
+  "crates",
+  "licoup-native",
+  "resources",
+  "client-state-migration-frontier.json",
+);
 
 function fail(message) {
   throw new Error(message);
@@ -112,8 +119,86 @@ function unsignedDocument(document) {
   return copy;
 }
 
+function hasExactKeys(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length &&
+    [...expected].sort().every((key, index) => actual[index] === key);
+}
+
 function sha256Hex(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
+}
+
+function parseSemver(value) {
+  const match = String(value).match(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:[0-9A-Za-z-]+\.)*[0-9A-Za-z-]+))?(?:\+[0-9A-Za-z.-]+)?$/u,
+  );
+  if (!match) fail("release version is not valid SemVer");
+  return { core: match.slice(1, 4).map(Number), pre: match[4]?.split(".") || [] };
+}
+
+function compareSemver(left, right) {
+  const a = parseSemver(left);
+  const b = parseSemver(right);
+  for (let index = 0; index < 3; index += 1) {
+    if (a.core[index] !== b.core[index]) return Math.sign(a.core[index] - b.core[index]);
+  }
+  if (a.pre.length === 0 || b.pre.length === 0) {
+    return a.pre.length === b.pre.length ? 0 : a.pre.length === 0 ? 1 : -1;
+  }
+  for (let index = 0; index < Math.max(a.pre.length, b.pre.length); index += 1) {
+    const x = a.pre[index];
+    const y = b.pre[index];
+    if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
+    if (x === y) continue;
+    const xn = /^\d+$/u.test(x);
+    const yn = /^\d+$/u.test(y);
+    if (xn && yn) return Math.sign(Number(x) - Number(y));
+    if (xn !== yn) return xn ? -1 : 1;
+    return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+function validatePublicationSuccessor(previous, next) {
+  if (previous.schemaVersion !== MANIFEST_SCHEMA || next.schemaVersion !== MANIFEST_SCHEMA) {
+    fail("publication manifest schema mismatch");
+  }
+  if (previous.releaseTrack !== next.releaseTrack) fail("publication release track mismatch");
+  const previousVersions = (previous.releases || []).map((release) => release.version);
+  if (previousVersions.length === 0 || next.releases?.length !== 1) {
+    fail("publication manifests require release versions");
+  }
+  const priorHigh = previousVersions.sort(compareSemver).at(-1);
+  if (compareSemver(next.releases[0].version, priorHigh) <= 0) {
+    fail("publication version must be strictly newer by SemVer");
+  }
+  const priorRelease = previous.releases.find((release) => release.version === priorHigh);
+  const priorDomains = new Map(
+    priorRelease.migrationFrontier.domains
+      .map((domain) => [domain.domainId, domain]),
+  );
+  const nextDomains = new Map(
+    next.releases[0].migrationFrontier.domains
+      .map((domain) => [domain.domainId, domain]),
+  );
+  for (const [domainId, prior] of priorDomains) {
+    const domain = nextDomains.get(domainId);
+    if (!domain || domain.targetSchemaVersion < prior.targetSchemaVersion) {
+      fail("publication migration frontier must be monotonic");
+    }
+    if (prior.requiredStepIds.some((stepId, index) =>
+      domain.requiredStepIds[index] !== stepId)) {
+      fail("publication migration history must be immutable");
+    }
+  }
+  for (const artifact of next.releases[0].artifacts || []) {
+    if (artifact.platform === "macos" &&
+        (artifact.applicationName !== MACOS_APPLICATION_NAME || artifact.bundleId !== MACOS_BUNDLE_ID)) {
+      fail("publication application identity mismatch");
+    }
+  }
 }
 
 function signManifest(document, keys) {
@@ -174,6 +259,32 @@ function buildManifest(args) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(minimumSupportedVersion)) {
     fail("minimum supported version is invalid");
   }
+  const releaseTrack = args["release-track"] || "";
+  if (releaseTrack !== "nightly" && releaseTrack !== "stable") {
+    fail("release track must be explicitly nightly or stable");
+  }
+  if (releaseTrack === "nightly" && tag !== "nightly") {
+    fail("nightly publication must use the fixed nightly prerelease tag");
+  }
+  if (releaseTrack === "stable" && tag !== `v${productVersion}`) {
+    fail("stable publication tag must match the exact product version");
+  }
+  if (releaseTrack === "stable" && parseSemver(productVersion).pre.length !== 0) {
+    fail("stable publication requires a non-prerelease product version");
+  }
+  const embeddedFrontier = JSON.parse(readFileSync(migrationFrontierPath, "utf8"));
+  if (embeddedFrontier.schemaVersion !== "v0.0.1:client-state-migration-frontier-1" ||
+      typeof embeddedFrontier.frontierId !== "string" || !Array.isArray(embeddedFrontier.domains)) {
+    fail("embedded migration frontier is invalid");
+  }
+  const migrationFrontier = {
+    frontierId: embeddedFrontier.frontierId,
+    domains: embeddedFrontier.domains.map((domain) => ({
+      domainId: domain.domainId,
+      targetSchemaVersion: domain.targetSchemaVersion,
+      requiredStepIds: domain.steps.map((step) => step.stepId),
+    })),
+  };
 
   const selected = selectedTargetIds(args.targets);
   const artifacts = [];
@@ -213,20 +324,19 @@ function buildManifest(args) {
     args["offline-root-key-id"] || "",
     publicKeysDocument,
   );
-  const onlineChannelKeyId = keyIdFromPrivateKey(
-    loadEnvPrivateKey("LICO_UPDATE_ONLINE_CHANNEL_KEY", "online channel"),
-    args["online-channel-key-id"] || "",
+  const onlineSigningKeyId = keyIdFromPrivateKey(
+    loadEnvPrivateKey("LICO_UPDATE_ONLINE_SIGNING_KEY", "online signing"),
+    args["online-signing-key-id"] || "",
     publicKeysDocument,
   );
-  if (offlineRootKeyId === onlineChannelKeyId) fail("offline root and online channel keys must be distinct");
+  if (offlineRootKeyId === onlineSigningKeyId) fail("offline root and online signing keys must be distinct");
 
   const unsigned = {
     schemaVersion: MANIFEST_SCHEMA,
-    channel: "stable",
-    channelPolicy: {
+    releaseTrack,
+    releaseTrackPolicy: {
       offlineRootKeyId,
-      onlineChannelKeyId,
-      allowDowngrade: false,
+      onlineSigningKeyId,
     },
     releases: [
       {
@@ -235,14 +345,22 @@ function buildManifest(args) {
         classification: "optional",
         releaseNotesUrl: `https://github.com/${repository}/releases/tag/${tag}`,
         migrationNotes: [],
+        migrationFrontier,
         artifacts,
       },
     ],
   };
   const manifest = signManifest(unsigned, [
     { keyId: offlineRootKeyId, privateKey: loadEnvPrivateKey("LICO_UPDATE_OFFLINE_ROOT_KEY", "offline root") },
-    { keyId: onlineChannelKeyId, privateKey: loadEnvPrivateKey("LICO_UPDATE_ONLINE_CHANNEL_KEY", "online channel") },
+    { keyId: onlineSigningKeyId, privateKey: loadEnvPrivateKey("LICO_UPDATE_ONLINE_SIGNING_KEY", "online signing") },
   ]);
+  if (args["previous-manifest"]) {
+    const previous = verifyManifest(
+      readFileSync(args["previous-manifest"], "utf8"),
+      JSON.stringify(publicKeysDocument),
+    );
+    validatePublicationSuccessor(previous, manifest);
+  }
   const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
   if (Buffer.byteLength(manifestText, "utf8") > MAX_MANIFEST_BYTES) {
     fail("update manifest exceeds the size limit");
@@ -265,6 +383,31 @@ function buildManifest(args) {
 function verifyManifest(manifestText, publicKeysText) {
   const manifest = JSON.parse(manifestText);
   if (manifest.schemaVersion !== MANIFEST_SCHEMA) fail("update manifest schema is invalid");
+  if (!hasExactKeys(manifest, [
+    "schemaVersion",
+    "releaseTrack",
+    "releaseTrackPolicy",
+    "releases",
+    "signatures",
+  ])) {
+    fail("update manifest top-level contract is not closed");
+  }
+  if (manifest.releaseTrack !== "nightly" && manifest.releaseTrack !== "stable") {
+    fail("update manifest release track is invalid");
+  }
+  for (const release of manifest.releases || []) {
+    const frontier = release.migrationFrontier;
+    if (!hasExactKeys(frontier, ["frontierId", "domains"]) ||
+        typeof frontier.frontierId !== "string" ||
+        !Array.isArray(frontier.domains) || frontier.domains.length === 0) {
+      fail("update manifest migration frontier is invalid");
+    }
+    for (const domain of frontier.domains) {
+      if (!hasExactKeys(domain, ["domainId", "targetSchemaVersion", "requiredStepIds"])) {
+        fail("update manifest migration frontier domain contract is not closed");
+      }
+    }
+  }
   const keys = JSON.parse(publicKeysText).keys || {};
   const payload = Buffer.from(stableStringify(unsignedDocument(manifest)), "utf8");
   const verified = new Set();
@@ -290,8 +433,8 @@ function verifyManifest(manifestText, publicKeysText) {
     }
     verified.add(entry.keyId);
   }
-  const policy = manifest.channelPolicy || {};
-  if (!verified.has(policy.offlineRootKeyId) || !verified.has(policy.onlineChannelKeyId)) {
+  const policy = manifest.releaseTrackPolicy || {};
+  if (!verified.has(policy.offlineRootKeyId) || !verified.has(policy.onlineSigningKeyId)) {
     fail("update manifest role signatures are incomplete");
   }
   return manifest;
@@ -303,11 +446,11 @@ function selfTest() {
   const rawPublic = (keyObject) =>
     Buffer.from(keyObject.export({ type: "spki", format: "der" })).subarray(-32).toString("base64");
   const offlineId = "offline-root-self-test";
-  const onlineId = "online-channel-self-test";
+  const onlineId = "online-signing-self-test";
   const document = {
     schemaVersion: MANIFEST_SCHEMA,
-    channel: "stable",
-    channelPolicy: { offlineRootKeyId: offlineId, onlineChannelKeyId: onlineId, allowDowngrade: false },
+    releaseTrack: "stable",
+    releaseTrackPolicy: { offlineRootKeyId: offlineId, onlineSigningKeyId: onlineId },
     releases: [
       {
         version: "1.0.0",
@@ -315,6 +458,14 @@ function selfTest() {
         classification: "optional",
         releaseNotesUrl: "https://github.com/LicoLand/LicoUp/releases/tag/v1.0.0",
         migrationNotes: [],
+        migrationFrontier: {
+          frontierId: "self-test-frontier",
+          domains: [{
+            domainId: "client-state",
+            targetSchemaVersion: 1,
+            requiredStepIds: ["client-state.absent-to-1"],
+          }],
+        },
         artifacts: [
           {
             targetId: "macos-arm64",
@@ -357,6 +508,66 @@ function selfTest() {
     rejected = true;
   }
   if (!rejected) fail("update manifest self-test must reject tampering");
+  const extendedContract = signManifest({ ...document, eligibilityOverride: true }, [
+    { keyId: offlineId, privateKey: offline.privateKey },
+    { keyId: onlineId, privateKey: online.privateKey },
+  ]);
+  rejected = false;
+  try {
+    verifyManifest(JSON.stringify(extendedContract), publicKeysText);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) fail("update manifest self-test must reject unknown top-level fields");
+  const successor = JSON.parse(JSON.stringify(signed));
+  successor.releases[0].version = "1.0.1";
+  validatePublicationSuccessor(signed, successor);
+  const equalVersion = JSON.parse(JSON.stringify(successor));
+  equalVersion.releases[0].version = "1.0.0+different-build";
+  rejected = false;
+  try {
+    validatePublicationSuccessor(signed, equalVersion);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) fail("build metadata must not break a SemVer tie");
+  const regressedFrontier = JSON.parse(JSON.stringify(successor));
+  regressedFrontier.releases[0].migrationFrontier.domains[0].targetSchemaVersion = 0;
+  rejected = false;
+  try {
+    validatePublicationSuccessor(signed, regressedFrontier);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) fail("migration frontier regression must be rejected");
+  const rewrittenHistory = JSON.parse(JSON.stringify(successor));
+  rewrittenHistory.releases[0].migrationFrontier.domains[0].requiredStepIds[0] =
+    "client-state.rewritten";
+  rejected = false;
+  try {
+    validatePublicationSuccessor(signed, rewrittenHistory);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) fail("migration history rewrite must be rejected");
+  const removedDomain = JSON.parse(JSON.stringify(successor));
+  removedDomain.releases[0].migrationFrontier.domains = [];
+  rejected = false;
+  try {
+    validatePublicationSuccessor(signed, removedDomain);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) fail("migration domain removal must be rejected");
+  const changedIdentity = JSON.parse(JSON.stringify(successor));
+  changedIdentity.releases[0].artifacts[0].bundleId = "invalid.changed.identity";
+  rejected = false;
+  try {
+    validatePublicationSuccessor(signed, changedIdentity);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) fail("application identity change must be rejected");
   // The bundled document must parse and expose decodable 32-byte keys.
   const bundled = loadBundledPublicKeysDocument();
   const entries = Object.values(bundled.keys || {});
@@ -370,8 +581,8 @@ function selfTest() {
   return Object.freeze({ ok: true, schema: MANIFEST_SCHEMA });
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
+export function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
   if (args["self-test"] === "true") {
     process.stdout.write(`${JSON.stringify(selfTest())}\n`);
     return;

@@ -25,8 +25,8 @@ const physicalTestModules = Object.freeze([
       "proof_digests_are_bound_even_when_builds_differ",
     ],
     vectors: [
-      "sha256:x_r6OprmUD7VewM6pNtNmemCEUgnjnp3x7HU2WDFWO4",
-      "sha256:R9XO1KScTpcJYcYa78b9On2m9nv2AAx7p6QlydNy_oQ",
+      "sha256:QdEF_MBAQpxTB1cuyu6jX80moqptttmXvsb2byh9fGg",
+      "sha256:dQTsUOMYHVpn33HVrIvCigfzIFu-2vvQEazzzLY2U-Y",
     ],
   },
   {
@@ -45,8 +45,8 @@ const physicalTestModules = Object.freeze([
       "proof_scope_catalog_distinguishes_protocol_from_local_custody",
     ],
     vectors: [
-      "yhVBRjlJEfqTnLiTYyC1byglmCGbR10RpOfekUpfaSWutFOFcyTsV-kmiuJ2LJKT2Vpvhb3ZXb4ht3XBJSyrDQ",
-      "sha256:vkUB4qVsTZsSTRH9_VOCxhNUBsbsYrN6LyzqQFfrT3M",
+      "1UZOP7gXoDjrHzIBkFBaT4SVlRYBZ4ovw9G0naGFSSGCH1ev3mLRUC6-i0yMg0Hid0TAzFfaSUxyVJOK3r1bBg",
+      "sha256:_GTxCW4cyLrWuGTLMAIXLD9bNWWdUJD_KR2Z80waScQ",
       "37796ae8c68f7b93117928a9702f79536e15e43c4a9baf04cd9f3b2c85cf5688",
     ],
   },
@@ -77,7 +77,7 @@ const physicalTestModules = Object.freeze([
       "secure_mesh_acp_payload_classes_cover_protected_taxonomy",
       "secure_mesh_acp_status_remains_independent_review_blocked",
     ],
-    vectors: ["9b480021174177f0d48517e3a5f4ea9ba207153d3d6a0f8dc6cd6aca9ec8e993"],
+    vectors: ["c5dcd95e8ae40644ea4cad031eca4351ac7e095bd10e5e9a219b3c60c1445534"],
   },
 ]);
 

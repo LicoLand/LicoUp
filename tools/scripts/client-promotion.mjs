@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
-const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore|release-candidate)\/[A-Za-z0-9._/-]+$/u;
+const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore)\/[A-Za-z0-9._/-]+$/u;
 
 // Train cuts one snapshot onto `release`. Later `nightly` commits are a later
 // cut, not the in-flight version. Public publish remains `origin/release` only.
@@ -61,6 +61,17 @@ export function inferPromotionBase(head) {
 
 export function hasPromotableCommits(compareStatus) {
   return compareStatus === "ahead" || compareStatus === "diverged";
+}
+
+// A fresh pull request can have zero required checks for a short window while
+// GitHub registers the aggregate check. Only a rollup entry named after the
+// plan's aggregate (check-run `name` or commit-status `context`) proves the
+// branch protection gate exists and `gh pr checks --required` will observe it.
+export function requiredCheckRegistered(rollup, aggregate) {
+  if (!Array.isArray(rollup)) return false;
+  return rollup.some((entry) =>
+    entry !== null && typeof entry === "object" &&
+    (entry.name === aggregate || entry.context === aggregate));
 }
 
 function run(command, args, { capture = false, allowFailure = false } = {}) {
@@ -145,9 +156,28 @@ function pushTemporaryBranch(plan) {
   run("git", ["push", "--set-upstream", "origin", plan.head]);
 }
 
-function waitAndMerge(pullRequest) {
+function waitForRequiredCheckRegistration(plan, number) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  for (;;) {
+    const output = run("gh", [
+      "pr", "view", number, "--repo", repository, "--json", "statusCheckRollup",
+    ], { capture: true });
+    let rollup;
+    try {
+      rollup = JSON.parse(output || "{}").statusCheckRollup;
+    } catch {
+      reject("promotion_check_response_invalid");
+    }
+    if (requiredCheckRegistered(rollup, plan.aggregate)) return;
+    if (Date.now() >= deadline) reject("promotion_check_registration_timeout");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
+  }
+}
+
+function waitAndMerge(plan, pullRequest) {
   const number = String(pullRequest.number || "");
   if (!/^[1-9][0-9]*$/u.test(number)) reject("promotion_pull_request_invalid");
+  waitForRequiredCheckRegistration(plan, number);
   run("gh", [
     "pr", "checks", number, "--repo", repository, "--required", "--watch",
     "--fail-fast", "--interval", "10",
@@ -174,7 +204,7 @@ function advance(head, base) {
   }
   if (!hasPromotableCommits(status)) reject("promotion_topology_not_ahead");
   const pullRequest = openPullRequest(plan);
-  const number = waitAndMerge(pullRequest);
+  const number = waitAndMerge(plan, pullRequest);
   printReceipt({ ok: true, status: "merged", head, base, pullRequestNumber: number });
 }
 

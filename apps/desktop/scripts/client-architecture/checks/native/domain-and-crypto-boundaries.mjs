@@ -42,6 +42,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
       "model",
       "native_runner",
       "params",
+      "receipt",
       "release",
       "revocation",
       "selection",

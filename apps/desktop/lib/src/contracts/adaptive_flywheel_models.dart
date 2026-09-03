@@ -1,16 +1,70 @@
+import 'package:licoup/src/contracts/generated/strategy.g.dart'
+    show
+        StrategyFailureCode,
+        StrategyWorkflowDiagnostic,
+        StrategyWorkflowDiagnosticStage,
+        strategyWorkflowMaxDiagnostics;
+
+typedef AdaptiveFlywheelDiagnostic = StrategyWorkflowDiagnostic;
+
 final class AdaptiveFlywheelFailure implements Exception {
   const AdaptiveFlywheelFailure({
     required this.code,
     required this.recovery,
     this.retryable = false,
+    this.stage = '',
+    this.diagnostics = const [],
   });
+
+  factory AdaptiveFlywheelFailure.fromJson(Map<String, dynamic> json) {
+    final failureCode = StrategyFailureCode.fromWire(json['code']);
+    return AdaptiveFlywheelFailure(
+      code: failureCode == StrategyFailureCode.unknown
+          ? 'strategy_operation_failed'
+          : failureCode.wireName,
+      recovery: json['recovery'] is String ? json['recovery'] as String : '',
+      retryable: json['retryable'] == true,
+      stage: json['stage'] is String ? json['stage'] as String : '',
+      diagnostics: _maps(json['diagnostics'])
+          .take(strategyWorkflowMaxDiagnostics)
+          .map(StrategyWorkflowDiagnostic.fromJson)
+          .toList(growable: false),
+    );
+  }
 
   final String code;
   final String recovery;
   final bool retryable;
+  final String stage;
+  final List<AdaptiveFlywheelDiagnostic> diagnostics;
 
   @override
-  String toString() => recovery.isEmpty ? code : recovery;
+  String toString() {
+    if (diagnostics.isEmpty) return recovery.isEmpty ? code : recovery;
+    final details = diagnostics
+        .map((diagnostic) {
+          final location = diagnostic.path.isEmpty
+              ? ''
+              : ' @ ${diagnostic.path}';
+          final stage =
+              diagnostic.stage == StrategyWorkflowDiagnosticStage.unknown
+              ? ''
+              : ' [${diagnostic.stage.wireName}]';
+          final facts = <String>[
+            if (diagnostic.membershipId.isNotEmpty)
+              'membership=${diagnostic.membershipId}',
+            if (diagnostic.actual != null) 'actual=${diagnostic.actual}',
+            if (diagnostic.limit != null) 'limit=${diagnostic.limit}',
+            if (diagnostic.line != null) 'line=${diagnostic.line}',
+            if (diagnostic.column != null) 'column=${diagnostic.column}',
+          ];
+          final suffix = facts.isEmpty ? '' : ' (${facts.join(', ')})';
+          return '${diagnostic.code.wireName}$stage$location$suffix';
+        })
+        .join('\n');
+    final summary = recovery.isEmpty ? code : '$code: $recovery';
+    return '$summary\n$details';
+  }
 }
 
 final class AdaptiveFlywheelDefinition {

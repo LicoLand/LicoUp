@@ -1,9 +1,10 @@
-use crate::platform::file_security::ensure_private_dir;
+use crate::platform::file_security::{ensure_private_dir, open_private_lock_file};
 use anyhow::{Result, anyhow, ensure};
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
@@ -12,6 +13,7 @@ use super::{paths, policy, serialization};
 
 pub(crate) const TARGET_DISCOVERY_CACHE_COLLECTION: &str = "target-discovery-cache";
 pub(crate) const TARGET_DISCOVERY_CACHE_SCHEMA: &str = "licoup.target-discovery-cache.v1";
+const TARGET_DISCOVERY_CACHE_LOCK: &str = ".target-discovery-cache.lock";
 
 /// Typed internal projection of one target-discovery-cache record. Only
 /// identity and resolution fields are decoded; unknown JSON extension fields
@@ -43,6 +45,28 @@ struct TargetCollectionIndex {
     state: RwLock<Option<IndexedTargetCollection>>,
 }
 
+/// Cross-process transaction boundary for every target-route mutation.
+/// Atomic file replacement protects readers; this guard additionally keeps a
+/// read-modify-write update indivisible across independent store instances.
+struct TargetRouteTransactionGuard {
+    lock: File,
+}
+
+impl TargetRouteTransactionGuard {
+    fn acquire(root: &Path) -> Result<Self> {
+        let lock = open_private_lock_file(&root.join(TARGET_DISCOVERY_CACHE_LOCK))?;
+        lock.lock_exclusive()
+            .map_err(|_| anyhow!("target_route_transaction_lock_unavailable"))?;
+        Ok(Self { lock })
+    }
+}
+
+impl Drop for TargetRouteTransactionGuard {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.lock);
+    }
+}
+
 #[derive(Debug)]
 struct IndexedTargetCollection {
     generation: Option<FileGeneration>,
@@ -68,6 +92,19 @@ impl ClientStateStore {
         Self::new(paths::portable_state_root()?)
     }
 
+    pub(crate) fn portable_read_only() -> Result<Self> {
+        Ok(Self::open_read_only(paths::portable_state_root_read_only()?))
+    }
+
+    /// Open a read-only projection without creating directories, collection
+    /// files, snapshots, or activity state. Missing collections read empty.
+    pub(crate) fn open_read_only(root: PathBuf) -> Self {
+        Self {
+            root,
+            target_index: Arc::new(TargetCollectionIndex::default()),
+        }
+    }
+
     pub fn new(root: PathBuf) -> Result<Self> {
         ensure_private_dir(&root)?;
         ensure_private_dir(&paths::snapshot_root(&root))?;
@@ -91,14 +128,36 @@ impl ClientStateStore {
 
     pub fn read_collection(&self, collection: &str) -> Result<Value> {
         let path = self.collection_path(collection)?;
-        serialization::read_json_or_default(&path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
-            empty_collection(collection)
-        })
+        reject_empty_existing_collection(&path)?;
+        let document = serialization::read_json_or_default(
+            &path,
+            policy::MAX_COLLECTION_DOCUMENT_BYTES,
+            || empty_collection(collection),
+        )?;
+        validate_current_collection_document(collection, &document)?;
+        Ok(document)
+    }
+
+    pub(crate) fn read_collection_read_only(&self, collection: &str) -> Result<Value> {
+        let path = self.collection_path(collection)?;
+        reject_empty_existing_collection(&path)?;
+        let document = serialization::read_json_or_default_read_only(
+            &path,
+            policy::MAX_COLLECTION_DOCUMENT_BYTES,
+            || empty_collection(collection),
+        )?;
+        validate_current_collection_document(collection, &document)?;
+        Ok(document)
     }
 
     pub fn write_collection(&self, collection: &str, value: Value) -> Result<Value> {
         let path = self.collection_path(collection)?;
-        let document = normalize_collection(collection, value);
+        let document = normalize_collection(collection, value)?;
+        let _target_transaction = if collection == TARGET_DISCOVERY_CACHE_COLLECTION {
+            Some(TargetRouteTransactionGuard::acquire(&self.root)?)
+        } else {
+            None
+        };
         serialization::atomic_write_json(&path, &document, policy::MAX_COLLECTION_DOCUMENT_BYTES)?;
         Ok(document)
     }
@@ -106,6 +165,7 @@ impl ClientStateStore {
     /// Typed target-route read in document order. The projection is refreshed
     /// only when the persisted file generation changes, so repeated reads
     /// decode the collection exactly once per generation.
+    #[cfg(test)]
     pub(crate) fn read_target_routes(&self) -> Result<Vec<TargetRouteRecord>> {
         let path = self.collection_path(TARGET_DISCOVERY_CACHE_COLLECTION)?;
         let mut guard = lock_target_index(&self.target_index);
@@ -145,32 +205,35 @@ impl ClientStateStore {
             .map(|&position| cached.records[position].clone()))
     }
 
-    /// Atomic write-through of the typed target routes. The document keeps
-    /// every unknown top-level and record extension field, is persisted with
-    /// the private atomic writer, and only then swaps the in-memory projection.
+    /// Transactional replacement of all typed target routes. The document
+    /// keeps every unknown top-level and record extension field, is persisted
+    /// with the private atomic writer, and only then swaps the projection.
     pub(crate) fn write_target_routes(&self, records: &[TargetRouteRecord]) -> Result<()> {
+        let _transaction = TargetRouteTransactionGuard::acquire(&self.root)?;
         let path = self.collection_path(TARGET_DISCOVERY_CACHE_COLLECTION)?;
         let mut guard = lock_target_index(&self.target_index);
         refresh_target_index_locked(&mut guard, &path)?;
-        let cached = guard
+        write_target_routes_locked(&path, &mut guard, records)
+    }
+
+    /// Transactional read-modify-write over the latest persisted route set.
+    /// The callback runs while the cross-process lock is held, so no selected
+    /// scan can overwrite routes committed by another concurrent scan.
+    pub(crate) fn update_target_routes<F>(&self, update: F) -> Result<()>
+    where
+        F: FnOnce(&mut Vec<TargetRouteRecord>) -> Result<()>,
+    {
+        let _transaction = TargetRouteTransactionGuard::acquire(&self.root)?;
+        let path = self.collection_path(TARGET_DISCOVERY_CACHE_COLLECTION)?;
+        let mut guard = lock_target_index(&self.target_index);
+        refresh_target_index_locked(&mut guard, &path)?;
+        let mut records = guard
             .as_ref()
-            .ok_or_else(|| anyhow!("target index projection is unavailable"))?;
-        let mut document = cached.document.clone();
-        document["items"] = serde_json::to_value(records)?;
-        serialization::atomic_write_json(&path, &document, policy::MAX_COLLECTION_DOCUMENT_BYTES)?;
-        let generation = file_generation(&path);
-        let parses = cached.parses;
-        let invalidations = cached.invalidations;
-        let by_target = index_target_routes(records);
-        *guard = Some(IndexedTargetCollection {
-            generation,
-            parses,
-            invalidations,
-            records: records.to_vec(),
-            by_target,
-            document,
-        });
-        Ok(())
+            .ok_or_else(|| anyhow!("target index projection is unavailable"))?
+            .records
+            .clone();
+        update(&mut records)?;
+        write_target_routes_locked(&path, &mut guard, &records)
     }
 
     #[cfg(test)]
@@ -188,16 +251,55 @@ impl ClientStateStore {
     fn ensure_collections(&self) -> Result<()> {
         for collection in policy::COLLECTIONS {
             let path = self.collection_path(collection)?;
+            if *collection == TARGET_DISCOVERY_CACHE_COLLECTION {
+                let _transaction = TargetRouteTransactionGuard::acquire(&self.root)?;
+                if !path.try_exists()? {
+                    serialization::atomic_write_json(
+                        &path,
+                        &empty_collection(collection),
+                        policy::MAX_COLLECTION_DOCUMENT_BYTES,
+                    )?;
+                } else {
+                    validate_existing_collection(collection, &path)?;
+                }
+                continue;
+            }
             if !path.try_exists()? {
                 serialization::atomic_write_json(
                     &path,
                     &empty_collection(collection),
                     policy::MAX_COLLECTION_DOCUMENT_BYTES,
                 )?;
+            } else {
+                validate_existing_collection(collection, &path)?;
             }
         }
         Ok(())
     }
+}
+
+fn write_target_routes_locked(
+    path: &Path,
+    index: &mut Option<IndexedTargetCollection>,
+    records: &[TargetRouteRecord],
+) -> Result<()> {
+    let (mut document, parses, invalidations) = {
+        let cached = index
+            .as_ref()
+            .ok_or_else(|| anyhow!("target index projection is unavailable"))?;
+        (cached.document.clone(), cached.parses, cached.invalidations)
+    };
+    document["items"] = serde_json::to_value(records)?;
+    serialization::atomic_write_json(path, &document, policy::MAX_COLLECTION_DOCUMENT_BYTES)?;
+    *index = Some(IndexedTargetCollection {
+        generation: file_generation(path),
+        parses,
+        invalidations,
+        records: records.to_vec(),
+        by_target: index_target_routes(records),
+        document,
+    });
+    Ok(())
 }
 
 fn read_target_index(
@@ -232,6 +334,7 @@ fn refresh_target_index_locked(
         serialization::read_json_or_default(path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
             empty_collection(TARGET_DISCOVERY_CACHE_COLLECTION)
         })?;
+    validate_current_collection_document(TARGET_DISCOVERY_CACHE_COLLECTION, &document)?;
     let routes = decode_target_routes(&document)?;
     let prior = index.take();
     let parses = prior.as_ref().map_or(0, |cached| cached.parses) + 1;
@@ -316,21 +419,71 @@ fn empty_collection(collection: &str) -> Value {
     })
 }
 
-fn normalize_collection(collection: &str, value: Value) -> Value {
+fn normalize_collection(collection: &str, value: Value) -> Result<Value> {
     if value.is_object() {
         let mut object = value.as_object().cloned().unwrap_or_default();
+        if let Some(schema) = object.get("schemaVersion") {
+            ensure!(
+                schema.as_str() == Some(policy::STATE_SCHEMA_VERSION),
+                "client state collection requires startup migration"
+            );
+        }
+        if let Some(owner) = object.get("collection") {
+            ensure!(
+                owner.as_str() == Some(collection),
+                "client state collection owner mismatch"
+            );
+        }
         object
             .entry("schemaVersion".to_string())
             .or_insert_with(|| json!(policy::STATE_SCHEMA_VERSION));
         object
             .entry("collection".to_string())
             .or_insert_with(|| json!(collection));
-        Value::Object(object)
+        Ok(Value::Object(object))
     } else {
-        json!({
+        Ok(json!({
             "schemaVersion": policy::STATE_SCHEMA_VERSION,
             "collection": collection,
             "items": value
-        })
+        }))
     }
+}
+
+pub(super) fn validate_current_collection_document(
+    collection: &str,
+    document: &Value,
+) -> Result<()> {
+    ensure!(
+        document.is_object(),
+        "client state collection is not an object"
+    );
+    ensure!(
+        document.get("schemaVersion").and_then(Value::as_str) == Some(policy::STATE_SCHEMA_VERSION),
+        "client state collection requires startup migration"
+    );
+    ensure!(
+        document.get("collection").and_then(Value::as_str) == Some(collection),
+        "client state collection owner mismatch"
+    );
+    Ok(())
+}
+
+fn validate_existing_collection(collection: &str, path: &Path) -> Result<()> {
+    reject_empty_existing_collection(path)?;
+    let document =
+        serialization::read_json_or_default(path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
+            empty_collection(collection)
+        })?;
+    validate_current_collection_document(collection, &document)
+}
+
+fn reject_empty_existing_collection(path: &Path) -> Result<()> {
+    if path.try_exists()? {
+        ensure!(
+            fs::symlink_metadata(path)?.len() > 0,
+            "client state collection is empty"
+        );
+    }
+    Ok(())
 }

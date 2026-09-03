@@ -774,6 +774,20 @@ function optionSchemas(tokens, sourcePath, sharedOptionArrays) {
   assert.equal(close, fieldTokens.length - 1);
   const schemas = [];
   for (let index = open + 1; index < close; index += 1) {
+    if (fieldTokens[index].value === "update_text_option") {
+      assert.equal(fieldTokens[index + 1]?.value, "(");
+      assert.equal(fieldTokens[index + 2]?.kind, "string");
+      assert.equal(fieldTokens[index + 3]?.value, ")");
+      schemas.push({
+        name: fieldTokens[index + 2].value,
+        arity: "Value",
+        repeatable: false,
+        valueKind: "Text",
+        required: false,
+      });
+      index += 3;
+      continue;
+    }
     if (fieldTokens[index].value !== "{") continue;
     const body = fieldTokens.slice(index + 1, matchingDelimiter(fieldTokens, index));
     const name = fieldValue(body, "name", sourcePath);
@@ -980,11 +994,24 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
     );
   }
   const rootTokens = productionTokens(sources.get(commandFacade));
+  for (const token of [
+    "const fn update_text_option(name: &'static str) -> OptionSpec {",
+    "arity: OptionArity::Value",
+    "repeatable: false",
+    "value_kind: RequiredArgumentKind::Text",
+    "required: false",
+  ]) {
+    assert.ok(
+      sources.get(commandFacade).includes(token),
+      `update_text_option helper changed its audited schema: ${token}`,
+    );
+  }
   const sharedOptionArrays = new Map([
-    [
+    ...[
+      "UPDATE_CHECK_ROUTE_OPTIONS",
       "UPDATE_ROUTE_OPTIONS",
-      sharedOptionArray(rootTokens, "UPDATE_ROUTE_OPTIONS", commandFacade),
-    ],
+      "UPDATE_APPLY_ROUTE_OPTIONS",
+    ].map((name) => [name, sharedOptionArray(rootTokens, name, commandFacade)]),
   ]);
   const builder = functionTokens(rootTokens, "build_command_table", commandFacade);
   assert.notEqual(

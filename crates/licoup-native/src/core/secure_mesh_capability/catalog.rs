@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, ensure};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -11,6 +11,42 @@ pub(super) const CAPABILITY_CATALOG_JSON: &str =
     include_str!("../../../resources/secure-mesh-capability-catalog.json");
 const CAPABILITY_CATALOG_SCHEMA_VERSION: u32 = 1;
 const MAX_CAPABILITY_CATALOG_BYTES: usize = 256 * 1024;
+
+/// Typed failure for canonical secure mesh capability catalog evaluation.
+///
+/// The embedded catalog is a host-facing invariant: every validation failure
+/// is classified once (`from_json` and `require_complete`), stored in the
+/// bounded `OnceLock` as this structured error instead of a stringly-typed
+/// error, and only ever projected outward as a problem code.
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum CapabilityCatalogError {
+    #[error("secure mesh capability catalog exceeds its bounded size")]
+    ExceedsBoundedSize,
+    #[error("secure mesh capability catalog schema is invalid")]
+    InvalidSchema,
+    #[error("secure mesh capability catalog version is unsupported")]
+    UnsupportedVersion,
+    #[error("secure mesh capability catalog size is invalid")]
+    InvalidSize,
+    #[error("secure mesh capability catalog contains an unknown capability")]
+    UnknownCapability,
+    #[error("secure mesh capability catalog contains a duplicate identifier")]
+    DuplicateIdentifier,
+    #[error("secure mesh capability prerequisite set exceeds its bounded size")]
+    PrerequisiteSetLimit,
+    #[error("secure mesh capability cannot depend on itself")]
+    SelfDependency,
+    #[error("secure mesh capability contains a duplicate prerequisite")]
+    DuplicatePrerequisite,
+    #[error("secure mesh capability prerequisite is missing from the catalog")]
+    MissingPrerequisite,
+    #[error("only protocol capabilities may be mandatory")]
+    InvalidMandatoryScope,
+    #[error("secure mesh capability catalog contains a dependency cycle")]
+    DependencyCycle,
+    #[error("canonical secure mesh capability catalog is incomplete")]
+    Incomplete,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,47 +85,44 @@ pub struct CapabilityCatalog {
 }
 
 impl CapabilityCatalog {
-    pub fn from_json(source: &str) -> Result<Self> {
-        ensure!(
-            source.len() <= MAX_CAPABILITY_CATALOG_BYTES,
-            "secure mesh capability catalog exceeds its bounded size"
-        );
-        let raw: RawCapabilityCatalog = serde_json::from_str(source)
-            .map_err(|_| anyhow!("secure mesh capability catalog schema is invalid"))?;
-        ensure!(
-            raw.schema_version == CAPABILITY_CATALOG_SCHEMA_VERSION,
-            "secure mesh capability catalog version is unsupported"
-        );
-        ensure!(
-            !raw.capabilities.is_empty() && raw.capabilities.len() <= SecurityCapability::COUNT,
-            "secure mesh capability catalog size is invalid"
-        );
+    pub fn from_json(source: &str) -> std::result::Result<Self, CapabilityCatalogError> {
+        if source.len() > MAX_CAPABILITY_CATALOG_BYTES {
+            return Err(CapabilityCatalogError::ExceedsBoundedSize);
+        }
+        let raw: RawCapabilityCatalog =
+            serde_json::from_str(source).map_err(|_| CapabilityCatalogError::InvalidSchema)?;
+        if raw.schema_version != CAPABILITY_CATALOG_SCHEMA_VERSION {
+            return Err(CapabilityCatalogError::UnsupportedVersion);
+        }
+        if raw.capabilities.is_empty() || raw.capabilities.len() > SecurityCapability::COUNT {
+            return Err(CapabilityCatalogError::InvalidSize);
+        }
 
         let mut definitions = vec![None; SecurityCapability::COUNT];
         for raw_definition in raw.capabilities {
-            let capability = SecurityCapability::from_id(&raw_definition.id)?;
-            ensure!(
-                definitions[capability.index()].is_none(),
-                "secure mesh capability catalog contains a duplicate identifier"
-            );
-            ensure!(
-                raw_definition.prerequisites.len() <= SecurityCapability::COUNT,
-                "secure mesh capability prerequisite set exceeds its bounded size"
-            );
+            let capability = SecurityCapability::from_id(&raw_definition.id)
+                .map_err(|_| CapabilityCatalogError::UnknownCapability)?;
+            if definitions[capability.index()].is_some() {
+                return Err(CapabilityCatalogError::DuplicateIdentifier);
+            }
+            if raw_definition.prerequisites.len() > SecurityCapability::COUNT {
+                return Err(CapabilityCatalogError::PrerequisiteSetLimit);
+            }
             let prerequisites = raw_definition
                 .prerequisites
                 .iter()
-                .map(|id| SecurityCapability::from_id(id))
-                .collect::<Result<Vec<_>>>()?;
-            ensure!(
-                !prerequisites.contains(&capability),
-                "secure mesh capability cannot depend on itself"
-            );
+                .map(|id| {
+                    SecurityCapability::from_id(id)
+                        .map_err(|_| CapabilityCatalogError::UnknownCapability)
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if prerequisites.contains(&capability) {
+                return Err(CapabilityCatalogError::SelfDependency);
+            }
             let unique_prerequisites = prerequisites.iter().copied().collect::<BTreeSet<_>>();
-            ensure!(
-                unique_prerequisites.len() == prerequisites.len(),
-                "secure mesh capability contains a duplicate prerequisite"
-            );
+            if unique_prerequisites.len() != prerequisites.len() {
+                return Err(CapabilityCatalogError::DuplicatePrerequisite);
+            }
             definitions[capability.index()] = Some(CapabilityDefinition {
                 capability,
                 scope: raw_definition.scope,
@@ -101,15 +134,13 @@ impl CapabilityCatalog {
 
         for definition in definitions.iter().flatten() {
             for prerequisite in &definition.prerequisites {
-                ensure!(
-                    definitions[prerequisite.index()].is_some(),
-                    "secure mesh capability prerequisite is missing from the catalog"
-                );
+                if definitions[prerequisite.index()].is_none() {
+                    return Err(CapabilityCatalogError::MissingPrerequisite);
+                }
             }
-            ensure!(
-                !(definition.mandatory && definition.scope != CapabilityScope::ProtocolSession),
-                "only protocol capabilities may be mandatory"
-            );
+            if definition.mandatory && definition.scope != CapabilityScope::ProtocolSession {
+                return Err(CapabilityCatalogError::InvalidMandatoryScope);
+            }
         }
 
         let (topological_order, edge_count) = validated_topological_order(&definitions)?;
@@ -122,12 +153,12 @@ impl CapabilityCatalog {
         })
     }
 
-    fn require_complete(&self) -> Result<()> {
-        ensure!(
-            self.definitions.iter().all(Option::is_some),
-            "canonical secure mesh capability catalog is incomplete"
-        );
-        Ok(())
+    fn require_complete(&self) -> std::result::Result<(), CapabilityCatalogError> {
+        if self.definitions.iter().all(Option::is_some) {
+            Ok(())
+        } else {
+            Err(CapabilityCatalogError::Incomplete)
+        }
     }
 
     pub fn schema_version(&self) -> u32 {
@@ -168,7 +199,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn validated_topological_order(
     definitions: &[Option<CapabilityDefinition>],
-) -> Result<(Vec<SecurityCapability>, usize)> {
+) -> std::result::Result<(Vec<SecurityCapability>, usize), CapabilityCatalogError> {
     let mut indegree = [0usize; SecurityCapability::COUNT];
     let mut dependents = vec![Vec::<SecurityCapability>::new(); SecurityCapability::COUNT];
     let mut defined_count = 0usize;
@@ -201,26 +232,24 @@ fn validated_topological_order(
             }
         }
     }
-    ensure!(
-        order.len() == defined_count,
-        "secure mesh capability catalog contains a dependency cycle"
-    );
+    if order.len() != defined_count {
+        return Err(CapabilityCatalogError::DependencyCycle);
+    }
     Ok((order, edge_count))
 }
 
-static EMBEDDED_CAPABILITY_CATALOG: OnceLock<std::result::Result<CapabilityCatalog, String>> =
-    OnceLock::new();
+static EMBEDDED_CAPABILITY_CATALOG: OnceLock<
+    std::result::Result<CapabilityCatalog, CapabilityCatalogError>,
+> = OnceLock::new();
 
 pub fn capability_catalog() -> Result<&'static CapabilityCatalog> {
-    let catalog = EMBEDDED_CAPABILITY_CATALOG.get_or_init(|| {
-        CapabilityCatalog::from_json(CAPABILITY_CATALOG_JSON)
-            .and_then(|catalog| {
+    EMBEDDED_CAPABILITY_CATALOG
+        .get_or_init(|| {
+            CapabilityCatalog::from_json(CAPABILITY_CATALOG_JSON).and_then(|catalog| {
                 catalog.require_complete()?;
                 Ok(catalog)
             })
-            .map_err(|error| error.to_string())
-    });
-    catalog
+        })
         .as_ref()
-        .map_err(|_| anyhow!("canonical secure mesh capability catalog is invalid"))
+        .map_err(|error| anyhow!(error.to_string()))
 }

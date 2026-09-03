@@ -23,6 +23,7 @@ import 'package:licoup/src/application/features/catalog_convergence/controller/c
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
+import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_refresh_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_selection_store.dart';
@@ -86,6 +87,11 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Stable application facade. Feature behavior and component construction live
 /// in focused facade and assembly leaves.
+@Deprecated(
+  'Migrate gestures to events/EventSender and render domain streams from '
+  'projections/*ProjectionConsumer. This compatibility composition root '
+  'remains usable until its dependent displays migrate.',
+)
 class ClientController extends AgentConversationController
     with
         ConversationRefreshController,
@@ -349,6 +355,8 @@ class ClientController extends AgentConversationController
   @override
   AgentUsageController get agentUsageController =>
       _components.agentUsageController;
+  ProviderQuotaController get providerQuotaController =>
+      _components.providerQuotaController;
   @override
   ClientLogExportController get clientLogExportController =>
       _components.clientLogExportController;

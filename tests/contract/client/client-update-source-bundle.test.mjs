@@ -11,22 +11,25 @@ const productionFiles = [
   facadePath,
   ...[
     "apply.rs",
+    "archive.rs",
     "canonical.rs",
     "check.rs",
     "constants.rs",
     "dispatch.rs",
     "download.rs",
+    "github_source.rs",
     "keys.rs",
-    "macos_runner.rs",
-    "macos_runner/archive.rs",
-    "macos_runner/filesystem.rs",
-    "macos_runner/lifecycle.rs",
-    "macos_runner/platform.rs",
     "metadata.rs",
     "model.rs",
+    "native_runner/mod.rs",
+    "native_runner/macos_integrity.rs",
+    "native_runner/plan.rs",
+    "native_runner/script.rs",
+    "native_runner/spawn.rs",
     "params.rs",
     "release.rs",
     "release/artifact.rs",
+    "receipt.rs",
     "revocation.rs",
     "selection.rs",
     "signature.rs",
@@ -34,12 +37,15 @@ const productionFiles = [
     "staging/copy.rs",
     "staging/path.rs",
     "status.rs",
+    "tree.rs",
     "verify.rs",
   ].map((file) => `${moduleRoot}/${file}`),
 ];
 const expectedTestLeaves = [
+  "archive.rs",
   "artifact_binding.rs",
-  "macos_runner.rs",
+  "github_source.rs",
+  "native_runner.rs",
   "release_selection.rs",
   "revocation.rs",
   "signature_roles.rs",
@@ -55,15 +61,19 @@ test("client update source bundle preserves fail-closed split release authority"
   const source = sources.join("\n");
   for (const moduleName of [
     "apply",
+    "archive",
     "check",
     "download",
+    "github_source",
     "keys",
-    "macos_runner",
+    "native_runner",
+    "receipt",
     "release",
     "revocation",
     "selection",
     "signature",
     "staging",
+    "tree",
     "verify",
   ]) {
     assert.ok(facade.includes(`mod ${moduleName};`), `client update facade is missing ${moduleName}`);
@@ -71,7 +81,10 @@ test("client update source bundle preserves fail-closed split release authority"
   for (const token of [
     "verify_manifest_role_signatures",
     "requires a valid offline root signature",
-    "requires a valid online channel signature",
+    "requires a valid online signing signature",
+    "manifest-2",
+    "runningReleaseTrack",
+    "targetReleaseTrack",
     'get("keys")',
     "cmp_precedence",
     "CLIENT_UPDATE_ARTIFACT_RECEIPT_SCHEMA",
@@ -84,7 +97,7 @@ test("client update source bundle preserves fail-closed split release authority"
     "fs::canonicalize",
     "MAX_ARCHIVE_ENTRIES",
     "entry.unpack_in",
-    "skip_platform_actions",
+    'bool_param(params, "execute")?',
     '"pathRedacted": true',
     '"publicMetadataOnly": true',
   ]) {
@@ -93,11 +106,14 @@ test("client update source bundle preserves fail-closed split release authority"
   for (const token of ["#[path", "include!(", "mod tests {"]) {
     assert.ok(!source.includes(token), `client update source bundle contains retired ${token}`);
   }
+  for (const retired of ["allowDowngrade", '"rollback"', '"rolledBack"']) {
+    assert.ok(!source.includes(retired), `client update source bundle contains retired ${retired}`);
+  }
   const outputSources = await Promise.all([
     "apply.rs",
     "check.rs",
     "download.rs",
-    "macos_runner/lifecycle.rs",
+    "native_runner/mod.rs",
     "status.rs",
     "verify.rs",
   ].map((file) => fs.readFile(path.join(repoRoot, moduleRoot, file), "utf8")));

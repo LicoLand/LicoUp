@@ -10,6 +10,14 @@ use std::sync::LazyLock;
 
 use super::runtime_adapters::{self, RuntimeAdapter, RuntimeAdapterError};
 
+#[path = "../domain/client_conversation/settlement.rs"]
+mod settlement;
+use crate::domain::client_conversation::projection_delta;
+use settlement::{
+    SettlementDelta, SettlementFailureReason, SettlementOutcome, SettlementSignal,
+    TurnSettlementArbiter, send_state_wire, turn_state_wire,
+};
+
 // lico-governed-orchestration:start
 #[cfg(test)]
 mod governed {
@@ -431,6 +439,26 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
         .map(|p| p.driver_status.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
+    if adapter == RuntimeAdapter::DeepSeekHarness
+        && profile
+            .as_ref()
+            .is_none_or(|profile| profile.readiness != "ready")
+    {
+        return Ok(json!({
+            "ok": false,
+            "agentId": adapter.id(),
+            "laneFamily": effective_lane_family,
+            "driverId": adapter.driver_id(),
+            "runtimeProtocol": effective_runtime_protocol,
+            "capabilities": matrix,
+            "error": {
+                "code": blocker.unwrap_or_else(|| "deepseek_harness_jsonrpc_carrier_unverified".to_string()),
+                "stage": "capability/readiness",
+                "message": "The official DeepSeek Harness JSON-RPC carrier has not been verified."
+            }
+        }));
+    }
+
     if effective_lane_family == "unavailable" {
         return Ok(json!({
             "ok": false,
@@ -565,7 +593,8 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
 
     if matches!(
         adapter,
-        RuntimeAdapter::Hermes
+        RuntimeAdapter::Codex
+            | RuntimeAdapter::Hermes
             | RuntimeAdapter::ClaudeCode
             | RuntimeAdapter::Cursor
             | RuntimeAdapter::Antigravity
@@ -582,6 +611,14 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                     anyhow!("agent cancel requires an exact native session identifier")
                 })?;
         let disposition = match adapter {
+            RuntimeAdapter::Codex => {
+                match super::codex_app_server::active_control::interrupt(&session_id) {
+                    super::codex_app_server::active_control::ControlDisposition::Accepted => 0,
+                    super::codex_app_server::active_control::ControlDisposition::NoActiveTurn => 1,
+                    super::codex_app_server::active_control::ControlDisposition::SessionUnavailable => 2,
+                    super::codex_app_server::active_control::ControlDisposition::TransportUnavailable => 3,
+                }
+            }
             RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cancel(&session_id) {
                 super::claude_code_driver::ControlDisposition::Accepted => 0,
                 super::claude_code_driver::ControlDisposition::NoActiveTurn => 1,
@@ -641,6 +678,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             _ => 3,
         };
         let prefix = match adapter {
+            RuntimeAdapter::Codex => "codex",
             RuntimeAdapter::ClaudeCode => "claude_code",
             RuntimeAdapter::Cursor => "cursor",
             RuntimeAdapter::Antigravity => "antigravity",
@@ -653,6 +691,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             _ => "agent",
         };
         let label = match adapter {
+            RuntimeAdapter::Codex => "Codex App Server",
             RuntimeAdapter::ClaudeCode => "Claude Code",
             RuntimeAdapter::Cursor => "Cursor CLI",
             RuntimeAdapter::Antigravity => "Antigravity CLI",
@@ -664,29 +703,40 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             RuntimeAdapter::KimiCode => "Kimi Code ACP",
             _ => "Agent",
         };
-        let (ok, status, code, message) = match disposition {
+        let (ok, status, code, stage, message) = match disposition {
             0 => (
                 true,
                 "cancel_requested",
                 Value::Null,
+                "turn/cancel",
                 "The official lane accepted cancellation for the active native turn.",
             ),
             1 => (
                 false,
                 "not_active",
                 json!(format!("{prefix}_turn_not_active")),
+                "turn/cancel",
                 "The selected native session has no active turn.",
             ),
             2 => (
                 false,
                 "not_found",
                 json!(format!("{prefix}_session_unavailable")),
+                "turn/cancel",
                 "The selected native session is not bound to this client process.",
+            ),
+            _ if adapter == RuntimeAdapter::OpenCode => (
+                false,
+                "unavailable",
+                json!("opencode_serve_control_failed"),
+                "turn/control",
+                "The OpenCode control endpoint failed while controlling the turn.",
             ),
             _ => (
                 false,
                 "unavailable",
                 json!(format!("{prefix}_cancel_transport_unavailable")),
+                "turn/cancel",
                 "The supervised native cancel channel is unavailable.",
             ),
         };
@@ -698,7 +748,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             "transport": label,
             "error": if ok { Value::Null } else { json!({
                 "code": code,
-                "stage": "turn/cancel",
+                "stage": stage,
                 "message": message
             }) },
             "capabilities": matrix
@@ -732,6 +782,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             | RuntimeAdapter::ClaudeCode
             | RuntimeAdapter::Cursor
             | RuntimeAdapter::Antigravity
+            | RuntimeAdapter::DeepSeekHarness
     ) {
         return Ok(json!({
             "ok": false,
@@ -770,6 +821,13 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
                 _ => 2,
             }
         }
+        RuntimeAdapter::DeepSeekHarness => {
+            match super::deepseek_harness_driver::cleanup_session(&session_id) {
+                super::deepseek_harness_driver::CleanupDisposition::Accepted => 0,
+                super::deepseek_harness_driver::CleanupDisposition::SessionUnavailable => 1,
+                super::deepseek_harness_driver::CleanupDisposition::Unavailable => 2,
+            }
+        }
         _ => match super::hermes_driver::cleanup_session(&session_id) {
             super::acp_session_transport::ControlDisposition::Accepted => 0,
             super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
@@ -780,6 +838,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
         RuntimeAdapter::ClaudeCode => "claude_code",
         RuntimeAdapter::Cursor => "cursor",
         RuntimeAdapter::Antigravity => "antigravity",
+        RuntimeAdapter::DeepSeekHarness => "deepseek_harness",
         _ => "hermes",
     };
     let (ok, status, code) = match disposition {
@@ -813,8 +872,8 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
     }))
 }
 
-/// Return only the bounded transcript owned by the exact live process-local
-/// Claude transport. No filesystem history discovery is performed.
+/// Return a backward page from the complete transcript owned by the exact live
+/// process-local Claude transport. No filesystem history discovery is performed.
 pub fn process_local_history(params: &Value) -> Result<Value> {
     let agent_id = agent_id_param(params)?;
     let adapter = adapter_or_err(&agent_id)?;
@@ -831,7 +890,27 @@ pub fn process_local_history(params: &Value) -> Result<Value> {
     let session_id = runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("history requires an exact native session identifier"))?;
-    let Some(mut history) = super::claude_code_driver::history(&session_id) else {
+    let before = params
+        .get("before")
+        .map(|value| {
+            value
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| anyhow!("history before cursor must be an unsigned integer"))
+        })
+        .transpose()?;
+    let limit = params
+        .get("limit")
+        .map(|value| {
+            value
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .filter(|value| (1..=100).contains(value))
+                .ok_or_else(|| anyhow!("history page limit must be between 1 and 100"))
+        })
+        .transpose()?
+        .unwrap_or(50);
+    let Some(mut history) = super::claude_code_driver::history(&session_id, before, limit) else {
         return Ok(json!({
             "ok": false,
             "error": {
@@ -964,6 +1043,7 @@ pub fn lane_capabilities(params: &Value) -> Result<Value> {
         "driverStatus": profile.as_ref().map(|p| p.driver_status.clone()).unwrap_or_default(),
         "readiness": profile.as_ref().map(|p| p.readiness.clone()).unwrap_or_else(|| "unverified".to_string()),
         "blockerCodes": blocker_codes,
+        "summaryCodes": profile.as_ref().map(|p| p.summary_codes.clone()).unwrap_or_default(),
         "capabilities": matrix
     }))
 }
@@ -977,7 +1057,7 @@ pub fn dispatch_lane_operation(
         "open" | "openOrResume" | "resume" => {
             open_or_resume(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
         }
-        "send" => runtime_adapters::send_message(params),
+        "send" => send_and_settle(params),
         "steer" => steer_turn(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed),
         "cancel" => {
             cancel_turn(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
@@ -1001,10 +1081,301 @@ pub fn dispatch_lane_operation(
     }
 }
 
+/// L5 is the sole terminal decision point. Missing or malformed `timeoutMs`
+/// means no turn deadline; only a caller-explicit non-zero value can produce
+/// `deadlineExceeded`. The lower L4 compatibility default is therefore never
+/// observable through the Conversation lane.
+fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterError> {
+    let explicit_deadline = params
+        .get("timeoutMs")
+        .and_then(Value::as_u64)
+        .is_some_and(|timeout_ms| timeout_ms > 0);
+    let effective_params = params_with_explicit_timeout_policy(params);
+    let mut arbiter = TurnSettlementArbiter::new();
+    if arbiter.begin_dispatch().is_err() {
+        return Err(RuntimeAdapterError::ConversationDispatchFailed);
+    }
+    let mut projected_deltas = arbiter.drain_deltas();
+    emit_settlement_deltas(&projected_deltas, "", "");
+
+    match runtime_adapters::send_message(&effective_params) {
+        Ok(mut response) => {
+            let signal = settlement_signal(&response, explicit_deadline);
+            let outcome = arbiter
+                .settle(signal)
+                .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
+            let deltas = arbiter.drain_deltas();
+            let session_id = response
+                .get("nativeSessionId")
+                .or_else(|| response.get("sessionId"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let turn_id = response
+                .get("turnId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            emit_settlement_deltas(&deltas, session_id, turn_id);
+            emit_user_message_projection(params, &arbiter, session_id, turn_id);
+            projected_deltas.extend(deltas);
+            project_settlement(&mut response, outcome, &arbiter, &projected_deltas);
+            Ok(response)
+        }
+        Err(error) => {
+            let outcome = arbiter
+                .settle(SettlementSignal::Error)
+                .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
+            debug_assert!(matches!(outcome, SettlementOutcome::Failed(_)));
+            emit_settlement_deltas(&arbiter.drain_deltas(), "", "");
+            Err(error)
+        }
+    }
+}
+
+fn params_with_explicit_timeout_policy(params: &Value) -> Value {
+    let mut effective = params.clone();
+    if let Some(object) = effective.as_object_mut()
+        && object.get("timeoutMs").and_then(Value::as_u64).is_none()
+    {
+        object.insert("timeoutMs".to_owned(), Value::from(0));
+    }
+    effective
+}
+
+fn settlement_signal(response: &Value, explicit_deadline: bool) -> SettlementSignal {
+    let turn_status = response
+        .get("turnStatus")
+        .or_else(|| {
+            response
+                .get("error")
+                .and_then(|error| error.get("turnStatus"))
+        })
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if turn_status == "cancelled" {
+        return SettlementSignal::CancelConfirmed;
+    }
+    let error_code = response
+        .get("error")
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if explicit_deadline
+        && (turn_status == "timeout"
+            || error_code == "deadline_exceeded"
+            || error_code.ends_with("_timeout"))
+    {
+        return SettlementSignal::ExplicitDeadline;
+    }
+    if response.get("ok").and_then(Value::as_bool) == Some(false)
+        || response.get("error").is_some_and(|error| !error.is_null())
+    {
+        return SettlementSignal::Error;
+    }
+    let protocol_finished = response
+        .get("events")
+        .and_then(Value::as_array)
+        .is_some_and(|events| {
+            events.iter().any(|event| {
+                event.get("kind").and_then(Value::as_str) == Some("lifecycle")
+                    && event.get("stage").and_then(Value::as_str) == Some("completed")
+            })
+        })
+        || matches!(turn_status, "completed" | "end_turn" | "end-turn");
+    if protocol_finished {
+        SettlementSignal::ProtocolFinish
+    } else {
+        SettlementSignal::Eof {
+            has_content: response
+                .get("output")
+                .and_then(Value::as_str)
+                .is_some_and(|output| !output.is_empty()),
+        }
+    }
+}
+
+fn emit_settlement_deltas(deltas: &[SettlementDelta], session_id: &str, turn_id: &str) {
+    for delta in deltas {
+        super::turn_event_emit::emit_turn_event(
+            "conversation.state.delta",
+            session_id,
+            turn_id,
+            delta.to_json(),
+        );
+    }
+}
+
+/// Project the submitted user message (with explicit interaction capability
+/// flags) through the send stream. No stream identity means the client could
+/// not bind the projection to a turn, so nothing is emitted; the native host
+/// never projects content without a groundable scope.
+fn emit_user_message_projection(
+    params: &Value,
+    arbiter: &TurnSettlementArbiter,
+    session_id: &str,
+    turn_id: &str,
+) {
+    if session_id.trim().is_empty() && turn_id.trim().is_empty() {
+        return;
+    }
+    let Some(text) = runtime_adapters::text_param_public(params, &["text", "message", "prompt"])
+    else {
+        return;
+    };
+    let cancel_supported = agent_id_param(params)
+        .ok()
+        .and_then(|agent_id| adapter_or_err(&agent_id).ok())
+        .and_then(|adapter| {
+            static_capability_matrix(adapter)
+                .get("cancel")
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false);
+    let Some(delta) = projection_delta::project_submitted_user_message(
+        &text,
+        turn_state_wire(arbiter.turn_state()),
+        cancel_supported,
+    ) else {
+        return;
+    };
+    super::turn_event_emit::emit_turn_event(
+        delta.event_kind(),
+        session_id,
+        turn_id,
+        delta.to_event_payload(),
+    );
+}
+
+fn project_settlement(
+    response: &mut Value,
+    outcome: SettlementOutcome,
+    arbiter: &TurnSettlementArbiter,
+    deltas: &[SettlementDelta],
+) {
+    let Some(object) = response.as_object_mut() else {
+        return;
+    };
+    let mut settlement = json!({
+        "outcome": outcome.wire_name(),
+        "turnState": turn_state_wire(arbiter.turn_state()),
+        "sendState": send_state_wire(arbiter.send_state()),
+    });
+    if let SettlementOutcome::Failed(reason) = outcome {
+        settlement["reason"] = json!(reason.wire_name());
+        object.insert("ok".to_owned(), Value::Bool(false));
+        if matches!(reason, SettlementFailureReason::TransportLost) {
+            object.insert("turnStatus".to_owned(), json!("failed"));
+            object.insert(
+                "error".to_owned(),
+                json!({
+                    "code": "transport_lost",
+                    "stage": "turn/settlement",
+                    "turnStatus": "failed",
+                }),
+            );
+        } else if matches!(reason, SettlementFailureReason::DeadlineExceeded) {
+            object.insert("turnStatus".to_owned(), json!("failed"));
+            object.insert(
+                "error".to_owned(),
+                json!({
+                    "code": "deadline_exceeded",
+                    "stage": "turn/deadline",
+                    "turnStatus": "failed",
+                }),
+            );
+        }
+    } else if matches!(outcome, SettlementOutcome::Cancelled) {
+        object.insert("ok".to_owned(), Value::Bool(false));
+        object.insert("turnStatus".to_owned(), json!("cancelled"));
+    }
+    object.insert("settlement".to_owned(), settlement);
+    object.insert(
+        "stateDeltas".to_owned(),
+        Value::Array(deltas.iter().map(|delta| delta.to_json()).collect()),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_settlement_missing_timeout_has_no_implicit_deadline() {
+        let missing = params_with_explicit_timeout_policy(&json!({"agent": "codex"}));
+        assert_eq!(missing["timeoutMs"], 0);
+
+        let malformed = params_with_explicit_timeout_policy(&json!({
+            "agent": "codex",
+            "timeoutMs": "120000"
+        }));
+        assert_eq!(malformed["timeoutMs"], 0);
+
+        let explicit = params_with_explicit_timeout_policy(&json!({
+            "agent": "codex",
+            "timeoutMs": 300_000
+        }));
+        assert_eq!(explicit["timeoutMs"], 300_000);
+    }
+
+    #[test]
+    fn test_settlement_response_classification_uses_protocol_signals() {
+        let protocol_finish = json!({
+            "ok": true,
+            "output": "",
+            "turnStatus": "completed",
+            "events": [{"kind": "lifecycle", "stage": "completed"}]
+        });
+        assert_eq!(
+            settlement_signal(&protocol_finish, false),
+            SettlementSignal::ProtocolFinish
+        );
+
+        assert_eq!(
+            settlement_signal(&json!({"ok": true, "output": "content"}), false),
+            SettlementSignal::Eof { has_content: true }
+        );
+        assert_eq!(
+            settlement_signal(&json!({"ok": true, "output": ""}), false),
+            SettlementSignal::Eof { has_content: false }
+        );
+        assert_eq!(
+            settlement_signal(
+                &json!({
+                    "ok": false,
+                    "turnStatus": "timeout",
+                    "error": {"code": "acp_protocol_timeout"}
+                }),
+                true,
+            ),
+            SettlementSignal::ExplicitDeadline
+        );
+        assert_eq!(
+            settlement_signal(
+                &json!({
+                    "ok": false,
+                    "turnStatus": "timeout",
+                    "error": {"code": "acp_protocol_timeout"}
+                }),
+                false,
+            ),
+            SettlementSignal::Error
+        );
+    }
+
+    #[test]
+    fn test_cancel_projection_is_distinct_from_failed_projection() {
+        let mut arbiter = TurnSettlementArbiter::new();
+        let outcome = arbiter.settle(SettlementSignal::CancelConfirmed).unwrap();
+        let deltas = arbiter.drain_deltas();
+        let mut response = json!({"ok": false, "error": {"turnStatus": "cancelled"}});
+        project_settlement(&mut response, outcome, &arbiter, &deltas);
+
+        assert_eq!(response["settlement"]["outcome"], "cancelled");
+        assert_eq!(response["settlement"]["turnState"], "cancelled");
+        assert_eq!(response["settlement"]["sendState"], "delivered");
+        assert_eq!(response["turnStatus"], "cancelled");
+        assert_ne!(response["settlement"]["outcome"], "failed");
+    }
 
     #[test]
     fn lane_families_cover_all_packaged_adapters() {
@@ -1121,6 +1492,44 @@ mod tests {
         assert_eq!(result["ok"], true);
         assert_eq!(result["capabilities"]["exactResume"], true);
         assert_eq!(result["capabilities"]["cancel"], true);
+    }
+
+    #[test]
+    fn deepseek_cleanup_uses_exact_process_local_session_while_cancel_stays_unsupported() {
+        let cleanup = cleanup_conversation(&json!({
+            "agent": "deepseek-harness",
+            "sessionId": "missing-deepseek-session"
+        }))
+        .unwrap();
+        assert_eq!(cleanup["ok"], false);
+        assert_eq!(cleanup["status"], "not_found");
+        assert_eq!(
+            cleanup["error"]["code"],
+            "deepseek_harness_session_unavailable"
+        );
+
+        let cancel = cancel_turn(&json!({
+            "agent": "deepseek-harness",
+            "sessionId": "missing-deepseek-session"
+        }))
+        .unwrap();
+        assert_eq!(cancel["status"], "unsupported");
+        assert_eq!(cancel["error"]["code"], "dispatch_cancel_unsupported");
+    }
+
+    #[test]
+    fn deepseek_open_and_capabilities_fail_closed_while_carrier_is_unverified() {
+        let open = open_or_resume(&json!({"agent": "deepseek-harness"})).unwrap();
+        assert_eq!(open["ok"], false);
+        assert_eq!(
+            open["error"]["code"],
+            "deepseek_harness_jsonrpc_carrier_unverified"
+        );
+
+        let capabilities = lane_capabilities(&json!({"agent": "deepseek-harness"})).unwrap();
+        assert_eq!(capabilities["readiness"], "unverified");
+        assert_eq!(capabilities["blockerCodes"], json!([]));
+        assert_eq!(capabilities["summaryCodes"], json!(["evidence_missing"]));
     }
 
     #[test]

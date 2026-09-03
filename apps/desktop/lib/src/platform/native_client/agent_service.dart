@@ -238,6 +238,11 @@ class AgentService
     return _processIo.runCliWithStdin(args, stdinText);
   }
 
+  /// Runs the native, embedded-frontier migration gate before any product
+  /// state is loaded. The caller supplies only the already-resolved raw root.
+  Future<Map<String, dynamic>> admitClientStateMigration(String dataRoot) =>
+      runCli(['state', 'admit', dataRoot]);
+
   @override
   Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) {
     return _processIo.streamCliJsonLines(args);
@@ -363,12 +368,12 @@ class AgentService
   Future<List<TargetCandidate>> scanTargets() => _commandActions.scanTargets();
 
   @override
-  Future<TargetCandidate?> scanOneTarget(
-    String targetId, {
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
     bool enableAgentCliModelLookup = false,
   }) {
-    return _commandActions.scanOneTarget(
-      targetId,
+    return _commandActions.scanTargetsBatch(
+      targetIds,
       enableAgentCliModelLookup: enableAgentCliModelLookup,
     );
   }

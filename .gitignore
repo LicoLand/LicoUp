@@ -14,6 +14,7 @@ Thumbs.db
 # Local generated and runtime assets
 *.log
 /build/
+/.licoup-subagent-mcp-live.lock/
 /cache/
 coverage/
 .cache/
@@ -97,6 +98,7 @@ apps/desktop/windows/flutter/ephemeral/
 test-results/
 
 # Local planning, agent, and one-off work
+/report/
 /docs/plans/
 /apps/desktop/docs/plans/
 /design-qa.md
@@ -119,3 +121,8 @@ test-results/
 AGENTS.md
 AGENT.md
 CLAUDE.md
+
+# Local-machine agent history replay corpus is developer-local only. It must
+# never enter the remote repository; regenerate via transcript-record ingest.
+tests/replay-corpus/
+.commandcode/

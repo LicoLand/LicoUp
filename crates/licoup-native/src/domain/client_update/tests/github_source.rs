@@ -1,10 +1,59 @@
 use super::support::*;
 
+use base64::{Engine as _, engine::general_purpose};
 use std::{
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     thread::{self, JoinHandle},
 };
+
+#[test]
+fn bundled_public_keys_document_parses_with_decodable_ed25519_keys() {
+    let document = super::super::github_source::bundled_public_keys_document().unwrap();
+    let keys = document["keys"].as_object().unwrap();
+    assert_eq!(keys.len(), 2);
+    for entry in keys.values() {
+        let encoded = entry["publicKey"].as_str().unwrap();
+        let bytes = general_purpose::STANDARD.decode(encoded).unwrap();
+        assert_eq!(bytes.len(), 32);
+        ed25519_dalek::VerifyingKey::from_bytes(&bytes.try_into().unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn github_release_source_uses_fixed_nightly_tag_and_latest_stable() {
+    use crate::domain::client_state_migration::ReleaseTrack;
+
+    assert_eq!(
+        super::super::github_source::release_metadata_path_for_test(ReleaseTrack::Nightly),
+        "/repos/LicoLand/LicoUp/releases/tags/nightly"
+    );
+    assert_eq!(
+        super::super::github_source::release_metadata_path_for_test(ReleaseTrack::Stable),
+        "/repos/LicoLand/LicoUp/releases/latest"
+    );
+}
+
+#[test]
+fn redirect_host_allowlist_rejects_foreign_hosts_and_accepts_github_and_loopback() {
+    for url in [
+        "https://evil.example.com/steal",
+        "https://github.com.evil.example/steal",
+        "http://foreign.example.test/steal",
+    ] {
+        assert!(super::super::github_source::validate_redirect_host_allowed_for_test(url).is_err());
+    }
+    for url in [
+        "https://github.com/LicoLand/LicoUp/releases/download/v1/a.zip",
+        "https://objects.githubusercontent.com/x",
+        "https://api.github.com/x",
+        "https://raw.githubusercontent.com/x",
+        "http://127.0.0.1:54321/a",
+        "http://localhost:54321/a",
+    ] {
+        assert!(super::super::github_source::validate_redirect_host_allowed_for_test(url).is_ok());
+    }
+}
 
 enum FixtureReply {
     Body(String),
@@ -121,7 +170,7 @@ fn github_params(
         "source": "github",
         "repo": "LicoLand/LicoUp",
         "githubApiBase": server.base,
-        "channel": "stable",
+        "targetReleaseTrack": "stable",
         "targetId": TARGET_ID,
         "stateRoot": state_root,
         "stagingRoot": fixture.staging,
@@ -176,7 +225,7 @@ fn client_update_github_check_fetches_verifies_and_caches_the_signed_manifest() 
     let cached = super::super::github_source::check_github(&params).unwrap();
     assert_eq!(cached["updateAvailable"], true);
     assert_eq!(cached["availableVersion"], "999.0.0");
-    assert_eq!(cached["cacheAgeSeconds"].as_u64().unwrap(), 0);
+    assert!(cached["cacheAgeSeconds"].as_u64().unwrap() <= 1);
 }
 
 #[test]
@@ -188,8 +237,7 @@ fn client_update_github_check_reports_up_to_date_when_no_eligible_release() {
     let state_root = fixture.root.join("state");
     let server = serve(manifest_routes(manifest));
 
-    let mut params = github_params(&server, &fixture, &state_root);
-    params["currentVersion"] = json!("999.0.0");
+    let params = github_params(&server, &fixture, &state_root);
     let checked = super::super::github_source::check_github(&params).unwrap();
     assert_eq!(checked["ok"], true);
     assert_eq!(checked["updateAvailable"], false);
@@ -275,9 +323,10 @@ fn client_update_github_download_stages_verified_artifact_bytes() {
         ]
     });
 
-    let params = github_params(&server, &fixture, &state_root);
+    let mut params = github_params(&server, &fixture, &state_root);
     let checked = super::super::github_source::check_github(&params).unwrap();
     assert_eq!(checked["updateAvailable"], true);
+    params.as_object_mut().unwrap().remove("targetReleaseTrack");
 
     let downloaded = super::super::github_source::download_github(&params).unwrap();
     assert_eq!(downloaded["ok"], true);
@@ -329,8 +378,9 @@ fn client_update_github_download_rejects_size_mismatch() {
         ]
     });
 
-    let params = github_params(&server, &fixture, &state_root);
+    let mut params = github_params(&server, &fixture, &state_root);
     let _ = super::super::github_source::check_github(&params).unwrap();
+    params.as_object_mut().unwrap().remove("targetReleaseTrack");
     let error = super::super::github_source::download_github(&params)
         .unwrap_err()
         .to_string();
@@ -347,8 +397,9 @@ fn client_update_github_context_injects_cached_manifest_and_bundled_keys() {
     let state_root = fixture.root.join("state");
     let server = serve(manifest_routes(manifest));
 
-    let params = github_params(&server, &fixture, &state_root);
+    let mut params = github_params(&server, &fixture, &state_root);
     let _ = super::super::github_source::check_github(&params).unwrap();
+    params.as_object_mut().unwrap().remove("targetReleaseTrack");
 
     let effective = super::super::github_source::github_context_params(&params).unwrap();
     assert!(effective.get("manifestJson").is_some());

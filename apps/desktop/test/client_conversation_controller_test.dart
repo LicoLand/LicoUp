@@ -9,7 +9,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 
 void main() {
   test(
-    'lists real groups and posts exact structured mention memberships',
+    'posts one Event and dispatches with conversation and event identity only',
     () async {
       final runner = _ConversationRunner();
       final controller = ClientConversationController(runner: runner);
@@ -32,43 +32,39 @@ void main() {
       );
       expect(post['conversationId'], 'conversation:group');
       expect(post['authorMembershipId'], 'membership:owner');
-      expect(post['mentionedMembershipIds'], ['membership:codex']);
+      expect(post['content'], 'hello @Codex');
+      expect(post.containsKey('mentionedMembershipIds'), isFalse);
+      final dispatch = runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.dispatch.after-post',
+      );
+      expect(dispatch.keys.toSet(), {'action', 'conversationId', 'eventId'});
+      expect(dispatch['conversationId'], 'conversation:group');
+      expect(dispatch['eventId'], 'event:existing');
       expect(controller.failureCode, isEmpty);
     },
   );
 
-  test('suppresses mentions and can target one Agent membership', () async {
-    final runner = _ConversationRunner();
-    final controller = ClientConversationController(runner: runner);
+  test(
+    'plain text posts without mentions and never resolves them client-side',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(runner: runner);
 
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
 
-    expect(
-      await controller.postMessage('plain group note', suppressMentions: true),
-      isTrue,
-    );
-    expect(
-      runner.requests.lastWhere(
+      expect(await controller.postMessage('plain group note'), isTrue);
+      final post = runner.requests.lastWhere(
         (request) => request['action'] == 'conversation.message.post',
-      )['mentionedMembershipIds'],
-      isEmpty,
-    );
-
-    expect(
-      await controller.postMessage(
-        'continue the entry slot',
-        mentionAgentId: 'codex',
-      ),
-      isTrue,
-    );
-    expect(
-      runner.requests.lastWhere(
-        (request) => request['action'] == 'conversation.message.post',
-      )['mentionedMembershipIds'],
-      ['membership:codex'],
-    );
-  });
+      );
+      expect(post.containsKey('mentionedMembershipIds'), isFalse);
+      expect(post['content'], 'plain group note');
+      final dispatch = runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.dispatch.after-post',
+      );
+      expect(dispatch.keys.toSet(), {'action', 'conversationId', 'eventId'});
+    },
+  );
 
   test(
     'creates a group from one person and one Agent in one native action',
@@ -267,6 +263,28 @@ void main() {
   );
 
   test(
+    'archives the requested canonical conversation without reselection',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+
+      await controller.initialize();
+      expect(
+        await controller.archiveConversation('conversation:group'),
+        isTrue,
+      );
+
+      final request = runner.requests.singleWhere(
+        (entry) => entry['action'] == 'conversation.archive',
+      );
+      expect(request['conversationId'], 'conversation:group');
+      expect(request['archived'], isTrue);
+      expect(controller.groupConversations, isEmpty);
+      expect(controller.failureCode, isEmpty);
+    },
+  );
+
+  test(
     'lists archived conversations and restores one canonical item',
     () async {
       final runner = _ConversationRunner(groupArchived: true);
@@ -291,6 +309,293 @@ void main() {
       expect(controller.failureCode, isEmpty);
     },
   );
+
+  test('surfaces an explicit group-operation failure on the banner fields', () {
+    final controller = ClientConversationController(
+      runner: _ConversationRunner(),
+    );
+    controller.surfaceFailure(
+      'strategy/start',
+      'strategy_actor_quota_exhausted',
+    );
+    expect(controller.failureStage, 'strategy/start');
+    expect(controller.failureCode, 'strategy_actor_quota_exhausted');
+    expect(controller.failureRef, matches(RegExp(r'^#L-[0-9A-F]{4}$')));
+    expect(
+      controller.failureCopyBlob,
+      contains('ref: ${controller.failureRef}'),
+    );
+    expect(controller.failureCopyBlob, contains('stage: strategy/start'));
+    expect(controller.failureProblemCode, 'LU-ST-1923');
+    expect(
+      controller.failureCopyBlob,
+      contains('code: strategy_actor_quota_exhausted'),
+    );
+    expect(controller.failureCopyBlob, contains('problemCode: LU-ST-1923'));
+    expect(controller.failureCopyBlob, contains('domain: strategy'));
+  });
+
+  test(
+    'keeps the structured resolution for a persisted usage-limit failure',
+    () {
+      final controller = ClientConversationController(
+        runner: _ConversationRunner(),
+      );
+      controller.surfaceFailure(
+        'turn/completed',
+        'codex_usage_limit_exceeded',
+        component: 'native_cli',
+        retryable: false,
+        recovery: 'select_available_model_or_wait_for_quota_reset',
+      );
+
+      expect(controller.failureProblemCode, 'LU-NA-4239');
+      expect(controller.failureComponent, 'native_cli');
+      expect(controller.failureRetryable, isFalse);
+      expect(
+        controller.failureRecovery,
+        'select_available_model_or_wait_for_quota_reset',
+      );
+      expect(controller.failureCopyBlob, contains('component: native_cli'));
+      expect(controller.failureCopyBlob, contains('retryable: false'));
+      expect(
+        controller.failureCopyBlob,
+        contains('recovery: select_available_model_or_wait_for_quota_reset'),
+      );
+      expect(
+        controller.failureCopyBlob,
+        isNot(contains('runtime fixture detail')),
+      );
+    },
+  );
+
+  test('records a copyable failure ref when post transport fails', () async {
+    final runner = _ConversationRunner()..failPostCode = 'transport_failed';
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(await controller.postMessage('hi'), isFalse);
+    expect(controller.failureStage, 'send');
+    expect(controller.failureCode, 'transport_failed');
+    expect(controller.failureRef, matches(RegExp(r'^#L-[0-9A-F]{4}$')));
+    expect(
+      controller.failureCopyBlob,
+      contains('ref: ${controller.failureRef}'),
+    );
+    expect(controller.failureCopyBlob, contains('stage: send'));
+    expect(controller.failureCopyBlob, contains('code: transport_failed'));
+    expect(controller.failureProblemCode, 'LU-RP-1001');
+    expect(controller.failureCopyBlob, contains('problemCode: LU-RP-1001'));
+    expect(controller.failureCopyBlob, contains('domain: rpc'));
+    expect(controller.failureCopyBlob, isNot(contains('hi')));
+  });
+
+  test(
+    'captures returned live turns and surfaces a typed strategy error',
+    () async {
+      final runner = _ConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(await controller.postMessage('hello @Codex'), isTrue);
+      expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
+      expect(controller.dispatchPending, isTrue);
+
+      runner
+        ..postTurns = const []
+        ..dispatchPending = false
+        ..failStrategyStart = true;
+      expect(await controller.postMessage('start'), isTrue);
+      expect(controller.liveTurns, isEmpty);
+      expect(controller.dispatchPending, isFalse);
+      expect(controller.failureStage, 'strategy/start');
+      expect(controller.failureCode, 'strategy_actor_quota_exhausted');
+    },
+  );
+
+  test(
+    'marks a persisted event retryable when after-post dispatch fails',
+    () async {
+      final runner = _ConversationRunner()
+        ..failDispatchCode = 'transport_failed';
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(await controller.postMessage('hi'), isTrue);
+      final marker = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.event.append',
+      );
+      expect(marker['conversationId'], 'conversation:group');
+      expect(marker['causationId'], 'event:existing');
+      expect(marker['finalized'], isTrue);
+      expect(
+        jsonDecode(
+          ((marker['parts'] as List).single as Map)['content'] as String,
+        ),
+        {'code': 'transport_failed', 'stage': 'send'},
+      );
+      expect(
+        controller.events.map((event) => event.id),
+        containsAll(['event:existing', 'event:failed-turn']),
+      );
+      expect(controller.failureStage, 'send');
+      expect(controller.failureCode, 'transport_failed');
+      expect(controller.liveTurns, isEmpty);
+      expect(controller.dispatchPending, isFalse);
+    },
+  );
+
+  test(
+    'does not synthesize a code for an untyped dispatch exception',
+    () async {
+      final runner = _ConversationRunner()..throwUntypedDispatch = true;
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(await controller.postMessage('hi'), isTrue);
+      expect(controller.failureCode, isEmpty);
+      expect(controller.liveTurns, isEmpty);
+      expect(controller.dispatchPending, isFalse);
+    },
+  );
+
+  test('classifies a malformed post result as an invalid response', () async {
+    final runner = _ConversationRunner()..malformedPost = true;
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(await controller.postMessage('hi'), isFalse);
+    expect(controller.failureStage, 'send');
+    expect(controller.failureCode, 'invalid_response');
+  });
+
+  test(
+    'a dispatch without handles and without a typed error records no failure',
+    () async {
+      final runner = _ConversationRunner()
+        ..strategyRevision = 'rev-auth'
+        ..dispatchPending = true;
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(await controller.postMessage('hi'), isTrue);
+      expect(controller.liveTurns, isEmpty);
+      expect(controller.dispatchPending, isFalse);
+      expect(controller.failureCode, isEmpty);
+    },
+  );
+
+  test('settleLiveDispatch clears a leftover composer busy latch', () async {
+    final runner = _ConversationRunner()
+      ..postTurns = [
+        {
+          'turnHandle': 'dispatch:live',
+          'conversationId': 'conversation:group',
+          'agent': 'codex',
+        },
+      ]
+      ..dispatchPending = true;
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+    expect(await controller.postMessage('hello @Codex'), isTrue);
+    expect(controller.dispatchPending, isTrue);
+    controller.settleLiveDispatch();
+    expect(controller.dispatchPending, isFalse);
+    expect(controller.liveTurns, isEmpty);
+  });
+
+  test(
+    'one catalog and timeline refresh runs after dispatch returns',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      runner.requests.clear();
+
+      expect(await controller.postMessage('hi'), isTrue);
+      final actions = runner.requests
+          .map((request) => request['action'])
+          .toList();
+      expect(actions, [
+        'conversation.message.post',
+        'conversation.dispatch.after-post',
+        'conversation.list',
+        'conversation.get',
+        'conversation.events.page',
+      ]);
+    },
+  );
+
+  test(
+    'failed message retry reposts its content then deletes the settled attempt',
+    () async {
+      final runner = _ConversationRunner()..includeFailedTurn = true;
+      final controller = ClientConversationController(runner: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(await controller.retryMessage('event:existing'), isTrue);
+
+      final actions = runner.requests
+          .map((request) => request['action'])
+          .where(
+            (action) =>
+                action == 'conversation.message.post' ||
+                action == 'conversation.dispatch.after-post' ||
+                action == 'conversation.message.delete',
+          )
+          .toList();
+      expect(actions, [
+        'conversation.message.post',
+        'conversation.dispatch.after-post',
+        'conversation.message.delete',
+      ]);
+      final repost = runner.requests.firstWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      );
+      expect(repost['content'], 'hello');
+      final deletion = runner.requests.firstWhere(
+        (request) => request['action'] == 'conversation.message.delete',
+      );
+      expect(deletion['eventId'], 'event:existing');
+      expect(deletion['ownerMembershipId'], 'membership:owner');
+    },
+  );
+
+  test('deletes a local message through the canonical store action', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(await controller.deleteMessage('event:existing'), isTrue);
+
+    final deletion = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.message.delete',
+    );
+    expect(deletion.keys.toSet(), {
+      'action',
+      'conversationId',
+      'eventId',
+      'ownerMembershipId',
+    });
+  });
 }
 
 final class _ConversationRunner implements AgentCommandRunner {
@@ -300,6 +605,17 @@ final class _ConversationRunner implements AgentCommandRunner {
   bool groupArchived;
   final Completer<void>? gate;
   final Map<String, String> addedAgents = {};
+  bool failStrategyStart = false;
+  bool dispatchPending = false;
+  bool throwUntypedDispatch = false;
+  bool malformedPost = false;
+  bool includeFailedTurn = false;
+  bool appendedFailure = false;
+  bool messageDeleted = false;
+  String failPostCode = '';
+  String failDispatchCode = '';
+  String strategyRevision = '';
+  List<Map<String, dynamic>> postTurns = const [];
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -322,6 +638,31 @@ final class _ConversationRunner implements AgentCommandRunner {
       addedAgents[(principal['agentId'] ?? '').toString()] =
           (principal['displayName'] ?? '').toString();
     }
+    if (action == 'conversation.strategy.set') {
+      strategyRevision = (request['strategyRevision'] ?? '').toString();
+    }
+    if (action == 'conversation.message.delete') {
+      messageDeleted = true;
+    }
+    if (action == 'conversation.event.append') {
+      appendedFailure = true;
+    }
+    if (action == 'conversation.message.post' && failPostCode.isNotEmpty) {
+      return {
+        'ok': false,
+        'error': {'code': failPostCode},
+      };
+    }
+    if (action == 'conversation.dispatch.after-post' &&
+        failDispatchCode.isNotEmpty) {
+      return {
+        'ok': false,
+        'error': {'code': failDispatchCode},
+      };
+    }
+    if (action == 'conversation.dispatch.after-post' && throwUntypedDispatch) {
+      throw StateError('synthetic dispatch exception');
+    }
     return {
       'ok': true,
       'result': switch (action) {
@@ -330,20 +671,44 @@ final class _ConversationRunner implements AgentCommandRunner {
         'conversation.get' => _conversation(
           (request['conversationId'] ?? 'conversation:group').toString(),
           addedAgents: addedAgents,
+          strategyRevision: strategyRevision,
         ),
         'conversation.events.page' => {
           'events': request['conversationId'] == 'conversation:created'
               ? <Map<String, dynamic>>[]
-              : [_event()],
+              : messageDeleted
+              ? <Map<String, dynamic>>[]
+              : [
+                  _event(),
+                  if (includeFailedTurn || appendedFailure) _failedTurnEvent(),
+                ],
           'nextCursor': null,
           'totalCount': request['conversationId'] == 'conversation:created'
               ? 0
               : 1,
         },
-        'conversation.message.post' => {
-          'event': _event(),
+        'conversation.message.post' =>
+          malformedPost
+              ? <String, dynamic>{}
+              : {
+                  'event': _event(),
+                  'directTurns': <Map<String, dynamic>>[],
+                  'turns': <Map<String, dynamic>>[],
+                  'dispatchPending': false,
+                },
+        'conversation.dispatch.after-post' => {
+          'event': {'id': request['eventId']},
           'directTurns': <Map<String, dynamic>>[],
+          'turns': postTurns,
+          'dispatchPending': dispatchPending && !failStrategyStart,
+          if (failStrategyStart)
+            'strategyError': <String, dynamic>{
+              'code': 'strategy_actor_quota_exhausted',
+              'stage': 'strategy/start',
+            },
         },
+        'conversation.event.append' => _failedTurnEvent(),
+        'conversation.message.delete' => <String, dynamic>{},
         'conversation.membership.add' => <String, dynamic>{},
         _ => <String, dynamic>{},
       },
@@ -400,6 +765,7 @@ Map<String, dynamic> _summary({
 Map<String, dynamic> _conversation(
   String id, {
   Map<String, String> addedAgents = const {},
+  String strategyRevision = '',
 }) => {
   'id': id,
   'title': id == 'conversation:created' ? 'Review room' : 'Lico',
@@ -410,6 +776,7 @@ Map<String, dynamic> _conversation(
   'createdAtUnixMs': 1,
   'updatedAtUnixMs': 10,
   'eventCount': id == 'conversation:created' ? 0 : 1,
+  'strategyRevision': strategyRevision,
   'memberships': [
     _membership(
       id: 'membership:owner',
@@ -481,6 +848,28 @@ Map<String, dynamic> _event() => {
       'kind': 'text',
       'content': 'hello',
       'createdAtUnixMs': 10,
+    },
+  ],
+};
+
+Map<String, dynamic> _failedTurnEvent() => {
+  'id': 'event:failed-turn',
+  'conversationId': 'conversation:group',
+  'sequence': 2,
+  'authorMembershipId': 'membership:codex',
+  'kind': 'message',
+  'causationId': 'event:existing',
+  'correlationId': 'turn:failed',
+  'createdAtUnixMs': 11,
+  'finalized': true,
+  'parts': [
+    {
+      'id': 'part:diagnostic',
+      'eventId': 'event:failed-turn',
+      'ordinal': 0,
+      'kind': 'diagnostic',
+      'content': '{"code":"fixture_turn_failed"}',
+      'createdAtUnixMs': 11,
     },
   ],
 };

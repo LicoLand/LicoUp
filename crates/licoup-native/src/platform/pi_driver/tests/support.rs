@@ -23,10 +23,7 @@ pub(super) fn resume_config(
 }
 
 pub(super) fn temporary_directory(prefix: &str) -> PathBuf {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let nonce = uuid::Uuid::new_v4().simple();
     let path = std::env::temp_dir().join(format!("{prefix}-{nonce}"));
     fs::create_dir_all(&path).unwrap();
     path
@@ -62,20 +59,39 @@ fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     assert_eq!(args, vec!["--mode", "rpc", "--offline"]);
     assert!(!args.iter().any(|arg| arg.contains("private") || arg.contains("session")));
-    std::thread::spawn(|| {
-        let mut stderr = io::stderr();
-        let _ = stderr.write_all(&vec![b'x'; 128 * 1024]);
-    });
+    let fixture = std::env::current_dir()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    if fixture.contains("rpc-fake") {
+        std::thread::spawn(|| {
+            let mut stderr = io::stderr();
+            let _ = stderr.write_all(&vec![b'x'; 128 * 1024]);
+        });
+    }
 
-    let native_steer = std::env::current_exe()
-        .map(|path| path.to_string_lossy().contains("native-steer"))
-        .unwrap_or(false);
-    let session_id = if native_steer { "pi-native-steer-1" } else { "pi-native-1" };
+    let session_id = if fixture.contains("native-steer") {
+        "pi-native-steer-1"
+    } else if fixture.contains("interaction-exit") {
+        "pi-native-interaction-exit-1"
+    } else if fixture.contains("interaction") {
+        "pi-native-interaction-1"
+    } else if fixture.contains("credential") {
+        "pi-native-credential-1"
+    } else if fixture.contains("timeout") {
+        "pi-native-timeout-1"
+    } else if fixture.contains("stream") {
+        "pi-native-stream-1"
+    } else {
+        "pi-native-fake-1"
+    };
     let mut state_requests = 0usize;
     let mut stream = false;
     let mut awaiting_steer = false;
     let mut guided = false;
     let mut credential_error = false;
+    let mut interaction_case = false;
+    let mut interaction_completed = false;
     for line in io::stdin().lock().lines() {
         let line = line.unwrap();
         let id = request_id(&line);
@@ -83,7 +99,10 @@ fn main() {
             state_requests += 1;
             println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_state\",\"success\":true,\"data\":{{\"sessionId\":\"{}\"}}}}", id, session_id);
             io::stdout().flush().unwrap();
-            if state_requests > 1 && !credential_error {
+            if interaction_completed {
+                break;
+            }
+            if state_requests > 1 && !credential_error && !interaction_case {
                 std::thread::sleep(std::time::Duration::from_secs(5));
             }
         } else if line.contains("\"type\":\"prompt\"") {
@@ -105,12 +124,43 @@ fn main() {
                 io::stdout().flush().unwrap();
                 continue;
             }
+            if line.contains("interaction-exit-case") {
+                println!("{{\"type\":\"extension_ui_request\",\"id\":\"ui-confirm\",\"method\":\"confirm\",\"title\":\"Synthetic confirmation\"}}");
+                io::stdout().flush().unwrap();
+                let release = std::env::current_dir().unwrap().join("release-interaction-exit");
+                let mut released = false;
+                for _ in 0..10_000 {
+                    if release.exists() {
+                        released = true;
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                if !released {
+                    std::process::exit(6);
+                }
+                break;
+            }
+            if line.contains("interaction-case") {
+                interaction_case = true;
+                println!("{{\"type\":\"extension_ui_request\",\"id\":\"ui-confirm\",\"method\":\"confirm\",\"title\":\"Synthetic confirmation\"}}");
+                io::stdout().flush().unwrap();
+                continue;
+            }
             if stream {
                 println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_delta\",\"delta\":\"one\"}}}}");
                 println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_delta\",\"delta\":\"-two\"}}}}");
             } else {
                 println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_delta\",\"delta\":\"pi-ok\"}}}}");
             }
+            println!("{{\"type\":\"agent_settled\"}}");
+            io::stdout().flush().unwrap();
+        } else if line.contains("\"type\":\"extension_ui_response\"") {
+            if !interaction_case || id != "ui-confirm" || !line.contains("\"confirmed\":true") {
+                std::process::exit(5);
+            }
+            interaction_completed = true;
+            println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_end\",\"contentIndex\":0,\"content\":\"pi-interaction-ok\"}}}}");
             println!("{{\"type\":\"agent_settled\"}}");
             io::stdout().flush().unwrap();
         } else if line.contains("\"type\":\"steer\"") {
@@ -127,7 +177,7 @@ fn main() {
             if credential_error {
                 println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"success\":true,\"data\":{{\"text\":null}}}}", id);
             } else {
-                let text = if guided { "pi-guided" } else if stream { "one-two" } else { "pi-ok" };
+                let text = if guided { "pi-guided" } else if interaction_case { "pi-interaction-ok" } else if stream { "one-two" } else { "pi-ok" };
                 println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"success\":true,\"data\":{{\"text\":\"{}\"}}}}", id, text);
             }
             io::stdout().flush().unwrap();

@@ -89,8 +89,6 @@ pub(super) fn reject_artifact_overrides(params: &Value) -> Result<()> {
         "install-dir",
         "appName",
         "app-name",
-        "rollbackSnapshotRoot",
-        "rollback-snapshot-root",
         "installerStrategy",
         "installer-strategy",
     ] {

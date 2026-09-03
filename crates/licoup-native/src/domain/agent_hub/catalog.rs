@@ -138,6 +138,7 @@ fn project_recipe_card(
         present,
         live_lookup,
         params,
+        fact.and_then(|fact| fact.executable_binding.as_deref()),
     );
     let installed_version = installed_version_of(
         present,
@@ -333,7 +334,14 @@ fn command_preview(os: &str, channel: &super::contract::InstallChannel) -> Strin
 fn first_concrete<const N: usize>(values: [&str; N]) -> String {
     values
         .into_iter()
-        .map(version::concrete_display)
+        .map(|value| {
+            let concrete = version::concrete_display(value);
+            if concrete.is_empty() && version_check::is_cursor_date_hash_version(value.trim()) {
+                value.trim().to_owned()
+            } else {
+                concrete
+            }
+        })
         .find(|value| !value.is_empty())
         .unwrap_or_default()
 }
@@ -344,20 +352,17 @@ fn fact_from_value(item: &Value) -> Option<DiscoveryFact> {
         .or_else(|| item.get("agentId"))
         .and_then(Value::as_str)
         .filter(|value| FIRST_BATCH_IDS.contains(value))?;
-    let present = item
-        .get("present")
-        .and_then(Value::as_bool)
-        .unwrap_or_else(|| {
-            item.get("status")
-                .and_then(Value::as_str)
-                .is_some_and(|status| {
-                    status == "detected" || status == "configured" || status == "available"
-                })
-                || item
-                    .get("binaryPath")
-                    .and_then(Value::as_str)
-                    .is_some_and(|value| !value.is_empty())
-        });
+    let present = item.get("present").and_then(Value::as_bool) == Some(true)
+        || item
+            .get("status")
+            .and_then(Value::as_str)
+            .is_some_and(|status| {
+                status == "detected" || status == "configured" || status == "available"
+            })
+        || item
+            .get("binaryPath")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
     Some(DiscoveryFact {
         agent_id: agent_id.to_string(),
         present,
@@ -373,6 +378,12 @@ fn fact_from_value(item: &Value) -> Option<DiscoveryFact> {
             .to_string(),
         installed_version: text_field(item, &["installedVersion", "version"]),
         latest_version: text_field(item, &["latestVersion"]),
+        executable_binding: item
+            .get("binaryPath")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from),
     })
 }
 
