@@ -11,9 +11,8 @@
 // commands, user identity, or raw tool output.  It returns stable booleans
 // and named stages only.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -23,8 +22,18 @@ import {
   clientSourceStateDigest,
 } from "./lib/client-source-state-digest.mjs";
 
+import {
+  MACOS_APP_NAME as APP_NAME,
+  MacosInstallError,
+  createMacosAppPorts,
+  installMacosApplication,
+  uninstallMacosApplication,
+} from "./lib/macos-app-lifecycle.mjs";
+
+export { MacosInstallError };
+
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const APP_NAME = "LicoUp.app";
+
 const EXECUTABLE_RELATIVE_PATH = path.join("Contents", "MacOS", "licoup");
 const MANIFEST_RELATIVE_PATH = path.join(
   "package-metadata",
@@ -45,17 +54,8 @@ const DEFAULT_STABLE_WINDOW_MS = 30_000;
 const STABLE_POLL_INTERVAL_MS = 500;
 const LAUNCH_ATTEMPTS = 3;
 const LAUNCH_RETRY_DELAY_MS = 500;
-const BUNDLE_ID = "land.lico.licoup";
 const SOURCE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
-const STAGE_PATTERN = /^macos-install-[a-z-]+$/u;
-
-export class MacosInstallError extends Error {
-  constructor(code, stage = "") {
-    super(code);
-    this.code = code;
-    this.stage = stage;
-  }
-}
+const STAGE_PATTERN = /^macos-(?:install|uninstall)-[a-z-]+$/u;
 
 function fail(code, stage = "") {
   throw new MacosInstallError(code, stage);
@@ -65,16 +65,22 @@ function parseArgs(argv) {
   const options = {
     launchInstalled: false,
     verifyStable: false,
+    uninstall: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--launch-installed") {
+    if (arg === "--uninstall") {
+      options.uninstall = true;
+    } else if (arg === "--launch-installed") {
       options.launchInstalled = true;
     } else if (arg === "--verify-stable") {
       options.verifyStable = true;
     } else {
       fail("macos_install_option_invalid");
     }
+  }
+  if (options.uninstall && (options.launchInstalled || options.verifyStable)) {
+    fail("macos_install_option_invalid");
   }
   return options;
 }
@@ -159,28 +165,12 @@ export function runMacosInstaller(
     fail("macos_install_runnable_mismatch", "macos-install-validate-binding");
   }
 
-  stages.push("macos-install-quit-running");
-  ports.quitRunning(installedAppPath);
-
-  stages.push("macos-install-replace-destination");
-  ports.mkdir(installDir);
-  ports.remove(installedAppPath);
-  ports.copyTree(runnableAppPath, installedAppPath);
-  const installedManifestRoot = path.join(
+  const lifecycle = installMacosApplication({
+    sourceApp: runnableAppPath,
     installDir,
-    path.dirname(MANIFEST_RELATIVE_PATH),
-  );
-  const runnableManifestRoot = path.join(
-    runnableRoot,
-    path.dirname(MANIFEST_RELATIVE_PATH),
-  );
-  ports.remove(installedManifestRoot);
-  ports.copyTree(runnableManifestRoot, installedManifestRoot);
-
-  stages.push("macos-install-register");
-  if (!ports.register(installedAppPath)) {
-    fail("macos_install_register_failed", "macos-install-register");
-  }
+    manifestRoot: path.join(runnableRoot, path.dirname(MANIFEST_RELATIVE_PATH)),
+    stages,
+  }, ports);
 
   const result = {
     ok: true,
@@ -189,6 +179,8 @@ export function runMacosInstaller(
     launchVerified: false,
     stableVerified: false,
     installedAppPath,
+    removedApplications: lifecycle.removedApplications,
+    unregisteredApplications: lifecycle.unregisteredApplications,
   };
 
   if (launchInstalled) {
@@ -247,35 +239,6 @@ function observeStableInstalledClient(appPath, windowMs) {
   return stable;
 }
 
-function quitRunningClient() {
-  const script = `if application id "${BUNDLE_ID}" is running then tell application id "${BUNDLE_ID}" to quit`;
-  try {
-    spawnSync("osascript", ["-e", script], {
-      stdio: ["ignore", "ignore", "ignore"],
-      timeout: 15_000,
-    });
-  } catch {
-    // Best effort; destination replacement proceeds.
-  }
-}
-
-function registerInstalledApp(appPath) {
-  const lsregister =
-    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
-  if (existsSync(lsregister)) {
-    const result = spawnSync(lsregister, ["-f", appPath], {
-      stdio: ["ignore", "ignore", "ignore"],
-      timeout: 30_000,
-    });
-    if (result.status !== 0) return false;
-  }
-  const indexed = spawnSync("mdimport", [appPath], {
-    stdio: ["ignore", "ignore", "ignore"],
-    timeout: 30_000,
-  });
-  return indexed.status === 0;
-}
-
 function launchInstalledApp(appPath) {
   const result = spawnSync("open", [appPath], {
     stdio: ["ignore", "ignore", "ignore"],
@@ -286,20 +249,10 @@ function launchInstalledApp(appPath) {
 
 function realPorts() {
   return {
-    exists: (filePath) => existsSync(filePath),
+    ...createMacosAppPorts(),
     readJsonFile: (filePath) => JSON.parse(readFileSync(filePath, "utf8")),
     sourceDigest: () =>
       clientSourceStateDigest(workspaceRoot, CANONICAL_CLIENT_SOURCE_ROOTS),
-    quitRunning: () => quitRunningClient(),
-    mkdir: (directory) => mkdirSync(directory, { recursive: true }),
-    remove: (target) => rmSync(target, { recursive: true, force: true }),
-    copyTree: (source, target) =>
-      cpSync(source, target, {
-        recursive: true,
-        dereference: false,
-        verbatimSymlinks: true,
-      }),
-    register: (appPath) => registerInstalledApp(appPath),
     launchInstalled: (appPath) => launchInstalledApp(appPath),
     waitForLaunchRetry: () => sleep(LAUNCH_RETRY_DELAY_MS),
     observeStable: (appPath, windowMs) =>
@@ -322,6 +275,10 @@ function main(argv = process.argv.slice(2)) {
     fail("macos_install_requires_macos");
   }
   const flags = parseArgs(argv);
+  if (flags.uninstall) {
+    console.log(JSON.stringify(uninstallMacosApplication({ installDir: resolveInstallDir() })));
+    return;
+  }
   const result = runMacosInstaller(
     {
       installDir: resolveInstallDir(),

@@ -200,6 +200,7 @@
     "client:verify:linux-bundle-carrier": "node apps/desktop/scripts/build-linux-verification-carrier.mjs",
     "client:verify:android-apk": "node apps/desktop/scripts/verify-android-apk.mjs",
     "client:install:macos": "node tools/scripts/client-macos-install.mjs",
+    "client:uninstall:macos": "node tools/scripts/client-macos-install.mjs --uninstall",
     "client:linux:smoke": "node apps/desktop/scripts/smoke-linux-bundle.mjs",
     "client:linux:gui-smoke": "node apps/desktop/scripts/gui-smoke-linux-bundle.mjs",
     "client:ubuntu:verify": "node apps/desktop/scripts/verify-ubuntu-client.mjs",
