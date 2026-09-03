@@ -39,20 +39,47 @@ embedded migration frontier. Stable promotion must be non-prerelease and
 strictly newer; a same-version Stable is not offered to Nightly. See
 [client update and state migration](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md).
 
-Promotion readiness is not publication. The repository stops at a verified
-`origin/release` source cut. Post-release macOS Developer ID publication is
-delegated to the local Apple Release engine through
-`tools/apple-release/macos-direct-arm64.json`.
+After a same-repository `stable` → `release` pull request merges,
+`client-source-release.yml` publishes only the exact merge commit's source.
+It verifies the second parent against the accepted stable head and creates
+`v{version}`, `LicoUp {version}`, `LicoUp-source-v{version}.tar.gz` and its
+`.sha256` companion. The Release body binds `apple-release-source:v1:{revision}`.
+It never builds, signs, notarizes, or uploads binaries. Retries preserve public
+tags and assets; only a matching draft can finish missing source files.
 
-The delegated release run cuts the fixed `macos-release-candidate` branch from
-the authorized `origin/release` revision, waits for its required checks, and
-publishes the declared tag, Release, and five-asset contract from that
-candidate. The fifth asset is the signed update manifest: the configured update
-command generates it during the build, the engine uploads it with the other
-assets, and it is verified by the same unauthenticated public download. The
-engine never mutates `nightly`, `stable`, `release`, Rulesets, or
-required checks, and the only remote mutations it may perform are the frozen
-candidate and the declared public tag, Release, and assets.
+Apple Release then uses `tools/apple-release/macos-direct-arm64.json` in the
+clean existing repository on `release`, equal to `origin/release`. Its complete
+product adapter surface is `tools/scripts/macos-release/`: `gate-source.mjs`,
+`gate-release-policy.mjs`, `build.mjs`, and `write-update-manifest.mjs`.
+Dependency preparation (`npm ci`) is selected by the engine. The build adapter
+fixes the stable track and produces `build/apps/desktop/runnable/macos/release/LicoUp.app`;
+the update adapter binds tag, repository and version and produces
+`build/apple-release/LicoUp-update-manifest.json`.
+
+The engine creates `macos-release-candidate` at the exact release revision,
+without a commit or pull request. After preparation and product gates, it pushes
+the unchanged candidate and observes successful `Branch flow`, `Commit identity`,
+`Auditor`, and `Release ready` jobs bound to that SHA, branch, workflow, run and
+attempt before building or signing. Missing/running checks wait on the same
+candidate without a cancellation deadline; failures and skipped checks block.
+The candidate never merges back and is removed only after public verification.
+
+The mandatory Apple compliance skill delegates to this read-only authority check:
+
+```sh
+apple-release compliance check --project . --config tools/apple-release/macos-direct-arm64.json
+```
+
+Require `PASS` for the unchanged session before submission. The check validates
+source, metadata, toolchain, both entitlement modes, privacy, profile/certificate,
+update keys and notary authority/queue without publishing. An existing `In Progress`
+submission blocks a new session. Actual app/archive validation remains mandatory
+immediately before upload; build and notary waits have no cancellation deadline.
+
+Apple Release preserves the source pair and appends only the five macOS assets:
+`LicoUp-macos-arm64.dmg`, its `.sha256`, `LicoUp-macos-arm64-update.zip`, its
+`.sha256`, and `LicoUp-update-manifest.json`. The single public Release therefore
+contains seven immutable assets. A conflict stops; public files are never replaced.
 
 Configure the local release authority and inspect release runs with:
 
@@ -90,5 +117,6 @@ notarization result, or uploaded asset alone is not success. Terminal success
 requires exact public-asset reconciliation, anonymous installer download,
 digest verification, installation, and stable launch.
 
-Branch promotion never starts a release run and never creates or publishes a
-GitHub Release, tag, asset, notarization submission, or release-track record.
+The final merged promotion publishes source automatically. macOS signing,
+notarization and the five platform assets remain separately authorized Apple
+Release operations.
