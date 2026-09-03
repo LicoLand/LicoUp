@@ -139,6 +139,10 @@ fn run_turn(args: &[String]) {
         json_string(&observed_session),
         json_string(prompt)
     ));
+    if prompt.contains("__lico_stderr_usage__") {
+        eprintln!("Usage limit exceeded for private fixture account context");
+        std::process::exit(4);
+    }
     emit(&format!(
         r#"{{"type":"assistant","session_id":{},"timestamp_ms":1,"message":{{"role":"assistant","content":[{{"type":"text","text":{}}}]}}}}"#,
         json_string(&observed_session),
@@ -164,8 +168,14 @@ fn run_turn(args: &[String]) {
         json_string(&observed_session),
         json_string(reply)
     ));
+    let terminal_subtype = if prompt.contains("__lico_non_error_subtype__") {
+        "error_during_execution"
+    } else {
+        "success"
+    };
     emit(&format!(
-        r#"{{"type":"result","subtype":"success","is_error":false,"session_id":{},"request_id":"req-{}","result":{}}}"#,
+        r#"{{"type":"result","subtype":{},"is_error":false,"session_id":{},"request_id":"req-{}","result":{}}}"#,
+        json_string(terminal_subtype),
         json_string(&observed_session),
         session_id,
         json_string(reply)

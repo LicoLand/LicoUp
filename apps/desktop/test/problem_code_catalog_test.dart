@@ -140,6 +140,24 @@ void main() {
       ProblemCodeCatalog.wire('cursor_cli_prompt_acknowledgement_mismatch'),
       'LU-NA-4238',
     );
+    expect(ProblemCodeCatalog.wire('codex_usage_limit_exceeded'), 'LU-NA-4239');
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_authentication_required'),
+      'LU-NA-4240',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_execution_failed'),
+      'LU-NA-4241',
+    );
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_model_unavailable'),
+      'LU-NA-4242',
+    );
+    expect(ProblemCodeCatalog.wire('cursor_cli_rate_limited'), 'LU-NA-4243');
+    expect(
+      ProblemCodeCatalog.wire('cursor_cli_usage_limit_exceeded'),
+      'LU-NA-4244',
+    );
   });
 
   test('copy payload includes both problem code and occurrence id', () {

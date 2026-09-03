@@ -1,5 +1,5 @@
 mod control;
-mod errors;
+pub(in crate::platform) mod errors;
 mod execution;
 mod io;
 pub(in crate::platform) mod model;

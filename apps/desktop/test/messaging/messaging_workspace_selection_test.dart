@@ -195,7 +195,11 @@ void main() {
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
-    controller.scannedTargets = [_groupTarget];
+    controller.scannedTargets = [
+      _groupTarget,
+      _historicalGroupTarget,
+      _unrelatedGroupTarget,
+    ];
     await controller.clientConversationController.initialize();
     await controller.clientConversationController.selectConversation(
       'conversation:local',
@@ -297,10 +301,30 @@ void main() {
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
-    controller.scannedTargets = [_groupTarget];
+    controller.scannedTargets = [
+      _groupTarget,
+      _historicalGroupTarget,
+      _unrelatedGroupTarget,
+    ];
     final now = DateTime.now().toUtc().toIso8601String();
     controller.conversationSessionsByAgent = {
       'codex': [_groupAgentSession(now)],
+      'claude-code': [
+        _navigationSession(
+          id: 'session:claude',
+          agentId: 'claude-code',
+          title: 'Historical group Agent detail',
+          at: now,
+        ),
+      ],
+      'kimi-code': [
+        _navigationSession(
+          id: 'session:kimi',
+          agentId: 'kimi-code',
+          title: 'Unrelated Agent detail',
+          at: now,
+        ),
+      ],
     };
     await controller.clientConversationController.initialize();
     await controller.clientConversationController.selectConversation(
@@ -347,6 +371,9 @@ void main() {
       const Key('agents-sidebar-conversation-session:codex'),
     );
     expect(conversationRow, findsOneWidget);
+    expect(find.text('Historical group Agent detail'), findsOneWidget);
+    expect(find.text('其它对话'), findsOneWidget);
+    expect(find.text('Unrelated Agent detail'), findsNothing);
     expect(
       tester
           .widget<Text>(
@@ -380,6 +407,28 @@ void main() {
       findsNothing,
     );
     expect(find.text('Opened Agent detail'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('messaging-conversation-list-back')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(
+      controller.clientConversationController.selectedConversationId,
+      'conversation:local',
+    );
+    expect(
+      find.byKey(const Key('messaging-conversation-list')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('canonical-group-header-avatar')),
+      findsOneWidget,
+    );
+    expect(find.text('Opened Agent detail'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
@@ -401,18 +450,52 @@ final _groupTarget = TargetCandidate(
   supportedActions: ['runtime.message.send'],
 );
 
+final _historicalGroupTarget = _navigationTarget('claude-code', 'Claude Code');
+final _unrelatedGroupTarget = _navigationTarget('kimi-code', 'Kimi Code');
+
+TargetCandidate _navigationTarget(String id, String label) => TargetCandidate(
+  id: id,
+  target: id,
+  label: label,
+  kind: 'cli',
+  status: 'detected',
+  configured: true,
+  confidence: 1,
+  adapterStatus: 'implemented',
+  adapterCapabilities: const {
+    'conversationDriver': 'implemented',
+    'conversationProtocol': 'fixture',
+    'conversationReadiness': 'ready',
+  },
+  supportedActions: const ['runtime.message.send'],
+);
+
 AgentConversationSession _groupAgentSession(String at) {
-  return AgentConversationSession(
+  return _navigationSession(
     id: 'session:codex',
     agentId: 'codex',
     title: 'Agent detail',
+    at: at,
+  );
+}
+
+AgentConversationSession _navigationSession({
+  required String id,
+  required String agentId,
+  required String title,
+  required String at,
+}) {
+  return AgentConversationSession(
+    id: id,
+    agentId: agentId,
+    title: title,
     createdAt: at,
     updatedAt: at,
     messages: [
       AgentConversationMessage(
-        id: 'message:codex',
+        id: 'message:$id',
         role: 'assistant',
-        text: 'Opened Agent detail',
+        text: title == 'Agent detail' ? 'Opened Agent detail' : title,
         createdAt: at,
       ),
     ],
@@ -462,7 +545,7 @@ const Map<String, dynamic> _groupSummary = {
   'isGroup': true,
   'revision': 1,
   'updatedAtUnixMs': 2,
-  'membershipCount': 2,
+  'membershipCount': 3,
   'eventCount': 0,
 };
 
@@ -496,6 +579,21 @@ const Map<String, dynamic> _groupConversation = {
       'access': 'member',
       'status': 'active',
       'joinedAtUnixMs': 1,
+    },
+    {
+      'id': 'membership:claude',
+      'conversationId': 'conversation:local',
+      'principal': {
+        'id': 'agent:claude-code',
+        'kind': 'agent',
+        'displayName': 'Claude Code',
+        'agentId': 'claude-code',
+        'createdAtUnixMs': 1,
+      },
+      'access': 'member',
+      'status': 'left',
+      'joinedAtUnixMs': 1,
+      'leftAtUnixMs': 2,
     },
   ],
 };

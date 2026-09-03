@@ -38,6 +38,8 @@ class AgentConversationMessageList extends StatefulWidget {
     this.bottomOverlayInset = 0,
     this.scrollController,
     this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
   });
 
   final bool loading;
@@ -52,6 +54,8 @@ class AgentConversationMessageList extends StatefulWidget {
   /// Clipboard write routed through the platform boundary (client clipboard
   /// service); message rows expose an explicit copy action when present.
   final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
 
   /// How messages render: the shared document transcript or the messaging
   /// participant flow.
@@ -363,6 +367,8 @@ class AgentConversationMessageListState
               hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
               onLoadEarlier: widget.onLoadEarlier,
               onCopyText: widget.onCopyText,
+              onRetryMessage: widget.onRetryMessage,
+              onDeleteMessage: widget.onDeleteMessage,
             ),
           );
         }
