@@ -364,6 +364,10 @@ function validatePromotionTopology() {
   }
   assertExcludes(readyRequired, "readme-fast-path.mjs verify",
     "Release ready must not repeat the Auditor privacy scan");
+  assertIncludes(ready, "push:\n    branches: [macos-release-candidate]", "release readiness must admit only the fixed candidate push");
+  assertIncludes(readyRequired, "if: github.event.deleted != true", "candidate deletion cannot report readiness");
+  assertIncludes(readyRequired, "run: node tools/scripts/verify-branch-flow.mjs", "candidate must equal the release source");
+  assertIncludes(readyRequired, "if: github.event_name == 'pull_request'\n        id: readme", "candidate cannot skip release policy via README routing");
   const readyOrder = [
     "name: Verify promotion source",
     "uses: actions/checkout@",
@@ -375,7 +379,7 @@ function validatePromotionTopology() {
     fail("release promotion must guard before its ordered Node-only policy checks");
   }
   for (const token of [
-    "\n  push:", "workflow_dispatch:", "npm run client:build", "client:package:",
+    "workflow_dispatch:", "npm run client:build", "client:package:",
     "client:archive:", "client:install:", "client:run:", "client:verify:",
     "client:release:", "flutter-action", "rust-toolchain", "actions/setup-java",
     "actions/upload-artifact", "actions/download-artifact", "npm publish", "gh release",
@@ -455,13 +459,16 @@ function validateDelegatedApplePublicationTopology() {
         !Array.isArray(candidate.requiredChecks) || candidate.requiredChecks.length === 0 ||
         config.apple?.target !== "macos-direct-arm64" ||
         config.github?.repository !== "LicoLand/LicoUp" ||
-        JSON.stringify(config.build?.command) !== JSON.stringify([
-          "env", `LICO_CLIENT_RELEASE_TRACK=${releaseTrack}`,
-          "npm", "run", "client:build", "--", "--platform", "macos",
-        ]) ||
-        !Array.isArray(config.update?.command) ||
-        !config.update.command.includes("--release-track") ||
-        !config.update.command.includes(releaseTrack) ||
+        JSON.stringify(config.build?.command) !== JSON.stringify(sourceBranch === "release"
+          ? ["node", "tools/scripts/macos-release/build.mjs"]
+          : ["env", `LICO_CLIENT_RELEASE_TRACK=${releaseTrack}`, "npm", "run", "client:build", "--", "--platform", "macos"]) ||
+        (sourceBranch === "release"
+          ? JSON.stringify(config.update?.command) !== JSON.stringify(["node", "tools/scripts/macos-release/write-update-manifest.mjs",
+            "--tag", "{tag}", "--repository", "{repository}", "--version", "{version}"]) ||
+            JSON.stringify(config.gates) !== JSON.stringify([["node", "tools/scripts/macos-release/gate-source.mjs"],
+              ["node", "tools/scripts/macos-release/gate-release-policy.mjs"]])
+          : !Array.isArray(config.update?.command) || !config.update.command.includes("--release-track") ||
+            !config.update.command.includes(releaseTrack)) ||
         artifacts.length !== 5 ||
         roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
         artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
@@ -471,12 +478,26 @@ function validateDelegatedApplePublicationTopology() {
   }
 }
 
+function validateSourcePublicationTopology() {
+  const source = readText(".github/workflows/client-source-release.yml");
+  for (const token of ["types: [closed]", "branches: [release]", "github.event.pull_request.merged == true",
+    "github.event.pull_request.head.ref == 'stable'", "github.event.pull_request.head.repo.full_name == github.repository",
+    "github.event.pull_request.base.repo.full_name == github.repository", "ref: ${{ github.event.pull_request.merge_commit_sha }}",
+    "fetch-depth: 0", "cancel-in-progress: false", "run: node tools/scripts/client-source-release.mjs"]) {
+    assertIncludes(source, token, `source publication is missing: ${token}`);
+  }
+  for (const token of ["\n  push:", "workflow_dispatch:", "schedule:", "npm ci", "client:build", "apple-release release", "notarytool", "codesign"]) {
+    assertExcludes(source, token, `source publication cannot invoke: ${token}`);
+  }
+}
+
 export function validateClientGateTopology() {
   validatePackageTopology();
   validateCiTopology();
   validatePromotionTopology();
   validateReadmeFastPathTopology();
   validateDelegatedApplePublicationTopology();
+  validateSourcePublicationTopology();
   return Object.freeze({
     ok: true,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
@@ -602,6 +623,11 @@ function planGate(args) {
 }
 
 function runLane(lane) {
+  if (lane === "release-policy") run(process.execPath, ["--test",
+    "tests/contract/client/client-source-release.test.mjs",
+    "tests/contract/client/macos-release-adapters.test.mjs",
+    "tests/contract/client/macos-release-candidate.test.mjs",
+    "tests/contract/client/apple-release-integration.test.mjs"]);
   const scripts = CLIENT_GATE_LANES[lane];
   if (!scripts) fail(`unknown client gate lane: ${lane || "<missing>"}`);
   for (const script of scripts) {
