@@ -35,16 +35,40 @@ Stable 从 `release` 使用现有配置和不可变的 `v{version}` 标签。两
 和准确的内嵌迁移前沿。Stable 必须不是预发布且版本严格更新；相同版本不会提供给
 Nightly。参见[客户端更新与状态迁移](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)。
 
-晋升就绪不等于公开发布。仓库流程终止于已验证的 `origin/release` 源码切分。
-macOS Developer ID 的发布后流程通过
-`tools/apple-release/macos-direct-arm64.json` 委托给本机 Apple Release 引擎。
+同仓库 `stable` → `release` Pull Request 合并后，`client-source-release.yml`
+只发布精确 merge commit 的源码。它验证第二父提交等于已接受的 stable head，并创建
+`v{version}`、`LicoUp {version}`、`LicoUp-source-v{version}.tar.gz` 及其 `.sha256`。
+Release 正文绑定 `apple-release-source:v1:{revision}`。该流程不构建、签名、公证或
+上传二进制；重试保留公开标签与制品，只允许匹配的草稿补齐缺少的源码文件。
 
-委托发布运行从已授权的精确 `origin/release` revision 切出固定的
-`macos-release-candidate` 分支，等待其 Required Checks 通过，并从该候选
-发布声明的公开 tag、Release 与五项制品契约。第五项资产是签名更新清单：由配置的
-update 命令在构建期生成，随其余资产一并上传，并通过同样的公网未鉴权下载核验。
-引擎永不改动 `nightly`、`stable`、`release`、Rulesets 或 Required Checks；其允许
-执行的远端变更仅限已冻结的候选分支，以及声明的公开 tag、Release 与制品。
+Apple Release 在现有干净仓库的 `release` 分支上使用
+`tools/apple-release/macos-direct-arm64.json`，本地源码必须等于 `origin/release`。
+全部产品适配器位于 `tools/scripts/macos-release/`：`gate-source.mjs`、
+`gate-release-policy.mjs`、`build.mjs` 和 `write-update-manifest.mjs`。
+依赖准备 `npm ci` 由引擎选择。构建适配器固定 stable 轨道并输出
+`build/apps/desktop/runnable/macos/release/LicoUp.app`；更新适配器绑定标签、仓库和版本，
+输出 `build/apple-release/LicoUp-update-manifest.json`。
+
+引擎在精确 release 修订创建 `macos-release-candidate`，不创建提交或 Pull Request。
+完成依赖准备和产品门禁后推送同一个候选，观察绑定精确 SHA、分支、工作流、run 和
+attempt 的 `Branch flow`、`Commit identity`、`Auditor`、`Release ready` 成功作业后，
+才允许构建或签名。缺少或运行中的检查持续等待同一个候选，没有取消截止时间；失败或
+跳过均阻止发布。候选永不合回，仅在公开验证完成后清理。
+
+强制 Apple 合规技能委托以下只读权威检查：
+
+```sh
+apple-release compliance check --project . --config tools/apple-release/macos-direct-arm64.json
+```
+
+提交前必须为未改变的会话取得 `PASS`。检查验证源码、元数据、工具链、两种 entitlement、
+隐私、描述文件/证书、更新密钥及公证权限/队列，不执行发布。已有 `In Progress` 提交时
+禁止新会话。真实 App/归档上传前仍须执行制品检查；构建与公证等待均无取消截止时间。
+
+Apple Release 保留源码两项资产，只补充五项 macOS 资产：`LicoUp-macos-arm64.dmg`、
+其 `.sha256`、`LicoUp-macos-arm64-update.zip`、其 `.sha256` 和
+`LicoUp-update-manifest.json`。唯一公开 Release 因此包含七项不可变资产；冲突时停止，
+绝不替换公开文件。
 
 配置本机发布授权并检查发布运行：
 
@@ -78,5 +102,5 @@ Stable 版本。
 已上传制品本身都不代表成功；终态还必须完成精确公开制品对账、匿名下载安装包、摘要
 校验、安装与稳定启动。
 
-分支晋升绝不会启动发布运行，也不会创建或公开 GitHub Release、tag、资产、公证提交或
-更新通道记录。
+最后一段晋升合并后自动发布源码。macOS 签名、公证及五项平台资产仍由单独授权的
+Apple Release 操作完成。

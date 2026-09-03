@@ -1,6 +1,8 @@
 name: Commit identity
 
 on:
+  push:
+    branches: [macos-release-candidate]
   pull_request_target:
     types:
       - opened
@@ -14,11 +16,12 @@ permissions:
   statuses: write
 
 concurrency:
-  group: commit-identity-${{ github.event.pull_request.number }}
+  group: commit-identity-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   commit-identity:
+    if: github.event.deleted != true
     name: Commit identity
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -27,7 +30,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
@@ -55,11 +59,14 @@ jobs:
 
           evidence_file=$(mktemp)
           trap 'rm -f "$evidence_file"; settle' EXIT
-          gh api \
-            --paginate \
-            --slurp \
-            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
-            >"$evidence_file"
+          if [[ "$EVENT_NAME" == push ]]; then
+            release_sha=$(gh api "repos/${REPOSITORY}/git/ref/heads/release" --jq '.object.sha')
+            test "$HEAD_SHA" = "$release_sha"
+            gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" | jq '[[.]]' >"$evidence_file"
+          else
+            gh api --paginate --slurp \
+              "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" >"$evidence_file"
+          fi
 
           jq -e \
             '
