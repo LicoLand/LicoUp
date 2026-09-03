@@ -16,12 +16,17 @@ final class AgentToolAllowlistStore implements AgentToolAllowlistRepository {
 
   @override
   Future<Map<String, List<String>>> load(Object portableData) async {
-    final decoded = await _jsonStore.read(portableData, _fileName);
-    if (decoded is! Map || decoded['schemaVersion'] != _schemaVersion) {
+    final decoded = await _jsonStore.readCurrent(portableData, _fileName);
+    if (decoded == null) {
       return const {};
     }
+    if (decoded is! Map || decoded['schemaVersion'] != _schemaVersion) {
+      throw StateError('agent_tool_allowlist_requires_startup_migration');
+    }
     final raw = decoded['allowlistsByAgent'];
-    if (raw is! Map) return const {};
+    if (raw is! Map) {
+      throw const FormatException('agent_tool_allowlist_invalid');
+    }
 
     final restored = <String, List<String>>{};
     for (final entry in raw.entries.take(_maxAgents)) {

@@ -53,6 +53,8 @@ fn pair_runtime_secret_material_consumers(
 #[test]
 fn admitted_and_native_secrets_drive_real_pairing_prekey_and_secure_command_consumers_without_json_residue()
  {
+    let dir = temp_dir("mobile-relay-zeroizing-runtime-boundary");
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     const CANARY_A_RAW: &[u8; 32] = b"runtime-canary-alpha-00000000000";
     const CANARY_B_RAW: &[u8; 32] = b"runtime-canary-beta--00000000000";
     let canary_a = general_purpose::URL_SAFE_NO_PAD.encode(CANARY_A_RAW);
@@ -297,6 +299,7 @@ fn admitted_and_native_secrets_drive_real_pairing_prekey_and_secure_command_cons
         vec![vec![0; canary_b.len()]],
         "final RuntimeSecretMaterial Drop must wipe the last admitted owner"
     );
+    set_portable_data_dir_override(previous);
 }
 
 #[test]

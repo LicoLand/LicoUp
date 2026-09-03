@@ -11,7 +11,11 @@ use zip::write::SimpleFileOptions;
 
 use crate::core::safe_archive::{ZipEntryInfo, ZipExtractionLimits, extract_zip_safe};
 
-use super::{CompiledWorkflow, WorkflowDefinition, compile_workflow};
+use super::{
+    CompiledWorkflow, PreflightDiagnostic, WorkflowDefinition, WorkflowDiagnosticCode,
+    WorkflowDiagnosticExpected, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
+    WorkflowValidationFailure, compile_workflow_source,
+};
 
 const MAX_PACKAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES: u64 = 16 * 1024 * 1024;
@@ -93,9 +97,7 @@ impl StrategyPackageImporter {
             );
             let mut source = Vec::with_capacity(workflow_metadata.len() as usize);
             fs::File::open(&workflow_path)?.read_to_end(&mut source)?;
-            let workflow: WorkflowDefinition =
-                serde_json::from_slice(&source).map_err(|_| anyhow!("workflow_invalid"))?;
-            let compiled = compile_workflow(workflow).map_err(|_| anyhow!("workflow_invalid"))?;
+            let compiled = compile_workflow_source(&source)?;
             validate_script_references(&compiled, &inventory)?;
             let canonical = serde_json::to_vec(&compiled.definition)?;
             crate::platform::file_security::atomic_write_private_text(
@@ -178,9 +180,7 @@ impl StrategyPackageImporter {
         let content =
             self.verified_revision_content(&prepared.revision_digest, &prepared.semantics_digest)?;
         let workflow_bytes = read_bounded(&content.join("workflow.json"), MAX_WORKFLOW_BYTES)?;
-        let workflow: WorkflowDefinition =
-            serde_json::from_slice(&workflow_bytes).map_err(|_| anyhow!("workflow_invalid"))?;
-        let compiled = compile_workflow(workflow).map_err(|_| anyhow!("workflow_invalid"))?;
+        let compiled = compile_workflow_source(&workflow_bytes)?;
         ensure!(
             sha256_hex(&serde_json::to_vec(&compiled.definition)?) == prepared.semantics_digest,
             "revision_conflict"
@@ -206,10 +206,7 @@ impl StrategyPackageImporter {
         let content = self.revision_content(digest)?;
         let inventory = persisted_inventory(&content)?;
         let workflow_bytes = read_bounded(&content.join("workflow.json"), MAX_WORKFLOW_BYTES)?;
-        let workflow: WorkflowDefinition = serde_json::from_slice(&workflow_bytes)
-            .map_err(|_| anyhow!("strategy_revision_invalid"))?;
-        let compiled =
-            compile_workflow(workflow).map_err(|_| anyhow!("strategy_revision_invalid"))?;
+        let compiled = compile_workflow_source(&workflow_bytes)?;
         let canonical = serde_json::to_vec(&compiled.definition)?;
         ensure!(
             workflow_bytes == canonical,
@@ -278,13 +275,33 @@ fn validate_layout(content: &Path, entries: &[ZipEntryInfo]) -> Result<BTreeSet<
 fn validate_script_references(
     workflow: &CompiledWorkflow,
     inventory: &BTreeSet<String>,
-) -> Result<()> {
-    for state in &workflow.definition.states {
-        if let Some(entry) = &state.entry {
-            ensure!(inventory.contains(entry), "workflow_invalid");
+) -> std::result::Result<(), WorkflowValidationFailure> {
+    let mut diagnostics = Vec::new();
+    for (index, state) in workflow.definition.states.iter().enumerate() {
+        if let Some(entry) = &state.entry
+            && !inventory.contains(entry)
+        {
+            diagnostics.push(PreflightDiagnostic {
+                code: WorkflowDiagnosticCode::WorkflowScriptEntryInvalid,
+                stage: WorkflowDiagnosticStage::PackageValidate,
+                path: Some(format!("/states/{index}/entry")),
+                related_paths: Vec::new(),
+                membership_id: None,
+                actual: None,
+                limit: None,
+                expected: Some(WorkflowDiagnosticExpected::ExistingReference),
+                actual_kind: None,
+                recovery: Some(WorkflowDiagnosticRecovery::CorrectReference),
+                line: None,
+                column: None,
+            });
         }
     }
-    Ok(())
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(WorkflowValidationFailure { diagnostics })
+    }
 }
 
 fn persisted_inventory(content: &Path) -> Result<BTreeSet<String>> {
@@ -601,6 +618,28 @@ mod tests {
             importer
                 .verified_revision_content(&prepared.revision_digest, &prepared.semantics_digest)
                 .is_err()
+        );
+        remove_root(root);
+    }
+
+    #[test]
+    fn malformed_workflow_package_preserves_only_typed_syntax_location() {
+        let root = root();
+        let importer = StrategyPackageImporter::open(&root).unwrap();
+        let bytes =
+            zip_package_files(&[("workflow.json", br#"{"private-workspace-sentinel":"#)]).unwrap();
+        let error = importer.prepare_bytes(&bytes).unwrap_err();
+        let failure = error.downcast_ref::<WorkflowValidationFailure>().unwrap();
+        assert_eq!(failure.diagnostics.len(), 1);
+        let serialized = serde_json::to_value(&failure.diagnostics).unwrap();
+        assert_eq!(serialized[0]["code"], "workflow_syntax_invalid");
+        assert!(serialized[0]["line"].is_u64());
+        assert!(serialized[0]["column"].is_u64());
+        assert_eq!(serialized[0].as_object().unwrap().len(), 4);
+        assert!(
+            !serde_json::to_string(&serialized)
+                .unwrap()
+                .contains("private-workspace-sentinel")
         );
         remove_root(root);
     }

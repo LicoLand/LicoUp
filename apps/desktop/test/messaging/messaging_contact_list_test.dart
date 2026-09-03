@@ -684,11 +684,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pinned group shares the context menu and can be unpinned', (
+  testWidgets('group menu places archive below pin and dispatches both', (
     tester,
   ) async {
     final changedIds = <String>[];
     final changedValues = <bool>[];
+    final archivedIds = <String>[];
     await _pumpContacts(
       tester,
       sessionsByAgent: const {},
@@ -709,6 +710,7 @@ void main() {
         changedIds.add(conversationId);
         changedValues.add(pinned);
       },
+      onArchiveGroupConversation: archivedIds.add,
     );
 
     final row = find.byKey(
@@ -723,11 +725,22 @@ void main() {
     );
     expect(find.byType(MessagingGlassOptionCard), findsOneWidget);
     expect(find.text('Unpin From Top'), findsOneWidget);
+    expect(find.text('Archive'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Unpin From Top')).dy,
+      lessThan(tester.getTopLeft(find.text('Archive')).dy),
+    );
 
     await tester.tap(find.text('Unpin From Top'));
     await tester.pumpAndSettle();
     expect(changedIds, ['conversation:group']);
     expect(changedValues, [false]);
+
+    await tester.tap(row, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archive'));
+    await tester.pumpAndSettle();
+    expect(archivedIds, ['conversation:group']);
     expect(tester.takeException(), isNull);
   });
 
@@ -791,6 +804,10 @@ void main() {
 
       await tester.tap(plus);
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('messaging-create-conversation')),
+        findsOneWidget,
+      );
       final menu = find.byKey(const Key('messaging-create-conversation-menu'));
       expect(menu, findsOneWidget);
       expect(
@@ -1091,6 +1108,7 @@ Future<void> _pumpContacts(
   ValueChanged<String>? onSelectGroupConversation,
   void Function(String conversationId, bool pinned)?
   onSetGroupConversationPinned,
+  ValueChanged<String>? onArchiveGroupConversation,
   VoidCallback? onNewConversation,
   VoidCallback? onSearch,
   VoidCallback? onNewGroupConversation,
@@ -1141,6 +1159,7 @@ Future<void> _pumpContacts(
                 selectedGroupConversationId: selectedGroupConversationId,
                 onSelectGroupConversation: onSelectGroupConversation,
                 onSetGroupConversationPinned: onSetGroupConversationPinned,
+                onArchiveGroupConversation: onArchiveGroupConversation,
                 isPinned: isPinned,
                 onTogglePinned: onTogglePinned,
                 showConversationList: showConversationList,

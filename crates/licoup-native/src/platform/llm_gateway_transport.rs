@@ -2,19 +2,22 @@
 
 use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
 use crate::domain::llm_gateway::{
-    CompiledGateway, CredentialStyle, GatewayError, GatewayResponse, MAX_GATEWAY_BODY_BYTES,
-    UpstreamProtocol,
+    CompiledGateway, CredentialStyle, GatewayError, GatewayProvider, GatewayResponse,
+    MAX_GATEWAY_BODY_BYTES, UpstreamProtocol, models_endpoint_for, namespaced_model_id,
 };
 use crate::domain::llm_gateway_stream::GatewayStreamTransformer;
-use std::collections::BTreeMap;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_IN_FLIGHT: usize = 16;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
+const MODEL_CATALOG_TIMEOUT: Duration = Duration::from_secs(15);
+const MODEL_CATALOG_TOTAL_TIMEOUT: Duration = Duration::from_secs(45);
 const MAX_COALESCED_WRITE_BYTES: usize = 16 * 1024;
 static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 
@@ -34,6 +37,14 @@ impl GatewayAgentPolicy {
             connect_timeout: CONNECT_TIMEOUT,
             read_timeout: REQUEST_TIMEOUT,
             write_timeout: REQUEST_TIMEOUT,
+        }
+    }
+
+    fn model_catalog() -> Self {
+        Self {
+            connect_timeout: CONNECT_TIMEOUT,
+            read_timeout: MODEL_CATALOG_TIMEOUT,
+            write_timeout: MODEL_CATALOG_TIMEOUT,
         }
     }
 }
@@ -95,6 +106,234 @@ pub trait GatewayStreamSink {
 pub enum GatewayExchange {
     Buffered(GatewayResponse),
     Streamed,
+}
+
+/// Fetch the current catalog from every provider whose credential is present in
+/// the live lease. The upstream model object is preserved, while `id` is
+/// namespaced with the provider lane so a later inference request is
+/// unambiguous.
+pub fn list_models(
+    gateway: &CompiledGateway,
+    credentials: &GatewayCredentialSlot,
+) -> Result<GatewayResponse, GatewayTransportError> {
+    let _permit = Permit::acquire()?;
+    let agent = default_agents().agent_for(GatewayAgentPolicy::model_catalog());
+    let deadline = Instant::now() + MODEL_CATALOG_TOTAL_TIMEOUT;
+    let mut models = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut successful_providers = 0usize;
+    let mut first_failure = None;
+    let mut failed_providers = 0usize;
+    for provider in gateway.catalog_providers() {
+        if !credentials.contains_provider(provider.credential_provider) {
+            continue;
+        }
+        let candidates = match credentials.resolve_candidates(provider.credential_provider) {
+            Ok(candidates) => candidates,
+            Err(_) => {
+                failed_providers += 1;
+                first_failure.get_or_insert(CatalogFailure::Transport(
+                    GatewayTransportError::CredentialUnavailable,
+                ));
+                continue;
+            }
+        };
+        match fetch_provider_models(&agent, &provider, candidates, deadline) {
+            Err(error) => {
+                failed_providers += 1;
+                first_failure.get_or_insert(CatalogFailure::Transport(error));
+            }
+            Ok(ProviderCatalog::Models(provider_models)) => {
+                let Ok(provider_models) = project_provider_models(&provider, provider_models)
+                else {
+                    failed_providers += 1;
+                    first_failure.get_or_insert(CatalogFailure::Transport(
+                        GatewayTransportError::TransportFailed,
+                    ));
+                    continue;
+                };
+                successful_providers += 1;
+                for (requested_id, model) in provider_models {
+                    if !seen.insert(requested_id.clone()) {
+                        continue;
+                    }
+                    models.push(model);
+                }
+            }
+            Ok(ProviderCatalog::UpstreamError(response)) => {
+                failed_providers += 1;
+                first_failure.get_or_insert(CatalogFailure::Upstream(response));
+            }
+        }
+    }
+    if successful_providers == 0 {
+        match first_failure {
+            Some(CatalogFailure::Transport(error)) => return Err(error),
+            Some(CatalogFailure::Upstream(response)) => return Ok(response),
+            None => {}
+        }
+    }
+    let mut document = json!({"object":"list", "data":models});
+    if failed_providers > 0 {
+        document["partial"] = Value::Bool(true);
+        document["failed_provider_count"] = json!(failed_providers);
+    }
+    let body = serde_json::to_vec(&document).map_err(|_| GatewayTransportError::TransportFailed)?;
+    if body.len() > MAX_GATEWAY_BODY_BYTES {
+        return Err(GatewayTransportError::ResponseTooLarge);
+    }
+    Ok(GatewayResponse {
+        status: 200,
+        content_type: "application/json",
+        body,
+    })
+}
+
+enum ProviderCatalog {
+    Models(Vec<Value>),
+    UpstreamError(GatewayResponse),
+}
+
+enum CatalogFailure {
+    Transport(GatewayTransportError),
+    Upstream(GatewayResponse),
+}
+
+fn project_provider_models(
+    provider: &GatewayProvider,
+    provider_models: Vec<Value>,
+) -> Result<Vec<(String, Value)>, GatewayTransportError> {
+    let mut projected = Vec::with_capacity(provider_models.len());
+    let mut seen = BTreeSet::new();
+    for mut model in provider_models {
+        let object = model
+            .as_object_mut()
+            .ok_or(GatewayTransportError::TransportFailed)?;
+        let upstream_id = object
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or(GatewayTransportError::TransportFailed)?;
+        let Some(requested_id) = namespaced_model_id(&provider.id, &upstream_id) else {
+            continue;
+        };
+        if !seen.insert(requested_id.clone()) {
+            continue;
+        }
+        object.insert("id".into(), Value::String(requested_id.clone()));
+        object.insert("upstream_id".into(), Value::String(upstream_id));
+        object.insert(
+            "gateway_provider".into(),
+            Value::String(provider.id.clone()),
+        );
+        object
+            .entry("object")
+            .or_insert_with(|| Value::String("model".into()));
+        object
+            .entry("owned_by")
+            .or_insert_with(|| Value::String(provider.id.clone()));
+        projected.push((requested_id, model));
+    }
+    Ok(projected)
+}
+
+fn fetch_provider_models(
+    agent: &ureq::Agent,
+    provider: &GatewayProvider,
+    credentials: Vec<crate::core::secure_mesh_secret_store::SecretBytes>,
+    deadline: Instant,
+) -> Result<ProviderCatalog, GatewayTransportError> {
+    let endpoint = models_endpoint_for(provider).map_err(GatewayTransportError::Gateway)?;
+    let candidate_count = credentials.len();
+    for (candidate_index, credential) in credentials.into_iter().enumerate() {
+        let timeout = remaining_catalog_timeout(deadline)?;
+        let credential = credential
+            .expose_utf8()
+            .map_err(|_| GatewayTransportError::CredentialUnavailable)?;
+        let mut request = agent
+            .get(&endpoint)
+            .timeout(timeout)
+            .set("accept", "application/json");
+        request = match provider.credential_style {
+            CredentialStyle::Bearer => {
+                request.set("authorization", &format!("Bearer {credential}"))
+            }
+            CredentialStyle::XApiKey => request.set("x-api-key", &credential),
+        };
+        let has_fallback = candidate_index + 1 < candidate_count;
+        let response = match request.call() {
+            Ok(response) => response,
+            Err(ureq::Error::Status(status, response)) => {
+                if has_fallback && retryable_status(status) {
+                    continue;
+                }
+                response
+            }
+            Err(ureq::Error::Transport(_)) if has_fallback => continue,
+            Err(ureq::Error::Transport(_)) => {
+                return Err(GatewayTransportError::TransportFailed);
+            }
+        };
+        let status = response.status();
+        let body = read_bounded_response(response)?;
+        if !(200..300).contains(&status) {
+            return Ok(ProviderCatalog::UpstreamError(model_catalog_error(
+                status, &body,
+            )));
+        }
+        let document: Value =
+            serde_json::from_slice(&body).map_err(|_| GatewayTransportError::TransportFailed)?;
+        let models = document
+            .get("data")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or(GatewayTransportError::TransportFailed)?;
+        return Ok(ProviderCatalog::Models(models));
+    }
+    Err(GatewayTransportError::CredentialUnavailable)
+}
+
+fn remaining_catalog_timeout(deadline: Instant) -> Result<Duration, GatewayTransportError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(GatewayTransportError::TransportFailed);
+    }
+    Ok(remaining.min(MODEL_CATALOG_TIMEOUT))
+}
+
+fn read_bounded_response(response: ureq::Response) -> Result<Vec<u8>, GatewayTransportError> {
+    let mut body = Vec::new();
+    response
+        .into_reader()
+        .take((MAX_GATEWAY_BODY_BYTES as u64).saturating_add(1))
+        .read_to_end(&mut body)
+        .map_err(|_| GatewayTransportError::TransportFailed)?;
+    if body.len() > MAX_GATEWAY_BODY_BYTES {
+        return Err(GatewayTransportError::ResponseTooLarge);
+    }
+    Ok(body)
+}
+
+fn model_catalog_error(status: u16, body: &[u8]) -> GatewayResponse {
+    let parsed = serde_json::from_slice::<Value>(body).ok();
+    let message = parsed
+        .as_ref()
+        .and_then(|value| {
+            value
+                .pointer("/error/message")
+                .or_else(|| value.get("message"))
+        })
+        .and_then(Value::as_str)
+        .unwrap_or("upstream model catalog request failed");
+    let message = message.chars().take(1024).collect::<String>();
+    GatewayResponse {
+        status,
+        content_type: "application/json",
+        body: serde_json::to_vec(
+            &json!({"error":{"message":message,"type":"upstream_error","code":status,"param":null}}),
+        )
+        .unwrap_or_default(),
+    }
 }
 
 /// Routes, converts, authorizes, and executes one model request. Credential
@@ -454,21 +693,33 @@ mod tests {
     }
 
     fn fixture_slot(secrets: &[&str]) -> GatewayCredentialSlot {
-        let epoch = uuid::Uuid::new_v4().to_string();
-        let credentials = BTreeMap::from([(
-            LlmApiKeyProvider::Kimi,
+        fixture_slot_for(LlmApiKeyProvider::Kimi, secrets)
+    }
+
+    fn fixture_slot_for(provider: LlmApiKeyProvider, secrets: &[&str]) -> GatewayCredentialSlot {
+        fixture_slot_for_providers(
             secrets
                 .iter()
-                .map(|secret| {
-                    GatewayCredential::new(
-                        uuid::Uuid::new_v4().to_string(),
-                        SecretBytes::try_from_string(secret.to_string()).unwrap(),
-                        None,
-                    )
-                    .unwrap()
-                })
-                .collect(),
-        )]);
+                .map(|secret| (provider, *secret))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn fixture_slot_for_providers(
+        entries: Vec<(LlmApiKeyProvider, &str)>,
+    ) -> GatewayCredentialSlot {
+        let epoch = uuid::Uuid::new_v4().to_string();
+        let mut credentials = BTreeMap::<LlmApiKeyProvider, Vec<GatewayCredential>>::new();
+        for (provider, secret) in entries {
+            credentials.entry(provider).or_default().push(
+                GatewayCredential::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    SecretBytes::try_from_string(secret.to_string()).unwrap(),
+                    None,
+                )
+                .unwrap(),
+            );
+        }
         GatewayCredentialSlot::new(
             GatewayCredentialLease::new(
                 credentials,
@@ -523,6 +774,222 @@ mod tests {
         assert!(valid_header_value("codex-cli/1.0"));
         assert!(!valid_header_value("codex\r\nx-api-key: secret"));
         assert!(!valid_header_value(&"x".repeat(1025)));
+    }
+
+    #[test]
+    fn model_catalog_request_timeout_respects_the_aggregate_deadline() {
+        assert_eq!(
+            remaining_catalog_timeout(Instant::now() - Duration::from_millis(1)),
+            Err(GatewayTransportError::TransportFailed)
+        );
+        assert!(
+            remaining_catalog_timeout(Instant::now() + Duration::from_secs(60)).unwrap()
+                <= MODEL_CATALOG_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn model_catalog_forwards_the_live_provider_response_with_namespaced_ids() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_one_request(&mut stream);
+            let request = String::from_utf8_lossy(&request);
+            assert!(request.starts_with("GET /v1/models HTTP/1.1"));
+            assert!(request.contains("authorization: Bearer fixture-model-key"));
+            let body = r#"{"object":"list","data":[{"id":"upstream-new","object":"model","owned_by":"vendor","name":"Upstream New","context_length":262144}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let gateway = fixture_gateway(address);
+        let slot = fixture_slot(&["fixture-model-key"]);
+
+        let response = list_models(&gateway, &slot).unwrap();
+
+        assert_eq!(response.status, 200);
+        let document: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(document["object"], "list");
+        assert_eq!(document["data"][0]["id"], "fixture:upstream-new");
+        assert_eq!(document["data"][0]["upstream_id"], "upstream-new");
+        assert_eq!(document["data"][0]["gateway_provider"], "fixture");
+        assert_eq!(document["data"][0]["owned_by"], "vendor");
+        assert_eq!(document["data"][0]["context_length"], 262144);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn model_catalog_without_an_authorized_provider_is_empty() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let gateway = fixture_gateway(listener.local_addr().unwrap());
+        let slot = GatewayCredentialSlot::disconnected();
+
+        let response = list_models(&gateway, &slot).unwrap();
+
+        assert_eq!(response.status, 200);
+        let document: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(document["data"], json!([]));
+    }
+
+    #[test]
+    fn model_catalog_queries_only_the_provider_selected_by_the_authorized_key() {
+        for (selected, expected_provider_id) in [
+            (LlmApiKeyProvider::Kimi, "kimi-lane"),
+            (LlmApiKeyProvider::DeepSeek, "deepseek-lane"),
+        ] {
+            let selected_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let selected_address = selected_listener.local_addr().unwrap();
+            let unused_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let unused_address = unused_listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = selected_listener.accept().unwrap();
+                let _request = read_one_request(&mut stream);
+                let body = r#"{"object":"list","data":[{"id":"selected-model"}]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            });
+            let provider =
+                |id: &str, address: std::net::SocketAddr, credential_provider| GatewayProvider {
+                    id: id.into(),
+                    base_url: format!("http://{address}/v1"),
+                    protocol: UpstreamProtocol::OpenAiChatCompletions,
+                    credential_provider,
+                    credential_style: CredentialStyle::Bearer,
+                };
+            let gateway = CompiledGateway::compile(GatewayConfig {
+                schema_version: 1,
+                providers: vec![
+                    provider(
+                        "kimi-lane",
+                        if selected == LlmApiKeyProvider::Kimi {
+                            selected_address
+                        } else {
+                            unused_address
+                        },
+                        LlmApiKeyProvider::Kimi,
+                    ),
+                    provider(
+                        "deepseek-lane",
+                        if selected == LlmApiKeyProvider::DeepSeek {
+                            selected_address
+                        } else {
+                            unused_address
+                        },
+                        LlmApiKeyProvider::DeepSeek,
+                    ),
+                ],
+                routes: Vec::new(),
+            })
+            .unwrap();
+            let slot = fixture_slot_for(selected, &["provider-specific-key"]);
+
+            let response = list_models(&gateway, &slot).unwrap();
+
+            let document: Value = serde_json::from_slice(&response.body).unwrap();
+            assert_eq!(document["data"].as_array().unwrap().len(), 1);
+            assert_eq!(
+                document["data"][0]["id"],
+                format!("{expected_provider_id}:selected-model")
+            );
+            server.join().unwrap();
+            drop(unused_listener);
+        }
+    }
+
+    #[test]
+    fn invalid_provider_key_returns_the_real_upstream_failure_not_a_catalog() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _request = read_one_request(&mut stream);
+            let body = r#"{"error":{"message":"invalid provider key"}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let gateway = fixture_gateway(address);
+        let slot = fixture_slot(&["fixture-invalid-key"]);
+
+        let response = list_models(&gateway, &slot).unwrap();
+
+        assert_eq!(response.status, 401);
+        let document: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(document["error"]["message"], "invalid provider key");
+        assert!(document.get("data").is_none());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn one_provider_failure_does_not_hide_another_live_catalog() {
+        let failing = TcpListener::bind("127.0.0.1:0").unwrap();
+        let failing_address = failing.local_addr().unwrap();
+        let failing_server = std::thread::spawn(move || {
+            let (mut stream, _) = failing.accept().unwrap();
+            let _request = read_one_request(&mut stream);
+            let body = r#"{"error":{"message":"rejected"}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let healthy = TcpListener::bind("127.0.0.1:0").unwrap();
+        let healthy_address = healthy.local_addr().unwrap();
+        let healthy_server = std::thread::spawn(move || {
+            let (mut stream, _) = healthy.accept().unwrap();
+            let _request = read_one_request(&mut stream);
+            let body = r#"{"data":[{"id":"healthy-model"}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let provider = |id: &str, address, credential_provider| GatewayProvider {
+            id: id.into(),
+            base_url: format!("http://{address}/v1"),
+            protocol: UpstreamProtocol::OpenAiChatCompletions,
+            credential_provider,
+            credential_style: CredentialStyle::Bearer,
+        };
+        let gateway = CompiledGateway::compile(GatewayConfig {
+            schema_version: 1,
+            providers: vec![
+                provider("a-failing", failing_address, LlmApiKeyProvider::DeepSeek),
+                provider("z-healthy", healthy_address, LlmApiKeyProvider::Kimi),
+            ],
+            routes: Vec::new(),
+        })
+        .unwrap();
+        let slot = fixture_slot_for_providers(vec![
+            (LlmApiKeyProvider::DeepSeek, "invalid-deepseek-key"),
+            (LlmApiKeyProvider::Kimi, "valid-kimi-key"),
+        ]);
+
+        let response = list_models(&gateway, &slot).unwrap();
+
+        assert_eq!(response.status, 200);
+        let document: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(document["data"].as_array().unwrap().len(), 1);
+        assert_eq!(document["data"][0]["id"], "z-healthy:healthy-model");
+        assert_eq!(document["partial"], true);
+        assert_eq!(document["failed_provider_count"], 1);
+        failing_server.join().unwrap();
+        healthy_server.join().unwrap();
     }
 
     #[test]

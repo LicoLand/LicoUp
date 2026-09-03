@@ -9,15 +9,14 @@ class SkillHubPreferencesService implements SkillHubPreferencesRepository {
 
   @override
   Future<SkillHubPreferences> load(Object portableData) async {
-    try {
-      final json = await _store.read(portableData);
-      if (json is! Map) {
-        return SkillHubPreferences.defaults();
-      }
-      return SkillHubPreferences.fromJson(Map<String, dynamic>.from(json));
-    } catch (_) {
+    final json = await _store.read(portableData);
+    if (json == null) {
       return SkillHubPreferences.defaults();
     }
+    if (json is! Map) {
+      throw const FormatException('skill_hub_preferences_invalid');
+    }
+    return SkillHubPreferences.fromJson(Map<String, dynamic>.from(json));
   }
 
   @override

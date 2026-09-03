@@ -183,7 +183,15 @@ pub(super) fn openagent_session_rows(connection: &Connection) -> Vec<OpenAgentSe
         Ok(rows) => rows,
         Err(_) => return Vec::new(),
     };
-    rows.filter_map(Result::ok).flatten().collect()
+    let mut sessions = Vec::new();
+    for row in rows {
+        match row {
+            Ok(Some(session)) => sessions.push(session),
+            Ok(None) => {}
+            Err(_) => return Vec::new(),
+        }
+    }
+    sessions
 }
 
 fn sqlite_table_columns(
@@ -203,11 +211,36 @@ pub(super) fn openagent_messages_for_session(
     connection: &Connection,
     session_id: &str,
 ) -> Vec<Value> {
-    let mut parts_by_message = openagent_parts_by_message(connection, session_id);
-    let mut statement = match connection.prepare(
-        "SELECT id, time_created, time_updated, data FROM message \
-         WHERE session_id=?1 ORDER BY time_created ASC, id ASC",
-    ) {
+    let Some(mut parts_by_message) = openagent_parts_by_message(connection, session_id) else {
+        return Vec::new();
+    };
+    let Ok(available) = sqlite_table_columns(connection, "message") else {
+        return Vec::new();
+    };
+    if !["id", "session_id", "data"]
+        .iter()
+        .all(|column| available.contains(*column))
+    {
+        return Vec::new();
+    }
+    let created = available
+        .contains("time_created")
+        .then_some("time_created")
+        .unwrap_or("NULL");
+    let updated = available
+        .contains("time_updated")
+        .then_some("time_updated")
+        .unwrap_or("NULL");
+    let order = if available.contains("time_created") {
+        "time_created ASC, id ASC"
+    } else {
+        "id ASC"
+    };
+    let query = format!(
+        "SELECT id, {created}, {updated}, data FROM message \
+         WHERE session_id=?1 ORDER BY {order}"
+    );
+    let mut statement = match connection.prepare(&query) {
         Ok(statement) => statement,
         Err(_) => return Vec::new(),
     };
@@ -224,9 +257,10 @@ pub(super) fn openagent_messages_for_session(
     };
 
     let mut messages = Vec::<Value>::new();
-    for (index, (message_id, created_at, updated_at, data)) in
-        rows.filter_map(Result::ok).enumerate()
-    {
+    for (index, row) in rows.enumerate() {
+        let Ok((message_id, created_at, updated_at, data)) = row else {
+            return Vec::new();
+        };
         let (Some(message_id), Some(data)) = (message_id, data) else {
             continue;
         };
@@ -274,12 +308,26 @@ pub(super) fn openagent_messages_for_session(
 pub(super) fn openagent_parts_by_message(
     connection: &Connection,
     session_id: &str,
-) -> HashMap<String, Vec<Value>> {
-    let mut statement = match connection.prepare(
-        "SELECT message_id, data FROM part WHERE session_id=?1 ORDER BY time_created ASC, id ASC",
-    ) {
+) -> Option<HashMap<String, Vec<Value>>> {
+    let Ok(available) = sqlite_table_columns(connection, "part") else {
+        return None;
+    };
+    if !["message_id", "session_id", "data"]
+        .iter()
+        .all(|column| available.contains(*column))
+    {
+        return None;
+    }
+    let order = match (available.contains("time_created"), available.contains("id")) {
+        (true, true) => "time_created ASC, id ASC",
+        (true, false) => "time_created ASC",
+        (false, true) => "id ASC",
+        (false, false) => "rowid ASC",
+    };
+    let query = format!("SELECT message_id, data FROM part WHERE session_id=?1 ORDER BY {order}");
+    let mut statement = match connection.prepare(&query) {
         Ok(statement) => statement,
-        Err(_) => return HashMap::new(),
+        Err(_) => return None,
     };
     let rows = match statement.query_map([session_id], |row| {
         Ok((
@@ -288,17 +336,20 @@ pub(super) fn openagent_parts_by_message(
         ))
     }) {
         Ok(rows) => rows,
-        Err(_) => return HashMap::new(),
+        Err(_) => return None,
     };
     let mut out = HashMap::<String, Vec<Value>>::new();
-    for (message_id, data) in rows.filter_map(Result::ok) {
+    for row in rows {
+        let Ok((message_id, data)) = row else {
+            return None;
+        };
         let (Some(message_id), Some(data)) = (message_id, data) else {
             continue;
         };
         let value = serde_json::from_str::<Value>(&data).unwrap_or_else(|_| json!(data));
         out.entry(message_id).or_default().push(value);
     }
-    out
+    Some(out)
 }
 
 pub(super) fn openagent_json_time(value: &Value, key: &str) -> Option<String> {

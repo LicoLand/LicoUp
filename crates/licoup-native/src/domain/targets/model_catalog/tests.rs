@@ -455,6 +455,41 @@ Claude Opus 4.6 (Thinking)
         assert!(entries.values().all(|entry| !entry.provider_inferred));
     }
 
+    #[test]
+    fn antigravity_cli_model_lines_split_id_from_display_name() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_model_catalog_from_cli_lines(
+            "gemini-3.7-flash-high Gemini 3.7 Flash (High)\ngemini-3.7-flash-low  Gemini 3.7 Flash (Low)\n",
+            "antigravity-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(added, 2);
+        let high = entries
+            .values()
+            .find(|entry| entry.name == "gemini-3.7-flash-high")
+            .expect("id-only selector entry");
+        assert_eq!(high.display_name, "Gemini 3.7 Flash (High)");
+        assert!(
+            entries
+                .values()
+                .any(|entry| entry.name == "gemini-3.7-flash-low"
+                    && entry.display_name == "Gemini 3.7 Flash (Low)")
+        );
+        // A capitalized line stays a bare display name with no id column.
+        let mut named = BTreeMap::<String, ModelCatalogEntry>::new();
+        collect_model_catalog_from_cli_lines(
+            "Gemini 3.5 Flash (Medium)\n",
+            "antigravity-cli:models",
+            &mut named,
+        );
+        assert!(
+            named
+                .values()
+                .any(|entry| entry.name == "Gemini 3.5 Flash (Medium)")
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn antigravity_cli_model_lookup_preserves_real_results() {
@@ -1068,7 +1103,7 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
         );
         let models = catalog["models"].as_array().unwrap();
         assert!(models.iter().any(|model| {
-            model["name"] == "anthropic/claude-opus-4.6"
+            model["name"] == "kilo/anthropic/claude-opus-4.6"
                 && model["providerId"] == "kilo"
                 && model["reasoningEfforts"]
                     .as_array()
@@ -1079,16 +1114,14 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
                     .unwrap()
                     .contains(&json!("low"))
         }));
+        assert!(models.iter().any(
+            |model| model["name"] == "kilo/~anthropic/claude-opus-latest"
+                && model["providerId"] == "kilo"
+        ));
         assert!(
             models
                 .iter()
-                .any(|model| model["name"] == "~anthropic/claude-opus-latest"
-                    && model["providerId"] == "kilo")
-        );
-        assert!(
-            models
-                .iter()
-                .any(|model| model["name"] == "deepseek/deepseek-v4"
+                .any(|model| model["name"] == "kilo/deepseek/deepseek-v4"
                     && model["providerId"] == "kilo")
         );
     }
@@ -1179,7 +1212,7 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
             .iter()
             .map(|model| model["name"].as_str().unwrap())
             .collect::<Vec<_>>();
-        assert!(names.contains(&"anthropic/claude-sonnet-4.6"));
+        assert!(names.contains(&"kilo/anthropic/claude-sonnet-4.6"));
         assert!(
             !names
                 .iter()
@@ -1260,8 +1293,8 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
             .iter()
             .filter_map(|model| model["name"].as_str())
             .collect::<Vec<_>>();
-        let unused_has_vscode = unused_names.contains(&"anthropic/claude-opus-4.6");
-        assert!(selected_names.contains(&"anthropic/claude-opus-4.6"));
+        let unused_has_vscode = unused_names.contains(&"kilo/anthropic/claude-opus-4.6");
+        assert!(selected_names.contains(&"kilo/anthropic/claude-opus-4.6"));
         if cfg!(target_os = "macos") {
             assert!(
                 !unused_has_vscode,

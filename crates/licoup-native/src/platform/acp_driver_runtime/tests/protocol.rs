@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn new_session_applies_settings_then_finishes_after_prompt_quiescence() {
+fn new_session_applies_settings_then_reports_protocol_finish() {
     let mut protocol = new_protocol(json!({"model": "provider/model"}), "private", "");
     let effects = protocol.handle_message(initialize_response(true, true));
     assert!(matches!(effects[0], ProtocolEffect::Send(_)));
@@ -45,60 +45,21 @@ fn new_session_applies_settings_then_finishes_after_prompt_quiescence() {
         "jsonrpc": "2.0", "id": PROMPT_REQUEST_ID,
         "result": {"stopReason": "end_turn"}
     }));
-    assert!(effects.is_empty());
-    assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
-    let effects = protocol.finish_prompt_drain();
     let ProtocolEffect::Complete(outcome) = &effects[0] else {
         panic!("expected completion")
     };
     assert_eq!(outcome.output, "final");
     assert_eq!(outcome.session_id, "native-session");
     assert_eq!(outcome.effective.model.as_deref(), Some("provider/model"));
-    assert_eq!(outcome.events.len(), 1);
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "final"
+    )));
 }
 
 #[test]
-fn prompt_response_before_multiple_notifications_preserves_complete_ordered_output() {
-    let mut protocol = new_protocol(json!({}), "private", "");
-    protocol.handle_message(initialize_response(true, true));
-    protocol.handle_message(json!({
-        "jsonrpc": "2.0", "id": SESSION_REQUEST_ID,
-        "result": {"sessionId": "native-session", "configOptions": []}
-    }));
-
-    let effects = protocol.handle_message(json!({
-        "jsonrpc": "2.0", "id": PROMPT_REQUEST_ID,
-        "result": {"stopReason": "end_turn"}
-    }));
-    assert!(effects.is_empty());
-    assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
-
-    for text in ["late ", "ordered"] {
-        let effects = protocol.handle_message(json!({
-            "jsonrpc": "2.0", "method": "session/update",
-            "params": {"sessionId": "native-session", "update": {
-                "sessionUpdate": "agent_message_chunk",
-                "content": {"type": "text", "text": text}
-            }}
-        }));
-        assert!(effects.is_empty());
-        assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
-    }
-
-    let effects = protocol.finish_prompt_drain();
-    let ProtocolEffect::Complete(outcome) = &effects[0] else {
-        panic!("expected completion after the bounded quiet state")
-    };
-    assert_eq!(outcome.output, "late ordered");
-    assert_eq!(outcome.events.len(), 2);
-    assert_eq!(outcome.events[0]["content"]["text"], "late ");
-    assert_eq!(outcome.events[1]["content"]["text"], "ordered");
-    assert_eq!(protocol.phase, ProtocolPhase::Finished);
-    assert!(protocol.finish_prompt_drain().is_empty());
-}
-
-#[test]
-fn prompt_drain_fails_closed_when_quiescence_has_no_agent_output() {
+fn protocol_finish_fails_closed_when_no_agent_output_was_reported() {
     let mut protocol = new_protocol(json!({}), "private", "");
     protocol.handle_message(initialize_response(true, true));
     protocol.handle_message(json!({
@@ -109,11 +70,8 @@ fn prompt_drain_fails_closed_when_quiescence_has_no_agent_output() {
         "jsonrpc": "2.0", "id": PROMPT_REQUEST_ID,
         "result": {"stopReason": "end_turn"}
     }));
-    assert!(effects.is_empty());
-
-    let effects = protocol.finish_prompt_drain();
     let ProtocolEffect::Fail(failure) = &effects[0] else {
-        panic!("empty output after the quiet bound must fail")
+        panic!("empty output at protocol finish must fail")
     };
     assert_eq!(failure.code, "acp_final_message_missing");
     assert_eq!(failure.turn_status.as_deref(), Some("end_turn"));
@@ -168,51 +126,6 @@ fn malformed_pre_binding_session_update_still_fails_closed() {
 }
 
 #[test]
-fn prompt_drain_rejects_mismatched_and_malformed_late_notifications() {
-    for (message, expected_code) in [
-        (
-            json!({
-                "jsonrpc": "2.0", "method": "session/update",
-                "params": {"sessionId": "other-session", "update": {
-                    "sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": "wrong"}
-                }}
-            }),
-            "acp_session_mismatch",
-        ),
-        (
-            json!({
-                "jsonrpc": "2.0", "method": "session/update",
-                "params": {"sessionId": "native-session", "update": {
-                    "sessionUpdate": "agent_message_chunk",
-                    "content": "not-a-content-object"
-                }}
-            }),
-            "acp_session_update_invalid",
-        ),
-    ] {
-        let mut protocol = new_protocol(json!({}), "private", "");
-        protocol.handle_message(initialize_response(true, true));
-        protocol.handle_message(json!({
-            "jsonrpc": "2.0", "id": SESSION_REQUEST_ID,
-            "result": {"sessionId": "native-session", "configOptions": []}
-        }));
-        let effects = protocol.handle_message(json!({
-            "jsonrpc": "2.0", "id": PROMPT_REQUEST_ID,
-            "result": {"stopReason": "end_turn"}
-        }));
-        assert!(effects.is_empty());
-
-        let effects = protocol.handle_message(message);
-        let ProtocolEffect::Fail(failure) = &effects[0] else {
-            panic!("invalid late notification must fail")
-        };
-        assert_eq!(failure.code, expected_code);
-        assert_eq!(protocol.phase, ProtocolPhase::Finished);
-    }
-}
-
-#[test]
 fn interleaved_updates_keep_both_public_views_complete_and_ordered() {
     let mut protocol = new_protocol(json!({}), "private", "");
     protocol.handle_message(initialize_response(true, true));
@@ -244,30 +157,13 @@ fn interleaved_updates_keep_both_public_views_complete_and_ordered() {
         "jsonrpc": "2.0", "id": PROMPT_REQUEST_ID,
         "result": {"stopReason": "end_turn"}
     }));
-    assert!(effects.is_empty());
-    let effects = protocol.finish_prompt_drain();
     let ProtocolEffect::Complete(outcome) = &effects[0] else {
         panic!("expected completion after the interleaved updates")
     };
     assert_eq!(outcome.output, "first second third");
-    assert_eq!(outcome.events.len(), 6);
-    let kinds: Vec<&str> = outcome
-        .events
-        .iter()
-        .map(|event| event["sessionUpdate"].as_str().expect("update kind"))
-        .collect();
-    assert_eq!(
-        kinds,
-        vec![
-            "agent_message_chunk",
-            "available_commands_update",
-            "agent_message_chunk",
-            "available_commands_update",
-            "agent_message_chunk",
-            "available_commands_update",
-        ]
-    );
-    assert_eq!(outcome.events[0]["content"]["text"], "first ");
-    assert_eq!(outcome.events[2]["content"]["text"], "second ");
-    assert_eq!(outcome.events[4]["content"]["text"], "third");
+    assert!(outcome.transitions.iter().any(|transition| matches!(
+        transition,
+        crate::platform::native_agent_parser::Transition::Text { text, .. }
+            if text == "first second third"
+    )));
 }

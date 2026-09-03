@@ -56,15 +56,19 @@ pub(super) fn check_github(params: &Value) -> Result<Value> {
     if let Some(cached) = cached.as_ref() {
         if is_fresh(cached.checked_at) {
             let checked = verify_with_document(params, &cached.manifest)?;
-            return Ok(decorate_check(
-                checked,
-                cached.tag.clone(),
-                cached.url.clone(),
-                Some(cached.age),
-            ));
+            return bind_github_check(
+                params,
+                decorate_check(
+                    checked,
+                    cached.tag.clone(),
+                    cached.url.clone(),
+                    Some(cached.age),
+                ),
+            );
         }
     }
-    let release = fetch_latest_release_metadata(&repo, &github_api_base(params))?;
+    let target_track = super::params::target_release_track(params)?;
+    let release = fetch_release_metadata(&repo, &github_api_base(params), target_track)?;
     let tag = required_release_text(&release, "tag_name", "GitHub release tag")?.to_string();
     let release_url = release
         .get("html_url")
@@ -85,17 +89,15 @@ pub(super) fn check_github(params: &Value) -> Result<Value> {
     match verify_with_document(params, &manifest) {
         Ok(checked) => {
             write_cache(params, &manifest, &tag, &release_url)?;
-            Ok(decorate_check(checked, tag, release_url, None))
+            bind_github_check(params, decorate_check(checked, tag, release_url, None))
         }
         Err(error) => {
             if let Some(cached) = cached {
                 let checked = verify_with_document(params, &cached.manifest)?;
-                return Ok(decorate_check(
-                    checked,
-                    cached.tag,
-                    cached.url,
-                    Some(cached.age),
-                ));
+                return bind_github_check(
+                    params,
+                    decorate_check(checked, cached.tag, cached.url, Some(cached.age)),
+                );
             }
             Err(error)
         }
@@ -135,12 +137,12 @@ pub(super) fn download_github(params: &Value) -> Result<Value> {
 }
 
 /// Injects the cached signed manifest and the bundled public keys into a
-/// params clone so verify/apply/rollback run through the exact same signature
+/// params clone so verify and apply run through the exact same signature
 /// chain as the GitHub check.
 pub(super) fn github_context_params(params: &Value) -> Result<Value> {
-    let mut effective = params.clone();
+    let (mut effective, _) = super::receipt::params_with_bound_track(params)?;
     if effective.get("manifestJson").is_none() && effective.get("manifestPath").is_none() {
-        let cached = read_cached_release(params)?
+        let cached = read_cached_release(&effective)?
             .ok_or_else(|| anyhow!("client update github check is required before this step"))?;
         effective["manifestJson"] = cached.manifest;
     }
@@ -169,8 +171,14 @@ pub(super) fn status_github(params: &Value) -> Result<Value> {
 fn verify_with_document(params: &Value, manifest: &Value) -> Result<Value> {
     let mut effective = params.clone();
     effective["manifestJson"] = manifest.clone();
+    effective["deferReceiptBinding"] = Value::Bool(true);
     inject_bundled_keys(&mut effective)?;
     super::check::check(&effective)
+}
+
+fn bind_github_check(params: &Value, checked: Value) -> Result<Value> {
+    super::receipt::bind_check_result(params, &checked)?;
+    Ok(checked)
 }
 
 fn decorate_check(mut checked: Value, tag: String, url: String, age: Option<u64>) -> Value {
@@ -226,8 +234,20 @@ fn update_agent() -> Agent {
         .build()
 }
 
-fn fetch_latest_release_metadata(repo: &str, api_base: &str) -> Result<Value> {
-    let url = format!("{api_base}/repos/{repo}/releases/latest");
+fn fetch_release_metadata(
+    repo: &str,
+    api_base: &str,
+    track: crate::domain::client_state_migration::ReleaseTrack,
+) -> Result<Value> {
+    // GitHub's `latest` endpoint intentionally excludes prereleases. Nightly
+    // therefore has one fixed, replaceable prerelease tag while Stable keeps
+    // the ordinary latest-release source. The signed manifest remains the
+    // authority for the exact candidate version and migration frontier.
+    let selector = match track {
+        crate::domain::client_state_migration::ReleaseTrack::Nightly => "tags/nightly",
+        crate::domain::client_state_migration::ReleaseTrack::Stable => "latest",
+    };
+    let url = format!("{api_base}/repos/{repo}/releases/{selector}");
     let response = resolve_and_get(&update_agent(), &url, true)?;
     let bytes = bounded_body(
         response,
@@ -235,6 +255,17 @@ fn fetch_latest_release_metadata(repo: &str, api_base: &str) -> Result<Value> {
         "GitHub release metadata",
     )?;
     serde_json::from_slice(&bytes).context("GitHub release metadata is not valid JSON")
+}
+
+#[cfg(test)]
+pub(super) fn release_metadata_path_for_test(
+    track: crate::domain::client_state_migration::ReleaseTrack,
+) -> String {
+    let selector = match track {
+        crate::domain::client_state_migration::ReleaseTrack::Nightly => "tags/nightly",
+        crate::domain::client_state_migration::ReleaseTrack::Stable => "latest",
+    };
+    format!("/repos/{DEFAULT_REPO}/releases/{selector}")
 }
 
 fn fetch_bounded_bytes(agent: &Agent, url: &str, max_bytes: u64) -> Result<Vec<u8>> {
@@ -350,7 +381,7 @@ fn inject_bundled_keys(params: &mut Value) -> Result<()> {
     Ok(())
 }
 
-fn bundled_public_keys_document() -> Result<Value> {
+pub(super) fn bundled_public_keys_document() -> Result<Value> {
     let raw = include_str!("../../../resources/client-update-public-keys.json");
     serde_json::from_str(raw).context("bundled client update public keys document is invalid")
 }
@@ -363,19 +394,21 @@ struct CachedRelease {
     age: u64,
 }
 
-fn cache_root(params: &Value) -> PathBuf {
-    json_text(params, &["stateRoot", "state-root"])
+fn cache_root(params: &Value) -> Result<PathBuf> {
+    let track = super::params::target_release_track(params)?;
+    Ok(json_text(params, &["stateRoot", "state-root"])
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(".licoup-update-state"))
         .join("client-update-github")
+        .join(track.as_str()))
 }
 
-fn cache_manifest_path(params: &Value) -> PathBuf {
-    cache_root(params).join("manifest.json")
+fn cache_manifest_path(params: &Value) -> Result<PathBuf> {
+    Ok(cache_root(params)?.join("manifest.json"))
 }
 
 fn write_cache(params: &Value, manifest: &Value, tag: &str, release_url: &str) -> Result<()> {
-    let root = cache_root(params);
+    let root = cache_root(params)?;
     fs::create_dir_all(&root).context("failed to create client update github cache root")?;
     let now = now_epoch_seconds();
     let entry = json!({
@@ -389,12 +422,12 @@ fn write_cache(params: &Value, manifest: &Value, tag: &str, release_url: &str) -
     let temporary = root.join(format!(".cache-{now}"));
     fs::write(&temporary, format!("{entry_text}\n{manifest_text}\n"))
         .context("failed to write client update github cache")?;
-    fs::rename(&temporary, cache_manifest_path(params))
+    fs::rename(&temporary, cache_manifest_path(params)?)
         .context("failed to finalize client update github cache")
 }
 
 fn read_cached_release(params: &Value) -> Result<Option<CachedRelease>> {
-    let path = cache_manifest_path(params);
+    let path = cache_manifest_path(params)?;
     let metadata = match fs::metadata(&path) {
         Ok(metadata) => metadata,
         Err(_) => return Ok(None),
@@ -454,46 +487,6 @@ fn now_epoch_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use base64::{Engine as _, engine::general_purpose};
-
-    #[test]
-    fn bundled_public_keys_document_parses_with_decodable_ed25519_keys() {
-        let document = bundled_public_keys_document().unwrap();
-        let keys = document["keys"].as_object().unwrap();
-        assert_eq!(keys.len(), 2);
-        for entry in keys.values() {
-            let encoded = entry["publicKey"].as_str().unwrap();
-            let bytes = general_purpose::STANDARD.decode(encoded).unwrap();
-            assert_eq!(bytes.len(), 32);
-            ed25519_dalek::VerifyingKey::from_bytes(&bytes.try_into().unwrap()).unwrap();
-        }
-    }
-
-    #[test]
-    fn redirect_host_allowlist_rejects_foreign_hosts_and_accepts_github_and_loopback() {
-        for url in [
-            "https://evil.example.com/steal",
-            "https://github.com.evil.example/steal",
-            "http://192.168.1.5/steal",
-        ] {
-            assert!(validate_redirect_host_allowed_for_test(url).is_err());
-        }
-        for url in [
-            "https://github.com/LicoLand/LicoUp/releases/download/v1/a.zip",
-            "https://objects.githubusercontent.com/x",
-            "https://api.github.com/x",
-            "https://raw.githubusercontent.com/x",
-            "http://127.0.0.1:54321/a",
-            "http://localhost:54321/a",
-        ] {
-            assert!(validate_redirect_host_allowed_for_test(url).is_ok());
-        }
-    }
 }
 
 #[cfg(test)]

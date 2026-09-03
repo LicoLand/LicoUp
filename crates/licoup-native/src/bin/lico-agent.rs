@@ -3,11 +3,16 @@
 use licoup_native::domain::lico_agent::{
     Agent, AgentConfig, AgentEvent, AgentProfileKind, GatewayChatTransport, LlmTransport,
 };
+use licoup_native::platform::file_security::{append_private_line, ensure_private_dir};
+use licoup_native::platform::paths::portable_data_dir;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::{env, process::ExitCode};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+use uuid::Uuid;
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {
@@ -19,18 +24,21 @@ fn main() -> ExitCode {
     }
 }
 
+#[derive(Debug)]
 struct Args {
     profile: AgentProfileKind,
     gateway_base_url: String,
     model: String,
     workspace: PathBuf,
     plan_path: Option<PathBuf>,
+    session_id: String,
+    resume: bool,
 }
 
 fn run(raw: Vec<String>) -> Result<(), &'static str> {
     if raw.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "lico-agent --mode rpc --profile base|plan --gateway-base-url http://127.0.0.1:PORT --model ID --workspace ABS [--plan-path ABS]"
+            "lico-agent --mode rpc --profile base|plan --gateway-base-url http://127.0.0.1:PORT --model ID --workspace ABS --session-id UUID [--resume] [--plan-path ABS]"
         );
         return Ok(());
     }
@@ -38,16 +46,26 @@ fn run(raw: Vec<String>) -> Result<(), &'static str> {
     let transport = GatewayChatTransport::from_base_url(&args.gateway_base_url)
         .map_err(|_| "gateway_base_url_must_be_loopback")?;
     let transport: Arc<dyn LlmTransport> = Arc::new(transport);
-    let agent = Agent::new(
+    let transcript_path = transcript_path(&args.session_id)?;
+    let history = if args.resume {
+        Agent::load_persisted_history(&transcript_path, &args.session_id)?
+    } else {
+        if transcript_path.exists() {
+            return Err("lico_agent_session_already_exists");
+        }
+        Vec::new()
+    };
+    let mut agent = Agent::new(
         AgentConfig {
             profile: args.profile,
             model: args.model,
-            workspace: args.workspace,
+            workspace: args.workspace.clone(),
             plan_path: args.plan_path,
         },
         transport,
     )
     .map_err(|_| "agent_config_invalid")?;
+    agent.inject_history(history);
     let agent = Arc::new(Mutex::new(agent));
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -72,6 +90,7 @@ fn run(raw: Vec<String>) -> Result<(), &'static str> {
                         "data": {
                             "isRunning": false,
                             "profile": profile,
+                            "sessionId": args.session_id,
                         }
                     }),
                 )?;
@@ -86,20 +105,14 @@ fn run(raw: Vec<String>) -> Result<(), &'static str> {
                     &mut stdout,
                     &json!({"id": id, "type": "response", "success": true}),
                 )?;
-                let agent = Arc::clone(&agent);
-                let mut out = std::io::stdout();
-                let result = {
-                    let mut guard = agent.lock().unwrap();
-                    guard.prompt(&message, |event| {
-                        let _ = emit_event(&mut out, &event);
-                    })
-                };
-                if let Err(err) = result {
-                    write_json(
-                        &mut stdout,
-                        &json!({"type":"error","code":"prompt_failed","message":err}),
-                    )?;
-                }
+                run_prompt(
+                    &agent,
+                    &mut stdout,
+                    &message,
+                    &transcript_path,
+                    &args.session_id,
+                    &args.workspace,
+                )?;
             }
             "abort" => {
                 agent.lock().unwrap().abort();
@@ -119,11 +132,14 @@ fn run(raw: Vec<String>) -> Result<(), &'static str> {
                     &mut stdout,
                     &json!({"id": id, "type": "response", "success": true}),
                 )?;
-                let mut out = std::io::stdout();
-                let mut guard = agent.lock().unwrap();
-                let _ = guard.prompt(&message, |event| {
-                    let _ = emit_event(&mut out, &event);
-                });
+                run_prompt(
+                    &agent,
+                    &mut stdout,
+                    &message,
+                    &transcript_path,
+                    &args.session_id,
+                    &args.workspace,
+                )?;
             }
             _ => {
                 write_json(
@@ -139,6 +155,118 @@ fn run(raw: Vec<String>) -> Result<(), &'static str> {
         }
     }
     Ok(())
+}
+
+fn run_prompt(
+    agent: &Arc<Mutex<Agent>>,
+    out: &mut impl Write,
+    message: &str,
+    transcript_path: &std::path::Path,
+    session_id: &str,
+    workspace: &std::path::Path,
+) -> Result<(), &'static str> {
+    let mut assistant_output = String::new();
+    let result = {
+        let mut guard = agent.lock().unwrap();
+        guard.prompt(message, |event| {
+            if let AgentEvent::MessageUpdate { role, delta } = &event
+                && role == "assistant"
+            {
+                assistant_output.push_str(delta);
+            }
+            if !matches!(event, AgentEvent::AgentEnd) {
+                let _ = emit_event(out, &event);
+            }
+        })
+    };
+    if let Err(err) = result {
+        write_json(
+            out,
+            &json!({"type":"error","code":"prompt_failed","message":err}),
+        )?;
+        return Ok(());
+    }
+    if persist_turn(
+        transcript_path,
+        session_id,
+        workspace,
+        message,
+        &assistant_output,
+    )
+    .is_err()
+    {
+        write_json(
+            out,
+            &json!({
+                "type":"error",
+                "code":"lico_agent_transcript_persist_failed",
+                "message":"Lico Agent could not persist the completed turn."
+            }),
+        )?;
+        return Ok(());
+    }
+    emit_event(out, &AgentEvent::AgentEnd)
+}
+
+fn transcript_path(session_id: &str) -> Result<PathBuf, &'static str> {
+    let canonical = Uuid::parse_str(session_id)
+        .map_err(|_| "lico_agent_session_id_invalid")?
+        .to_string();
+    if canonical != session_id {
+        return Err("lico_agent_session_id_invalid");
+    }
+    let sessions = portable_data_dir()
+        .map_err(|_| "lico_agent_session_store_unavailable")?
+        .join("client-state")
+        .join("lico-agent")
+        .join("sessions");
+    ensure_private_dir(&sessions).map_err(|_| "lico_agent_session_store_unavailable")?;
+    Ok(sessions.join(format!("{session_id}.jsonl")))
+}
+
+fn persist_turn(
+    path: &std::path::Path,
+    session_id: &str,
+    workspace: &std::path::Path,
+    prompt: &str,
+    output: &str,
+) -> Result<(), ()> {
+    let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).map_err(|_| ())?;
+    if !path.exists() {
+        append_private_line(
+            path,
+            &json!({
+                "type": "session",
+                "id": session_id,
+                "cwd": workspace.to_string_lossy(),
+                "timestamp": timestamp,
+            })
+            .to_string(),
+        )
+        .map_err(|_| ())?;
+    }
+    append_private_line(
+        path,
+        &json!({
+            "type": "message",
+            "role": "user",
+            "text": prompt,
+            "timestamp": timestamp,
+        })
+        .to_string(),
+    )
+    .map_err(|_| ())?;
+    append_private_line(
+        path,
+        &json!({
+            "type": "message",
+            "role": "assistant",
+            "text": output,
+            "timestamp": timestamp,
+        })
+        .to_string(),
+    )
+    .map_err(|_| ())
 }
 
 fn emit_event(out: &mut impl Write, event: &AgentEvent) -> Result<(), &'static str> {
@@ -193,8 +321,10 @@ fn parse_args(raw: &[String]) -> Result<Args, &'static str> {
     let mut profile = AgentProfileKind::Base;
     let mut gateway_base_url = "http://127.0.0.1:15722".to_string();
     let mut model = String::new();
-    let mut workspace = env::current_dir().map_err(|_| "workspace_invalid")?;
+    let mut workspace = None;
     let mut plan_path = None;
+    let mut session_id = None;
+    let mut resume = false;
     let mut i = 0;
     while i < raw.len() {
         match raw[i].as_str() {
@@ -217,12 +347,17 @@ fn parse_args(raw: &[String]) -> Result<Args, &'static str> {
             }
             "--workspace" => {
                 i += 1;
-                workspace = PathBuf::from(raw.get(i).ok_or("workspace_missing")?);
+                workspace = Some(PathBuf::from(raw.get(i).ok_or("workspace_missing")?));
             }
             "--plan-path" => {
                 i += 1;
                 plan_path = Some(PathBuf::from(raw.get(i).ok_or("plan_path_missing")?));
             }
+            "--session-id" => {
+                i += 1;
+                session_id = Some(raw.get(i).cloned().ok_or("session_id_missing")?);
+            }
+            "--resume" => resume = true,
             _ => {}
         }
         i += 1;
@@ -230,8 +365,16 @@ fn parse_args(raw: &[String]) -> Result<Args, &'static str> {
     if model.trim().is_empty() {
         return Err("model_required");
     }
+    let workspace = workspace.ok_or("workspace_missing")?;
     if !workspace.is_absolute() {
         return Err("workspace_must_be_absolute");
+    }
+    let session_id = session_id.ok_or("session_id_missing")?;
+    let canonical_session_id = Uuid::parse_str(&session_id)
+        .map_err(|_| "session_id_invalid")?
+        .to_string();
+    if session_id != canonical_session_id {
+        return Err("session_id_invalid");
     }
     if profile == AgentProfileKind::Plan {
         let path = plan_path.ok_or("plan_path_required")?;
@@ -246,5 +389,62 @@ fn parse_args(raw: &[String]) -> Result<Args, &'static str> {
         model,
         workspace,
         plan_path,
+        session_id,
+        resume,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_requires_fixed_native_session_identity_and_explicit_workspace() {
+        let session_id = Uuid::new_v4().to_string();
+        let workspace = std::env::temp_dir().join("lico-agent-cli-workspace-fixture");
+        let args = parse_args(&[
+            "--model".into(),
+            "synthetic-model".into(),
+            "--workspace".into(),
+            workspace.to_string_lossy().into_owned(),
+            "--session-id".into(),
+            session_id.clone(),
+            "--resume".into(),
+        ])
+        .unwrap();
+        assert_eq!(args.session_id, session_id);
+        assert!(args.resume);
+        assert_eq!(args.workspace, workspace);
+        assert_eq!(
+            parse_args(&[
+                "--model".into(),
+                "synthetic-model".into(),
+                "--workspace".into(),
+                workspace.to_string_lossy().into_owned(),
+            ])
+            .unwrap_err(),
+            "session_id_missing"
+        );
+    }
+
+    #[test]
+    fn completed_turn_is_persisted_before_terminal_success() {
+        let dir = std::env::temp_dir().join(format!("lico-agent-bin-{}", Uuid::new_v4()));
+        ensure_private_dir(&dir).unwrap();
+        let session_id = Uuid::new_v4().to_string();
+        let path = dir.join(format!("{session_id}.jsonl"));
+        persist_turn(
+            &path,
+            &session_id,
+            &dir,
+            "synthetic prompt",
+            "synthetic response",
+        )
+        .unwrap();
+        let history = Agent::load_persisted_history(&path, &session_id).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0]["content"], "synthetic prompt");
+        assert_eq!(history[1]["content"], "synthetic response");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

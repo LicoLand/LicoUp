@@ -1,6 +1,6 @@
 use crate::core::mcp::{
-    DEFAULT_MAX_MESSAGE_BYTES, McpMessage, McpTransferDirection, PROTOCOL_REVISION,
-    decode_http_body, encode_http_body,
+    DEFAULT_MAX_MESSAGE_BYTES, McpMessage, McpTransferDirection,
+    OUTBOUND_TRANSFER_PROTOCOL_REVISION, decode_http_body, encode_http_body,
 };
 use anyhow::{Result, anyhow, ensure};
 use serde_json::Value;
@@ -29,7 +29,7 @@ pub(super) fn parse_scope(params: &Value) -> Result<ApprovedTransferScope> {
     let purpose = exact_text(params, "purpose", MAX_SCOPE_TEXT_BYTES)?;
     let protocol_revision = exact_text(params, "protocolVersion", 64)?;
     ensure!(
-        protocol_revision == PROTOCOL_REVISION,
+        protocol_revision == OUTBOUND_TRANSFER_PROTOCOL_REVISION,
         "mcp_protocol_version_unsupported"
     );
     let message_json = exact_text(params, "messageJson", DEFAULT_MAX_MESSAGE_BYTES)?;

@@ -169,6 +169,43 @@ test("build, bundle, manifest, and macOS concerns retain dedicated owners", asyn
   }
 });
 
+test("native build emits space-safe encoded rustflags and clears legacy RUSTFLAGS", async () => {
+  const { clientReleaseTrack, encodedRustFlagsWithPathRemap } = await import(
+    `${pathToFileURL(path.join(repoRoot, moduleRoot, "build/native.mjs")).href}?rustflags`
+  );
+  assert.equal(clientReleaseTrack({}), "nightly");
+  assert.equal(
+    clientReleaseTrack({ LICO_CLIENT_RELEASE_TRACK: "stable" }),
+    "stable",
+  );
+  const cargoHome = "/synthetic/lico cargo home/.cargo";
+  const encoded = encodedRustFlagsWithPathRemap({
+    CARGO_HOME: cargoHome,
+    RUSTFLAGS: "--cfg=legacy_flag",
+  });
+  const flags = encoded.split("\x1f");
+  assert.equal(flags[0], "--cfg=legacy_flag");
+  assert.ok(flags.includes(`--remap-path-prefix=${repoRoot}=/lico/source`));
+  assert.ok(flags.includes(`--remap-path-prefix=${cargoHome}=/cargo`));
+
+  const fromEncoded = encodedRustFlagsWithPathRemap({
+    CARGO_HOME: cargoHome,
+    CARGO_ENCODED_RUSTFLAGS: "--cfg encoded_a\x1f--cfg encoded_b",
+    RUSTFLAGS: "--cfg ignored_legacy",
+  });
+  assert.deepEqual(fromEncoded.split("\x1f").slice(0, 2), [
+    "--cfg encoded_a",
+    "--cfg encoded_b",
+  ]);
+
+  const source = await read(`${moduleRoot}/build/native.mjs`);
+  assert.ok(
+    source.includes("CARGO_ENCODED_RUSTFLAGS: encodedRustFlagsWithPathRemap()"),
+  );
+  assert.ok(source.includes("delete environment.RUSTFLAGS"));
+  assert.equal(source.includes('.join(" ")'), false);
+});
+
 async function collectModules(relativeRoot) {
   const found = [];
   async function visit(relativeDirectory, prefix = "") {

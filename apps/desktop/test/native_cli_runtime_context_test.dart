@@ -47,6 +47,7 @@ void main() {
         'false',
       ]);
       expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
       final parentPath = Platform.environment['PATH']?.trim() ?? '';
       if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
         expect(capturedEnv?['PATH'], parentPath);
@@ -116,6 +117,7 @@ void main() {
         );
         await noDataService.scanTargets();
         expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
+        expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
         if (Platform.isMacOS) {
           expect(
             capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
@@ -183,17 +185,57 @@ void main() {
       expect(resolved, isNull);
     });
 
-    test('ignores a symlink that resolves to the client itself', () async {
-      if (Platform.isWindows) return;
-      await appExecutable.writeAsString('app');
-      final alias = File('${bundleDir.path}/client-alias');
-      await Link(alias.path).create(appExecutable.path);
-      final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
-        executablePath: appExecutable.path,
-        environment: {'LICO_CLIENT_PATH': alias.path},
-        workingDirectory: bundleDir.path,
-      );
-      expect(resolved, isNull);
-    });
+    test(
+      'installed app bundle ignores CARGO_TARGET_DIR debug sidecars',
+      () async {
+        final appRoot = await Directory.systemTemp.createTemp('lico-app-');
+        addTearDown(() => appRoot.delete(recursive: true));
+        final macos = Directory('${appRoot.path}/LicoUp.app/Contents/MacOS');
+        await macos.create(recursive: true);
+        final appExecutable = File('${macos.path}/licoup');
+        final bundledCli = File('${macos.path}/licoup-cli');
+        final cargoDir = await Directory.systemTemp.createTemp('lico-cargo-');
+        addTearDown(() => cargoDir.delete(recursive: true));
+        final cargoCli = File('${cargoDir.path}/debug/licoup-cli');
+        await cargoCli.parent.create(recursive: true);
+        await appExecutable.writeAsString('app');
+        await bundledCli.writeAsString('bundled');
+        await cargoCli.writeAsString('cargo-debug');
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: appExecutable.path,
+          environment: {'CARGO_TARGET_DIR': cargoDir.path},
+          workingDirectory: cargoDir.path,
+        );
+        expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
+      },
+    );
+
+    test(
+      'installed app bundle ignores an external LICO_CLIENT_PATH override',
+      () async {
+        final appRoot = await Directory.systemTemp.createTemp('lico-app-');
+        addTearDown(() => appRoot.delete(recursive: true));
+        final macos = Directory('${appRoot.path}/LicoUp.app/Contents/MacOS');
+        await macos.create(recursive: true);
+        final appExecutable = File('${macos.path}/licoup');
+        final bundledCli = File('${macos.path}/licoup-cli');
+        final externalDir = await Directory.systemTemp.createTemp(
+          'lico-external-cli-',
+        );
+        addTearDown(() => externalDir.delete(recursive: true));
+        final externalCli = File('${externalDir.path}/licoup-cli');
+        await appExecutable.writeAsString('app');
+        await bundledCli.writeAsString('bundled');
+        await externalCli.writeAsString('external');
+
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: appExecutable.path,
+          environment: {'LICO_CLIENT_PATH': externalCli.path},
+          workingDirectory: externalDir.path,
+        );
+
+        expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
+      },
+    );
   });
 }

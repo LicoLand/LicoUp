@@ -8,12 +8,7 @@ pub(crate) fn parse_pi_session(
     metadata: &fs::Metadata,
 ) -> Option<Value> {
     let raw = fs::read_to_string(path).ok()?;
-    let mut native_session_id = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .and_then(|stem| stem.rsplit_once('_').map(|(_, id)| id.to_string()))
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "pi-session".to_string());
+    let header = pi_session_header(path);
     let mut title = None::<String>;
     let mut messages = Vec::<Value>::new();
 
@@ -30,15 +25,7 @@ pub(crate) fn parse_pi_session(
             .and_then(Value::as_str)
             .unwrap_or_default();
         match entry_type {
-            "session" => {
-                if let Some(session_id) = value
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .filter(|value| !value.trim().is_empty())
-                {
-                    native_session_id = session_id.to_string();
-                }
-            }
+            "session" => {}
             "session_info" => {
                 if let Some(name) = value
                     .get("name")
@@ -156,15 +143,71 @@ pub(crate) fn parse_pi_session(
     if messages.is_empty() {
         return None;
     }
-    Some(session_from_messages_with_title(
+    let mut session = session_from_messages_with_title(
         HistoryAdapter::Pi,
         path,
         metadata,
         source_kind,
-        native_session_id,
+        header.native_session_id,
         messages,
         title,
-    ))
+    );
+    if let Some(object) = session.as_object_mut() {
+        if let Some(created_at) = header.created_at {
+            object.insert("createdAt".to_string(), json!(created_at));
+        }
+        if let Some(working_directory) = header.working_directory {
+            object.insert("workingDirectory".to_string(), json!(working_directory));
+        }
+    }
+    Some(session)
+}
+
+pub(crate) struct PiSessionHeader {
+    pub(crate) native_session_id: String,
+    pub(crate) created_at: Option<String>,
+    pub(crate) working_directory: Option<String>,
+}
+
+/// One identity owner for Pi browse and exact reads: the native session header
+/// wins, and only the known filename suffix is the fallback when no header id
+/// exists.
+pub(crate) fn pi_session_header(path: &Path) -> PiSessionHeader {
+    let fallback = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .and_then(|stem| stem.rsplit_once('_').map(|(_, id)| id.to_string()))
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "pi-session".to_string());
+    let value = fs::File::open(path)
+        .ok()
+        .and_then(|file| BufReader::new(file).lines().next())
+        .and_then(|line| line.ok())
+        .and_then(|line| serde_json::from_str::<Value>(&line).ok())
+        .filter(|value| value.get("type").and_then(Value::as_str) == Some("session"));
+    let native_session_id = value
+        .as_ref()
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or(fallback);
+    let created_at = value
+        .as_ref()
+        .and_then(|value| value.get("timestamp"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let working_directory = value
+        .as_ref()
+        .and_then(|value| value.get("cwd"))
+        .and_then(Value::as_str)
+        .and_then(super::project_workspace::bounded_project_workspace);
+    PiSessionHeader {
+        native_session_id,
+        created_at,
+        working_directory,
+    }
 }
 
 pub(crate) fn parse_lico_agent_session(
@@ -271,11 +314,13 @@ pub(crate) fn parse_copilot_transcript_session(
     metadata: &fs::Metadata,
 ) -> Option<Value> {
     let raw = fs::read_to_string(path).ok()?;
-    let mut native_session_id = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_string)
+    let native_session_id = copilot_transcript_session_id(path)
+        .or_else(|| {
+            path.file_stem()
+                .and_then(|value| value.to_str())
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| "copilot-transcript".to_string());
     let mut messages = Vec::<Value>::new();
 
@@ -292,14 +337,6 @@ pub(crate) fn parse_copilot_transcript_session(
             .and_then(Value::as_str)
             .unwrap_or_default();
         if event_type == "session.start" {
-            if let Some(session_id) = value
-                .get("data")
-                .and_then(|data| data.get("sessionId"))
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-            {
-                native_session_id = session_id.to_string();
-            }
             continue;
         }
         let structured_kind = history_message_kind_from_semantic(event_type);
@@ -362,6 +399,26 @@ pub(crate) fn parse_copilot_transcript_session(
         native_session_id,
         messages,
     ))
+}
+
+pub(crate) fn copilot_transcript_session_id(path: &Path) -> Option<String> {
+    let reader = BufReader::new(fs::File::open(path).ok()?);
+    reader
+        .lines()
+        .map_while(Result::ok)
+        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+        .find_map(|value| copilot_session_start_id(&value).map(str::to_string))
+}
+
+fn copilot_session_start_id(value: &Value) -> Option<&str> {
+    if value.get("type").and_then(Value::as_str) != Some("session.start") {
+        return None;
+    }
+    value
+        .get("data")
+        .and_then(|data| data.get("sessionId"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn attach_native_usage(target: &mut Value, event: &Value, payload: &Value) -> bool {

@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 export const LONG_LIVED_BRANCHES = Object.freeze(["nightly", "stable", "release"]);
+export const MACOS_CANDIDATE = "macos-release-candidate";
 const LONG_LIVED = new Set(LONG_LIVED_BRANCHES);
 const RETIRED = new Set(["main", "master"]);
 const ZERO_OID = "0".repeat(40);
@@ -33,6 +34,8 @@ export function evaluateBranchFlow({
   payload = {}
 } = {}) {
   if (eventName === "push") {
+    if (refName === MACOS_CANDIDATE) return payload.deleted === true
+      ? { ok: false, code: "candidate-deleted" } : { ok: true, code: "candidate-push-event" };
     return LONG_LIVED.has(refName)
       ? { ok: true, code: "protected-push-event" }
       : { ok: false, code: "unexpected-push-ref" };
@@ -47,7 +50,7 @@ export function evaluateBranchFlow({
   if (!LONG_LIVED.has(base)) return { ok: true, code: "base-not-governed" };
   if (!sameRepository(payload)) return { ok: false, code: "cross-repository-promotion" };
   if (base === "nightly") {
-    return !LONG_LIVED.has(head) && !RETIRED.has(head) && head.length > 0
+    return !LONG_LIVED.has(head) && head !== MACOS_CANDIDATE && !RETIRED.has(head) && head.length > 0
       ? { ok: true, code: "temporary-to-nightly" }
       : { ok: false, code: "nightly-source-invalid" };
   }
@@ -121,6 +124,16 @@ export function verifyProtectedPushTopology({
   return mergedHead === tip
     ? { ok: true, code: `${upstream}-merge-advanced-${branch}` }
     : { ok: false, code: "promotion-source-tip-mismatch" };
+}
+
+export function verifyCandidatePush({ after, deleted = false, releaseRevision = git(["rev-parse", "refs/remotes/origin/release^{commit}"]),
+  candidateTree = (commit) => git(["rev-parse", `${commit}^{tree}`]) } = {}) {
+  if (deleted || !after || after === ZERO_OID || after !== releaseRevision) {
+    return { ok: false, code: "candidate-source-mismatch" };
+  }
+  return candidateTree(after) === candidateTree(releaseRevision)
+    ? { ok: true, code: "candidate-exact-release" }
+    : { ok: false, code: "candidate-tree-mismatch" };
 }
 
 function sameRepositoryPayload(base, head) {
@@ -215,7 +228,9 @@ function verifyCurrentEvent() {
     return;
   }
   if (process.env.GITHUB_EVENT_NAME === "push") {
-    const topology = verifyProtectedPushTopology({
+    const topology = process.env.GITHUB_REF_NAME === MACOS_CANDIDATE
+      ? verifyCandidatePush({ after: payload.after || process.env.GITHUB_SHA || "", deleted: payload.deleted })
+      : verifyProtectedPushTopology({
       branch: process.env.GITHUB_REF_NAME || "",
       before: payload.before || "",
       after: payload.after || process.env.GITHUB_SHA || ""

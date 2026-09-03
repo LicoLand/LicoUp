@@ -4,7 +4,6 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::antigravity::system_boilerplate_text;
-use super::semantic::looks_like_delegated_agent_prompt;
 
 pub(super) fn extract_user_authored_text(text: &str) -> String {
     let request_text = if let Some(index) = find_case_insensitive(text, "## My request for Codex:")
@@ -213,7 +212,6 @@ fn generated_context_block_close_marker(lower_line: &str) -> Option<&'static str
         ("<app-context", "</app-context>"),
         ("<apps_instructions", "</apps_instructions>"),
         ("<apps-instructions", "</apps-instructions>"),
-        ("<skills_instructions", "</skills_instructions>"),
         ("<plugins_instructions", "</plugins_instructions>"),
         ("<recommended_plugins", "</recommended_plugins>"),
         ("<additional_metadata", "</additional_metadata>"),
@@ -255,7 +253,6 @@ pub(in crate::domain::conversation::history) fn background_context_prompt_text(t
         || lower.starts_with("<instructions>")
         || lower.starts_with("you are codex, a coding agent")
         || lower.starts_with("you are chatgpt")
-        || looks_like_delegated_agent_prompt(text)
         || lower.starts_with("knowledge cutoff:")
         || lower.starts_with("current date:")
         || lower.starts_with("filesystem sandboxing defines")
@@ -268,7 +265,6 @@ pub(in crate::domain::conversation::history) fn background_context_prompt_text(t
         || lower.starts_with("<apps_instructions")
         || lower.starts_with("<apps-instructions")
         || lower.starts_with("<environment_context")
-        || lower.starts_with("<skills_instructions")
         || lower.starts_with("<plugins_instructions")
         || lower.starts_with("<collaboration_mode")
 }

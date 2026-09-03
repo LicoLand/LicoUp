@@ -193,7 +193,7 @@ class SkillCardFooter extends StatelessWidget {
                               target: agentId,
                               label: label,
                               kind: 'cli',
-                              status: 'detected',
+                              status: TargetCandidateStatus.detected,
                               configured: true,
                               confidence: 1,
                               adapterStatus: 'implemented',

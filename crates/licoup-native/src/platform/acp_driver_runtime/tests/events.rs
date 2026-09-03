@@ -24,11 +24,3 @@ fn session_update_for_another_session_fails_closed() {
     assert_eq!(protocol.phase, ProtocolPhase::Finished);
     assert!(protocol.output.is_empty());
 }
-
-#[test]
-fn extract_assistant_text_reads_parts_without_private_leak_markers() {
-    let text = extract_assistant_text(&json!({
-        "parts": [{"type": "text", "text": "final answer"}]
-    }));
-    assert_eq!(text, "final answer");
-}

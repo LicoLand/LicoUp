@@ -1082,6 +1082,12 @@ String formatComposerReasoningEffortLabel(String effort) {
   if (trimmed.isEmpty) {
     return trimmed;
   }
+  // Token-aware casing for known multi-word efforts.
+  const known = {'xhigh': 'XHigh'};
+  final mapped = known[trimmed.toLowerCase()];
+  if (mapped != null) {
+    return mapped;
+  }
   if (trimmed.length == 1) {
     return trimmed.toUpperCase();
   }
