@@ -325,6 +325,9 @@ export async function checkClientRootAndShell(context, {
   );
   const clientLogExportServiceSource = await readDartSourceByBasename("client_log_export_service.dart");
   const clientShellSource = await readDartSourceByBasename("client_shell.dart");
+  const shellTransitionSource = await readText(
+    "apps/desktop/lib/src/composition/m2_legacy_shell_renderer_transition_adapter.dart"
+  );
   const semanticDestinationsSource = await readDartSourceByBasename("semantic_destination.dart");
   assert(clientLogExportServiceSource.includes("activityLogFile") &&
     clientLogExportServiceSource.includes("open(mode: FileMode.read)") &&
@@ -333,13 +336,15 @@ export async function checkClientRootAndShell(context, {
     "client_log_export_service.dart must export the portable activity log without rendering it as a standalone page"
   );
   assert(semanticDestinationsSource.includes("enum ClientSection") &&
-    clientShellSource.includes("ClientSection.agents => AgentsCanvas") &&
-    clientShellSource.includes("ClientSection.monitoring => AgentUsagePanel") &&
-    clientShellSource.includes("ClientSection.skillHub => SkillHubPanel") &&
-    clientShellSource.includes("ClientSection.pluginManagement => AdapterPluginPanel") &&
-    clientShellSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
-    clientShellSource.includes("ClientSection.settings => SettingsPanel") &&
-    clientShellSource.includes("ClientSection.agentHub => AgentHubPanel"),
+    clientShellSource.includes("widget.renderer.buildDestination") &&
+    shellTransitionSource.includes("ClientSection.agents => AgentsCanvas") &&
+    shellTransitionSource.includes("ClientSection.monitoring => AgentUsagePanel") &&
+    shellTransitionSource.includes("ClientSection.skillHub => SkillHubPanel") &&
+    shellTransitionSource.includes("ClientSection.pluginManagement => AdapterPluginPanel") &&
+    shellTransitionSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
+    shellTransitionSource.includes("ClientSection.models => ModelsPanel") &&
+    shellTransitionSource.includes("ClientSection.settings => SettingsPanel") &&
+    shellTransitionSource.includes("ClientSection.agentHub => AgentHubPanel"),
     "LicoUp client shell must expose only the current top-level section bodies"
   );
   for (const [relativePath, source] of [

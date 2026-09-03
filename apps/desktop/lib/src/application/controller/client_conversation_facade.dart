@@ -15,6 +15,8 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
       conversationPresentationSignals.activeListenable;
   ValueListenable<int> get liveConversationListenable =>
       conversationPresentationSignals.liveListenable;
+  ValueListenable<int> get conversationTabActivityListenable =>
+      conversationPresentationSignals.tabActivityListenable;
 
   void notifyClientStateChanged() {
     if (!lifecycleProjection.disposed) notifyListeners();
@@ -34,6 +36,10 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
     conversationPresentationSignals.notifyLiveChanged();
   }
 
+  void notifyConversationTabActivityChanged() {
+    conversationPresentationSignals.notifyTabActivityChanged();
+  }
+
   @override
   void agentWorkspaceNotifyStateChanged() => notifyClientStateChanged();
 
@@ -49,4 +55,8 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   @override
   void agentWorkspaceNotifyLiveConversationChanged() =>
       notifyLiveConversationChanged();
+
+  @override
+  void agentWorkspaceNotifyConversationTabActivityChanged() =>
+      notifyConversationTabActivityChanged();
 }

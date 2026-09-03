@@ -18,7 +18,8 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
-import 'package:licoup/src/frontend/shell/client_shell.dart';
+
+import '../../presentation/composed_client_shell_test_helper.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -168,7 +169,7 @@ final class ProductionClientShellFixture {
           explicitChildNodes: true,
           child: RepaintBoundary(
             key: repaintBoundaryKey,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       ),

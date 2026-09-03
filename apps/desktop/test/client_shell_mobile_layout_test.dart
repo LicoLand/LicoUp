@@ -19,7 +19,6 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
-import 'package:licoup/src/frontend/shell/client_shell.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
@@ -27,6 +26,8 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/shell_pair_device_d
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'presentation/composed_client_shell_test_helper.dart';
 
 void main() {
   testWidgets('mobile runtime keeps the phone shell under a desktop theme', (
@@ -67,7 +68,7 @@ void main() {
         home: SizedBox(
           width: 390,
           height: 844,
-          child: ClientShell(controller: controller),
+          child: composedClientShell(controller),
         ),
       ),
     );
@@ -171,7 +172,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -251,7 +252,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -407,7 +408,7 @@ void main() {
         home: SizedBox(
           width: 390,
           height: 844,
-          child: ClientShell(controller: controller),
+          child: composedClientShell(controller),
         ),
       ),
     );
@@ -462,7 +463,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -513,7 +514,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -577,7 +578,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -630,7 +631,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );

@@ -4,7 +4,8 @@ import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'src/application/controller/client_controller.dart';
+import 'src/composition/client_app_composition.dart';
+import 'src/frontend/binding/projection_builder.dart';
 import 'src/frontend/l10n/lico_strings.dart';
 import 'src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'src/frontend/shared/appearance/appearance_preset_config.dart';
@@ -15,14 +16,14 @@ import 'src/platform/agent_render_adapter/agent_render_adapter_service.dart';
 class LicoApp extends StatefulWidget {
   const LicoApp({
     super.key,
-    this.controllerFactory,
+    this.compositionFactory,
     this.initializeController = true,
   });
 
   /// Test and acceptance seam for exercising the real application shell with
   /// a bounded backend. Production callers omit this and always use the
-  /// platform-backed [ClientController].
-  final ClientController Function()? controllerFactory;
+  /// platform-backed composition.
+  final ClientAppComposition Function()? compositionFactory;
 
   /// Acceptance controllers may be fully staged before the first frame. The
   /// production entry point keeps the default and performs normal bootstrap.
@@ -33,7 +34,7 @@ class LicoApp extends StatefulWidget {
 }
 
 class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
-  late final ClientController _controller;
+  late final ClientAppComposition _composition;
   int? _viewId;
 
   @override
@@ -42,17 +43,17 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
     AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
       jsonSource: DefaultAgentRenderAdapterJsonSource(),
     );
-    _controller = widget.controllerFactory?.call() ?? ClientController();
+    _composition = widget.compositionFactory?.call() ?? ClientAppComposition();
     WidgetsBinding.instance.addObserver(this);
-    _controller.updateConversationAttention(
+    _composition.updateConversationAttention(
       lifecycleState:
           WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
     );
     if (widget.initializeController) {
-      unawaited(_controller.initialize());
+      unawaited(_composition.initialize());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        unawaited(_controller.initializeLlmGateway());
+        unawaited(_composition.initializeLlmGateway());
       });
     }
   }
@@ -65,7 +66,7 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _controller.updateConversationAttention(lifecycleState: state);
+    _composition.updateConversationAttention(lifecycleState: state);
   }
 
   @override
@@ -73,7 +74,7 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
     if (_viewId != null && event.viewId != _viewId) {
       return;
     }
-    _controller.updateConversationAttention(
+    _composition.updateConversationAttention(
       viewFocused: event.state == ViewFocusState.focused,
     );
   }
@@ -81,22 +82,23 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose();
+    unawaited(_composition.dispose());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: _controller.appPresentationListenable,
-      builder: (context, _, _) {
-        final presetId = _controller.appearancePresetId;
-        final presets = _controller.appearancePresetConfigs;
+    return ProjectionBuilder(
+      source: _composition.binding.projection,
+      select: (projection) => projection.appearance,
+      builder: (context, appearance) {
+        final presetId = appearance.presetId;
+        final presets = appearance.presetConfigs;
         return MaterialApp(
           onGenerateTitle: (context) => LicoStrings.of(context).appTitle,
           debugShowCheckedModeBanner: false,
           supportedLocales: LicoStrings.supportedLocales,
-          locale: LicoStrings.localeForPreference(_controller.localePreference),
+          locale: LicoStrings.localeForPreference(appearance.localePreference),
           localeListResolutionCallback: (locales, supportedLocales) {
             return LicoStrings.resolvePreferred(locales);
           },
@@ -116,7 +118,10 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
             presets: presets,
             platformBrightness: Brightness.dark,
           ),
-          home: ClientShell(controller: _controller),
+          home: ClientShell(
+            binding: _composition.binding,
+            renderer: _composition.renderer,
+          ),
         );
       },
     );

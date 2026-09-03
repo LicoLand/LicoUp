@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
@@ -17,10 +16,11 @@ import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 final class LayoutHost extends StatefulWidget {
   const LayoutHost({
     super.key,
-    required this.manager,
+    required this.selection,
     required this.registry,
     required this.stateStore,
     required this.environment,
+    required this.onUpdateEnvironment,
     required this.destination,
     required this.onSelectDestination,
     required this.destinationLabel,
@@ -32,10 +32,11 @@ final class LayoutHost extends StatefulWidget {
     required this.chrome,
   });
 
-  final LayoutManager manager;
+  final LayoutSelectionState selection;
   final LayoutRegistry registry;
   final LayoutStateStore stateStore;
   final LayoutEnvironment environment;
+  final ValueChanged<LayoutEnvironment> onUpdateEnvironment;
   final ClientSection destination;
   final ValueChanged<ClientSection> onSelectDestination;
   final LayoutDestinationLabelResolver destinationLabel;
@@ -59,45 +60,25 @@ final class _LayoutHostState extends State<LayoutHost> {
   void initState() {
     super.initState();
     _validateCatalogIdentity();
-    widget.manager.updateEnvironment(widget.environment, notify: false);
-    _renderedKey = _keyFor(widget.manager.state);
-    widget.manager.addListener(_handleSelection);
+    widget.onUpdateEnvironment(widget.environment);
+    _renderedKey = _keyFor(widget.selection);
   }
 
   @override
   void didUpdateWidget(LayoutHost oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.manager, widget.manager)) {
-      oldWidget.manager.removeListener(_handleSelection);
-      _validateCatalogIdentity();
-      widget.manager.updateEnvironment(widget.environment, notify: false);
-      _prepareReplacement(
-        _keyFor(widget.manager.state),
-        captureCoordinator: oldWidget.focusCoordinator,
-      );
-      widget.manager.addListener(_handleSelection);
-    } else {
-      _validateCatalogIdentity();
-      if (oldWidget.environment != widget.environment) {
-        final previousKey = _renderedKey;
-        widget.manager.updateEnvironment(widget.environment, notify: false);
-        if (previousKey != _keyFor(widget.manager.state)) {
-          _prepareReplacement(_keyFor(widget.manager.state));
-        }
-      }
+    _validateCatalogIdentity();
+    if (oldWidget.environment != widget.environment) {
+      widget.onUpdateEnvironment(widget.environment);
     }
-  }
-
-  @override
-  void dispose() {
-    widget.manager.removeListener(_handleSelection);
-    super.dispose();
-  }
-
-  void _handleSelection(LayoutSelectionState state) {
-    _prepareReplacement(_keyFor(state));
-    if (mounted) {
-      setState(() {});
+    if (oldWidget.selection != widget.selection) {
+      _prepareReplacement(
+        _keyFor(widget.selection),
+        captureCoordinator:
+            identical(oldWidget.focusCoordinator, widget.focusCoordinator)
+            ? null
+            : oldWidget.focusCoordinator,
+      );
     }
   }
 
@@ -144,15 +125,14 @@ final class _LayoutHostState extends State<LayoutHost> {
   }
 
   void _validateCatalogIdentity() {
-    if (!identical(widget.manager.catalog, widget.registry.catalog) ||
-        !identical(widget.stateStore.catalog, widget.registry.catalog)) {
+    if (!identical(widget.stateStore.catalog, widget.registry.catalog)) {
       throw const FormatException('layout_host_catalog_mismatch');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final selection = widget.manager.state;
+    final selection = widget.selection;
     if (selection.status == LayoutSelectionStatus.loading) {
       return widget.loadingBuilder(context);
     }

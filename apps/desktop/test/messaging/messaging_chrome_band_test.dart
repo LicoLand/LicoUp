@@ -199,7 +199,6 @@ void main() {
       agentId,
       AgentConversationTabActivity.needsApproval,
     );
-    controller.agentWorkspaceNotifyStateChanged();
     await tester.pump();
     expect(
       find.byKey(const Key('messaging-notification-bell-badge')),

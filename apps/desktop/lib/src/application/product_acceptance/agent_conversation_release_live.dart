@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
+import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart'
@@ -18,7 +19,10 @@ const _sentinel = 'LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ';
 void runAgentConversationReleaseLive() {
   final controller = ClientController();
   runApp(
-    LicoApp(controllerFactory: () => controller, initializeController: false),
+    LicoApp(
+      compositionFactory: () => ClientAppComposition(controller: controller),
+      initializeController: false,
+    ),
   );
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_run(controller));
