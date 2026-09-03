@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:4c769375206079ee7275371786d8b6c9fb17917d3f22cc8b5f3909f9ca77187a"
+      "digest": "sha256:243d51d4b37b68a61456bf40b61afecd85161f15411a8c6ad8845d1a443d2a71"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -81,5 +81,5 @@
       "digest": "sha256:ccc1d93ad6bfd51ec8456e4f4d976f32ee8a8f94fc680536e0c1f88b9037035a"
     }
   ],
-  "manifestDigest": "sha256:53ddda56665f24334d0338fcb39db959e9c9533fe30d6b0032aaedf9fe85e706"
+  "manifestDigest": "sha256:accbbc3ec81ff72ac8c9c444e7cf1f13c89047969e564e893d89d51e218818d2"
 }

@@ -12,6 +12,11 @@ import {
   CLIENT_ARCHITECTURE_PHASE_IDS,
   runClientArchitecturePhases,
 } from "../../../apps/desktop/scripts/verify-client-architecture.mjs";
+import { REQUIRED_FLUTTER_TOP_LEVEL_DIRS } from "../../../apps/desktop/scripts/client-architecture/checks/flutter/physical-layers-and-libraries.mjs";
+import {
+  inspectPresentationBoundarySources,
+  inspectPresentationContractPubspec,
+} from "../../../apps/desktop/scripts/client-architecture/checks/flutter/presentation-boundary.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const entryPath = "apps/desktop/scripts/verify-client-architecture.mjs";
@@ -38,6 +43,7 @@ const expectedReexportFacades = Object.freeze({
     ["checkFlutterPhysicalLayersAndLibraries", "flutter/physical-layers-and-libraries.mjs"],
     ["checkShellIsolationAndNativeStdio", "flutter/shell-isolation-and-native-stdio.mjs"],
     ["checkMobileRelayBridges", "flutter/mobile-relay-bridges.mjs"],
+    ["checkPresentationBoundary", "flutter/presentation-boundary.mjs"],
   ]),
   "native.mjs": Object.freeze([
     ["checkCrateCoreAndFacadeBounds", "native/crate-core-and-facade-bounds.mjs"],
@@ -91,6 +97,7 @@ const phaseRunners = Object.freeze([
   ["platform.android-secure-mesh", "checkAndroidSecureMesh"],
   ["native.command-and-file-transport", "checkCommandAndFileTransport"],
   ["flutter.mobile-relay-bridges", "checkMobileRelayBridges"],
+  ["flutter.presentation-boundary", "checkPresentationBoundary"],
   ["composition.client-root-and-shell", "checkClientRootAndShell"],
   ["native.target-readiness-reducer", "checkTargetReadinessReducer"],
 ]);
@@ -172,6 +179,34 @@ test("client architecture verifier has one thin entry and the complete source bu
   }
 });
 
+test("source and architecture gates share one required Flutter layer catalog", async () => {
+  assert.deepEqual(REQUIRED_FLUTTER_TOP_LEVEL_DIRS, [
+    "events",
+    "projections",
+    "display",
+    "protocol",
+    "shared",
+    "presentation",
+    "composition",
+    "application",
+    "frontend",
+    "backend",
+    "platform",
+    "contracts",
+  ]);
+  assert.equal(Object.isFrozen(REQUIRED_FLUTTER_TOP_LEVEL_DIRS), true);
+
+  const sourceGate = await fs.readFile(
+    path.join(repoRoot, "tools/verify-client-boundary.mjs"),
+    "utf8",
+  );
+  assert.match(
+    sourceGate,
+    /import \{ REQUIRED_FLUTTER_TOP_LEVEL_DIRS \} from "\.\.\/apps\/desktop\/scripts\/client-architecture\/checks\/flutter\/physical-layers-and-libraries\.mjs";/u,
+  );
+  assert.equal(sourceGate.includes("const requiredFlutterPhysicalDirs"), false);
+});
+
 test("importing the architecture entry and leaves has no verification side effects", async () => {
   const entryUrl = pathToFileURL(path.join(repoRoot, entryPath)).href;
   const result = spawnSync(process.execPath, [
@@ -204,7 +239,7 @@ test("client architecture phases run strictly and sequentially in the frozen ord
     CLIENT_ARCHITECTURE_PHASE_IDS,
     phaseRunners.map(([id]) => id),
   );
-  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 20);
+  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 21);
 
   const context = Object.freeze({ marker: "context" });
   const events = [];
@@ -357,4 +392,64 @@ test("architecture finalization preserves JSON shape, stream, and exit semantics
     exit: () => assert.fail("success must not exit"),
   });
   assert.deepEqual(successStdout, [success.text]);
+});
+
+test("presentation boundary fixtures reject direction, lifecycle, transition, and new debt", () => {
+  const stablePath = "apps/desktop/lib/src/presentation/shell/example.dart";
+  const clean = new Map([[stablePath, "final class Example {}"]]);
+  assert.deepEqual(inspectPresentationBoundarySources(clean), []);
+
+  const direction = new Map([[stablePath,
+    "import 'package:licoup/src/application/controller/client_controller.dart';\nfinal class Example { ClientController? controller; }",
+  ]]);
+  assert.deepEqual(
+    inspectPresentationBoundarySources(direction).map(([rule]) => rule).sort(),
+    [
+      "presentation_boundary_complete_controller_forbidden",
+      "presentation_boundary_stable_direction",
+    ],
+  );
+
+  const lifecycle = new Map([[stablePath,
+    "final StreamController<int> values = StreamController<int>();\nvoid dispose() {}",
+  ]]);
+  assert.deepEqual(inspectPresentationBoundarySources(lifecycle), [[
+    "presentation_boundary_producer_lifecycle_forbidden",
+    stablePath,
+  ]]);
+
+  const transition = new Map([[stablePath,
+    "import 'package:licoup/src/composition/m2_legacy_shell_renderer_transition_adapter.dart';",
+  ]]);
+  assert.deepEqual(
+    inspectPresentationBoundarySources(transition).map(([rule]) => rule).sort(),
+    [
+      "presentation_boundary_stable_direction",
+      "presentation_boundary_transition_import_forbidden",
+    ],
+  );
+
+  const newDebtPath = "apps/desktop/lib/src/frontend/features/new_panel.dart";
+  assert.deepEqual(inspectPresentationBoundarySources(new Map([[newDebtPath,
+    "import 'package:licoup/src/application/controller/client_controller.dart';",
+  ]])), [["presentation_boundary_new_controller_debt", newDebtPath]]);
+
+  const projectionPath =
+    "apps/desktop/lib/src/projections/shell/example_producer.dart";
+  assert.deepEqual(inspectPresentationBoundarySources(new Map([[projectionPath,
+    "final ClientController? controller = null;",
+  ]])), [["presentation_boundary_complete_controller_forbidden", projectionPath]]);
+
+  const upwardDirection = new Map([[stablePath,
+    "import 'package:licoup/src/projections/shell/example_producer.dart';",
+  ]]);
+  assert.deepEqual(inspectPresentationBoundarySources(upwardDirection), [[
+    "presentation_boundary_stable_direction",
+    stablePath,
+  ]]);
+
+  assert.deepEqual(inspectPresentationContractPubspec(`name: contract\n`), []);
+  assert.deepEqual(inspectPresentationContractPubspec(`name: contract\ndependencies:\n`), [
+    "presentation_boundary_package_dependency_surface",
+  ]);
 });

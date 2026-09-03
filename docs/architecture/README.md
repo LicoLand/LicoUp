@@ -190,13 +190,54 @@ Plans, temporary scripts, local skills, raw evidence, and runtime data belong to
 
 | Problem | Severity | Location | Impact |
 |:---|:---|:---|:---|
-| **God Object `ClientController`** | Critical | `apps/desktop/lib/src/application/controller/` | 159-line constructor with 36 parameters; 18 mixins on one `ChangeNotifier` (24 across the inheritance chain); 36 UI files depend on it. Untestable in isolation. |
+| **God Object `ClientController`** | Critical | `apps/desktop/lib/src/application/controller/` | The shell boundary is migrated, but 27 explicitly allowlisted frontend feature files still import it. Those paths are bounded migration debt. |
 | **Mixin abuse as decomposition** | High | `application/controller/`, `application/features/agents/conversation/` | All 24 mixins in the app sit on a single inheritance chain; shared `this` means no encapsulation. |
 | **Monolithic Rust crate** | High | `crates/licoup-native/` (~299K lines) | `domain/` has 48 entries, `core/` 52, `platform/` 85 (72K lines). Compilation slow, boundaries unclear. Largest files: `client_conversation/store.rs` (6.6K lines), `ffi/commands/mod.rs` (5.2K). |
 | **Contracts layer bloat** | Medium | `apps/desktop/lib/src/contracts/` (93 files, 15.7K lines) | Mixes models, interfaces, parsing logic, and generated code in one layer. |
 | **Giant Widget files** | Medium | `frontend/features/` | `canonical_group_conversation_pane.dart` (2603 lines), `agent_conversation_workspace.dart` (1390 lines). |
 | **Vestigial backend layer** | Low | `apps/desktop/lib/src/backend/` (2.1K lines) | Too thin to provide real abstraction; also fabricates domain events in Dart (`dispatch.lane.bound`). |
 | **Manual JSON-RPC method surface** | High | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | Method names hand-duplicated on both sides (25 Rust vs 23 Dart; two methods unreachable from Dart); codegen covers FFI data types only, not stdio frames. Dart routes some calls by argv-shape sniffing. |
+
+### Implemented Presentation Boundary (M0–M2)
+
+M0–M2 is implemented. `ClientShell` consumes the renderer-independent
+`ShellBinding`; `LicoApp` selects only `ShellAppearance`; selected shell slices
+rebuild below the static root scaffold. The bounded
+`M2LegacyShellRendererTransitionAdapter` is the only composition edge that
+constructs the unchanged controller-based destination and chrome widgets.
+
+```mermaid
+flowchart LR
+    C["ClientAppComposition"] --> P["focused ShellProjection producer"]
+    P -->|"current + changes"| B["ShellBinding"]
+    B --> R["ClientShell + LayoutHost"]
+    R -->|"ShellIntent"| B
+    B --> I["composition intent adapter"]
+    I --> A["application controllers"]
+    I -->|"ShellDestinationReselected"| E["one-shot effect source"]
+    E --> B
+    C --> T["M2LegacyShellRendererTransitionAdapter"]
+    T --> R
+```
+
+The first-round directory map is exact:
+
+| Path | Implemented responsibility |
+|:---|:---|
+| `packages/presentation_contract/lib/` | SDK-only projection, intent, effect, and trace primitives |
+| `apps/desktop/lib/src/presentation/shell/` | Stable immutable shell semantics and `ShellBinding` |
+| `apps/desktop/lib/src/projections/adapters/` | Legacy read-side adapter |
+| `apps/desktop/lib/src/projections/shell/` | Focused shell and effect producers |
+| `apps/desktop/lib/src/frontend/binding/` | Flutter subscriptions, renderer port, and bounded frame timing |
+| `apps/desktop/lib/src/frontend/shell/` | Controller-free shell renderer |
+| `apps/desktop/lib/src/composition/` | Lifecycle, intent wiring, and the bounded M2 transition adapter |
+
+Verified post-migration facts: 27 frontend `ClientController` importers, zero
+under `frontend/shell`, zero bounded frontend repository/native-bridge imports,
+and one pre-existing Flutter import under `contracts/presentation`. The last is
+deferred with the long-term directory, theme/notifier, feature, and conversation
+migrations. M2 does not migrate conversation rendering or introduce Riverpod,
+hooks, a second layout authority, or a new wire contract.
 
 ### Target Architecture (Migration Destination)
 

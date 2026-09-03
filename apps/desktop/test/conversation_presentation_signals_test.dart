@@ -7,8 +7,11 @@ void main() {
     addTearDown(signals.dispose);
 
     signals.notifyStructureChanged(activeChanged: false);
+    signals.notifyTabActivityChanged();
     expect(signals.structureListenable.value, 1);
     expect(signals.activeListenable.value, 0);
+    expect(signals.liveListenable.value, 0);
+    expect(signals.tabActivityListenable.value, 1);
 
     signals.notifyStructureChanged();
     signals.notifyActiveChanged();
@@ -16,6 +19,7 @@ void main() {
     expect(signals.structureListenable.value, 2);
     expect(signals.activeListenable.value, 2);
     expect(signals.liveListenable.value, 1);
+    expect(signals.tabActivityListenable.value, 1);
   });
 
   test('composer drafts are scoped per conversation', () {

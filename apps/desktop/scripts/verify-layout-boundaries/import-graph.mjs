@@ -6,6 +6,9 @@ import {
   forbiddenDependencyCode,
   forbiddenNeutralPortApiCode,
   importsFlutterWidgetFramework,
+  isAllowedDestinationPresentationScopePath,
+  isAllowedLegacyProfilePrivateImport,
+  isAllowedLegacyLayoutDependency,
   isDirectNeutralDependency,
   isNeutralClosureDependency,
 } from "./dependency-policy.mjs";
@@ -33,7 +36,10 @@ export function validatePublicLayoutPortApis(catalog, sourceByPath, graph) {
     if (source == null) {
       continue;
     }
-    if (containsDestinationPresentationScope(source)) {
+    if (
+      containsDestinationPresentationScope(source) &&
+      !isAllowedDestinationPresentationScopePath(relativePath)
+    ) {
       fail("layout_destination_presentation_scope_forbidden", relativePath);
     }
     if (
@@ -45,6 +51,28 @@ export function validatePublicLayoutPortApis(catalog, sourceByPath, graph) {
     const forbiddenCode = forbiddenNeutralPortApiCode(source);
     if (forbiddenCode != null) {
       fail(forbiddenCode, relativePath);
+    }
+  }
+}
+
+export function validateSemanticLayoutContracts(sourceByPath) {
+  for (const [relativePath, source] of sourceByPath) {
+    if (
+      !relativePath.startsWith("apps/desktop/lib/src/presentation/shell/") &&
+      !relativePath.startsWith("apps/desktop/lib/src/contracts/presentation/")
+    ) {
+      continue;
+    }
+    const forbiddenCode = forbiddenNeutralPortApiCode(source);
+    if (forbiddenCode != null) {
+      fail(forbiddenCode, relativePath);
+    }
+    if (
+      /package:flutter\//u.test(source) &&
+      relativePath !==
+        "apps/desktop/lib/src/contracts/presentation/layout_profile.dart"
+    ) {
+      fail("layout_widget_producing_port_forbidden", relativePath);
     }
   }
 }
@@ -93,6 +121,9 @@ export function validateProfilePrivateImporter(catalog, relativePath, source) {
     if (importerOwner?.id === importedOwner.id) {
       continue;
     }
+    if (isAllowedLegacyProfilePrivateImport(relativePath, resolved)) {
+      continue;
+    }
     fail("layout_profile_private_importer_unauthorized", relativePath);
   }
 }
@@ -130,8 +161,12 @@ export function transitiveClosure(graph, starts) {
 
 export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
   const graph = buildImportGraph(sourceByPath);
+  validateSemanticLayoutContracts(sourceByPath);
   for (const [relativePath, source] of sourceByPath) {
-    if (containsDestinationPresentationScope(source)) {
+    if (
+      containsDestinationPresentationScope(source) &&
+      !isAllowedDestinationPresentationScopePath(relativePath)
+    ) {
       fail("layout_destination_presentation_scope_forbidden", relativePath);
     }
   }
@@ -164,14 +199,21 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
         fail("layout_cross_surface_import", bundle.entryPath);
       }
       const forbiddenCode = forbiddenDependencyCode(relativePath);
-      if (forbiddenCode != null) {
+      if (
+        forbiddenCode != null &&
+        !isAllowedLegacyLayoutDependency(relativePath)
+      ) {
         fail(forbiddenCode, bundle.entryPath);
       }
       const source = sourceByPath.get(relativePath);
       if (source != null && containsCompleteControllerReference(source)) {
         fail("layout_complete_controller_reference", bundle.entryPath);
       }
-      if (source != null && containsDestinationPresentationScope(source)) {
+      if (
+        source != null &&
+        containsDestinationPresentationScope(source) &&
+        !isAllowedDestinationPresentationScopePath(relativePath)
+      ) {
         fail("layout_destination_presentation_scope_forbidden", bundle.entryPath);
       }
     }
@@ -185,7 +227,12 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
       const rightOwner = owners[rightIndex];
       const rightClosure = closureByOwner.get(rightOwner);
       for (const relativePath of closureByOwner.get(leftOwner)) {
-        if (rightClosure.has(relativePath) && !neutralClosure.has(relativePath)) {
+        if (
+          rightClosure.has(relativePath) &&
+          !neutralClosure.has(relativePath) &&
+          !isNeutralClosureDependency(relativePath) &&
+          !isAllowedLegacyLayoutDependency(relativePath)
+        ) {
           fail(
             "layout_transitive_closure_intersection_forbidden",
             `${leftOwner}:${rightOwner}:${relativePath}`,

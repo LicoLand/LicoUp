@@ -7,8 +7,9 @@ import 'package:licoup/src/contracts/presentation/presentation_preferences.dart'
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/frontend/shell/client_shell.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+
+import 'presentation/composed_client_shell_test_helper.dart';
 
 void main() {
   testWidgets(
@@ -39,7 +40,7 @@ void main() {
           theme: buildLicoTheme(
             platformBrightness: Brightness.dark,
           ).copyWith(platform: TargetPlatform.macOS),
-          home: ClientShell(controller: controller),
+          home: composedClientShell(controller),
         ),
       );
       await tester.pumpAndSettle();
@@ -121,7 +122,7 @@ void main() {
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.android),
-        home: ClientShell(controller: controller),
+        home: composedClientShell(controller),
       ),
     );
     await tester.pumpAndSettle();

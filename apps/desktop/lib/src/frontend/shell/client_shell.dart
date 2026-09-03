@@ -1,34 +1,28 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/binding/effect_listener.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
-import 'package:licoup/src/frontend/shell/client_platform.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
-import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
-import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
-import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
-import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
-import 'package:licoup/src/frontend/shell/client_chrome_features.dart';
-import 'package:licoup/src/frontend/shell/client_layout_chrome_adapter.dart';
-import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
+import 'package:licoup/src/frontend/shell/client_platform.dart';
+import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/shell/shell_binding.dart';
+import 'package:licoup/src/presentation/shell/shell_effect.dart';
+import 'package:licoup/src/presentation/shell/shell_intent.dart';
+import 'package:licoup/src/presentation/shell/shell_projection.dart';
 
 class ClientShell extends StatefulWidget {
-  const ClientShell({super.key, required this.controller});
+  const ClientShell({super.key, required this.binding, required this.renderer});
 
-  final ClientController controller;
+  final ShellBinding binding;
+  final ShellRendererPort renderer;
 
   @override
   State<ClientShell> createState() => _ClientShellState();
@@ -36,54 +30,106 @@ class ClientShell extends StatefulWidget {
 
 class _ClientShellState extends State<ClientShell>
     implements LayoutDestinationContentPort {
-  ClientController get controller => widget.controller;
-  final _agentsHomeKey = GlobalKey<MobileAgentsHomeState>();
-  final _focusCoordinator = LayoutFocusCoordinator();
-  late ClientLayoutChromeAdapter _layoutChromeAdapter;
+  late GlobalKey _agentsHomeKey;
+  final LayoutFocusCoordinator _focusCoordinator = LayoutFocusCoordinator();
+  final ValueNotifier<bool> _auxChromePanelOpen = ValueNotifier<bool>(false);
+  late LayoutChromeFeatures _chromeFeatures;
 
   @override
   void initState() {
     super.initState();
-    _layoutChromeAdapter = ClientLayoutChromeAdapter(controller);
+    _agentsHomeKey = widget.renderer.createAgentsHomeKey();
+    _chromeFeatures = widget.renderer.createChromeFeatures(_auxChromePanelOpen);
   }
 
   @override
   void didUpdateWidget(ClientShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.controller, controller)) {
-      _layoutChromeAdapter.dispose();
-      _layoutChromeAdapter = ClientLayoutChromeAdapter(controller);
+    if (!identical(oldWidget.renderer, widget.renderer)) {
+      _agentsHomeKey = widget.renderer.createAgentsHomeKey();
+      _chromeFeatures = widget.renderer.createChromeFeatures(
+        _auxChromePanelOpen,
+      );
     }
   }
 
   @override
   void dispose() {
-    _layoutChromeAdapter.dispose();
+    _auxChromePanelOpen.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        // Every layout profile paints its own full-bleed background inside
-        // its shell, so the shared scaffold stays neutral; profiles that
-        // choose translucency (messaging window chrome) can show through.
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: LayoutBuilder(builder: _buildLayoutHost),
-        );
-      },
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: EffectListener<ShellEffect>(
+        source: widget.binding.effects,
+        onEffect: _handleEffect,
+        child: ProjectionBuilder<ShellProjection, ShellEnvironment>(
+          source: widget.binding.projection,
+          select: (projection) => projection.environment,
+          builder: (context, shellEnvironment) => LayoutBuilder(
+            builder: (context, constraints) {
+              final environment = _environmentFor(
+                context,
+                constraints,
+                shellEnvironment.mobileSurface,
+              );
+              widget.binding.intents.send(
+                UpdateShellLayoutEnvironment(environment),
+              );
+              return ProjectionBuilder<ShellProjection, _ShellRenderSlice>(
+                source: widget.binding.projection,
+                select: _ShellRenderSlice.fromProjection,
+                builder: (context, slice) =>
+                    _buildLayoutHost(context, environment, slice),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildLayoutHost(BuildContext context, BoxConstraints constraints) {
-    final media = MediaQuery.of(context);
+  Widget _buildLayoutHost(
+    BuildContext context,
+    LayoutEnvironment environment,
+    _ShellRenderSlice slice,
+  ) {
     final colors = context.licoColors;
-    final mobile = _isMobileShell(context);
-    final section = controller.currentSection;
-    final environment = LayoutEnvironment.fromConstraints(
+    return LayoutChromeFeaturesScope(
+      features: _chromeFeatures,
+      child: LayoutHost(
+        selection: slice.layout.selection,
+        registry: widget.renderer.layoutRegistry,
+        stateStore: widget.renderer.layoutStateStore,
+        environment: environment,
+        onUpdateEnvironment: (value) =>
+            widget.binding.intents.send(UpdateShellLayoutEnvironment(value)),
+        destination: slice.destination,
+        onSelectDestination: (destination) =>
+            widget.binding.intents.send(SelectShellDestination(destination)),
+        destinationLabel: (destination) =>
+            _destinationLabel(LicoStrings.of(context), destination),
+        content: this,
+        focusCoordinator: _focusCoordinator,
+        primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
+        loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
+        palette: layoutPaletteFromColors(colors),
+        chrome: widget.renderer.chrome,
+      ),
+    );
+  }
+
+  LayoutEnvironment _environmentFor(
+    BuildContext context,
+    BoxConstraints constraints,
+    bool runtimeMobileSurface,
+  ) {
+    final media = MediaQuery.of(context);
+    final mobile = runtimeMobileSurface || isMobileClientPlatform(context);
+    return LayoutEnvironment.fromConstraints(
       surface: mobile
           ? LayoutRuntimeSurface.mobile
           : LayoutRuntimeSurface.desktop,
@@ -102,68 +148,23 @@ class _ClientShellState extends State<ClientShell>
       hasTouch: mobile,
       reducedMotion: media.disableAnimations,
     );
-    return LayoutChromeFeaturesScope(
-      features: ClientChromeFeatures(controller),
-      child: LayoutHost(
-        manager: controller.layoutManager,
-        registry: controller.layoutComposition.registry,
-        stateStore: controller.layoutComposition.stateStore,
-        environment: environment,
-        destination: section,
-        onSelectDestination: _selectDestination,
-        destinationLabel: (destination) =>
-            _destinationLabel(LicoStrings.of(context), destination),
-        content: this,
-        focusCoordinator: _focusCoordinator,
-        primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
-        loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
-        palette: layoutPaletteFromColors(colors),
-        chrome: _layoutChromeAdapter,
-      ),
-    );
+  }
+
+  void _handleEffect(ShellEffect effect) {
+    if (effect case ShellDestinationReselected(
+      destination: ClientSection.agents,
+    )) {
+      widget.renderer.resetAgentsHome(_agentsHomeKey);
+    }
   }
 
   @override
-  Widget buildDestination(BuildContext context, ClientSection destination) {
-    return switch (destination) {
-      ClientSection.agents => AgentsCanvas(
-        controller: controller,
+  Widget buildDestination(BuildContext context, ClientSection destination) =>
+      widget.renderer.buildDestination(
+        context,
+        destination,
         agentsHomeKey: _agentsHomeKey,
-      ),
-      ClientSection.monitoring => AgentUsagePanel(controller: controller),
-      ClientSection.skillHub => SkillHubPanel(controller: controller),
-      ClientSection.pluginManagement => AdapterPluginPanel(
-        controller: controller,
-      ),
-      ClientSection.mobileRelay => MobileRelayPanel(controller: controller),
-      ClientSection.models => ModelsPanel(
-        controller: controller,
-        pane: modelsPanelPaneOf(context),
-      ),
-      ClientSection.settings => SettingsPanel(controller: controller),
-      ClientSection.agentHub => AgentHubPanel(
-        controller: controller.agentHubCatalogController,
-        openHomepage: controller.runtimePlatformBridge.openHttps,
-        onOpenAgent: (agentId) {
-          unawaited(controller.selectConversationAgent(agentId));
-          controller.selectSection(ClientSection.agents);
-        },
-      ),
-    };
-  }
-
-  bool _isMobileShell(BuildContext context) {
-    return controller.mobileClientRuntimePlatform ||
-        isMobileClientPlatform(context);
-  }
-
-  void _selectDestination(ClientSection destination) {
-    if (destination == ClientSection.agents &&
-        controller.currentSection == ClientSection.agents) {
-      _agentsHomeKey.currentState?.resetToList();
-    }
-    controller.selectSection(destination);
-  }
+      );
 
   String _destinationLabel(LicoStrings strings, ClientSection section) =>
       switch (section) {
@@ -176,4 +177,27 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.settings => strings.settings,
         ClientSection.agentHub => strings.agentHub,
       };
+}
+
+final class _ShellRenderSlice {
+  const _ShellRenderSlice({required this.layout, required this.destination});
+
+  factory _ShellRenderSlice.fromProjection(ShellProjection projection) =>
+      _ShellRenderSlice(
+        layout: projection.layout,
+        destination: projection.destination,
+      );
+
+  final ShellLayout layout;
+  final ClientSection destination;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _ShellRenderSlice &&
+          other.layout == layout &&
+          other.destination == destination;
+
+  @override
+  int get hashCode => Object.hash(layout, destination);
 }

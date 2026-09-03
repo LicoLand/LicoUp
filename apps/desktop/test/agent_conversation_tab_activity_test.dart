@@ -97,6 +97,35 @@ void main() {
     );
   });
 
+  test('tab activity publishes only its focused presentation signal', () {
+    final controller = ClientController(agentService: FakeAgentService());
+    addTearDown(controller.dispose);
+    var rootNotifications = 0;
+    controller.addListener(() => rootNotifications += 1);
+
+    final initialRevision = controller.conversationTabActivityListenable.value;
+    controller.setConversationTabActivity(
+      'codex',
+      AgentConversationTabActivity.needsApproval,
+    );
+
+    expect(
+      controller.conversationTabActivityListenable.value,
+      initialRevision + 1,
+    );
+    expect(rootNotifications, 0);
+
+    controller.setConversationTabActivity(
+      'codex',
+      AgentConversationTabActivity.needsApproval,
+    );
+    expect(
+      controller.conversationTabActivityListenable.value,
+      initialRevision + 1,
+    );
+    expect(rootNotifications, 0);
+  });
+
   testWidgets('agent sidebar hides status lights by default', (tester) async {
     final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);

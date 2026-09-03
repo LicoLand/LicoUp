@@ -22,6 +22,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.agent-scan-paths",
   "architecture.client-boundaries",
   "flutter.composition.dependencies",
+  "flutter.presentation.shell-boundary",
   "flutter.feature.mcp-transfer",
   "flutter.feature.catalog-convergence",
   "flutter.contract.typed-error-chain",

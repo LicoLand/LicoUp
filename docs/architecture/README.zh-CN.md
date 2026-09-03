@@ -189,13 +189,52 @@ flowchart TB
 
 | 问题 | 严重度 | 位置 | 影响 |
 |:---|:---|:---|:---|
-| **上帝对象 `ClientController`** | 关键 | `apps/desktop/lib/src/application/controller/` | 159 行构造函数、36 个参数；单个 `ChangeNotifier` 上 18 个 mixin（继承链共 24 个）；36 个 UI 文件依赖它。无法隔离测试。 |
+| **上帝对象 `ClientController`** | 关键 | `apps/desktop/lib/src/application/controller/` | Shell 边界已经迁移，但仍有 27 个显式 allowlist 内的前端功能文件导入它；这些路径是有界迁移债务。 |
 | **以 mixin 充当分解** | 高 | `application/controller/`、`application/features/agents/conversation/` | 应用全部 24 个 mixin 位于同一条继承链；共享 `this` 意味着没有封装。 |
 | **单体 Rust crate** | 高 | `crates/licoup-native/`（约 299K 行） | `domain/` 48 项、`core/` 52 项、`platform/` 85 项（72K 行）。编译慢、边界不清。最大文件：`client_conversation/store.rs`（6.6K 行）、`ffi/commands/mod.rs`（5.2K 行）。 |
 | **契约层膨胀** | 中 | `apps/desktop/lib/src/contracts/`（93 个文件, 15.7K 行） | 模型、接口、解析逻辑与生成代码混在同一层。 |
 | **巨型 Widget 文件** | 中 | `frontend/features/` | `canonical_group_conversation_pane.dart`（2603 行）、`agent_conversation_workspace.dart`（1390 行）。 |
 | **残留后端层** | 低 | `apps/desktop/lib/src/backend/`（2.1K 行） | 太薄，无法提供真正抽象；还会在 Dart 中伪造领域事件（`dispatch.lane.bound`）。 |
 | **手工 JSON-RPC 方法面** | 高 | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | 方法名在两侧手工重复（Rust 25 个 vs Dart 23 个；两个方法从 Dart 不可达）；codegen 只覆盖 FFI 数据类型，不覆盖 stdio 帧。Dart 部分调用按 argv 形状嗅探路由。 |
+
+### 已实现的 Presentation Boundary（M0–M2）
+
+M0–M2 已实现。`ClientShell` 消费与渲染器无关的 `ShellBinding`；`LicoApp`
+只选择 `ShellAppearance`；Shell 的选定切片仅在静态根 Scaffold 下方重建。
+有界的 `M2LegacyShellRendererTransitionAdapter` 是唯一负责构造未迁移的
+controller 型 destination 与 chrome widget 的组合边界。
+
+```mermaid
+flowchart LR
+    C["ClientAppComposition"] --> P["聚焦 ShellProjection producer"]
+    P -->|"current + changes"| B["ShellBinding"]
+    B --> R["ClientShell + LayoutHost"]
+    R -->|"ShellIntent"| B
+    B --> I["组合层 intent adapter"]
+    I --> A["应用 controllers"]
+    I -->|"ShellDestinationReselected"| E["一次性 effect source"]
+    E --> B
+    C --> T["M2LegacyShellRendererTransitionAdapter"]
+    T --> R
+```
+
+首轮目录图精确如下：
+
+| 路径 | 已实现职责 |
+|:---|:---|
+| `packages/presentation_contract/lib/` | 仅依赖 SDK 的 projection、intent、effect 与 trace 原语 |
+| `apps/desktop/lib/src/presentation/shell/` | 稳定不可变 Shell 语义与 `ShellBinding` |
+| `apps/desktop/lib/src/projections/adapters/` | 旧 projection 的只读 adapter |
+| `apps/desktop/lib/src/projections/shell/` | 聚焦 Shell 与 effect producer |
+| `apps/desktop/lib/src/frontend/binding/` | Flutter 订阅、renderer port 与有界帧计时 |
+| `apps/desktop/lib/src/frontend/shell/` | 无 controller 的 Shell renderer |
+| `apps/desktop/lib/src/composition/` | 生命周期、intent wiring 与有界 M2 过渡 adapter |
+
+迁移后核验事实：前端 `ClientController` 导入者为 27 个，`frontend/shell`
+中为零；有界前端 repository/native-bridge 导入为零；
+`contracts/presentation` 中仍有一个既有 Flutter 导入。最后一项与长期目录、
+主题/notifier、功能和 conversation 迁移一并延后。M2 不迁移 conversation
+渲染，不引入 Riverpod、hooks、第二套布局权威或新线路协议。
 
 ### 目标架构（迁移终点）
 

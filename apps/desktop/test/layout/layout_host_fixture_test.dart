@@ -5,6 +5,7 @@ import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -200,26 +201,41 @@ void main() {
     );
     await manager.initialize();
     final parentBuilds = ValueNotifier<int>(0);
+    final selectionValue = ValueNotifier<LayoutSelectionState>(manager.state);
+    void onSelection(LayoutSelectionState value) {
+      selectionValue.value = value;
+    }
+
+    manager.addListener(onSelection);
     final stateStore = LayoutStateStore(runtime.catalog);
+    addTearDown(() {
+      manager.removeListener(onSelection);
+      selectionValue.dispose();
+    });
 
     await tester.pumpWidget(
       MaterialApp(
         home: FixtureParent(
           builds: parentBuilds,
-          child: LayoutHost(
-            manager: manager,
-            registry: runtime.registry,
-            stateStore: stateStore,
-            environment: desktopEnvironment(800),
-            destination: ClientSection.agents,
-            onSelectDestination: (_) {},
-            destinationLabel: (destination) => destination.name,
-            content: const FixtureDestinationContent(),
-            focusCoordinator: LayoutFocusCoordinator(),
-            primaryFocusTarget: 'primary-landmark',
-            loadingBuilder: (_) => const SizedBox(key: Key('loading')),
-            palette: fixtureLayoutPalette,
-            chrome: const FixtureLayoutChromePort(),
+          child: ValueListenableBuilder<LayoutSelectionState>(
+            valueListenable: selectionValue,
+            builder: (context, selection, _) => LayoutHost(
+              selection: selection,
+              registry: runtime.registry,
+              stateStore: stateStore,
+              environment: desktopEnvironment(800),
+              onUpdateEnvironment: (value) =>
+                  manager.updateEnvironment(value, notify: false),
+              destination: ClientSection.agents,
+              onSelectDestination: (_) {},
+              destinationLabel: (destination) => destination.name,
+              content: const FixtureDestinationContent(),
+              focusCoordinator: LayoutFocusCoordinator(),
+              primaryFocusTarget: 'primary-landmark',
+              loadingBuilder: (_) => const SizedBox(key: Key('loading')),
+              palette: fixtureLayoutPalette,
+              chrome: const FixtureLayoutChromePort(),
+            ),
           ),
         ),
       ),
@@ -269,10 +285,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          manager: manager,
+          selection: manager.state,
           registry: runtime.registry,
           stateStore: stateStore,
           environment: desktopEnvironment(800),
+          onUpdateEnvironment: (value) =>
+              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
@@ -325,10 +343,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          manager: manager,
+          selection: manager.state,
           registry: runtime.registry,
           stateStore: LayoutStateStore(runtime.catalog),
           environment: desktopEnvironment(800),
+          onUpdateEnvironment: (value) =>
+              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
@@ -357,23 +377,38 @@ void main() {
       initialEnvironment: desktopEnvironment(800),
     );
     final expanded = desktopEnvironment(1400);
+    final selectionValue = ValueNotifier<LayoutSelectionState>(manager.state);
+    void onSelection(LayoutSelectionState value) {
+      selectionValue.value = value;
+    }
+
+    manager.addListener(onSelection);
+    addTearDown(() {
+      manager.removeListener(onSelection);
+      selectionValue.dispose();
+    });
 
     await tester.pumpWidget(
       MaterialApp(
-        home: LayoutHost(
-          manager: manager,
-          registry: runtime.registry,
-          stateStore: LayoutStateStore(runtime.catalog),
-          environment: expanded,
-          destination: ClientSection.agents,
-          onSelectDestination: (_) {},
-          destinationLabel: (destination) => destination.name,
-          content: const FixtureDestinationContent(),
-          focusCoordinator: LayoutFocusCoordinator(),
-          primaryFocusTarget: 'primary-landmark',
-          loadingBuilder: (_) => const SizedBox(key: Key('loading')),
-          palette: fixtureLayoutPalette,
-          chrome: const FixtureLayoutChromePort(),
+        home: ValueListenableBuilder<LayoutSelectionState>(
+          valueListenable: selectionValue,
+          builder: (context, selection, _) => LayoutHost(
+            selection: selection,
+            registry: runtime.registry,
+            stateStore: LayoutStateStore(runtime.catalog),
+            environment: expanded,
+            onUpdateEnvironment: (value) =>
+                manager.updateEnvironment(value, notify: false),
+            destination: ClientSection.agents,
+            onSelectDestination: (_) {},
+            destinationLabel: (destination) => destination.name,
+            content: const FixtureDestinationContent(),
+            focusCoordinator: LayoutFocusCoordinator(),
+            primaryFocusTarget: 'primary-landmark',
+            loadingBuilder: (_) => const SizedBox(key: Key('loading')),
+            palette: fixtureLayoutPalette,
+            chrome: const FixtureLayoutChromePort(),
+          ),
         ),
       ),
     );
@@ -404,10 +439,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          manager: manager,
+          selection: manager.state,
           registry: hostRuntime.registry,
-          stateStore: LayoutStateStore(hostRuntime.catalog),
+          stateStore: LayoutStateStore(managerRuntime.catalog),
           environment: desktopEnvironment(800),
+          onUpdateEnvironment: (value) =>
+              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
