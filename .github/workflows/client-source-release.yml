@@ -1,0 +1,34 @@
+name: Source release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-source-release
+  cancel-in-progress: false
+
+jobs:
+  source-release:
+    name: Source release
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'stable' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - name: Publish exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/scripts/client-source-release.mjs

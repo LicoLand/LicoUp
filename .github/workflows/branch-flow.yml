@@ -2,7 +2,7 @@ name: Branch flow
 
 on:
   push:
-    branches: ["nightly", "stable", "release"]
+    branches: ["nightly", "stable", "release", "macos-release-candidate"]
   pull_request:
     branches: ["nightly", "stable", "release"]
   workflow_dispatch:
@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   branch-flow:
+    if: github.event.deleted != true
     name: Branch flow
     runs-on: ubuntu-latest
     timeout-minutes: 10
