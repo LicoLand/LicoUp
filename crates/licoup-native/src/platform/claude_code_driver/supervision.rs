@@ -1,9 +1,7 @@
 use super::command::LaunchIdentity;
 use super::control::{ControlDisposition, ControlRequest};
 use super::errors::{ProtocolFailure, supervisor_failure};
-use super::model::{
-    BoundedTranscript, MAX_TRANSCRIPT_BYTES, MAX_TRANSCRIPT_TURNS, TransportLifecycle,
-};
+use super::model::{CompleteTranscript, TransportLifecycle};
 use super::params::DriverConfig;
 use super::transport::PersistentTransport;
 use serde_json::{Value, json};
@@ -37,7 +35,7 @@ pub(super) struct ManagedTransport {
     pub(super) native_session_id: Mutex<Option<String>>,
     pub(super) active_session: Mutex<Option<String>>,
     pub(super) lifecycle: TransportLifecycle,
-    transcript: Mutex<BoundedTranscript>,
+    transcript: Mutex<CompleteTranscript>,
 }
 
 fn supervisor() -> &'static Mutex<SupervisorRegistry> {
@@ -70,10 +68,7 @@ pub(super) fn spawn_transport(
         native_session_id: Mutex::new(None),
         active_session: Mutex::new(None),
         lifecycle: TransportLifecycle::default(),
-        transcript: Mutex::new(BoundedTranscript::new(
-            MAX_TRANSCRIPT_TURNS,
-            MAX_TRANSCRIPT_BYTES,
-        )),
+        transcript: Mutex::new(CompleteTranscript::new()),
     });
     registry.transports.insert(id, Arc::clone(&managed));
     Ok(managed)
@@ -176,24 +171,36 @@ pub(super) fn set_active_session(managed: &ManagedTransport, session_id: Option<
     }
 }
 
-pub(super) fn record_success(managed: &ManagedTransport, turn_id: &str, output: &str) {
+pub(super) fn record_success(
+    managed: &ManagedTransport,
+    turn_id: &str,
+    prompt: &str,
+    events: Vec<Value>,
+    output: &str,
+) {
     if managed.lifecycle.is_live()
         && let Ok(mut transcript) = managed.transcript.lock()
     {
-        transcript.record_success(turn_id, output);
+        transcript.record_success(turn_id, prompt, events, output);
     }
 }
 
-pub(in crate::platform) fn history(session_id: &str) -> Option<Value> {
+pub(in crate::platform) fn history(
+    session_id: &str,
+    before: Option<usize>,
+    limit: usize,
+) -> Option<Value> {
     let managed = lookup_session_transport(session_id)?;
     let transcript = managed.transcript.lock().ok()?;
-    let turns = transcript.project();
+    let (turns, next_before) = transcript.project_backward_page(before, limit);
     Some(json!({
         "continuityScope": "process-local",
         "nativeSessionId": session_id,
-        "turnCount": turns.len(),
+        "turnCount": transcript.turn_count(),
         "byteCount": transcript.byte_count(),
         "turns": turns,
+        "nextBefore": next_before,
+        "hasMore": next_before.is_some(),
     }))
 }
 

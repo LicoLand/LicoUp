@@ -234,13 +234,13 @@ pub(in crate::platform) fn execute_with_connection(
         return RunResult {
             ok: true,
             output: outcome.output,
-            events: outcome.events,
             error: None,
             thread_id: outcome.session_id.clone(),
             session_id: outcome.session_id,
             turn_id: outcome.turn_id,
             turn_status: outcome.turn_status,
             effective: outcome.effective,
+            transitions: outcome.transitions,
             status_code,
             stdout_truncated: stdout_was_truncated,
             stderr_truncated: stderr_was_truncated,
@@ -316,9 +316,9 @@ pub(super) fn run_protocol_loop(
         match receiver.recv_timeout(deadline.map_or(PROCESS_POLL_INTERVAL, |deadline| {
             (deadline - now).min(PROCESS_POLL_INTERVAL)
         })) {
-            Ok(TransportEvent::Message(message)) => {
+            Ok(TransportEvent::Frame(line)) => {
                 let phase_before = protocol.phase;
-                for effect in protocol.handle_message(message) {
+                for effect in protocol.handle_frame(&line).effects {
                     match effect {
                         ProtocolEffect::Send(message) => {
                             if write_message(stdin, &message).is_err() {
@@ -370,18 +370,6 @@ pub(super) fn run_protocol_loop(
                         json!({}),
                     );
                 }
-            }
-            Ok(TransportEvent::InvalidJson) => {
-                return (
-                    None,
-                    Some(ProtocolFailure::new(
-                        "openclaw_acp_invalid_json",
-                        "OpenClaw ACP returned an invalid protocol message.",
-                        "protocol/read",
-                    )),
-                    None,
-                    false,
-                );
             }
             Ok(TransportEvent::StdoutLimitExceeded) => {
                 return (

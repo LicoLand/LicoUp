@@ -3,8 +3,10 @@ use super::support::*;
 #[test]
 fn client_update_check_download_verify_and_plan_share_one_digest_bound_receipt() {
     let fixture = UpdateFixture::new();
-    let params = fixture.params(fixture.manifest());
-    let checked = check(&params).unwrap();
+    let check_params = fixture.params(fixture.manifest());
+    let checked = check(&check_params).unwrap();
+    let mut params = check_params;
+    params.as_object_mut().unwrap().remove("targetReleaseTrack");
     let downloaded = download(&params).unwrap();
     let verified = verify(&params).unwrap();
     let planned = apply(&params).unwrap();
@@ -19,6 +21,9 @@ fn client_update_check_download_verify_and_plan_share_one_digest_bound_receipt()
     assert_eq!(planned["phase"], "applyPlanned");
     assert_eq!(planned["executed"], false);
     for value in [&checked, &downloaded, &verified, &planned] {
+        assert_eq!(value["runningVersion"], checked["runningVersion"]);
+        assert_eq!(value["runningReleaseTrack"], checked["runningReleaseTrack"]);
+        assert_eq!(value["targetReleaseTrack"], checked["targetReleaseTrack"]);
         assert_redacted(value, &fixture.root);
     }
 }
@@ -37,5 +42,34 @@ fn client_update_status_and_dispatch_do_not_project_local_file_names_or_paths() 
             .unwrap_err()
             .to_string()
             .contains("unsupported")
+    );
+}
+
+#[test]
+fn client_update_later_phases_require_the_exact_signed_check_receipt() {
+    let fixture = UpdateFixture::new();
+    let mut unchecked = fixture.params(fixture.manifest());
+    unchecked
+        .as_object_mut()
+        .unwrap()
+        .remove("targetReleaseTrack");
+    assert!(
+        download(&unchecked)
+            .unwrap_err()
+            .to_string()
+            .contains("check receipt is required")
+    );
+
+    let checked = fixture.checked_params(fixture.manifest());
+    let replacement = fixture.sign_manifest(
+        fixture.unsigned_manifest(json!([release("998.0.0", fixture.artifact(TARGET_ID),)])),
+    );
+    let mut substituted = checked;
+    substituted["manifestJson"] = replacement;
+    assert!(
+        download(&substituted)
+            .unwrap_err()
+            .to_string()
+            .contains("does not match the signed check receipt")
     );
 }

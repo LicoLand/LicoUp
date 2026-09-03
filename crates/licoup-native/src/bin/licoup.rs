@@ -7,10 +7,7 @@ use std::{
     io::{self, BufRead, Write},
     panic::{self, AssertUnwindSafe, catch_unwind},
     path::PathBuf,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex, atomic::AtomicU64},
 };
 
 #[path = "licoup/conversation_host.rs"]
@@ -26,6 +23,9 @@ use presentation::{print_json, print_usage};
 use private_stdin_json::materialize_private_stdin_json;
 use stdio_rpc::{execute_rpc_cli, serve_stdio_rpc};
 
+// Keep the public CLI boundary token explicit here: the source-boundary gate
+// verifies that malformed or substituted protocols cannot silently enter the
+// native stdio request parser.
 const STDIO_RPC_PROTOCOL: &str = "licoup.stdio.v1";
 const STDIO_RPC_MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const STDIO_RPC_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
@@ -43,6 +43,11 @@ fn main() -> Result<()> {
         panic::set_hook(Box::new(|_| {
             eprintln!("licoup RPC command terminated unexpectedly");
         }));
+        // The desktop client spawns this bridge lane during normal startup,
+        // so it owns starting the persistent conversation host — and with it
+        // the default-enabled, supervised Subagent MCP service — without
+        // waiting for a first conversation RPC.
+        conversation_host::ensure_host_for_desktop_start();
         let stdin = io::stdin();
         return serve_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
     }

@@ -11,6 +11,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "repo:local-info-hygiene",
     "repo:workspace-cache-boundary",
     "client:artifacts:self-test",
+    "client:verify:build-entry:self-test",
     "client:version:check",
     "client:verify:plan",
     "client:verify:architecture",
@@ -45,7 +46,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
   ]),
   "release-policy": freezeLane([
     "client:promotion:self-test",
-    "client:pricing:release-check",
+    "client:pricing:check",
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",

@@ -44,18 +44,23 @@ mixin ClientMaintenanceFacade {
 
   bool get canApplyClientUpdate => clientUpdateController.canApplyUpdate;
 
-  Future<void> hydrateClientUpdateIdentity({String channel = 'stable'}) =>
-      clientUpdateController.hydrateIdentity(channel: channel);
+  Future<void> hydrateClientUpdateIdentity({String targetReleaseTrack = ''}) =>
+      clientUpdateController.hydrateIdentity(
+        targetReleaseTrack: targetReleaseTrack,
+      );
+
+  void selectClientUpdateReleaseTrack(ReleaseTrack track) =>
+      clientUpdateController.selectTargetReleaseTrack(track);
 
   Future<void> checkClientUpdate({
     required String manifestPath,
     required String publicKeysPath,
-    String channel = 'stable',
+    String targetReleaseTrack = '',
     String revocationPath = '',
   }) => clientUpdateController.check(
     manifestPath: manifestPath,
     publicKeysPath: publicKeysPath,
-    channel: channel,
+    targetReleaseTrack: targetReleaseTrack,
     revocationPath: revocationPath,
   );
 

@@ -626,17 +626,27 @@ there, as the entry point to every agent on the machine. The transcript
 therefore follows chat-client convention rather than tool convention.
 
 **Author treatment is asymmetric.** The user's own message is a right-aligned
-frosted-glass bubble: fully transparent fill, shared overlay blur sigma, and a
-**neutral** `line` hairline — via `MessagingDesktopMetrics.userBubbleGlass*` /
-`MessagingUserBubbleGlass`. Do **not** use `brandBorder`, `primary`, or lemon
-edge glow on transcript bubbles or AGENT badges; those read as olive 泛黄 on
-the dark glass canvas. An agent reply sits flush on the surface on the
-**left**. Group headers show an **author avatar** (brand mark for agents via
-`MessagingAgentAvatar`, `person_outline` for the user) plus display name and a
-neutral AGENT / role chip on `surfaceLow` + `line` — never brand wash. Both
-authors pick up shared `hoverOverlay` on row hover; each message reveals its
-timestamp on hover **outside** the bubble at bottom-right, with reserved space
-so the row does not jump. Group headers carry author identity only (no clock).
+frosted-glass bubble: fully transparent fill and shared overlay blur sigma —
+via `MessagingDesktopMetrics.userBubbleGlass*` / `MessagingUserBubbleGlass`.
+An agent reply sits on the **left** in a dark readability-veil bubble
+(`MessagingAgentBubble`, fill via `agentBubbleVeilFill`). At rest every bubble
+is plain dark glass with a thin **neutral** hairline
+(`bubbleRestingBorder`). On **row hover** the bubble's **edge light** fades in
+(`MessagingBubbleEdgeGlow` + `bubbleEdgeGlow*`): a thin bright rim stroke and
+a lamp-like light field that decays outward from the rim — light lives on and
+around the edge, never in the fill (Kiro-style). The light takes the
+**speaking agent's brand hue** — Claude orange, Kilo yellow, DeepSeek Harness
+blue, a rainbow sweep for the multicolor brands (Copilot, Antigravity) — and
+defaults to **white** for the user's own messages and every unlisted target
+(`messagingBubbleGlow` / `messagingAgentBubbleGlowKey`).
+Do **not** use `brandBorder`, `primary`, or lemon edge glow on transcript
+bubbles or AGENT badges; those read as olive 泛黄 on the dark glass canvas. Group headers show an **author avatar** (brand
+mark for agents via `MessagingAgentAvatar`, `person_outline` for the user)
+plus display name and a neutral AGENT / role chip on `surfaceLow` + `line` —
+never brand wash. Both authors pick up shared `hoverOverlay` on row hover;
+each message reveals its timestamp on hover **outside** the bubble at
+bottom-right, with reserved space so the row does not jump. Group headers
+carry author identity only (no clock).
 
 Consecutive messages from one author are a headerless continuation. Group
 internal gap is `compact`; between groups it is `item`.
@@ -713,8 +723,10 @@ Hard rules:
    overlay constraints without an `Align` (or equivalent) shrink-wrap — otherwise
    `followerAnchor` resolves against the window and top-right cards appear at
    the lower left.
-7. Do **not** paint brand/primary wash on user bubbles, AGENT chips, Working
-   rows, or lifecycle rails; transcript chrome stays neutral on glass.
+7. Do **not** paint brand/primary wash on user or agent bubbles, AGENT chips,
+   Working rows, or lifecycle rails; transcript chrome stays neutral on glass,
+   and bubble color lives only in the rim edge light (agent brand hue or the
+   default white).
 
 **Shared main-card destinations.** Skill Center, Plugin Management, Token usage
 statistics, Keys, Settings, and Mobile Relay use the same outer
@@ -729,7 +741,9 @@ Agents framing in `MessagingDesktopAgentsPresentation`
 (`messaging_desktop_destination_presentations.dart`); tokens in
 `messaging_desktop_tokens.dart`; shared header/composer overlay glass in
 `messaging_conversation_overlay_glass.dart`; user bubble glass in
-`messaging_user_bubble_glass.dart`.
+`messaging_user_bubble_glass.dart`; agent bubble in
+`messaging_agent_bubble.dart`; rim-light palettes in
+`messaging_bubble_edge_glow.dart`.
 
 ## Dashboard Profile
 

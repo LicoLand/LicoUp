@@ -1,6 +1,8 @@
 name: Release ready
 
 on:
+  push:
+    branches: [macos-release-candidate]
   pull_request:
     branches:
       - release
@@ -9,16 +11,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-ready-${{ github.event.pull_request.number }}
+  group: release-ready-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   release-ready:
+    if: github.event.deleted != true
     name: Release ready
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Verify promotion source
+        if: github.event_name == 'pull_request'
         env:
           HEAD_BRANCH: ${{ github.head_ref }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
@@ -29,11 +33,15 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
+      - name: Verify exact candidate source
+        if: github.event_name == 'push'
+        run: node tools/scripts/verify-branch-flow.mjs
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
       - name: Select the author README fast path
+        if: github.event_name == 'pull_request'
         id: readme
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

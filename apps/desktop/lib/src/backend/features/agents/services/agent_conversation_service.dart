@@ -43,7 +43,8 @@ Map<String, dynamic> _bindDispatchFields(AgentDispatchBind bind) {
     if (bind.licoProfile.trim().isNotEmpty)
       'licoProfile': bind.licoProfile.trim(),
     if (bind.runtimeConnection.isNotEmpty)
-      'runtimeConnection': bind.runtimeConnection,
+      if (bind.runtimeConnection.isNotEmpty)
+        'runtimeConnection': bind.runtimeConnection,
   };
 }
 
@@ -62,12 +63,18 @@ class AgentConversationService implements AgentConversationLane {
     required AgentCommandRunner runner,
     required String agentId,
     String sessionId = '',
+    String conversationId = '',
+    Duration waitForChange = Duration.zero,
   }) async {
+    final waitForChangeMs = waitForChange.inMilliseconds.clamp(0, 2000);
     final output = await runner.runCliWithStdin(
       const ['agent', 'conversation', 'active', '--stdin-json', 'true'],
       jsonEncode({
         'agent': agentId.trim(),
         if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
+        if (conversationId.trim().isNotEmpty)
+          'conversationId': conversationId.trim(),
+        if (waitForChangeMs > 0) 'waitForChangeMs': waitForChangeMs,
       }),
     );
     final turns = output['turns'];
@@ -104,6 +111,24 @@ class AgentConversationService implements AgentConversationLane {
       if (eventName == 'done' ||
           (line.containsKey('ok') &&
               (eventName.isEmpty || eventName == 'done'))) {
+        final payload = Map<String, dynamic>.from(line);
+        if (line['ok'] != true && payload['terminalTransition'] is! Map) {
+          final nested = line['error'];
+          final error = nested is Map
+              ? Map<String, dynamic>.from(nested)
+              : const <String, dynamic>{};
+          final code = (error['code'] ?? 'conversation_dispatch_failed')
+              .toString()
+              .trim();
+          final stage = (error['stage'] ?? 'conversation/dispatch')
+              .toString()
+              .trim();
+          payload['terminalTransition'] = <String, dynamic>{
+            'kind': 'failed',
+            'code': code.isEmpty ? 'conversation_dispatch_failed' : code,
+            'stage': stage.isEmpty ? 'conversation/dispatch' : stage,
+          };
+        }
         yield AgentDispatchEvent(
           kind: line['ok'] == true
               ? 'dispatch.turn.completed'
@@ -111,7 +136,7 @@ class AgentConversationService implements AgentConversationLane {
           sessionId: (line['nativeSessionId'] ?? line['sessionId'] ?? '')
               .toString(),
           turnId: (line['turnId'] ?? '').toString(),
-          payload: Map<String, dynamic>.from(line),
+          payload: payload,
         );
         continue;
       }
@@ -384,9 +409,44 @@ class AgentConversationService implements AgentConversationLane {
     int? limit,
     int offset = 0,
     AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _loadSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: limit,
+    offset: offset,
+    bind: bind,
+  );
+
+  Future<List<AgentConversationSession>> loadSessionMessagePage({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _loadSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: 1,
+    messageBefore: messageBefore,
+    messageLimit: messageLimit,
+    bind: bind,
+  );
+
+  Future<List<AgentConversationSession>> _loadSessions({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    String sessionId = '',
+    int? limit,
+    int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     final arguments = ['conversations', 'list', '--agent', agentId];
-    final output = bind.runtimeConnection.isNotEmpty
+    final output = bind.runtimeConnection.isNotEmpty || messageLimit != null
         ? await agentService.runCliWithStdin(
             [...arguments, '--stdin-json', 'true'],
             jsonEncode(
@@ -395,6 +455,8 @@ class AgentConversationService implements AgentConversationLane {
                 sessionId: sessionId,
                 limit: limit,
                 offset: offset,
+                messageBefore: messageBefore,
+                messageLimit: messageLimit,
                 bind: bind,
               ),
             ),
@@ -406,6 +468,10 @@ class AgentConversationService implements AgentConversationLane {
               sessionId.trim(),
             ],
             ..._paginationArgs(limit: limit, offset: offset),
+            ..._messagePaginationArgs(
+              messageBefore: messageBefore,
+              messageLimit: messageLimit,
+            ),
           ]);
     return _sessionsFromOutput(output);
   }
@@ -417,9 +483,44 @@ class AgentConversationService implements AgentConversationLane {
     int? limit,
     int offset = 0,
     AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _streamSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: limit,
+    offset: offset,
+    bind: bind,
+  );
+
+  Stream<AgentConversationSession> streamSessionMessagePage({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    required String sessionId,
+    String messageBefore = '',
+    required int messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
+  }) => _streamSessions(
+    agentService: agentService,
+    agentId: agentId,
+    sessionId: sessionId,
+    limit: 1,
+    messageBefore: messageBefore,
+    messageLimit: messageLimit,
+    bind: bind,
+  );
+
+  Stream<AgentConversationSession> _streamSessions({
+    required AgentCommandRunner agentService,
+    required String agentId,
+    String sessionId = '',
+    int? limit,
+    int offset = 0,
+    String messageBefore = '',
+    int? messageLimit,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     final arguments = ['conversations', 'stream', '--agent', agentId];
-    final events = bind.runtimeConnection.isNotEmpty
+    final events = bind.runtimeConnection.isNotEmpty || messageLimit != null
         ? agentService.streamCliJsonLinesWithStdin(
             [...arguments, '--stdin-json', 'true'],
             jsonEncode(
@@ -428,6 +529,8 @@ class AgentConversationService implements AgentConversationLane {
                 sessionId: sessionId,
                 limit: limit,
                 offset: offset,
+                messageBefore: messageBefore,
+                messageLimit: messageLimit,
                 bind: bind,
               ),
             ),
@@ -439,6 +542,10 @@ class AgentConversationService implements AgentConversationLane {
               sessionId.trim(),
             ],
             ..._paginationArgs(limit: limit, offset: offset),
+            ..._messagePaginationArgs(
+              messageBefore: messageBefore,
+              messageLimit: messageLimit,
+            ),
           ]);
     await for (final event in events) {
       final eventName = (event['event'] ?? '').toString();
@@ -581,6 +688,7 @@ class AgentConversationService implements AgentConversationLane {
       ..._bindDispatchFields(bind),
       ..._acceptanceDispatchFields(bind),
     };
+    var streamSessionId = sessionId.trim();
 
     await for (final line in runner.streamCliJsonLinesWithStdin([
       'agent',
@@ -592,6 +700,14 @@ class AgentConversationService implements AgentConversationLane {
       'true',
     ], jsonEncode(request))) {
       final eventName = (line['event'] ?? '').toString();
+      final lineSession = (line['sessionId'] ?? '').toString().trim();
+      // One native stream is one native turn: the first frame that declares
+      // the session binds it, and later frames that omit identity (driver
+      // chunk events) inherit the stream scope instead of fragmenting the
+      // projection across the requested session id.
+      if (lineSession.isNotEmpty) {
+        streamSessionId = lineSession;
+      }
       if (eventName == 'done' ||
           (line.containsKey('ok') &&
               (eventName.isEmpty || eventName == 'done'))) {
@@ -599,7 +715,7 @@ class AgentConversationService implements AgentConversationLane {
             (line['nativeSessionId'] ??
                     line['threadId'] ??
                     line['sessionId'] ??
-                    sessionId)
+                    streamSessionId)
                 .toString()
                 .trim();
         yield AgentDispatchEvent(
@@ -614,7 +730,9 @@ class AgentConversationService implements AgentConversationLane {
       }
       yield AgentDispatchEvent(
         kind: eventName.isEmpty ? 'dispatch.lane.event' : eventName,
-        sessionId: (line['sessionId'] ?? sessionId).toString(),
+        sessionId: streamSessionId.isEmpty
+            ? sessionId
+            : (line['sessionId'] ?? streamSessionId).toString(),
         turnId: (line['turnId'] ?? '').toString(),
         payload: line['payload'] is Map<String, dynamic>
             ? <String, dynamic>{
@@ -696,18 +814,9 @@ class AgentConversationService implements AgentConversationLane {
     required String sessionId,
     String turnId = '',
   }) async* {
-    // Progressive turn echo is bound to send (--stream-events). This method
-    // advertises the transport so callers share one stream API.
-    yield AgentDispatchEvent(
-      kind: 'dispatch.lane.bound',
-      sessionId: sessionId.trim(),
-      turnId: turnId.trim(),
-      payload: <String, dynamic>{
-        'agentId': agentId.trim(),
-        'streamTransport': 'stdio_ndjson_on_send',
-        'status': 'bound_on_send',
-      },
-    );
+    // Progressive turn echo is bound to send (--stream-events). This transport
+    // lane emits only native events; it never fabricates a binding event.
+    return;
   }
 
   @override
@@ -852,7 +961,11 @@ class AgentConversationService implements AgentConversationLane {
           .where((session) => session.id.isNotEmpty)
           .toList();
     }
-    return const [];
+    final error = output['error'];
+    final code = error is Map
+        ? (error['code'] ?? 'native_history_load_failed').toString()
+        : (output['code'] ?? 'native_history_load_failed').toString();
+    throw FormatException(code);
   }
 
   List<String> _paginationArgs({int? limit, int offset = 0}) {
@@ -862,11 +975,26 @@ class AgentConversationService implements AgentConversationLane {
     ];
   }
 
+  List<String> _messagePaginationArgs({
+    required String messageBefore,
+    required int? messageLimit,
+  }) {
+    return [
+      if (messageBefore.trim().isNotEmpty) ...[
+        '--message-before',
+        messageBefore.trim(),
+      ],
+      if (messageLimit != null) ...['--message-limit', '$messageLimit'],
+    ];
+  }
+
   Map<String, dynamic> _remoteHistoryRequest({
     required String agentId,
     required String sessionId,
     required int? limit,
     required int offset,
+    required String messageBefore,
+    required int? messageLimit,
     required AgentDispatchBind bind,
   }) {
     return <String, dynamic>{
@@ -874,9 +1002,15 @@ class AgentConversationService implements AgentConversationLane {
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
       'limit': ?limit,
       if (offset > 0) 'offset': offset,
+      if (messageBefore.trim().isNotEmpty)
+        'messageBefore': messageBefore.trim(),
+      'messageLimit': ?messageLimit,
       if (bind.workingDirectory.trim().isNotEmpty)
         'workingDirectory': bind.workingDirectory.trim(),
-      'runtimeConnection': bind.runtimeConnection,
+      // An empty connection map is still a non-null JSON value; sending it
+      // would route a local exact-page read into the remote VM history path.
+      if (bind.runtimeConnection.isNotEmpty)
+        'runtimeConnection': bind.runtimeConnection,
     };
   }
 }

@@ -83,8 +83,8 @@ export function prepareStagedFlutterSource() {
   return stagedRoot;
 }
 
-export function cleanupFlutterBuildCache(options, flutterBuildAttempted) {
-  if (!flutterBuildAttempted || options.keepFlutterBuildCache) return;
+export function cleanupFlutterBuildCache(flutterBuildAttempted) {
+  if (!flutterBuildAttempted) return;
   const currentRoot = cleanBuildRoot();
   try {
     removeCurrentProjectTemporaryDirectory({

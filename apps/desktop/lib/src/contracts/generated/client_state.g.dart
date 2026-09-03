@@ -208,6 +208,14 @@ enum ClientStateFailureCode {
   invalidCollection("invalid_collection"),
   invalidDocument("invalid_document"),
   stateOperationFailed("state_operation_failed"),
+  migrationLockUnavailable("migration_lock_unavailable"),
+  migrationLedgerInvalid("migration_ledger_invalid"),
+  stateNewerThanBinary("state_newer_than_binary"),
+  migrationFrontierIncomplete("migration_frontier_incomplete"),
+  migrationStepFailed("migration_step_failed"),
+  migrationPostconditionFailed("migration_postcondition_failed"),
+  updateHandoffMismatch("update_handoff_mismatch"),
+  unsupportedStateShape("unsupported_state_shape"),
   unknown('');
 
   const ClientStateFailureCode(this.wireName);

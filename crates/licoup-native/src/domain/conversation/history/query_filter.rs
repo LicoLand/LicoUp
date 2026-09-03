@@ -141,6 +141,9 @@ pub(super) fn history_message_is_user_authored(message: &Value) -> bool {
 }
 
 pub(super) fn history_session_has_user_authored_message(session: &Value) -> bool {
+    if session.get("adapterId").and_then(Value::as_str) == Some("copilot") {
+        return true;
+    }
     session
         .get("messages")
         .and_then(Value::as_array)

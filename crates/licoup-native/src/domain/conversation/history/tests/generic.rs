@@ -282,7 +282,7 @@ fn directory_layout_sessions_take_the_conversation_uuid_from_the_path() {
     .unwrap();
 
     let sessions = listed["sessions"].as_array().unwrap();
-    assert_eq!(sessions.len(), 3);
+    assert_eq!(sessions.len(), 2);
     let mut native_ids: Vec<&str> = sessions
         .iter()
         .map(|session| session["nativeSessionId"].as_str().unwrap())
@@ -293,19 +293,18 @@ fn directory_layout_sessions_take_the_conversation_uuid_from_the_path() {
         vec![
             "2f7230ca-e675-4846-a922-1104cf0a1854",
             "7bb7b109-f089-4529-a6c9-2c019a71c106",
-            "7bb7b109-f089-4529-a6c9-2c019a71c106",
         ],
-        "transcript duplicates share the conversation uuid while distinct conversations stay distinct"
+        "transcript duplicates collapse by conversation uuid while distinct conversations stay distinct"
     );
     let projected_ids: std::collections::BTreeSet<&str> = sessions
         .iter()
         .map(|session| session["id"].as_str().unwrap())
         .collect();
-    assert_eq!(projected_ids.len(), 3);
+    assert_eq!(projected_ids.len(), 2);
 }
 
 #[test]
-fn embedded_session_id_wins_and_non_uuid_paths_keep_the_file_fallback() {
+fn embedded_session_id_wins_and_non_identity_jsonl_is_skipped() {
     let dir = temp_dir("antigravity-embedded-identity");
     let uuid_dir = dir
         .join("brain")
@@ -329,11 +328,78 @@ fn embedded_session_id_wins_and_non_uuid_paths_keep_the_file_fallback() {
     .unwrap();
 
     let sessions = listed["sessions"].as_array().unwrap();
-    assert_eq!(sessions.len(), 2);
-    let mut native_ids: Vec<&str> = sessions
-        .iter()
-        .map(|session| session["nativeSessionId"].as_str().unwrap())
-        .collect();
-    native_ids.sort();
-    assert_eq!(native_ids, vec!["embedded-id", "file"]);
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], "embedded-id");
+}
+
+#[test]
+fn large_generic_sources_keep_first_and_last_messages() {
+    let dir = temp_dir("large-generic-history");
+    let path = dir.join("large.jsonl");
+    let mut file = fs::File::create(&path).unwrap();
+    use std::io::Write;
+    writeln!(
+        file,
+        "{}",
+        json!({"sessionId": "large-session", "role": "user", "content": "first"})
+    )
+    .unwrap();
+    writeln!(
+        file,
+        "{}",
+        json!({"sessionId": "large-session", "role": "assistant", "content": "x".repeat(32 * 1024 * 1024 + 1)})
+    )
+    .unwrap();
+    writeln!(
+        file,
+        "{}",
+        json!({"sessionId": "large-session", "role": "assistant", "content": "last"})
+    )
+    .unwrap();
+    drop(file);
+
+    let listed = conversation_list(&json!({
+        "agent": "opencode",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    let messages = sessions[0]["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages.first().unwrap()["text"], "first");
+    assert_eq!(messages.last().unwrap()["text"], "last");
+}
+
+#[test]
+fn generic_bookkeeping_never_becomes_a_session() {
+    let dir = temp_dir("generic-bookkeeping");
+    fs::write(
+        dir.join("settings.json"),
+        json!({"theme": "dark", "telemetry": false}).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("state.jsonl"),
+        json!({"kind": "state", "value": "ready"}).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("conversation.json"),
+        json!({
+            "sessionId": "real-session",
+            "messages": [{"role": "user", "content": "visible"}]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "opencode",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], "real-session");
 }

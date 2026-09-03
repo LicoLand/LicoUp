@@ -10,7 +10,6 @@ pub(super) const MAX_SSE_LINE_BYTES: usize = 256 * 1024;
 pub(super) const MAX_SSE_FRAME_BYTES: usize = 1024 * 1024;
 pub(super) const MAX_SSE_DATA_LINES: usize = 256;
 pub(super) const MAX_SSE_EVENTS_PER_STREAM: usize = 16 * 1024;
-pub(super) const MAX_PROJECTED_EVENT_TEXT_BYTES: usize = 256 * 1024;
 pub(super) const MAX_PRIVATE_STATE_BYTES: usize = 64 * 1024;
 pub(super) const MAX_PID_BYTES: usize = 16;
 pub(super) const CONCURRENCY_WAIT: Duration = Duration::from_millis(500);

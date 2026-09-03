@@ -1,13 +1,12 @@
 pub(in crate::platform) mod active_control;
-mod config;
+pub(in crate::platform) mod config;
 mod contract;
 mod error;
 mod io;
 mod launch;
-mod limits;
-mod model;
+pub(in crate::platform) mod limits;
+pub(in crate::platform) mod model;
 mod model_catalog;
-mod protocol;
 mod supervision;
 mod transport;
 

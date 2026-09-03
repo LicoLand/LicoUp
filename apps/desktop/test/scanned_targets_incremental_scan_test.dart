@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
@@ -496,6 +497,23 @@ class _SlowPerAgentService extends AgentService {
   var maxInFlight = 0;
 
   @override
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
+    bool enableAgentCliModelLookup = false,
+  }) async => TargetScanBatch(
+    await Future.wait([
+      for (final targetId in targetIds)
+        _scanBatchTarget(
+          targetId,
+          enableAgentCliModelLookup: enableAgentCliModelLookup,
+        ).then(
+          (candidate) =>
+              TargetScanSlot(targetId: targetId, candidate: candidate),
+        ),
+    ]),
+  );
+
+  @override
   Future<Map<String, dynamic>> runCliWithStdin(
     List<String> args,
     String stdinText,
@@ -505,8 +523,7 @@ class _SlowPerAgentService extends AgentService {
     return {'ok': true, 'result': <String, dynamic>{}};
   }
 
-  @override
-  Future<TargetCandidate?> scanOneTarget(
+  Future<TargetCandidate?> _scanBatchTarget(
     String targetId, {
     bool enableAgentCliModelLookup = false,
   }) async {

@@ -14,6 +14,12 @@ import {
   seedClientGradleHome,
   withClientToolchainEnv,
 } from "../client-toolchain-env.mjs";
+import { androidJavaEnvironment } from "../lib/android-apk-facts/sdk.mjs";
+import {
+  createFlutterJsonStatsCollector,
+  hasFlutterTestReporter,
+  withFlutterJsonReporter,
+} from "../../regression/client-regression-toolchain-stats/flutter.mjs";
 import { FLUTTER_GENERATED_PLUGIN_FILES, ROOT } from "./constants.mjs";
 import { preferredPubHostedUrl, seedStablePubCache } from "./pub-cache.mjs";
 import { run } from "./process.mjs";
@@ -62,6 +68,14 @@ export function withEnforcedLockfile(args) {
     return args;
   }
   return [...args, "--enforce-lockfile"];
+}
+
+export function prepareFlutterTestReporting(args) {
+  const capture = args[0] === "test" && !hasFlutterTestReporter(args);
+  return Object.freeze({
+    capture,
+    args: capture ? Object.freeze(withFlutterJsonReporter(args)) : args,
+  });
 }
 
 export function desktopPluginLinkRoot(projectRoot, platform) {
@@ -141,6 +155,10 @@ export function restoreFlutterGeneratedPluginFiles(snapshot) {
 }
 
 export async function prepareFlutterCommand(command, args, cwd) {
+  if (["gradlew", "gradlew.bat"].includes(path.basename(command).toLowerCase())) {
+    const java = androidJavaEnvironment();
+    return { command, args, env: { ...process.env, JAVA_HOME: java.env.JAVA_HOME } };
+  }
   if (!isFlutterCommand(command) || !existsSync(path.join(cwd, "pubspec.yaml"))) {
     return { command, args, env: process.env };
   }
@@ -156,14 +174,63 @@ export async function prepareFlutterCommand(command, args, cwd) {
     } finally {
       restoreFlutterGeneratedPluginFiles(generatedPluginSnapshot);
     }
-    return { command, args: withNoImplicitPub(args), env };
+    const reporting = prepareFlutterTestReporting(withNoImplicitPub(args));
+    return {
+      command,
+      args: reporting.args,
+      env,
+      captureFlutterTestOutput: reporting.capture,
+    };
   }
   return { command, args: withEnforcedLockfile(args), env };
 }
 
+function measuredMetric(metrics, key) {
+  return metrics?.[key]?.status === "measured" ? metrics[key].value : null;
+}
+
+async function runFlutterTestWithSafeDiagnostics(prepared, cwd) {
+  const collector = createFlutterJsonStatsCollector({ repoRoot: ROOT, commandCwd: cwd });
+  let failure = null;
+  try {
+    await run(prepared.command, prepared.args, {
+      cwd,
+      env: prepared.env,
+      onStdout: collector.push,
+      onStderr() {},
+    });
+  } catch (error) {
+    failure = error;
+  }
+  const metrics = collector.finish();
+  const failures = collector.failureDiagnostics();
+  const testCount = measuredMetric(metrics, "testCount");
+  const passedCount = measuredMetric(metrics, "passedCount");
+  const failedCount = measuredMetric(metrics, "failedCount");
+  const skippedCount = measuredMetric(metrics, "skippedCount");
+  if (failure) {
+    process.stderr.write(`${JSON.stringify({
+      schemaVersion: "licoup.flutter-test-diagnostics.v1",
+      status: "failed",
+      testCount,
+      passedCount,
+      failedCount,
+      skippedCount,
+      failures,
+    })}\n`);
+    throw failure;
+  }
+  process.stdout.write(`[client-toolchain-runner] Flutter tests passed: ${testCount ?? "unknown"} ` +
+    `executed, ${skippedCount ?? "unknown"} skipped.\n`);
+}
+
 export async function runPreparedCommand(prepared, cwd) {
   try {
-    await run(prepared.command, prepared.args, { cwd, env: prepared.env });
+    if (prepared.captureFlutterTestOutput === true) {
+      await runFlutterTestWithSafeDiagnostics(prepared, cwd);
+    } else {
+      await run(prepared.command, prepared.args, { cwd, env: prepared.env });
+    }
     return;
   } catch (error) {
     if (!isFlutterCommand(prepared.command) ||

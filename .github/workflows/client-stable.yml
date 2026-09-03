@@ -48,6 +48,7 @@ jobs:
     runs-on: ${{ needs.readme-plan.result == 'success' && needs.readme-plan.outputs.readme_fast != 'true' && 'macos-15' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     env:
+      LICO_CLIENT_RELEASE_TRACK: stable
       LICO_CLIENT_RELEASE_TARGETS: macos-arm64
       README_PLAN_RESULT: ${{ needs.readme-plan.result }}
       README_FAST_SELECTED: ${{ needs.readme-plan.outputs.readme_fast }}
@@ -84,7 +85,7 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Build the stable client once
         if: env.README_FAST_SELECTED != 'true'
-        run: npm run client:build:macos
+        run: npm run client:build -- --platform macos
       - name: Install, launch, and prove stable survival
         if: env.README_FAST_SELECTED != 'true'
         run: npm run client:install:macos -- --launch-installed --verify-stable

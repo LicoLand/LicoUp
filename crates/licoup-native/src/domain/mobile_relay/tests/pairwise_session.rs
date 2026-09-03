@@ -164,7 +164,7 @@ fn mobile_relay_pqxdh_descriptor_rejects_missing_mlkem_prekey_and_unsupported_pr
 }
 
 #[test]
-fn mobile_relay_rekeys_and_requires_repair_for_incompatible_local_protocol() {
+fn mobile_relay_runtime_rejects_incompatible_local_protocol_without_rekey_or_reset() {
     let dir = temp_dir("mobile-relay-pqxdh-incompatible-local-protocol");
     let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
@@ -179,25 +179,25 @@ fn mobile_relay_rekeys_and_requires_repair_for_incompatible_local_protocol() {
     config["paired"] = json!(true);
     config["relayEnabled"] = json!(true);
     config["pcToken"] = json!("local-token-canary");
+    let before = config.clone();
 
-    ensure_mobile_relay_endpoint_descriptor(
+    let error = ensure_mobile_relay_endpoint_descriptor(
         &mut config,
         &mut test_runtime_secret_material(stringify!(&mut config)),
         "desktop_sidecar",
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert_ne!(
+    assert!(
+        error
+            .to_string()
+            .contains("requires explicit startup migration")
+    );
+    assert_eq!(
         descriptor_text(&config["mobileRelayE2ee"], "publicKeyBase64url").unwrap(),
         prior_identity
     );
-    assert_eq!(
-        config["mobileRelayE2ee"]["protocolVersion"],
-        MOBILE_RELAY_E2EE_PROTOCOL_VERSION
-    );
-    assert_eq!(config["paired"], false);
-    assert_eq!(config["relayEnabled"], false);
-    assert_eq!(config["pcToken"], "");
+    assert_eq!(config, before);
 
     set_portable_data_dir_override(previous);
 }

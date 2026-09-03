@@ -10,22 +10,35 @@ export function run(command, args, options = {}) {
     const resolvedCommand = resolveCommand(command);
     const env = options.env || process.env;
     const isWindowsScript = process.platform === "win32" && /\.(?:cmd|bat)$/i.test(resolvedCommand);
+    const capturesOutput = typeof options.onStdout === "function" ||
+      typeof options.onStderr === "function";
+    const stdio = options.stdio || (capturesOutput
+      ? ["ignore", "pipe", "pipe"]
+      : "inherit");
     const child = isWindowsScript ? spawn(
       process.env.ComSpec || "cmd.exe",
       ["/d", "/s", "/c", ["call", resolvedCommand, ...args].map(quoteWindowsCommandArg).join(" ")],
       {
         cwd: options.cwd || ROOT,
-        stdio: options.stdio || "inherit",
+        stdio,
         env,
         windowsHide: true
       }
     ) : spawn(resolvedCommand, args, {
       cwd: options.cwd || ROOT,
-      stdio: options.stdio || "inherit",
+      stdio,
       shell: false,
       env,
       windowsHide: true
     });
+    if (child.stdout) {
+      if (typeof options.onStdout === "function") child.stdout.on("data", options.onStdout);
+      else child.stdout.resume();
+    }
+    if (child.stderr) {
+      if (typeof options.onStderr === "function") child.stderr.on("data", options.onStderr);
+      else child.stderr.resume();
+    }
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
