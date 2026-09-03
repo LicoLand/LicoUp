@@ -66,6 +66,7 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
       next[normalized] = activity;
     }
     conversationTabActivityByAgent = Map.unmodifiable(next);
+    agentWorkspaceNotifyConversationTabActivityChanged();
   }
 
   /// Clears unread completion when the user opens that agent tab. Approval

@@ -10,7 +10,7 @@ import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/shell/client_layout_chrome_adapter.dart';
+import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'layout_host_test_fixtures.dart';
@@ -20,10 +20,18 @@ void main() {
     'semantic status snapshots are value-equal and use captions as fallback',
     () {
       const first = LayoutChromeSnapshot(
-        status: LayoutChromeStatusSnapshot(message: 'Ready', caption: 'Client'),
+        status: LayoutChromeStatusSnapshot(
+          message: 'Ready',
+          caption: 'Client',
+          errorCode: '',
+        ),
       );
       const second = LayoutChromeSnapshot(
-        status: LayoutChromeStatusSnapshot(message: 'Ready', caption: 'Client'),
+        status: LayoutChromeStatusSnapshot(
+          message: 'Ready',
+          caption: 'Client',
+          errorCode: '',
+        ),
       );
 
       expect(first, second);
@@ -31,42 +39,34 @@ void main() {
         const LayoutChromeStatusSnapshot(
           message: '',
           caption: 'Fallback',
+          errorCode: '',
         ).displayText,
         'Fallback',
       );
     },
   );
 
-  testWidgets('client adapter exposes status and delegates pairing', (
-    tester,
-  ) async {
+  test('composition chrome selects focused status updates only', () async {
     final controller = ClientController(
       mobileClientRuntimePlatformOverride: true,
     );
-    var pairingRequests = 0;
-    final adapter = ClientLayoutChromeAdapter(
-      controller,
-      pairingAction: (_) async => pairingRequests += 1,
-    );
-    addTearDown(() {
-      adapter.dispose();
-      controller.dispose();
-    });
+    final composition = ClientAppComposition(controller: controller);
+    addTearDown(composition.dispose);
+    final adapter = composition.renderer.chrome;
+    var notifications = 0;
+    adapter.addListener(() => notifications += 1);
 
     expect(adapter.value.status.displayText, isNotEmpty);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => adapter.openPairing(context),
-            child: const Text('pair'),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('pair'));
-    await tester.pump();
-    expect(pairingRequests, 1);
+    controller.selectSection(ClientSection.settings);
+    expect(notifications, 0);
+
+    controller.statusMessage = 'Focused status';
+    expect(adapter.value.status.displayText, 'Focused status');
+    expect(notifications, 1);
+
+    controller.lastError = 'focused_error';
+    expect(adapter.value.status.errorCode, 'focused_error');
+    expect(notifications, 2);
   });
 
   testWidgets('layout host passes the exact chrome port to the active shell', (
@@ -92,10 +92,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          manager: manager,
+          selection: manager.state,
           registry: runtime.registry,
           stateStore: LayoutStateStore(runtime.catalog),
           environment: _desktopEnvironment(),
+          onUpdateEnvironment: (value) =>
+              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,

@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isAllowedLegacyLayoutDependency } from "../../../apps/desktop/scripts/verify-layout-boundaries/dependency-policy.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -170,6 +171,21 @@ test("verify, bundle-product, errors, and cli each have one authority", async ()
     "errors.mjs",
   ]);
   assert.deepEqual(declarationOwners(source, "main"), ["cli.mjs"]);
+});
+
+test("legacy shared layout debt is an exact shrink-only path set", () => {
+  assert.equal(isAllowedLegacyLayoutDependency(
+    "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
+  ), true);
+  assert.equal(isAllowedLegacyLayoutDependency(
+    "apps/desktop/lib/src/frontend/shared/ui/theme.dart",
+  ), true);
+  assert.equal(isAllowedLegacyLayoutDependency(
+    "apps/desktop/lib/src/frontend/shared/new_shared_dependency.dart",
+  ), false);
+  assert.equal(isAllowedLegacyLayoutDependency(
+    "apps/desktop/lib/src/frontend/shared/ui/new_shared_widget.dart",
+  ), false);
 });
 
 test("self-test dry-run preserves fail-closed layout boundary contracts", () => {

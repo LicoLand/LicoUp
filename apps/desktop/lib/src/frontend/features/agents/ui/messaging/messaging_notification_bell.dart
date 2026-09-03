@@ -60,6 +60,9 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     widget.controller.llmGatewayLifecycleController.addListener(
       _onNotificationSourcesChanged,
     );
+    widget.controller.conversationTabActivityListenable.addListener(
+      _onNotificationSourcesChanged,
+    );
   }
 
   @override
@@ -72,10 +75,16 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     oldWidget.controller.llmGatewayLifecycleController.removeListener(
       _onNotificationSourcesChanged,
     );
+    oldWidget.controller.conversationTabActivityListenable.removeListener(
+      _onNotificationSourcesChanged,
+    );
     widget.controller.messagingNotificationCenter.addListener(
       _onNotificationSourcesChanged,
     );
     widget.controller.llmGatewayLifecycleController.addListener(
+      _onNotificationSourcesChanged,
+    );
+    widget.controller.conversationTabActivityListenable.addListener(
       _onNotificationSourcesChanged,
     );
     _seenOperationRevision =
@@ -90,6 +99,9 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
       _onNotificationSourcesChanged,
     );
     widget.controller.llmGatewayLifecycleController.removeListener(
+      _onNotificationSourcesChanged,
+    );
+    widget.controller.conversationTabActivityListenable.removeListener(
       _onNotificationSourcesChanged,
     );
     super.dispose();

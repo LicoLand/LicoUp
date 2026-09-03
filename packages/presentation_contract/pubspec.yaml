@@ -1,0 +1,10 @@
+name: presentation_contract
+description: Renderer-independent presentation direction primitives for LicoUp.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.4
+
+dev_dependencies:
+  test: ^1.25.0

@@ -81,6 +81,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   });
   void agentWorkspaceNotifyActiveConversationChanged();
   void agentWorkspaceNotifyLiveConversationChanged();
+  void agentWorkspaceNotifyConversationTabActivityChanged();
   void agentWorkspaceRecordCurrentAgentView();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});
   String get relaySourceClientId;

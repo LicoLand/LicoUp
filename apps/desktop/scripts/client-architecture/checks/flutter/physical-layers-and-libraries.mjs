@@ -2,12 +2,21 @@ import path from "node:path";
 
 const flutterLibRoot = "apps/desktop/lib";
 const flutterSrcRoot = "apps/desktop/lib/src";
-const requiredFlutterFlowDirs = ["events", "projections", "display", "protocol", "shared"];
+const requiredFlutterFlowDirs = [
+  "events",
+  "projections",
+  "display",
+  "protocol",
+  "shared",
+  "presentation",
+  "composition",
+];
 const retainedFlutterMigrationDirs = ["application", "frontend", "backend", "platform", "contracts"];
-const allowedFlutterTopLevelDirs = new Set([
+export const REQUIRED_FLUTTER_TOP_LEVEL_DIRS = Object.freeze([
   ...requiredFlutterFlowDirs,
   ...retainedFlutterMigrationDirs
 ]);
+const allowedFlutterTopLevelDirs = new Set(REQUIRED_FLUTTER_TOP_LEVEL_DIRS);
 const requiredFrontendFeatureDirs = [
   "agents",
   "mobile_relay",
