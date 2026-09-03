@@ -563,6 +563,22 @@ extension LicoStringsLabels on LicoStrings {
   String groupConversationFailureCapsule(String failureRef) => isChinese
       ? '群聊操作失败 · $failureRef'
       : 'Group conversation failed · $failureRef';
+  String groupConversationFailureSummary(String code, String failureRef) =>
+      switch (code.trim()) {
+        'codex_usage_limit_exceeded' =>
+          isChinese
+              ? 'Codex 模型额度已用完 · $failureRef'
+              : 'Codex model usage limit reached · $failureRef',
+        _ => groupConversationFailureCapsule(failureRef),
+      };
+  String groupConversationFailureRecovery(String recovery) => switch (recovery
+      .trim()) {
+    'select_available_model_or_wait_for_quota_reset' =>
+      isChinese
+          ? '请选择其它可用模型，或等待额度重置后重试。'
+          : 'Choose another available model, or retry after the usage limit resets.',
+    _ => '',
+  };
   String quotaUsageCardTitle(String provider) =>
       isChinese ? '$provider 配额用量' : '$provider quota usage';
   String quotaWindowUsedPercent(int percent) =>
@@ -596,6 +612,7 @@ extension LicoStringsLabels on LicoStrings {
   String get yesterday => isChinese ? '昨天' : 'Yesterday';
   String get earlier => isChinese ? '更早' : 'Earlier';
   String get priority => isChinese ? '优先' : 'Priority';
+  String get otherConversations => isChinese ? '其它对话' : 'Other conversations';
 
   /// Full localized weekday name for the sidebar time groups.
   /// [weekday] follows [DateTime.weekday]: 1 is Monday, 7 is Sunday.

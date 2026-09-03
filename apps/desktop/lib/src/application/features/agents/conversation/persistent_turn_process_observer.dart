@@ -145,12 +145,39 @@ bool persistentTurnAllowsNextActor(ConversationTurnProcessState state) {
   return state.stage == ConversationTurnProcessStage.completed;
 }
 
-String? persistentTurnDiagnosticFailureCode(String content) {
+final class PersistentTurnDiagnosticFailure {
+  const PersistentTurnDiagnosticFailure({
+    required this.code,
+    required this.stage,
+    required this.component,
+    required this.retryable,
+    required this.recovery,
+  });
+
+  final String code;
+  final String stage;
+  final String component;
+  final bool? retryable;
+  final String recovery;
+}
+
+PersistentTurnDiagnosticFailure? persistentTurnDiagnosticFailure(
+  String content,
+) {
   try {
     final decoded = jsonDecode(content);
     if (decoded is! Map) return null;
     final code = (decoded['code'] ?? '').toString().trim();
-    return code.isEmpty ? null : code;
+    if (code.isEmpty) return null;
+    return PersistentTurnDiagnosticFailure(
+      code: code,
+      stage: (decoded['stage'] ?? '').toString().trim(),
+      component: (decoded['component'] ?? '').toString().trim(),
+      retryable: decoded['retryable'] is bool
+          ? decoded['retryable'] as bool
+          : null,
+      recovery: (decoded['recovery'] ?? '').toString().trim(),
+    );
   } catch (_) {
     return null;
   }
@@ -166,6 +193,21 @@ String? _persistentTurnDiagnosticText(AgentDispatchEvent event) {
           .toString()
           .trim();
   final nestedError = event.payload['error'];
+  final component =
+      (terminal['component'] ??
+              (nestedError is Map ? nestedError['component'] : null) ??
+              '')
+          .toString()
+          .trim();
+  final retryable =
+      terminal['retryable'] ??
+      (nestedError is Map ? nestedError['retryable'] : null);
+  final recovery =
+      (terminal['recovery'] ??
+              (nestedError is Map ? nestedError['recovery'] : null) ??
+              '')
+          .toString()
+          .trim();
   final message = nestedError is Map
       ? (nestedError['message'] ?? '').toString().trim()
       : '';
@@ -174,6 +216,9 @@ String? _persistentTurnDiagnosticText(AgentDispatchEvent event) {
     if (code.isNotEmpty) 'code': code,
     if (stage.isNotEmpty) 'stage': stage,
     if (turnStatus.isNotEmpty) 'turnStatus': turnStatus,
+    if (component.isNotEmpty) 'component': component,
+    if (retryable is bool) 'retryable': retryable,
+    if (recovery.isNotEmpty) 'recovery': recovery,
     if (message.isNotEmpty) 'message': message,
   });
 }

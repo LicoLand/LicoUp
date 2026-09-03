@@ -113,6 +113,13 @@ AgentConversationSession canonicalGroupConversationSession(
     for (final membership in conversation.memberships)
       membership.principal.id: membership,
   };
+  final failedSourceEventIds = {
+    for (final event in events)
+      if (event.finalized &&
+          event.causationId.trim().isNotEmpty &&
+          event.parts.any(_isFailureDiagnosticPart))
+        event.causationId.trim(),
+  };
   final messages = <AgentConversationMessage>[];
   for (final event in events) {
     final author = memberships[event.authorMembershipId];
@@ -181,6 +188,9 @@ AgentConversationSession canonicalGroupConversationSession(
               ? ''
               : author?.principal.displayName.trim() ?? '',
           participantRole: participantRole,
+          deliveryState: user && failedSourceEventIds.contains(event.id)
+              ? AgentConversationMessageDeliveryState.failed
+              : AgentConversationMessageDeliveryState.ordinary,
         ),
       );
       textChunks.clear();
@@ -254,6 +264,9 @@ AgentConversationSession canonicalGroupConversationSession(
               ? ''
               : author?.principal.displayName.trim() ?? '',
           participantRole: participantRole,
+          deliveryState: user && failedSourceEventIds.contains(event.id)
+              ? AgentConversationMessageDeliveryState.failed
+              : AgentConversationMessageDeliveryState.ordinary,
         ),
       );
     }
@@ -302,6 +315,17 @@ AgentConversationSession canonicalGroupConversationSession(
     sourceMessageCount: conversation.eventCount,
     historyTruncated: conversation.eventCount > events.length,
   );
+}
+
+bool _isFailureDiagnosticPart(ClientConversationEventPart part) {
+  if (part.kind != ConversationEventPartKind.diagnostic) return false;
+  try {
+    final decoded = jsonDecode(part.content);
+    return decoded is Map &&
+        (decoded['code'] ?? '').toString().trim().isNotEmpty;
+  } catch (_) {
+    return false;
+  }
 }
 
 String? _canonicalMessageUnit(ClientConversationEventPart part) {

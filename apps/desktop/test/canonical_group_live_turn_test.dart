@@ -56,12 +56,16 @@ void main() {
     s.advanceStage('accepted');
     expect(s.stage, ConversationTurnProcessStage.accepted);
     expect(persistentTurnAllowsNextActor(s), isFalse);
-    expect(
-      persistentTurnDiagnosticFailureCode(
-        '{"code":"codex_turn_not_completed","stage":"turn/completed"}',
-      ),
-      'codex_turn_not_completed',
+    final failure = persistentTurnDiagnosticFailure(
+      '{"code":"codex_usage_limit_exceeded","stage":"turn/completed",'
+      '"component":"native_cli","retryable":false,'
+      '"recovery":"select_available_model_or_wait_for_quota_reset"}',
     );
+    expect(failure?.code, 'codex_usage_limit_exceeded');
+    expect(failure?.stage, 'turn/completed');
+    expect(failure?.component, 'native_cli');
+    expect(failure?.retryable, isFalse);
+    expect(failure?.recovery, 'select_available_model_or_wait_for_quota_reset');
   });
 
   test('processing events appear before any assistant text', () {

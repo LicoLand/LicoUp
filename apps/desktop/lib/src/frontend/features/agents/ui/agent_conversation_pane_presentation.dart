@@ -145,6 +145,8 @@ final class AgentConversationPaneActions {
     this.onPermissionRetryRemember,
     this.onPermissionDeny,
     this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -165,6 +167,8 @@ final class AgentConversationPaneActions {
   final VoidCallback? onPermissionRetryRemember;
   final VoidCallback? onPermissionDeny;
   final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

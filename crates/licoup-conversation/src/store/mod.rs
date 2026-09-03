@@ -2247,6 +2247,96 @@ impl ConversationStore {
         })
     }
 
+    /// Delete one local owner's posted message and its complete derived turn
+    /// subtree. Active work is never interrupted by deletion; the caller can
+    /// retry or delete only after every addressed turn has settled.
+    pub fn delete_posted_message(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+        owner_membership_id: &str,
+    ) -> StoreResult<()> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(event_id, "event_id")?;
+        validate_identifier(owner_membership_id, "membership_id")?;
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let eligible: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM events e
+                   JOIN memberships m ON m.id=e.author_membership_id
+                   JOIN principals p ON p.id=m.principal_id
+                   WHERE e.id=?1 AND e.conversation_id=?2
+                     AND e.author_membership_id=?3 AND e.kind='message'
+                     AND m.conversation_id=?2 AND m.access='owner'
+                     AND m.status='active' AND p.kind='human'
+                 )",
+                params![event_id, conversation_id, owner_membership_id],
+                |row| row.get(0),
+            )?;
+            if !eligible {
+                return Err(anyhow!("message_delete_forbidden"));
+            }
+            let active: bool = transaction.query_row(
+                "WITH RECURSIVE removed(id) AS (
+                   SELECT ?1
+                   UNION
+                   SELECT e.id FROM events e JOIN removed r ON e.causation_id=r.id
+                   WHERE e.conversation_id=?2
+                 )
+                 SELECT EXISTS(
+                   SELECT 1 FROM direct_turns
+                   WHERE source_event_id IN (SELECT id FROM removed)
+                     AND state IN ('pending','claimed','running','waiting-for-human')
+                 )",
+                params![event_id, conversation_id],
+                |row| row.get(0),
+            )?;
+            if active {
+                return Err(anyhow!("message_turn_active"));
+            }
+            transaction.execute(
+                "WITH RECURSIVE removed(id) AS (
+                   SELECT ?1
+                   UNION
+                   SELECT e.id FROM events e JOIN removed r ON e.causation_id=r.id
+                   WHERE e.conversation_id=?2
+                 )
+                 DELETE FROM conversation_dispatches
+                 WHERE id IN (
+                   SELECT id FROM direct_turns
+                   WHERE source_event_id IN (SELECT id FROM removed)
+                 )",
+                params![event_id, conversation_id],
+            )?;
+            transaction.execute(
+                "WITH RECURSIVE removed(id) AS (
+                   SELECT ?1
+                   UNION
+                   SELECT e.id FROM events e JOIN removed r ON e.causation_id=r.id
+                   WHERE e.conversation_id=?2
+                 )
+                 DELETE FROM event_search WHERE event_id IN (SELECT id FROM removed)",
+                params![event_id, conversation_id],
+            )?;
+            transaction.execute(
+                "WITH RECURSIVE removed(id) AS (
+                   SELECT ?1
+                   UNION
+                   SELECT e.id FROM events e JOIN removed r ON e.causation_id=r.id
+                   WHERE e.conversation_id=?2
+                 )
+                 DELETE FROM events WHERE id IN (SELECT id FROM removed)",
+                params![event_id, conversation_id],
+            )?;
+            bump_revision(&transaction, conversation_id, now)?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
     pub fn append_event_part(&self, event_id: &str, part: NewEventPart) -> StoreResult<EventPart> {
         validate_identifier(event_id, "event_id")?;
         validate_text(&part.content, "event_part_content")?;
@@ -4880,6 +4970,45 @@ fn runtime_terminal_diagnostic(terminal: &Value, error_code: Option<&str>) -> St
             serde_json::Value::String(turn_status.to_owned()),
         );
     }
+    if let Some(component) = nested
+        .get("component")
+        .and_then(Value::as_str)
+        .filter(|value| {
+            matches!(
+                *value,
+                "conversation_runtime"
+                    | "native_cli"
+                    | "runtime_adapter"
+                    | "runtime_process"
+                    | "stdio_rpc"
+            )
+        })
+    {
+        diagnostic.insert(
+            "component".into(),
+            serde_json::Value::String(component.to_owned()),
+        );
+    }
+    if let Some(retryable) = nested.get("retryable").and_then(Value::as_bool) {
+        diagnostic.insert("retryable".into(), serde_json::Value::Bool(retryable));
+    }
+    if let Some(recovery) = nested
+        .get("recovery")
+        .and_then(Value::as_str)
+        .filter(|value| {
+            matches!(
+                *value,
+                "review_terminal_result"
+                    | "preserve_draft_and_retry"
+                    | "select_available_model_or_wait_for_quota_reset"
+            )
+        })
+    {
+        diagnostic.insert(
+            "recovery".into(),
+            serde_json::Value::String(recovery.to_owned()),
+        );
+    }
     serde_json::Value::Object(diagnostic).to_string()
 }
 
@@ -6960,8 +7089,8 @@ mod tests {
                     "sessionId": "session-1",
                     "turnId": "turn-1",
                     "payload": {
-                        "turnStatus": "failed/Unauthorized",
-                        "code": "codex_turn_not_completed"
+                        "turnStatus": "failed/UsageLimitExceeded",
+                        "code": "codex_usage_limit_exceeded"
                     }
                 }),
             )
@@ -6971,16 +7100,19 @@ mod tests {
                 &scope,
                 &serde_json::json!({
                     "ok": false,
-                    "turnStatus": "failed/Unauthorized",
+                    "turnStatus": "failed/UsageLimitExceeded",
                     "error": {
-                        "code": "codex_turn_not_completed",
+                        "code": "codex_usage_limit_exceeded",
                         "stage": "turn/completed",
-                        "turnStatus": "failed/Unauthorized",
+                        "component": "native_cli",
+                        "retryable": false,
+                        "recovery": "select_available_model_or_wait_for_quota_reset",
+                        "turnStatus": "failed/UsageLimitExceeded",
                         "message": "turn-fixture/secret.txt is unreadable"
                     }
                 }),
                 DispatchState::Failed,
-                Some("codex_turn_not_completed"),
+                Some("codex_usage_limit_exceeded"),
             )
             .unwrap();
         let event = store
@@ -6997,9 +7129,12 @@ mod tests {
             .map(|part| part.content.as_str())
             .collect();
         assert_eq!(diagnostics.len(), 1);
-        assert!(diagnostics[0].contains("codex_turn_not_completed"));
+        assert!(diagnostics[0].contains("codex_usage_limit_exceeded"));
         assert!(diagnostics[0].contains("turn/completed"));
-        assert!(diagnostics[0].contains("failed/Unauthorized"));
+        assert!(diagnostics[0].contains("failed/UsageLimitExceeded"));
+        assert!(diagnostics[0].contains("native_cli"));
+        assert!(diagnostics[0].contains("\"retryable\":false"));
+        assert!(diagnostics[0].contains("select_available_model_or_wait_for_quota_reset"));
         assert!(!diagnostics[0].contains("secret.txt"));
         assert!(!diagnostics[0].contains("turn-fixture"));
         assert!(!diagnostics.contains(&"runtime diagnostic"));
