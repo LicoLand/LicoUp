@@ -60,4 +60,9 @@ impl ProtocolFailure {
         self.user_interaction_required = true;
         self
     }
+
+    pub(super) fn with_turn_status(mut self, turn_status: &str) -> Self {
+        self.turn_status = Some(turn_status.to_string());
+        self
+    }
 }

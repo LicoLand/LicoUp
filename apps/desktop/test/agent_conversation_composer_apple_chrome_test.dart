@@ -66,6 +66,7 @@ void main() {
         ),
       );
       await tester.pump();
+      expect(tester.takeException(), isNull);
 
       expect(
         find.byKey(const Key('agent-conversation-composer-field')),

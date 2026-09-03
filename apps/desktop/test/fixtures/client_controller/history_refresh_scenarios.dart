@@ -586,6 +586,7 @@ void registerClientHistoryRefreshScenarios() {
       await controller.loadConversationSessions('codex');
       service.conversationStreamCalls = 0;
       service.cliCalls = const [];
+      service.conversationStdinRequests = const [];
       var activeNotifications = 0;
       var structureNotifications = 0;
       var globalNotifications = 0;
@@ -601,12 +602,11 @@ void registerClientHistoryRefreshScenarios() {
 
       expect(service.conversationStreamCalls, greaterThanOrEqualTo(1));
       expect(
-        service.cliCalls.any(
-          (args) =>
-              args.contains('--session-id') &&
-              args.contains('native-codex-active') &&
-              args.contains('--limit') &&
-              args.contains('1'),
+        service.conversationStdinRequests.any(
+          (request) =>
+              request['sessionId'] == 'native-codex-active' &&
+              request['limit'] == 1 &&
+              request['messageLimit'] == 50,
         ),
         isTrue,
       );

@@ -1,12 +1,11 @@
 use crate::platform::url_security::canonical_https_or_loopback_http_origin;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use std::env;
 use uuid::Uuid;
 
 use super::endpoint_trust::{
-    clear_mobile_relay_pairing_state, force_reset_local_pairwise_protocol, public_config,
-    reset_incompatible_local_pairwise_protocol,
+    clear_mobile_relay_pairing_state, ensure_local_pairwise_protocol_compatible, public_config,
 };
 use super::secret_custody::{
     CONFIG_SCHEMA_VERSION, apply_selected_paired_device_credentials,
@@ -78,12 +77,15 @@ pub fn config_set(params: &Value) -> Result<Value> {
 pub(super) fn normalize_config(value: Value) -> Value {
     let defaults = default_config();
     let object = value.as_object().cloned().unwrap_or_default();
+    if object.is_empty() {
+        return defaults;
+    }
     let current_schema = object.get("schemaVersion").and_then(Value::as_u64)
         == Some(u64::from(CONFIG_SCHEMA_VERSION));
     if !current_schema {
-        let mut config = defaults;
-        force_reset_local_pairwise_protocol(&mut config);
-        return config;
+        // Startup migration is the sole owner of historical schemas. Never
+        // turn an incompatible durable document into fresh state here.
+        return Value::Object(object);
     }
     let mut merged = defaults.as_object().cloned().unwrap_or_default();
     for (key, value) in object {
@@ -92,7 +94,6 @@ pub(super) fn normalize_config(value: Value) -> Value {
     merged.insert("schemaVersion".to_string(), json!(CONFIG_SCHEMA_VERSION));
     let mut config = Value::Object(merged);
     normalize_station_fields(&mut config);
-    let _ = reset_incompatible_local_pairwise_protocol(&mut config);
     if let Some(object) = config.as_object_mut() {
         object.insert("lastPairingCode".to_string(), json!(""));
         object.insert("lastPairingExpiresAt".to_string(), json!(""));
@@ -112,6 +113,32 @@ pub(super) fn normalize_config(value: Value) -> Value {
         }
     }
     config
+}
+
+pub(crate) fn migrate_config_document(value: &mut Value) -> Result<()> {
+    let schema = value
+        .get("schemaVersion")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| anyhow!("mobile relay config schema is missing"))?;
+    ensure!(
+        schema <= u64::from(CONFIG_SCHEMA_VERSION),
+        "mobile relay config is newer than this client"
+    );
+    ensure_local_pairwise_protocol_compatible(value)?;
+    value
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("mobile relay config exists but is not an object"))?
+        .insert("schemaVersion".to_owned(), json!(CONFIG_SCHEMA_VERSION));
+    Ok(())
+}
+
+pub(crate) fn validate_current_config_document(value: &Value) -> Result<()> {
+    ensure!(
+        value.get("schemaVersion").and_then(Value::as_u64)
+            == Some(u64::from(CONFIG_SCHEMA_VERSION)),
+        "mobile relay config requires startup migration"
+    );
+    ensure_local_pairwise_protocol_compatible(value)
 }
 
 pub(super) fn normalize_station_fields(config: &mut Value) {
@@ -218,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn previous_schema_initializes_fresh_current_state() {
+    fn previous_schema_is_never_silently_replaced_with_fresh_state() {
         let mut config = json!({
             "schemaVersion": 1,
             "stationBaseUrl": "https://must-not-migrate.example.test",
@@ -228,10 +255,16 @@ mod tests {
 
         config = normalize_config(config);
 
-        assert_eq!(config["schemaVersion"], json!(CONFIG_SCHEMA_VERSION));
-        assert_eq!(config["stationBaseUrl"], json!(""));
-        assert_eq!(config["pcClientName"], json!("LicoUp"));
-        assert_eq!(config["mobileRelayE2ee"], json!({}));
+        assert_eq!(config["schemaVersion"], json!(1));
+        assert_eq!(
+            config["stationBaseUrl"],
+            json!("https://must-not-migrate.example.test")
+        );
+        assert_eq!(config["pcClientName"], json!("must not migrate"));
+        assert_eq!(
+            config["mobileRelayE2ee"],
+            json!({"protocolVersion": "retired"})
+        );
     }
 
     #[test]

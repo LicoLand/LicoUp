@@ -414,6 +414,168 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the group assistant thread pins above recency groups by default',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final entries = flattenSidebarConversations(
+        targets: [_target('codex', 'Codex'), _target('worker-a', 'Worker A')],
+        sessionsByAgent: {
+          'codex': [_session('assistant-thread', 'codex', 'Assistant thread')],
+          'worker-a': [
+            _session(
+              'member-work',
+              'worker-a',
+              'Member work',
+              updatedHoursAgo: 1,
+            ),
+          ],
+        },
+        activityFor: (_) => AgentConversationTabActivity.none,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 640,
+              child: SidebarConversationListView(
+                entries: entries,
+                selectedSessionId: '',
+                earlierExpanded: false,
+                onToggleEarlier: () {},
+                onSelectSession: (_, _) {},
+                priorityAgentId: 'codex',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The assistant thread (older) pins into 优先 above the newer member row
+      // and is not duplicated in the recency groups below.
+      expect(find.text('优先'), findsOneWidget);
+      expect(find.text('Assistant thread'), findsOneWidget);
+      expect(find.text('Member work'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Assistant thread')).dy,
+        lessThan(tester.getTopLeft(find.text('Member work')).dy),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'group list keeps current and historical Agents above collapsed others',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final entries = flattenSidebarConversations(
+        targets: [
+          _target('codex', 'Codex'),
+          _target('claude-code', 'Claude Code'),
+          _target('kimi-code', 'Kimi Code'),
+        ],
+        sessionsByAgent: {
+          'codex': [
+            _session(
+              'current-thread',
+              'codex',
+              'Current group thread',
+              updatedHoursAgo: 3,
+            ),
+          ],
+          'claude-code': [
+            _session(
+              'historical-thread',
+              'claude-code',
+              'Historical group thread',
+              updatedHoursAgo: 2,
+            ),
+          ],
+          'kimi-code': [
+            _session(
+              'unrelated-thread',
+              'kimi-code',
+              'Unrelated thread',
+              updatedHoursAgo: 1,
+            ),
+          ],
+        },
+        activityFor: (_) => AgentConversationTabActivity.none,
+      );
+      var otherExpanded = false;
+      late StateSetter update;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 640,
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  return SidebarConversationListView(
+                    entries: entries,
+                    selectedSessionId: '',
+                    earlierExpanded: true,
+                    onToggleEarlier: () {},
+                    onSelectSession: (_, _) {},
+                    relatedAgentIds: const {'codex', 'claude-code'},
+                    otherConversationsExpanded: otherExpanded,
+                    onToggleOtherConversations: () =>
+                        update(() => otherExpanded = !otherExpanded),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Current group thread'), findsOneWidget);
+      expect(find.text('Historical group thread'), findsOneWidget);
+      expect(find.text('其它对话'), findsOneWidget);
+      expect(find.text('Unrelated thread'), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('Historical group thread')).dy,
+        lessThan(tester.getTopLeft(find.text('其它对话')).dy),
+      );
+
+      await tester.tap(
+        find.byKey(const Key('agents-sidebar-other-conversations-toggle')),
+      );
+      await tester.pump();
+      expect(find.text('Unrelated thread'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('completed conversation activity dot breathes', (tester) async {
     await _pumpSidebar(
       tester,

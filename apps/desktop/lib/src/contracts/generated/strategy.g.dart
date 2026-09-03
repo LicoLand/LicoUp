@@ -124,6 +124,11 @@ enum StrategyFailureCode {
   callbackConflict("callback_conflict"),
   effectInDoubt("effect_in_doubt"),
   unsupportedAction("unsupported_action"),
+  graphInvalid("graph_invalid"),
+  graphPreflightRejected("graph_preflight_rejected"),
+  graphIdentityRejected("graph_identity_rejected"),
+  graphRouteStale("graph_route_stale"),
+  strategyIdempotencyConflict("strategy_idempotency_conflict"),
   unknown('');
 
   const StrategyFailureCode(this.wireName);
@@ -138,6 +143,205 @@ enum StrategyFailureCode {
       }
     }
     return StrategyFailureCode.unknown;
+  }
+}
+
+enum StrategyWorkflowDiagnosticStage {
+  workflowParse("workflow/parse"),
+  workflowCompile("workflow/compile"),
+  packageValidate("package/validate"),
+  assistantWorkflowPreflight("assistant-workflow/preflight"),
+  assistantWorkflowRevalidate("assistant-workflow/revalidate"),
+  unknown('');
+
+  const StrategyWorkflowDiagnosticStage(this.wireName);
+  final String wireName;
+
+  static StrategyWorkflowDiagnosticStage fromWire(Object? value) {
+    if (value is! String) return StrategyWorkflowDiagnosticStage.unknown;
+    for (final candidate in StrategyWorkflowDiagnosticStage.values) {
+      if (candidate != StrategyWorkflowDiagnosticStage.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyWorkflowDiagnosticStage.unknown;
+  }
+}
+
+enum StrategyWorkflowDiagnosticCode {
+  workflowSyntaxInvalid("workflow_syntax_invalid"),
+  workflowShapeInvalid("workflow_shape_invalid"),
+  workflowRequiredFieldMissing("workflow_required_field_missing"),
+  workflowFieldTypeInvalid("workflow_field_type_invalid"),
+  workflowFieldValueInvalid("workflow_field_value_invalid"),
+  workflowUnknownField("workflow_unknown_field"),
+  workflowSchemaUnsupported("workflow_schema_unsupported"),
+  workflowMetadataIdInvalid("workflow_metadata_id_invalid"),
+  workflowMetadataNameInvalid("workflow_metadata_name_invalid"),
+  workflowMetadataVersionInvalid("workflow_metadata_version_invalid"),
+  workflowStateLimit("workflow_state_limit"),
+  workflowTransitionLimit("workflow_transition_limit"),
+  workflowBindingLimit("workflow_binding_limit"),
+  workflowRuntimeLimit("workflow_runtime_limit"),
+  workflowParallelismInvalid("workflow_parallelism_invalid"),
+  workflowWorksetLimitInvalid("workflow_workset_limit_invalid"),
+  workflowRetryLimitInvalid("workflow_retry_limit_invalid"),
+  workflowBindingIdInvalid("workflow_binding_id_invalid"),
+  workflowBindingDuplicate("workflow_binding_duplicate"),
+  workflowBindingLabelInvalid("workflow_binding_label_invalid"),
+  workflowFallbackInvalid("workflow_fallback_invalid"),
+  workflowEntrySlotInvalid("workflow_entry_slot_invalid"),
+  workflowRuntimeIdInvalid("workflow_runtime_id_invalid"),
+  workflowRuntimeBindingInvalid("workflow_runtime_binding_invalid"),
+  workflowWorksetIdInvalid("workflow_workset_id_invalid"),
+  workflowWorksetItemBindingInvalid("workflow_workset_item_binding_invalid"),
+  workflowWorksetPredecessorFieldInvalid(
+    "workflow_workset_predecessor_field_invalid",
+  ),
+  workflowWorksetFieldConflict("workflow_workset_field_conflict"),
+  workflowStateIdInvalid("workflow_state_id_invalid"),
+  workflowStateLabelInvalid("workflow_state_label_invalid"),
+  workflowStateInstructionInvalid("workflow_state_instruction_invalid"),
+  workflowStateDuplicate("workflow_state_duplicate"),
+  workflowStateRetryInvalid("workflow_state_retry_invalid"),
+  workflowActorBindingInvalid("workflow_actor_binding_invalid"),
+  workflowStateFieldInvalid("workflow_state_field_invalid"),
+  workflowScriptRuntimeInvalid("workflow_script_runtime_invalid"),
+  workflowScriptEntryMissing("workflow_script_entry_missing"),
+  workflowScriptEntryInvalid("workflow_script_entry_invalid"),
+  workflowWorksetReferenceInvalid("workflow_workset_reference_invalid"),
+  workflowWorksetBindingInvalid("workflow_workset_binding_invalid"),
+  workflowInitialUnknown("workflow_initial_unknown"),
+  workflowTransitionIdInvalid("workflow_transition_id_invalid"),
+  workflowTransitionDuplicate("workflow_transition_duplicate"),
+  workflowTransitionStateUnknown("workflow_transition_state_unknown"),
+  workflowGuardInvalid("workflow_guard_invalid"),
+  workflowGuardAmbiguous("workflow_guard_ambiguous"),
+  workflowRoutingInvalid("workflow_routing_invalid"),
+  workflowTopologyInvalid("workflow_topology_invalid"),
+  workflowStateUnreachable("workflow_state_unreachable"),
+  workflowTerminalUnreachable("workflow_terminal_unreachable"),
+  workflowEffectCycle("workflow_effect_cycle"),
+  workflowInvalid("workflow_invalid"),
+  graphIdentityNotAssistantTemporary("graph_identity_not_assistant_temporary"),
+  graphRuntimeAssetUnavailable("graph_runtime_asset_unavailable"),
+  graphAssistantMembershipRejected("graph_assistant_membership_rejected"),
+  graphAssistantDesignationRejected("graph_assistant_designation_rejected"),
+  graphAssistantSkillUnavailable("graph_assistant_skill_unavailable"),
+  graphAuthorityRejected("graph_authority_rejected"),
+  graphBindingDuplicate("graph_binding_duplicate"),
+  graphBindingUnknown("graph_binding_unknown"),
+  graphBindingKindRejected("graph_binding_kind_rejected"),
+  graphBindingIncomplete("graph_binding_incomplete"),
+  graphMembershipRejected("graph_membership_rejected"),
+  graphModelUnavailable("graph_model_unavailable"),
+  graphModelRejected("graph_model_rejected"),
+  graphReadinessRejected("graph_readiness_rejected"),
+  graphEnvironmentUnavailable("graph_environment_unavailable"),
+  graphProfileRejected("graph_profile_rejected"),
+  conversationStateUnavailable("conversation_state_unavailable"),
+  conversationNotFound("conversation_not_found"),
+  graphRouteStale("graph_route_stale"),
+  unknown('');
+
+  const StrategyWorkflowDiagnosticCode(this.wireName);
+  final String wireName;
+
+  static StrategyWorkflowDiagnosticCode fromWire(Object? value) {
+    if (value is! String) return StrategyWorkflowDiagnosticCode.unknown;
+    for (final candidate in StrategyWorkflowDiagnosticCode.values) {
+      if (candidate != StrategyWorkflowDiagnosticCode.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyWorkflowDiagnosticCode.unknown;
+  }
+}
+
+enum StrategyWorkflowDiagnosticRecovery {
+  addRequiredField("add_required_field"),
+  correctField("correct_field"),
+  removeUnknownField("remove_unknown_field"),
+  removeDuplicate("remove_duplicate"),
+  correctReference("correct_reference"),
+  reduceResource("reduce_resource"),
+  correctRouting("correct_routing"),
+  correctTopology("correct_topology"),
+  updateAssistantProfile("update_assistant_profile"),
+  updateBinding("update_binding"),
+  refreshConversationState("refresh_conversation_state"),
+  unknown('');
+
+  const StrategyWorkflowDiagnosticRecovery(this.wireName);
+  final String wireName;
+
+  static StrategyWorkflowDiagnosticRecovery fromWire(Object? value) {
+    if (value is! String) return StrategyWorkflowDiagnosticRecovery.unknown;
+    for (final candidate in StrategyWorkflowDiagnosticRecovery.values) {
+      if (candidate != StrategyWorkflowDiagnosticRecovery.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyWorkflowDiagnosticRecovery.unknown;
+  }
+}
+
+enum StrategyWorkflowDiagnosticExpected {
+  object("object"),
+  array("array"),
+  string("string"),
+  integer("integer"),
+  boolean("boolean"),
+  enumValue("enum_value"),
+  identifier("identifier"),
+  nonEmptyText("non_empty_text"),
+  uniqueId("unique_id"),
+  existingReference("existing_reference"),
+  supportedSchema("supported_schema"),
+  validRouting("valid_routing"),
+  validTopology("valid_topology"),
+  unknown('');
+
+  const StrategyWorkflowDiagnosticExpected(this.wireName);
+  final String wireName;
+
+  static StrategyWorkflowDiagnosticExpected fromWire(Object? value) {
+    if (value is! String) return StrategyWorkflowDiagnosticExpected.unknown;
+    for (final candidate in StrategyWorkflowDiagnosticExpected.values) {
+      if (candidate != StrategyWorkflowDiagnosticExpected.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyWorkflowDiagnosticExpected.unknown;
+  }
+}
+
+enum StrategyWorkflowDiagnosticActualKind {
+  missing("missing"),
+  nullValue("null"),
+  object("object"),
+  array("array"),
+  string("string"),
+  number("number"),
+  boolean("boolean"),
+  unknown('');
+
+  const StrategyWorkflowDiagnosticActualKind(this.wireName);
+  final String wireName;
+
+  static StrategyWorkflowDiagnosticActualKind fromWire(Object? value) {
+    if (value is! String) return StrategyWorkflowDiagnosticActualKind.unknown;
+    for (final candidate in StrategyWorkflowDiagnosticActualKind.values) {
+      if (candidate != StrategyWorkflowDiagnosticActualKind.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyWorkflowDiagnosticActualKind.unknown;
   }
 }
 
@@ -160,6 +364,9 @@ enum StrategyActionKind {
   strategyRunResume("strategy.run.resume"),
   strategyRunCancel("strategy.run.cancel"),
   strategyRunRetry("strategy.run.retry"),
+  strategyAssistantWorkflowExecute("strategy.assistant.workflow.execute"),
+  strategyAssistantWorkflowInspect("strategy.assistant.workflow.inspect"),
+  strategyAssistantWorkflowCancel("strategy.assistant.workflow.cancel"),
   unknown('');
 
   const StrategyActionKind(this.wireName);
@@ -183,3 +390,116 @@ const int strategyBridgeMaxPackageBytes = 8388608;
 const int strategyBridgeMaxStates = 512;
 const int strategyBridgeMaxTransitions = 2048;
 const int strategyBridgeMaxParallelism = 8;
+const int strategyWorkflowMaxDiagnostics = 128;
+const int strategyWorkflowMaxDiagnosticPathBytes = 256;
+const int strategyWorkflowMaxRelatedPaths = 8;
+
+final class StrategyWorkflowDiagnostic {
+  const StrategyWorkflowDiagnostic({
+    required this.code,
+    required this.stage,
+    this.path = '',
+    this.relatedPaths = const [],
+    this.membershipId = '',
+    this.actual,
+    this.limit,
+    this.expected = StrategyWorkflowDiagnosticExpected.unknown,
+    this.actualKind = StrategyWorkflowDiagnosticActualKind.unknown,
+    this.recovery = StrategyWorkflowDiagnosticRecovery.unknown,
+    this.line,
+    this.column,
+  });
+
+  factory StrategyWorkflowDiagnostic.fromJson(Map<String, dynamic> json) {
+    final parsedCode = StrategyWorkflowDiagnosticCode.fromWire(json['code']);
+    final code = parsedCode == StrategyWorkflowDiagnosticCode.unknown
+        ? StrategyWorkflowDiagnosticCode.workflowInvalid
+        : parsedCode;
+    final parsedStage = StrategyWorkflowDiagnosticStage.fromWire(json['stage']);
+    final stage = parsedStage == StrategyWorkflowDiagnosticStage.unknown
+        ? StrategyWorkflowDiagnosticStage.workflowCompile
+        : parsedStage;
+    if (code == StrategyWorkflowDiagnosticCode.workflowSyntaxInvalid) {
+      return StrategyWorkflowDiagnostic(
+        code: code,
+        stage: StrategyWorkflowDiagnosticStage.workflowParse,
+        line: _strategyWorkflowNonNegativeInt(json['line']),
+        column: _strategyWorkflowNonNegativeInt(json['column']),
+      );
+    }
+    final rawPath = json['path'] is String ? json['path'] as String : '';
+    final relatedPaths = json['relatedPaths'] is List
+        ? (json['relatedPaths'] as List)
+              .whereType<String>()
+              .where(_strategyWorkflowValidPointer)
+              .take(strategyWorkflowMaxRelatedPaths)
+              .toList(growable: false)
+        : const <String>[];
+    final membership = json['membershipId'] is String
+        ? json['membershipId'] as String
+        : '';
+    return StrategyWorkflowDiagnostic(
+      code: code,
+      stage: stage,
+      path: _strategyWorkflowValidPointer(rawPath) ? rawPath : '',
+      relatedPaths: relatedPaths,
+      membershipId:
+          (stage ==
+                      StrategyWorkflowDiagnosticStage
+                          .assistantWorkflowPreflight ||
+                  stage ==
+                      StrategyWorkflowDiagnosticStage
+                          .assistantWorkflowRevalidate) &&
+              _strategyWorkflowValidId(membership)
+          ? membership
+          : '',
+      actual: _strategyWorkflowNonNegativeInt(json['actual']),
+      limit: _strategyWorkflowNonNegativeInt(json['limit']),
+      expected: StrategyWorkflowDiagnosticExpected.fromWire(json['expected']),
+      actualKind: StrategyWorkflowDiagnosticActualKind.fromWire(
+        json['actualKind'],
+      ),
+      recovery: StrategyWorkflowDiagnosticRecovery.fromWire(json['recovery']),
+      line: _strategyWorkflowNonNegativeInt(json['line']),
+      column: _strategyWorkflowNonNegativeInt(json['column']),
+    );
+  }
+
+  final StrategyWorkflowDiagnosticCode code;
+  final StrategyWorkflowDiagnosticStage stage;
+  final String path;
+  final List<String> relatedPaths;
+  final String membershipId;
+  final int? actual;
+  final int? limit;
+  final StrategyWorkflowDiagnosticExpected expected;
+  final StrategyWorkflowDiagnosticActualKind actualKind;
+  final StrategyWorkflowDiagnosticRecovery recovery;
+  final int? line;
+  final int? column;
+}
+
+int? _strategyWorkflowNonNegativeInt(Object? value) =>
+    value is int && value >= 0 ? value : null;
+
+bool _strategyWorkflowValidId(String value) =>
+    value.isNotEmpty &&
+    value.length <= strategyWorkflowMaxDiagnosticPathBytes &&
+    RegExp(r'^[A-Za-z0-9:._-]+$').hasMatch(value);
+
+bool _strategyWorkflowValidPointer(String value) {
+  if (value.isEmpty) return true;
+  if (value.length > strategyWorkflowMaxDiagnosticPathBytes ||
+      !value.startsWith('/')) {
+    return false;
+  }
+  for (var index = 0; index < value.length; index += 1) {
+    if (value.codeUnitAt(index) != 0x7e) continue;
+    index += 1;
+    if (index >= value.length ||
+        (value.codeUnitAt(index) != 0x30 && value.codeUnitAt(index) != 0x31)) {
+      return false;
+    }
+  }
+  return true;
+}

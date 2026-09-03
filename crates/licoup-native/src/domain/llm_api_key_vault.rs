@@ -241,21 +241,6 @@ impl LlmApiKeyInventory {
             entries,
         })
     }
-
-    /// Providers that still have at least one non-expired saved key.
-    ///
-    /// Gateway model projections use this set so a provider with no usable key
-    /// never appears in agent-visible model lists or default routes.
-    pub fn providers_with_usable_keys(
-        &self,
-        now_epoch_seconds: u64,
-    ) -> BTreeSet<LlmApiKeyProvider> {
-        self.entries
-            .iter()
-            .filter(|entry| !entry.is_expired(now_epoch_seconds))
-            .map(|entry| entry.provider)
-            .collect()
-    }
 }
 
 pub struct NewLlmApiKey {
@@ -1013,32 +998,6 @@ mod tests {
                 .unwrap()
                 .contains(secret.as_str())
         );
-    }
-
-    #[test]
-    fn providers_with_usable_keys_skips_expired_entries() {
-        let inventory = LlmApiKeyInventory::new(
-            GatewayCredentialLeaseDays::Thirty,
-            vec![
-                LlmApiKeyMetadata {
-                    credential_id: uuid::Uuid::new_v4().to_string(),
-                    provider: LlmApiKeyProvider::Kimi,
-                    label: "Active".to_owned(),
-                    created_at_epoch_seconds: 100,
-                    expires_at_epoch_seconds: Some(300),
-                },
-                LlmApiKeyMetadata {
-                    credential_id: uuid::Uuid::new_v4().to_string(),
-                    provider: LlmApiKeyProvider::Kilo,
-                    label: "Expired".to_owned(),
-                    created_at_epoch_seconds: 100,
-                    expires_at_epoch_seconds: Some(200),
-                },
-            ],
-        )
-        .unwrap();
-        let usable = inventory.providers_with_usable_keys(250);
-        assert_eq!(usable, BTreeSet::from([LlmApiKeyProvider::Kimi]));
     }
 
     #[test]

@@ -48,7 +48,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/llm_api_key_vault.rs",
         "crates/licoup-native/src/domain/llm_gateway.rs",
         "crates/licoup-native/src/domain/llm_gateway_agent_config.rs",
-        "crates/licoup-native/src/domain/llm_gateway_default_catalog.rs",
         "crates/licoup-native/src/domain/llm_gateway_stream.rs",
       ],
       command: rustLayer("domain::llm_"),
@@ -140,6 +139,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Session capability, review, and admission policy",
       inputs: ["crates/licoup-native/src/domain/session_policy/**"],
       command: rustLayer("domain::session_policy::"),
+    }),
+  defineModule({
+      id: "rust.domain.provider-quota",
+      kind: "rust-domain",
+      summary: "Provider-quota snapshot contract, per-provider sources, refresh scheduler, and retained store",
+      inputs: [
+        "crates/licoup-native/src/domain/provider_quota.rs",
+        "crates/licoup-native/src/domain/provider_quota/**",
+      ],
+      command: rustLayer("domain::provider_quota::"),
     }),
   defineModule({
       id: "rust.domain.agent-usage",
@@ -572,6 +581,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/domain/conversation/history/catalog.rs",
         "crates/licoup-native/src/domain/conversation/history/tests/catalog.rs",
+        "crates/licoup-native/tests/conversation_catalog_invariants.rs",
       ],
       command: rustLayer("domain::conversation::history::tests::catalog::"),
     }),
@@ -2613,6 +2623,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::collaboration_plugin::workflow::tests::"),
     }),
   defineModule({
+      id: "rust.domain.client-state-migration",
+      kind: "rust-domain",
+      summary: "Forward-only client-state migration admission, reconciliation, and durable-domain preservation",
+      inputs: [
+        "crates/licoup-native/resources/client-state-migration-frontier.json",
+        "crates/licoup-native/src/domain/client_state_migration.rs",
+      ],
+      command: rustLayer("domain::client_state_migration::tests::"),
+    }),
+  defineModule({
       id: "rust.domain.client-update",
       kind: "rust-domain",
       summary: "Cross-cutting client update selection, metadata, receipts, and aggregate regression",
@@ -2621,6 +2641,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/client_update/constants.rs",
         "crates/licoup-native/src/domain/client_update/metadata.rs",
         "crates/licoup-native/src/domain/client_update/model.rs",
+        "crates/licoup-native/src/domain/client_update/receipt.rs",
         "crates/licoup-native/src/domain/client_update/selection.rs",
         "crates/licoup-native/src/domain/client_update/tests.rs",
         "crates/licoup-native/src/domain/client_update/tests/support.rs",

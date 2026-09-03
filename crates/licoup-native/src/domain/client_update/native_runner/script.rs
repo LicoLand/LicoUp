@@ -11,21 +11,17 @@ use anyhow::{Result, ensure};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::domain::client_update) enum ScriptAction {
     Apply,
-    Rollback,
 }
 
 pub(super) fn script_extension() -> &'static str {
     if cfg!(windows) { "ps1" } else { "sh" }
 }
 
-pub(super) fn apply_script(action: ScriptAction) -> &'static str {
-    match (std::env::consts::OS, action) {
-        ("macos", ScriptAction::Apply) => MACOS_APPLY_SH,
-        ("macos", ScriptAction::Rollback) => MACOS_ROLLBACK_SH,
-        ("linux", ScriptAction::Apply) => LINUX_APPLY_SH,
-        ("linux", ScriptAction::Rollback) => LINUX_ROLLBACK_SH,
-        ("windows", ScriptAction::Apply) => WINDOWS_APPLY_PS1,
-        ("windows", ScriptAction::Rollback) => WINDOWS_ROLLBACK_PS1,
+pub(super) fn apply_script(_action: ScriptAction) -> &'static str {
+    match std::env::consts::OS {
+        "macos" => MACOS_APPLY_SH,
+        "linux" => LINUX_APPLY_SH,
+        "windows" => WINDOWS_APPLY_PS1,
         _ => unreachable!("platform gating happens in the apply plan"),
     }
 }
@@ -88,18 +84,22 @@ pub(super) fn validate_bundle_id_arg(value: &str) -> Result<()> {
 }
 
 /// macOS apply: quit via osascript (best effort), wait for the GUI to exit,
-/// snapshot the current app, atomically replace it, re-register LaunchServices
-/// and relaunch through LaunchServices. The signed archive nests the .app
-/// inside the extraction root, so the staged app is `EXPANDED/APP_DIR`; the
-/// relaunch is best effort because a failed `open` must not fail the update.
+/// replace it with a pre-claim sibling backup, re-register LaunchServices,
+/// and relaunch through LaunchServices. The candidate deletes the backup when
+/// it atomically claims the verified handoff before state admission. The
+/// launcher remains attached until claim, rejection, or pre-claim process
+/// exit; there is no time-based interruption. The signed archive nests the
+/// .app inside the extraction root, so the staged app is `EXPANDED/APP_DIR`.
 const MACOS_APPLY_SH: &str = r#"#!/bin/sh
 set -eu
 APP_DIR="$1"
 INSTALL_ROOT="$2"
 EXPANDED="$3"
-SNAPSHOT="$4"
-GUI_PID="$5"
-BUNDLE_ID="$6"
+GUI_PID="$4"
+BUNDLE_ID="$5"
+BACKUP="$6"
+HANDOFF="$7"
+REJECTED="$HANDOFF.rejected"
 TARGET="$INSTALL_ROOT/$APP_DIR"
 STAGED_APP="$EXPANDED/$APP_DIR"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$TARGET" >/dev/null 2>&1
@@ -109,87 +109,90 @@ CURRENT_REQUIREMENT=${CURRENT_REQUIREMENT##*designated => }
 /usr/bin/xcrun stapler validate "$STAGED_APP" >/dev/null 2>&1
 /usr/sbin/spctl --assess --type execute "$STAGED_APP" >/dev/null 2>&1
 /usr/bin/osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
-i=0
 while /bin/kill -0 "$GUI_PID" 2>/dev/null; do
-  i=$((i+1))
-  if [ "$i" -gt 300 ]; then echo "client exit wait timed out" >&2; exit 3; fi
   /bin/sleep 1
 done
-if [ -d "$TARGET" ]; then /usr/bin/ditto "$TARGET" "$SNAPSHOT" >/dev/null 2>&1 || true; fi
-/bin/rm -rf -- "$TARGET"
-/usr/bin/ditto "$STAGED_APP" "$TARGET"
+/bin/rm -rf -- "$BACKUP"
+/bin/mv -- "$TARGET" "$BACKUP"
+restore_pre_claim() {
+  /bin/rm -rf -- "$TARGET"
+  if [ -e "$BACKUP" ]; then /bin/mv -- "$BACKUP" "$TARGET"; fi
+  /bin/rm -f -- "$HANDOFF"
+  /bin/rm -f -- "$REJECTED"
+}
+if ! /usr/bin/ditto "$STAGED_APP" "$TARGET"; then
+  restore_pre_claim
+  exit 1
+fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$TARGET" >/dev/null 2>&1 || true
 /usr/bin/mdimport "$TARGET" >/dev/null 2>&1 || true
-/usr/bin/open "$TARGET" >/dev/null 2>&1 || true
-exit 0
-"#;
-
-/// macOS rollback: restore the snapshot and relaunch. The snapshot is a flat
-/// copy of the target app (ditto creates the destination as a copy of the
-/// source), so the restored app is the snapshot directory itself.
-const MACOS_ROLLBACK_SH: &str = r#"#!/bin/sh
-set -eu
-APP_DIR="$1"
-INSTALL_ROOT="$2"
-SNAPSHOT="$3"
-GUI_PID="$4"
-BUNDLE_ID="$5"
-TARGET="$INSTALL_ROOT/$APP_DIR"
-/usr/bin/osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
-i=0
-while /bin/kill -0 "$GUI_PID" 2>/dev/null; do
-  i=$((i+1))
-  if [ "$i" -gt 300 ]; then echo "client exit wait timed out" >&2; exit 3; fi
+/usr/bin/open -W "$TARGET" >/dev/null 2>&1 &
+LAUNCHER_PID=$!
+while :; do
+  if [ -e "$REJECTED" ]; then
+    /usr/bin/osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
+    wait "$LAUNCHER_PID" 2>/dev/null || true
+    restore_pre_claim
+    exit 1
+  fi
+  if [ ! -e "$HANDOFF" ] || /usr/bin/grep -q '"state":"claimed"' "$HANDOFF" 2>/dev/null; then
+    exit 0
+  fi
+  if ! /bin/kill -0 "$LAUNCHER_PID" 2>/dev/null; then
+    wait "$LAUNCHER_PID" 2>/dev/null || true
+    restore_pre_claim
+    exit 1
+  fi
   /bin/sleep 1
 done
-if [ -d "$TARGET" ]; then /bin/rm -rf -- "$TARGET"; fi
-/usr/bin/ditto "$SNAPSHOT" "$TARGET"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$TARGET" >/dev/null 2>&1 || true
-/usr/bin/mdimport "$TARGET" >/dev/null 2>&1 || true
-/usr/bin/open "$TARGET" >/dev/null 2>&1 || true
-exit 0
 "#;
 
-/// Linux apply: wait for the GUI to exit, snapshot, atomically replace the
+/// Linux apply: wait for the GUI to exit, atomically replace the
 /// bundle directory and relaunch detached. Only coreutils and /bin/sh
 /// builtins are used; no tar/unzip/pkill/pgrep.
 const LINUX_APPLY_SH: &str = r#"#!/bin/sh
 set -eu
 INSTALL_ROOT="$1"
 EXPANDED="$2"
-SNAPSHOT="$3"
-GUI_PID="$4"
-APP_NAME="licoup"
-i=0
-while /bin/kill -0 "$GUI_PID" 2>/dev/null; do
-  i=$((i+1))
-  if [ "$i" -gt 300 ]; then echo "client exit wait timed out" >&2; exit 3; fi
-  /bin/sleep 1
-done
-if [ -d "$INSTALL_ROOT" ]; then /bin/cp -R "$INSTALL_ROOT" "$SNAPSHOT" >/dev/null 2>&1 || true; fi
-/bin/rm -rf -- "$INSTALL_ROOT"
-/bin/cp -R "$EXPANDED" "$INSTALL_ROOT"
-/usr/bin/nohup "$INSTALL_ROOT/$APP_NAME" >/dev/null 2>&1 &
-exit 0
-"#;
-
-/// Linux rollback: restore the snapshot and relaunch.
-const LINUX_ROLLBACK_SH: &str = r#"#!/bin/sh
-set -eu
-INSTALL_ROOT="$1"
-SNAPSHOT="$2"
 GUI_PID="$3"
+BACKUP="$4"
+HANDOFF="$5"
+REJECTED="$HANDOFF.rejected"
 APP_NAME="licoup"
-i=0
 while /bin/kill -0 "$GUI_PID" 2>/dev/null; do
-  i=$((i+1))
-  if [ "$i" -gt 300 ]; then echo "client exit wait timed out" >&2; exit 3; fi
   /bin/sleep 1
 done
-if [ -d "$INSTALL_ROOT" ]; then /bin/rm -rf -- "$INSTALL_ROOT"; fi
-/bin/cp -R "$SNAPSHOT" "$INSTALL_ROOT"
+/bin/rm -rf -- "$BACKUP"
+/bin/mv -- "$INSTALL_ROOT" "$BACKUP"
+restore_pre_claim() {
+  /bin/rm -rf -- "$INSTALL_ROOT"
+  if [ -e "$BACKUP" ]; then /bin/mv -- "$BACKUP" "$INSTALL_ROOT"; fi
+  /bin/rm -f -- "$HANDOFF"
+  /bin/rm -f -- "$REJECTED"
+}
+if ! /bin/cp -R "$EXPANDED" "$INSTALL_ROOT"; then
+  restore_pre_claim
+  exit 1
+fi
 /usr/bin/nohup "$INSTALL_ROOT/$APP_NAME" >/dev/null 2>&1 &
-exit 0
+NEW_PID=$!
+while :; do
+  if [ -e "$REJECTED" ]; then
+    /bin/kill "$NEW_PID" 2>/dev/null || true
+    wait "$NEW_PID" 2>/dev/null || true
+    restore_pre_claim
+    exit 1
+  fi
+  if [ ! -e "$HANDOFF" ] || /bin/grep -q '"state":"claimed"' "$HANDOFF" 2>/dev/null; then
+    exit 0
+  fi
+  if ! /bin/kill -0 "$NEW_PID" 2>/dev/null; then
+    wait "$NEW_PID" 2>/dev/null || true
+    restore_pre_claim
+    exit 1
+  fi
+  /bin/sleep 1
+done
 "#;
 
 /// Windows apply: PowerShell cmdlets only; the Remove-Item retry loop covers
@@ -198,42 +201,53 @@ exit 0
 const WINDOWS_APPLY_PS1: &str = r#"$ErrorActionPreference = 'Stop'
 $installRoot = $args[0]
 $expanded = $args[1]
-$snapshot = $args[2]
-$guiPid = [int]$args[3]
-$appName = 'licoup.exe'
-$deadline = (Get-Date).AddMinutes(5)
-while ($null -ne (Get-Process -Id $guiPid -ErrorAction SilentlyContinue)) {
-  if ((Get-Date) -gt $deadline) { Write-Error 'client exit wait timed out'; exit 3 }
-  Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $installRoot) {
-  Copy-Item -LiteralPath $installRoot -Destination $snapshot -Recurse -Force
-}
-for ($attempt = 0; $attempt -lt 10; $attempt++) {
-  try { Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction Stop; break }
-  catch { Start-Sleep -Seconds 1 }
-}
-Copy-Item -LiteralPath $expanded -Destination $installRoot -Recurse -Force
-Start-Process -FilePath (Join-Path $installRoot $appName) -WorkingDirectory $installRoot
-"#;
-
-/// Windows rollback: restore the snapshot and relaunch.
-const WINDOWS_ROLLBACK_PS1: &str = r#"$ErrorActionPreference = 'Stop'
-$installRoot = $args[0]
-$snapshot = $args[1]
 $guiPid = [int]$args[2]
+$backup = $args[3]
+$handoff = $args[4]
+$rejected = "$handoff.rejected"
 $appName = 'licoup.exe'
-$deadline = (Get-Date).AddMinutes(5)
 while ($null -ne (Get-Process -Id $guiPid -ErrorAction SilentlyContinue)) {
-  if ((Get-Date) -gt $deadline) { Write-Error 'client exit wait timed out'; exit 3 }
   Start-Sleep -Seconds 1
 }
-for ($attempt = 0; $attempt -lt 10; $attempt++) {
-  try { Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction Stop; break }
-  catch { Start-Sleep -Seconds 1 }
+if (Test-Path -LiteralPath $backup) {
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction Stop
 }
-Copy-Item -LiteralPath $snapshot -Destination $installRoot -Recurse -Force
-Start-Process -FilePath (Join-Path $installRoot $appName) -WorkingDirectory $installRoot
+Move-Item -LiteralPath $installRoot -Destination $backup -Force
+try {
+  Copy-Item -LiteralPath $expanded -Destination $installRoot -Recurse -Force
+  $candidate = Start-Process -FilePath (Join-Path $installRoot $appName) -WorkingDirectory $installRoot -PassThru
+  while ($true) {
+    if (Test-Path -LiteralPath $rejected) {
+      Stop-Process -Id $candidate.Id -Force -ErrorAction SilentlyContinue
+      throw 'candidate rejected the update handoff'
+    }
+    if (-not (Test-Path -LiteralPath $handoff)) {
+      break
+    }
+    try {
+      $handoffState = (Get-Content -LiteralPath $handoff -Raw | ConvertFrom-Json).state
+    } catch {
+      $handoffState = ''
+    }
+    if ($handoffState -eq 'claimed') {
+      break
+    }
+    if ($candidate.HasExited) {
+      throw 'candidate exited before claiming the update handoff'
+    }
+    Start-Sleep -Seconds 1
+  }
+} catch {
+  if (Test-Path -LiteralPath $installRoot) {
+    Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path -LiteralPath $backup) {
+    Move-Item -LiteralPath $backup -Destination $installRoot -Force
+  }
+  Remove-Item -LiteralPath $handoff -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $rejected -Force -ErrorAction SilentlyContinue
+  throw
+}
 "#;
 
 /// Platform-independent template access for tests so the windows scripts can
@@ -241,15 +255,12 @@ Start-Process -FilePath (Join-Path $installRoot $appName) -WorkingDirectory $ins
 #[cfg(test)]
 pub(in crate::domain::client_update) fn platform_script_for_test(
     platform: &str,
-    action: ScriptAction,
+    _action: ScriptAction,
 ) -> &'static str {
-    match (platform, action) {
-        ("macos", ScriptAction::Apply) => MACOS_APPLY_SH,
-        ("macos", ScriptAction::Rollback) => MACOS_ROLLBACK_SH,
-        ("linux", ScriptAction::Apply) => LINUX_APPLY_SH,
-        ("linux", ScriptAction::Rollback) => LINUX_ROLLBACK_SH,
-        ("windows", ScriptAction::Apply) => WINDOWS_APPLY_PS1,
-        ("windows", ScriptAction::Rollback) => WINDOWS_ROLLBACK_PS1,
+    match platform {
+        "macos" => MACOS_APPLY_SH,
+        "linux" => LINUX_APPLY_SH,
+        "windows" => WINDOWS_APPLY_PS1,
         _ => unreachable!("unknown platform in test"),
     }
 }

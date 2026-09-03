@@ -30,10 +30,10 @@ pub(in crate::domain::mobile_relay) use directory_transparency::{
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) use local_material::rotate_mobile_relay_local_identity_for_repair;
 pub(in crate::domain::mobile_relay) use local_material::{
-    LocalEndpointState, ensure_mobile_relay_endpoint_descriptor,
-    ensure_mobile_relay_endpoint_material, force_reset_local_pairwise_protocol, hex_encode_bytes,
-    local_endpoint_public_descriptor, local_endpoint_state, local_public_device_identity,
-    reset_incompatible_local_pairwise_protocol, rotate_mobile_relay_one_time_prekeys,
+    LocalEndpointState, ensure_local_pairwise_protocol_compatible,
+    ensure_mobile_relay_endpoint_descriptor, ensure_mobile_relay_endpoint_material,
+    hex_encode_bytes, local_endpoint_public_descriptor, local_endpoint_state,
+    local_public_device_identity, rotate_mobile_relay_one_time_prekeys,
 };
 pub(in crate::domain::mobile_relay) use pairing_presentation::*;
 pub(in crate::domain::mobile_relay) use pairwise_codec::*;

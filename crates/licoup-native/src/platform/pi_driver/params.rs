@@ -5,20 +5,20 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
-pub(super) struct ProtocolConfig {
-    pub(super) prompt: String,
-    pub(super) requested_session_id: String,
-    pub(super) resume_session_path: Option<PathBuf>,
-    pub(super) cwd: String,
-    pub(super) model: Option<String>,
-    pub(super) model_provider: Option<String>,
-    pub(super) model_id: Option<String>,
-    pub(super) thinking_level: Option<String>,
-    pub(super) turn_id: String,
+pub(in crate::platform) struct ProtocolConfig {
+    pub(in crate::platform) prompt: String,
+    pub(in crate::platform) requested_session_id: String,
+    pub(in crate::platform) resume_session_path: Option<PathBuf>,
+    pub(in crate::platform) cwd: String,
+    pub(in crate::platform) model: Option<String>,
+    pub(in crate::platform) model_provider: Option<String>,
+    pub(in crate::platform) model_id: Option<String>,
+    pub(in crate::platform) thinking_level: Option<String>,
+    pub(in crate::platform) turn_id: String,
 }
 
 impl ProtocolConfig {
-    pub(super) fn from_params(
+    pub(in crate::platform) fn from_params(
         params: &Value,
         prompt: &str,
         session_id: &str,
@@ -43,6 +43,13 @@ impl ProtocolConfig {
                 "pi_approval_override_unsupported",
                 "Pi RPC approvals require an explicit client UI response.",
                 "capability/approval",
+            ));
+        }
+        if text_param(params, &["privateInstructions", "private_instructions"]).is_some() {
+            return Err(ProtocolFailure::new(
+                "pi_private_instructions_unsupported",
+                "Pi RPC does not expose a separate private instruction channel.",
+                "capability/instructions",
             ));
         }
         let thinking_level =
@@ -78,24 +85,25 @@ impl ProtocolConfig {
         let model = text_param(params, &["model", "modelId"]);
         let (model_provider, model_id) = match model.as_deref() {
             Some(value) => {
-                let Some((provider, model_id)) = value.split_once('/') else {
-                    return Err(ProtocolFailure::new(
-                        "pi_model_provider_required",
-                        "Pi RPC model overrides require provider/model identity.",
-                        "capability/model",
-                    ));
-                };
-                if provider.trim().is_empty() || model_id.trim().is_empty() {
-                    return Err(ProtocolFailure::new(
-                        "pi_model_provider_required",
-                        "Pi RPC model overrides require provider/model identity.",
-                        "capability/model",
-                    ));
+                if let Some((provider, model_id)) = value.split_once('/') {
+                    if provider.trim().is_empty() || model_id.trim().is_empty() {
+                        return Err(ProtocolFailure::new(
+                            "pi_model_provider_required",
+                            "Pi RPC model overrides require provider/model identity.",
+                            "capability/model",
+                        ));
+                    }
+                    (
+                        Some(provider.trim().to_string()),
+                        Some(model_id.trim().to_string()),
+                    )
+                } else {
+                    // Pi's CLI accepts a bare model selector, while its RPC
+                    // set_model command requires provider + modelId. Resolve
+                    // the selector against Pi's own configured model registry
+                    // after the RPC process starts.
+                    (None, Some(value.to_string()))
                 }
-                (
-                    Some(provider.trim().to_string()),
-                    Some(model_id.trim().to_string()),
-                )
             }
             None => (None, None),
         };
@@ -112,7 +120,7 @@ impl ProtocolConfig {
         })
     }
 
-    pub(super) fn is_resume(&self) -> bool {
+    pub(in crate::platform) fn is_resume(&self) -> bool {
         self.resume_session_path.is_some()
     }
 }

@@ -95,6 +95,7 @@ fn load_config_for_disposable_cleanup() -> Result<Value> {
         fs::read_to_string(&path).context("mobile relay disposable cleanup config read failed")?;
     let parsed = serde_json::from_str::<Value>(&raw)
         .context("mobile relay disposable cleanup config is invalid")?;
+    crate::domain::mobile_relay::validate_current_config_document(&parsed)?;
     Ok(normalize_config(parsed))
 }
 

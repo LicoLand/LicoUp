@@ -3,6 +3,11 @@
 English (normative) · [简体中文](RELEASE-PACKAGES.zh-CN.md) ·
 [Compatibility](COMPATIBILITY.md) · [Runbook](RUNBOOK.md)
 
+Nightly and Stable packages keep one application identity and data root. Their
+signed update manifest uses manifest-v2 and binds the artifact's release track
+and state-migration frontier. See
+[client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md).
+
 LicoUp has no universal release archive. A release request selects one or more
 exact package targets. Every selected target produces its own native installer,
 channel metadata, checksum, and package manifest.
@@ -130,8 +135,8 @@ metadata, digest mismatches, and checksum mismatches.
 
 `build` runs the target's complete native recipe before atomically staging the
 selected set. Generic and remote macOS direct builds fail closed. An explicitly
-authorized local operator uses `client:verify:macos-distribution:preflight`
-followed by `client:build:macos:platform-channel`; the coordinator requires
+authorized local operator uses the Apple Release-owned `client:release:macos`
+entry; the coordinator requires
 Developer ID, Hardened Runtime, secure timestamps, notarization, stapling, and
 Gatekeeper verification. Android direct requires its protected APK signing
 inputs. Missing platform authority fails before a

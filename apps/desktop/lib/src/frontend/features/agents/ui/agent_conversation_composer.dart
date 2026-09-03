@@ -29,6 +29,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.hasAttachments = false,
     required this.busy,
     required this.enabled,
+    this.cancelEnabled = false,
     required this.modelOptions,
     required this.selectedModel,
     required this.reasoningEffortOptions,
@@ -37,6 +38,8 @@ class RuntimeMessageComposer extends StatefulWidget {
     required this.onReasoningEffortChanged,
     required this.onDraftChanged,
     required this.onSend,
+    this.onSlashNewConversation,
+    this.onCancel,
     this.defaultModel = '',
     this.defaultReasoningEffort = '',
     this.showRuntimeSettings = true,
@@ -50,6 +53,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.mentionTargets = const [],
     this.mentionLabels = const {},
     this.leading,
+    this.fieldLeading,
   });
 
   final String targetLabel;
@@ -57,6 +61,7 @@ class RuntimeMessageComposer extends StatefulWidget {
   final bool hasAttachments;
   final bool busy;
   final bool enabled;
+  final bool cancelEnabled;
   final List<String> modelOptions;
   final String selectedModel;
   final List<String> reasoningEffortOptions;
@@ -65,6 +70,17 @@ class RuntimeMessageComposer extends StatefulWidget {
   final ValueChanged<String> onReasoningEffortChanged;
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
+  final Future<void> Function()? onCancel;
+
+  /// Optional handler for the exact slash-new command submitted alone
+  /// (trimmed). When set, submitting that command clears the field, runs this
+  /// handler, and never reaches [onSend]. Hosts that pass nothing keep the
+  /// ordinary posting behavior.
+  final VoidCallback? onSlashNewConversation;
+
+  /// The exact command text [onSlashNewConversation] intercepts when
+  /// submitted alone (trimmed).
+  static const String slashNewCommand = '/new';
   final String defaultModel;
   final String defaultReasoningEffort;
 
@@ -100,6 +116,10 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// Optional capsule rendered immediately before the input field.
   final Widget? leading;
 
+  /// Optional compact control rendered inside the field capsule, left of the
+  /// text input (for example the assistant toggle).
+  final Widget? fieldLeading;
+
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
 }
@@ -115,6 +135,11 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   int _mentionSelection = 0;
   final ScrollController _mentionScrollController = ScrollController();
   late final _ComposerPasteAction _pasteAction;
+
+  /// Field height readback target for the capsule morph; the public field key
+  /// stays a plain [ValueKey] for tests.
+  final GlobalKey _fieldSizeKey = GlobalKey();
+  bool _multilineEstimate = false;
 
   @override
   void initState() {
@@ -185,6 +210,36 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final mentionChanged = _syncMentionQuery();
     if (!mounted || (next == _hasText && !mentionChanged)) return;
     setState(() => _hasText = next);
+  }
+
+  /// The field's laid-out height drives the capsule morph: one text line of
+  /// interior is a stadium; anything taller (wrapped or hard-broken draft)
+  /// becomes the rounded rectangle. Size notifications arrive mid-layout, so
+  /// the readback runs post-frame.
+  void _onFieldSizeNotification() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = _fieldSizeKey.currentContext?.size;
+      if (size == null) return;
+      final multiline = size.height > _singleLineFieldExtent(context) + 0.5;
+      if (multiline == _multilineEstimate) return;
+      setState(() => _multilineEstimate = multiline);
+    });
+  }
+
+  /// The field's exact single-line height: outer insets plus the taller of
+  /// the control row (send/leading extent) and one padded text line.
+  double _singleLineFieldExtent(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyLarge ?? const TextStyle();
+    final painter = TextPainter(
+      text: TextSpan(text: 'Ag', style: style),
+      textDirection: Directionality.of(context),
+    )..layout();
+    return LicoRadius.composerInset * 2 +
+        math.max(
+          LicoIconButtonSize.medium.extent,
+          painter.height + 10, // text row vertical padding (5 + 5)
+        );
   }
 
   bool _syncMentionQuery() {
@@ -337,6 +392,13 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     if ((text.isEmpty && !widget.hasAttachments) || !widget.enabled) {
       return;
     }
+    final onSlashNewConversation = widget.onSlashNewConversation;
+    if (onSlashNewConversation != null &&
+        text == RuntimeMessageComposer.slashNewCommand) {
+      _controller.clear();
+      onSlashNewConversation();
+      return;
+    }
     _controller.clear();
     final consumed = await widget.onSend(text);
     if (!consumed && mounted && _controller.text.trim().isEmpty) {
@@ -355,86 +417,140 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final mobileClient = isMobileClientPlatform(context);
     final interactive = widget.enabled;
     final canSend = interactive && (_hasText || widget.hasAttachments);
-    final fieldRadius = BorderRadius.circular(
-      widget.floatingMatteCapsule
-          ? MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius
-          : LicoRadius.composerField,
-    );
+    final canCancel = widget.cancelEnabled && widget.onCancel != null;
     final fieldBody = Padding(
       padding: const EdgeInsets.all(LicoRadius.composerInset),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-                  child: Actions(
-                    actions: widget.onPasteImage == null
-                        ? const <Type, Action<Intent>>{}
-                        : <Type, Action<Intent>>{PasteTextIntent: _pasteAction},
-                    child: Focus(
-                      onKeyEvent: _handleMentionKey,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        minLines: 1,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _submit(),
-                        enabled: interactive,
-                        style: theme.textTheme.bodyLarge,
-                        decoration: InputDecoration(
-                          hintText: interactive
-                              ? strings.messageTarget(widget.targetLabel)
-                              : null,
-                          hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                            color: colors.textDisabled,
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // The in-field control pins to the first text line: while the
+                // capsule grows upward into a rounded rectangle, it stays at
+                // the interior top-left instead of sinking with the baseline.
+                if (widget.fieldLeading != null)
+                  SizedBox(
+                    height: double.infinity,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: widget.fieldLeading!,
+                    ),
+                  ),
+                Expanded(
+                  child: SizedBox(
+                    height: double.infinity,
+                    child: Align(
+                      // The text column centers between the frame's insets at
+                      // one line and fills the grown field on wrap — it never
+                      // sinks toward the send button's baseline.
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
+                        child: Actions(
+                          actions: widget.onPasteImage == null
+                              ? const <Type, Action<Intent>>{}
+                              : <Type, Action<Intent>>{
+                                  PasteTextIntent: _pasteAction,
+                                },
+                          child: Focus(
+                            onKeyEvent: _handleMentionKey,
+                            child: TextField(
+                              key: const Key(
+                                'agent-conversation-composer-input',
+                              ),
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              minLines: 1,
+                              maxLines: 4,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _submit(),
+                              enabled: interactive,
+                              style: theme.textTheme.bodyLarge,
+                              decoration: InputDecoration(
+                                hintText: interactive
+                                    ? strings.messageTarget(widget.targetLabel)
+                                    : null,
+                                hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colors.textDisabled,
+                                ),
+                                isDense: true,
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
                           ),
-                          isDense: true,
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: LicoContentSpacing.compact),
-              _ComposerSendButton(
-                canSend: canSend,
-                busy: widget.busy,
-                onTap: canSend ? _submit : null,
-                tooltip: strings.send,
-              ),
-            ],
+                const SizedBox(width: LicoContentSpacing.compact),
+                _ComposerSendButton(
+                  canSend: canSend,
+                  canCancel: canCancel,
+                  busy: widget.busy,
+                  onTap: canCancel
+                      ? () => widget.onCancel?.call()
+                      : canSend
+                      ? _submit
+                      : null,
+                  tooltip: canCancel ? strings.cancel : strings.send,
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
-    final field = widget.floatingMatteCapsule
-        ? Material(
-            key: const Key('agent-conversation-composer-field'),
-            color: Colors.transparent,
-            child: MessagingConversationOverlayGlass(
-              borderRadius: fieldRadius,
-              focused: _focused && interactive,
-              child: fieldBody,
+    // Telegram-style growth: the floating capsule is a stadium on one line
+    // and morphs into a rounded rectangle as the draft grows the field
+    // upward; the laid-out field height decides (see _onFieldSizeNotification).
+    final field = NotificationListener<SizeChangedLayoutNotification>(
+      key: const Key('agent-conversation-composer-field'),
+      onNotification: (_) {
+        _onFieldSizeNotification();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(
+        child: TweenAnimationBuilder<BorderRadius>(
+          key: _fieldSizeKey,
+          tween: Tween(
+            end: BorderRadius.circular(
+              widget.floatingMatteCapsule && !_multilineEstimate
+                  ? MessagingDesktopMetrics
+                        .conversationComposerCapsuleCornerRadius
+                  : LicoRadius.composerField,
             ),
-          )
-        : AppleGlassSurface(
-            key: const Key('agent-conversation-composer-field'),
-            borderRadius: fieldRadius,
-            focused: _focused && interactive,
-            child: fieldBody,
-          );
+          ),
+          duration: LicoMotion.micro,
+          curve: Curves.easeOut,
+          builder: (context, radius, child) {
+            return widget.floatingMatteCapsule
+                ? Material(
+                    color: Colors.transparent,
+                    child: MessagingConversationOverlayGlass(
+                      borderRadius: radius,
+                      focused: _focused && interactive,
+                      child: child!,
+                    ),
+                  )
+                : AppleGlassSurface(
+                    borderRadius: radius,
+                    focused: _focused && interactive,
+                    child: child!,
+                  );
+          },
+          child: fieldBody,
+        ),
+      ),
+    );
     final mentionSuggestions = _mentionSuggestions;
     return Padding(
       padding: mobileClient
@@ -732,12 +848,14 @@ class _ComposerAttachCapsuleButton extends StatelessWidget {
 class _ComposerSendButton extends StatelessWidget {
   const _ComposerSendButton({
     required this.canSend,
+    required this.canCancel,
     required this.busy,
     required this.onTap,
     required this.tooltip,
   });
 
   final bool canSend;
+  final bool canCancel;
   final bool busy;
   final VoidCallback? onTap;
   final String tooltip;
@@ -751,12 +869,18 @@ class _ComposerSendButton extends StatelessWidget {
       onPressed: onTap,
       size: LicoIconButtonSize.medium,
       shape: LicoIconButtonShape.circle,
-      tone: canSend ? LicoIconButtonTone.brand : LicoIconButtonTone.ghost,
-      icon: busy
+      tone: canSend || canCancel
+          ? LicoIconButtonTone.brand
+          : LicoIconButtonTone.ghost,
+      icon: canCancel
+          ? const Icon(Icons.stop_rounded)
+          : busy
           ? LicoSpinningRefreshIcon(
               size: 15,
               strokeWidth: 1.8,
-              color: canSend ? colors.textOnPrimary : colors.textMuted,
+              color: canSend || canCancel
+                  ? colors.textOnPrimary
+                  : colors.textMuted,
             )
           : const Icon(Icons.arrow_upward_rounded),
     );

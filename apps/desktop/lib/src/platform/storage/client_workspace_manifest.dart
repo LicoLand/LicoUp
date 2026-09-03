@@ -87,15 +87,13 @@ class ClientWorkspaceManifestStore {
   Future<ClientWorkspaceManifest> loadOrCreate(Directory directory) async {
     final file = File(p.join(directory.path, fileName));
     if (await file.exists()) {
-      final manifest = await _readOrQuarantine(file);
-      if (manifest != null) {
-        if (!_isCompatible(manifest)) {
-          throw StateError('client_workspace_manifest_incompatible');
-        }
-        final touched = manifest.touch(timestamp: _clock());
-        await _writeJsonAtomically(file, touched.toJson());
-        return touched;
+      final manifest = await _readCurrent(file);
+      if (!_isCompatible(manifest)) {
+        throw StateError('client_workspace_manifest_incompatible');
       }
+      final touched = manifest.touch(timestamp: _clock());
+      await _writeJsonAtomically(file, touched.toJson());
+      return touched;
     }
 
     final now = _clock().toUtc();
@@ -109,12 +107,12 @@ class ClientWorkspaceManifestStore {
 
   bool _isCompatible(ClientWorkspaceManifest manifest) {
     return manifest.appId == ClientWorkspaceManifest.licoUpAppId &&
-        manifest.schemaVersion <=
+        manifest.schemaVersion ==
             ClientWorkspaceManifest.currentSchemaVersion &&
         manifest.workspaceId.isNotEmpty;
   }
 
-  Future<ClientWorkspaceManifest?> _readOrQuarantine(File file) async {
+  Future<ClientWorkspaceManifest> _readCurrent(File file) async {
     try {
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is! Map) {
@@ -124,9 +122,7 @@ class ClientWorkspaceManifestStore {
         Map<String, dynamic>.from(decoded),
       );
     } catch (_) {
-      final suffix = _clock().toUtc().microsecondsSinceEpoch;
-      await file.rename('${file.path}.corrupt.$suffix');
-      return null;
+      throw StateError('client_workspace_manifest_invalid');
     }
   }
 

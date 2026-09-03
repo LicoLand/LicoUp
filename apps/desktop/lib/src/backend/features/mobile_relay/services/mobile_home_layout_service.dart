@@ -7,15 +7,12 @@ class MobileHomeLayoutService {
   final MobileHomeLayoutStore _store;
 
   Future<MobileHomeLayout> load(Object portableData) async {
-    try {
-      final json = await _store.read(portableData);
-      if (json is! Map) {
-        return MobileHomeLayout.defaults();
-      }
-      return MobileHomeLayout.fromJson(Map<String, dynamic>.from(json));
-    } catch (_) {
+    final json = await _store.read(portableData);
+    if (json == null) {
       return MobileHomeLayout.defaults();
     }
+    if (json is! Map) throw const FormatException('mobile_home_layout_invalid');
+    return MobileHomeLayout.fromJson(Map<String, dynamic>.from(json));
   }
 
   Future<void> save(Object portableData, MobileHomeLayout layout) async {

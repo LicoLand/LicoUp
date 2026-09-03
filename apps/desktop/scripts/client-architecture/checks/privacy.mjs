@@ -185,6 +185,7 @@ export async function checkFileSecurityAndClientState(context) {
     "accessors.rs",
     "activity.rs",
     "collections.rs",
+    "migration.rs",
     "operations.rs",
     "paths.rs",
     "policy.rs",

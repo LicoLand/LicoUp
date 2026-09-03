@@ -24,6 +24,14 @@ authority.
 ## Architecture
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
+- [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
+- [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
+- [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
+  [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
+- [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
+- [Agent adapters and runtime architecture](architecture/AGENT-ADAPTERS-ARCHITECTURE.md) · [智能体适配器架构规范](architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)
+- [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.zh-CN.md)
+- [Security and data boundaries](architecture/SECURITY-AND-DATA-BOUNDARY.md) · [安全架构与数据边界](architecture/SECURITY-AND-DATA-BOUNDARY.zh-CN.md)
 
 ## Functionality
 
@@ -62,6 +70,8 @@ authority.
 ## Operations and configuration
 
 - [Runbook](RUNBOOK.md)
+- [Parallel development map](parallel/PARALLEL-DEVELOPMENT-MAP.md) ·
+  [并行开发地图](parallel/PARALLEL-DEVELOPMENT-MAP.zh-CN.md)
 - [Compatibility](COMPATIBILITY.md) ·
   [兼容性](COMPATIBILITY.zh-CN.md)
 - [Release packages](RELEASE-PACKAGES.md) ·
@@ -77,6 +87,14 @@ catalogs and update commands are stated in those files.
 - [CLI workflow examples](examples/CLI-WORKFLOWS.md)
 - [Architecture decision records](adrs/README.md)
 - [ADR 0001: PTY transport for CLI lanes](adrs/0001-pty-transport-for-cli-lanes.md)
+- [ADR 0002: Conversation admission regime for running Agent dialogs](adrs/0002-conversation-admission-regime.md)
+- [ADR 0003: Group-conversation Agent Profile](adrs/0003-group-conversation-agent-profile.md)
+- [ADR 0004: Assistant-authored flexible workflows](adrs/0004-assistant-authored-flexible-workflows.md)
+- [ADR 0005: Assistant auto-adaptation, diagnostics, and DeepSeek Harness](adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md)
+- [ADR 0006: Capability-aware parallel client regression](adrs/0006-capability-aware-parallel-regression.md)
+- [ADR 0007: User-terminal Agent command identity](adrs/0007-user-terminal-agent-command-identity.md)
+- [ADR 0008: Native Agent parser and conversation integrity](adrs/0008-native-agent-parser-and-conversation-integrity.md)
+- [ADR 0009: Single Source of Truth Documentation Architecture and Domain Indexing](adrs/0009-single-source-of-truth-documentation-architecture.md) · [中文版](adrs/0009-single-source-of-truth-documentation-architecture.zh-CN.md)
 
 Plans, proposals, work reports, raw audit material, caches, and build output are
 not formal documents. They remain in ignored `docs/plans/`, `docs/reports/`,

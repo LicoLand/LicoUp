@@ -1,27 +1,22 @@
 use super::control::{clear_active_turn, register_active_turn};
+use super::errors::CursorFailureKind;
 use super::errors::ProtocolFailure;
-use super::events::{assistant_text, delta_text, is_error_result, session_id, terminal_result};
-use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
+use super::io::{TransportEvent, read_protocol_messages};
 use super::model::{CREATE_CHAT_ARGS, PROCESS_POLL_INTERVAL, RunResult, TURN_ARGS};
 use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
 };
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
-use crate::platform::turn_event_emit::emit_turn_event;
+use crate::platform::turn_event_emit::{
+    emit_agent_processing, emit_agent_tool_error, emit_turn_event,
+};
 use serde_json::Value;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-/// Hard bound for the session-creation phase of a new conversation. The turn
-/// itself may run without a deadline (timeoutMs 0), but `cursor-agent
-/// create-chat` must never leave the client spinning: a blocked create-chat
-/// fails with `cursor_cli_create_chat_timeout` instead.
-const CREATE_CHAT_BOUND_MS: u64 = 60_000;
 
 pub(in crate::platform) fn execute(
     executable: &str,
@@ -34,6 +29,24 @@ pub(in crate::platform) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
+    if params
+        .get("privateInstructions")
+        .or_else(|| params.get("private_instructions"))
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "cursor_cli_private_instructions_unsupported",
+                "Cursor Agent CLI does not expose a separate private instruction channel.",
+                "capability/instructions",
+            )
+            .with_session(Some(session_id)),
+            started_at,
+            false,
+            false,
+        );
+    }
     // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch):
     // the agent runs until the turn completes, however long that takes. A
     // non-zero window covers the whole turn, including the session-creation
@@ -68,15 +81,6 @@ pub(in crate::platform) fn execute(
     };
     let mut native_session = session_id.trim().to_string();
     if native_session.is_empty() {
-        // The desktop dispatches turns without a deadline (timeoutMs 0), so the
-        // session-creation phase must stay independently bounded: a blocked
-        // `cursor-agent create-chat` (auto-update lock, first-run, network)
-        // must fail visibly instead of leaving the client on an empty spinner.
-        let create_bound_ms = if timeout_ms == 0 {
-            CREATE_CHAT_BOUND_MS
-        } else {
-            timeout_ms.min(CREATE_CHAT_BOUND_MS)
-        };
         emit_turn_event(
             "agent.turn.processing",
             "",
@@ -87,7 +91,7 @@ pub(in crate::platform) fn execute(
                 "text": "creating native chat session",
             }),
         );
-        match create_chat_session(executable, &workspace, create_bound_ms, max_stdout) {
+        match create_chat_session(executable, params, &workspace, timeout_ms, max_stdout) {
             Ok(created) => {
                 native_session = created;
                 emit_turn_event(
@@ -173,6 +177,7 @@ fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Option<PathBuf> {
 
 fn create_chat_session(
     executable: &str,
+    params: &Value,
     workspace: &Path,
     timeout_ms: u64,
     max_output: Option<usize>,
@@ -184,6 +189,11 @@ fn create_chat_session(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Cursor may initialize and retain its MCP subprocess while creating the
+    // native chat. Bind the same scoped caller context here as on the resumed
+    // turn so the connector never starts without its canonical Membership.
+    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
+    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
     let mut child = SupervisedChild::spawn(&mut command).map_err(|_| {
         ProtocolFailure::new(
             "cursor_cli_start_failed",
@@ -252,26 +262,24 @@ fn create_chat_session(
             "session/new",
         ));
     }
-    let session_id = stdout
-        .text
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .ok_or_else(|| {
-            ProtocolFailure::new(
-                "cursor_cli_create_chat_failed",
-                "Cursor Agent CLI did not return a chat session identifier.",
-                "session/new",
-            )
-        })?;
-    if !super::control::safe_session_id(session_id) {
-        return Err(ProtocolFailure::new(
-            "cursor_cli_create_chat_invalid",
-            "Cursor Agent CLI returned an invalid chat session identifier.",
-            "session/new",
-        ));
-    }
-    Ok(session_id.to_string())
+    let session_id =
+        crate::platform::native_agent_parser::adapters::cursor::parse_created_session(&stdout.text)
+            .map_err(|kind| {
+                use crate::platform::native_agent_parser::adapters::cursor::CreatedSessionFailure;
+                match kind {
+                    CreatedSessionFailure::Missing => ProtocolFailure::new(
+                        "cursor_cli_create_chat_failed",
+                        "Cursor Agent CLI did not return a chat session identifier.",
+                        "session/new",
+                    ),
+                    CreatedSessionFailure::Invalid => ProtocolFailure::new(
+                        "cursor_cli_create_chat_invalid",
+                        "Cursor Agent CLI returned an invalid chat session identifier.",
+                        "session/new",
+                    ),
+                }
+            })?;
+    Ok(session_id)
 }
 
 fn run_turn(
@@ -296,6 +304,8 @@ fn run_turn(
         .current_dir(workspace)
         .stderr(Stdio::piped());
     apply_optional_turn_flags(&mut command, params);
+    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
+    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
     let (mut child, stdout) = match spawn_turn_transport(command) {
         Ok(transport) => transport,
         Err(_) => {
@@ -331,20 +341,16 @@ fn run_turn(
     let (sender, receiver) = mpsc::channel();
     let stdout_handle =
         thread::spawn(move || read_protocol_messages(BufReader::new(stdout), sender));
-    let stderr_truncated = Arc::new(AtomicBool::new(false));
-    let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_handle = thread::spawn(move || {
-        let mut truncated = false;
-        drain_stderr(stderr, max_stderr, &mut truncated);
-        if truncated {
-            stderr_flag.store(true, Ordering::Relaxed);
-        }
-    });
+    // Cursor's documented failure channel is a non-zero exit plus stderr,
+    // often without a terminal stream-json frame. Keep a bounded copy only
+    // until this turn is classified; raw provider prose never leaves here.
+    let stderr_handle = thread::spawn(move || read_bounded(stderr, Some(max_stderr)));
     // The deadline already spans the whole turn, including any create-chat
     // phase, so the turn phase simply keeps consuming the same window.
     let (outcome, failure, stdout_truncated) = consume_turn_stream(
         &receiver,
         session_id,
+        prompt,
         &workspace,
         params,
         deadline,
@@ -356,14 +362,21 @@ fn run_turn(
         .ok()
         .flatten();
     let _ = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE);
-    let _ = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE);
+    let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE).ok();
     clear_active_turn(session_id);
-    let stderr_was_truncated = stderr_truncated.load(Ordering::Relaxed);
+    let stderr_was_truncated = stderr.as_ref().is_some_and(|report| report.truncated);
+    let stderr_failure = stderr
+        .as_ref()
+        .and_then(|report| CursorFailureKind::from_stderr(&report.text));
     if let Some(outcome) = outcome {
+        let transitions =
+            crate::platform::native_agent_parser::adapters::cursor::completed_transitions(
+                &outcome.output,
+            );
         return RunResult {
             ok: true,
             output: outcome.output,
-            events: outcome.events,
+            transitions,
             error: None,
             thread_id: outcome.session_id.clone(),
             session_id: outcome.session_id,
@@ -377,6 +390,18 @@ fn run_turn(
         };
     }
     if let Some(failure) = failure {
+        if matches!(
+            failure.code,
+            "cursor_cli_turn_failed" | "cursor_cli_execution_failed"
+        ) && let Some(kind) = stderr_failure
+        {
+            return RunResult::failed(
+                kind.failure(Some(session_id)),
+                started_at,
+                stdout_truncated,
+                stderr_was_truncated,
+            );
+        }
         return RunResult::failed(failure, started_at, stdout_truncated, stderr_was_truncated);
     }
     // consume_turn_stream returned no outcome and no protocol failure: stdout
@@ -403,6 +428,14 @@ fn run_turn(
         }
     }
     if !status.is_some_and(|status| status.success()) {
+        if let Some(kind) = stderr_failure {
+            return RunResult::failed(
+                kind.failure(Some(session_id)),
+                started_at,
+                stdout_truncated,
+                stderr_was_truncated,
+            );
+        }
         return RunResult::failed(
             ProtocolFailure::new(
                 "cursor_cli_turn_failed",
@@ -452,20 +485,15 @@ fn spawn_turn_transport(
     Ok((child, stdout))
 }
 
-struct TurnOutcome {
+struct ProtocolFinishReport {
     output: String,
-    events: Vec<Value>,
     session_id: String,
     turn_id: String,
     turn_status: String,
     effective: super::model::EffectiveSettings,
 }
 
-fn effective_settings(
-    params: &Value,
-    workspace: &Path,
-    events: &[Value],
-) -> super::model::EffectiveSettings {
+fn initial_effective_settings(params: &Value, workspace: &Path) -> super::model::EffectiveSettings {
     let mut effective = super::model::EffectiveSettings {
         cwd: Some(workspace.to_string_lossy().into_owned()),
         ..Default::default()
@@ -475,7 +503,7 @@ fn effective_settings(
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
     {
-        effective.model = Some(model.to_string());
+        effective.model = Some(model.to_owned());
     }
     if let Some(effort) = params
         .get("reasoningEffort")
@@ -483,28 +511,7 @@ fn effective_settings(
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
     {
-        effective.reasoning_effort = Some(effort.to_string());
-    }
-    for message in events {
-        let is_init = message.get("subtype").and_then(Value::as_str) == Some("init")
-            || message.get("type").and_then(Value::as_str) == Some("init");
-        if !is_init {
-            continue;
-        }
-        if let Some(model) = message
-            .get("model")
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-        {
-            effective.model = Some(model.to_string());
-        }
-        if let Some(mode) = message
-            .get("permissionMode")
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-        {
-            effective.permission_mode = Some(mode.to_string());
-        }
+        effective.reasoning_effort = Some(effort.to_owned());
     }
     effective
 }
@@ -512,23 +519,23 @@ fn effective_settings(
 fn consume_turn_stream(
     receiver: &mpsc::Receiver<TransportEvent>,
     requested_session: &str,
+    expected_prompt: &str,
     workspace: &Path,
     params: &Value,
     deadline: Option<Instant>,
     max_stdout: Option<usize>,
     root_pid: u32,
-) -> (Option<TurnOutcome>, Option<ProtocolFailure>, bool) {
-    let mut events = Vec::new();
-    let mut chunks = String::new();
-    let mut output = String::new();
-    let mut observed_session = requested_session.to_string();
+) -> (Option<ProtocolFinishReport>, Option<ProtocolFailure>, bool) {
+    use crate::platform::native_agent_parser::adapters::cursor::{
+        CursorEffect, CursorParseFailure, CursorParser,
+    };
+
+    let mut parser = CursorParser::new(
+        requested_session,
+        expected_prompt,
+        initial_effective_settings(params, workspace),
+    );
     let mut stdout_bytes = 0usize;
-    let stdout_truncated = false;
-    let mut turn_id = String::new();
-    let mut accepted_emitted = false;
-    // Cursor Agent may auto-update before the turn produces output; surface
-    // the update state so the client can render a progress card instead of a
-    // silent spinner.
     let mut update_watcher = AgentUpdateWatcher::new(cursor_agent_install_dir());
     let mut last_update_watch: Option<Instant> = None;
     loop {
@@ -541,149 +548,155 @@ fn consume_turn_stream(
                         "Cursor Agent CLI timed out before the turn completed.",
                         "turn/wait",
                     )
-                    .with_session(Some(&observed_session)),
+                    .with_session(Some(parser.session_id())),
                 ),
-                stdout_truncated,
+                false,
             );
         }
         match receiver.recv_timeout(PROCESS_POLL_INTERVAL) {
-            Ok(TransportEvent::Message { message, bytes }) => {
-                if let Some(max_stdout) = max_stdout {
-                    stdout_bytes = stdout_bytes.saturating_add(bytes);
-                    if stdout_bytes > max_stdout {
-                        return (
-                            None,
-                            Some(
-                                ProtocolFailure::new(
-                                    "cursor_cli_output_limit",
-                                    "Cursor Agent CLI output exceeded the bounded read limit.",
-                                    "turn/read",
-                                )
-                                .with_session(Some(&observed_session)),
-                            ),
-                            true,
-                        );
-                    }
-                }
-                events.push(message.clone());
-                if let Some(id) = session_id(&message) {
-                    observed_session = id.to_string();
-                }
-                if !accepted_emitted {
-                    let native_turn_id = message
-                        .get("uuid")
-                        .or_else(|| message.get("turn_id"))
-                        .and_then(Value::as_str)
-                        .filter(|value| !value.is_empty())
-                        .unwrap_or("cursor-turn");
-                    if turn_id.is_empty() {
-                        turn_id = native_turn_id.to_string();
-                    }
-                    super::super::turn_event_emit::emit_turn_event(
-                        "agent.turn.accepted",
-                        &observed_session,
-                        &turn_id,
-                        serde_json::json!({"evidenceKind": "native-event"}),
-                    );
-                    accepted_emitted = true;
-                }
-                if let Some(delta) = delta_text(&message) {
-                    chunks.push_str(delta);
-                    if turn_id.is_empty() {
-                        turn_id = message
-                            .get("uuid")
-                            .or_else(|| message.get("turn_id"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("cursor-turn")
-                            .to_string();
-                    }
-                    super::super::turn_event_emit::emit_agent_message_chunk(
-                        &observed_session,
-                        &turn_id,
-                        delta,
-                    );
-                }
-                if let Some(text) = assistant_text(&message) {
-                    if !text.is_empty() {
-                        output = text.clone();
-                        if turn_id.is_empty() {
-                            turn_id = message
-                                .get("uuid")
-                                .or_else(|| message.get("turn_id"))
-                                .and_then(Value::as_str)
-                                .unwrap_or("cursor-turn")
-                                .to_string();
-                        }
-                        super::super::turn_event_emit::emit_agent_message_chunk(
-                            &observed_session,
-                            &turn_id,
-                            &text,
-                        );
-                    }
-                }
-                if let Some(result) = terminal_result(&message) {
-                    if is_error_result(&message) {
-                        return (
-                            None,
-                            Some(
-                                ProtocolFailure::new(
-                                    "cursor_cli_turn_failed",
-                                    "Cursor Agent CLI reported a failed turn result.",
-                                    "turn/completed",
-                                )
-                                .with_session(Some(&observed_session)),
-                            ),
-                            stdout_truncated,
-                        );
-                    }
-                    if output.is_empty() {
-                        output = result.to_string();
-                    }
-                    if turn_id.is_empty() {
-                        turn_id = message
-                            .get("uuid")
-                            .or_else(|| message.get("turn_id"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("cursor-turn")
-                            .to_string();
-                    }
-                    let final_output = if output.is_empty() {
-                        chunks.clone()
-                    } else {
-                        output.clone()
-                    };
-                    let effective = effective_settings(params, workspace, &events);
-                    super::super::turn_event_emit::emit_agent_message_completed(
-                        &observed_session,
-                        &turn_id,
-                        &final_output,
-                    );
+            Ok(TransportEvent::Line(line)) => {
+                stdout_bytes = stdout_bytes.saturating_add(line.len());
+                if max_stdout.is_some_and(|limit| stdout_bytes > limit) {
                     return (
-                        Some(TurnOutcome {
-                            output: final_output,
-                            events,
-                            session_id: observed_session,
-                            turn_id,
-                            turn_status: "completed".to_string(),
-                            effective,
-                        }),
                         None,
-                        stdout_truncated,
+                        Some(
+                            ProtocolFailure::new(
+                                "cursor_cli_output_limit",
+                                "Cursor Agent CLI output exceeded the bounded read limit.",
+                                "turn/read",
+                            )
+                            .with_session(Some(parser.session_id())),
+                        ),
+                        true,
                     );
+                }
+                let effects = match parser.parse_line(&line) {
+                    Ok(effects) => effects,
+                    Err(kind) => {
+                        let (code, message, stage) = match kind {
+                            CursorParseFailure::InvalidJson => (
+                                "cursor_cli_invalid_json",
+                                "Cursor Agent CLI returned invalid stream-json output.",
+                                "turn/read",
+                            ),
+                            CursorParseFailure::IdentityMismatch => (
+                                "cursor_cli_session_identity_mismatch",
+                                "Cursor Agent CLI returned a different conversation than the one requested.",
+                                "turn/read",
+                            ),
+                            CursorParseFailure::TextSnapshotDiverged => (
+                                "cursor_cli_text_snapshot_diverged",
+                                "Cursor Agent CLI returned a divergent assistant snapshot.",
+                                "turn/read",
+                            ),
+                            CursorParseFailure::PromptAcknowledgementMissing => (
+                                "cursor_cli_prompt_acknowledgement_missing",
+                                "Cursor Agent CLI produced output before acknowledging the exact prompt.",
+                                "turn/deliver",
+                            ),
+                            CursorParseFailure::PromptAcknowledgementMismatch => (
+                                "cursor_cli_prompt_acknowledgement_mismatch",
+                                "Cursor Agent CLI acknowledged different prompt content.",
+                                "turn/deliver",
+                            ),
+                            CursorParseFailure::TurnFailed(kind) => {
+                                return (
+                                    None,
+                                    Some(kind.failure(Some(parser.session_id()))),
+                                    false,
+                                );
+                            }
+                        };
+                        return (
+                            None,
+                            Some(
+                                ProtocolFailure::new(code, message, stage)
+                                    .with_session(Some(parser.session_id())),
+                            ),
+                            false,
+                        );
+                    }
+                };
+                for effect in effects {
+                    match effect {
+                        CursorEffect::Accepted {
+                            session_id,
+                            turn_id,
+                        } => {
+                            emit_turn_event(
+                                "agent.turn.accepted",
+                                &session_id,
+                                &turn_id,
+                                serde_json::json!({"evidenceKind": "native-event"}),
+                            );
+                            // Cursor's first valid native frame proves that
+                            // the launched CLI crossed its init/receipt
+                            // boundary. Unlike tool-bearing adapters, Cursor
+                            // may emit no separate work event before its first
+                            // assistant chunk, so project that native activity
+                            // explicitly instead of leaving resumed turns at
+                            // accepted for the whole model wait.
+                            emit_agent_processing(&session_id, &turn_id, "activity", None);
+                        }
+                        CursorEffect::Text {
+                            session_id,
+                            turn_id,
+                            text,
+                        } => {
+                            super::super::turn_event_emit::emit_agent_message_chunk(
+                                &session_id,
+                                &turn_id,
+                                &text,
+                            );
+                        }
+                        CursorEffect::Tool {
+                            session_id,
+                            turn_id,
+                            tool_name,
+                        } => {
+                            emit_agent_processing(&session_id, &turn_id, "tool", Some(&tool_name));
+                        }
+                        CursorEffect::ToolError {
+                            session_id,
+                            turn_id,
+                            tool_name,
+                            error_code,
+                        } => {
+                            emit_agent_tool_error(&session_id, &turn_id, &tool_name, error_code);
+                        }
+                        CursorEffect::Complete(outcome) => {
+                            super::super::turn_event_emit::emit_agent_message_completed(
+                                &outcome.session_id,
+                                &outcome.turn_id,
+                                &outcome.output,
+                            );
+                            return (
+                                Some(ProtocolFinishReport {
+                                    output: outcome.output,
+                                    session_id: outcome.session_id,
+                                    turn_id: outcome.turn_id,
+                                    turn_status: "completed".to_owned(),
+                                    effective: outcome.effective,
+                                }),
+                                None,
+                                false,
+                            );
+                        }
+                    }
                 }
             }
-            Ok(TransportEvent::InvalidJson) => {
+            Ok(TransportEvent::UnterminatedLine) => {
                 return (
                     None,
                     Some(
                         ProtocolFailure::new(
-                            "cursor_cli_invalid_json",
-                            "Cursor Agent CLI returned invalid stream-json output.",
+                            "cursor_cli_unterminated_json",
+                            "Cursor Agent CLI returned an unterminated stream-json line.",
                             "turn/read",
                         )
-                        .with_session(Some(&observed_session)),
+                        .with_session(Some(parser.session_id())),
                     ),
-                    stdout_truncated,
+                    false,
                 );
             }
             Ok(TransportEvent::LineLimitExceeded) => {
@@ -695,7 +708,7 @@ fn consume_turn_stream(
                             "Cursor Agent CLI output exceeded the bounded read limit.",
                             "turn/read",
                         )
-                        .with_session(Some(&observed_session)),
+                        .with_session(Some(parser.session_id())),
                     ),
                     true,
                 );
@@ -709,34 +722,26 @@ fn consume_turn_stream(
                             "Cursor Agent CLI output could not be read.",
                             "turn/read",
                         )
-                        .with_session(Some(&observed_session)),
+                        .with_session(Some(parser.session_id())),
                     ),
-                    stdout_truncated,
+                    false,
                 );
             }
-            Ok(TransportEvent::StdoutClosed) => break,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Ok(TransportEvent::StdoutClosed) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // Quiet ticks: watch for a cursor-agent auto-update blocking
-                // the turn, throttled to one scan per second.
                 let now = Instant::now();
                 if last_update_watch
                     .is_none_or(|last| now.duration_since(last) >= UPDATE_WATCH_INTERVAL)
                 {
                     last_update_watch = Some(now);
                     if let Some(change) = update_watcher.watch(root_pid) {
-                        emit_update_change(&change, &observed_session, &turn_id);
+                        emit_update_change(&change, parser.session_id(), "");
                     }
                 }
             }
         }
     }
-    // Stdout closed (or the transport disconnected) before a terminal result
-    // arrived: the CLI was cancelled, crashed, or exited without completing
-    // the turn. The caller classifies this from the process exit status;
-    // partial output was already streamed live as chunk events and must not
-    // be reported as a completed turn.
-    (None, None, stdout_truncated)
+    (None, None, false)
 }
 
 fn apply_optional_turn_flags(command: &mut Command, params: &Value) {

@@ -21,6 +21,18 @@ TargetCandidate _target({
 }
 
 void main() {
+  test('Assistant catalog includes detected Codex and DeepSeek Harness', () {
+    final targets = agentOrchestrationCommanderTargets([
+      _target(id: 'codex', models: const []),
+      _target(id: 'deepseek-harness', models: const []),
+    ]);
+
+    expect(targets.map((target) => target.target), [
+      'codex',
+      'deepseek-harness',
+    ]);
+  });
+
   test('Claude Code exposes the configured current model unchanged', () {
     final target = _target(
       id: 'claude-code',
@@ -37,6 +49,26 @@ void main() {
     expect(
       agentOrchestrationModelDisplayName(target, 'deepseek-v4-flash'),
       'DeepSeek V4 Flash',
+    );
+  });
+
+  test('Pi keeps provider-qualified selectors behind concise labels', () {
+    final target = _target(
+      id: 'pi',
+      models: const [
+        {
+          'name': 'provider/model-a',
+          'displayName': 'Model A',
+          'providerId': 'provider',
+          'provider': 'Provider',
+        },
+      ],
+    );
+
+    expect(agentOrchestrationCommanderModels(target), ['provider/model-a']);
+    expect(
+      agentOrchestrationModelDisplayName(target, 'provider/model-a'),
+      'Model A',
     );
   });
 

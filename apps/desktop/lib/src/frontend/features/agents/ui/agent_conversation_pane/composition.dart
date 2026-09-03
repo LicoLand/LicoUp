@@ -53,8 +53,9 @@ class AgentConversationActivePane extends StatelessWidget {
           : agentConversationTargetDisplayName(state.target),
       initialDraft: state.composerDraft,
       hasAttachments: state.hasAttachments,
-      busy: state.turnActive,
-      enabled: state.composerEnabled,
+      busy: state.composerBusy,
+      enabled: state.composerEnabled && state.inputEnabled,
+      cancelEnabled: state.cancelEnabled,
       modelOptions: state.modelOptions,
       selectedModel: state.selectedModel,
       reasoningEffortOptions: state.reasoningEffortOptions,
@@ -63,6 +64,8 @@ class AgentConversationActivePane extends StatelessWidget {
       onReasoningEffortChanged: actions.onReasoningEffortChanged,
       onDraftChanged: actions.onDraftChanged,
       onSend: actions.onSend,
+      onSlashNewConversation: actions.onNewConversation,
+      onCancel: actions.onCancel,
       defaultModel: state.defaultModel,
       defaultReasoningEffort: state.defaultReasoningEffort,
       showRuntimeSettings:
@@ -81,6 +84,7 @@ class AgentConversationActivePane extends StatelessWidget {
           .toList(growable: false),
       mentionLabels: state.composerMentionLabels,
       leading: state.composerLeading,
+      fieldLeading: state.composerFieldLeading,
     );
     final sendUnavailable = state.composerEnabled
         ? null
@@ -145,7 +149,7 @@ class AgentConversationActivePane extends StatelessWidget {
                   ? MessagingDesktopMetrics.conversationComposerCapsuleRowExtent
                   : 0)
         : 0.0;
-    final messages =
+    final messageSurface =
         state.session == null &&
             state.preparingNewConversation &&
             state.liveMessages.isEmpty
@@ -164,6 +168,9 @@ class AgentConversationActivePane extends StatelessWidget {
         : AgentConversationMessageList(
             scrollController: messageScrollController,
             loading: state.loading,
+            messagePageLoading: state.messagePageLoading,
+            messagePageError: state.messagePageError,
+            onLoadEarlier: actions.onLoadEarlierMessages,
             session: state.session,
             target: state.target,
             turnActive: state.turnActive,
@@ -172,9 +179,18 @@ class AgentConversationActivePane extends StatelessWidget {
             processStyle: strategy.processStyle,
             participantTargets: state.participantTargets,
             participantConversationIds: state.participantConversationIds,
+            participantRuntimeProfiles: state.participantRuntimeProfiles,
+            assistantActive: state.assistantActive,
             topOverlayInset: headerOverlayInset,
             bottomOverlayInset: composerOverlayInset,
+            onCopyText: actions.onCopyText,
+            onRetryMessage: actions.onRetryMessage,
+            onDeleteMessage: actions.onDeleteMessage,
           );
+    final messages = RepaintBoundary(
+      key: const Key('conversation-streaming-repaint-boundary'),
+      child: messageSurface,
+    );
     final showPlanDocumentPanel =
         !mobileClient &&
         messagingFlow &&
@@ -270,19 +286,25 @@ class AgentConversationActivePane extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            messages,
-                            Align(
-                              alignment: Alignment.topCenter,
-                              child: messagingHeader,
-                            ),
-                            Align(
-                              alignment: Alignment.bottomCenter,
-                              child: bottomDock,
-                            ),
-                          ],
+                        child: LicoTopEdgePulse(
+                          key: const Key('conversation-header-running-edge'),
+                          enabled: state.turnActive || state.loading,
+                          borderRadius: BorderRadius.zero,
+                          color: colors.primaryStrong,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              messages,
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: messagingHeader,
+                              ),
+                              Align(
+                                alignment: Alignment.bottomCenter,
+                                child: bottomDock,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       SizedBox(
@@ -297,19 +319,25 @@ class AgentConversationActivePane extends StatelessWidget {
                       ),
                     ],
                   )
-                : Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      messages,
-                      Align(
-                        alignment: Alignment.topCenter,
-                        child: messagingHeader,
-                      ),
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: bottomDock,
-                      ),
-                    ],
+                : LicoTopEdgePulse(
+                    key: const Key('conversation-header-running-edge'),
+                    enabled: state.turnActive || state.loading,
+                    borderRadius: BorderRadius.zero,
+                    color: colors.primaryStrong,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        messages,
+                        Align(
+                          alignment: Alignment.topCenter,
+                          child: messagingHeader,
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: bottomDock,
+                        ),
+                      ],
+                    ),
                   ),
           )
         else ...[

@@ -1,17 +1,12 @@
-//! Digest-confirmed registration of Subagent MCP into Antigravity mcp_config.
+//! Antigravity user MCP registration through the common digest-bound manager.
 
-use crate::domain::integration_state::IntegrationState;
-use crate::platform::paths::user_home_from_env;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    path::{Path, PathBuf},
+use super::provider_mcp_registration::{
+    ProviderConfigKind, RegistrationError, RegistrationPermit, RegistrationPlan,
 };
+use crate::domain::integration_state::IntegrationState;
+use std::path::{Path, PathBuf};
 
-const SERVER_KEY: &str = "lico-up-subagent";
-const INSTALL_SCHEMA: &str = "licoup.antigravity-subagent-mcp-install.v1";
-const PLUGIN_VERSION: &str = "0.1.0";
+const PLUGIN_VERSION: &str = "0.2.0";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AntigravitySubagentMcpError {
@@ -21,6 +16,8 @@ pub enum AntigravitySubagentMcpError {
     ApprovalMismatch,
     ApprovalConsumed,
     ConfigUnavailable,
+    ConfigAmbiguous,
+    ConfigPathUnsupported,
     InstallFailed,
 }
 
@@ -33,6 +30,8 @@ impl AntigravitySubagentMcpError {
             Self::ApprovalMismatch => "antigravity_subagent_mcp_approval_mismatch",
             Self::ApprovalConsumed => "antigravity_subagent_mcp_approval_consumed",
             Self::ConfigUnavailable => "antigravity_subagent_mcp_config_unavailable",
+            Self::ConfigAmbiguous => "antigravity_subagent_mcp_config_ambiguous",
+            Self::ConfigPathUnsupported => "antigravity_subagent_mcp_config_path_unsupported",
             Self::InstallFailed => "antigravity_subagent_mcp_install_failed",
         }
     }
@@ -40,39 +39,47 @@ impl AntigravitySubagentMcpError {
 
 #[derive(Clone, Debug)]
 pub struct AntigravitySubagentMcpPlan {
-    mcp_binary: PathBuf,
-    config_path: PathBuf,
-    digest: String,
+    inner: RegistrationPlan,
 }
 
 impl AntigravitySubagentMcpPlan {
     pub fn prepare(
         main_agent_id: &str,
-        mcp_binary: &Path,
+        connector: &Path,
     ) -> Result<Self, AntigravitySubagentMcpError> {
         if main_agent_id != "antigravity" {
             return Err(AntigravitySubagentMcpError::NotAntigravity);
         }
-        let mcp_binary = canonical_executable(mcp_binary)?;
-        let config_path =
-            antigravity_mcp_config_path().ok_or(AntigravitySubagentMcpError::ConfigUnavailable)?;
         Ok(Self {
-            digest: release_digest(&mcp_binary),
-            mcp_binary,
-            config_path,
+            inner: RegistrationPlan::prepare(ProviderConfigKind::Antigravity, connector)
+                .map_err(map_error)?,
+        })
+    }
+
+    /// Plan against one explicitly discovered Antigravity config path. Only a
+    /// canonical reviewed official or legacy candidate is admitted, and the
+    /// selected path plus the current config bytes are bound into the approval
+    /// digest. The default both-present resolution stays fail-closed.
+    pub fn prepare_with_config_path(
+        main_agent_id: &str,
+        connector: &Path,
+        config_path: &Path,
+    ) -> Result<Self, AntigravitySubagentMcpError> {
+        if main_agent_id != "antigravity" {
+            return Err(AntigravitySubagentMcpError::NotAntigravity);
+        }
+        Ok(Self {
+            inner: RegistrationPlan::prepare_with_config_path(
+                ProviderConfigKind::Antigravity,
+                connector,
+                config_path,
+            )
+            .map_err(map_error)?,
         })
     }
 
     pub fn digest(&self) -> &str {
-        &self.digest
-    }
-
-    pub fn config_path(&self) -> &Path {
-        &self.config_path
-    }
-
-    pub fn mcp_binary(&self) -> &Path {
-        &self.mcp_binary
+        self.inner.digest()
     }
 
     pub const fn version() -> &'static str {
@@ -80,31 +87,23 @@ impl AntigravitySubagentMcpPlan {
     }
 
     pub const fn source() -> &'static str {
-        "LicoUp packaged lico-subagent-mcp"
+        "LicoUp managed user MCP registration"
     }
 
     pub fn approve(
         &self,
         confirmed: bool,
-        expected_digest: &str,
+        digest: &str,
     ) -> Result<AntigravitySubagentMcpPermit, AntigravitySubagentMcpError> {
-        if !confirmed {
-            return Err(AntigravitySubagentMcpError::ApprovalRequired);
-        }
-        if expected_digest != self.digest {
-            return Err(AntigravitySubagentMcpError::ApprovalMismatch);
-        }
-        Ok(AntigravitySubagentMcpPermit {
-            digest: self.digest.clone(),
-            consumed: false,
-        })
+        self.inner
+            .approve(confirmed, digest)
+            .map(|inner| AntigravitySubagentMcpPermit { inner })
+            .map_err(map_error)
     }
 }
 
-#[derive(Debug)]
 pub struct AntigravitySubagentMcpPermit {
-    digest: String,
-    consumed: bool,
+    inner: RegistrationPermit,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -113,28 +112,24 @@ pub struct AntigravitySubagentMcpReceipt {
     pub plugin_ready_for_new_conversations: bool,
 }
 
-pub fn status(mcp_binary: &Path) -> IntegrationState {
-    let Ok(mcp_binary) = canonical_executable(mcp_binary) else {
-        return IntegrationState::Unavailable;
-    };
-    let Some(config_path) = antigravity_mcp_config_path() else {
-        return IntegrationState::Unavailable;
-    };
-    match read_config(&config_path) {
-        Ok(config) => {
-            if entry_is_ready(&config, &mcp_binary) {
-                IntegrationState::Ready
-            } else {
-                IntegrationState::Missing
-            }
-        }
-        Err(_) => {
-            if config_path.exists() {
-                IntegrationState::Unavailable
-            } else {
-                IntegrationState::Missing
-            }
-        }
+pub fn status(connector: &Path) -> IntegrationState {
+    match super::provider_mcp_registration::status(ProviderConfigKind::Antigravity, connector) {
+        Ok(true) => IntegrationState::Ready,
+        Ok(false) => IntegrationState::Missing,
+        Err(_) => IntegrationState::Unavailable,
+    }
+}
+
+/// Read-only readiness probe at one explicitly discovered config path.
+pub fn status_with_config_path(connector: &Path, config_path: &Path) -> IntegrationState {
+    match super::provider_mcp_registration::status_with_config_path(
+        ProviderConfigKind::Antigravity,
+        connector,
+        config_path,
+    ) {
+        Ok(true) => IntegrationState::Ready,
+        Ok(false) => IntegrationState::Missing,
+        Err(_) => IntegrationState::Unavailable,
     }
 }
 
@@ -142,156 +137,44 @@ pub fn install(
     plan: &AntigravitySubagentMcpPlan,
     permit: &mut AntigravitySubagentMcpPermit,
 ) -> Result<AntigravitySubagentMcpReceipt, AntigravitySubagentMcpError> {
-    if permit.consumed {
-        return Err(AntigravitySubagentMcpError::ApprovalConsumed);
-    }
-    permit.consumed = true;
-    if permit.digest != plan.digest || release_digest(&plan.mcp_binary) != plan.digest {
-        return Err(AntigravitySubagentMcpError::ApprovalMismatch);
-    }
-    let mut config = if plan.config_path.exists() {
-        read_config(&plan.config_path)?
-    } else {
-        json!({ "mcpServers": {} })
-    };
-    let servers = config
-        .as_object_mut()
-        .ok_or(AntigravitySubagentMcpError::InstallFailed)?
-        .entry("mcpServers")
-        .or_insert_with(|| json!({}));
-    let servers = servers
-        .as_object_mut()
-        .ok_or(AntigravitySubagentMcpError::InstallFailed)?;
-    servers.insert(
-        SERVER_KEY.to_owned(),
-        json!({
-            "command": plan.mcp_binary.to_string_lossy(),
-            "args": [],
-            "env": {
-                "LICOUP_MAIN_AGENT_ID": "antigravity"
-            },
-            "disabled": false
-        }),
-    );
-    write_config(&plan.config_path, &config)?;
-    if !entry_is_ready(&config, &plan.mcp_binary) {
-        return Err(AntigravitySubagentMcpError::InstallFailed);
-    }
+    super::provider_mcp_registration::install(&plan.inner, &mut permit.inner).map_err(map_error)?;
     Ok(AntigravitySubagentMcpReceipt {
         installed: true,
         plugin_ready_for_new_conversations: true,
     })
 }
 
-/// Official Antigravity CLI/IDE global MCP config, with legacy bridge fallback.
-pub fn antigravity_mcp_config_path() -> Option<PathBuf> {
-    let home = user_home_from_env()?;
-    let official = home.join(".gemini").join("config").join("mcp_config.json");
-    let legacy = home
-        .join(".gemini")
-        .join("antigravity")
-        .join("mcp_config.json");
-    if official.exists() {
-        return Some(official);
-    }
-    if legacy.exists() {
-        return Some(legacy);
-    }
-    Some(official)
+pub fn remove(
+    plan: &AntigravitySubagentMcpPlan,
+    permit: &mut AntigravitySubagentMcpPermit,
+) -> Result<(), AntigravitySubagentMcpError> {
+    super::provider_mcp_registration::remove(&plan.inner, &mut permit.inner).map_err(map_error)
 }
 
-fn release_digest(mcp_binary: &Path) -> String {
-    let mut digest = Sha256::new();
-    digest.update(INSTALL_SCHEMA.as_bytes());
-    digest.update([0]);
-    digest.update(SERVER_KEY.as_bytes());
-    digest.update([0]);
-    digest.update(PLUGIN_VERSION.as_bytes());
-    digest.update([0]);
-    digest.update(mcp_binary.to_string_lossy().as_bytes());
-    format!("{:x}", digest.finalize())
-}
-
-fn canonical_executable(path: &Path) -> Result<PathBuf, AntigravitySubagentMcpError> {
-    let path = fs::canonicalize(path).map_err(|_| AntigravitySubagentMcpError::InvalidMcpBinary)?;
-    if !path.is_file() {
-        return Err(AntigravitySubagentMcpError::InvalidMcpBinary);
-    }
-    Ok(path)
-}
-
-fn read_config(path: &Path) -> Result<Value, AntigravitySubagentMcpError> {
-    let raw =
-        fs::read_to_string(path).map_err(|_| AntigravitySubagentMcpError::ConfigUnavailable)?;
-    serde_json::from_str(&raw).map_err(|_| AntigravitySubagentMcpError::ConfigUnavailable)
-}
-
-fn write_config(path: &Path, value: &Value) -> Result<(), AntigravitySubagentMcpError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|_| AntigravitySubagentMcpError::InstallFailed)?;
-    }
-    let body =
-        serde_json::to_vec_pretty(value).map_err(|_| AntigravitySubagentMcpError::InstallFailed)?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, body).map_err(|_| AntigravitySubagentMcpError::InstallFailed)?;
-    fs::rename(&tmp, path).map_err(|_| AntigravitySubagentMcpError::InstallFailed)?;
-    Ok(())
-}
-
-fn entry_is_ready(config: &Value, mcp_binary: &Path) -> bool {
-    let Some(entry) = config
-        .get("mcpServers")
-        .and_then(Value::as_object)
-        .and_then(|servers| servers.get(SERVER_KEY))
-        .and_then(Value::as_object)
-    else {
-        return false;
-    };
-    if entry
-        .get("disabled")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        return false;
-    }
-    let command = entry.get("command").and_then(Value::as_str).unwrap_or("");
-    if command.is_empty() {
-        return false;
-    }
-    let command_path = Path::new(command);
-    let Ok(canonical_command) = fs::canonicalize(command_path) else {
-        return command_path == mcp_binary;
-    };
-    let Ok(canonical_binary) = fs::canonicalize(mcp_binary) else {
-        return false;
-    };
-    if canonical_command != canonical_binary {
-        return false;
-    }
-    entry
-        .get("env")
-        .and_then(Value::as_object)
-        .and_then(|env| env.get("LICOUP_MAIN_AGENT_ID"))
-        .and_then(Value::as_str)
-        == Some("antigravity")
-}
-
-/// Resolve packaged `lico-subagent-mcp` next to the running CLI/native binary.
-pub fn default_mcp_binary_path() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    let candidate = dir.join("lico-subagent-mcp");
-    if candidate.is_file() {
-        return Some(candidate);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let candidate = dir.join("lico-subagent-mcp.exe");
-        if candidate.is_file() {
-            return Some(candidate);
+fn map_error(error: RegistrationError) -> AntigravitySubagentMcpError {
+    match error {
+        RegistrationError::InvalidConnector => AntigravitySubagentMcpError::InvalidMcpBinary,
+        RegistrationError::ApprovalRequired => AntigravitySubagentMcpError::ApprovalRequired,
+        RegistrationError::ApprovalMismatch | RegistrationError::ConfigChanged => {
+            AntigravitySubagentMcpError::ApprovalMismatch
         }
+        RegistrationError::ApprovalConsumed => AntigravitySubagentMcpError::ApprovalConsumed,
+        RegistrationError::ConfigAmbiguous | RegistrationError::OwnedEntryAmbiguous => {
+            AntigravitySubagentMcpError::ConfigAmbiguous
+        }
+        RegistrationError::ConfigPathUnsupported => {
+            AntigravitySubagentMcpError::ConfigPathUnsupported
+        }
+        RegistrationError::ConfigUnavailable => AntigravitySubagentMcpError::ConfigUnavailable,
+        RegistrationError::WriteFailed => AntigravitySubagentMcpError::InstallFailed,
     }
-    None
+}
+
+/// Resolve the packaged thin connector next to the running native binary.
+pub fn default_mcp_binary_path() -> Option<PathBuf> {
+    let directory = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let connector = directory.join(format!("lico-subagent-mcp{}", std::env::consts::EXE_SUFFIX));
+    connector.is_file().then_some(connector)
 }
 
 #[cfg(test)]
@@ -299,69 +182,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn entry_ready_preserves_other_servers() {
-        let root = std::env::temp_dir().join(format!(
-            "licoup-agy-mcp-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|value| value.as_nanos())
-                .unwrap_or(0)
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        let binary = root.join("lico-subagent-mcp");
-        fs::write(&binary, b"bin").unwrap();
-        let mut config = json!({ "mcpServers": { "other": { "command": "echo" } } });
-        config
-            .as_object_mut()
-            .unwrap()
-            .get_mut("mcpServers")
-            .unwrap()
-            .as_object_mut()
-            .unwrap()
-            .insert(
-                SERVER_KEY.to_owned(),
-                json!({
-                    "command": binary.to_string_lossy(),
-                    "args": [],
-                    "env": { "LICOUP_MAIN_AGENT_ID": "antigravity" },
-                    "disabled": false
-                }),
-            );
-        assert!(entry_is_ready(&config, &binary));
-        assert!(
-            config["mcpServers"]
-                .as_object()
-                .unwrap()
-                .contains_key("other")
+    fn non_antigravity_selection_fails_before_config_access() {
+        assert_eq!(
+            AntigravitySubagentMcpPlan::prepare("cursor", Path::new("connector")).unwrap_err(),
+            AntigravitySubagentMcpError::NotAntigravity
         );
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn digest_requires_confirmation_match() {
-        let binary = std::env::temp_dir().join(format!(
-            "licoup-agy-mcp-bin-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|value| value.as_nanos())
-                .unwrap_or(0)
-        ));
-        fs::write(&binary, b"bin").unwrap();
-        let plan = AntigravitySubagentMcpPlan {
-            mcp_binary: binary.clone(),
-            config_path: std::env::temp_dir().join("mcp_config.json"),
-            digest: release_digest(&binary),
-        };
-        assert!(matches!(
-            plan.approve(false, plan.digest()),
-            Err(AntigravitySubagentMcpError::ApprovalRequired)
-        ));
-        assert!(matches!(
-            plan.approve(true, "nope"),
-            Err(AntigravitySubagentMcpError::ApprovalMismatch)
-        ));
-        assert!(plan.approve(true, plan.digest()).is_ok());
-        let _ = fs::remove_file(&binary);
     }
 }

@@ -19,6 +19,11 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
                 admitted.option_text("pending-operation-id"),
             ),
             ("decision", admitted.option_text("decision")),
+            (
+                "respondingEndpointId",
+                admitted.option_text("responding-endpoint-id"),
+            ),
+            ("responseNonce", admitted.option_text("response-nonce")),
         ],
         &[
             ("payload", admitted.option_json("payload")),
@@ -35,7 +40,9 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
     let (noun, action) = match route {
         ["secure-mesh", "status"] => ("status", ""),
         ["secure-mesh", noun, action] => (*noun, *action),
-        _ => unreachable!("admission only registers concrete secure mesh routes"),
+        _ => {
+            return Err(super::handler_error("command_failed", "use_cli_help").into());
+        }
     };
     let result = match (noun, action) {
         ("status", "") => {
@@ -156,8 +163,8 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 let allow = result.get("decision").and_then(Value::as_str) == Some("allow");
-                if agent_id == "hermes" && !token.is_empty() {
-                    match crate::platform::hermes_resolve_parked_permission(token, allow) {
+                if matches!(agent_id, "hermes" | "claude-code") && !token.is_empty() {
+                    match crate::platform::resolve_native_agent_interaction_approval(token, allow) {
                         Ok(resume) => {
                             if let Some(object) = result.as_object_mut() {
                                 object.insert("adapterResume".to_string(), resume);
@@ -186,7 +193,9 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
         ("approval", "adapter-capability") => {
             crate::core::secure_mesh_approval::evaluate_approval_adapter_capability_json(&params)?
         }
-        _ => unreachable!("admission only registers supported secure mesh actions"),
+        _ => {
+            return Err(super::handler_error("command_failed", "use_cli_help").into());
+        }
     };
     Ok(CliExecution::Json(result))
 }
@@ -222,6 +231,8 @@ fn default_completed_at() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 
+fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,6 +241,19 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose};
     use serde_json::{Value, json};
     use std::path::PathBuf;
+
+    /// Unwrap a command result in a test. The command surface is host-facing,
+    /// so a non-JSON outcome is a test failure via assertion, never a panic
+    /// inside the boundary library.
+    fn expect_json(result: CliExecution, expectation: &str) -> Value {
+        match result {
+            CliExecution::Json(value) => value,
+            other => {
+                assert!(false, "unexpected CLI result for {expectation}: {other:?}");
+                serde_json::Value::Null
+            }
+        }
+    }
 
     #[test]
     fn secure_mesh_desktop_status_promotes_only_durable_verified_pairwise_projection() {
@@ -330,6 +354,51 @@ mod tests {
     }
 
     #[test]
+    fn secure_mesh_approval_respond_cli_admits_bound_response_fields() {
+    let sv_callback_cli_response = synthetic_value("callback-cli-response");
+        let pending_operation_id = format!("approval-cli-{}", uuid::Uuid::new_v4());
+        let responding_endpoint_id = "endpoint-cli-responder";
+        let response_nonce = "nonce-cli-response";
+        crate::core::secure_mesh_approval::evaluate_approval_request_json(&json!({
+            "pendingOperationId": pending_operation_id,
+            "requesterAgentId": "codex",
+            "targetClientId": "local-client",
+            "originEndpointId": "endpoint-cli-origin",
+            "riskLevel": "local_effect",
+            "displaySummary": "Approve a bounded CLI operation",
+            "adapterCallbackTokenRef": sv_callback_cli_response.as_str(),
+            "adapterStyle": "callback",
+            "expiresAt": "2099-01-01T00:00:00Z",
+            "responseNonce": response_nonce,
+            "requestedTools": ["fs.read"],
+            "trustedEndpointIds": [responding_endpoint_id],
+        }))
+        .unwrap();
+
+        let result = super::super::execute_cli(vec![
+            "secure-mesh".into(),
+            "approval".into(),
+            "respond".into(),
+            "--pending-operation-id".into(),
+            pending_operation_id,
+            "--decision".into(),
+            "allow".into(),
+            "--responding-endpoint-id".into(),
+            responding_endpoint_id.into(),
+            "--response-nonce".into(),
+            response_nonce.into(),
+        ])
+        .unwrap();
+        let value = expect_json(result, "secure mesh approval respond");
+
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["response"]["responseNonceBound"], true);
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains(responding_endpoint_id));
+        assert!(!serialized.contains(response_nonce));
+    }
+
+    #[test]
     fn secure_mesh_device_trust_evaluate_cli_reports_policy_decision() {
         let identity = identity_fixture_json("desktop_gui:alice", 1, 2);
         let previous = identity_fixture_json("desktop_gui:alice", 3, 4);
@@ -345,11 +414,7 @@ mod tests {
             "verified".to_string(),
         ];
         let result = super::super::execute_cli(args).unwrap();
-        let value = match result {
-            CliExecution::Json(value) => value,
-            CliExecution::Usage => panic!("secure mesh device-trust evaluate returned usage"),
-            CliExecution::Streamed => panic!("secure mesh device-trust evaluate streamed output"),
-        };
+        let value = expect_json(result, "secure mesh device-trust evaluate");
         assert_eq!(
             value["protocolVersion"],
             crate::core::secure_mesh_trust::SECURE_MESH_DEVICE_TRUST_PROTOCOL_VERSION
@@ -379,11 +444,7 @@ mod tests {
             serde_json::to_string(&manifest).unwrap(),
         ];
         let result = super::super::execute_cli(args).unwrap();
-        let value = match result {
-            CliExecution::Json(value) => value,
-            CliExecution::Usage => panic!("secure mesh file route returned usage"),
-            CliExecution::Streamed => panic!("secure mesh file route streamed output"),
-        };
+        let value = expect_json(result, "secure mesh file route");
         assert_eq!(
             value["route"]["uploadOperation"],
             "secure_mesh.file_chunk.upload"
@@ -400,14 +461,20 @@ mod tests {
 
     #[test]
     fn secure_mesh_file_receive_destination_cli_redacts_destination_paths() {
+    let sv_application_x_cli_canary = synthetic_value("application/x-cli-canary");
+    let sv_private_cli_relative_can = synthetic_value("private-cli-relative-canary");
+    let sv_private_cli_file_canary_ = synthetic_value("private-cli-file-canary.pdf");
+    let sv_lico_cli_approved_root_c = synthetic_value("lico-cli-approved-root-canary");
+    let sv_phone_private_cli_relati = synthetic_value("phone/private-cli-relative-canary");
+    let sv_file_cli_receive_canary = synthetic_value("file-cli-receive-canary");
         let approved_root = std::env::temp_dir()
-            .join("lico-cli-approved-root-canary")
+            .join(sv_lico_cli_approved_root_c.as_str())
             .join(uuid::Uuid::new_v4().to_string());
         let manifest = json!({
-            "fileId": "file-cli-receive-canary",
-            "fileName": "private-cli-file-canary.pdf",
-            "mimeType": "application/x-cli-canary",
-            "relativePath": "phone/private-cli-relative-canary",
+            "fileId": sv_file_cli_receive_canary.as_str(),
+            "fileName": sv_private_cli_file_canary_.as_str(),
+            "mimeType": sv_application_x_cli_canary.as_str(),
+            "relativePath": sv_phone_private_cli_relati.as_str(),
             "totalSize": 16,
             "chunkSize": 8,
             "chunkCount": 2
@@ -422,22 +489,16 @@ mod tests {
             approved_root.to_string_lossy().to_string(),
         ];
         let result = super::super::execute_cli(args).unwrap();
-        let value = match result {
-            CliExecution::Json(value) => value,
-            CliExecution::Usage => panic!("secure mesh file receive-destination returned usage"),
-            CliExecution::Streamed => {
-                panic!("secure mesh file receive-destination streamed output")
-            }
-        };
+        let value = expect_json(result, "secure mesh file receive-destination");
         assert_eq!(value["receivePolicy"]["destinationApproved"], true);
         assert_eq!(value["receivePolicy"]["destinationPathRedacted"], true);
         let serialized = serde_json::to_string(&value).unwrap();
         for forbidden in [
-            "file-cli-receive-canary",
-            "private-cli-file-canary.pdf",
-            "application/x-cli-canary",
-            "private-cli-relative-canary",
-            "lico-cli-approved-root-canary",
+            sv_file_cli_receive_canary.as_str(),
+            sv_private_cli_file_canary_.as_str(),
+            sv_application_x_cli_canary.as_str(),
+            sv_private_cli_relative_can.as_str(),
+            sv_lico_cli_approved_root_c.as_str(),
             approved_root.to_string_lossy().as_ref(),
         ] {
             assert!(
@@ -449,14 +510,20 @@ mod tests {
 
     #[test]
     fn secure_mesh_file_receive_confirmation_cli_requires_user_confirmation_without_auto_open() {
+    let sv_file_cli_confirmation_ca = synthetic_value("file-cli-confirmation-canary");
+    let sv_private_cli_confirmation2 = synthetic_value("private-cli-confirmation-canary.pdf");
+    let sv_private_cli_confirmation = synthetic_value("private-cli-confirmation-relative-canary");
+    let sv_lico_cli_confirmation_ro = synthetic_value("lico-cli-confirmation-root-canary");
+    let sv_application_x_cli_confir = synthetic_value("application/x-cli-confirmation-canary");
+    let sv_phone_private_cli_confir = synthetic_value("phone/private-cli-confirmation-relative-canary");
         let approved_root = std::env::temp_dir()
-            .join("lico-cli-confirmation-root-canary")
+            .join(sv_lico_cli_confirmation_ro.as_str())
             .join(uuid::Uuid::new_v4().to_string());
         let manifest = json!({
-            "fileId": "file-cli-confirmation-canary",
-            "fileName": "private-cli-confirmation-canary.pdf",
-            "mimeType": "application/x-cli-confirmation-canary",
-            "relativePath": "phone/private-cli-confirmation-relative-canary",
+            "fileId": sv_file_cli_confirmation_ca.as_str(),
+            "fileName": sv_private_cli_confirmation2.as_str(),
+            "mimeType": sv_application_x_cli_confir.as_str(),
+            "relativePath": sv_phone_private_cli_confir.as_str(),
             "totalSize": 16,
             "chunkSize": 8,
             "chunkCount": 2
@@ -473,13 +540,7 @@ mod tests {
             "false".to_string(),
         ];
         let result = super::super::execute_cli(args).unwrap();
-        let value = match result {
-            CliExecution::Json(value) => value,
-            CliExecution::Usage => panic!("secure mesh file receive-confirmation returned usage"),
-            CliExecution::Streamed => {
-                panic!("secure mesh file receive-confirmation streamed output")
-            }
-        };
+        let value = expect_json(result, "secure mesh file receive-confirmation");
         assert_eq!(value["receiveConfirmation"]["required"], true);
         assert_eq!(
             value["receiveConfirmation"]["userVisibleConfirmationRequired"],
@@ -490,11 +551,11 @@ mod tests {
         assert_eq!(value["receiveConfirmation"]["autoIngestionEnabled"], false);
         let serialized = serde_json::to_string(&value).unwrap();
         for forbidden in [
-            "file-cli-confirmation-canary",
-            "private-cli-confirmation-canary.pdf",
-            "application/x-cli-confirmation-canary",
-            "private-cli-confirmation-relative-canary",
-            "lico-cli-confirmation-root-canary",
+            sv_file_cli_confirmation_ca.as_str(),
+            sv_private_cli_confirmation2.as_str(),
+            sv_application_x_cli_confir.as_str(),
+            sv_private_cli_confirmation.as_str(),
+            sv_lico_cli_confirmation_ro.as_str(),
             approved_root.to_string_lossy().as_ref(),
         ] {
             assert!(
@@ -517,11 +578,7 @@ mod tests {
             env.ledger_path.display().to_string(),
         ];
         let result = super::super::execute_cli(args).unwrap();
-        match result {
-            CliExecution::Json(value) => value,
-            CliExecution::Usage => panic!("secure mesh command execute returned usage"),
-            CliExecution::Streamed => panic!("secure mesh command execute streamed output"),
-        }
+        expect_json(result, "secure mesh command execute")
     }
 
     fn command_fixture(command_id: &str, idempotency_key: &str) -> Value {

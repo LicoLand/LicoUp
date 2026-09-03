@@ -1,54 +1,44 @@
 use super::model::ProtocolFailure;
+use crate::platform::native_agent_parser::adapters::codex::session::rollout_record_identity;
 use serde_json::Value;
 use std::path::Path;
 
-pub(super) const MAX_IMAGE_ATTACHMENTS: usize = 4;
-pub(super) const SUPPORTED_IMAGE_MEDIA_TYPES: &[&str] =
+pub(in crate::platform) const MAX_IMAGE_ATTACHMENTS: usize = 4;
+pub(in crate::platform) const SUPPORTED_IMAGE_MEDIA_TYPES: &[&str] =
     &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 /// Canonical ordered local-image input for `turn/start`. The runtime adapter
 /// already validated the files; this config parse only maps the request shape.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct LocalImageInput {
-    pub(super) name: String,
-    pub(super) media_type: String,
-    pub(super) path: String,
+pub(in crate::platform) struct LocalImageInput {
+    pub(in crate::platform) name: String,
+    pub(in crate::platform) media_type: String,
+    pub(in crate::platform) path: String,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ProtocolConfig {
-    pub(super) prompt: String,
-    pub(super) requested_session_id: String,
-    pub(super) session_path: Option<String>,
-    pub(super) local_images: Vec<LocalImageInput>,
-    pub(super) cwd: Option<String>,
-    pub(super) model: Option<String>,
-    pub(super) reasoning_effort: Option<String>,
-    pub(super) sandbox: Option<Value>,
-    pub(super) approval_policy: Option<Value>,
+pub(in crate::platform) struct ProtocolConfig {
+    pub(in crate::platform) prompt: String,
+    pub(in crate::platform) private_instructions: Option<String>,
+    pub(in crate::platform) requested_session_id: String,
+    pub(in crate::platform) session_path: Option<String>,
+    pub(in crate::platform) local_images: Vec<LocalImageInput>,
+    pub(in crate::platform) cwd: Option<String>,
+    pub(in crate::platform) model: Option<String>,
+    pub(in crate::platform) reasoning_effort: Option<String>,
+    pub(in crate::platform) sandbox: Option<Value>,
+    pub(in crate::platform) approval_policy: Option<Value>,
 }
 
 impl ProtocolConfig {
-    pub(super) fn from_params(
+    pub(in crate::platform) fn from_params(
         params: &Value,
         prompt: &str,
         session_id: &str,
         cwd: Option<&Path>,
     ) -> Result<Self, ProtocolFailure> {
         let session_path = text_param(params, &["sessionPath", "sourcePath"]);
-        let requested_session_id = if session_id.trim().is_empty() && session_path.is_some() {
-            thread_id_from_session_path(session_path.as_deref().unwrap_or_default())
-                .unwrap_or_default()
-        } else {
-            session_id.trim().to_string()
-        };
-        if session_path.is_some() && requested_session_id.is_empty() {
-            return Err(ProtocolFailure::new(
-                "codex_invalid_resume_target",
-                "Codex could not identify the existing conversation to resume.",
-                "thread/resume",
-            ));
-        }
+        let requested_session_id = resolve_resume_identity(session_path.as_deref(), session_id)?;
 
         let sandbox = params
             .get("sandbox")
@@ -78,6 +68,14 @@ impl ProtocolConfig {
 
         Ok(Self {
             prompt: prompt.to_string(),
+            private_instructions: text_param(
+                params,
+                &[
+                    "developerInstructions",
+                    "privateInstructions",
+                    "private_instructions",
+                ],
+            ),
             requested_session_id,
             session_path,
             local_images,
@@ -93,7 +91,7 @@ impl ProtocolConfig {
         })
     }
 
-    pub(super) fn is_resume(&self) -> bool {
+    pub(in crate::platform) fn is_resume(&self) -> bool {
         !self.requested_session_id.is_empty() || self.session_path.is_some()
     }
 }
@@ -157,7 +155,7 @@ fn attachment_failure() -> ProtocolFailure {
     )
 }
 
-pub(super) fn spark_default_reasoning_effort(model: Option<&str>) -> Option<String> {
+pub(in crate::platform) fn spark_default_reasoning_effort(model: Option<&str>) -> Option<String> {
     let model = model?.to_ascii_lowercase();
     model.contains("spark").then(|| "low".to_string())
 }
@@ -170,22 +168,35 @@ fn text_param(params: &Value, keys: &[&str]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn thread_id_from_session_path(path: &str) -> Option<String> {
-    let stem = Path::new(path).file_stem()?.to_str()?;
-    stem.split(|character: char| !character.is_ascii_hexdigit() && character != '-')
-        .flat_map(|part| part.as_bytes().windows(36))
-        .filter_map(|window| std::str::from_utf8(window).ok())
-        .find(|candidate| looks_like_uuid(candidate))
-        .map(str::to_string)
-}
-
-fn looks_like_uuid(value: &str) -> bool {
-    value.len() == 36
-        && value
-            .chars()
-            .enumerate()
-            .all(|(index, character)| match index {
-                8 | 13 | 18 | 23 => character == '-',
-                _ => character.is_ascii_hexdigit(),
-            })
+fn resolve_resume_identity(
+    session_path: Option<&str>,
+    requested_session_id: &str,
+) -> Result<String, ProtocolFailure> {
+    let requested_session_id = requested_session_id.trim();
+    let Some(session_path) = session_path else {
+        return Ok(requested_session_id.to_string());
+    };
+    let recorded_session_id = rollout_record_identity(Path::new(session_path)).map_err(|_| {
+        let mut failure = ProtocolFailure::new(
+            "codex_invalid_resume_target",
+            "Codex could not read an authoritative conversation identity from the supplied rollout.",
+            "thread/resume",
+        );
+        if !requested_session_id.is_empty() {
+            failure.session_id = Some(requested_session_id.to_string());
+            failure.thread_id = Some(requested_session_id.to_string());
+        }
+        failure
+    })?;
+    if !requested_session_id.is_empty() && requested_session_id != recorded_session_id {
+        let mut failure = ProtocolFailure::new(
+            "codex_resume_source_identity_mismatch",
+            "The supplied Codex rollout belongs to a different conversation.",
+            "thread/resume",
+        );
+        failure.session_id = Some(requested_session_id.to_string());
+        failure.thread_id = Some(requested_session_id.to_string());
+        return Err(failure);
+    }
+    Ok(recorded_session_id)
 }

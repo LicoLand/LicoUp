@@ -45,7 +45,6 @@ const allowedDependencies = Object.freeze({
   ],
   "command_exchange.dart": [
     "command_round_trip.dart",
-    "protocol.dart",
     "session_manager.dart",
   ],
   "command_round_trip.dart": [
@@ -55,7 +54,6 @@ const allowedDependencies = Object.freeze({
     "session_manager.dart",
   ],
   "conversation_exchange.dart": [
-    "protocol.dart",
     "request_writer.dart",
     "response_codec.dart",
     "session.dart",
@@ -139,7 +137,7 @@ test("stdio RPC protocol and response codecs bind bounded identities", async () 
     "decoded['protocol'] != stdioRpcProtocol",
     "decoded['id'] != requestId",
     "decoded['workflowId'] != workflowId",
-    "decoded['sequence'] != _expectedSequence",
+    "ConversationDeltaDecoder",
     "StdioRpcProtocolViolation",
   ]) {
     assert.ok(response.includes(token), `missing response binding: ${token}`);
@@ -195,7 +193,7 @@ test("native conversation RPC uses a client-local persistent owner", async () =>
   const server = await read("crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation.rs");
   for (const token of [
     "rpc\", \"conversation-host",
-    "serve_stdio_rpc_with_runtime",
+    "serve_stdio_rpc_with_persistent_conversation",
     "client_disconnected",
     "runtime.idle()",
   ]) assert.ok(host.includes(token), `missing persistent host contract: ${token}`);

@@ -47,10 +47,12 @@ class MessagingContactList extends StatefulWidget {
     this.selectedGroupConversationId = '',
     this.onSelectGroupConversation,
     this.onSetGroupConversationPinned,
+    this.onArchiveGroupConversation,
     this.onNewGroupConversation,
     this.onOpenWelcome,
     this.showConversationList = false,
     this.conversationListTargets = const [],
+    this.conversationListRelatedAgentIds,
     this.selectedSessionId = '',
     this.showConversationAgentIcons = false,
     this.onSelectSession,
@@ -58,6 +60,7 @@ class MessagingContactList extends StatefulWidget {
     this.onPrefetchSessions,
     this.isPinned,
     this.onTogglePinned,
+    this.priorityAgentId = '',
     this.scanning = false,
     this.loading = false,
     this.activeDestination = ClientSection.agents,
@@ -82,10 +85,12 @@ class MessagingContactList extends StatefulWidget {
   final ValueChanged<String>? onSelectGroupConversation;
   final void Function(String conversationId, bool pinned)?
   onSetGroupConversationPinned;
+  final ValueChanged<String>? onArchiveGroupConversation;
   final VoidCallback? onNewGroupConversation;
   final VoidCallback? onOpenWelcome;
   final bool showConversationList;
   final List<TargetCandidate> conversationListTargets;
+  final Set<String>? conversationListRelatedAgentIds;
   final String selectedSessionId;
   final bool showConversationAgentIcons;
   final void Function(String agentId, String sessionId)? onSelectSession;
@@ -97,6 +102,10 @@ class MessagingContactList extends StatefulWidget {
   final ValueChanged<String>? onPrefetchSessions;
   final bool Function(String targetId)? isPinned;
   final ValueChanged<String>? onTogglePinned;
+
+  /// The group assistant's agent id while the sidebar shows a group's member
+  /// conversations: its latest thread pins to the top of the list.
+  final String priorityAgentId;
   final bool scanning;
   final bool loading;
 
@@ -115,6 +124,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
   final _createMenuAnchorKey = GlobalKey();
   final Set<String> _prefetchedTargetIds = <String>{};
   bool _earlierExpanded = false;
+  bool _otherConversationsExpanded = false;
 
   @override
   void initState() {
@@ -256,11 +266,12 @@ class _MessagingContactListState extends State<MessagingContactList> {
     onToggle(pinnedKey ?? entry.group.members.first.id);
   }
 
-  Future<void> _showPinMenu({
+  Future<void> _showItemMenu({
     required BuildContext context,
     required Offset globalPosition,
     required bool pinned,
-    required VoidCallback onToggle,
+    VoidCallback? onTogglePinned,
+    VoidCallback? onArchive,
   }) async {
     final strings = LicoStrings.of(context);
     final selected = await showMessagingGlassMenu<_MessagingItemAction>(
@@ -268,18 +279,34 @@ class _MessagingContactListState extends State<MessagingContactList> {
       globalPosition: globalPosition,
       menuKey: const Key('messaging-conversation-item-menu'),
       actions: [
-        MessagingGlassMenuAction(
-          value: _MessagingItemAction.togglePin,
-          label: pinned ? strings.unpinFromTop : strings.pinToTop,
-          leading: Icon(
-            pinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
-            size: 16,
+        if (onTogglePinned != null)
+          MessagingGlassMenuAction(
+            value: _MessagingItemAction.togglePin,
+            label: pinned ? strings.unpinFromTop : strings.pinToTop,
+            leading: Icon(
+              pinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+              size: 16,
+            ),
           ),
-        ),
+        if (onArchive != null)
+          MessagingGlassMenuAction(
+            value: _MessagingItemAction.archive,
+            label: strings.archive,
+            leading: const Icon(Icons.archive_outlined, size: 16),
+          ),
       ],
     );
-    if (!mounted || selected != _MessagingItemAction.togglePin) return;
-    onToggle();
+    if (!mounted) return;
+    switch (selected) {
+      case _MessagingItemAction.togglePin:
+        onTogglePinned?.call();
+        break;
+      case _MessagingItemAction.archive:
+        onArchive?.call();
+        break;
+      case null:
+        break;
+    }
   }
 
   Future<void> _showCreateMenu() async {
@@ -365,10 +392,16 @@ class _MessagingContactListState extends State<MessagingContactList> {
         ),
         selectedSessionId: widget.selectedSessionId,
         earlierExpanded: _earlierExpanded,
+        relatedAgentIds: widget.conversationListRelatedAgentIds,
+        otherConversationsExpanded: _otherConversationsExpanded,
         showAgentIcons: widget.showConversationAgentIcons,
         runningFor: widget.runningFor,
+        priorityAgentId: widget.priorityAgentId,
         onToggleEarlier: () =>
             setState(() => _earlierExpanded = !_earlierExpanded),
+        onToggleOtherConversations: () => setState(
+          () => _otherConversationsExpanded = !_otherConversationsExpanded,
+        ),
         onSelectSession: widget.onSelectSession ?? (_, _) {},
       );
     }
@@ -387,6 +420,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
         ),
       _MessagingContactActionButton(
         key: _createMenuAnchorKey,
+        inkWellKey: const Key('messaging-create-conversation'),
         tooltip: strings.createConversation,
         onPressed: _showCreateMenu,
         icon: Icons.add_rounded,
@@ -467,6 +501,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
           final conversation = item.groupConversation;
           if (conversation != null) {
             final setPinned = widget.onSetGroupConversationPinned;
+            final archive = widget.onArchiveGroupConversation;
             return _MessagingCanonicalGroupRow(
               key: ValueKey<String>(
                 'messaging-group-conversation-${conversation.id}',
@@ -476,14 +511,21 @@ class _MessagingContactListState extends State<MessagingContactList> {
               onTap: widget.onSelectGroupConversation == null
                   ? null
                   : () => widget.onSelectGroupConversation!(conversation.id),
-              onSecondaryTapDown: setPinned == null
+              onSecondaryTapDown: setPinned == null && archive == null
                   ? null
-                  : (details) => _showPinMenu(
+                  : (details) => _showItemMenu(
                       context: context,
                       globalPosition: details.globalPosition,
                       pinned: conversation.pinned,
-                      onToggle: () =>
-                          setPinned(conversation.id, !conversation.pinned),
+                      onTogglePinned: setPinned == null
+                          ? null
+                          : () => setPinned(
+                              conversation.id,
+                              !conversation.pinned,
+                            ),
+                      onArchive: archive == null
+                          ? null
+                          : () => archive(conversation.id),
                     ),
             );
           }
@@ -503,11 +545,11 @@ class _MessagingContactListState extends State<MessagingContactList> {
             onTap: () => widget.onSelectAgent(entry.group.members.first.id),
             onSecondaryTapDown: widget.onTogglePinned == null
                 ? null
-                : (details) => _showPinMenu(
+                : (details) => _showItemMenu(
                     context: context,
                     globalPosition: details.globalPosition,
                     pinned: entry.pinned,
-                    onToggle: () => _toggleContactPinned(entry),
+                    onTogglePinned: () => _toggleContactPinned(entry),
                   ),
           );
         },
@@ -535,7 +577,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
 
 enum _MessagingCreateAction { conversation, group }
 
-enum _MessagingItemAction { togglePin }
+enum _MessagingItemAction { togglePin, archive }
 
 class _MessagingCanonicalGroupRow extends StatelessWidget {
   const _MessagingCanonicalGroupRow({
@@ -725,11 +767,13 @@ final class _MessagingContactGroup {
 class _MessagingContactActionButton extends StatelessWidget {
   const _MessagingContactActionButton({
     super.key,
+    this.inkWellKey,
     required this.tooltip,
     required this.onPressed,
     required this.icon,
   });
 
+  final Key? inkWellKey;
   final String tooltip;
   final VoidCallback onPressed;
   final IconData icon;
@@ -741,6 +785,7 @@ class _MessagingContactActionButton extends StatelessWidget {
       message: tooltip,
       waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
+        key: inkWellKey,
         onTap: onPressed,
         customBorder: const CircleBorder(),
         hoverColor: colors.isDark

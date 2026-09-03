@@ -137,10 +137,12 @@ function ensureLicoupCli({ forceBuild = false } = {}) {
   return buildLicoupCli();
 }
 
-function runCliJson(cli, args) {
+function runCliJson(cli, args, input) {
   const result = spawnSync(cli, args, {
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024,
+    stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    input,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -150,7 +152,7 @@ function runCliJson(cli, args) {
   return JSON.parse(String(result.stdout || "").trim());
 }
 
-function applySidecar({ cli, configRoot, port }) {
+function applySidecar({ cli, configRoot, port, allowEmpty = false }) {
   mkdirSync(configRoot, { recursive: true, mode: 0o700 });
   const plan = runCliJson(cli, [
     "llm-gateway",
@@ -171,6 +173,10 @@ function applySidecar({ cli, configRoot, port }) {
   if (destination.endsWith(MODELS_NAME) && !destination.endsWith(SIDECAR_NAME)) {
     throw new Error("llm_gateway_agent_config_refuses_primary_pi_models");
   }
+  const models = JSON.parse(plan.content)?.providers?.["licoup-gateway"]?.models || [];
+  if (models.length === 0 && !allowEmpty) {
+    throw new Error("llm_gateway_model_catalog_unavailable");
+  }
   const applied = runCliJson(cli, [
     "llm-gateway",
     "agent-config",
@@ -182,7 +188,9 @@ function applySidecar({ cli, configRoot, port }) {
     "--confirmation",
     plan.confirmationDigest,
     "--confirmed",
-  ]);
+    "--stdin-json",
+    "true",
+  ], JSON.stringify({ models }));
   const body = readFileSync(destination, "utf8");
   const parsed = JSON.parse(body);
   if (!parsed?.providers?.["licoup-gateway"]?.baseUrl) {
@@ -249,11 +257,16 @@ function selfTest() {
       )}\n`,
       "utf8",
     );
-    const { provider } = applySidecar({ cli, configRoot: root, port: gatewayDefaultPort });
+    const { provider } = applySidecar({
+      cli,
+      configRoot: root,
+      port: "1",
+      allowEmpty: true,
+    });
     const merged = mergeIntoModelsJson({ configRoot: root, provider });
     const after = JSON.parse(readFileSync(keepPath, "utf8"));
     if (!after.providers.keepme) throw new Error("existing_provider_wiped");
-    if (!after.providers["licoup-gateway"]?.baseUrl?.includes(gatewayDefaultPort)) {
+    if (!after.providers["licoup-gateway"]?.baseUrl?.includes("127.0.0.1:1")) {
       throw new Error("gateway_provider_missing");
     }
     if (!merged.providerIds.includes("keepme")) throw new Error("merge_ids");

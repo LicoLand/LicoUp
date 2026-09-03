@@ -54,54 +54,61 @@ mixin ClientLifecycleFacade
 
   Future<void> initializeWithOptions({bool runBackgroundSteps = true}) =>
       lifecycleController.initialize(
-        sequentialSteps: [
-          ClientBootstrapStep(
-            id: 'client_storage',
-            action: _initializeClientStorage,
-          ),
-          ClientBootstrapStep(
-            id: 'client_preferences',
-            action: _initializeClientPreferences,
-          ),
-          ClientBootstrapStep(
-            id: 'client_mobile_relay',
-            action: _initializeClientCore,
-          ),
-          ClientBootstrapStep(
-            id: 'client_mobile_home',
-            action: _initializeClientMobileHome,
-          ),
-          ClientBootstrapStep(
-            id: 'client_skill_preferences',
-            action: _initializeClientSkillPreferences,
-          ),
-          ClientBootstrapStep(
-            id: 'client_catalog',
-            action: _initializeClientCatalog,
-          ),
-        ],
-        backgroundSteps: mobileClientRuntimePlatform
-            ? const []
-            : [
-                ClientBootstrapStep(
-                  id: 'conversation_snapshot_root',
-                  action: refreshConversationSnapshotRoot,
-                ),
-                ClientBootstrapStep(
-                  id: 'opencode_serve',
-                  action: ensureOpencodeServeSilently,
-                ),
-                ClientBootstrapStep(
-                  id: 'client_update_check',
-                  action: checkClientUpdateSilently,
-                ),
-              ],
+        sequentialSteps: _clientSequentialSteps,
+        backgroundSteps: _clientBackgroundSteps,
         runBackgroundSteps: runBackgroundSteps,
         finalStep: ClientBootstrapStep(
           id: 'client_finalize',
           action: _finalizeClientInitialization,
         ),
       );
+
+  List<ClientBootstrapStep> get _clientSequentialSteps => [
+    ClientBootstrapStep(
+      id: 'client_storage_root',
+      action: _resolveClientStorageRoot,
+    ),
+    ClientBootstrapStep(
+      id: 'client_state_migration',
+      action: _admitClientStateMigration,
+    ),
+    ClientBootstrapStep(id: 'client_storage', action: _initializeClientStorage),
+    ClientBootstrapStep(
+      id: 'client_preferences',
+      action: _initializeClientPreferences,
+    ),
+    ClientBootstrapStep(
+      id: 'client_mobile_relay',
+      action: _initializeClientCore,
+    ),
+    ClientBootstrapStep(
+      id: 'client_mobile_home',
+      action: _initializeClientMobileHome,
+    ),
+    ClientBootstrapStep(
+      id: 'client_skill_preferences',
+      action: _initializeClientSkillPreferences,
+    ),
+    ClientBootstrapStep(id: 'client_catalog', action: _initializeClientCatalog),
+  ];
+
+  List<ClientBootstrapStep> get _clientBackgroundSteps =>
+      mobileClientRuntimePlatform
+      ? const []
+      : [
+          ClientBootstrapStep(
+            id: 'conversation_snapshot_root',
+            action: refreshConversationSnapshotRoot,
+          ),
+          ClientBootstrapStep(
+            id: 'opencode_serve',
+            action: ensureOpencodeServeSilently,
+          ),
+          ClientBootstrapStep(
+            id: 'client_update_check',
+            action: checkClientUpdateSilently,
+          ),
+        ];
 
   /// Starts the desktop Gateway sidecar after the application owns a visible
   /// window. Credential authorization stays on the Models Gateway card so cold
@@ -112,9 +119,21 @@ mixin ClientLifecycleFacade
     }
   }
 
-  Future<void> _initializeClientStorage() async {
+  Future<void> _resolveClientStorageRoot() async {
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
+  }
+
+  Future<void> _admitClientStateMigration() async {
+    try {
+      await agentService.admitClientStateMigration(portableDataPath);
+    } on Object {
+      throw StateError('client_state_migration');
+    }
+  }
+
+  Future<void> _initializeClientStorage() async {
+    await portableData.loadWorkspaceManifest();
     await loadConversationToolAllowlists();
     await loadCurrentViewRestore();
     final catalog = await appearancePresetCatalogService.loadCatalog(
@@ -155,6 +174,7 @@ mixin ClientLifecycleFacade
   }
 
   Future<void> _initializeClientCore() async {
+    if (lifecycleProjection.disposed) return;
     await mobileRelayController.loadConfig(authorizeSecrets: false);
   }
 

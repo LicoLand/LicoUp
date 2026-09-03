@@ -21,7 +21,7 @@ void registerAgentConversationStructuredEventScenarios() {
         {
           'id': 'msg-reasoning',
           'role': 'reasoning',
-          'text': 'Shielded chain of thought must not become assistant text.',
+          'text': 'Private chain of thought must not become assistant text.',
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
@@ -42,12 +42,12 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.messages[1].providerSummary, isFalse);
     expect(
       session.messages[1].text,
-      'Shielded chain of thought must not become assistant text.',
+      'Private chain of thought must not become assistant text.',
     );
     expect(session.messages[2].text, 'Visible final answer');
   });
 
-  test('shows provider reasoning summaries verbatim', () {
+  test('shows complete policy-redacted provider reasoning summaries', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-reasoning-summary',
       'agentId': 'codex',
@@ -60,7 +60,7 @@ void registerAgentConversationStructuredEventScenarios() {
           'role': 'reasoning',
           'providerSummary': true,
           'text':
-              'Inspected ${['', 'workspace', 'shielded', 'source.rs'].join('/')} and confirmed cleanup; api_key=${['fixture', 'value'].join('-')}.',
+              'Inspected ${['', 'workspace', 'private', 'source.rs'].join('/')} and confirmed cleanup; api_key=${['fixture', 'value'].join('-')}.',
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
@@ -74,7 +74,7 @@ void registerAgentConversationStructuredEventScenarios() {
           'id': 'msg-reasoning-trace',
           'role': 'reasoning',
           'providerSummary': true,
-          'text': 'Chain of thought: shielded intermediate reasoning.',
+          'text': 'Chain of thought: private intermediate reasoning.',
           'createdAt': '2026-06-12T00:00:03Z',
         },
       ],
@@ -84,18 +84,17 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.messages[0].providerSummary, isTrue);
     expect(
       session.messages[0].text,
-      'Inspected ${['', 'workspace', 'shielded', 'source.rs'].join('/')} and confirmed cleanup; '
-      'api_key=marker-value.',
+      'Inspected [local path hidden] and confirmed cleanup; api_key: [redacted]',
     );
     expect(session.messages[1].text, '{"summary":"must not render raw JSON"}');
     expect(
       session.messages[2].text,
-      'Chain of thought: shielded intermediate reasoning.',
+      'Chain of thought: private intermediate reasoning.',
     );
     expect(session.messages[0].toJson()['providerSummary'], isTrue);
   });
 
-  test('shows namespaced structured event details verbatim', () {
+  test('shows policy-redacted namespaced structured event details', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-namespaced-events',
       'agentId': 'codex',
@@ -104,7 +103,7 @@ void registerAgentConversationStructuredEventScenarios() {
           'id': 'reasoning-delta',
           'role': 'assistant',
           'cardType': 'reasoning.delta',
-          'text': 'Shielded chain of thought.',
+          'text': 'Private chain of thought.',
         },
         {
           'id': 'tool-call',
@@ -118,25 +117,25 @@ void registerAgentConversationStructuredEventScenarios() {
           'role': 'assistant',
           'cardType': 'runtime.error',
           'text':
-              '''Failed to resume session short-session; Session ID: sess-123; Session ID 'sess-789'; session is sess-456; thread_id=short-thread; AWS_ACCESS_KEY_ID=${['FAKEACCESS', '123456'].join()}; awsAccessKeyId=${['FAKEACCESS', '654321'].join()}; awsSecretAccessKey=${['short', 'value'].join('-')}; githubToken=${['synthetic', 'ref'].join('-')}; signingKey=${['short', 'ref'].join('-')}; payload "access_token":"${['short', 'sentinel'].join('-')}"; cwd project/private; cwd 项目/private; cwd My Project/private; failed under project/other-private; server-share-uri; root-private-file server-share-private src/private.dart''',
+              '''Failed to resume session short-session; Session ID: sess-123; Session ID 'sess-789'; session is sess-456; thread_id=short-thread; AWS_ACCESS_KEY_ID=${['FAKEACCESS', '123456'].join()}; awsAccessKeyId=${['FAKEACCESS', '654321'].join()}; awsSecretAccessKey=${['short', 'value'].join('-')}; githubToken=${['private', 'token'].join('-')}; signingKey=${['short', 'key'].join('-')}; payload "access_token":"${['short', 'secret'].join('-')}"; cwd project/private; cwd 项目/private; cwd My Project/private; failed under project/other-private; server-share-uri; root-private-file server-share-private src/private.dart''',
         },
         {
           'id': 'unknown-event',
           'role': 'assistant',
           'cardType': 'vendor.lifecycle.notice',
-          'text': 'conversation_id=shielded-conversation',
+          'text': 'conversation_id=private-conversation',
         },
         {
           'id': 'system-tool',
           'role': 'system',
           'cardType': 'tool-call',
-          'text': 'password=shielded-marker',
+          'text': 'password=private-password',
         },
         {
           'id': 'unicode-event',
           'role': 'assistant',
           'cardType': '错误详情',
-          'text': 'conversation shielded-conversation-2',
+          'text': 'conversation private-conversation-2',
         },
       ],
     });
@@ -149,37 +148,30 @@ void registerAgentConversationStructuredEventScenarios() {
       AgentConversationMessageKind.toolCall,
       AgentConversationMessageKind.event,
     ]);
-    expect(session.messages[0].text, 'Shielded chain of thought.');
+    expect(session.messages[0].text, 'Private chain of thought.');
     expect(
       session.messages[1].text,
-      'client_secret=marker-value private-input.txt',
+      'client_secret: [redacted] private-input.txt',
     );
-    expect(session.messages[4].text, 'password=shielded-marker');
+    expect(session.messages[4].text, 'password: [redacted]');
     final serialized = session.messages.map((message) => message.text).join();
-    for (final visibleValue in [
+    for (final protectedValue in [
       'short-session',
       'short-thread',
-      'synthetic-ref',
-      'shielded-conversation',
-      'root-private',
-      'server-share',
-      'src/private.dart',
+      'private-token',
+      'private-conversation',
       'short-value',
       'project/private',
-      'shielded-conversation-2',
+      'private-conversation-2',
       'sess-123',
       'sess-456',
       'FAKEACCESS123456',
       'FAKEACCESS654321',
-      'project/other-private',
       'sess-789',
-      'short-ref',
-      'short-sentinel',
-      'server-share-uri',
-      '项目',
-      'My Project',
+      'short-key',
+      'short-secret',
     ]) {
-      expect(serialized, contains(visibleValue));
+      expect(serialized, isNot(contains(protectedValue)));
     }
   });
 
@@ -211,9 +203,9 @@ void registerAgentConversationStructuredEventScenarios() {
       depth += 1;
       cursor = cursor.childMessages.single;
     }
-    expect(depth, lessThanOrEqualTo(16));
-    expect(session.messageTreeTruncated, isTrue);
-    expect(session.messages.single.childMessagesTruncated, isTrue);
+    expect(depth, 100);
+    expect(session.messageTreeTruncated, isFalse);
+    expect(session.messages.single.childMessagesTruncated, isFalse);
     expect(() => session.messages.add(cursor), throwsUnsupportedError);
     expect(
       () => session.messages.single.childMessages.add(cursor),
@@ -221,72 +213,92 @@ void registerAgentConversationStructuredEventScenarios() {
     );
   });
 
-  test(
-    'preserves final top-level messages when nested process budget is full',
-    () {
-      final session = AgentConversationSession.fromJson({
-        'id': 'session-budget',
-        'agentId': 'codex',
-        'messages': [
+  test('preserves every nested process node and final top-level message', () {
+    final session = AgentConversationSession.fromJson({
+      'id': 'session-budget',
+      'agentId': 'codex',
+      'messages': [
+        {
+          'id': 'large-process',
+          'role': 'event',
+          'cardType': 'event',
+          'text': 'Bounded process',
+          'messages': [
+            for (var index = 0; index < 5000; index += 1)
+              {
+                'id': 'operation-$index',
+                'role': 'event',
+                'cardType': 'event',
+                'text': 'Safe operation',
+              },
+          ],
+        },
+        {
+          'id': 'final-answer',
+          'role': 'assistant',
+          'text': 'Final answer remains visible.',
+        },
+      ],
+    });
+
+    expect(session.messages, hasLength(2));
+    expect(session.messages.last.id, 'final-answer');
+    expect(session.messages.last.text, 'Final answer remains visible.');
+    expect(session.messageTreeTruncated, isFalse);
+    expect(session.messages.first.childMessagesTruncated, isFalse);
+    expect(session.messages.first.childMessages, hasLength(5000));
+    expect(session.sourceMessageCount, 2);
+  });
+
+  test('preserves every top-level history message without truncation', () {
+    final session = AgentConversationSession.fromJson({
+      'id': 'session-history-bound',
+      'agentId': 'codex',
+      'messages': [
+        for (var index = 0; index < 10005; index += 1)
           {
-            'id': 'large-process',
-            'role': 'event',
-            'cardType': 'event',
-            'text': 'Bounded process',
-            'messages': [
-              for (var index = 0; index < 5000; index += 1)
-                {
-                  'id': 'operation-$index',
-                  'role': 'event',
-                  'cardType': 'event',
-                  'text': 'Safe operation',
-                },
-            ],
-          },
-          {
-            'id': 'final-answer',
+            'id': 'message-$index',
             'role': 'assistant',
-            'text': 'Final answer remains visible.',
+            'text': 'Visible answer $index',
           },
-        ],
-      });
+      ],
+    });
 
-      expect(session.messages, hasLength(2));
-      expect(session.messages.last.id, 'final-answer');
-      expect(session.messages.last.text, 'Final answer remains visible.');
-      expect(session.messageTreeTruncated, isTrue);
-      expect(session.messages.first.childMessagesTruncated, isTrue);
-      expect(
-        session.messages.first.childMessages.length,
-        lessThanOrEqualTo(4096),
-      );
-      expect(session.sourceMessageCount, 2);
-    },
-  );
+    expect(session.historyTruncated, isFalse);
+    expect(session.sourceMessageCount, 10005);
+    expect(session.messageCount, 10005);
+    expect(session.messages.first.id, 'message-0');
+    expect(session.messages.last.id, 'message-10004');
+  });
 
-  test(
-    'marks bounded top-level history without hiding the truncation fact',
-    () {
-      final session = AgentConversationSession.fromJson({
-        'id': 'session-history-bound',
-        'agentId': 'codex',
-        'messages': [
-          for (var index = 0; index < 2003; index += 1)
-            {
-              'id': 'message-$index',
-              'role': 'assistant',
-              'text': 'Visible answer $index',
-            },
-        ],
-      });
+  test('preserves every attachment payload and complete structured text', () {
+    final longText = List<String>.filled(300, 'visible').join(' ');
+    final longInlinePayload = List<String>.filled(6000100, 'a').join();
+    final session = AgentConversationSession.fromJson({
+      'id': 'session-lossless-payloads',
+      'agentId': 'codex',
+      'messages': [
+        {
+          'id': 'event-long',
+          'role': 'event',
+          'cardType': 'event',
+          'text': longText,
+          'images': [
+            for (var index = 0; index < 5; index += 1)
+              {
+                'name': 'fixture-$index.png',
+                'mediaType': 'image/png',
+                'data': index == 4 ? longInlinePayload : 'c3ludGhldGlj',
+              },
+          ],
+        },
+      ],
+    });
 
-      expect(session.historyTruncated, isTrue);
-      expect(session.sourceMessageCount, 2003);
-      expect(session.messageCount, 2000);
-      expect(session.messages.first.id, 'message-3');
-      expect(session.messages.last.id, 'message-2002');
-    },
-  );
+    expect(session.messages.single.text, longText);
+    expect(session.messages.single.images, hasLength(5));
+    expect(session.messages.single.images.last.dataBase64, longInlinePayload);
+  });
 
   test('projected message identity excludes mutable streamed text', () {
     AgentConversationSession parse(String text) =>
@@ -299,20 +311,6 @@ void registerAgentConversationStructuredEventScenarios() {
               'createdAt': '2026-06-12T00:00:00Z',
               'text': text,
             },
-            {
-              'id': 'duplicate-id',
-              'role': 'event',
-              'cardType': 'event',
-              'createdAt': '2026-06-12T00:00:01Z',
-              'text': 'First duplicate',
-            },
-            {
-              'id': 'duplicate-id',
-              'role': 'event',
-              'cardType': 'event',
-              'createdAt': '2026-06-12T00:00:02Z',
-              'text': 'Second duplicate',
-            },
           ],
         });
 
@@ -324,8 +322,15 @@ void registerAgentConversationStructuredEventScenarios() {
       after.messages.first.stableIdentity,
     );
     expect(
-      before.messages[1].stableIdentity,
-      isNot(before.messages[2].stableIdentity),
+      () => AgentConversationSession.fromJson({
+        'id': 'duplicate-session',
+        'agentId': 'codex',
+        'messages': [
+          {'id': 'duplicate-id', 'role': 'event', 'text': 'first'},
+          {'id': 'duplicate-id', 'role': 'event', 'text': 'second'},
+        ],
+      }),
+      throwsA(isA<FormatException>()),
     );
   });
 
@@ -339,16 +344,16 @@ void registerAgentConversationStructuredEventScenarios() {
           'id': 'error',
           'role': 'error',
           'cardType': 'error',
-          'text': 'session_id=shielded-session',
+          'text': 'session_id=private-session',
         },
       ],
     });
 
     expect(session.preview, 'Safe visible prompt');
-    expect(session.preview, isNot(contains('shielded-session')));
+    expect(session.preview, isNot(contains('private-session')));
   });
 
-  test('normalizes structured native events and shows details verbatim', () {
+  test('normalizes structured native events with policy redaction', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-events',
       'agentId': 'codex',
@@ -368,7 +373,7 @@ void registerAgentConversationStructuredEventScenarios() {
           'cardTitle': 'exec_command',
           'text': jsonEncode({
             'cmd':
-                'read ${['', 'workspace', 'shielded', 'source.rs'].join('/')}',
+                'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
             'access_token': ['fixture', 'value'].join('-'),
           }),
           'createdAt': '2026-06-12T00:00:01Z',
@@ -378,7 +383,7 @@ void registerAgentConversationStructuredEventScenarios() {
           'role': 'function_call_output',
           'text': jsonEncode({
             'ok': true,
-            'path': ['', 'workspace', 'shielded', 'source.rs'].join('/'),
+            'path': ['', 'workspace', 'private', 'source.rs'].join('/'),
             'api_key': ['fixture', 'value'].join('-'),
           }),
           'createdAt': '2026-06-12T00:00:02Z',
@@ -387,7 +392,7 @@ void registerAgentConversationStructuredEventScenarios() {
           'id': 'msg-metadata',
           'role': 'metadata',
           'text': jsonEncode({
-            'cwd': ['', 'workspace', 'shielded', 'project'].join('/'),
+            'cwd': ['', 'workspace', 'private', 'project'].join('/'),
             'credential': ['fixture', 'value'].join('-'),
           }),
           'createdAt': '2026-06-12T00:00:03Z',
@@ -396,14 +401,14 @@ void registerAgentConversationStructuredEventScenarios() {
           'id': 'msg-error',
           'role': 'error',
           'text':
-              'Operation failed under ${['', 'workspace', 'shielded', 'project'].join('/')} with api_key=${['fixture', 'value'].join('-')}',
+              'Operation failed under ${['', 'workspace', 'private', 'project'].join('/')} with api_key=${['fixture', 'value'].join('-')}',
           'createdAt': '2026-06-12T00:00:04Z',
         },
         {
           'id': 'msg-event',
           'role': 'lifecycle_notice',
           'text':
-              'Cleanup started under ${['', 'workspace', 'shielded', 'project'].join('/')}.',
+              'Cleanup started under ${['', 'workspace', 'private', 'project'].join('/')}.',
           'createdAt': '2026-06-12T00:00:05Z',
         },
         {
@@ -431,8 +436,10 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.messages[4].collapsed, isFalse);
     final visible = session.messages.map((message) => message.text).join('\n');
     expect(visible, contains('"cmd"'));
-    expect(visible, contains('marker-value'));
-    expect(visible, contains('/workspace/private'));
+    expect(visible, isNot(contains('marker-value')));
+    expect(visible, isNot(contains('/workspace/private')));
+    expect(visible, contains('[redacted]'));
+    expect(visible, contains('[local path hidden]'));
     expect(
       session.messages[4].kind,
       isNot(AgentConversationMessageKind.assistant),
