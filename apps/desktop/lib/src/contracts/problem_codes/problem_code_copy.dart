@@ -14,10 +14,15 @@ abstract final class ProblemCodeCopy {
     String occurrenceId = '',
     String occurredAt = '',
     String strategyCode = '',
+    String component = '',
+    bool? retryable,
+    String recovery = '',
     ProblemDomain? domain,
   }) {
     final code = legacyCode.trim();
     final resolved = ProblemCodeCatalog.resolve(code);
+    final safeComponent = _safeToken(component);
+    final safeRecovery = _safeToken(recovery);
     final lines = <String>[
       'LicoUp problem',
       if (occurrenceId.trim().isNotEmpty) 'ref: ${occurrenceId.trim()}',
@@ -25,10 +30,18 @@ abstract final class ProblemCodeCopy {
       if (code.isNotEmpty) 'code: $code',
       if (code.isNotEmpty) 'domain: ${(domain ?? resolved.domain).id}',
       if (stage.trim().isNotEmpty) 'stage: ${stage.trim()}',
+      if (safeComponent.isNotEmpty) 'component: $safeComponent',
+      if (retryable != null) 'retryable: $retryable',
+      if (safeRecovery.isNotEmpty) 'recovery: $safeRecovery',
       if (occurredAt.trim().isNotEmpty) 'at: ${occurredAt.trim()}',
       if (strategyCode.trim().isNotEmpty)
         'strategyCode: ${strategyCode.trim()}',
     ];
     return lines.join('\n');
+  }
+
+  static String _safeToken(String value) {
+    final token = value.trim();
+    return RegExp(r'^[a-z][a-z0-9_/-]{0,95}$').hasMatch(token) ? token : '';
   }
 }

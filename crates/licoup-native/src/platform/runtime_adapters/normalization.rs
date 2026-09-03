@@ -49,7 +49,7 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         .then_some(verified_native_session_id)
         .filter(|value| !value.trim().is_empty());
     let error = execution.error.as_ref().map(|failure| {
-        json!({
+        let mut error = json!({
             "code": failure.code,
             "message": failure.message,
             "stage": failure.stage,
@@ -59,7 +59,17 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
             "threadId": failure.thread_id,
             "turnId": failure.turn_id,
             "turnStatus": failure.turn_status
-        })
+        });
+        if let Some(component) = failure.component.as_deref() {
+            error["component"] = json!(component);
+        }
+        if let Some(retryable) = failure.retryable {
+            error["retryable"] = json!(retryable);
+        }
+        if let Some(recovery) = failure.recovery.as_deref() {
+            error["recovery"] = json!(recovery);
+        }
+        error
     });
     let stderr = execution
         .error
@@ -150,6 +160,9 @@ pub(super) fn normalize_codex(execution: codex_app_server::RunResult) -> Normali
                 code: failure.code.to_string(),
                 message: failure.message.to_string(),
                 stage: failure.stage.to_string(),
+                component: failure.component.map(str::to_owned),
+                retryable: failure.retryable,
+                recovery: failure.recovery.map(str::to_owned),
                 user_interaction_required: failure.user_interaction_required,
                 request_method: failure.request_method,
                 session_id: failure.session_id,
@@ -200,6 +213,9 @@ pub(super) fn normalize_antigravity(
                 code: failure.code.to_string(),
                 message: failure.message.to_string(),
                 stage: failure.stage.to_string(),
+                component: None,
+                retryable: None,
+                recovery: None,
                 user_interaction_required: failure.user_interaction_required,
                 request_method: failure.request_method,
                 session_id: failure.session_id,
@@ -248,6 +264,9 @@ pub(super) fn normalize_claude(execution: claude_code_driver::RunResult) -> Norm
                 code: failure.code.to_string(),
                 message: failure.message.to_string(),
                 stage: failure.stage.to_string(),
+                component: None,
+                retryable: None,
+                recovery: None,
                 user_interaction_required: failure.user_interaction_required,
                 request_method: failure.request_method,
                 session_id: failure.session_id,
@@ -299,6 +318,9 @@ pub(super) fn normalize_cursor(
                 code: failure.code.to_string(),
                 message: failure.message.to_string(),
                 stage: failure.stage.to_string(),
+                component: failure.component.map(str::to_owned),
+                retryable: failure.retryable,
+                recovery: failure.recovery.map(str::to_owned),
                 user_interaction_required: failure.user_interaction_required,
                 request_method: failure.request_method,
                 session_id: failure.session_id,
@@ -356,6 +378,9 @@ pub(super) fn normalize_acp(
                 code: failure.code,
                 message: failure.message.to_string(),
                 stage: failure.stage.to_string(),
+                component: None,
+                retryable: None,
+                recovery: None,
                 user_interaction_required: failure.user_interaction_required,
                 request_method: failure.request_method,
                 session_id: failure.session_id,
@@ -399,6 +424,9 @@ pub(super) fn normalize_openclaw(execution: openclaw_driver::RunResult) -> Norma
             code: failure.code.to_string(),
             message: failure.message.to_string(),
             stage: failure.stage.to_string(),
+            component: None,
+            retryable: None,
+            recovery: None,
             user_interaction_required: failure.user_interaction_required,
             request_method: failure.request_method,
             session_id: failure.session_id,
@@ -465,6 +493,9 @@ pub(super) fn normalize_hermes_with_protocol(
             code: failure.code.to_string(),
             message: failure.message.to_string(),
             stage: failure.stage.to_string(),
+            component: None,
+            retryable: None,
+            recovery: None,
             user_interaction_required: failure.user_interaction_required,
             request_method: failure.request_method,
             session_id: failure.session_id,
@@ -516,6 +547,9 @@ pub(super) fn normalize_pi(execution: pi_driver::RunResult) -> NormalizedExecuti
             code: failure.code.to_string(),
             message: failure.message.to_string(),
             stage: failure.stage.to_string(),
+            component: None,
+            retryable: None,
+            recovery: None,
             user_interaction_required: failure.user_interaction_required,
             request_method: failure.request_method,
             session_id: failure.session_id,
@@ -568,6 +602,9 @@ pub(super) fn normalize_lico_agent(execution: lico_agent_driver::RunResult) -> N
             code: failure.code.to_string(),
             message: failure.message.to_string(),
             stage: failure.stage.to_string(),
+            component: None,
+            retryable: None,
+            recovery: None,
             user_interaction_required: failure.user_interaction_required,
             request_method: failure.request_method,
             session_id: failure.session_id,
@@ -621,6 +658,9 @@ pub(super) fn normalize_deepseek_harness(
             code: failure.code.to_string(),
             message: failure.message.to_string(),
             stage: failure.stage.to_string(),
+            component: None,
+            retryable: None,
+            recovery: None,
             user_interaction_required: failure.user_interaction_required,
             request_method: failure.request_method,
             session_id: failure.session_id,

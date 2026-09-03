@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -41,6 +42,8 @@ class MessagingMessageGroup extends StatelessWidget {
     this.assistantActive = false,
     this.conversationId = '',
     this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
   });
 
   final bool authorIsUser;
@@ -60,6 +63,8 @@ class MessagingMessageGroup extends StatelessWidget {
   /// Clipboard write routed through the platform boundary; message rows
   /// expose an explicit copy action when present.
   final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
 
   /// This author's native/local conversation id, revealed on message hover
   /// immediately before the timestamp (agent bubbles only).
@@ -175,6 +180,8 @@ class MessagingMessageGroup extends StatelessWidget {
             agentKey: bubbleGlowKey,
             conversationId: conversationId,
             onCopyText: onCopyText,
+            onRetryMessage: onRetryMessage,
+            onDeleteMessage: onDeleteMessage,
           ),
           if (index != messages.length - 1)
             const SizedBox(height: LicoContentSpacing.compact),
@@ -214,6 +221,8 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     this.agentKey = '',
     this.conversationId = '',
     this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
   });
 
   final AgentConversationMessage message;
@@ -232,6 +241,8 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   /// Clipboard write routed through the platform boundary; hovering the bubble
   /// reveals an explicit copy action at its bottom-left corner when present.
   final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
 
   @override
   State<_MessagingGroupMessageRow> createState() =>
@@ -257,6 +268,33 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
         message: LicoStrings.of(context).conversationMessageCopied,
       ),
     );
+  }
+
+  Future<void> _showMessageMenu(
+    BuildContext context,
+    TapDownDetails details,
+  ) async {
+    final delete = widget.onDeleteMessage;
+    if (!widget.authorIsUser || delete == null) return;
+    final selected = await showMessagingGlassMenu<String>(
+      context: context,
+      globalPosition: details.globalPosition,
+      menuKey: const Key('messaging-message-context-menu'),
+      actions: [
+        MessagingGlassMenuAction<String>(
+          value: 'delete',
+          label: LicoStrings.of(context).delete,
+          leading: Icon(
+            Icons.delete_outline_rounded,
+            size: 16,
+            color: context.licoColors.error,
+          ),
+        ),
+      ],
+    );
+    if (selected == 'delete') {
+      await delete(widget.message.id);
+    }
   }
 
   Widget _buildCopyAction(BuildContext context) {
@@ -413,25 +451,80 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             agentKey: widget.agentKey,
             child: content,
           );
+    final failed =
+        widget.authorIsUser &&
+        widget.message.deliveryState ==
+            AgentConversationMessageDeliveryState.failed;
+    final userBubble = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (failed && widget.onRetryMessage != null) ...[
+          _MessagingFailedMessageRetry(
+            messageId: widget.message.id,
+            onRetry: widget.onRetryMessage!,
+          ),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: widget.adapter.userBubble.maxWidth,
+            ),
+            child: _buildBubbleWithHoverBand(context, bubble),
+          ),
+        ),
+      ],
+    );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
-        child: widget.authorIsUser
-            ? Align(
-                alignment: Alignment.centerRight,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: widget.adapter.userBubble.maxWidth,
-                  ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onSecondaryTapDown:
+            widget.authorIsUser && widget.onDeleteMessage != null
+            ? (details) => _showMessageMenu(context, details)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: widget.authorIsUser
+              ? Align(alignment: Alignment.centerRight, child: userBubble)
+              : Align(
+                  alignment: Alignment.centerLeft,
                   child: _buildBubbleWithHoverBand(context, bubble),
                 ),
-              )
-            : Align(
-                alignment: Alignment.centerLeft,
-                child: _buildBubbleWithHoverBand(context, bubble),
-              ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Failure affordance layered beside the unchanged ordinary user bubble.
+class _MessagingFailedMessageRetry extends StatelessWidget {
+  const _MessagingFailedMessageRetry({
+    required this.messageId,
+    required this.onRetry,
+  });
+
+  final String messageId;
+  final Future<void> Function(String) onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Tooltip(
+        message: LicoStrings.of(context).retry,
+        waitDuration: LicoMotion.tooltipWait,
+        child: IconButton(
+          key: Key('messaging-message-retry-action-$messageId'),
+          constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          onPressed: () => onRetry(messageId),
+          icon: Icon(Icons.refresh_rounded, size: 18, color: colors.error),
+        ),
       ),
     );
   }

@@ -1,4 +1,4 @@
-use std::io::{BufRead, Read};
+use std::io::BufRead;
 use std::sync::mpsc::Sender;
 
 pub(super) const MAX_PROTOCOL_LINE_BYTES: usize = 8 * 1024 * 1024;
@@ -91,21 +91,4 @@ pub(super) fn isolate_pty_protocol_line(input: &[u8]) -> Vec<u8> {
         index += 1;
     }
     clean
-}
-
-pub(super) fn drain_stderr(mut reader: impl Read, max_stderr: usize, truncated: &mut bool) {
-    let mut buffer = [0_u8; 4096];
-    let mut collected = 0usize;
-    loop {
-        let read = match reader.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(count) => count,
-            Err(_) => break,
-        };
-        if collected >= max_stderr {
-            *truncated = true;
-            break;
-        }
-        collected = collected.saturating_add(read.min(max_stderr.saturating_sub(collected)));
-    }
 }

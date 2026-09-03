@@ -50,6 +50,7 @@ abstract final class ConversationRuntimeResultPolicy {
         : '';
     const markers = <String>[
       'quota',
+      'usage_limit',
       'credit',
       'rate_limit',
       'rate-limit',

@@ -1288,7 +1288,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 10));
     }
 
-    expect(controller.failureStage, 'turn');
+    expect(controller.failureStage, 'native/turn');
     expect(controller.failureCode, 'exact_native_failure');
     expect(controller.failureCode, isNot('transport_failed'));
     expect(controller.dispatchPending, isFalse);

@@ -12,6 +12,8 @@ enum AgentConversationMessageKind {
 
 enum AgentConversationSemanticLayer { thread, execution, artifacts, audit, raw }
 
+enum AgentConversationMessageDeliveryState { ordinary, failed }
+
 AgentConversationSemanticLayer? agentConversationSemanticLayerFor(
   String? value,
 ) {
@@ -44,6 +46,7 @@ class AgentConversationMessage {
     this.childMessagesTruncated = false,
     this.childMessages = const [],
     this.images = const [],
+    this.deliveryState = AgentConversationMessageDeliveryState.ordinary,
   });
 
   final String id;
@@ -69,6 +72,7 @@ class AgentConversationMessage {
   /// graceful unavailable placeholder until a platform-root byte provider
   /// exists. Nothing is fetched over the network.
   final List<AgentConversationImageAttachment> images;
+  final AgentConversationMessageDeliveryState deliveryState;
 
   AgentConversationMessageKind get kind =>
       agentConversationMessageKindFor(role: role, cardType: cardType);
@@ -158,6 +162,7 @@ class AgentConversationMessage {
       childMessagesTruncated: childMessagesTruncated,
       childMessages: childMessages,
       images: images,
+      deliveryState: deliveryState,
     );
   }
 
@@ -180,6 +185,8 @@ class AgentConversationMessage {
       if (childMessagesTruncated) 'childMessagesTruncated': true,
       if (images.isNotEmpty)
         'images': [for (final image in images) image.toJson()],
+      if (deliveryState != AgentConversationMessageDeliveryState.ordinary)
+        'deliveryState': deliveryState.name,
       if (childMessages.isNotEmpty)
         'messages': childMessages.map((message) => message.toJson()).toList(),
     };
