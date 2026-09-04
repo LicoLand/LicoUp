@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';

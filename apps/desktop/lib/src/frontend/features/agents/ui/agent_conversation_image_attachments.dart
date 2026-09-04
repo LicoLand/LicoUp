@@ -1,29 +1,35 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-class ConversationImageByteReaderScope extends InheritedWidget {
-  const ConversationImageByteReaderScope({
+typedef ConversationImageLoader =
+    Future<Uint8List?> Function({
+      required String localPath,
+      required String mediaType,
+    });
+
+class ConversationImageLoaderScope extends InheritedWidget {
+  const ConversationImageLoaderScope({
     super.key,
-    required this.reader,
+    required this.loader,
     required super.child,
   });
 
-  final ConversationImageByteReader reader;
+  final ConversationImageLoader loader;
 
-  static ConversationImageByteReader? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<ConversationImageByteReaderScope>()
-      ?.reader;
+  static ConversationImageLoader? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<ConversationImageLoaderScope>()
+      ?.loader;
 
   @override
-  bool updateShouldNotify(ConversationImageByteReaderScope oldWidget) =>
-      !identical(reader, oldWidget.reader);
+  bool updateShouldNotify(ConversationImageLoaderScope oldWidget) =>
+      !identical(loader, oldWidget.loader);
 }
 
 /// Messaging-style rendering of a message's image attachments: bounded
@@ -85,7 +91,7 @@ class ConversationImageAttachmentFrame extends StatefulWidget {
 
 class _ConversationImageAttachmentFrameState
     extends State<ConversationImageAttachmentFrame> {
-  Future<ConversationImageReadResult>? _read;
+  Future<Uint8List?>? _read;
   Object? _readKey;
 
   AgentConversationImageAttachment get attachment => widget.attachment;
@@ -105,14 +111,14 @@ class _ConversationImageAttachmentFrameState
   }
 
   void _syncRead() {
-    final reader = ConversationImageByteReaderScope.maybeOf(context);
+    final loader = ConversationImageLoaderScope.maybeOf(context);
     final path = attachment.filePath.trim();
-    final key = (reader, path, attachment.mediaType);
+    final key = (loader, path, attachment.mediaType);
     if (_readKey == key) return;
     _readKey = key;
-    _read = reader == null || path.isEmpty
+    _read = loader == null || path.isEmpty
         ? null
-        : reader.read(localPath: path, mediaType: attachment.mediaType);
+        : loader(localPath: path, mediaType: attachment.mediaType);
   }
 
   ImageProvider? _resolveProvider() {
@@ -143,15 +149,14 @@ class _ConversationImageAttachmentFrameState
         label: label,
       );
     }
-    return FutureBuilder<ConversationImageReadResult>(
+    return FutureBuilder<Uint8List?>(
       future: read,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return ConversationImageLoadingPlaceholder(maxWidth: maxWidth);
         }
-        final result = snapshot.data;
-        final bytes = result?.bytes;
-        if (result == null || !result.succeeded || bytes == null) {
+        final bytes = snapshot.data;
+        if (bytes == null) {
           return ConversationImageUnavailablePlaceholder(
             maxWidth: maxWidth,
             label: label,

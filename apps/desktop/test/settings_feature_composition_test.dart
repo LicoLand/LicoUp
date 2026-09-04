@@ -4,8 +4,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/composition/features/settings/settings_feature_composition.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
-import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
@@ -23,14 +22,6 @@ void main() {
         catalog: runtime.catalog,
         preferencesRepository: preferences,
         canonicalFallback: preferences.value,
-        initialEnvironment: LayoutEnvironment.fromConstraints(
-          surface: LayoutRuntimeSurface.desktop,
-          width: 900,
-          height: 800,
-          textScale: 1,
-          hasPointer: true,
-          hasKeyboard: true,
-        ),
       );
       final controller = ClientController(
         agentService: FakeAgentService(),

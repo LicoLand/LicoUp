@@ -5,8 +5,10 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
+import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
+import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
@@ -34,6 +36,7 @@ import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
 
@@ -45,6 +48,7 @@ final class BindingShellRenderer implements ShellRendererPort {
     required BuiltInLayoutComposition layout,
     required IntentSink<ShellIntent> shellIntents,
     required ProjectionSource<StatusProjection> status,
+    required ProjectionSource<LocaleProjection> locale,
     required AgentsBinding agents,
     required ChromeBinding chrome,
     required ConversationBinding conversation,
@@ -58,6 +62,7 @@ final class BindingShellRenderer implements ShellRendererPort {
     required SearchBinding search,
     required TargetsBinding targets,
     required ExternalUriOpener openExternalUri,
+    required String workspaceHomeDirectory,
   }) : _layout = layout,
        _shellIntents = shellIntents,
        _agents = agents,
@@ -72,8 +77,10 @@ final class BindingShellRenderer implements ShellRendererPort {
        _agentHub = agentHub,
        _targets = targets,
        _openExternalUri = openExternalUri,
+       _workspaceHomeDirectory = workspaceHomeDirectory,
        _chrome = _BindingLayoutChrome(
          status: status,
+         locale: locale,
          mobileRelay: mobileRelay,
          search: search,
        );
@@ -92,6 +99,7 @@ final class BindingShellRenderer implements ShellRendererPort {
   final AgentHubBinding _agentHub;
   final TargetsBinding _targets;
   final ExternalUriOpener _openExternalUri;
+  final String _workspaceHomeDirectory;
   final _BindingLayoutChrome _chrome;
   bool _disposed = false;
 
@@ -123,15 +131,18 @@ final class BindingShellRenderer implements ShellRendererPort {
     ClientSection destination, {
     required GlobalKey agentsHomeKey,
   }) => switch (destination) {
-    ClientSection.agents => AgentsCanvas(
-      agents: _agents,
-      conversation: _conversation,
-      relay: _mobileRelay,
-      monitoring: _monitoring,
-      targets: _targets,
-      onSelectDestination: (destination) =>
-          _shellIntents.send(SelectShellDestination(destination)),
-      agentsHomeKey: agentsHomeKey as GlobalKey<MobileAgentsHomeState>,
+    ClientSection.agents => WorkspaceHomeDirectoryScope(
+      path: _workspaceHomeDirectory,
+      child: AgentsCanvas(
+        agents: _agents,
+        conversation: _conversation,
+        relay: _mobileRelay,
+        monitoring: _monitoring,
+        targets: _targets,
+        onSelectDestination: (destination) =>
+            _shellIntents.send(SelectShellDestination(destination)),
+        agentsHomeKey: agentsHomeKey as GlobalKey<MobileAgentsHomeState>,
+      ),
     ),
     ClientSection.monitoring => AgentUsagePanel(
       binding: _monitoring,
@@ -205,19 +216,27 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
 final class _BindingLayoutChrome implements LayoutChromePort {
   _BindingLayoutChrome({
     required ProjectionSource<StatusProjection> status,
+    required ProjectionSource<LocaleProjection> locale,
     required MobileRelayBinding mobileRelay,
     required SearchBinding search,
   }) : _mobileRelay = mobileRelay,
        _search = search {
-    _value = _snapshot(status.current);
-    _subscription = status.changes.listen(_handleStatus);
+    _status = status.current;
+    _locale = locale.current;
+    _value = _snapshot(_status, _locale);
+    _statusSubscription = status.changes.listen(_handleStatus);
+    _localeSubscription = locale.changes.listen(_handleLocale);
   }
 
   final MobileRelayBinding _mobileRelay;
   final SearchBinding _search;
   final _RendererNotifier _listeners = _RendererNotifier();
+  late StatusProjection _status;
+  late LocaleProjection _locale;
   late final StreamSubscription<ProjectionUpdate<StatusProjection>>
-  _subscription;
+  _statusSubscription;
+  late final StreamSubscription<ProjectionUpdate<LocaleProjection>>
+  _localeSubscription;
   late LayoutChromeSnapshot _value;
   bool _disposed = false;
 
@@ -241,25 +260,43 @@ final class _BindingLayoutChrome implements LayoutChromePort {
 
   void _handleStatus(ProjectionUpdate<StatusProjection> update) {
     if (_disposed) return;
-    final next = _snapshot(update.value);
+    _status = update.value;
+    final next = _snapshot(_status, _locale);
     if (next == _value) return;
     _value = next;
     _listeners.publish();
   }
 
-  static LayoutChromeSnapshot _snapshot(StatusProjection projection) =>
-      LayoutChromeSnapshot(
-        status: LayoutChromeStatusSnapshot(
-          message: projection.displayMessage,
-          caption: projection.displayCaption,
-          errorCode: projection.errorCode,
-        ),
-      );
+  void _handleLocale(ProjectionUpdate<LocaleProjection> update) {
+    if (_disposed) return;
+    _locale = update.value;
+    final next = _snapshot(_status, _locale);
+    if (next == _value) return;
+    _value = next;
+    _listeners.publish();
+  }
+
+  static LayoutChromeSnapshot _snapshot(
+    StatusProjection projection,
+    LocaleProjection locale,
+  ) {
+    final resolved = resolveStatusProjection(projection, locale);
+    return LayoutChromeSnapshot(
+      status: LayoutChromeStatusSnapshot(
+        message: resolved.message,
+        caption: resolved.caption,
+        errorCode: resolved.errorCode,
+      ),
+    );
+  }
 
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    await _subscription.cancel();
+    await Future.wait([
+      _statusSubscription.cancel(),
+      _localeSubscription.cancel(),
+    ]);
     _listeners.dispose();
   }
 }

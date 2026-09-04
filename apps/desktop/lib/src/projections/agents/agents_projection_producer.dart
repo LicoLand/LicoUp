@@ -7,7 +7,7 @@ import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptiv
 import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_product_identity.dart';
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';

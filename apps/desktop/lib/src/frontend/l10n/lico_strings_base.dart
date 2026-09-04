@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
 
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 class LicoStrings {

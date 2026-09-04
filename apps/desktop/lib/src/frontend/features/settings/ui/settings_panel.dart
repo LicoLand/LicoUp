@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';

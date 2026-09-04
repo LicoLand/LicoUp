@@ -13,7 +13,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:2509bb50c2a9372fe2ef1b9d061fc10b00930e63d7be300dc3105383d058ea9f"
+      "digest": "sha256:3fa6299268214ef4789a9d410487657c42ebd38078e330b8dd21d1168d79f8e8"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -21,7 +21,7 @@
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:e8a5779ba989967ef7a77929393513e6ce825b986c6177b807698ab975bf9e3b"
+      "digest": "sha256:09f96781d68e6389e4c177515df096855609c6934f9fedba673481f45cb8724c"
     }
   ],
   "entries": [
@@ -91,7 +91,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_shell.dart",
-      "digest": "sha256:b4a98cab25820fb8884b4035e36453a20b1e8667e2b85d6e4f5c671dc1bf6b85"
+      "digest": "sha256:fc0703898670781813fae7046c499d3515b0f86f178dddca1dd13c4f1afcf73c"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart",
@@ -150,5 +150,5 @@
       "digest": "sha256:5c69a2a9873e99526bb186ccde5833d7e03ec69d99177e66fdc93017ad41d0a6"
     }
   ],
-  "manifestDigest": "sha256:09d2de3040d706e3c7d807dd3e4fe1645a643298d72a617b71bbff629bbf2539"
+  "manifestDigest": "sha256:0dc580d03dff8981926f3092674e0bcd71cda18d560a099ee1c3939f7af7f205"
 }

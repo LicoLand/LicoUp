@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 /// Stable semantic identity for a complete presentation profile.
 final class LayoutProfileId implements Comparable<LayoutProfileId> {
   const LayoutProfileId._(this.value);
@@ -42,29 +40,10 @@ final class LayoutProfileId implements Comparable<LayoutProfileId> {
   String toString() => value;
 }
 
-/// Sole platform policy for choosing the preferred catalog profile.
-///
-/// The catalog remains the source of profile membership and declared default
-/// metadata. This policy selects the current product's platform preference;
-/// callers inject the result into manager, recovery, persistence, and reset.
-abstract final class LayoutProfileDefaults {
-  /// Platform-preferred layout for first run and "restore default".
-  static LayoutProfileId preferredForPlatform(TargetPlatform platform) {
-    return switch (platform) {
-      TargetPlatform.macOS ||
-      TargetPlatform.windows ||
-      TargetPlatform.iOS ||
-      TargetPlatform.android => LayoutProfileId.parse('messaging'),
-      _ => LayoutProfileId.parse('dashboard'),
-    };
-  }
-}
-
 /// Profile-owned copy for the client locales supported by this product.
 ///
 /// Copy travels with the profile registration so adding a profile never adds
 /// an identity branch to shared localization or Settings code.
-@immutable
 final class LayoutProfileCopy {
   factory LayoutProfileCopy({
     required String english,

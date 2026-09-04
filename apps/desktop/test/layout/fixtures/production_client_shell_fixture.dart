@@ -8,7 +8,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
@@ -17,7 +17,8 @@ import 'package:licoup/src/contracts/presentation/presentation_preferences.dart'
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
 
 import '../../presentation/composed_client_shell_test_helper.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -42,6 +43,11 @@ final class ProductionClientShellFixture {
   final Brightness brightness;
   final String appearancePresetId;
   final Directory _temporaryDataRoot;
+  LayoutStatePort? _layoutStateStore;
+
+  LayoutStatePort get layoutStateStore =>
+      _layoutStateStore ??
+      (throw StateError('production_shell_fixture_not_composed'));
 
   static Future<ProductionClientShellFixture> create({
     required LayoutProfileId profileId,
@@ -50,7 +56,7 @@ final class ProductionClientShellFixture {
     required Size size,
     required Brightness brightness,
   }) async {
-    final composition = BuiltInLayoutComposition();
+    final layoutCatalog = createBuiltInLayoutCatalog();
     // The production baseline renders the out-of-box preference: the
     // system-following preset, which resolves per platform brightness.
     const appearancePresetId = 'default-system';
@@ -80,8 +86,7 @@ final class ProductionClientShellFixture {
       portableData: portableData,
       agentService: agentService,
       conversationService: const _FixtureConversationService(),
-      layoutCatalog: composition.catalog,
-      layoutStateStore: composition.stateStore,
+      layoutCatalog: layoutCatalog,
       presentationPreferencesRepository: preferences,
       mobileClientRuntimePlatformOverride:
           surface == LayoutRuntimeSurface.mobile,
@@ -189,7 +194,12 @@ final class ProductionClientShellFixture {
           explicitChildNodes: true,
           child: RepaintBoundary(
             key: repaintBoundaryKey,
-            child: composedClientShell(controller),
+            child: composedClientShell(
+              controller,
+              onComposed: (composition) {
+                _layoutStateStore = composition.renderer.layoutStateStore;
+              },
+            ),
           ),
         ),
       ),

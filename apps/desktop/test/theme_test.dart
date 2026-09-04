@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/appearance/appearance_projection_adapter.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Fixed presets only. `default-system` has no tokens of its own; it resolves

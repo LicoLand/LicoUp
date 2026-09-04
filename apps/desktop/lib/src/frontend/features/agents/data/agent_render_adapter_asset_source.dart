@@ -2,17 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
-import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
+typedef AgentRenderAdapterJsonLoader =
+    Future<List<Map<String, dynamic>>> Function();
 
 /// Decodes packaged render-adapter assets before they reach display widgets.
-final class AssetAgentRenderAdapterJsonSource
-    implements AgentRenderAdapterJsonSource {
+final class AssetAgentRenderAdapterJsonSource {
   AssetAgentRenderAdapterJsonSource([AssetBundle? assetBundle])
     : _assetBundle = assetBundle ?? rootBundle;
 
   final AssetBundle _assetBundle;
 
-  @override
   Future<List<Map<String, dynamic>>> loadAdapterJson() async {
     try {
       final indexRaw = await _assetBundle.loadString(

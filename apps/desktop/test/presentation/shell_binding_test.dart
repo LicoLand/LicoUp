@@ -5,12 +5,13 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
 import 'package:licoup/src/presentation/shell/shell_effect.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
-import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
 
 import '../fixtures/client_controller/support/fake_agent_service.dart';
 

@@ -38,7 +38,10 @@ void registerClientSkillManagementScenarios() {
     expect(controller.lastError, 'skill_hub_operation_failed');
     expect(controller.statusMessage, '技能中心操作失败。');
     controller.localePreference = 'en';
-    expect(controller.displayStatusMessage, 'The Skill Hub operation failed.');
+    expect(
+      controller.functionalStatusRuntime.messageEnglish,
+      'The Skill Hub operation failed.',
+    );
     expect(controller.isSkillHubBusy, isFalse);
   });
 }

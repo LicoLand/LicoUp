@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_card.dart';

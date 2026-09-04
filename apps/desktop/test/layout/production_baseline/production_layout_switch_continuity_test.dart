@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
@@ -47,7 +47,7 @@ void main() {
       await tester.pump();
       expect(find.byTooltip('Expand conversation history'), findsOneWidget);
       expect(
-        fixture.controller.layoutStateStore.read(
+        fixture.layoutStateStore.read(
           _agentsHistoryNamespace(dashboard, surface),
         ),
         isA<LayoutExpansionState>().having(
@@ -70,7 +70,7 @@ void main() {
       );
       expect(fixture.controller.conversationComposerDraft, contains('draft'));
       expect(
-        fixture.controller.layoutStateStore.read(
+        fixture.layoutStateStore.read(
           _agentsHistoryNamespace(messaging, surface),
         ),
         isNull,
@@ -87,7 +87,7 @@ void main() {
 
       expect(find.byTooltip('Expand conversation history'), findsOneWidget);
       expect(
-        fixture.controller.layoutStateStore.read(
+        fixture.layoutStateStore.read(
           _agentsHistoryNamespace(dashboard, surface),
         ),
         const LayoutExpansionState(false),

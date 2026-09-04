@@ -311,7 +311,7 @@ class AgentConversationActivePane extends StatelessWidget {
                         width: 300,
                         child: LicoPlanDocumentPanel(
                           planPath: state.planDocumentPath,
-                          reader: state.planDocumentReader,
+                          loader: state.planDocumentLoader,
                           refreshToken:
                               state.liveMessages.length +
                               (state.turnActive ? 1 : 0),

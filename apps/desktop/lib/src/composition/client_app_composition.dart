@@ -1,9 +1,11 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/composition/binding_shell_renderer.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/dispose_all.dart';
 import 'package:licoup/src/composition/features/agent_hub/agent_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
 import 'package:licoup/src/composition/features/chrome/chrome_feature_composition.dart';
@@ -18,9 +20,15 @@ import 'package:licoup/src/composition/features/skill_hub/skill_hub_feature_comp
 import 'package:licoup/src/composition/features/targets/targets_feature_composition.dart';
 import 'package:licoup/src/composition/shell_intent_adapter.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/user_home_directory.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
 import 'package:licoup/src/frontend/binding/causal_projection_source_registry.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/platform/agent_render_adapter/agent_render_adapter_service.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
@@ -32,6 +40,12 @@ import 'package:licoup/src/presentation/plugin_management/plugin_management_bind
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_binding.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
+import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/projections/environment/environment_projection_source.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
 import 'package:licoup/src/projections/shell/shell_effect_producer.dart';
@@ -42,19 +56,15 @@ final class ClientAppComposition {
     ClientController? controller,
     CausalFrameTelemetry? telemetry,
   }) {
+    AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
+      loadJson: DefaultAgentRenderAdapterJsonSource().loadAdapterJson,
+    );
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
         ? BuiltInLayoutComposition()
-        : BuiltInLayoutComposition.attach(
-            catalog: controller.layoutCatalog,
-            stateStore: controller.layoutStateStore,
-          );
+        : BuiltInLayoutComposition.attach(catalog: controller.layoutCatalog);
     final resolvedController =
-        controller ??
-        ClientController(
-          layoutCatalog: layout.catalog,
-          layoutStateStore: layout.stateStore,
-        );
+        controller ?? _createProductionController(layout);
     return ClientAppComposition._(
       resolvedController,
       layout,
@@ -62,21 +72,72 @@ final class ClientAppComposition {
     );
   }
 
+  static ClientController _createProductionController(
+    BuiltInLayoutComposition layout,
+  ) {
+    final portableData = PortableDataRoot();
+    final preferredLayout = switch (defaultTargetPlatform) {
+      TargetPlatform.macOS ||
+      TargetPlatform.windows ||
+      TargetPlatform.iOS ||
+      TargetPlatform.android => LayoutProfileId.parse('messaging'),
+      _ => LayoutProfileId.parse('dashboard'),
+    };
+    final fallback = PresentationPreferences(
+      layoutProfileId: preferredLayout,
+      appearancePresetId: AppearancePresetIds.defaultSystem,
+      localePreference: LocalePreference.system,
+    );
+    final preferences = FilePresentationPreferencesRepository(
+      portableData: portableData,
+      fallback: fallback,
+    );
+    final manager = LayoutManager(
+      catalog: layout.catalog,
+      preferencesRepository: preferences,
+      canonicalFallback: fallback,
+      preferredDefaultId: preferredLayout,
+    );
+    return ClientController(
+      portableData: portableData,
+      layoutCatalog: layout.catalog,
+      layoutManager: manager,
+    );
+  }
+
   ClientAppComposition._(this._controller, this._layout, this.telemetry)
     : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
     final beginRendererIntent = telemetry?.beginRendererIntent;
+    final runtimeSurface = _controller.mobileClientRuntimePlatform
+        ? LayoutRuntimeSurface.mobile
+        : LayoutRuntimeSurface.desktop;
+    _environment = EnvironmentProjectionSource(
+      EnvironmentState(
+        environment: LayoutEnvironment.fromConstraints(
+          surface: runtimeSurface,
+          width: runtimeSurface == LayoutRuntimeSurface.mobile ? 390 : 1280,
+          height: runtimeSurface == LayoutRuntimeSurface.mobile ? 844 : 800,
+          textScale: 1,
+          hasPointer: runtimeSurface == LayoutRuntimeSurface.desktop,
+          hasKeyboard: runtimeSurface == LayoutRuntimeSurface.desktop,
+          hasTouch: runtimeSurface == LayoutRuntimeSurface.mobile,
+        ),
+        runtimeSurface: runtimeSurface,
+      ),
+    );
     _shellProjection = ShellProjectionProducer(
-      shell: _controller.shellController,
+      appearance: _controller.appearancePreferenceOwner,
+      locale: _controller.localePreferenceOwner,
+      status: _controller.functionalStatusRuntime,
       navigation: _controller.navigationController,
       layoutManager: _controller.layoutManager,
-      readRuntimeSurface: () => _controller.mobileClientRuntimePlatform
-          ? LayoutRuntimeSurface.mobile
-          : LayoutRuntimeSurface.desktop,
+      environment: _environment,
     );
     _shellEffects = ShellEffectProducer();
     _shellIntents = ShellIntentAdapter(
       _controller,
       _shellEffects,
+      environment: _environment,
       beginRendererIntent: beginRendererIntent,
     );
     binding = ShellBinding(
@@ -229,6 +290,7 @@ final class ClientAppComposition {
       layout: _layout,
       shellIntents: _shellIntents,
       status: binding.status,
+      locale: binding.locale,
       agents: agents,
       chrome: chrome,
       conversation: conversation,
@@ -242,6 +304,7 @@ final class ClientAppComposition {
       search: search,
       targets: targets,
       openExternalUri: _controller.runtimePlatformBridge.openHttps,
+      workspaceHomeDirectory: userHomeDirectory(),
     );
     renderer = _renderer;
   }
@@ -251,6 +314,7 @@ final class ClientAppComposition {
   final CausalFrameTelemetry? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
   late final ShellProjectionProducer _shellProjection;
+  late final EnvironmentProjectionSource _environment;
   late final ShellEffectProducer _shellEffects;
   late final ShellIntentAdapter _shellIntents;
   late final AgentsFeatureComposition _agents;
@@ -308,24 +372,26 @@ final class ClientAppComposition {
 
   Future<void> dispose() => _disposal ??= _dispose();
 
-  Future<void> _dispose() async {
-    await _renderer.dispose();
-    await _projectionTracing.dispose();
-    telemetry?.dispose();
-    await _settings.dispose();
-    await _chrome.close();
-    await _search.close();
-    await _targets.dispose();
-    await _agentHub.dispose();
-    await _pluginManagement.dispose();
-    await _skillHub.dispose();
-    await _models.dispose();
-    await _mobileRelay.dispose();
-    await _conversation.close();
-    await _monitoring.close();
-    await _agents.close();
-    await _shellProjection.dispose();
-    await _shellEffects.dispose();
-    await _controller.close();
-  }
+  Future<void> _dispose() => disposeAll([
+    _renderer.dispose,
+    _layout.dispose,
+    _projectionTracing.dispose,
+    () => telemetry?.dispose(),
+    _settings.dispose,
+    _chrome.close,
+    _search.close,
+    _targets.dispose,
+    _agentHub.dispose,
+    _pluginManagement.dispose,
+    _skillHub.dispose,
+    _models.dispose,
+    _mobileRelay.dispose,
+    _conversation.close,
+    _monitoring.close,
+    _agents.close,
+    _shellProjection.dispose,
+    _environment.dispose,
+    _shellEffects.dispose,
+    _controller.close,
+  ]);
 }

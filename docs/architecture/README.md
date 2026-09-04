@@ -200,6 +200,14 @@ Plans, temporary scripts, local skills, raw evidence, and runtime data belong to
 
 ### Implemented Presentation Boundary (M3–M6)
 
+> **Functional layer produces meaning; Renderer produces pixels.**
+>
+> **Projection describes what is; Renderer decides what it looks like.**
+>
+> **Intent describes what the user wants to do, not which Widget was clicked.**
+>
+> **Any UI refactor that does not change user semantics must not require Functional Core changes.**
+
 The terminal M3–M6 boundary is implemented. Flutter renderers consume named,
 immutable semantic bindings; feature-local producers read the smallest
 Application owners and suppress equal projections. Application state uses
@@ -220,24 +228,62 @@ flowchart LR
     C --> R
 ```
 
+The enforceable dependency direction is:
+
+```mermaid
+flowchart LR
+    C["Composition Root"] --> A["Application runtime"]
+    C --> P["Projection producers"]
+    C --> B["Presentation bindings"]
+    C --> F["Flutter renderer"]
+    P --> A
+    P --> B
+    F --> B
+    A --> D["Domain + ports"]
+    B --> K["Presentation Contract"]
+    F --> K
+```
+
+There is deliberately no `Frontend → Application` edge. Composition is the
+only module with broad wiring authority.
+
 The first-round directory map is exact:
 
 | Path | Implemented responsibility |
 |:---|:---|
 | `packages/presentation_contract/lib/` | SDK-only projection, intent, effect, and trace primitives |
-| `apps/desktop/lib/src/presentation/` | Thirteen stable named Bindings and their immutable Projection/Intent/Effect semantics |
+| `apps/desktop/lib/src/application/state/` | Framework-free mutable owner signals and lifecycle |
+| `apps/desktop/lib/src/application/features/layout/` | Layout preference mutation, persistence orchestration, and selection state |
+| `apps/desktop/lib/src/presentation/` | Thirteen stable named Bindings plus Flutter-free Functional, Layout, Appearance, Environment, and Locale semantics |
+| `apps/desktop/lib/src/presentation/{layout,appearance,environment}/` | Immutable layout catalog/projections, appearance values, and environment/locale values; repositories, state owners, and lifecycle are excluded |
 | `apps/desktop/lib/src/projections/<feature>/` | Equality-suppressing adapters from scoped Application signals to semantic projections |
 | `apps/desktop/lib/src/frontend/binding/` | Flutter projection/effect observation and bounded causal frame telemetry |
-| `apps/desktop/lib/src/frontend/` | Binding-only renderers; renderer-local state remains Flutter-owned |
+| `apps/desktop/lib/src/frontend/{layout,appearance,environment}/` | Flutter layout widgets, renderer-local layout state, theme resolution, and viewport/locale collection |
+| `apps/desktop/lib/src/frontend/` | Binding-only renderers; renderer-local state and adapters remain Flutter-owned |
 | `apps/desktop/lib/src/composition/features/<feature>/` | Intent/effect adapters and concrete producer ownership |
 | `apps/desktop/lib/src/composition/` | The sole join for Application owners, semantic bindings, telemetry, layout registry, and renderer factories |
 
-The six global planes are independently sourced: Appearance, Locale, Layout,
-Environment, Navigation, and Status. Theme construction observes only
+The six shell sources are independently sourced: Appearance, Locale, Layout,
+Environment, Navigation, and locale-neutral functional Status. Theme construction observes only
 Appearance; locale resolution observes only Locale; the remaining planes
 rebuild below `MaterialApp`. Every current destination is constructed through
 exactly one named binding, with shared Conversation, Targets, Search, and Chrome
 capabilities remaining explicit.
+
+The renderer gate resolves package, relative, export, part, and conditional
+directives. Frontend code may use Presentation, renderer-local code, and
+structurally immutable value contracts. Other immutable value models are
+permitted only when actually present in a public Binding/Projection signature. Behavior ports,
+readers, sources, implementation layers, and unclassified internal roots fail
+closed. Environment/viewport collection never enters Application state; one
+resize publishes one Environment update and causes one Layout resolution.
+
+Acceptance is executable: the M3 matrix asserts independent Functional,
+Layout, Appearance, and Environment emissions; the replacement proof mounts a
+second shell, Conversation renderer, Dashboard/Messaging arrangement, and
+appearance resolver using the same bindings without importing or changing
+Application. Golden images remain unchanged. Renderer optimization and scroll
+pipeline work remain outside this boundary closure as M7.
 
 Verified terminal counts are zero Application Flutter imports, zero Application
 notifier/listenable dependencies, zero frontend implementation imports, zero

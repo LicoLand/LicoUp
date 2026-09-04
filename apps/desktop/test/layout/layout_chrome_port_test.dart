@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/frontend/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'layout_host_test_fixtures.dart';
@@ -52,22 +54,29 @@ void main() {
 
   test('projected chrome selects focused status updates only', () async {
     final actions = _RecordingChromePort();
-    final source = _StatusProjectionSource(
+    final source = _ProjectionSource(
       const StatusProjection(
-        displayMessage: 'Ready',
-        displayCaption: 'Client',
+        messageChinese: '就绪',
+        messageEnglish: 'Ready',
+        caption: 'Client',
         errorCode: '',
       ),
     );
-    final adapter = ProjectedLayoutChromePort(actions: actions, status: source);
+    final locale = _ProjectionSource(const LocaleProjection('en'));
+    final adapter = ProjectedLayoutChromePort(
+      actions: actions,
+      status: source,
+      locale: locale,
+    );
     var notifications = 0;
     adapter.addListener(() => notifications += 1);
 
     expect(adapter.value.status.displayText, 'Ready');
     source.publish(
       const StatusProjection(
-        displayMessage: 'Ready',
-        displayCaption: 'Client',
+        messageChinese: '就绪',
+        messageEnglish: 'Ready',
+        caption: 'Client',
         errorCode: '',
       ),
     );
@@ -75,8 +84,9 @@ void main() {
 
     source.publish(
       const StatusProjection(
-        displayMessage: 'Focused status',
-        displayCaption: 'Client',
+        messageChinese: '聚焦状态',
+        messageEnglish: 'Focused status',
+        caption: 'Client',
         errorCode: '',
       ),
     );
@@ -85,8 +95,9 @@ void main() {
 
     source.publish(
       const StatusProjection(
-        displayMessage: 'Focused status',
-        displayCaption: 'Client',
+        messageChinese: '聚焦状态',
+        messageEnglish: 'Focused status',
+        caption: 'Client',
         errorCode: 'focused_error',
       ),
     );
@@ -95,6 +106,7 @@ void main() {
 
     await adapter.dispose();
     await source.dispose();
+    await locale.dispose();
     actions.dispose();
   });
 
@@ -109,7 +121,6 @@ void main() {
       catalog: runtime.catalog,
       preferencesRepository: _MemoryPreferencesRepository(),
       canonicalFallback: _preferences(),
-      initialEnvironment: _desktopEnvironment(),
     );
     await manager.initialize();
     final chrome = _RecordingChromePort();
@@ -121,7 +132,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          selection: manager.state,
+          selection: _selection(manager, _desktopEnvironment()),
           registry: runtime.registry,
           stateStore: LayoutStateStore(runtime.catalog),
           environment: _desktopEnvironment(),
@@ -152,6 +163,22 @@ LayoutEnvironment _desktopEnvironment() => LayoutEnvironment.fromConstraints(
   hasPointer: true,
   hasKeyboard: true,
 );
+
+LayoutSelectionState _selection(
+  LayoutManager manager,
+  LayoutEnvironment environment,
+) {
+  final state = manager.state;
+  return LayoutSelectionState(
+    committedId: state.committedId,
+    effectiveId: state.effectiveId,
+    status: state.status,
+    surface: environment.surface,
+    viewport: environment.viewport,
+    operationEpoch: state.operationEpoch,
+    errorCode: state.errorCode,
+  );
+}
 
 PresentationPreferences _preferences() => PresentationPreferences(
   layoutProfileId: LayoutProfileId.parse('dashboard'),
@@ -197,23 +224,20 @@ final class _RecordingChromePort extends ValueNotifier<LayoutChromeSnapshot>
   Future<void> openGlobalSearch(BuildContext context) async {}
 }
 
-final class _StatusProjectionSource
-    implements ProjectionSource<StatusProjection> {
-  _StatusProjectionSource(this._current);
+final class _ProjectionSource<T> implements ProjectionSource<T> {
+  _ProjectionSource(this._current);
 
-  final StreamController<ProjectionUpdate<StatusProjection>> _changes =
-      StreamController<ProjectionUpdate<StatusProjection>>.broadcast(
-        sync: true,
-      );
-  StatusProjection _current;
+  final StreamController<ProjectionUpdate<T>> _changes =
+      StreamController<ProjectionUpdate<T>>.broadcast(sync: true);
+  T _current;
 
   @override
-  StatusProjection get current => _current;
+  T get current => _current;
 
   @override
-  Stream<ProjectionUpdate<StatusProjection>> get changes => _changes.stream;
+  Stream<ProjectionUpdate<T>> get changes => _changes.stream;
 
-  void publish(StatusProjection value) {
+  void publish(T value) {
     _current = value;
     _changes.add(ProjectionUpdate(value));
   }

@@ -199,6 +199,14 @@ flowchart TB
 
 ### 已实现的 Presentation Boundary（M3–M6）
 
+> **功能层产生语义；Renderer 产生像素。**
+>
+> **Projection 描述当前是什么；Renderer 决定它长什么样。**
+>
+> **Intent 描述用户想做什么，而不是点击了哪个 Widget。**
+>
+> **任何不改变用户语义的 UI 重构，都不得要求修改 Functional Core。**
+
 终态 M3–M6 边界已经实现。Flutter renderer 消费具名、不可变的语义
 Binding；功能级 producer 只读取最小 Application owner，并抑制相等投影。
 Application 状态使用同步 Dart stream，不依赖 Flutter notifier 或生命周期类型。
@@ -218,20 +226,42 @@ flowchart LR
     C --> R
 ```
 
+可执行门禁所约束的依赖方向如下：
+
+```mermaid
+flowchart LR
+    C["Composition Root"] --> A["Application runtime"]
+    C --> P["Projection producer"]
+    C --> B["Presentation Binding"]
+    C --> F["Flutter Renderer"]
+    P --> A
+    P --> B
+    F --> B
+    A --> D["Domain + ports"]
+    B --> K["Presentation Contract"]
+    F --> K
+```
+
+图中刻意不存在 `Frontend → Application`；只有 Composition 拥有广泛 wiring 权限。
+
 首轮目录图精确如下：
 
 | 路径 | 已实现职责 |
 |:---|:---|
 | `packages/presentation_contract/lib/` | 仅依赖 SDK 的 projection、intent、effect 与 trace 原语 |
-| `apps/desktop/lib/src/presentation/` | 十三个稳定具名 Binding，以及对应的不可变 Projection/Intent/Effect 语义 |
+| `apps/desktop/lib/src/application/state/` | 与框架无关的可变 owner signal 及生命周期 |
+| `apps/desktop/lib/src/application/features/layout/` | 布局偏好 mutation、持久化编排与选择状态 |
+| `apps/desktop/lib/src/presentation/` | 十三个稳定具名 Binding，以及无 Flutter 依赖的 Functional、Layout、Appearance、Environment、Locale 语义 |
+| `apps/desktop/lib/src/presentation/{layout,appearance,environment}/` | 不可变布局目录/投影、外观值、环境与 locale 值；禁止 repository、状态 owner 与生命周期 |
 | `apps/desktop/lib/src/projections/<feature>/` | 从作用域 Application signal 到语义投影、带相等抑制的 adapter |
 | `apps/desktop/lib/src/frontend/binding/` | Flutter 投影/effect 观察与有界因果帧遥测 |
-| `apps/desktop/lib/src/frontend/` | 仅依赖 Binding 的 renderer；Flutter 局部状态仍由 renderer 持有 |
+| `apps/desktop/lib/src/frontend/{layout,appearance,environment}/` | Flutter 布局组件、renderer-local 布局状态、主题解析、viewport 与 locale 采集 |
+| `apps/desktop/lib/src/frontend/` | 仅依赖 Binding 的 renderer；Flutter 局部状态与 adapter 仍由 renderer 持有 |
 | `apps/desktop/lib/src/composition/features/<feature>/` | intent/effect adapter 与具体 producer 所有权 |
 | `apps/desktop/lib/src/composition/` | Application owner、语义 Binding、遥测、布局 registry 与 renderer factory 的唯一汇合点 |
 
-六个全局状态平面分别独立供给：Appearance、Locale、Layout、Environment、
-Navigation 与 Status。主题构造只观察 Appearance，locale 解析只观察 Locale；
+六个 Shell source 分别独立供给：Appearance、Locale、Layout、Environment、
+Navigation 与 locale-neutral 的 Functional Status。主题构造只观察 Appearance，locale 解析只观察 Locale；
 其余平面仅在 `MaterialApp` 下方重建。每个当前 destination 都通过且仅通过
 一个具名 Binding 构造；共享 Conversation、Targets、Search 与 Chrome 能力
 仍保持显式边界。
@@ -242,6 +272,17 @@ Presentation 实现层导入为零。Binding 目录包含十三个具名 Binding
 仅在本机内存中有界运行，不含内容，也不会跨越原生或网络边界。renderer 优化
 仍属于按 profiling 驱动的 M7 工作，只有在测得瓶颈后才实施；M3–M6 不改变
 token、布局、动效、Conversation 权威或线路行为。
+
+Renderer 门禁会解析 package、相对、export、part 与 conditional directive。
+Frontend 只能依赖 Presentation、renderer-local 代码与结构上不可变的值契约；其它
+不可变值模型只有真实出现在公共 Binding/Projection 签名中才允许使用。行为型 port、reader、
+source、实现层和未分类内部根均 fail-closed。Viewport/Environment 采集不会进入
+Application 状态；一次 resize 只发布一次 Environment 更新，并触发一次 Layout 解析。
+
+验收已代码化：M3 矩阵断言 Functional、Layout、Appearance、Environment 独立发射；
+替换证明使用同一组 Binding 挂载第二套 Shell、Conversation renderer、Dashboard/Messaging
+组织方式与 appearance resolver，且不导入或修改 Application。Golden 图片保持不变。
+Renderer 优化与列表滑动管线仍属于 M7，不进入本轮边界闭环。
 
 ### 目标架构（迁移终点）
 

@@ -1,12 +1,12 @@
 import 'dart:collection';
 
-import 'package:licoup/src/contracts/presentation/layout_catalog_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 
 final class RegisteredLayoutVariant {
   const RegisteredLayoutVariant({required this.bundle, required this.variant});
@@ -18,7 +18,7 @@ final class RegisteredLayoutVariant {
 /// Immutable widget registry validated against the pure application catalog.
 final class LayoutRegistry {
   factory LayoutRegistry({
-    required LayoutCatalogView catalog,
+    required LayoutCatalog catalog,
     required Iterable<LayoutDefinition> definitions,
   }) {
     final definitionById = <LayoutProfileId, LayoutDefinition>{};
@@ -84,7 +84,7 @@ final class LayoutRegistry {
     required this.variants,
   });
 
-  final LayoutCatalogView catalog;
+  final LayoutCatalog catalog;
   final Map<LayoutProfileId, LayoutDefinition> definitions;
   final Map<LayoutVariantKey, RegisteredLayoutVariant> variants;
 

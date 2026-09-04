@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';

@@ -6,8 +6,8 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
@@ -16,7 +16,10 @@ final class SettingsProjectionProducer
     implements ProjectionSource<SettingsProjection> {
   SettingsProjectionProducer(this._controller) : _current = _read(_controller) {
     _applicationSubscriptions = <StreamSubscription<ApplicationChange>>[
-      _controller.shellController.changes.listen(_onApplicationChange),
+      _controller.appearancePreferenceOwner.changes.listen(
+        _onApplicationChange,
+      ),
+      _controller.localePreferenceOwner.changes.listen(_onApplicationChange),
       _controller.clientUpdateController.changes.listen(_onApplicationChange),
       _controller.clientLogExportController.changes.listen(
         _onApplicationChange,
