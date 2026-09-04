@@ -19,7 +19,9 @@ internal implementation is owned by its respective code module.
 
 2. **Reactive State Binding, not Pub/Sub** — Rust owns canonical state. Flutter holds a reactive
    mirror. State changes (from any source) propagate as structured deltas. Flutter renders current
-   state — no correlation tracking, no round-trip management, no callback chains.
+   state — no protocol response correlation, no round-trip management, no callback chains. A
+   local optional presentation trace may measure projection-to-frame latency; it never enters
+   conversation content, persistence, native frames, or network traffic.
 
 3. **Events are source-agnostic** — The Conversation Domain processes typed commands regardless
    of whether they originate from local Flutter UI, a remote peer via Lico Arc, or a local
@@ -38,6 +40,11 @@ internal implementation is owned by its respective code module.
 7. **Commands are fire-and-forget mutations** — Flutter sends a command and does NOT await a
    correlated response. The result arrives as a state delta (which may be success or error).
    The "round trip" closes automatically because UI is bound to state.
+
+8. **Presentation bindings preserve authority** — Flutter feature trees consume immutable named
+   Bindings. Native-catalog sessions, Canonical Conversation Events/Parts, and Membership
+   PersistentTurns remain distinct projection sources inside `ConversationBinding`; sharing a
+   renderer does not merge their ownership.
 
 ---
 
@@ -58,7 +65,19 @@ Flutter ────────────────────────
                                   emit StateDelta → Flutter applies → UI re-renders
 ```
 
-**UI = f(State)**. Flutter never tracks causality. State changes → UI reflects.
+**UI = f(State)**. Flutter never relies on causality for state correctness. State changes → UI reflects.
+
+At the implemented M3–M6 presentation boundary, this becomes:
+
+```text
+Application owner → scoped Projection producer → ConversationBinding → Flutter renderer
+       ↑                     optional local trace             │
+       └──────── semantic Intent adapter ← user gesture ─────┘
+```
+
+The trace is diagnostic timing metadata only. Intent dispatch remains fire-and-forget and no
+trace identifier crosses the Dart/native or network boundary. Equal semantic projections are
+suppressed, and each source owns its subscription and disposal independently.
 
 ---
 
@@ -607,41 +626,58 @@ Cancel requested
 
 ---
 
-## L6: Flutter State Mirror & Display
+## L6: Semantic Binding & Flutter Display
 
-**Location**: `apps/desktop/lib/src/`
+**Location**: `apps/desktop/lib/src/presentation/conversation/`,
+`apps/desktop/lib/src/frontend/`, and `apps/desktop/lib/src/display/conversation/`
 
-**Responsibility**: Hold reactive mirror of `ConversationState`, apply deltas, render
-`UI = f(state)`. Zero business logic.
+**Responsibility**: Render `UI = f(semantic projections)` through one immutable
+Conversation Binding. Application owns mutable client state; feature-local producers map
+that state to equal-suppressed projections. Flutter owns no Conversation authority and
+contains zero business logic.
 
-### State Mirror
+### Binding Surface
 
 ```dart
-/// One per conversation. Holds the local mirror of Rust's canonical state.
-/// Driven entirely by deltas from L2. Never mutated by Flutter logic.
-class ConversationStateHolder extends ChangeNotifier {
-  ConversationState state = ConversationState.empty();
-
-  /// Apply delta from Rust — the ONLY way state changes in Flutter.
-  void applyDelta(ConversationDelta delta) {
-    state = state.applyDelta(delta);  // pure function: (old, delta) → new
-    notifyListeners();
-  }
+final class ConversationBinding {
+  final ProjectionSource<ConversationProjection> projection;
+  final ProjectionSource<NativeConversationCatalogProjection> nativeCatalog;
+  final ProjectionSource<CanonicalConversationProjection> canonicalEvents;
+  final ProjectionSource<PersistentTurnProjection> persistentTurns;
+  final ProjectionSource<ComposerProjection> composer;
+  final ProjectionSource<ConversationAttachmentsProjection> attachments;
+  final ProjectionSource<ConversationTabActivityProjection> tabActivity;
+  final ProjectionSource<ConversationNotificationsProjection> notifications;
+  final ProjectionSource<ConversationArchiveProjection> archive;
+  final IntentSink<ConversationIntent> intents;
+  final EffectSource<ConversationEffect> effects;
 }
 ```
+
+The native history catalog remains the authority for local 1:1 panes. Canonical Events
+and Parts remain the authority for group panes. Both surfaces attach the same
+Membership-scoped PersistentTurn observer; no producer merges those stores or creates a
+second transcript.
 
 ### Display Rules
 
 ```dart
 Widget build(BuildContext context) {
-  final s = context.watch<ConversationStateHolder>().state;
-  // UI is a PURE FUNCTION of state. No inference, no fabrication.
-  return Column(children: [
-    MessageList(messages: s.messages),    // each message shows its SendState
-    if (s.activeTurn != null) TurnIndicator(phase: s.activeTurn!.phase),
-    if (s.pendingApproval != null) ApprovalCard(request: s.pendingApproval!),
-    Composer(enabled: s.inputEnabled, onSend: ...),
-  ]);
+  return ProjectionBuilder<ComposerProjection, ComposerProjection>(
+    source: binding.composer,
+    select: (projection) => projection,
+    builder: (context, composer) => Composer(
+      enabled: composer.inputEnabled,
+      onSend: (text) => binding.intents.send(
+        PostConversationMessage(
+          conversationId: composer.conversationId,
+          content: text,
+          addressedMembershipIds: const [],
+          dispatchCanonical: false,
+        ),
+      ),
+    ),
+  );
 }
 ```
 
@@ -662,8 +698,9 @@ Widget build(BuildContext context) {
 3. **Performance**:
    - Message list in RepaintBoundary (isolate from turn state changes)
    - Streaming text: only rebuild the text widget, not the message list
-   - Use `AnimatedBuilder` or `ValueListenableBuilder` for fine-grained rebuilds
-   - `StreamContentAppend` delta → append to string, re-render one widget
+   - Use narrow `ProjectionBuilder` selectors for fine-grained rebuilds
+   - Runtime deltas update Application state, then one equal-suppressed semantic source;
+     Flutter never applies protocol deltas itself
 
 4. **Assistant identity test authority**:
    - Tests derive expected Agent, model, and reasoning labels from a mutable

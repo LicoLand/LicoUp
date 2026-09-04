@@ -11,10 +11,10 @@ const requiredFlutterFlowDirs = [
   "presentation",
   "composition",
 ];
-const retainedFlutterMigrationDirs = ["application", "frontend", "backend", "platform", "contracts"];
+const requiredFlutterImplementationDirs = ["application", "frontend", "backend", "platform", "contracts"];
 export const REQUIRED_FLUTTER_TOP_LEVEL_DIRS = Object.freeze([
   ...requiredFlutterFlowDirs,
-  ...retainedFlutterMigrationDirs
+  ...requiredFlutterImplementationDirs
 ]);
 const allowedFlutterTopLevelDirs = new Set(REQUIRED_FLUTTER_TOP_LEVEL_DIRS);
 const requiredFrontendFeatureDirs = [
@@ -63,32 +63,18 @@ const flutterLayerImportRules = [
     forbiddenTokens: [
       "package:licoup/src/frontend/"
     ],
-    allowedPaths: new Set([
-      `${flutterSrcRoot}/application/composition/built_in_layout_composition.dart`
-    ]),
-    message: "application code must not import frontend renderers outside the explicit layout composition root"
+    message: "application code must not import frontend renderers"
   },
   {
     root: `${flutterSrcRoot}/frontend`,
     forbiddenTokens: [
+      "package:licoup/src/application/",
       "package:licoup/src/backend/",
-      "package:licoup/src/platform/"
+      "package:licoup/src/platform/",
+      "package:licoup/src/projections/",
+      "package:licoup/src/composition/"
     ],
-    allowedImports: new Map([
-      [
-        `${flutterSrcRoot}/frontend/features/agents/ui/lico_plan_document_panel.dart`,
-        new Set([
-          "package:licoup/src/platform/documents/plan_document_reader.dart"
-        ])
-      ],
-      [
-        `${flutterSrcRoot}/frontend/features/settings/ui/client_update_settings_card.dart`,
-        new Set([
-          "package:licoup/src/platform/process/client_process_lifecycle.dart"
-        ])
-      ]
-    ]),
-    message: "frontend must depend on application/contracts/l10n, not backend or platform implementations"
+    message: "frontend must depend on stable Presentation contracts and renderer-local libraries, not implementation layers"
   },
   {
     root: `${flutterSrcRoot}/backend`,
@@ -198,16 +184,12 @@ async function enforceFlutterLayerIsolation(context) {
       continue;
     }
     for (const relativePath of files) {
-      if (rule.allowedPaths?.has(relativePath)) {
-        continue;
-      }
       const source = await readText(relativePath);
       const imports = [...source.matchAll(/\bimport\s+['\"]([^'\"]+)['\"]/g)]
         .map((match) => match[1]);
-      const allowedImports = rule.allowedImports?.get(relativePath) ?? new Set();
       for (const token of rule.forbiddenTokens) {
         const forbiddenImport = imports.find(
-          (candidate) => candidate.includes(token) && !allowedImports.has(candidate)
+          (candidate) => candidate.includes(token)
         );
         assert(
           forbiddenImport === undefined,
@@ -454,10 +436,10 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       `${flutterSrcRoot}/${requiredDir} must exist for the Flutter event/projection/display/protocol flow architecture`
     );
   }
-  for (const retainedDir of retainedFlutterMigrationDirs) {
+  for (const requiredDir of requiredFlutterImplementationDirs) {
     assert(
-      flutterTopLevelDirs.includes(retainedDir),
-      `${flutterSrcRoot}/${retainedDir} remains required while deprecated ClientController dependents are migrated`
+      flutterTopLevelDirs.includes(requiredDir),
+      `${flutterSrcRoot}/${requiredDir} must exist for the implemented client architecture`
     );
   }
   for (const topLevelDir of flutterTopLevelDirs) {
@@ -480,7 +462,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       `${flutterSrcRoot}/backend/features/${featureDir} must exist as a backend feature directory`
     );
   }
-  const migratedConversationFacade =
+  const retiredConversationFacade =
     `${flutterSrcRoot}/frontend/features/conversations/canonical_group_conversation_pane.dart`;
   const migratedConversationRoot =
     `${flutterSrcRoot}/display/conversation/canonical_group_conversation_pane.dart`;
@@ -497,11 +479,9 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     "strategy.dart",
     "support.dart"
   ];
-  const migratedConversationFacadeSource = await readText(migratedConversationFacade);
   assert(
-    migratedConversationFacadeSource.trim() ===
-      "export 'package:licoup/src/display/conversation/canonical_group_conversation_pane.dart';",
-    "the legacy canonical group pane path must remain only a thin migration export"
+    !(await exists(retiredConversationFacade)),
+    "the retired canonical group pane migration export must be absent"
   );
   const migratedConversationRootSource = await readText(migratedConversationRoot);
   const migratedConversationExports = [...migratedConversationRootSource.matchAll(
@@ -551,9 +531,9 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     sameSet(await collectSourceFiles(`${flutterSrcRoot}/frontend/l10n`, ".dart"), [
       `${flutterSrcRoot}/frontend/l10n/lico_strings.dart`,
       `${flutterSrcRoot}/frontend/l10n/lico_strings_base.dart`,
-      `${flutterSrcRoot}/frontend/l10n/lico_strings_labels.dart`
+      `${flutterSrcRoot}/frontend/l10n/lico_strings_labels.dart`,
     ]),
-    "custom localization must retain exactly one implementation table"
+    "custom localization must retain one implementation table; the locale projection adapter stays in its independent state plane"
   );
   for (const l10nLeaf of [
     "lico_strings.dart",
@@ -575,15 +555,6 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       !applicationStringsSource.includes("isChinese ?") &&
       !applicationStringsSource.includes("switch (error.code)"),
     "application localization compatibility must delegate to the single LicoStrings catalog without owning translated values"
-  );
-  const clientControllerSource = await readText(
-    `${flutterSrcRoot}/application/controller/client_controller.dart`
-  );
-  assert(
-    clientControllerSource.includes("@Deprecated(") &&
-      clientControllerSource.includes("events/EventSender") &&
-      clientControllerSource.includes("projections/*ProjectionConsumer"),
-    "ClientController must remain explicitly deprecated toward EventSender and per-domain ProjectionConsumers"
   );
   await enforceFlutterLayerIsolation(context);
   await enforceNormalDartLibraries(context);
@@ -760,7 +731,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       mobileRelayPanelSources["composition.dart"].includes("MobileRelayScanPairingPrompt") &&
       mobileRelayPanelSources["composition.dart"].includes("MobileRelayTrustVerificationCard") &&
       mobileRelayPanelSources["pairing.dart"].includes("mobile_relay_panel/qr.dart") &&
-      mobileRelayPanelSources["pairing.dart"].includes("configureMobileRelayStation") &&
+      mobileRelayPanelSources["pairing.dart"].includes("ConfigureRelayStation(") &&
       mobileRelayPanelSources["qr.dart"].includes("MobileRelayPairingQrFrame") &&
       mobileRelayPanelSources["scan.dart"].includes("MobileRelayScanPairingPrompt") &&
       mobileRelayPanelSources["trust.dart"].includes("MobileRelayTrustVerificationCard") &&

@@ -221,7 +221,7 @@ void main() {
       final runner = _ConversationRunner(gate: gate);
       final controller = ClientConversationController(runner: runner);
       var notifications = 0;
-      controller.addListener(() => notifications += 1);
+      controller.changes.listen((_) => notifications += 1);
 
       final first = controller.initialize();
       final second = controller.initialize();

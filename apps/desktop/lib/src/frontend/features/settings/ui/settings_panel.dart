@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/composition/agent_resource_usage_gateway_adapter.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
@@ -15,18 +15,22 @@ import 'package:licoup/src/frontend/features/settings/ui/catalog_convergence_sta
 import 'package:licoup/src/frontend/features/settings/ui/diagnostics_resource_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_log_export_tile.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_section_catalog.dart';
+import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
 import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane/resize.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 const _settingsSectionIds = settingsSectionIdOrder;
 
@@ -39,9 +43,14 @@ const double _settingsIndexDividerWidth = 8;
 const double _settingsMinContentWidth = 360;
 
 class SettingsPanel extends StatefulWidget {
-  const SettingsPanel({super.key, required this.controller});
+  const SettingsPanel({
+    super.key,
+    required this.binding,
+    required this.layoutRegistry,
+  });
 
-  final ClientController controller;
+  final SettingsBinding binding;
+  final LayoutRegistry layoutRegistry;
 
   @override
   State<SettingsPanel> createState() => _SettingsPanelState();
@@ -54,7 +63,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   String? _selectedSectionId;
   LayoutScopedState? _layoutState;
   String? _layoutStateIdentity;
-  Listenable? _layoutStateChanges;
+  StreamSubscription<void>? _layoutStateChanges;
   double? _pendingScrollOffset;
   // Default to the narrowest usable rail; users can drag wider.
   double _indexWidth = _settingsIndexMinWidth;
@@ -96,8 +105,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
     _unwatchLayoutState();
     _layoutStateIdentity = identity;
     _layoutState = scope.state;
-    _layoutStateChanges = scope.state.changes
-      ..addListener(_syncSelectionFromStore);
+    _layoutStateChanges = scope.state.changes.listen((_) {
+      _syncSelectionFromStore();
+    });
 
     final scroll = scope.state.readIfDeclared(
       LayoutStateChannels.settingsScroll,
@@ -204,7 +214,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
   }
 
   bool _handleScrollEnd() {
-    if (_settling || DateTime.now().isBefore(_settleSuppressedUntil)) {
+    if (_jumpInFlight ||
+        _settling ||
+        DateTime.now().isBefore(_settleSuppressedUntil)) {
       return false;
     }
     final offsets = _sectionOffsets();
@@ -258,9 +270,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
     unawaited(_jumpToSection(id));
   }
 
-  /// Jumps to a section even when the lazy list builder has disposed it:
-  /// first travel to the edge in the section's direction so it builds, then
-  /// settle exactly onto it.
+  /// Jumps to a section even when the lazy list builder has disposed it.
+  ///
+  /// Travel by sub-viewport steps until the target is mounted, then settle
+  /// exactly onto it. Jumping straight to an edge can skip an intermediate
+  /// section entirely and leave the navigation selection at the wrong end.
   Future<void> _jumpToSection(String id) async {
     _jumpInFlight = true;
     try {
@@ -278,53 +292,46 @@ class _SettingsPanelState extends State<SettingsPanel> {
   }
 
   Future<void> _travelToSection(String id) async {
-    final context = _keyFor(id).currentContext;
-    if (context != null) {
-      await Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutQuart,
-        alignment: 0.02,
-      );
-      return;
-    }
     final targetIndex = _settingsSectionIds.indexOf(id);
-    final known = _sectionOffsets();
-    if (known.isEmpty || !_scrollController.hasClients) {
-      return;
-    }
-    final firstKnownIndex = _settingsSectionIds.indexOf(known.first.$1);
-    final lastKnownIndex = _settingsSectionIds.indexOf(known.last.$1);
-    if (targetIndex < firstKnownIndex) {
+    if (targetIndex < 0) return;
+    while (mounted && _scrollController.hasClients) {
+      final context = _keyFor(id).currentContext;
+      if (context != null && context.mounted) {
+        await Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutQuart,
+          alignment: 0.02,
+        );
+        return;
+      }
+      final known = _sectionOffsets();
+      if (known.isEmpty) return;
+      final firstKnownIndex = _settingsSectionIds.indexOf(known.first.$1);
+      final lastKnownIndex = _settingsSectionIds.indexOf(known.last.$1);
+      final direction = targetIndex < firstKnownIndex
+          ? -1.0
+          : targetIndex > lastKnownIndex
+          ? 1.0
+          : 0.0;
+      if (direction == 0) return;
+      final position = _scrollController.position;
+      final step = position.viewportDimension * 0.72;
+      if (step <= 0) return;
+      final destination = (position.pixels + direction * step)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((destination - position.pixels).abs() <= 0.5) return;
       await _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
+        destination,
+        duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
       );
-    } else if (targetIndex > lastKnownIndex) {
-      await _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
     }
-    if (!mounted) {
-      return;
-    }
-    final lateContext = _keyFor(id).currentContext;
-    if (lateContext == null || !lateContext.mounted) {
-      return;
-    }
-    await Scrollable.ensureVisible(
-      lateContext,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutQuart,
-      alignment: 0.02,
-    );
   }
 
   void _unwatchLayoutState() {
-    _layoutStateChanges?.removeListener(_syncSelectionFromStore);
+    unawaited(_layoutStateChanges?.cancel());
     _layoutStateChanges = null;
   }
 
@@ -358,24 +365,27 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.controller.appPresentationListenable,
-      builder: (context, _) => _buildPanel(context),
+    return ProjectionBuilder<SettingsProjection, SettingsProjection>(
+      source: widget.binding.projection,
+      select: _settingsIdentity,
+      builder: _buildPanel,
     );
   }
 
-  Widget _buildPanel(BuildContext context) {
+  Widget _buildPanel(BuildContext context, SettingsProjection projection) {
     final mobileClient = isMobileClientPlatform(context);
 
     if (mobileClient) {
       return _MobileSettingsBody(
-        controller: widget.controller,
+        binding: widget.binding,
+        layoutRegistry: widget.layoutRegistry,
+        projection: projection,
         scrollController: _scrollController,
       );
     }
 
-    final sections = _buildSections(context);
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final sections = _buildSections(context, projection);
+    final presentation = layoutSettingsPresentationOf(context);
 
     // The profile's shell navigation hosts the section index (sub-items under
     // Settings), so the content runs full width; the section tab channel
@@ -465,7 +475,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
     );
   }
 
-  List<_SettingsSection> _buildSections(BuildContext context) {
+  List<_SettingsSection> _buildSections(
+    BuildContext context,
+    SettingsProjection projection,
+  ) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
 
@@ -473,35 +486,40 @@ class _SettingsPanelState extends State<SettingsPanel> {
     // catalog so the shell navigation and any in-page rail never drift.
     Widget childFor(String id) => switch (id) {
       'general' => _GeneralSettings(
-        controller: widget.controller,
+        binding: widget.binding,
+        projection: projection,
         colors: colors,
         strings: strings,
       ),
       'appearance' => _AppearanceSettings(
-        controller: widget.controller,
+        binding: widget.binding,
+        layoutRegistry: widget.layoutRegistry,
+        projection: projection,
         colors: colors,
         strings: strings,
         surface: LayoutRuntimeSurface.desktop,
       ),
-      'updates' => ClientUpdateSettingsCard(controller: widget.controller),
+      'updates' => ClientUpdateSettingsCard(binding: widget.binding),
       'catalog-convergence' => CatalogConvergenceStatusCard(
-        controller: widget.controller.catalogConvergenceController,
+        binding: widget.binding,
       ),
-      'storage' => _StorageSettings(controller: widget.controller),
-      'startup' => StartupAutostartCard(controller: widget.controller),
+      'storage' => _StorageSettings(
+        binding: widget.binding,
+        projection: projection,
+      ),
+      'startup' => StartupAutostartCard(binding: widget.binding),
       'archived-conversations' => ArchivedConversationsSettingsSection(
-        controller: widget.controller.clientConversationController,
+        binding: widget.binding,
       ),
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SettingsLogExportTile(controller: widget.controller),
-          const SizedBox(height: LicoContentSpacing.item),
-          DiagnosticsResourceSection(
-            gateway: AgentResourceUsageGatewayAdapter(
-              runner: widget.controller.agentService,
-            ),
+          SettingsLogExportTile(
+            binding: widget.binding,
+            projection: projection,
           ),
+          const SizedBox(height: LicoContentSpacing.item),
+          DiagnosticsResourceSection(binding: widget.binding),
         ],
       ),
     };
@@ -663,18 +681,20 @@ class _IndexItemState extends State<_IndexItem> {
 
 class _GeneralSettings extends StatelessWidget {
   const _GeneralSettings({
-    required this.controller,
+    required this.binding,
+    required this.projection,
     required this.colors,
     required this.strings,
   });
 
-  final ClientController controller;
+  final SettingsBinding binding;
+  final SettingsProjection projection;
   final LicoThemeColors colors;
   final LicoStrings strings;
 
   @override
   Widget build(BuildContext context) {
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -691,7 +711,7 @@ class _GeneralSettings extends StatelessWidget {
           dropdownKey: const Key('settings-locale-dropdown'),
           icon: Icons.language_outlined,
           title: strings.language,
-          value: LocalePreference.normalize(controller.localePreference),
+          value: _selectedChoiceId(projection.localeChoices),
           items: [
             for (final preference in LocalePreference.values)
               SettingsDropdownItem(
@@ -701,7 +721,7 @@ class _GeneralSettings extends StatelessWidget {
               ),
           ],
           onSelected: (value) {
-            unawaited(controller.setLocalePreference(value));
+            binding.intents.send(SetLocalePreference(value));
           },
         ),
       ],
@@ -711,34 +731,38 @@ class _GeneralSettings extends StatelessWidget {
 
 class _AppearanceSettings extends StatelessWidget {
   const _AppearanceSettings({
-    required this.controller,
+    required this.binding,
+    required this.layoutRegistry,
+    required this.projection,
     required this.colors,
     required this.strings,
     required this.surface,
   });
 
-  final ClientController controller;
+  final SettingsBinding binding;
+  final LayoutRegistry layoutRegistry;
+  final SettingsProjection projection;
   final LicoThemeColors colors;
   final LicoStrings strings;
   final LayoutRuntimeSurface surface;
 
   @override
   Widget build(BuildContext context) {
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
-    final isDark = isResolvedAppearanceDark(
-      controller.appearancePresetId,
-      controller.appearancePresetConfigs,
+    final presentation = layoutSettingsPresentationOf(context);
+    final configs = projection.appearancePresets;
+    final currentId = projection.appearancePresetId;
+    final isDark = _isResolvedAppearanceDark(
+      currentId,
+      configs,
       MediaQuery.platformBrightnessOf(context),
     );
-    final selectablePresets = selectableAppearancePresetsForBrightness(
-      controller.appearancePresetConfigs,
+    final selectablePresets = _selectableAppearancePresetsForBrightness(
+      configs,
       isDark,
     );
     final selectedPresetId =
-        selectablePresets.any(
-          (config) => config.id == controller.appearancePresetId,
-        )
-        ? controller.appearancePresetId
+        selectablePresets.any((config) => config.id == currentId)
+        ? currentId
         : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -753,21 +777,18 @@ class _AppearanceSettings extends StatelessWidget {
           padding: presentation.sectionHeaderPadding,
         ),
         SettingsDayNightToggleRow(
-          selection: appearanceBrightnessSelectionFor(
-            controller.appearancePresetId,
-            controller.appearancePresetConfigs,
-          ),
+          selection: _appearanceBrightnessSelectionFor(currentId, configs),
           disabledSegments: const {
             AppearanceBrightnessSelection.system,
             AppearanceBrightnessSelection.light,
           },
           onChanged: (selection) {
-            unawaited(
-              controller.setAppearancePreset(
-                appearancePresetIdForBrightnessSelection(
+            binding.intents.send(
+              SetAppearancePreference(
+                _appearancePresetIdForBrightnessSelection(
                   selection,
-                  controller.appearancePresetId,
-                  controller.appearancePresetConfigs,
+                  currentId,
+                  configs,
                 ),
               ),
             );
@@ -783,38 +804,43 @@ class _AppearanceSettings extends StatelessWidget {
             for (final config in selectablePresets)
               SettingsDropdownItem(
                 value: config.id,
-                label: config.labelFor(strings.isChinese ? 'zh-CN' : 'en'),
+                label: config.labelFor(strings.isChinese),
               ),
           ],
           onSelected: (presetId) {
-            unawaited(controller.setAppearancePreset(presetId));
+            binding.intents.send(SetAppearancePreference(presetId));
           },
         ),
         LayoutProfileSelector(
-          manager: controller.layoutManager,
-          registry: controller.layoutComposition.registry,
+          binding: binding,
+          registry: layoutRegistry,
           surface: surface,
         ),
         DirectoryPathField(
           title: strings.appearancePresetDirectory,
           label: strings.appearancePresetDirectory,
-          path: controller.appearancePresetDirectoryPath,
+          path: projection.appearancePresetDirectoryPath,
           icon: Icons.folder_copy_outlined,
           readOnly: true,
           padding: presentation.rowPadding,
-          onOpen: (path) => controller.openDirectoryPath(
-            path,
-            caption: strings.appearancePresetDirectory,
-          ),
+          onOpen: (_) {
+            binding.intents.send(
+              OpenSettingsDirectory(
+                SettingsDirectory.appearancePresets,
+                caption: strings.appearancePresetDirectory,
+              ),
+            );
+            return Future<void>.value();
+          },
           headerTrailing: IconButton(
             tooltip: strings.reloadPresets,
             onPressed: () {
-              unawaited(controller.reloadAppearancePresets());
+              binding.intents.send(const ReloadAppearancePresets());
             },
             icon: const Icon(Icons.refresh_outlined, size: 18),
           ),
         ),
-        if (controller.appearancePresetLoadErrors.isNotEmpty)
+        if (projection.appearancePresetLoadErrorCount > 0)
           Padding(
             padding: const EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
@@ -824,7 +850,7 @@ class _AppearanceSettings extends StatelessWidget {
             ),
             child: Text(
               strings.invalidPresetConfigs(
-                controller.appearancePresetLoadErrors.length,
+                projection.appearancePresetLoadErrorCount,
               ),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -836,15 +862,49 @@ class _AppearanceSettings extends StatelessWidget {
   }
 }
 
-class _StorageSettings extends StatelessWidget {
-  const _StorageSettings({required this.controller});
+class _StorageSettings extends StatefulWidget {
+  const _StorageSettings({required this.binding, required this.projection});
 
-  final ClientController controller;
+  final SettingsBinding binding;
+  final SettingsProjection projection;
+
+  @override
+  State<_StorageSettings> createState() => _StorageSettingsState();
+}
+
+class _StorageSettingsState extends State<_StorageSettings> {
+  late final TextEditingController _snapshotRootController;
+  late String _lastSnapshotRootPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastSnapshotRootPath = widget.projection.snapshotRootPath;
+    _snapshotRootController = TextEditingController(
+      text: _lastSnapshotRootPath,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_StorageSettings oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.projection.snapshotRootPath;
+    if (next != _lastSnapshotRootPath) {
+      _lastSnapshotRootPath = next;
+      _snapshotRootController.text = next;
+    }
+  }
+
+  @override
+  void dispose() {
+    _snapshotRootController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -860,29 +920,44 @@ class _StorageSettings extends StatelessWidget {
         DirectoryPathField(
           title: strings.portableData,
           label: strings.portableData,
-          path: controller.portableDataPath,
+          path: widget.projection.portableDataPath,
           icon: Icons.folder_outlined,
           readOnly: true,
           padding: presentation.rowPadding,
-          onOpen: (path) =>
-              controller.openDirectoryPath(path, caption: strings.portableData),
+          onOpen: (_) {
+            widget.binding.intents.send(
+              OpenSettingsDirectory(
+                SettingsDirectory.portableData,
+                caption: strings.portableData,
+              ),
+            );
+            return Future<void>.value();
+          },
         ),
         DirectoryPathField(
           title: strings.conversationArchiveRoot,
           label: strings.snapshotRootPath,
-          controller: controller.snapshotRootController,
+          controller: _snapshotRootController,
           icon: Icons.inventory_2_outlined,
           padding: presentation.rowPadding,
-          enabled: !controller.isSavingSnapshotRoot,
-          busy: controller.isSavingSnapshotRoot,
-          onOpen: (path) => controller.openDirectoryPath(
-            path,
-            caption: strings.conversationArchiveRoot,
-          ),
+          enabled: !widget.projection.savingSnapshotRoot,
+          busy: widget.projection.savingSnapshotRoot,
+          onOpen: (_) {
+            widget.binding.intents.send(
+              OpenSettingsDirectory(
+                SettingsDirectory.conversationSnapshots,
+                path: _snapshotRootController.text,
+                caption: strings.conversationArchiveRoot,
+              ),
+            );
+            return Future<void>.value();
+          },
           headerTrailing: IconButton(
             tooltip: strings.refreshArchiveRoot,
             onPressed: () {
-              unawaited(controller.refreshConversationSnapshotRoot());
+              widget.binding.intents.send(
+                const RefreshConversationSnapshotLocation(),
+              );
             },
             icon: const Icon(Icons.refresh_outlined, size: 18),
           ),
@@ -890,16 +965,16 @@ class _StorageSettings extends StatelessWidget {
             SizedBox(
               height: 38,
               child: FilledButton.icon(
-                onPressed: controller.isSavingSnapshotRoot
+                onPressed: widget.projection.savingSnapshotRoot
                     ? null
                     : () {
-                        unawaited(
-                          controller.setConversationSnapshotRoot(
-                            controller.snapshotRootController.text,
+                        widget.binding.intents.send(
+                          SetConversationSnapshotLocation(
+                            _snapshotRootController.text,
                           ),
                         );
                       },
-                icon: controller.isSavingSnapshotRoot
+                icon: widget.projection.savingSnapshotRoot
                     ? const SizedBox(
                         width: 14,
                         height: 14,
@@ -918,32 +993,36 @@ class _StorageSettings extends StatelessWidget {
 
 class _MobileSettingsBody extends StatelessWidget {
   const _MobileSettingsBody({
-    required this.controller,
+    required this.binding,
+    required this.layoutRegistry,
+    required this.projection,
     required this.scrollController,
   });
 
-  final ClientController controller;
+  final SettingsBinding binding;
+  final LayoutRegistry layoutRegistry;
+  final SettingsProjection projection;
   final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
-    final isDark = isResolvedAppearanceDark(
-      controller.appearancePresetId,
-      controller.appearancePresetConfigs,
+    final presentation = layoutSettingsPresentationOf(context);
+    final currentId = projection.appearancePresetId;
+    final configs = projection.appearancePresets;
+    final isDark = _isResolvedAppearanceDark(
+      currentId,
+      configs,
       MediaQuery.platformBrightnessOf(context),
     );
-    final selectablePresets = selectableAppearancePresetsForBrightness(
-      controller.appearancePresetConfigs,
+    final selectablePresets = _selectableAppearancePresetsForBrightness(
+      configs,
       isDark,
     );
     final selectedPresetId =
-        selectablePresets.any(
-          (config) => config.id == controller.appearancePresetId,
-        )
-        ? controller.appearancePresetId
+        selectablePresets.any((config) => config.id == currentId)
+        ? currentId
         : null;
 
     return ListView(
@@ -963,7 +1042,7 @@ class _MobileSettingsBody extends StatelessWidget {
           dropdownKey: const Key('settings-locale-dropdown'),
           icon: Icons.language_outlined,
           title: strings.language,
-          value: LocalePreference.normalize(controller.localePreference),
+          value: _selectedChoiceId(projection.localeChoices),
           items: [
             for (final preference in LocalePreference.values)
               SettingsDropdownItem(
@@ -973,7 +1052,7 @@ class _MobileSettingsBody extends StatelessWidget {
               ),
           ],
           onSelected: (value) {
-            unawaited(controller.setLocalePreference(value));
+            binding.intents.send(SetLocalePreference(value));
           },
         ),
         LicoSectionHeader(
@@ -986,21 +1065,18 @@ class _MobileSettingsBody extends StatelessWidget {
           padding: presentation.sectionHeaderPadding,
         ),
         SettingsDayNightToggleRow(
-          selection: appearanceBrightnessSelectionFor(
-            controller.appearancePresetId,
-            controller.appearancePresetConfigs,
-          ),
+          selection: _appearanceBrightnessSelectionFor(currentId, configs),
           disabledSegments: const {
             AppearanceBrightnessSelection.system,
             AppearanceBrightnessSelection.light,
           },
           onChanged: (selection) {
-            unawaited(
-              controller.setAppearancePreset(
-                appearancePresetIdForBrightnessSelection(
+            binding.intents.send(
+              SetAppearancePreference(
+                _appearancePresetIdForBrightnessSelection(
                   selection,
-                  controller.appearancePresetId,
-                  controller.appearancePresetConfigs,
+                  currentId,
+                  configs,
                 ),
               ),
             );
@@ -1016,19 +1092,91 @@ class _MobileSettingsBody extends StatelessWidget {
             for (final config in selectablePresets)
               SettingsDropdownItem(
                 value: config.id,
-                label: config.labelFor(strings.isChinese ? 'zh-CN' : 'en'),
+                label: config.labelFor(strings.isChinese),
               ),
           ],
           onSelected: (presetId) {
-            unawaited(controller.setAppearancePreset(presetId));
+            binding.intents.send(SetAppearancePreference(presetId));
           },
         ),
         LayoutProfileSelector(
-          manager: controller.layoutManager,
-          registry: controller.layoutComposition.registry,
+          binding: binding,
+          registry: layoutRegistry,
           surface: LayoutRuntimeSurface.mobile,
         ),
       ],
     );
   }
 }
+
+String? _selectedChoiceId(List<PresentationChoice> choices) {
+  for (final choice in choices) {
+    if (choice.selected) return choice.id;
+  }
+  return null;
+}
+
+SettingsProjection _settingsIdentity(SettingsProjection value) => value;
+
+SettingsAppearancePresetProjection _appearancePreset(
+  String id,
+  List<SettingsAppearancePresetProjection> presets,
+) {
+  for (final preset in presets) {
+    if (preset.id == id) return preset;
+  }
+  return presets.first;
+}
+
+bool _isResolvedAppearanceDark(
+  String selectedId,
+  List<SettingsAppearancePresetProjection> presets,
+  Brightness platformBrightness,
+) {
+  final selected = _appearancePreset(selectedId, presets);
+  return switch (selected.mode) {
+    SettingsAppearanceMode.dark => true,
+    SettingsAppearanceMode.light => false,
+    SettingsAppearanceMode.system => platformBrightness == Brightness.dark,
+  };
+}
+
+AppearanceBrightnessSelection _appearanceBrightnessSelectionFor(
+  String selectedId,
+  List<SettingsAppearancePresetProjection> presets,
+) => switch (_appearancePreset(selectedId, presets).mode) {
+  SettingsAppearanceMode.system => AppearanceBrightnessSelection.system,
+  SettingsAppearanceMode.light => AppearanceBrightnessSelection.light,
+  SettingsAppearanceMode.dark => AppearanceBrightnessSelection.dark,
+};
+
+String _appearancePresetIdForBrightnessSelection(
+  AppearanceBrightnessSelection selection,
+  String currentId,
+  List<SettingsAppearancePresetProjection> presets,
+) => switch (selection) {
+  AppearanceBrightnessSelection.system => AppearancePresetIds.defaultSystem,
+  AppearanceBrightnessSelection.light =>
+    _appearancePreset(currentId, presets).mode == SettingsAppearanceMode.light
+        ? currentId
+        : AppearancePresetIds.licoSodaLight,
+  AppearanceBrightnessSelection.dark =>
+    _appearancePreset(currentId, presets).mode == SettingsAppearanceMode.dark
+        ? currentId
+        : AppearancePresetIds.licoSoda,
+};
+
+List<SettingsAppearancePresetProjection>
+_selectableAppearancePresetsForBrightness(
+  List<SettingsAppearancePresetProjection> presets,
+  bool dark,
+) => presets
+    .where(
+      (preset) =>
+          !AppearancePresetIds.resolutionOnly.contains(preset.id) &&
+          preset.mode != SettingsAppearanceMode.system &&
+          (dark
+              ? preset.mode == SettingsAppearanceMode.dark
+              : preset.mode == SettingsAppearanceMode.light),
+    )
+    .toList(growable: false);

@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'usage_agent_service_fakes.dart';
+import 'monitoring_binding_fixture.dart';
 import 'usage_panel_fixtures.dart';
 
 void registerAgentUsageTimelineScenarios() {
@@ -16,22 +17,21 @@ void registerAgentUsageTimelineScenarios() {
     final service = DeltaUsageAgentService();
     final controller = ClientController(agentService: service);
     controller.scannedTargets = testTargets(['claude-code', 'codex']);
-    addTearDown(controller.dispose);
+    final monitoring = MonitoringBindingFixture(controller);
+    addTearDown(() async {
+      await monitoring.close();
+      controller.dispose();
+    });
 
     await tester.pumpWidget(
       usageTestApp(
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
-        home: AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) {
-            return SizedBox(
-              width: 980,
-              height: 620,
-              child: AgentUsagePanel(controller: controller),
-            );
-          },
+        home: SizedBox(
+          width: 980,
+          height: 620,
+          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
         ),
       ),
     );
@@ -68,7 +68,11 @@ void registerAgentUsageTimelineScenarios() {
           totalTokens: 100,
         ),
       ];
-    addTearDown(controller.dispose);
+    final monitoring = MonitoringBindingFixture(controller);
+    addTearDown(() async {
+      await monitoring.close();
+      controller.dispose();
+    });
 
     await tester.pumpWidget(
       usageTestApp(
@@ -78,7 +82,11 @@ void registerAgentUsageTimelineScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(controller: controller, autoLoad: false),
+          child: AgentUsagePanel(
+            binding: monitoring.binding,
+            onExit: () {},
+            autoLoad: false,
+          ),
         ),
       ),
     );
@@ -116,7 +124,11 @@ void registerAgentUsageTimelineScenarios() {
       final controller = ClientController(agentService: UsageAgentService())
         ..scannedTargets = testTargets(['codex', 'cursor', 'kimi-code'])
         ..agentUsageReport = formalNamingUsageReport();
-      addTearDown(controller.dispose);
+      final monitoring = MonitoringBindingFixture(controller);
+      addTearDown(() async {
+        await monitoring.close();
+        controller.dispose();
+      });
 
       await tester.pumpWidget(
         usageTestApp(
@@ -126,7 +138,11 @@ void registerAgentUsageTimelineScenarios() {
           home: SizedBox(
             width: 980,
             height: 720,
-            child: AgentUsagePanel(controller: controller, autoLoad: false),
+            child: AgentUsagePanel(
+              binding: monitoring.binding,
+              onExit: () {},
+              autoLoad: false,
+            ),
           ),
         ),
       );

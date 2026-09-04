@@ -1,6 +1,31 @@
-import 'package:licoup/src/application/features/agents/conversation/agent_conversation_search_index.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
+
+final class AgentConversationSearchDocument {
+  const AgentConversationSearchDocument({
+    required this.agentId,
+    required this.sessionId,
+    required this.title,
+  });
+
+  final String agentId;
+  final String sessionId;
+  final String title;
+}
+
+final class AgentConversationSearchHit {
+  const AgentConversationSearchHit({
+    required this.document,
+    required this.score,
+    required this.snippet,
+    required this.titleMatched,
+  });
+
+  final AgentConversationSearchDocument document;
+  final double score;
+  final String snippet;
+  final bool titleMatched;
+}
 
 /// Ranked global-search groups for one destination.
 ///

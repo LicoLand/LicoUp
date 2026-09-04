@@ -1,21 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
-import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_models.dart';
 import 'package:licoup/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fixtures/settings_binding_fixture.dart';
 
 void main() {
   testWidgets(
     'status card projects bounded facts without opaque partition keys',
     (tester) async {
-      final controller = CatalogConvergenceController(
-        gateway: _StatusGateway(),
+      final source = SettingsProjectionFixture(
+        settingsProjectionFixture(
+          catalog: const SettingsCatalogProjection(
+            phase: SettingsCatalogPhase.ready,
+            reasonCode: 'catalog_current',
+            busy: false,
+            partitionCount: 1,
+            pendingInvalidationCount: 0,
+            appliedCohortCount: 1,
+            uiObservedRevision: 7,
+          ),
+        ),
       );
-      addTearDown(controller.dispose);
-      await controller.bootstrap();
+      final binding = settingsBindingFixture(source: source);
+      addTearDown(source.dispose);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -25,9 +35,7 @@ void main() {
             GlobalCupertinoLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
           ],
-          home: Scaffold(
-            body: CatalogConvergenceStatusCard(controller: controller),
-          ),
+          home: Scaffold(body: CatalogConvergenceStatusCard(binding: binding)),
         ),
       );
 
@@ -37,44 +45,4 @@ void main() {
       expect(find.textContaining('opaque-private-partition'), findsNothing);
     },
   );
-}
-
-final class _StatusGateway implements CatalogConvergenceGateway {
-  @override
-  Future<CatalogConvergenceStatus> status() async =>
-      const CatalogConvergenceStatus(
-        partitionCount: 1,
-        inFlightCount: 0,
-        pendingInvalidationCount: 0,
-        reconnectFence: false,
-        lastKnownAudienceRevision: 7,
-        uiObservedRevision: 7,
-        appliedCohortCount: 1,
-        pendingCohortCount: 0,
-        fencedCohortCount: 0,
-        disconnectedCohortCount: 0,
-      );
-
-  @override
-  Future<void> beginReconnect() async {}
-
-  @override
-  Future<List<String>> invalidate(CatalogInvalidation notification) async =>
-      notification.affectedPartitions;
-
-  @override
-  Future<CatalogDiscoveryResult> listTools(String partitionKey) =>
-      throw UnimplementedError();
-
-  @override
-  Future<bool> observeUi(String partitionKey) async => true;
-
-  @override
-  Future<void> purge({String partitionKey = ''}) async {}
-
-  @override
-  Future<void> replacePartition(
-    String partitionKey,
-    CatalogFetchedSnapshot snapshot,
-  ) async {}
 }

@@ -6,9 +6,7 @@ import {
   forbiddenDependencyCode,
   forbiddenNeutralPortApiCode,
   importsFlutterWidgetFramework,
-  isAllowedDestinationPresentationScopePath,
-  isAllowedLegacyProfilePrivateImport,
-  isAllowedLegacyLayoutDependency,
+  isDestinationPresentationScopePath,
   isDirectNeutralDependency,
   isNeutralClosureDependency,
 } from "./dependency-policy.mjs";
@@ -38,7 +36,7 @@ export function validatePublicLayoutPortApis(catalog, sourceByPath, graph) {
     }
     if (
       containsDestinationPresentationScope(source) &&
-      !isAllowedDestinationPresentationScopePath(relativePath)
+      !isDestinationPresentationScopePath(relativePath)
     ) {
       fail("layout_destination_presentation_scope_forbidden", relativePath);
     }
@@ -121,9 +119,6 @@ export function validateProfilePrivateImporter(catalog, relativePath, source) {
     if (importerOwner?.id === importedOwner.id) {
       continue;
     }
-    if (isAllowedLegacyProfilePrivateImport(relativePath, resolved)) {
-      continue;
-    }
     fail("layout_profile_private_importer_unauthorized", relativePath);
   }
 }
@@ -165,7 +160,7 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
   for (const [relativePath, source] of sourceByPath) {
     if (
       containsDestinationPresentationScope(source) &&
-      !isAllowedDestinationPresentationScopePath(relativePath)
+      !isDestinationPresentationScopePath(relativePath)
     ) {
       fail("layout_destination_presentation_scope_forbidden", relativePath);
     }
@@ -199,10 +194,7 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
         fail("layout_cross_surface_import", bundle.entryPath);
       }
       const forbiddenCode = forbiddenDependencyCode(relativePath);
-      if (
-        forbiddenCode != null &&
-        !isAllowedLegacyLayoutDependency(relativePath)
-      ) {
+      if (forbiddenCode != null) {
         fail(forbiddenCode, bundle.entryPath);
       }
       const source = sourceByPath.get(relativePath);
@@ -212,7 +204,7 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
       if (
         source != null &&
         containsDestinationPresentationScope(source) &&
-        !isAllowedDestinationPresentationScopePath(relativePath)
+        !isDestinationPresentationScopePath(relativePath)
       ) {
         fail("layout_destination_presentation_scope_forbidden", bundle.entryPath);
       }
@@ -230,8 +222,7 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
         if (
           rightClosure.has(relativePath) &&
           !neutralClosure.has(relativePath) &&
-          !isNeutralClosureDependency(relativePath) &&
-          !isAllowedLegacyLayoutDependency(relativePath)
+          !isNeutralClosureDependency(relativePath)
         ) {
           fail(
             "layout_transitive_closure_intersection_forbidden",

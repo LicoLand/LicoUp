@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/client_log_export.dart';
 
@@ -20,7 +20,7 @@ typedef ClientLogExportStatusSink =
     void Function(ClientLogExportStatusUpdate update);
 
 /// Isolated log-export workflow with a narrow storage port.
-final class ClientLogExportController extends ChangeNotifier {
+final class ClientLogExportController extends ApplicationStateOwner {
   ClientLogExportController({
     required ClientLogExporter exporter,
     required Object portableData,
@@ -51,7 +51,7 @@ final class ClientLogExportController extends ChangeNotifier {
         caption: 'Client logs',
       ),
     );
-    notifyListeners();
+    publishChange();
     try {
       final result = await _exporter.exportLogs(
         portableData: _portableData,
@@ -78,7 +78,7 @@ final class ClientLogExportController extends ChangeNotifier {
       );
     } finally {
       _busy = false;
-      notifyListeners();
+      publishChange();
     }
   }
 }

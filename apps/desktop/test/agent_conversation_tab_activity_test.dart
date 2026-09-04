@@ -6,12 +6,12 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+import 'support/agent_conversation_workspace_fixture.dart';
 
 void main() {
   TargetCandidate targetFixture(String id, {String status = 'detected'}) {
@@ -52,7 +52,7 @@ void main() {
           body: SizedBox(
             width: 1200,
             height: 900,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -100,30 +100,23 @@ void main() {
   test('tab activity publishes only its focused presentation signal', () {
     final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
-    var rootNotifications = 0;
-    controller.addListener(() => rootNotifications += 1);
+    var tabActivityChanges = 0;
+    controller.conversationTabActivityChanges.listen(
+      (_) => tabActivityChanges += 1,
+    );
 
-    final initialRevision = controller.conversationTabActivityListenable.value;
     controller.setConversationTabActivity(
       'codex',
       AgentConversationTabActivity.needsApproval,
     );
 
-    expect(
-      controller.conversationTabActivityListenable.value,
-      initialRevision + 1,
-    );
-    expect(rootNotifications, 0);
+    expect(tabActivityChanges, 1);
 
     controller.setConversationTabActivity(
       'codex',
       AgentConversationTabActivity.needsApproval,
     );
-    expect(
-      controller.conversationTabActivityListenable.value,
-      initialRevision + 1,
-    );
-    expect(rootNotifications, 0);
+    expect(tabActivityChanges, 1);
   });
 
   testWidgets('agent sidebar hides status lights by default', (tester) async {

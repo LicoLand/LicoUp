@@ -188,7 +188,7 @@ void main() {
       final controller = ClientResourceUsageController(probe: probe);
       addTearDown(controller.dispose);
       var notifications = 0;
-      controller.addListener(() => notifications += 1);
+      controller.changes.listen((_) => notifications += 1);
 
       controller.refresh();
       expect(notifications, 0);

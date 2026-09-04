@@ -1,44 +1,36 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_binding.dart';
+import 'package:licoup/src/presentation/agents/agents_intent.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
-/// Most tabs hosted at once in the chrome band (permanent first, the
-/// temporary preview tab last).
 const int messagingChromeTabsMaxCount = 6;
 
-/// Browser-style conversation tabs with the VSCode preview-tab convention:
-/// opening a conversation from anywhere (this strip, the contact list, or
-/// the switcher) shows it as one italic TEMPORARY tab that replaces any
-/// previous temporary tab; a tab pins PERMANENT once the user sends a
-/// message in that session or double-clicks the temporary tab. Permanent
-/// tabs render non-italic and offer a hover close affordance that removes
-/// only the tab. State is session-scoped presentation state held by this
-/// widget — nothing is persisted.
+/// Browser-style semantic conversation tabs. Preview/pin/close state remains
+/// renderer-local; native catalog ownership and navigation stay in bindings.
 class MessagingConversationTabStrip extends StatefulWidget {
   const MessagingConversationTabStrip({
     super.key,
-    required this.controller,
+    required this.agents,
+    required this.conversation,
     this.onCloseAuxChromePanel,
   });
 
-  final ClientController controller;
-
-  /// Invoked when a tab opens a conversation so an auxiliary chrome panel
-  /// (for example the messaging profile page) closes alongside the
-  /// destination switch.
+  final AgentsBinding agents;
+  final ConversationBinding conversation;
   final VoidCallback? onCloseAuxChromePanel;
 
   @override
@@ -54,216 +46,36 @@ class _MessagingConversationTabStripState
   bool _previewSuppressed = false;
   String _lastHandledSelectionId = '';
 
-  ClientController get controller => widget.controller;
-
   @override
-  void initState() {
-    super.initState();
-    controller.addListener(_sync);
-    controller.conversationStructureListenable.addListener(_sync);
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(covariant MessagingConversationTabStrip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_sync);
-      oldWidget.controller.conversationStructureListenable.removeListener(
-        _sync,
-      );
-      controller.addListener(_sync);
-      controller.conversationStructureListenable.addListener(_sync);
-      _pinnedIds.clear();
-      _userClosedIds.clear();
-      _previewId = '';
-      _previewSuppressed = false;
-      _lastHandledSelectionId = '';
-      _sync();
-    }
-  }
-
-  @override
-  void dispose() {
-    controller.removeListener(_sync);
-    controller.conversationStructureListenable.removeListener(_sync);
-    super.dispose();
-  }
-
-  /// Same conversation-agent catalog the workspace sidebar uses.
-  List<TargetCandidate> _conversationTabTargets() {
-    return controller.orderedConversationTargets(
-      controller.scannedTargets.where((target) => target.visibleInClient),
+  Widget build(BuildContext context) {
+    return ProjectionBuilder<AgentsProjection, AgentsProjection>(
+      source: widget.agents.projection,
+      select: (projection) => projection,
+      builder: (context, agents) =>
+          ProjectionBuilder<
+            NativeConversationCatalogProjection,
+            NativeConversationCatalogProjection
+          >(
+            source: widget.conversation.nativeCatalog,
+            select: (projection) => projection,
+            builder: (context, catalog) => _buildTabs(context, agents, catalog),
+          ),
     );
   }
 
-  /// The session that counts as "the user executed this conversation":
-  /// the in-flight send's session, falling back to the selected session
-  /// during an active turn (first send of a new conversation), matched by
-  /// native id once readback lands.
-  String _sendingSessionId() {
-    final direct = controller.sendingConversationSessionId.trim();
-    if (direct.isNotEmpty) {
-      return direct;
-    }
-    if (!controller.isSendingConversationMessage) {
-      return '';
-    }
-    final nativeId = controller.sendingConversationNativeSessionId.trim();
-    if (nativeId.isNotEmpty) {
-      for (final session in controller.selectedConversationSessions) {
-        if (session.nativeSessionId.trim() == nativeId) {
-          return session.id;
-        }
-      }
-    }
-    return controller.selectedConversationSession?.id.trim() ?? '';
-  }
-
-  void _pin(String sessionId) {
-    if (sessionId.isEmpty || _pinnedIds.contains(sessionId)) {
-      return;
-    }
-    setState(() {
-      _pinnedIds.add(sessionId);
-      _userClosedIds.remove(sessionId);
-      if (_previewId == sessionId) {
-        _previewId = '';
-      }
-    });
-  }
-
-  void _close(String sessionId) {
-    final selectedId = controller.selectedConversationSession?.id.trim() ?? '';
-    setState(() {
-      _pinnedIds.remove(sessionId);
-      // An explicit close wins over the in-flight auto-pin: the tab must not
-      // be re-added by the next controller notification while this session
-      // is still sending.
-      _userClosedIds.add(sessionId);
-      // Closing the open conversation's tab hides it without reviving the
-      // preview slot until the user opens another conversation.
-      if (sessionId == selectedId) {
-        _previewSuppressed = true;
-      }
-    });
-  }
-
-  void _sync() {
-    if (!mounted) {
-      return;
-    }
-    final selectedId = controller.selectedConversationSession?.id.trim() ?? '';
-    final sendingId = _sendingSessionId();
-
-    var nextPreview = _previewId;
-    var nextSuppressed = _previewSuppressed;
-    if (selectedId != _lastHandledSelectionId) {
-      _lastHandledSelectionId = selectedId;
-      nextSuppressed = false;
-      // Reopening a conversation restores its auto-pin rights: only a close
-      // while the tab is hidden counts as user intent to keep it hidden.
-      _userClosedIds.remove(selectedId);
-      if (selectedId.isEmpty || _pinnedIds.contains(selectedId)) {
-        nextPreview = '';
-      } else if (selectedId == sendingId) {
-        nextPreview = '';
-      } else {
-        // Opening a conversation from anywhere previews it, replacing any
-        // previous temporary tab.
-        nextPreview = selectedId;
-      }
-    } else if (nextSuppressed) {
-      nextPreview = '';
-    }
-
-    var pinnedChanged = false;
-    if (sendingId.isNotEmpty &&
-        !_pinnedIds.contains(sendingId) &&
-        !_userClosedIds.contains(sendingId)) {
-      pinnedChanged = true;
-    }
-    final previewChanged =
-        nextPreview != _previewId || nextSuppressed != _previewSuppressed;
-    final catalogCanRenderPreview =
-        nextPreview.isEmpty || _entriesById().containsKey(nextPreview);
-    if (!pinnedChanged && !previewChanged && catalogCanRenderPreview) {
-      return;
-    }
-    setState(() {
-      if (pinnedChanged) {
-        _pinnedIds.add(sendingId);
-        if (nextPreview == sendingId) {
-          nextPreview = '';
-        }
-      }
-      _previewId = nextPreview;
-      _previewSuppressed = nextSuppressed;
-    });
-  }
-
-  Map<String, _MessagingChromeTabEntry> _entriesById() {
-    final groups = <_MessagingChromeTabGroup>[];
-    final indexByName = <String, int>{};
-    for (final target in _conversationTabTargets()) {
-      if (!target.isConversationAgent) {
-        continue;
-      }
-      final name = agentConversationTargetDisplayName(target);
-      final key = name.toLowerCase();
-      final index = indexByName[key];
-      if (index == null) {
-        indexByName[key] = groups.length;
-        groups.add(_MessagingChromeTabGroup([target]));
-      } else {
-        groups[index].members.add(target);
-      }
-    }
-    final ownerBySessionId = <String, TargetCandidate>{};
-    final iconBySessionId = <String, TargetCandidate>{};
-    final seenSessionIds = <String>{};
-    final sessions = <AgentConversationSession>[];
-    for (final group in groups) {
-      for (final member in group.members) {
-        final memberSessions =
-            controller.conversationSessionsByAgent[member.id] ??
-            controller.conversationSessionsByAgent[member.target] ??
-            const <AgentConversationSession>[];
-        for (final session in memberSessions) {
-          if (seenSessionIds.add(session.id)) {
-            sessions.add(session);
-            ownerBySessionId[session.id] = member;
-            iconBySessionId[session.id] = group.members.first;
-          }
-        }
-      }
-    }
-    final sorted = sortConversationSessionsByUpdatedAt(sessions);
-    return {
-      for (final session in sorted)
-        session.id: _MessagingChromeTabEntry(
-          session: session,
-          owner: ownerBySessionId[session.id]!,
-          iconTarget: iconBySessionId[session.id]!,
-        ),
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final colors = context.licoColors;
-    final entriesById = _entriesById();
-    final tabIds = [
+  Widget _buildTabs(
+    BuildContext context,
+    AgentsProjection agents,
+    NativeConversationCatalogProjection catalog,
+  ) {
+    final entriesById = _entriesById(agents, catalog);
+    final selectedId = _selectedSessionId(catalog);
+    _synchronize(selectedId, catalog.runningSessionIds, entriesById);
+    final tabIds = <String>[
       ..._pinnedIds,
       if (_previewId.isNotEmpty && !_pinnedIds.contains(_previewId)) _previewId,
     ];
-    // Highlight follows the selected session, not the agent: several tabs of
-    // one agent must not all light up, and a selected session without a
-    // rendered tab (suppressed preview or closed tab) highlights nothing.
-    final selectedSessionId =
-        controller.selectedConversationSession?.id.trim() ?? '';
-    final canStartNew = controller.selectedConversationAgent != null;
+    final colors = context.licoColors;
     return SizedBox(
       key: const Key('messaging-chrome-tab-strip'),
       height: 36,
@@ -277,24 +89,26 @@ class _MessagingConversationTabStripState
                 key: ValueKey<String>('messaging-chrome-tab-$sessionId'),
                 entry: entry,
                 pinned: _pinnedIds.contains(sessionId),
-                selected: sessionId == selectedSessionId,
-                onTap: () => unawaited(_open(entry)),
+                selected: sessionId == selectedId,
+                onTap: () => _open(entry, catalog),
                 onDoubleTap: _pinnedIds.contains(sessionId)
                     ? null
                     : () => _pin(sessionId),
                 onClose: _pinnedIds.contains(sessionId)
-                    ? () => _close(sessionId)
+                    ? () => _close(sessionId, selectedId)
                     : null,
               ),
               const SizedBox(width: 6),
             ],
           _MessagingChromeNewTabButton(
             key: const Key('messaging-chrome-new-tab'),
-            tooltip: strings.newConversation,
-            enabled: canStartNew,
-            onPressed: canStartNew
-                ? controller.startNewConversationSession
-                : null,
+            tooltip: LicoStrings.of(context).newConversation,
+            enabled: agents.selectedAgentId.isNotEmpty,
+            onPressed: agents.selectedAgentId.isEmpty
+                ? null
+                : () => widget.conversation.intents.send(
+                    const StartConversationSession(),
+                  ),
             colors: colors,
           ),
         ],
@@ -302,52 +116,131 @@ class _MessagingConversationTabStripState
     );
   }
 
-  Future<void> _open(_MessagingChromeTabEntry entry) async {
-    final resolvedId = _currentSessionId(entry);
-    if (resolvedId == null) {
-      // The session vanished from the local catalog (a refresh re-emitted it
-      // without an id or native-id match). Keep the current view instead of
-      // navigating into an empty "no messages" state.
-      return;
+  void _synchronize(
+    String selectedId,
+    List<String> runningIds,
+    Map<String, _MessagingChromeTabEntry> entries,
+  ) {
+    if (selectedId != _lastHandledSelectionId) {
+      _lastHandledSelectionId = selectedId;
+      _previewSuppressed = false;
+      _userClosedIds.remove(selectedId);
+      _previewId = selectedId.isEmpty || _pinnedIds.contains(selectedId)
+          ? ''
+          : selectedId;
+    } else if (_previewSuppressed) {
+      _previewId = '';
     }
-    controller.selectSection(ClientSection.agents);
-    widget.onCloseAuxChromePanel?.call();
-    if (controller.selectedConversationAgentId != entry.owner.target) {
-      await controller.selectConversationAgent(entry.owner.id);
+    for (final runningId in runningIds) {
+      if (runningId.isEmpty ||
+          _pinnedIds.contains(runningId) ||
+          _userClosedIds.contains(runningId) ||
+          !entries.containsKey(runningId)) {
+        continue;
+      }
+      _pinnedIds.add(runningId);
+      if (_previewId == runningId) _previewId = '';
     }
-    controller.selectConversationSession(resolvedId);
+    _pinnedIds.removeWhere((id) => !entries.containsKey(id));
+    if (_previewId.isNotEmpty && !entries.containsKey(_previewId)) {
+      _previewId = '';
+    }
   }
 
-  /// Resolves the tab's session against the catalog as it stands at tap
-  /// time: the exact id first, then the stable native session id so a tab
-  /// survives a refresh that re-emitted the session under a fresh id.
-  String? _currentSessionId(_MessagingChromeTabEntry entry) {
-    final sessions =
-        controller.conversationSessionsByAgent[entry.owner.id] ??
-        controller.conversationSessionsByAgent[entry.owner.target] ??
-        const <AgentConversationSession>[];
-    final wantedId = entry.session.id;
-    for (final session in sessions) {
-      if (session.id == wantedId) {
-        return session.id;
+  void _pin(String sessionId) {
+    if (sessionId.isEmpty || _pinnedIds.contains(sessionId)) return;
+    setState(() {
+      _pinnedIds.add(sessionId);
+      _userClosedIds.remove(sessionId);
+      if (_previewId == sessionId) _previewId = '';
+    });
+  }
+
+  void _close(String sessionId, String selectedId) {
+    setState(() {
+      _pinnedIds.remove(sessionId);
+      _userClosedIds.add(sessionId);
+      if (sessionId == selectedId) _previewSuppressed = true;
+    });
+  }
+
+  Map<String, _MessagingChromeTabEntry> _entriesById(
+    AgentsProjection agents,
+    NativeConversationCatalogProjection catalog,
+  ) {
+    final targets = agents.targetDetails
+        .where((target) => target.visibleInClient && target.isConversationAgent)
+        .toList(growable: false);
+    final byAgent = <String, List<AgentConversationSession>>{
+      for (final group in catalog.agentCatalogs) group.agentId: group.sessions,
+    };
+    if (agents.selectedAgentId.isNotEmpty &&
+        catalog.nativeSessions.isNotEmpty) {
+      byAgent.putIfAbsent(agents.selectedAgentId, () => catalog.nativeSessions);
+    }
+    final result = <String, _MessagingChromeTabEntry>{};
+    for (final target in targets) {
+      final sessions = byAgent[target.id] ?? byAgent[target.target] ?? const [];
+      for (final session in sortConversationSessionsByUpdatedAt(sessions)) {
+        result.putIfAbsent(
+          session.id,
+          () => _MessagingChromeTabEntry(
+            session: session,
+            owner: target,
+            iconTarget: target,
+          ),
+        );
       }
+    }
+    return result;
+  }
+
+  String _selectedSessionId(NativeConversationCatalogProjection catalog) {
+    for (final session in catalog.sessions) {
+      if (session.selected) return session.id;
+    }
+    return '';
+  }
+
+  void _open(
+    _MessagingChromeTabEntry entry,
+    NativeConversationCatalogProjection catalog,
+  ) {
+    final resolvedId = _currentSessionId(entry, catalog);
+    if (resolvedId == null) return;
+    widget.onCloseAuxChromePanel?.call();
+    widget.agents.intents.send(
+      SelectAgentConversationSession(
+        agentId: entry.owner.id,
+        sessionId: resolvedId,
+        nativeSessionId: entry.session.nativeSessionId,
+      ),
+    );
+  }
+
+  String? _currentSessionId(
+    _MessagingChromeTabEntry entry,
+    NativeConversationCatalogProjection catalog,
+  ) {
+    final groups = catalog.agentCatalogs.where(
+      (group) =>
+          group.agentId == entry.owner.id ||
+          group.agentId == entry.owner.target,
+    );
+    final sessions = groups.isEmpty
+        ? catalog.nativeSessions
+        : groups.expand((group) => group.sessions);
+    for (final session in sessions) {
+      if (session.id == entry.session.id) return session.id;
     }
     final nativeId = entry.session.nativeSessionId.trim();
     if (nativeId.isNotEmpty) {
       for (final session in sessions) {
-        if (session.nativeSessionId.trim() == nativeId) {
-          return session.id;
-        }
+        if (session.nativeSessionId.trim() == nativeId) return session.id;
       }
     }
     return null;
   }
-}
-
-final class _MessagingChromeTabGroup {
-  _MessagingChromeTabGroup(this.members);
-
-  final List<TargetCandidate> members;
 }
 
 final class _MessagingChromeTabEntry {
@@ -390,7 +283,6 @@ class _MessagingChromeTabState extends State<_MessagingChromeTab> {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final dark = colors.isDark;
     final session = widget.entry.session;
     final title = session.title.trim().isEmpty
         ? conversationSessionRelativeUpdatedAtLabel(session)
@@ -413,9 +305,13 @@ class _MessagingChromeTabState extends State<_MessagingChromeTab> {
             padding: EdgeInsets.only(left: 10, right: widget.pinned ? 6 : 10),
             decoration: BoxDecoration(
               color: widget.selected
-                  ? MessagingDesktopMetrics.chromeTabSelectedFill(isDark: dark)
+                  ? MessagingDesktopMetrics.chromeTabSelectedFill(
+                      isDark: colors.isDark,
+                    )
                   : _hovered
-                  ? MessagingDesktopMetrics.chromeControlHover(isDark: dark)
+                  ? MessagingDesktopMetrics.chromeControlHover(
+                      isDark: colors.isDark,
+                    )
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(999),
               border: widget.selected
@@ -500,27 +396,25 @@ class _MessagingChromeNewTabButton extends StatelessWidget {
   final LicoThemeColors colors;
 
   @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      waitDuration: LicoMotion.tooltipWait,
-      child: InkWell(
-        onTap: onPressed,
-        customBorder: const CircleBorder(),
-        hoverColor: MessagingDesktopMetrics.chromeControlHover(
-          isDark: colors.isDark,
-        ),
-        child: SizedBox.square(
-          dimension: 30,
-          child: Icon(
-            Icons.add_rounded,
-            size: 17,
-            color: enabled
-                ? MessagingDesktopMetrics.chromeIconMuted()
-                : MessagingDesktopMetrics.chromeIconDisabled(),
-          ),
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    waitDuration: LicoMotion.tooltipWait,
+    child: InkWell(
+      onTap: onPressed,
+      customBorder: const CircleBorder(),
+      hoverColor: MessagingDesktopMetrics.chromeControlHover(
+        isDark: colors.isDark,
+      ),
+      child: SizedBox.square(
+        dimension: 30,
+        child: Icon(
+          Icons.add_rounded,
+          size: 17,
+          color: enabled
+              ? MessagingDesktopMetrics.chromeIconMuted()
+              : MessagingDesktopMetrics.chromeIconDisabled(),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 enum ClientLifecyclePhase { idle, initializing, ready, failed, disposed }
 
@@ -31,7 +31,7 @@ typedef ClientLifecycleReportSink = void Function(ClientLifecycleReport report);
 
 /// Runs the client bootstrap once, guards stale completion after disposal, and
 /// keeps failure evidence to stable step IDs and codes.
-final class ClientLifecycleCoordinator extends ChangeNotifier {
+final class ClientLifecycleCoordinator extends ApplicationStateOwner {
   ClientLifecycleCoordinator({required ClientLifecycleReportSink onReport})
     : _onReport = onReport;
 
@@ -161,7 +161,7 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
     }
     _phase = next;
     _projection = ClientLifecycleProjection._(next);
-    notifyListeners();
+    publishChange();
     return true;
   }
 
@@ -188,7 +188,6 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
     ClientLifecyclePhase.disposed: {},
   };
 
-  @visibleForTesting
   ClientLifecycleReport transitionForTesting(
     ClientLifecyclePhase next, {
     required String stepId,

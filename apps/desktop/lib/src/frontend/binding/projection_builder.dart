@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
+import 'package:licoup/src/frontend/binding/projection_telemetry_scope.dart';
+
 typedef ProjectionSelector<T, S> = S Function(T projection);
 typedef SelectedProjectionWidgetBuilder<S> =
     Widget Function(BuildContext context, S selected);
@@ -26,7 +28,9 @@ final class ProjectionBuilder<T, S> extends StatefulWidget {
 
 final class _ProjectionBuilderState<T, S>
     extends State<ProjectionBuilder<T, S>> {
-  StreamSubscription<T>? _subscription;
+  StreamSubscription<ProjectionUpdate<T>>? _subscription;
+  ProjectionReceiptObserver? _telemetry;
+  final List<TraceContext> _pendingFrameTraces = [];
   late S _selected;
 
   @override
@@ -46,14 +50,24 @@ final class _ProjectionBuilderState<T, S>
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _telemetry = ProjectionTelemetryScope.maybeOf(context);
+  }
+
   void _subscribeAndRead() {
     _subscription = widget.source.changes.listen(_handleProjection);
     _selected = widget.select(widget.source.current);
   }
 
-  void _handleProjection(T projection) {
-    final next = widget.select(projection);
+  void _handleProjection(ProjectionUpdate<T> update) {
+    final next = widget.select(update.value);
     if (next == _selected) return;
+    final telemetry = _telemetry;
+    if (telemetry != null) {
+      _pendingFrameTraces.add(telemetry.projectionReceived(update.trace));
+    }
     setState(() => _selected = next);
   }
 
@@ -65,5 +79,22 @@ final class _ProjectionBuilderState<T, S>
   }
 
   @override
-  Widget build(BuildContext context) => widget.builder(context, _selected);
+  Widget build(BuildContext context) {
+    final telemetry = _telemetry;
+    if (telemetry != null && _pendingFrameTraces.isNotEmpty) {
+      final traces = List<TraceContext>.of(_pendingFrameTraces);
+      _pendingFrameTraces.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final frameBuildStart =
+            WidgetsBinding.instance.currentSystemFrameTimeStamp.inMicroseconds;
+        for (final trace in traces) {
+          telemetry.projectionFrameConsumed(
+            trace,
+            frameBuildStartMicroseconds: frameBuildStart,
+          );
+        }
+      }, debugLabel: 'ProjectionBuilder.firstConsumedFrame');
+    }
+    return widget.builder(context, _selected);
+  }
 }

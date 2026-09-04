@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:licoup/src/frontend/binding/projection_telemetry_scope.dart';
 
 void main() {
   testWidgets('projection builder selects slices and swaps sources', (
@@ -12,25 +13,29 @@ void main() {
   ) async {
     final first = _ProjectionSource(const _Projection(1, 'a'));
     final second = _ProjectionSource(const _Projection(3, 'b'));
+    final telemetry = _ProjectionObserver();
     var source = first;
     late StateSetter rebuild;
     var builds = 0;
 
     await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: StatefulBuilder(
-          builder: (context, setState) {
-            rebuild = setState;
-            return ProjectionBuilder<_Projection, int>(
-              source: source,
-              select: (projection) => projection.selected,
-              builder: (context, selected) {
-                builds += 1;
-                return Text('$selected');
-              },
-            );
-          },
+      ProjectionTelemetryScope(
+        observer: telemetry,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return ProjectionBuilder<_Projection, int>(
+                source: source,
+                select: (projection) => projection.selected,
+                builder: (context, selected) {
+                  builds += 1;
+                  return Text('$selected');
+                },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -40,9 +45,14 @@ void main() {
     await tester.pump();
     expect(builds, 1);
 
-    first.publish(const _Projection(2, 'changed'));
+    first.publish(
+      const _Projection(2, 'changed'),
+      trace: const TraceContext(traceId: 'trace-selected'),
+    );
     await tester.pump();
     expect(find.text('2'), findsOneWidget);
+    expect(telemetry.traces, ['trace-selected']);
+    expect(telemetry.consumedTraces, ['trace-selected']);
 
     rebuild(() => source = second);
     await tester.pump();
@@ -87,8 +97,8 @@ final class _Projection {
 final class _ProjectionSource implements ProjectionSource<_Projection> {
   _ProjectionSource(this._current);
 
-  final StreamController<_Projection> _controller =
-      StreamController<_Projection>.broadcast(sync: true);
+  final StreamController<ProjectionUpdate<_Projection>> _controller =
+      StreamController<ProjectionUpdate<_Projection>>.broadcast(sync: true);
   _Projection _current;
   bool get hasListener => _controller.hasListener;
 
@@ -96,14 +106,34 @@ final class _ProjectionSource implements ProjectionSource<_Projection> {
   _Projection get current => _current;
 
   @override
-  Stream<_Projection> get changes => _controller.stream;
+  Stream<ProjectionUpdate<_Projection>> get changes => _controller.stream;
 
-  void publish(_Projection value) {
+  void publish(_Projection value, {TraceContext? trace}) {
     _current = value;
-    _controller.add(value);
+    _controller.add(ProjectionUpdate(value, trace: trace));
   }
 
   Future<void> dispose() => _controller.close();
+}
+
+final class _ProjectionObserver implements ProjectionReceiptObserver {
+  final List<String?> traces = [];
+  final List<String?> consumedTraces = [];
+
+  @override
+  TraceContext projectionReceived(TraceContext? trace) {
+    final resolved = trace ?? const TraceContext(traceId: 'runtime-trace');
+    traces.add(resolved.traceId);
+    return resolved;
+  }
+
+  @override
+  void projectionFrameConsumed(
+    TraceContext trace, {
+    required int frameBuildStartMicroseconds,
+  }) {
+    consumedTraces.add(trace.traceId);
+  }
 }
 
 final class _EffectSource implements EffectSource<String> {

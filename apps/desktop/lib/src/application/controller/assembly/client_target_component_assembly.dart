@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
@@ -18,7 +18,7 @@ final class ClientTargetComponentAssembly {
       Map<String, dynamic>? pairingStatus,
     })
     discoverMobileTargets,
-    required VoidCallback onTargetsSettled,
+    required ApplicationCallback onTargetsSettled,
     required Future<void> Function(String) loadSelectedConversation,
     required String Function() selectedAgentId,
     required bool Function() shouldLoadSelectedConversation,
@@ -44,8 +44,6 @@ final class ClientTargetComponentAssembly {
        );
 
   final TargetController controller;
-
-  Iterable<ChangeNotifier> get listenables => [controller];
 
   void dispose() => controller.dispose();
 }

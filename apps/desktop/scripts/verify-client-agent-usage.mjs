@@ -9,8 +9,8 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const reportRef = "build/reports/client-agent-usage-metering.json";
 const agentUsagePanelPath =
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart";
-const shellTransitionAdapterPath =
-  "apps/desktop/lib/src/composition/m2_legacy_shell_renderer_transition_adapter.dart";
+const bindingShellRendererPath =
+  "apps/desktop/lib/src/composition/binding_shell_renderer.dart";
 const failures = [];
 
 function assert(condition, message) {
@@ -131,7 +131,7 @@ const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_token_breakdown.dart",
 ]);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
-const shellTransitionAdapter = await readText(shellTransitionAdapterPath);
+const bindingShellRenderer = await readText(bindingShellRendererPath);
 const flutterProductionSources = new Map(
   await Promise.all(
     (await collectSourceFiles("apps/desktop/lib", ".dart")).map(
@@ -364,21 +364,22 @@ assertIncludes(
     "workflowRunLabel",
     "workflowCommandLabel",
     "workflowMembershipLabel",
-    "startAgentUsagePolling",
-    "ensureAgentUsageLoadedAndFresh"
+    "StartAutomaticMonitoring",
+    "StopAutomaticMonitoring",
+    "SetMonitoringHistoryDays"
   ],
   "local-token usage UI"
 );
 const usagePanelMountedByComposition =
-  shellTransitionAdapter.includes("class M2LegacyShellRendererTransitionAdapter") &&
-  shellTransitionAdapter.includes(
+  bindingShellRenderer.includes("class BindingShellRenderer") &&
+  bindingShellRenderer.includes(
     "frontend/features/agents/ui/agent_usage_panel.dart",
   ) &&
-  /ClientSection\.monitoring\s*=>\s*AgentUsagePanel\s*\(\s*controller:\s*_controller\s*,?\s*\)/u
-    .test(shellTransitionAdapter);
+  /ClientSection\.monitoring\s*=>\s*AgentUsagePanel\s*\(\s*binding:\s*_monitoring\s*,?/u
+    .test(bindingShellRenderer);
 assert(
   usagePanelMountedByComposition,
-  "desktop monitoring route must mount the dedicated local-token usage panel through the M2 composition adapter",
+  "desktop monitoring route must mount the dedicated local-token usage panel through the binding renderer",
 );
 
 const clientShellDelegatesFeatureConstruction =
@@ -398,7 +399,7 @@ const usagePanelReferencePaths = [...flutterProductionSources]
   .map(([relativePath]) => relativePath);
 const expectedUsagePanelReferencePaths = new Set([
   agentUsagePanelPath,
-  shellTransitionAdapterPath,
+  bindingShellRendererPath,
 ]);
 const usagePanelConstructionIsCompositionOnly =
   usagePanelReferencePaths.length === expectedUsagePanelReferencePaths.size &&
@@ -406,7 +407,7 @@ const usagePanelConstructionIsCompositionOnly =
     expectedUsagePanelReferencePaths.has(relativePath));
 assert(
   usagePanelConstructionIsCompositionOnly,
-  "AgentUsagePanel construction and imports must remain confined to its feature definition and the M2 composition adapter",
+  "AgentUsagePanel construction and imports must remain confined to its feature definition and the binding renderer",
 );
 
 assertIncludes(

@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/appearance/appearance_projection_adapter.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/shell/shell_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Fixed presets only. `default-system` has no tokens of its own; it resolves
@@ -14,6 +16,26 @@ Iterable<AppearancePresetConfig> get _fixedPresets =>
     );
 
 void main() {
+  test('appearance projection adapter preserves theme pixels', () {
+    final projected = _appearanceProjection();
+    final adapted = appearancePresetConfigsFromProjection(projected);
+
+    expect(adapted.map((preset) => preset.id), AppearancePresetIds.builtIn);
+    for (final brightness in Brightness.values) {
+      final expected = buildLicoTheme(
+        presetId: projected.presetId,
+        platformBrightness: brightness,
+      );
+      final actual = buildLicoTheme(
+        presetId: projected.presetId,
+        presets: adapted,
+        platformBrightness: brightness,
+      );
+      expect(actual.colorScheme, expected.colorScheme);
+      expect(actual.scaffoldBackgroundColor, expected.scaffoldBackgroundColor);
+    }
+  });
+
   test('buildLicoTheme applies every appearance preset', () {
     for (final preset in builtInAppearancePresetConfigs) {
       final platformBrightness = preset.id == AppearancePresetIds.defaultSystem
@@ -673,6 +695,21 @@ void main() {
     });
   });
 }
+
+AppearanceProjection _appearanceProjection() => AppearanceProjection(
+  presetId: AppearancePresetIds.defaultSystem,
+  presets: builtInAppearancePresetConfigs.map(
+    (preset) => AppearancePresetProjection(
+      id: preset.id,
+      label: preset.labelFor(),
+      modeId: preset.mode.id,
+      tokens: preset.tokens.entries.map(
+        (token) =>
+            AppearanceTokenProjection(name: token.key, value: token.value),
+      ),
+    ),
+  ),
+);
 
 double _contrast(Color a, Color b) {
   final aLum = a.computeLuminance();

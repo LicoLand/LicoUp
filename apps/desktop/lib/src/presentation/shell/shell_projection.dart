@@ -1,61 +1,141 @@
-import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
-final class ShellLayout {
-  const ShellLayout(this.selection);
+final class AppearanceTokenProjection {
+  const AppearanceTokenProjection({required this.name, required this.value});
+
+  final String name;
+  final String value;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppearanceTokenProjection &&
+          other.name == name &&
+          other.value == value;
+
+  @override
+  int get hashCode => Object.hash(name, value);
+}
+
+final class AppearancePresetProjection {
+  AppearancePresetProjection({
+    required this.id,
+    required this.label,
+    required this.modeId,
+    required Iterable<AppearanceTokenProjection> tokens,
+  }) : tokens = immutablePresentationList(tokens);
+
+  final String id;
+  final String label;
+  final String modeId;
+  final List<AppearanceTokenProjection> tokens;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppearancePresetProjection &&
+          other.id == id &&
+          other.label == label &&
+          other.modeId == modeId &&
+          samePresentationList(other.tokens, tokens);
+
+  @override
+  int get hashCode => Object.hash(id, label, modeId, Object.hashAll(tokens));
+}
+
+final class AppearanceProjection {
+  AppearanceProjection({
+    required this.presetId,
+    required Iterable<AppearancePresetProjection> presets,
+  }) : presets = immutablePresentationList(presets);
+
+  final String presetId;
+  final List<AppearancePresetProjection> presets;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppearanceProjection &&
+          other.presetId == presetId &&
+          samePresentationList(other.presets, presets);
+
+  @override
+  int get hashCode => Object.hash(presetId, Object.hashAll(presets));
+}
+
+final class LocaleProjection {
+  const LocaleProjection(this.preference);
+
+  final String preference;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocaleProjection && other.preference == preference;
+
+  @override
+  int get hashCode => preference.hashCode;
+}
+
+final class LayoutProjection {
+  const LayoutProjection(this.selection);
 
   final LayoutSelectionState selection;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ShellLayout && other.selection == selection;
+      other is LayoutProjection && other.selection == selection;
 
   @override
   int get hashCode => selection.hashCode;
 }
 
-final class ShellAppearance {
-  ShellAppearance({
-    required this.presetId,
-    required List<AppearancePresetConfig> presetConfigs,
-    required this.localePreference,
-  }) : presetConfigs = List<AppearancePresetConfig>.unmodifiable(presetConfigs);
+final class EnvironmentProjection {
+  const EnvironmentProjection({
+    required this.environment,
+    required this.runtimeSurface,
+  });
 
-  final String presetId;
-  final List<AppearancePresetConfig> presetConfigs;
-  final String localePreference;
+  final LayoutEnvironment environment;
+  final LayoutRuntimeSurface runtimeSurface;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ShellAppearance &&
-          other.presetId == presetId &&
-          other.localePreference == localePreference &&
-          _sameList(other.presetConfigs, presetConfigs);
+      other is EnvironmentProjection &&
+          other.environment == environment &&
+          other.runtimeSurface == runtimeSurface;
 
   @override
-  int get hashCode =>
-      Object.hash(presetId, localePreference, Object.hashAll(presetConfigs));
+  int get hashCode => Object.hash(environment, runtimeSurface);
 }
 
-final class ShellEnvironment {
-  const ShellEnvironment({required this.mobileSurface});
+final class NavigationProjection {
+  NavigationProjection({
+    required this.destination,
+    required Iterable<ClientSection> destinations,
+  }) : destinations = immutablePresentationList(destinations);
 
-  final bool mobileSurface;
+  final ClientSection destination;
+  final List<ClientSection> destinations;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ShellEnvironment && other.mobileSurface == mobileSurface;
+      other is NavigationProjection &&
+          other.destination == destination &&
+          samePresentationList(other.destinations, destinations);
 
   @override
-  int get hashCode => mobileSurface.hashCode;
+  int get hashCode => Object.hash(destination, Object.hashAll(destinations));
 }
 
-final class ShellStatus {
-  const ShellStatus({
+final class StatusProjection {
+  const StatusProjection({
     required this.displayMessage,
     required this.displayCaption,
     required this.errorCode,
@@ -68,50 +148,11 @@ final class ShellStatus {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ShellStatus &&
+      other is StatusProjection &&
           other.displayMessage == displayMessage &&
           other.displayCaption == displayCaption &&
           other.errorCode == errorCode;
 
   @override
   int get hashCode => Object.hash(displayMessage, displayCaption, errorCode);
-}
-
-final class ShellProjection {
-  const ShellProjection({
-    required this.layout,
-    required this.appearance,
-    required this.environment,
-    required this.status,
-    required this.destination,
-  });
-
-  final ShellLayout layout;
-  final ShellAppearance appearance;
-  final ShellEnvironment environment;
-  final ShellStatus status;
-  final ClientSection destination;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ShellProjection &&
-          other.layout == layout &&
-          other.appearance == appearance &&
-          other.environment == environment &&
-          other.status == status &&
-          other.destination == destination;
-
-  @override
-  int get hashCode =>
-      Object.hash(layout, appearance, environment, status, destination);
-}
-
-bool _sameList<T>(List<T> left, List<T> right) {
-  if (identical(left, right)) return true;
-  if (left.length != right.length) return false;
-  for (var index = 0; index < left.length; index += 1) {
-    if (left[index] != right[index]) return false;
-  }
-  return true;
 }

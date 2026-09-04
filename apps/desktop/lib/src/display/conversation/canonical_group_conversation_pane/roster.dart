@@ -11,7 +11,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_ring.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_usage_card.dart';
 import 'package:licoup/src/shared/l10n/lico_strings_catalog.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 

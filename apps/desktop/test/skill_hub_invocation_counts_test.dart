@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/composition/features/skill_hub/skill_hub_feature_composition.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -186,6 +187,8 @@ Future<void> _pumpSkillHub(
   WidgetTester tester, {
   required ClientController controller,
 }) async {
+  final feature = SkillHubFeatureComposition(controller);
+  addTearDown(feature.dispose);
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -200,7 +203,7 @@ Future<void> _pumpSkillHub(
         body: SizedBox(
           width: 900,
           height: 650,
-          child: SkillHubPanel(controller: controller),
+          child: SkillHubPanel(binding: feature.binding),
         ),
       ),
     ),

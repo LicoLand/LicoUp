@@ -189,33 +189,33 @@ flowchart TB
 
 | 问题 | 严重度 | 位置 | 影响 |
 |:---|:---|:---|:---|
-| **上帝对象 `ClientController`** | 关键 | `apps/desktop/lib/src/application/controller/` | Shell 边界已经迁移，但仍有 27 个显式 allowlist 内的前端功能文件导入它；这些路径是有界迁移债务。 |
+| **Application 编排器宽度** | 中 | `apps/desktop/lib/src/application/controller/` | `ClientController` 仍是内部、无 Flutter 依赖的生命周期与编排聚合；renderer 禁止导入它，功能级组合仅暴露语义 Binding。 |
 | **以 mixin 充当分解** | 高 | `application/controller/`、`application/features/agents/conversation/` | 应用全部 24 个 mixin 位于同一条继承链；共享 `this` 意味着没有封装。 |
 | **单体 Rust crate** | 高 | `crates/licoup-native/`（约 299K 行） | `domain/` 48 项、`core/` 52 项、`platform/` 85 项（72K 行）。编译慢、边界不清。最大文件：`client_conversation/store.rs`（6.6K 行）、`ffi/commands/mod.rs`（5.2K 行）。 |
 | **契约层膨胀** | 中 | `apps/desktop/lib/src/contracts/`（93 个文件, 15.7K 行） | 模型、接口、解析逻辑与生成代码混在同一层。 |
-| **巨型 Widget 文件** | 中 | `frontend/features/` | `canonical_group_conversation_pane.dart`（2603 行）、`agent_conversation_workspace.dart`（1390 行）。 |
+| **大型 Flutter 界面文件** | 中 | `frontend/features/`、`display/conversation/` | 原 2.6K 行 Canonical pane 已拆分为聚焦文件（最大叶文件 572 行）。仍较大的功能文件包括 `adaptive_flywheel_multi_capsule_section.dart`（1626）、`settings_panel.dart`（1184）、`agent_conversation_composer_capsules.dart`（1135）与 `agent_conversation_workspace.dart`（1132）。 |
 | **残留后端层** | 低 | `apps/desktop/lib/src/backend/`（2.1K 行） | 太薄，无法提供真正抽象；还会在 Dart 中伪造领域事件（`dispatch.lane.bound`）。 |
 | **手工 JSON-RPC 方法面** | 高 | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | 方法名在两侧手工重复（Rust 25 个 vs Dart 23 个；两个方法从 Dart 不可达）；codegen 只覆盖 FFI 数据类型，不覆盖 stdio 帧。Dart 部分调用按 argv 形状嗅探路由。 |
 
-### 已实现的 Presentation Boundary（M0–M2）
+### 已实现的 Presentation Boundary（M3–M6）
 
-M0–M2 已实现。`ClientShell` 消费与渲染器无关的 `ShellBinding`；`LicoApp`
-只选择 `ShellAppearance`；Shell 的选定切片仅在静态根 Scaffold 下方重建。
-有界的 `M2LegacyShellRendererTransitionAdapter` 是唯一负责构造未迁移的
-controller 型 destination 与 chrome widget 的组合边界。
+终态 M3–M6 边界已经实现。Flutter renderer 消费具名、不可变的语义
+Binding；功能级 producer 只读取最小 Application owner，并抑制相等投影。
+Application 状态使用同步 Dart stream，不依赖 Flutter notifier 或生命周期类型。
+M2 Shell 过渡 adapter 与迁移 allowlist 已移除。
 
 ```mermaid
 flowchart LR
-    C["ClientAppComposition"] --> P["聚焦 ShellProjection producer"]
-    P -->|"current + changes"| B["ShellBinding"]
-    B --> R["ClientShell + LayoutHost"]
-    R -->|"ShellIntent"| B
-    B --> I["组合层 intent adapter"]
-    I --> A["应用 controllers"]
-    I -->|"ShellDestinationReselected"| E["一次性 effect source"]
-    E --> B
-    C --> T["M2LegacyShellRendererTransitionAdapter"]
-    T --> R
+    A["无 Flutter 依赖的 Application owner"] --> P["功能级 Projection producer"]
+    P -->|"ProjectionUpdate + 可选 trace"| B["具名语义 Binding"]
+    B --> R["Flutter renderer factory"]
+    R -->|"语义 Intent"| I["功能级 intent adapter"]
+    I --> A
+    I -->|"一次性 Effect"| B
+    C["ClientAppComposition"] --> A
+    C --> P
+    C --> B
+    C --> R
 ```
 
 首轮目录图精确如下：
@@ -223,18 +223,25 @@ flowchart LR
 | 路径 | 已实现职责 |
 |:---|:---|
 | `packages/presentation_contract/lib/` | 仅依赖 SDK 的 projection、intent、effect 与 trace 原语 |
-| `apps/desktop/lib/src/presentation/shell/` | 稳定不可变 Shell 语义与 `ShellBinding` |
-| `apps/desktop/lib/src/projections/adapters/` | 旧 projection 的只读 adapter |
-| `apps/desktop/lib/src/projections/shell/` | 聚焦 Shell 与 effect producer |
-| `apps/desktop/lib/src/frontend/binding/` | Flutter 订阅、renderer port 与有界帧计时 |
-| `apps/desktop/lib/src/frontend/shell/` | 无 controller 的 Shell renderer |
-| `apps/desktop/lib/src/composition/` | 生命周期、intent wiring 与有界 M2 过渡 adapter |
+| `apps/desktop/lib/src/presentation/` | 十三个稳定具名 Binding，以及对应的不可变 Projection/Intent/Effect 语义 |
+| `apps/desktop/lib/src/projections/<feature>/` | 从作用域 Application signal 到语义投影、带相等抑制的 adapter |
+| `apps/desktop/lib/src/frontend/binding/` | Flutter 投影/effect 观察与有界因果帧遥测 |
+| `apps/desktop/lib/src/frontend/` | 仅依赖 Binding 的 renderer；Flutter 局部状态仍由 renderer 持有 |
+| `apps/desktop/lib/src/composition/features/<feature>/` | intent/effect adapter 与具体 producer 所有权 |
+| `apps/desktop/lib/src/composition/` | Application owner、语义 Binding、遥测、布局 registry 与 renderer factory 的唯一汇合点 |
 
-迁移后核验事实：前端 `ClientController` 导入者为 27 个，`frontend/shell`
-中为零；有界前端 repository/native-bridge 导入为零；
-`contracts/presentation` 中仍有一个既有 Flutter 导入。最后一项与长期目录、
-主题/notifier、功能和 conversation 迁移一并延后。M2 不迁移 conversation
-渲染，不引入 Riverpod、hooks、第二套布局权威或新线路协议。
+六个全局状态平面分别独立供给：Appearance、Locale、Layout、Environment、
+Navigation 与 Status。主题构造只观察 Appearance，locale 解析只观察 Locale；
+其余平面仅在 `MaterialApp` 下方重建。每个当前 destination 都通过且仅通过
+一个具名 Binding 构造；共享 Conversation、Targets、Search 与 Chrome 能力
+仍保持显式边界。
+
+终态核验计数为：Application Flutter 导入为零、Application notifier/listenable
+依赖为零、前端实现层导入为零、前端 `ClientController` 导入为零、稳定
+Presentation 实现层导入为零。Binding 目录包含十三个具名 Binding。因果遥测
+仅在本机内存中有界运行，不含内容，也不会跨越原生或网络边界。renderer 优化
+仍属于按 profiling 驱动的 M7 工作，只有在测得瓶颈后才实施；M3–M6 不改变
+token、布局、动效、Conversation 权威或线路行为。
 
 ### 目标架构（迁移终点）
 
@@ -266,8 +273,9 @@ src/
 ```
 
 **关键决策：**
-- **无需状态管理框架**——Flutter 不管理状态。它消费 Rust 的 `Stream<Projection>`
-  并渲染。`StreamBuilder` + `ValueListenableBuilder` 已经足够。
+- **无需状态管理框架**——生产 Application owner 发布同步 Dart signal，功能 producer
+  暴露 `ProjectionSource<T>`，Flutter 通过 `ProjectionBuilder` 渲染最窄语义切片。
+  Flutter 只拥有 widget 局部控件与临时交互状态。
 - **保留 stdio JSON-RPC**——CLI 进程独立性是核心产品特性（宿主可在 GUI 崩溃后存活）。
   从共享 schema 增加 **codegen** 以强制类型安全。
 - **上帝控制器分解**——替换为薄事件发送器 + 按领域的投影流消费者。不是 24 个 mixin，
@@ -311,9 +319,9 @@ Flutter 渲染性能是一等架构关注点。
    Timeline 视图定位真实瓶颈（build、layout 或 paint 阶段）。
 
 2. **最小化组件重建范围**：激进使用 `const` 构造器；把大组件拆成聚焦子组件，
-   只让数据相关的子树重建。把组件绑定到最窄的投影状态切片
-   （按领域投影使用 `ValueListenableBuilder` / `ListenableBuilder`），
-   只重建精确变更的状态切片。
+   只让数据相关的子树重建。通过 `ProjectionBuilder` 绑定最窄语义切片；
+   Appearance、Locale、Layout、Environment、Navigation 与 Status 的独立 source
+   阻止无关 Shell 状态相互失效。
 
 3. **保持 `build()` 廉价**：build 中无副作用、无 I/O、无重计算。每个 build 方法
    目标 < 100 行。复杂布局拆成独立 Widget。
@@ -367,10 +375,10 @@ Flutter 渲染性能是一等架构关注点。
    覆盖两侧的 stdio 方法帧、命令与状态增量。stdio JSON-RPC 保留：
    CLI 进程独立性是产品特性。不引入 flutter_rust_bridge，不引入第二条线路。
 
-2. **功能抽取**（逐功能、先抽最弱耦合）——先迁移 `settings`，然后 `agent_hub`、
-   `skill_hub`、`targets`，最后 `conversation`（最复杂，放最后）。每次迁移：
-   抽取 events/projections → 把 widgets 移入 `display/` → 删除旧代码。
-   不引入状态管理框架：按领域投影消费者基于 `ChangeNotifier`/`Stream` 原语。
+2. **Presentation 功能抽取（已在 M3–M6 完成）**——每个 destination 现在都消费
+   具名不可变 Binding。Application owner 使用同步 Dart stream；功能 producer
+   将其映射为带相等抑制的语义投影，Flutter 只观察这些投影。M2 adapter、
+   controller renderer port、notifier presentation 路径与迁移 allowlist 已在同一迁移中删除。
 
 3. **Rust crate 抽取**——把 `licoup-conversation` 与 `licoup-agent-runtime`
    加入 workspace（当前是 workspace 外的占位目录），从 `licoup-native/src/domain/`

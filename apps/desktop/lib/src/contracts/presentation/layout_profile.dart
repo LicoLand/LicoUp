@@ -112,6 +112,7 @@ final class LayoutProfileDescriptor
     required LayoutProfileCopy description,
     required String styleIdentity,
     required bool isDefault,
+    bool selectable = true,
     int revision = 1,
   }) {
     if (!_styleIdentity.hasMatch(styleIdentity)) {
@@ -126,6 +127,7 @@ final class LayoutProfileDescriptor
       description: description,
       styleIdentity: styleIdentity,
       isDefault: isDefault,
+      selectable: selectable,
       revision: revision,
     );
   }
@@ -136,6 +138,7 @@ final class LayoutProfileDescriptor
     required this.description,
     required this.styleIdentity,
     required this.isDefault,
+    required this.selectable,
     required this.revision,
   });
 
@@ -146,6 +149,7 @@ final class LayoutProfileDescriptor
   final LayoutProfileCopy description;
   final String styleIdentity;
   final bool isDefault;
+  final bool selectable;
   final int revision;
 
   @override
@@ -160,9 +164,17 @@ final class LayoutProfileDescriptor
           other.description == description &&
           other.styleIdentity == styleIdentity &&
           other.isDefault == isDefault &&
+          other.selectable == selectable &&
           other.revision == revision;
 
   @override
-  int get hashCode =>
-      Object.hash(id, label, description, styleIdentity, isDefault, revision);
+  int get hashCode => Object.hash(
+    id,
+    label,
+    description,
+    styleIdentity,
+    isDefault,
+    selectable,
+    revision,
+  );
 }

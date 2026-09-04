@@ -1,13 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/layout/layout_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-
-typedef LayoutSelectionListener = void Function(LayoutSelectionState state);
 
 /// Owns the single transactional selection state independently of widgets.
 final class LayoutManager {
@@ -48,7 +46,8 @@ final class LayoutManager {
   /// must not freeze the selection state machine: the timeout fires inside
   /// the serialized queue so the queue tail always advances again.
   final Duration persistenceTimeout;
-  final Set<LayoutSelectionListener> _listeners = {};
+  final StreamController<ApplicationChange> _changes =
+      StreamController<ApplicationChange>.broadcast(sync: true);
 
   LayoutEnvironment _environment;
   LayoutSelectionState _state;
@@ -58,7 +57,7 @@ final class LayoutManager {
   bool _disposed = false;
   Future<void> _preferenceOperationTail = Future<void>.value();
   Future<void>? _initialization;
-  bool _notifyingListeners = false;
+  bool _publishing = false;
 
   LayoutCatalog get catalog => _catalog;
 
@@ -67,20 +66,13 @@ final class LayoutManager {
 
   LayoutSelectionState get state => _state;
 
+  LayoutEnvironment get environment => _environment;
+
   PresentationPreferences? get preferences => _preferences;
 
   bool get initialized => _preferences != null;
 
-  void addListener(LayoutSelectionListener listener) {
-    if (_disposed) {
-      throw StateError('layout_manager_disposed');
-    }
-    _listeners.add(listener);
-  }
-
-  void removeListener(LayoutSelectionListener listener) {
-    _listeners.remove(listener);
-  }
+  Stream<ApplicationChange> get changes => _changes.stream;
 
   Future<void> initialize() =>
       _initialization ??= _enqueuePreferenceOperation(_initialize);
@@ -154,22 +146,29 @@ final class LayoutManager {
 
   /// Selects a layout directly: the candidate becomes effective immediately
   /// while the preference write commits in the background.
-  Future<bool> selectLayout(LayoutProfileId candidate) {
+  Future<bool> selectLayout(
+    LayoutProfileId candidate, {
+    ApplicationCause? cause,
+  }) {
     _requireInitialized();
     if (_state.status == LayoutSelectionStatus.committing) {
       return Future<bool>.value(false);
     }
     if (!_catalog.containsProfile(candidate)) {
       final epoch = _beginOperation();
-      _emitError(LayoutSelectionErrorCode.unavailableProfile, epoch: epoch);
+      _emitError(
+        LayoutSelectionErrorCode.unavailableProfile,
+        epoch: epoch,
+        cause: cause,
+      );
       return Future<bool>.value(false);
     }
     if (candidate == _state.committedId && !_needsCanonicalPersistence) {
       final epoch = _beginOperation();
-      _emitStable(epoch: epoch);
+      _emitStable(epoch: epoch, cause: cause);
       return Future<bool>.value(true);
     }
-    return _commit(candidate);
+    return _commit(candidate, cause: cause);
   }
 
   Future<bool> resetLayout() async {
@@ -186,7 +185,11 @@ final class LayoutManager {
     return _commit(candidate);
   }
 
-  bool updateEnvironment(LayoutEnvironment environment, {bool notify = true}) {
+  bool updateEnvironment(
+    LayoutEnvironment environment, {
+    bool notify = true,
+    ApplicationCause? cause,
+  }) {
     _requireActive();
     if (_environment == environment) {
       return false;
@@ -202,7 +205,7 @@ final class LayoutManager {
       errorCode: _state.errorCode,
     );
     if (notify) {
-      _emit(next);
+      _emit(next, cause: cause);
     } else {
       _state = next;
     }
@@ -212,19 +215,25 @@ final class LayoutManager {
   /// Persists appearance through the same serialized repository as layout.
   /// The layout state machine remains untouched unless this write also
   /// canonicalizes a previously recovered preference document.
-  Future<bool> setAppearancePreset(String id) => _updatePresentationPreferences(
-    () => _preferencesRepository.setAppearancePreset(id),
-  );
-
-  /// Persists locale through the same serialized repository as layout.
-  Future<bool> setLocalePreference(String preference) =>
+  Future<bool> setAppearancePreset(String id, {ApplicationCause? cause}) =>
       _updatePresentationPreferences(
-        () => _preferencesRepository.setLocalePreference(preference),
+        () => _preferencesRepository.setAppearancePreset(id),
+        cause: cause,
       );
 
+  /// Persists locale through the same serialized repository as layout.
+  Future<bool> setLocalePreference(
+    String preference, {
+    ApplicationCause? cause,
+  }) => _updatePresentationPreferences(
+    () => _preferencesRepository.setLocalePreference(preference),
+    cause: cause,
+  );
+
   Future<bool> _updatePresentationPreferences(
-    Future<PresentationPreferences> Function() update,
-  ) async {
+    Future<PresentationPreferences> Function() update, {
+    ApplicationCause? cause,
+  }) async {
     _requireInitialized();
     if (_state.status == LayoutSelectionStatus.committing &&
         !await _waitForLayoutCommit()) {
@@ -249,7 +258,7 @@ final class LayoutManager {
         _needsCanonicalPersistence = false;
         if (_state.status == LayoutSelectionStatus.error) {
           final epoch = _beginOperation();
-          _emitStable(epoch: epoch);
+          _emitStable(epoch: epoch, cause: cause);
         }
         return true;
       } catch (_) {
@@ -260,30 +269,24 @@ final class LayoutManager {
 
   Future<bool> _waitForLayoutCommit() async {
     if (_state.status != LayoutSelectionStatus.committing) return true;
-    final settled = Completer<void>();
-    void handleSelection(LayoutSelectionState state) {
-      if (state.status != LayoutSelectionStatus.committing &&
-          !settled.isCompleted) {
-        settled.complete();
+    if (_state.status == LayoutSelectionStatus.committing) {
+      try {
+        await changes
+            .firstWhere(
+              (_) => _state.status != LayoutSelectionStatus.committing,
+            )
+            .timeout(persistenceTimeout);
+      } on TimeoutException {
+        return false;
       }
     }
-
-    addListener(handleSelection);
-    try {
-      if (_state.status == LayoutSelectionStatus.committing) {
-        try {
-          await settled.future.timeout(persistenceTimeout);
-        } on TimeoutException {
-          return false;
-        }
-      }
-      return !_disposed;
-    } finally {
-      removeListener(handleSelection);
-    }
+    return !_disposed;
   }
 
-  Future<bool> _commit(LayoutProfileId candidate) async {
+  Future<bool> _commit(
+    LayoutProfileId candidate, {
+    ApplicationCause? cause,
+  }) async {
     final previousCommitted = _state.committedId;
     final epoch = _beginOperation();
     _emit(
@@ -295,6 +298,7 @@ final class LayoutManager {
         viewport: _environment.viewport,
         operationEpoch: epoch,
       ),
+      cause: cause,
     );
     try {
       final saved = await _enqueuePreferenceOperation(
@@ -316,6 +320,7 @@ final class LayoutManager {
           viewport: _environment.viewport,
           operationEpoch: epoch,
         ),
+        cause: cause,
       );
       return true;
     } catch (_) {
@@ -323,7 +328,11 @@ final class LayoutManager {
       // throws, or a hung write cut off by the timeout — must end the commit
       // so the selector never freezes in the committing state.
       if (_isCurrent(epoch)) {
-        _emitError(LayoutSelectionErrorCode.persistenceFailed, epoch: epoch);
+        _emitError(
+          LayoutSelectionErrorCode.persistenceFailed,
+          epoch: epoch,
+          cause: cause,
+        );
       }
       return false;
     }
@@ -331,13 +340,13 @@ final class LayoutManager {
 
   int _beginOperation() {
     _requireActive();
-    if (_notifyingListeners) {
+    if (_publishing) {
       throw StateError('layout_manager_listener_reentrancy');
     }
     return ++_epoch;
   }
 
-  void _emitStable({required int epoch}) {
+  void _emitStable({required int epoch, ApplicationCause? cause}) {
     _emit(
       LayoutSelectionState(
         committedId: _state.committedId,
@@ -347,10 +356,15 @@ final class LayoutManager {
         viewport: _environment.viewport,
         operationEpoch: epoch,
       ),
+      cause: cause,
     );
   }
 
-  void _emitError(LayoutSelectionErrorCode code, {required int epoch}) {
+  void _emitError(
+    LayoutSelectionErrorCode code, {
+    required int epoch,
+    ApplicationCause? cause,
+  }) {
     _emit(
       LayoutSelectionState(
         committedId: _state.committedId,
@@ -361,34 +375,20 @@ final class LayoutManager {
         operationEpoch: epoch,
         errorCode: code,
       ),
+      cause: cause,
     );
   }
 
-  void _emit(LayoutSelectionState next) {
+  void _emit(LayoutSelectionState next, {ApplicationCause? cause}) {
     if (_disposed) {
       return;
     }
     _state = next;
-    _notifyingListeners = true;
+    _publishing = true;
     try {
-      for (final listener in List<LayoutSelectionListener>.of(_listeners)) {
-        try {
-          listener(next);
-        } catch (error, stackTrace) {
-          FlutterError.reportError(
-            FlutterErrorDetails(
-              exception: error,
-              stack: stackTrace,
-              library: 'LicoUp layout manager',
-              context: ErrorDescription(
-                'while notifying a layout selection listener',
-              ),
-            ),
-          );
-        }
-      }
+      _changes.add(ApplicationChange(cause: cause));
     } finally {
-      _notifyingListeners = false;
+      _publishing = false;
     }
   }
 
@@ -424,7 +424,7 @@ final class LayoutManager {
       return;
     }
     _epoch += 1;
-    _listeners.clear();
     _disposed = true;
+    unawaited(_changes.close());
   }
 }

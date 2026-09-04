@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/agents/agent_product_names.dart';
-import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
+import 'package:licoup/src/contracts/agent_product_identity.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_section_catalog.dart';
+import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 /// One jump target in the global search: a destination section or an action
@@ -166,37 +165,5 @@ List<GlobalSearchFeatureEntry> buildAgentSearchFeatures({
           icon: Icons.psychology_outlined,
           run: () async => onOpenAgentHub(),
         ),
-  ];
-}
-
-List<GlobalSearchFeatureEntry> buildPluginSearchFeatures({
-  required List<AdapterPluginDescriptor> adapters,
-  required VoidCallback onOpenPlugins,
-}) {
-  return [
-    for (final adapter in adapters) ...[
-      GlobalSearchFeatureEntry(
-        id: 'plugin-adapter-${adapter.agentId}',
-        label: agentProductLabel(adapter.label),
-        keywords: [
-          adapter.agentId,
-          adapter.label,
-          'plugin',
-          'adapter',
-          '插件',
-          '适配器',
-        ],
-        icon: Icons.extension_outlined,
-        run: () async => onOpenPlugins(),
-      ),
-      for (final plugin in adapter.plugins)
-        GlobalSearchFeatureEntry(
-          id: 'plugin-entry-${adapter.agentId}-${plugin.id}',
-          label: plugin.label,
-          keywords: [plugin.id, plugin.detail, adapter.agentId, 'plugin', '插件'],
-          icon: Icons.extension_outlined,
-          run: () async => onOpenPlugins(),
-        ),
-    ],
   ];
 }

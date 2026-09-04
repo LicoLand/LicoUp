@@ -12,11 +12,13 @@ final class DashboardDesktopSearch extends StatefulWidget {
   const DashboardDesktopSearch({
     super.key,
     required this.current,
+    required this.availableSections,
     required this.onSelect,
     required this.width,
   });
 
   final ClientSection current;
+  final List<ClientSection> availableSections;
   final ValueChanged<ClientSection> onSelect;
   final double width;
 
@@ -67,7 +69,7 @@ final class _DashboardDesktopSearchState extends State<DashboardDesktopSearch> {
     final colors = context.layoutPalette;
     final strings = LicoStrings.of(context);
     final items = [
-      for (final section in ClientSection.values)
+      for (final section in widget.availableSections)
         _DashboardSearchItem(
           section: section,
           label: _sectionTitle(strings, section),

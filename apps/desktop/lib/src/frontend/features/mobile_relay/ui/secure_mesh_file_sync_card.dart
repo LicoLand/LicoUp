@@ -1,52 +1,54 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:mime/mime.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class SecureMeshFileSyncCard extends StatelessWidget {
-  const SecureMeshFileSyncCard({super.key, required this.controller});
+  const SecureMeshFileSyncCard({
+    super.key,
+    required this.projection,
+    required this.intents,
+  });
 
-  final ClientController controller;
+  final MobileRelayProjection projection;
+  final IntentSink<MobileRelayIntent> intents;
 
-  Future<void> _pickSourceFile(BuildContext context) async {
+  Future<void> _pickSourceFile() async {
+    // The protected file picker remains directly user-triggered.
     final file = await openFile();
-    if (file == null) {
-      return;
-    }
+    if (file == null) return;
     final path = file.path.trim();
-    if (path.isEmpty) {
-      return;
-    }
+    if (path.isEmpty) return;
     final length = await file.length();
     final mime =
         lookupMimeType(path) ?? file.mimeType ?? 'application/octet-stream';
-    controller.setSecureMeshFileSyncDraft(
-      fileName: file.name,
-      totalSize: length,
-      mimeType: mime,
+    intents.send(
+      SetRelayTransferSource(
+        fileName: file.name,
+        totalSize: length,
+        mimeType: mime,
+      ),
     );
   }
 
-  Future<void> _pickDestination(BuildContext context) async {
+  Future<void> _pickDestination() async {
+    // The directory permission prompt is likewise deferred until this tap.
     final directory = await getDirectoryPath();
-    if (directory == null || directory.trim().isEmpty) {
-      return;
-    }
-    controller.setSecureMeshFileSyncDestination(directory.trim());
+    if (directory == null || directory.trim().isEmpty) return;
+    intents.send(SetRelayTransferDestination(directory.trim()));
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final draft = controller.secureMeshFileSyncDraft;
-    final busy = controller.isMobileRelayBusy;
-    final transfers = controller.secureMeshFileSyncTransfers;
+    final draft = projection.draftTransfer;
     return Container(
       key: const Key('secure-mesh-file-sync-card'),
       width: double.infinity,
@@ -80,46 +82,45 @@ class SecureMeshFileSyncCard extends StatelessWidget {
             children: [
               FilledButton.tonal(
                 key: const Key('secure-mesh-file-sync-pick-source'),
-                onPressed: busy ? null : () => _pickSourceFile(context),
+                onPressed: projection.busy ? null : _pickSourceFile,
                 child: Text(strings.chooseFile),
               ),
               OutlinedButton(
                 key: const Key('secure-mesh-file-sync-pick-destination'),
-                onPressed: busy || draft == null
+                onPressed: projection.busy || draft == null
                     ? null
-                    : () => _pickDestination(context),
+                    : _pickDestination,
                 child: Text(strings.chooseDestination),
               ),
               FilledButton(
                 key: const Key('secure-mesh-file-sync-prepare'),
                 onPressed:
-                    busy ||
+                    projection.busy ||
                         draft == null ||
-                        draft.destinationRoot.isEmpty ||
-                        draft.status ==
-                            SecureMeshFileSyncStatus.awaitingConfirmation
+                        draft.destinationLabel.isEmpty ||
+                        draft.awaitsConfirmation
                     ? null
-                    : controller.prepareSecureMeshFileSyncTransfer,
+                    : () => intents.send(const PrepareRelayTransfer()),
                 child: Text(strings.prepareFileSync),
               ),
             ],
           ),
           if (draft != null) ...[
             const SizedBox(height: 14),
-            _InfoLine(label: strings.file, value: draft.fileName),
+            _InfoLine(label: strings.file, value: draft.fileLabel),
             _InfoLine(
               label: strings.fileSyncSize,
-              value: '${draft.totalSize} B / ${draft.chunkCount} chunks',
+              value: '${draft.totalBytes} B / ${draft.chunkCount} chunks',
             ),
             _InfoLine(
               label: strings.destination,
-              value: draft.destinationRoot.isEmpty
+              value: draft.destinationLabel.isEmpty
                   ? strings.notSelected
-                  : draft.destinationRoot,
+                  : draft.destinationLabel,
             ),
             _InfoLine(
               label: strings.status,
-              value: _statusLabel(strings, draft.status),
+              value: _statusLabel(strings, draft.stateLabel),
             ),
           ],
           if (draft?.awaitsConfirmation == true) ...[
@@ -137,26 +138,25 @@ class SecureMeshFileSyncCard extends StatelessWidget {
               children: [
                 FilledButton(
                   key: const Key('secure-mesh-file-sync-confirm'),
-                  onPressed: busy
+                  onPressed: projection.busy
                       ? null
-                      : () => controller.confirmSecureMeshFileSyncReceive(
-                          userConfirmed: true,
-                        ),
+                      : () =>
+                            intents.send(ConfirmRelayTransfer(draft!.id, true)),
                   child: Text(strings.confirmWrite),
                 ),
                 OutlinedButton(
                   key: const Key('secure-mesh-file-sync-reject'),
-                  onPressed: busy
+                  onPressed: projection.busy
                       ? null
-                      : () => controller.confirmSecureMeshFileSyncReceive(
-                          userConfirmed: false,
+                      : () => intents.send(
+                          ConfirmRelayTransfer(draft!.id, false),
                         ),
                   child: Text(strings.rejectWrite),
                 ),
               ],
             ),
           ],
-          if (transfers.isNotEmpty) ...[
+          if (projection.transfers.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
               strings.fileSyncQueue,
@@ -166,11 +166,11 @@ class SecureMeshFileSyncCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            for (final transfer in transfers.reversed.take(6))
+            for (final transfer in projection.transfers.reversed.take(6))
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '${transfer.fileName} · ${_statusLabel(strings, transfer.status)}',
+                  '${transfer.fileLabel} · ${_statusLabel(strings, transfer.stateLabel)}',
                   key: Key('secure-mesh-file-sync-queue-${transfer.id}'),
                   style: Theme.of(
                     context,
@@ -183,15 +183,14 @@ class SecureMeshFileSyncCard extends StatelessWidget {
     );
   }
 
-  String _statusLabel(LicoStrings strings, SecureMeshFileSyncStatus status) {
+  String _statusLabel(LicoStrings strings, String status) {
     return switch (status) {
-      SecureMeshFileSyncStatus.drafting => strings.fileSyncStatusDrafting,
-      SecureMeshFileSyncStatus.evaluating => strings.fileSyncStatusEvaluating,
-      SecureMeshFileSyncStatus.awaitingConfirmation =>
-        strings.fileSyncStatusAwaitingConfirmation,
-      SecureMeshFileSyncStatus.confirmed => strings.fileSyncStatusConfirmed,
-      SecureMeshFileSyncStatus.rejected => strings.fileSyncStatusRejected,
-      SecureMeshFileSyncStatus.failed => strings.fileSyncStatusFailed,
+      'drafting' => strings.fileSyncStatusDrafting,
+      'evaluating' => strings.fileSyncStatusEvaluating,
+      'awaitingConfirmation' => strings.fileSyncStatusAwaitingConfirmation,
+      'confirmed' => strings.fileSyncStatusConfirmed,
+      'rejected' => strings.fileSyncStatusRejected,
+      _ => strings.fileSyncStatusFailed,
     };
   }
 }

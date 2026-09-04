@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
@@ -77,7 +77,9 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
   @override
   void initState() {
     super.initState();
-    _prefetchUnloadedSessions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _prefetchUnloadedSessions();
+    });
   }
 
   void _prefetchUnloadedSessions() {

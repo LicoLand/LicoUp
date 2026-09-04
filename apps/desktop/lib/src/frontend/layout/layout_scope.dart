@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
@@ -13,20 +13,21 @@ final class LayoutScopedState {
     required this.profileId,
     required this.surface,
     required this.destination,
-    required LayoutStateStore store,
+    required LayoutStatePort store,
   }) : _store = store;
 
   final LayoutProfileId profileId;
   final LayoutRuntimeSurface surface;
   final ClientSection destination;
-  final LayoutStateStore _store;
+  final LayoutStatePort _store;
 
   bool declares(LayoutStateChannel channel) =>
       _store.declares(_namespace(channel));
 
   /// Notifies after any store mutation. Listeners re-read the channels they
   /// care about; writes through any scope (shell or destination) arrive here.
-  Listenable get changes => _store;
+  Stream<void> get changes => _store.changes;
+  LayoutStatePort get statePort => _store;
 
   LayoutPresentationStateValue? readIfDeclared(LayoutStateChannel channel) {
     final namespace = _namespace(channel);

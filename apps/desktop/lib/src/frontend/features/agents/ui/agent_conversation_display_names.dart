@@ -1,7 +1,7 @@
-import 'package:licoup/src/application/features/agents/agent_product_names.dart';
+import 'package:licoup/src/contracts/agent_product_identity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
-export 'package:licoup/src/application/features/agents/agent_product_names.dart';
+export 'package:licoup/src/contracts/agent_product_identity.dart';
 
 /// Canonical product identity for conversation surfaces. The Desktop / CLI /
 /// IDE / Plugin distinction is a delivery-channel detail, not a product

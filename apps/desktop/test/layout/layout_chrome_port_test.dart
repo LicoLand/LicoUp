@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
@@ -7,10 +10,11 @@ import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/shell/projected_layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/composition/client_app_composition.dart';
+import 'package:licoup/src/presentation/shell/shell_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'layout_host_test_fixtures.dart';
@@ -46,27 +50,52 @@ void main() {
     },
   );
 
-  test('composition chrome selects focused status updates only', () async {
-    final controller = ClientController(
-      mobileClientRuntimePlatformOverride: true,
+  test('projected chrome selects focused status updates only', () async {
+    final actions = _RecordingChromePort();
+    final source = _StatusProjectionSource(
+      const StatusProjection(
+        displayMessage: 'Ready',
+        displayCaption: 'Client',
+        errorCode: '',
+      ),
     );
-    final composition = ClientAppComposition(controller: controller);
-    addTearDown(composition.dispose);
-    final adapter = composition.renderer.chrome;
+    final adapter = ProjectedLayoutChromePort(actions: actions, status: source);
     var notifications = 0;
     adapter.addListener(() => notifications += 1);
 
-    expect(adapter.value.status.displayText, isNotEmpty);
-    controller.selectSection(ClientSection.settings);
+    expect(adapter.value.status.displayText, 'Ready');
+    source.publish(
+      const StatusProjection(
+        displayMessage: 'Ready',
+        displayCaption: 'Client',
+        errorCode: '',
+      ),
+    );
     expect(notifications, 0);
 
-    controller.statusMessage = 'Focused status';
+    source.publish(
+      const StatusProjection(
+        displayMessage: 'Focused status',
+        displayCaption: 'Client',
+        errorCode: '',
+      ),
+    );
     expect(adapter.value.status.displayText, 'Focused status');
     expect(notifications, 1);
 
-    controller.lastError = 'focused_error';
+    source.publish(
+      const StatusProjection(
+        displayMessage: 'Focused status',
+        displayCaption: 'Client',
+        errorCode: 'focused_error',
+      ),
+    );
     expect(adapter.value.status.errorCode, 'focused_error');
     expect(notifications, 2);
+
+    await adapter.dispose();
+    await source.dispose();
+    actions.dispose();
   });
 
   testWidgets('layout host passes the exact chrome port to the active shell', (
@@ -96,9 +125,8 @@ void main() {
           registry: runtime.registry,
           stateStore: LayoutStateStore(runtime.catalog),
           environment: _desktopEnvironment(),
-          onUpdateEnvironment: (value) =>
-              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
+          availableDestinations: ClientSection.values,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
           content: const FixtureDestinationContent(),
@@ -167,4 +195,28 @@ final class _RecordingChromePort extends ValueNotifier<LayoutChromeSnapshot>
 
   @override
   Future<void> openGlobalSearch(BuildContext context) async {}
+}
+
+final class _StatusProjectionSource
+    implements ProjectionSource<StatusProjection> {
+  _StatusProjectionSource(this._current);
+
+  final StreamController<ProjectionUpdate<StatusProjection>> _changes =
+      StreamController<ProjectionUpdate<StatusProjection>>.broadcast(
+        sync: true,
+      );
+  StatusProjection _current;
+
+  @override
+  StatusProjection get current => _current;
+
+  @override
+  Stream<ProjectionUpdate<StatusProjection>> get changes => _changes.stream;
+
+  void publish(StatusProjection value) {
+    _current = value;
+    _changes.add(ProjectionUpdate(value));
+  }
+
+  Future<void> dispose() => _changes.close();
 }

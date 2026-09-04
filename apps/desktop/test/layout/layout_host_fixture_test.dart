@@ -7,6 +7,7 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
@@ -202,14 +203,12 @@ void main() {
     await manager.initialize();
     final parentBuilds = ValueNotifier<int>(0);
     final selectionValue = ValueNotifier<LayoutSelectionState>(manager.state);
-    void onSelection(LayoutSelectionState value) {
-      selectionValue.value = value;
-    }
-
-    manager.addListener(onSelection);
+    final selectionSubscription = manager.changes.listen(
+      (_) => selectionValue.value = manager.state,
+    );
     final stateStore = LayoutStateStore(runtime.catalog);
-    addTearDown(() {
-      manager.removeListener(onSelection);
+    addTearDown(() async {
+      await selectionSubscription.cancel();
       selectionValue.dispose();
     });
 
@@ -224,9 +223,8 @@ void main() {
               registry: runtime.registry,
               stateStore: stateStore,
               environment: desktopEnvironment(800),
-              onUpdateEnvironment: (value) =>
-                  manager.updateEnvironment(value, notify: false),
               destination: ClientSection.agents,
+              availableDestinations: ClientSection.values,
               onSelectDestination: (_) {},
               destinationLabel: (destination) => destination.name,
               content: const FixtureDestinationContent(),
@@ -289,9 +287,8 @@ void main() {
           registry: runtime.registry,
           stateStore: stateStore,
           environment: desktopEnvironment(800),
-          onUpdateEnvironment: (value) =>
-              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
+          availableDestinations: ClientSection.values,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
           content: const FixtureDestinationContent(),
@@ -347,9 +344,8 @@ void main() {
           registry: runtime.registry,
           stateStore: LayoutStateStore(runtime.catalog),
           environment: desktopEnvironment(800),
-          onUpdateEnvironment: (value) =>
-              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
+          availableDestinations: ClientSection.values,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
           content: _PaletteRecordingContent((value) => observed = value),
@@ -366,7 +362,7 @@ void main() {
     manager.dispose();
   });
 
-  testWidgets('host synchronizes first-frame environment before hydration', (
+  testWidgets('host waits for the application environment projection', (
     tester,
   ) async {
     final runtime = buildFixtureLayoutRuntime();
@@ -378,13 +374,11 @@ void main() {
     );
     final expanded = desktopEnvironment(1400);
     final selectionValue = ValueNotifier<LayoutSelectionState>(manager.state);
-    void onSelection(LayoutSelectionState value) {
-      selectionValue.value = value;
-    }
-
-    manager.addListener(onSelection);
-    addTearDown(() {
-      manager.removeListener(onSelection);
+    final selectionSubscription = manager.changes.listen(
+      (_) => selectionValue.value = manager.state,
+    );
+    addTearDown(() async {
+      await selectionSubscription.cancel();
       selectionValue.dispose();
     });
 
@@ -397,9 +391,8 @@ void main() {
             registry: runtime.registry,
             stateStore: LayoutStateStore(runtime.catalog),
             environment: expanded,
-            onUpdateEnvironment: (value) =>
-                manager.updateEnvironment(value, notify: false),
             destination: ClientSection.agents,
+            availableDestinations: ClientSection.values,
             onSelectDestination: (_) {},
             destinationLabel: (destination) => destination.name,
             content: const FixtureDestinationContent(),
@@ -413,8 +406,11 @@ void main() {
       ),
     );
 
-    expect(manager.state.viewport, LayoutViewportClass.expanded);
+    expect(manager.state.viewport, LayoutViewportClass.medium);
     expect(find.byKey(const Key('loading')), findsOneWidget);
+    manager.updateEnvironment(expanded);
+    await tester.pump();
+    expect(manager.state.viewport, LayoutViewportClass.expanded);
     await manager.initialize();
     await tester.pump();
     expect(
@@ -443,9 +439,8 @@ void main() {
           registry: hostRuntime.registry,
           stateStore: LayoutStateStore(managerRuntime.catalog),
           environment: desktopEnvironment(800),
-          onUpdateEnvironment: (value) =>
-              manager.updateEnvironment(value, notify: false),
           destination: ClientSection.agents,
+          availableDestinations: ClientSection.values,
           onSelectDestination: (_) {},
           destinationLabel: (destination) => destination.name,
           content: const FixtureDestinationContent(),

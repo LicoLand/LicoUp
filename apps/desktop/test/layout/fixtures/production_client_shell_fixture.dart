@@ -17,11 +17,12 @@ import 'package:licoup/src/contracts/presentation/presentation_preferences.dart'
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/built_in_layout_composition.dart';
 
 import '../../presentation/composed_client_shell_test_helper.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Deterministic, process-free production shell harness used only to freeze
 /// the current catalog renderers before ownership moves.
@@ -32,13 +33,15 @@ final class ProductionClientShellFixture {
     required this.size,
     required this.brightness,
     required this.appearancePresetId,
-  });
+    required Directory temporaryDataRoot,
+  }) : _temporaryDataRoot = temporaryDataRoot;
 
   final ClientController controller;
   final LayoutRuntimeSurface surface;
   final Size size;
   final Brightness brightness;
   final String appearancePresetId;
+  final Directory _temporaryDataRoot;
 
   static Future<ProductionClientShellFixture> create({
     required LayoutProfileId profileId,
@@ -66,10 +69,19 @@ final class ProductionClientShellFixture {
       targets: targets,
       primaryTargetId: primaryTarget.target,
     );
+    final temporaryDataRoot = Directory.systemTemp.createTempSync(
+      'licoup-production-layout-',
+    );
+    final portableData = _FixturePortableDataRoot(
+      temporaryDataRoot,
+      mobileRuntimeOverride: surface == LayoutRuntimeSurface.mobile,
+    );
     final controller = ClientController(
+      portableData: portableData,
       agentService: agentService,
       conversationService: const _FixtureConversationService(),
-      layoutComposition: composition,
+      layoutCatalog: composition.catalog,
+      layoutStateStore: composition.stateStore,
       presentationPreferencesRepository: preferences,
       mobileClientRuntimePlatformOverride:
           surface == LayoutRuntimeSurface.mobile,
@@ -122,7 +134,15 @@ final class ProductionClientShellFixture {
       size: size,
       brightness: brightness,
       appearancePresetId: appearancePresetId,
+      temporaryDataRoot: temporaryDataRoot,
     );
+  }
+
+  void dispose() {
+    controller.dispose();
+    if (_temporaryDataRoot.existsSync()) {
+      _temporaryDataRoot.deleteSync(recursive: true);
+    }
   }
 
   Widget buildApp({
@@ -175,6 +195,19 @@ final class ProductionClientShellFixture {
       ),
     );
   }
+}
+
+final class _FixturePortableDataRoot extends PortableDataRoot {
+  _FixturePortableDataRoot(this.root, {required bool mobileRuntimeOverride})
+    : super(
+        dataDirectoryOverride: root,
+        mobileRuntimeOverride: mobileRuntimeOverride,
+      );
+
+  final Directory root;
+
+  @override
+  Future<Directory> dataDirectory() => Future.value(root);
 }
 
 final class InMemoryPresentationPreferencesRepository

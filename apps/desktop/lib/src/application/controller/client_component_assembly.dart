@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
+import 'package:licoup/src/application/state/application_signal.dart';
 
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/composition/adaptive_flywheel_gateway_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_agent_hub_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
@@ -25,6 +24,8 @@ import 'package:licoup/src/application/features/agents/controller/agent_usage_co
 import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
@@ -91,11 +92,10 @@ final class ClientComponentAssembly {
       Map<String, dynamic>? pairingStatus,
     })
     discoverMobileTargets,
-    required VoidCallback onTargetsSettled,
-    required VoidCallback selectDefaultConversationAgent,
-    required VoidCallback onEnterMonitoring,
-    required VoidCallback onExitMonitoring,
-    required VoidCallback notifyStateChanged,
+    required ApplicationCallback onTargetsSettled,
+    required ApplicationCallback selectDefaultConversationAgent,
+    required ApplicationCallback onEnterMonitoring,
+    required ApplicationCallback onExitMonitoring,
     required ClientInterfaceEntryHookTaskMap entryHookTasks,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
@@ -103,18 +103,20 @@ final class ClientComponentAssembly {
     SkillUsageGateway? skillUsageGateway,
     SkillHubLocalCatalogSource? skillHubLocalCatalogSource,
     OptionalCollaborationGateway? optionalCollaborationGateway,
-    BuiltInLayoutComposition? layoutComposition,
+    LayoutCatalog? layoutCatalog,
+    LayoutStateStore? layoutStateStore,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
     CatalogConvergenceGateway? catalogConvergenceGateway,
-  }) : _notifyStateChanged = notifyStateChanged {
+  }) {
     adaptiveFlywheelGateway = AdaptiveFlywheelGatewayAdapter(
       service: const AdaptiveFlywheelService(),
       runner: agentService,
     );
     presentation = ClientPresentationComponentAssembly(
       portableData: portableData,
-      layoutComposition: layoutComposition,
+      layoutCatalog: layoutCatalog,
+      layoutStateStore: layoutStateStore,
       layoutManager: layoutManager,
       presentationPreferencesRepository: presentationPreferencesRepository,
     );
@@ -161,7 +163,6 @@ final class ClientComponentAssembly {
       runtimePlatformBridge: runtimePlatformBridge,
       directoryCaption: () => shellController.strings.directory,
       reportStatus: _reportStatus,
-      notifyStateChanged: notifyStateChanged,
       optionalCollaborationGateway: optionalCollaborationGateway,
       onCatalogPurge: catalogConvergenceController.disable,
     );
@@ -206,12 +207,8 @@ final class ClientComponentAssembly {
       onEntryHookReport: (report) =>
           shellController.replaceLastError(report.code),
     );
-    for (final component in _listenedComponents) {
-      component.addListener(_notifyStateChanged);
-    }
   }
 
-  final VoidCallback _notifyStateChanged;
   late final AdaptiveFlywheelGateway adaptiveFlywheelGateway;
   late final ClientPresentationComponentAssembly presentation;
   late final ClientLifecycleComponentAssembly lifecycle;
@@ -255,8 +252,8 @@ final class ClientComponentAssembly {
       mobile.homeLayoutController;
   MobileRelayController get mobileRelayController => mobile.relayController;
   SecureMeshController get secureMeshController => mobile.secureMeshController;
-  BuiltInLayoutComposition get layoutComposition =>
-      presentation.layoutComposition;
+  LayoutCatalog get layoutCatalog => presentation.layoutCatalog;
+  LayoutStateStore get layoutStateStore => presentation.layoutStateStore;
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
   ProviderQuotaController get providerQuotaController =>
@@ -266,21 +263,6 @@ final class ClientComponentAssembly {
   ClientNavigationController get navigationController => navigation.controller;
   ClientInterfaceEntryHookController get interfaceEntryHookController =>
       navigation.entryHookController;
-
-  List<ChangeNotifier> get _listenedComponents => [
-    ...presentation.listenables,
-    ...lifecycle.listenables,
-    ...catalogConvergence.listenables,
-    ...target.listenables,
-    ...skill.listenables,
-    ...settings.listenables,
-    ...pluginManagement.listenables,
-    ...mobile.listenables,
-    ...usage.listenables,
-    ...providerQuota.listenables,
-    ...agentHub.listenables,
-    ...navigation.listenables,
-  ];
 
   void _reportStatus({
     required String chinese,
@@ -300,9 +282,6 @@ final class ClientComponentAssembly {
   }
 
   void dispose() {
-    for (final component in _listenedComponents.reversed) {
-      component.removeListener(_notifyStateChanged);
-    }
     navigation.dispose();
     agentHub.dispose();
     usage.dispose();

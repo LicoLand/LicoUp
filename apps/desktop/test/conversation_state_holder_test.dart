@@ -29,7 +29,7 @@ void main() {
     final holder = ConversationStateHolder();
     addTearDown(holder.dispose);
     var publishes = 0;
-    holder.addListener(() => publishes += 1);
+    holder.changes.listen((_) => publishes += 1);
 
     holder.applyDelta(
       _delta('agent.turn.accepted', const {
@@ -62,7 +62,7 @@ void main() {
     final holder = ConversationStateHolder();
     addTearDown(holder.dispose);
     var publishes = 0;
-    holder.addListener(() => publishes += 1);
+    holder.changes.listen((_) => publishes += 1);
 
     holder.applyDelta(
       _delta('agent.message.chunk', {
@@ -137,7 +137,7 @@ void main() {
     final holder = ConversationStateHolder();
     addTearDown(holder.dispose);
     var publishes = 0;
-    holder.addListener(() => publishes += 1);
+    holder.changes.listen((_) => publishes += 1);
     holder.applyDelta(
       _delta('agent.message.chunk', const {'text': 'first'}),
       scopeKey: 'scope-1',
@@ -155,7 +155,7 @@ void main() {
     final holder = ConversationStateHolder();
     addTearDown(holder.dispose);
     var publishes = 0;
-    holder.addListener(() => publishes += 1);
+    holder.changes.listen((_) => publishes += 1);
     holder.applyDelta(
       _delta('agent.message.chunk', {
         'text': 'draft',

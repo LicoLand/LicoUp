@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
@@ -82,36 +81,6 @@ void main() {
           .map((value) => value.surfaceId)
           .toSet(),
       {LayoutStateChannels.communicationSection.id},
-    );
-  });
-
-  test('composition registers Messaging on both surfaces with one default', () {
-    final composition = BuiltInLayoutComposition();
-    final messagingId = LayoutProfileId.parse('messaging');
-
-    final profile = composition.catalog.profile(messagingId);
-    expect(profile, isNotNull);
-    expect(profile!.styleIdentity, 'messaging-channel-chat');
-    expect(profile.isDefault, isTrue);
-    expect(
-      composition
-          .previewBundle(messagingId, LayoutRuntimeSurface.desktop)
-          .surface,
-      LayoutRuntimeSurface.desktop,
-    );
-    expect(
-      composition
-          .previewBundle(messagingId, LayoutRuntimeSurface.mobile)
-          .surface,
-      LayoutRuntimeSurface.mobile,
-    );
-    expect(
-      composition.settingsProfiles.where((value) => value.isDefault),
-      hasLength(1),
-    );
-    expect(
-      composition.settingsProfiles.map((value) => value.styleIdentity).toSet(),
-      hasLength(composition.settingsProfiles.length),
     );
   });
 

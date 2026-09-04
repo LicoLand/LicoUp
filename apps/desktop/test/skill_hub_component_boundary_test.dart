@@ -59,6 +59,7 @@ void main() {
     final search = File('$root/skill_hub_search.dart').readAsStringSync();
 
     expect(panel, contains("ui/skill_hub_panel_catalog.dart';"));
+    expect(panel, contains("presentation/skill_hub/skill_hub_binding.dart';"));
     expect(catalog, contains("ui/skill_hub_panel_card_support.dart';"));
     expect(catalog, contains("ui/skill_hub_search.dart';"));
     expect(catalog, contains("shared/ui/lico_empty_state.dart';"));
@@ -73,6 +74,8 @@ void main() {
         source,
         isNot(contains(RegExp(r'^part(?: of)? ', multiLine: true))),
       );
+      expect(source, isNot(contains('/application/controller/')));
+      expect(source, isNot(contains('/application/features/')));
     }
   });
 }

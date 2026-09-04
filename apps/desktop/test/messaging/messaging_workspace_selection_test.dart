@@ -12,15 +12,15 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 import '../layout/fixtures/production_client_shell_fixture.dart';
 import '../layout/fixtures/layout_destination_presentation_fixture.dart';
+import '../support/agent_conversation_workspace_fixture.dart';
 
 void main() {
   testWidgets(
@@ -226,7 +226,7 @@ void main() {
             child: LayoutAgentsStrategyScope(
               strategy: const AgentsPresentationStrategy.messaging(),
               child: Scaffold(
-                body: AgentConversationWorkspace(
+                body: AgentConversationWorkspaceFixture(
                   controller: controller,
                   targets: controller.scannedTargets,
                   scanning: false,
@@ -352,7 +352,7 @@ void main() {
             child: LayoutAgentsStrategyScope(
               strategy: const AgentsPresentationStrategy.messaging(),
               child: Scaffold(
-                body: AgentConversationWorkspace(
+                body: AgentConversationWorkspaceFixture(
                   controller: controller,
                   targets: controller.scannedTargets,
                   scanning: false,

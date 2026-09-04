@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/mobile_home_layout.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 
 /// Owns Mobile Home ordering, pinning, and serialized persistence.
-final class MobileHomeLayoutController extends ChangeNotifier {
+final class MobileHomeLayoutController extends ApplicationStateOwner {
   MobileHomeLayoutController({required MobileHomeLayoutRepository repository})
     : _repository = repository;
 
@@ -19,12 +19,12 @@ final class MobileHomeLayoutController extends ChangeNotifier {
 
   Future<void> load() async {
     _layout = _sanitized(await _repository.load());
-    notifyListeners();
+    publishChange();
   }
 
   void replaceLayout(MobileHomeLayout value) {
     _layout = _sanitized(value);
-    notifyListeners();
+    publishChange();
   }
 
   MobileHomeLayout _sanitized(MobileHomeLayout value) {
@@ -72,7 +72,7 @@ final class MobileHomeLayoutController extends ChangeNotifier {
           if (!pinnedSet.contains(id)) id,
       ],
     );
-    notifyListeners();
+    publishChange();
     await _persist(_layout);
   }
 
@@ -86,7 +86,7 @@ final class MobileHomeLayoutController extends ChangeNotifier {
       pinned.remove(normalized);
     }
     _layout = _layout.copyWith(pinnedEntryIds: pinned);
-    notifyListeners();
+    publishChange();
     await _persist(_layout);
   }
 
@@ -110,7 +110,7 @@ final class MobileHomeLayoutController extends ChangeNotifier {
           if (!removed.contains(id)) id,
       },
     );
-    notifyListeners();
+    publishChange();
     await _persist(_layout);
   }
 
