@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
-
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
@@ -60,12 +58,6 @@ final class ClientSkillComponentAssembly {
   late final SkillHubController controller;
   late final SkillDeleteController deleteController;
   late final SkillUsageController usageController;
-
-  Iterable<ChangeNotifier> get listenables => [
-    controller,
-    deleteController,
-    usageController,
-  ];
 
   void dispose() {
     usageController.dispose();

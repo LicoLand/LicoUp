@@ -4,19 +4,29 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
-import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/display/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_binding.dart';
+import 'package:licoup/src/presentation/agents/agents_effect.dart';
+import 'package:licoup/src/presentation/agents/agents_intent.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
+import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 void main() {
   testWidgets(
@@ -38,6 +48,11 @@ void main() {
         _target('claude-code', 'Claude Code'),
       ];
       final openedAgents = <String>[];
+      final bindings = _GroupBindings(
+        controller: controller,
+        targets: targets,
+        onOpenAgent: openedAgents.add,
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -61,9 +76,12 @@ void main() {
                   key: const Key('messaging-group-roster-qa-boundary'),
                   child: Scaffold(
                     body: CanonicalGroupConversationPane(
-                      controller: controller,
-                      targets: targets,
-                      onCopyText: (_) async {},
+                      conversation: bindings.conversation,
+                      agents: bindings.agents,
+                      canonical: bindings.canonical,
+                      turns: bindings.turns,
+                      composer: bindings.composer,
+                      attachments: bindings.attachments,
                       onOpenAgentConversations: openedAgents.add,
                       framed: false,
                     ),
@@ -240,6 +258,140 @@ void main() {
       );
     },
   );
+}
+
+final class _GroupBindings {
+  _GroupBindings({
+    required ClientConversationController controller,
+    required List<TargetCandidate> targets,
+    required void Function(String agentId) onOpenAgent,
+  }) : canonical = CanonicalConversationProjection(
+         conversationId: controller.selectedConversationId,
+         events: const <CanonicalConversationEventProjection>[],
+         conversation: controller.selectedConversation,
+         canonicalEvents: controller.events,
+         recentParticipantAgentIds: controller.recentParticipantAgentIds,
+         hasEarlier: false,
+         phase: PresentationPhase.ready,
+       ),
+       turns = PersistentTurnProjection(
+         conversationId: controller.selectedConversationId,
+         memberships: const <MembershipTurnProjection>[],
+       ),
+       composer = ComposerProjection(
+         conversationId: 'group:${controller.selectedConversationId}',
+         draft: controller.draft,
+         inputEnabled: true,
+         sendLabel: 'Send',
+       ),
+       attachments = ConversationAttachmentsProjection(
+         conversationId: 'group:${controller.selectedConversationId}',
+         attachments: const <ConversationAttachmentProjection>[],
+         acceptsImages: true,
+       ) {
+    final conversationId = controller.selectedConversationId;
+    agents = AgentsBinding(
+      projection: _StaticProjection(
+        AgentsProjection(
+          targets: [
+            for (final target in targets)
+              AgentTargetProjection(
+                id: target.target,
+                displayName: target.label,
+                available: true,
+                pinned: false,
+                capabilityLabel: target.status,
+              ),
+          ],
+          targetDetails: targets,
+          selectedAgentId: targets.isEmpty ? '' : targets.first.target,
+          workingDirectoryLabel: '',
+          phase: PresentationPhase.ready,
+        ),
+      ),
+      intents: _IntentSink<AgentsIntent>((intent) {
+        if (intent case SelectAgent(:final agentId)) onOpenAgent(agentId);
+      }),
+      effects: const _EmptyEffects<AgentsEffect>(),
+    );
+    conversation = ConversationBinding(
+      projection: _StaticProjection(
+        ConversationProjection(
+          authority: ConversationAuthority.canonicalConversation,
+          conversationId: conversationId,
+          membershipId:
+              controller.selectedConversation?.assistantMembershipId ?? '',
+        ),
+      ),
+      nativeCatalog: _StaticProjection(
+        NativeConversationCatalogProjection(
+          sessions: const <NativeConversationSessionProjection>[],
+          hasMore: false,
+          phase: PresentationPhase.ready,
+        ),
+      ),
+      canonicalEvents: _StaticProjection(canonical),
+      persistentTurns: _StaticProjection(turns),
+      composer: _StaticProjection(composer),
+      attachments: _StaticProjection(attachments),
+      tabActivity: _StaticProjection(
+        ConversationTabActivityProjection(
+          conversationId: conversationId,
+          active: true,
+          unreadCount: 0,
+          requiresAttention: false,
+        ),
+      ),
+      notifications: _StaticProjection(
+        ConversationNotificationsProjection(notices: const []),
+      ),
+      archive: _StaticProjection(
+        ConversationArchiveProjection(
+          conversations: const [],
+          phase: PresentationPhase.ready,
+        ),
+      ),
+      intents: _IntentSink<ConversationIntent>((intent) {
+        if (intent case UpdateConversationDraft(:final draft)) {
+          controller.updateDraft(draft);
+        }
+      }),
+      effects: const _EmptyEffects<ConversationEffect>(),
+    );
+  }
+
+  late final AgentsBinding agents;
+  late final ConversationBinding conversation;
+  final CanonicalConversationProjection canonical;
+  final PersistentTurnProjection turns;
+  final ComposerProjection composer;
+  final ConversationAttachmentsProjection attachments;
+}
+
+final class _StaticProjection<T> implements ProjectionSource<T> {
+  const _StaticProjection(this.current);
+
+  @override
+  final T current;
+
+  @override
+  Stream<ProjectionUpdate<T>> get changes => const Stream.empty();
+}
+
+final class _IntentSink<T> implements IntentSink<T> {
+  const _IntentSink(this._send);
+
+  final void Function(T intent) _send;
+
+  @override
+  void send(T intent) => _send(intent);
+}
+
+final class _EmptyEffects<T> implements EffectSource<T> {
+  const _EmptyEffects();
+
+  @override
+  Stream<T> get effects => const Stream.empty();
 }
 
 TargetCandidate _target(String id, String label) => TargetCandidate(

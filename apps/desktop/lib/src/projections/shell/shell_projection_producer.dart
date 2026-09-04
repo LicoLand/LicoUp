@@ -5,83 +5,157 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/projections/close_broadcast_controller.dart';
+import 'package:licoup/src/projections/application_projection_source.dart';
 
-/// Focused shell snapshot producer. Composition exclusively owns its lifetime.
-final class ShellProjectionProducer
-    implements ProjectionSource<ShellProjection> {
+/// Six independent shell state planes. Composition exclusively owns their
+/// shared lifetime, while renderers subscribe only to the plane they consume.
+final class ShellProjectionProducer {
   ShellProjectionProducer({
     required ClientShellController shell,
     required ClientNavigationController navigation,
-    required LayoutManager layout,
-    required bool Function() readMobileSurface,
-  }) : _shell = shell,
-       _navigation = navigation,
-       _layout = layout,
-       _readMobileSurface = readMobileSurface,
-       _current = _readSnapshot(shell, navigation, layout, readMobileSurface) {
-    _shell.addListener(_handleChanged);
-    _navigation.addListener(_handleChanged);
-    _layout.addListener(_handleLayoutChanged);
+    required LayoutManager layoutManager,
+    required LayoutRuntimeSurface Function() readRuntimeSurface,
+  }) {
+    appearance = ApplicationProjectionSource<AppearanceProjection>(
+      changes: shell.changes,
+      read: () => _readAppearance(shell),
+    );
+    locale = ApplicationProjectionSource<LocaleProjection>(
+      changes: shell.changes,
+      read: () => LocaleProjection(shell.localePreference),
+    );
+    _layout = _LayoutProjectionSource<LayoutProjection>(
+      changes: layoutManager.changes,
+      read: () => LayoutProjection(layoutManager.state),
+    );
+    _environment = _LayoutProjectionSource<EnvironmentProjection>(
+      changes: layoutManager.changes,
+      read: () => EnvironmentProjection(
+        environment: layoutManager.environment,
+        runtimeSurface: readRuntimeSurface(),
+      ),
+    );
+    this.navigation = ApplicationProjectionSource<NavigationProjection>(
+      changes: navigation.changes,
+      read: () => _readNavigation(navigation),
+    );
+    status = ApplicationProjectionSource<StatusProjection>(
+      changes: shell.changes,
+      read: () => StatusProjection(
+        displayMessage: shell.displayStatusMessage,
+        displayCaption: shell.displayStatusCaption,
+        errorCode: shell.lastErrorCode,
+      ),
+    );
   }
 
-  final ClientShellController _shell;
-  final ClientNavigationController _navigation;
-  final LayoutManager _layout;
-  final bool Function() _readMobileSurface;
-  final StreamController<ShellProjection> _changes =
-      StreamController<ShellProjection>.broadcast(sync: true);
-  ShellProjection _current;
+  late final ApplicationProjectionSource<AppearanceProjection> appearance;
+  late final ApplicationProjectionSource<LocaleProjection> locale;
+  late final _LayoutProjectionSource<LayoutProjection> _layout;
+  late final _LayoutProjectionSource<EnvironmentProjection> _environment;
+  late final ApplicationProjectionSource<NavigationProjection> navigation;
+  late final ApplicationProjectionSource<StatusProjection> status;
+  bool _disposed = false;
+
+  ProjectionSource<LayoutProjection> get layout => _layout;
+
+  ProjectionSource<EnvironmentProjection> get environment => _environment;
+
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    await Future.wait([
+      appearance.dispose(),
+      locale.dispose(),
+      _layout.dispose(),
+      _environment.dispose(),
+      navigation.dispose(),
+      status.dispose(),
+    ]);
+  }
+
+  static AppearanceProjection _readAppearance(ClientShellController shell) =>
+      AppearanceProjection(
+        presetId: shell.appearancePresetId,
+        presets: shell.appearancePresetConfigs.map(_projectAppearancePreset),
+      );
+
+  static AppearancePresetProjection _projectAppearancePreset(
+    AppearancePresetConfig config,
+  ) {
+    final tokens = [
+      for (final entry in config.tokens.entries)
+        AppearanceTokenProjection(name: entry.key, value: entry.value),
+    ]..sort((left, right) => left.name.compareTo(right.name));
+    return AppearancePresetProjection(
+      id: config.id,
+      label: config.labelFor(),
+      modeId: config.mode.id,
+      tokens: tokens,
+    );
+  }
+
+  static NavigationProjection _readNavigation(
+    ClientNavigationController navigation,
+  ) => NavigationProjection(
+    destination: navigation.currentSection,
+    destinations: ClientSection.values.where(
+      (destination) => navigation.resolve(destination) == destination,
+    ),
+  );
+}
+
+typedef _LayoutProjectionReader<T> = T Function();
+
+/// Equality-suppressing projection over the framework-independent layout
+/// change stream.
+final class _LayoutProjectionSource<T> implements ProjectionSource<T> {
+  _LayoutProjectionSource({
+    required Stream<ApplicationChange> changes,
+    required _LayoutProjectionReader<T> read,
+  }) : _read = read,
+       _current = read() {
+    _subscription = changes.listen(_handleChange);
+  }
+
+  final _LayoutProjectionReader<T> _read;
+  final StreamController<ProjectionUpdate<T>> _updates =
+      StreamController<ProjectionUpdate<T>>.broadcast(sync: true);
+  late final StreamSubscription<ApplicationChange> _subscription;
+  T _current;
   bool _disposed = false;
 
   @override
-  ShellProjection get current => _current;
+  T get current => _current;
 
   @override
-  Stream<ShellProjection> get changes => _changes.stream;
+  Stream<ProjectionUpdate<T>> get changes => _updates.stream;
 
-  void _handleLayoutChanged(Object _) => _handleChanged();
-
-  void _handleChanged() {
+  void _handleChange(ApplicationChange change) {
     if (_disposed) return;
-    final next = _readSnapshot(
-      _shell,
-      _navigation,
-      _layout,
-      _readMobileSurface,
-    );
+    final next = _read();
     if (next == _current) return;
     _current = next;
-    _changes.add(next);
+    _updates.add(
+      ProjectionUpdate(
+        next,
+        trace: change.cause?.traceId == null
+            ? null
+            : TraceContext(traceId: change.cause!.traceId),
+      ),
+    );
   }
 
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    _layout.removeListener(_handleLayoutChanged);
-    _navigation.removeListener(_handleChanged);
-    _shell.removeListener(_handleChanged);
-    await _changes.close();
+    await _subscription.cancel();
+    await closeBroadcastController(_updates);
   }
-
-  static ShellProjection _readSnapshot(
-    ClientShellController shell,
-    ClientNavigationController navigation,
-    LayoutManager layout,
-    bool Function() readMobileSurface,
-  ) => ShellProjection(
-    layout: ShellLayout(layout.state),
-    appearance: ShellAppearance(
-      presetId: shell.appearancePresetId,
-      presetConfigs: shell.appearancePresetConfigs,
-      localePreference: shell.localePreference,
-    ),
-    environment: ShellEnvironment(mobileSurface: readMobileSurface()),
-    status: ShellStatus(
-      displayMessage: shell.displayStatusMessage,
-      displayCaption: shell.displayStatusCaption,
-      errorCode: shell.lastErrorCode,
-    ),
-    destination: navigation.currentSection,
-  );
 }

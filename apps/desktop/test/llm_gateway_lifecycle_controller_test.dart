@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_notification_bell.dart';
+import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/presentation/models/models_intent.dart';
+import 'package:licoup/src/presentation/models/models_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 void main() {
   test(
@@ -250,7 +254,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('en'),
-        home: Scaffold(body: LlmGatewayNotificationRow(controller: controller)),
+        home: Scaffold(
+          body: LlmGatewayCard(
+            projection: _gatewayProjection(controller),
+            phase: PresentationPhase.applying,
+            intents: const _ModelsIntents(),
+          ),
+        ),
       ),
     );
 
@@ -268,7 +278,18 @@ void main() {
       runner.startGate!.complete();
       await recovery;
     });
-    await tester.pump();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: LlmGatewayCard(
+            projection: _gatewayProjection(controller),
+            phase: PresentationPhase.ready,
+            intents: const _ModelsIntents(),
+          ),
+        ),
+      ),
+    );
     expect(
       find.byKey(const Key('llm-gateway-notification-item')),
       findsNothing,
@@ -293,7 +314,26 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('en'),
-        home: Scaffold(body: LlmGatewayNotificationRow(controller: controller)),
+        home: Scaffold(
+          body: LlmGatewayCard(
+            projection: _gatewayProjection(controller),
+            phase: PresentationPhase.failed,
+            notice: const PresentationNotice(
+              id: 'gateway-recovery-failed',
+              title: 'Gateway',
+              message: 'Gateway recovery failed.',
+              severity: PresentationNoticeSeverity.error,
+              reasonCode: 'gateway_recovery_failed',
+            ),
+            intents: _ModelsIntents(
+              onIntent: (intent) {
+                if (intent is RecoverModelGateway) {
+                  unawaited(controller.restart());
+                }
+              },
+            ),
+          ),
+        ),
       ),
     );
 
@@ -302,6 +342,19 @@ void main() {
     runner.startFailuresRemaining = 0;
     await tester.tap(find.byKey(const Key('llm-gateway-restart-action')));
     await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: LlmGatewayCard(
+            projection: _gatewayProjection(controller),
+            phase: PresentationPhase.ready,
+            intents: const _ModelsIntents(),
+          ),
+        ),
+      ),
+    );
 
     expect(controller.notice, isNull);
     expect(
@@ -332,6 +385,31 @@ void main() {
     await Future.wait([first, second]);
     controller.dispose();
   });
+}
+
+GatewayProjection _gatewayProjection(
+  LlmGatewayLifecycleController controller,
+) => GatewayProjection(
+  endpoint: 'http://127.0.0.1:${controller.port}',
+  port: controller.port,
+  stateLabel: controller.state.name,
+  running: controller.state == LlmGatewayRuntimeState.running,
+  managed: controller.managed,
+  credentialsApplied: controller.lastReport?['credentialsApplied'] == true,
+  modelReady: controller.lastReport?['modelReady'] == true,
+  credentialsAuthorized: false,
+  recoveryNoticeLabel: controller.notice?.name ?? '',
+  recoveryAttempt: controller.recoveryAttempt,
+  maxRecoveryAttempts: LlmGatewayLifecycleController.maxRecoveryAttempts,
+);
+
+final class _ModelsIntents implements IntentSink<ModelsIntent> {
+  const _ModelsIntents({this.onIntent});
+
+  final ValueChanged<ModelsIntent>? onIntent;
+
+  @override
+  void send(ModelsIntent intent) => onIntent?.call(intent);
 }
 
 final class _GatewayBootstrapAgentService extends AgentService {

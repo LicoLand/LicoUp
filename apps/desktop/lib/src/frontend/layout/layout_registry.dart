@@ -1,6 +1,6 @@
 import 'dart:collection';
 
-import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_catalog_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
@@ -18,7 +18,7 @@ final class RegisteredLayoutVariant {
 /// Immutable widget registry validated against the pure application catalog.
 final class LayoutRegistry {
   factory LayoutRegistry({
-    required LayoutCatalog catalog,
+    required LayoutCatalogView catalog,
     required Iterable<LayoutDefinition> definitions,
   }) {
     final definitionById = <LayoutProfileId, LayoutDefinition>{};
@@ -61,19 +61,13 @@ final class LayoutRegistry {
       }
     }
 
-    if (!_sameSet(
-      definitionById.keys.toSet(),
-      catalog.profileById.keys.toSet(),
-    )) {
+    if (!_sameSet(definitionById.keys.toSet(), catalog.profileIds.toSet())) {
       throw const FormatException('layout_registry_profile_product_invalid');
     }
-    if (!_sameSet(
-      variantByKey.keys.toSet(),
-      catalog.variantByKey.keys.toSet(),
-    )) {
+    if (!_sameSet(variantByKey.keys.toSet(), catalog.variantKeys.toSet())) {
       throw const FormatException('layout_registry_variant_product_invalid');
     }
-    if (!_sameSet(declaredNamespaces, catalog.stateNamespaces)) {
+    if (!_sameSet(declaredNamespaces, catalog.stateNamespaces.toSet())) {
       throw const FormatException('layout_registry_state_product_invalid');
     }
 
@@ -90,7 +84,7 @@ final class LayoutRegistry {
     required this.variants,
   });
 
-  final LayoutCatalog catalog;
+  final LayoutCatalogView catalog;
   final Map<LayoutProfileId, LayoutDefinition> definitions;
   final Map<LayoutVariantKey, RegisteredLayoutVariant> variants;
 

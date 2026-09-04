@@ -190,34 +190,34 @@ Plans, temporary scripts, local skills, raw evidence, and runtime data belong to
 
 | Problem | Severity | Location | Impact |
 |:---|:---|:---|:---|
-| **God Object `ClientController`** | Critical | `apps/desktop/lib/src/application/controller/` | The shell boundary is migrated, but 27 explicitly allowlisted frontend feature files still import it. Those paths are bounded migration debt. |
+| **Application orchestrator breadth** | Medium | `apps/desktop/lib/src/application/controller/` | `ClientController` remains an internal, Flutter-free lifetime/orchestration aggregate. Renderers cannot import it; feature-local composition exposes only semantic bindings. |
 | **Mixin abuse as decomposition** | High | `application/controller/`, `application/features/agents/conversation/` | All 24 mixins in the app sit on a single inheritance chain; shared `this` means no encapsulation. |
 | **Monolithic Rust crate** | High | `crates/licoup-native/` (~299K lines) | `domain/` has 48 entries, `core/` 52, `platform/` 85 (72K lines). Compilation slow, boundaries unclear. Largest files: `client_conversation/store.rs` (6.6K lines), `ffi/commands/mod.rs` (5.2K). |
 | **Contracts layer bloat** | Medium | `apps/desktop/lib/src/contracts/` (93 files, 15.7K lines) | Mixes models, interfaces, parsing logic, and generated code in one layer. |
-| **Giant Widget files** | Medium | `frontend/features/` | `canonical_group_conversation_pane.dart` (2603 lines), `agent_conversation_workspace.dart` (1390 lines). |
+| **Large Flutter surfaces** | Medium | `frontend/features/`, `display/conversation/` | The former 2.6K-line Canonical pane is split into focused files (largest leaf: 572 lines). Remaining large feature files include `adaptive_flywheel_multi_capsule_section.dart` (1626), `settings_panel.dart` (1184), `agent_conversation_composer_capsules.dart` (1135), and `agent_conversation_workspace.dart` (1132). |
 | **Vestigial backend layer** | Low | `apps/desktop/lib/src/backend/` (2.1K lines) | Too thin to provide real abstraction; also fabricates domain events in Dart (`dispatch.lane.bound`). |
 | **Manual JSON-RPC method surface** | High | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | Method names hand-duplicated on both sides (25 Rust vs 23 Dart; two methods unreachable from Dart); codegen covers FFI data types only, not stdio frames. Dart routes some calls by argv-shape sniffing. |
 
-### Implemented Presentation Boundary (M0–M2)
+### Implemented Presentation Boundary (M3–M6)
 
-M0–M2 is implemented. `ClientShell` consumes the renderer-independent
-`ShellBinding`; `LicoApp` selects only `ShellAppearance`; selected shell slices
-rebuild below the static root scaffold. The bounded
-`M2LegacyShellRendererTransitionAdapter` is the only composition edge that
-constructs the unchanged controller-based destination and chrome widgets.
+The terminal M3–M6 boundary is implemented. Flutter renderers consume named,
+immutable semantic bindings; feature-local producers read the smallest
+Application owners and suppress equal projections. Application state uses
+synchronous Dart streams and has no Flutter notifier or lifecycle dependency.
+The M2 shell transition adapter and migration allowlists have been removed.
 
 ```mermaid
 flowchart LR
-    C["ClientAppComposition"] --> P["focused ShellProjection producer"]
-    P -->|"current + changes"| B["ShellBinding"]
-    B --> R["ClientShell + LayoutHost"]
-    R -->|"ShellIntent"| B
-    B --> I["composition intent adapter"]
-    I --> A["application controllers"]
-    I -->|"ShellDestinationReselected"| E["one-shot effect source"]
-    E --> B
-    C --> T["M2LegacyShellRendererTransitionAdapter"]
-    T --> R
+    A["Flutter-free Application owners"] --> P["feature-local Projection producers"]
+    P -->|"ProjectionUpdate + optional trace"| B["named semantic Bindings"]
+    B --> R["Flutter renderer factories"]
+    R -->|"semantic Intent"| I["feature-local intent adapters"]
+    I --> A
+    I -->|"one-shot Effect"| B
+    C["ClientAppComposition"] --> A
+    C --> P
+    C --> B
+    C --> R
 ```
 
 The first-round directory map is exact:
@@ -225,19 +225,28 @@ The first-round directory map is exact:
 | Path | Implemented responsibility |
 |:---|:---|
 | `packages/presentation_contract/lib/` | SDK-only projection, intent, effect, and trace primitives |
-| `apps/desktop/lib/src/presentation/shell/` | Stable immutable shell semantics and `ShellBinding` |
-| `apps/desktop/lib/src/projections/adapters/` | Legacy read-side adapter |
-| `apps/desktop/lib/src/projections/shell/` | Focused shell and effect producers |
-| `apps/desktop/lib/src/frontend/binding/` | Flutter subscriptions, renderer port, and bounded frame timing |
-| `apps/desktop/lib/src/frontend/shell/` | Controller-free shell renderer |
-| `apps/desktop/lib/src/composition/` | Lifecycle, intent wiring, and the bounded M2 transition adapter |
+| `apps/desktop/lib/src/presentation/` | Thirteen stable named Bindings and their immutable Projection/Intent/Effect semantics |
+| `apps/desktop/lib/src/projections/<feature>/` | Equality-suppressing adapters from scoped Application signals to semantic projections |
+| `apps/desktop/lib/src/frontend/binding/` | Flutter projection/effect observation and bounded causal frame telemetry |
+| `apps/desktop/lib/src/frontend/` | Binding-only renderers; renderer-local state remains Flutter-owned |
+| `apps/desktop/lib/src/composition/features/<feature>/` | Intent/effect adapters and concrete producer ownership |
+| `apps/desktop/lib/src/composition/` | The sole join for Application owners, semantic bindings, telemetry, layout registry, and renderer factories |
 
-Verified post-migration facts: 27 frontend `ClientController` importers, zero
-under `frontend/shell`, zero bounded frontend repository/native-bridge imports,
-and one pre-existing Flutter import under `contracts/presentation`. The last is
-deferred with the long-term directory, theme/notifier, feature, and conversation
-migrations. M2 does not migrate conversation rendering or introduce Riverpod,
-hooks, a second layout authority, or a new wire contract.
+The six global planes are independently sourced: Appearance, Locale, Layout,
+Environment, Navigation, and Status. Theme construction observes only
+Appearance; locale resolution observes only Locale; the remaining planes
+rebuild below `MaterialApp`. Every current destination is constructed through
+exactly one named binding, with shared Conversation, Targets, Search, and Chrome
+capabilities remaining explicit.
+
+Verified terminal counts are zero Application Flutter imports, zero Application
+notifier/listenable dependencies, zero frontend implementation imports, zero
+frontend `ClientController` imports, and zero stable Presentation implementation
+imports. The binding catalog contains thirteen named bindings. Causal telemetry
+is local, bounded, content-free, and does not cross a native or network boundary.
+Renderer optimization remains profile-driven M7 work and is intentionally
+deferred until profiling identifies a measured bottleneck; M3–M6 changes no
+tokens, layout, motion, Conversation authority, or wire behavior.
 
 ### Target Architecture (Migration Destination)
 
@@ -272,9 +281,10 @@ src/
 ```
 
 **Key decisions:**
-- **No state management framework needed** — Flutter does not manage state. It consumes
-  a `Stream<Projection>` from Rust and renders it. `StreamBuilder` + `ValueListenableBuilder`
-  are sufficient.
+- **No state management framework needed** — production Application owners publish
+  synchronous Dart signals, feature producers expose `ProjectionSource<T>`, and Flutter
+  renders narrow semantic slices with `ProjectionBuilder`. Flutter owns only widget-local
+  controls and affordances.
 - **Keep stdio JSON-RPC** — CLI process independence is a core product feature (host survives
   GUI crash). Add **codegen** from a shared schema to enforce type safety.
 - **God Controller decomposition** — Replace with thin event sender + per-domain projection
@@ -316,7 +326,7 @@ LicoUp is a desktop-class agent conversation client with streaming content, real
 
 1. **Measure before optimizing**: Always profile in `--profile` mode on target hardware. Use Flutter DevTools Timeline View to identify actual bottlenecks (build, layout, or paint phase).
 
-2. **Minimize widget rebuild scope**: Use `const` constructors aggressively; split large widgets into focused components so only data-dependent subtrees rebuild. Bind widgets to the narrowest projected-state slice (`ValueListenableBuilder` / `ListenableBuilder` on per-domain projections) so only the exact data slice that changed rebuilds.
+2. **Minimize widget rebuild scope**: Use `const` constructors aggressively; split large widgets into focused components so only data-dependent subtrees rebuild. Bind widgets to the narrowest semantic slice with `ProjectionBuilder`; separate Appearance, Locale, Layout, Environment, Navigation, and Status sources prevent unrelated shell invalidation.
 
 3. **Keep `build()` methods cheap**: No side effects, no I/O, no heavy computation in build. Target < 100 lines per build method. Extract complex layout into separate Widget classes.
 
@@ -368,11 +378,11 @@ this document.
    both sides. stdio JSON-RPC stays: CLI process independence is a product feature.
    No flutter_rust_bridge, no second wire.
 
-2. **Feature extraction** (feature-by-feature, least-coupled first) — migrate
-   `settings` first, then `agent_hub`, `skill_hub`, `targets`, then `conversation`
-   (most complex, last). Each migration: extract events/projections → move widgets
-   into `display/` → delete old code. No state-management framework: per-domain
-   projection consumers over `ChangeNotifier`/`Stream` primitives.
+2. **Presentation feature extraction (completed in M3–M6)** — every destination now
+   consumes a named immutable Binding. Application owners use synchronous Dart streams;
+   feature producers map them to equality-suppressed semantic projections, and Flutter
+   observes only those projections. The M2 adapter, controller renderer ports, notifier
+   presentation paths, and migration allowlists were deleted in the same migration.
 
 3. **Rust crate extraction** — add `licoup-conversation` and
    `licoup-agent-runtime` to the workspace (currently placeholder directories

@@ -1,16 +1,21 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
+import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/shared/l10n/lico_strings_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
+import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 
 Future<void> showCreateCanonicalGroupConversationDialog({
   required BuildContext context,
-  required ClientConversationController controller,
+  required IntentSink<ConversationIntent> intents,
+  required EffectSource<ConversationEffect> effects,
   required List<TargetCandidate> targets,
 }) async {
   final candidates = targets
@@ -19,7 +24,8 @@ Future<void> showCreateCanonicalGroupConversationDialog({
   await showDialog<void>(
     context: context,
     builder: (context) => _CreateCanonicalGroupConversationDialog(
-      controller: controller,
+      intents: intents,
+      effects: effects,
       candidates: candidates,
     ),
   );
@@ -27,11 +33,13 @@ Future<void> showCreateCanonicalGroupConversationDialog({
 
 class _CreateCanonicalGroupConversationDialog extends StatefulWidget {
   const _CreateCanonicalGroupConversationDialog({
-    required this.controller,
+    required this.intents,
+    required this.effects,
     required this.candidates,
   });
 
-  final ClientConversationController controller;
+  final IntentSink<ConversationIntent> intents;
+  final EffectSource<ConversationEffect> effects;
   final List<TargetCandidate> candidates;
 
   @override
@@ -45,11 +53,35 @@ class _CreateCanonicalGroupConversationDialogState
   final _selected = <String>{};
   var _creating = false;
   var _failureCode = '';
+  StreamSubscription<ConversationEffect>? _effectSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _effectSubscription = widget.effects.effects.listen(_handleEffect);
+  }
 
   @override
   void dispose() {
+    unawaited(_effectSubscription?.cancel());
     _title.dispose();
     super.dispose();
+  }
+
+  void _handleEffect(ConversationEffect effect) {
+    if (!mounted || !_creating) return;
+    switch (effect) {
+      case CanonicalConversationGroupCreated():
+        Navigator.of(context).pop();
+      case ConversationActionRejected(:final stage, :final reasonCode)
+          when stage == 'canonical-create':
+        setState(() {
+          _creating = false;
+          _failureCode = reasonCode;
+        });
+      default:
+        break;
+    }
   }
 
   @override
@@ -179,20 +211,8 @@ class _CreateCanonicalGroupConversationDialogState
             displayName: agentConversationTargetDisplayName(candidate),
           ),
     ];
-    final created = await widget.controller.createGroup(
-      title: _title.text,
-      members: members,
+    widget.intents.send(
+      CreateCanonicalConversationGroup(title: _title.text, members: members),
     );
-    if (!mounted) return;
-    if (created) {
-      Navigator.of(context).pop();
-    } else {
-      setState(() {
-        _creating = false;
-        _failureCode = widget.controller.failureCode.isEmpty
-            ? 'conversation_operation_failed'
-            : widget.controller.failureCode;
-      });
-    }
   }
 }

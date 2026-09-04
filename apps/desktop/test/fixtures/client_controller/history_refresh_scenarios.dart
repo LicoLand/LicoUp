@@ -305,7 +305,7 @@ void registerClientHistoryRefreshScenarios() {
     controller.selectedConversationAgentId = 'codex';
     var structureNotifications = 0;
     final publishedLengths = <int>[];
-    controller.conversationStructureListenable.addListener(() {
+    controller.conversationStructureChanges.listen((_) {
       structureNotifications += 1;
       publishedLengths.add(controller.selectedConversationSessions.length);
     });
@@ -428,11 +428,11 @@ void registerClientHistoryRefreshScenarios() {
       controller.currentSection = ClientSection.agents;
       var structureNotifications = 0;
       var activeNotifications = 0;
-      controller.conversationStructureListenable.addListener(
-        () => structureNotifications += 1,
+      controller.conversationStructureChanges.listen(
+        (_) => structureNotifications += 1,
       );
-      controller.activeConversationListenable.addListener(
-        () => activeNotifications += 1,
+      controller.activeConversationChanges.listen(
+        (_) => activeNotifications += 1,
       );
 
       await controller.refreshConversationSessions('codex');
@@ -504,8 +504,8 @@ void registerClientHistoryRefreshScenarios() {
         ),
       ];
       var structureNotifications = 0;
-      controller.conversationStructureListenable.addListener(
-        () => structureNotifications += 1,
+      controller.conversationStructureChanges.listen(
+        (_) => structureNotifications += 1,
       );
       controller.conversationAttentionContextChanged(immediateActive: true);
       await _waitForHistoryRefresh(
@@ -547,7 +547,7 @@ void registerClientHistoryRefreshScenarios() {
     );
 
     controller.updateConversationAttention(
-      lifecycleState: AppLifecycleState.hidden,
+      lifecycleState: ConversationLifecyclePhase.hidden,
     );
     expect(
       controller.conversationRefreshPriority,
@@ -590,13 +590,12 @@ void registerClientHistoryRefreshScenarios() {
       var activeNotifications = 0;
       var structureNotifications = 0;
       var globalNotifications = 0;
-      controller.activeConversationListenable.addListener(
-        () => activeNotifications += 1,
+      controller.activeConversationChanges.listen(
+        (_) => activeNotifications += 1,
       );
-      controller.conversationStructureListenable.addListener(
-        () => structureNotifications += 1,
+      controller.conversationStructureChanges.listen(
+        (_) => structureNotifications += 1,
       );
-      controller.addListener(() => globalNotifications += 1);
 
       await _waitForHistoryRefresh(() => service.conversationStreamCalls >= 1);
 
@@ -633,7 +632,7 @@ void registerClientHistoryRefreshScenarios() {
       );
 
       controller.updateConversationAttention(
-        lifecycleState: AppLifecycleState.hidden,
+        lifecycleState: ConversationLifecyclePhase.hidden,
       );
       await Future<void>.delayed(const Duration(milliseconds: 15));
       final callsWhileHidden = service.conversationStreamCalls;
@@ -641,7 +640,7 @@ void registerClientHistoryRefreshScenarios() {
       expect(service.conversationStreamCalls, callsWhileHidden);
 
       controller.updateConversationAttention(
-        lifecycleState: AppLifecycleState.resumed,
+        lifecycleState: ConversationLifecyclePhase.resumed,
         viewFocused: true,
       );
       await _waitForHistoryRefresh(
@@ -768,7 +767,7 @@ void registerClientHistoryRefreshScenarios() {
         ConversationRefreshPriority.background,
       );
       controller.updateConversationAttention(
-        lifecycleState: AppLifecycleState.hidden,
+        lifecycleState: ConversationLifecyclePhase.hidden,
       );
       expect(
         controller.conversationRefreshPriority,

@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/targets/ui/manual_target_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/presentation/targets/targets_projection.dart';
+
+const _options = <ManualTargetOptionProjection>[
+  ManualTargetOptionProjection(id: 'antigravity', label: 'Antigravity'),
+  ManualTargetOptionProjection(id: 'kimi', label: 'Kimi'),
+  ManualTargetOptionProjection(id: 'kimi-code', label: 'Kimi Code'),
+  ManualTargetOptionProjection(
+    id: 'openclaw',
+    label: 'OpenClaw',
+    supportsVirtualMachine: true,
+  ),
+];
 
 void main() {
   testWidgets('ManualTargetDialog submits trimmed draft and supports cancel', (
@@ -19,7 +31,8 @@ void main() {
                   onPressed: () async {
                     draft = await showDialog<ManualTargetDraft>(
                       context: context,
-                      builder: (_) => const ManualTargetDialog(),
+                      builder: (_) =>
+                          const ManualTargetDialog(options: _options),
                     );
                   },
                   child: const Text('Open'),
@@ -28,7 +41,8 @@ void main() {
                   onPressed: () {
                     showDialog<ManualTargetDraft>(
                       context: context,
-                      builder: (_) => const ManualTargetDialog(),
+                      builder: (_) =>
+                          const ManualTargetDialog(options: _options),
                     ).then((value) {
                       if (value == null) {
                         dialogCanceled = true;
@@ -100,7 +114,7 @@ void main() {
               onPressed: () async {
                 draft = await showDialog<ManualTargetDraft>(
                   context: context,
-                  builder: (_) => const ManualTargetDialog(),
+                  builder: (_) => const ManualTargetDialog(options: _options),
                 );
               },
               child: const Text('OpenVm'),

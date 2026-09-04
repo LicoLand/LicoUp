@@ -4,12 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+import 'support/agent_conversation_workspace_fixture.dart';
 
 void main() {
   testWidgets(
@@ -54,7 +54,7 @@ void main() {
             body: SizedBox(
               width: 1200,
               height: 900,
-              child: AgentConversationWorkspace(
+              child: AgentConversationWorkspaceFixture(
                 controller: controller,
                 targets: controller.scannedTargets,
                 scanning: false,

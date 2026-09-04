@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
-
 import 'package:licoup/src/application/composition/mobile_home_layout_repository_adapter.dart';
 import 'package:licoup/src/application/composition/mobile_relay_client_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
@@ -88,12 +86,6 @@ final class ClientMobileComponentAssembly {
   final MobileHomeLayoutController homeLayoutController;
   late final MobileRelayController relayController;
   late final SecureMeshController secureMeshController;
-
-  Iterable<ChangeNotifier> get listenables => [
-    homeLayoutController,
-    relayController,
-    secureMeshController,
-  ];
 
   void dispose() {
     secureMeshController.dispose();

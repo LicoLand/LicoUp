@@ -16,6 +16,7 @@ export 'package:flutter_localizations/flutter_localizations.dart';
 export 'package:flutter_test/flutter_test.dart';
 
 export '../../layout/fixtures/layout_destination_presentation_fixture.dart';
+export '../../support/agent_conversation_workspace_fixture.dart';
 
 class CountingAgentRenderAdapterRegistry extends AgentRenderAdapterRegistry {
   int resolveCalls = 0;

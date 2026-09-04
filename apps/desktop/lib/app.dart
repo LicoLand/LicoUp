@@ -6,18 +6,25 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/composition/client_app_composition.dart';
 import 'src/frontend/binding/projection_builder.dart';
+import 'src/frontend/binding/projection_telemetry_scope.dart';
+import 'src/frontend/locale/locale_projection_adapter.dart';
 import 'src/frontend/l10n/lico_strings.dart';
 import 'src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'src/frontend/appearance/appearance_projection_adapter.dart';
 import 'src/frontend/shared/ui/theme.dart';
 import 'src/frontend/shell/client_shell.dart';
+import 'src/frontend/binding/shell_renderer_port.dart';
 import 'src/platform/agent_render_adapter/agent_render_adapter_service.dart';
+import 'src/presentation/shell/shell_projection.dart';
+import 'src/presentation/shell/shell_binding.dart';
 
 class LicoApp extends StatefulWidget {
   const LicoApp({
     super.key,
     this.compositionFactory,
     this.initializeController = true,
+    this.homeBuilder,
   });
 
   /// Test and acceptance seam for exercising the real application shell with
@@ -28,6 +35,15 @@ class LicoApp extends StatefulWidget {
   /// Acceptance controllers may be fully staged before the first frame. The
   /// production entry point keeps the default and performs normal bootstrap.
   final bool initializeController;
+
+  /// Bounded root-renderer seam for state-plane tests. Production always uses
+  /// [ClientShell].
+  final Widget Function(
+    BuildContext context,
+    ShellBinding binding,
+    ShellRendererPort renderer,
+  )?
+  homeBuilder;
 
   @override
   State<LicoApp> createState() => _LicoAppState();
@@ -44,6 +60,7 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
       jsonSource: DefaultAgentRenderAdapterJsonSource(),
     );
     _composition = widget.compositionFactory?.call() ?? ClientAppComposition();
+    _composition.attachFlutterObservation(WidgetsBinding.instance);
     WidgetsBinding.instance.addObserver(this);
     _composition.updateConversationAttention(
       lifecycleState:
@@ -88,42 +105,60 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder(
-      source: _composition.binding.projection,
-      select: (projection) => projection.appearance,
+    final app = ProjectionBuilder<AppearanceProjection, AppearanceProjection>(
+      source: _composition.binding.appearance,
+      select: _appearanceProjection,
       builder: (context, appearance) {
+        final presets = appearancePresetConfigsFromProjection(appearance);
         final presetId = appearance.presetId;
-        final presets = appearance.presetConfigs;
-        return MaterialApp(
-          onGenerateTitle: (context) => LicoStrings.of(context).appTitle,
-          debugShowCheckedModeBanner: false,
-          supportedLocales: LicoStrings.supportedLocales,
-          locale: LicoStrings.localeForPreference(appearance.localePreference),
-          localeListResolutionCallback: (locales, supportedLocales) {
-            return LicoStrings.resolvePreferred(locales);
-          },
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          themeMode: themeModeForAppearance(presetId, presets),
-          theme: buildLicoTheme(
-            presetId: presetId,
-            presets: presets,
-            platformBrightness: Brightness.light,
-          ),
-          darkTheme: buildLicoTheme(
-            presetId: presetId,
-            presets: presets,
-            platformBrightness: Brightness.dark,
-          ),
-          home: ClientShell(
-            binding: _composition.binding,
-            renderer: _composition.renderer,
+        return ProjectionBuilder<LocaleProjection, LocaleProjection>(
+          source: _composition.binding.locale,
+          select: _localeProjection,
+          builder: (context, locale) => MaterialApp(
+            onGenerateTitle: (context) => LicoStrings.of(context).appTitle,
+            debugShowCheckedModeBanner: false,
+            supportedLocales: LicoStrings.supportedLocales,
+            locale: localeFromProjection(locale),
+            localeListResolutionCallback: (locales, supportedLocales) {
+              return LicoStrings.resolvePreferred(locales);
+            },
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            themeMode: themeModeForAppearance(presetId, presets),
+            theme: buildLicoTheme(
+              presetId: presetId,
+              presets: presets,
+              platformBrightness: Brightness.light,
+            ),
+            darkTheme: buildLicoTheme(
+              presetId: presetId,
+              presets: presets,
+              platformBrightness: Brightness.dark,
+            ),
+            home:
+                widget.homeBuilder?.call(
+                  context,
+                  _composition.binding,
+                  _composition.renderer,
+                ) ??
+                ClientShell(
+                  binding: _composition.binding,
+                  renderer: _composition.renderer,
+                ),
           ),
         );
       },
     );
+    final telemetry = _composition.telemetry;
+    return telemetry == null
+        ? app
+        : ProjectionTelemetryScope(observer: telemetry, child: app);
   }
 }
+
+AppearanceProjection _appearanceProjection(AppearanceProjection value) => value;
+
+LocaleProjection _localeProjection(LocaleProjection value) => value;

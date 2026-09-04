@@ -344,7 +344,7 @@ void main() {
         agentId: [seeded],
       };
       controller.selectedConversationSessionId = seeded.id;
-      controller.agentWorkspaceNotifyStateChanged();
+      controller.agentWorkspaceNotifyConversationStructureChanged();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
 

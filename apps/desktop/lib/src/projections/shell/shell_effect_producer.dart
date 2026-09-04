@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/presentation/shell/shell_effect.dart';
+import 'package:licoup/src/projections/close_broadcast_controller.dart';
 
 final class ShellEffectProducer implements EffectSource<ShellEffect> {
   final StreamController<ShellEffect> _effects =
@@ -19,6 +20,6 @@ final class ShellEffectProducer implements EffectSource<ShellEffect> {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    await _effects.close();
+    await closeBroadcastController(_effects);
   }
 }

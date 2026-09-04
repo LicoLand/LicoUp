@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_layout.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
 
 Future<void> showAdaptiveFlywheelWorkflowDiagram(
   BuildContext context,
-  AdaptiveFlywheelInspection inspection,
+  AdaptiveFlywheelInspectionProjection inspection,
 ) {
   final zh = Localizations.localeOf(context).languageCode == 'zh';
   return showDialog<void>(
@@ -56,7 +56,7 @@ Future<void> showAdaptiveFlywheelWorkflowDiagram(
 final class AdaptiveFlywheelWorkflowDiagram extends StatelessWidget {
   const AdaptiveFlywheelWorkflowDiagram({super.key, required this.inspection});
 
-  final AdaptiveFlywheelInspection inspection;
+  final AdaptiveFlywheelInspectionProjection inspection;
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +119,7 @@ final class _WorkflowNode extends StatelessWidget {
     required this.active,
   });
 
-  final AdaptiveFlywheelGraphState state;
+  final AdaptiveFlywheelGraphStateProjection state;
   final bool initial;
   final bool active;
 

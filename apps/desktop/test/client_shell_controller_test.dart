@@ -9,7 +9,8 @@ void main() {
       appearancePresetId: 'removed-external',
     );
     addTearDown(controller.dispose);
-    final before = controller.presentationListenable.value;
+    var changes = 0;
+    controller.changes.listen((_) => changes += 1);
 
     final fellBack = controller.applyAppearanceCatalog(
       configs: [builtInAppearancePresetConfigs.first],
@@ -22,7 +23,7 @@ void main() {
     expect(controller.appearancePresetLoadErrors, [
       'external_preset_invalid:1',
     ]);
-    expect(controller.presentationListenable.value, before + 1);
+    expect(changes, 1);
   });
 
   test('every built-in preset including light mode is selectable', () {

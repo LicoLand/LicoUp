@@ -47,6 +47,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
       await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.agentHub);
       expect(
         find.byKey(const Key('messaging-desktop-destination-agentHub')),
         findsOneWidget,

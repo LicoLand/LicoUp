@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_approval_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_file_transfer_controller.dart';
@@ -9,7 +10,7 @@ import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Stable facade over independent Secure Mesh application components.
-final class SecureMeshController extends ChangeNotifier {
+final class SecureMeshController extends ApplicationStateOwner {
   factory SecureMeshController({
     required SecureMeshGateway gateway,
     required MobileRelayOperationGate operationGate,
@@ -57,9 +58,10 @@ final class SecureMeshController extends ChangeNotifier {
        _fileController = fileController,
        _approvalController = approvalController,
        _protocolController = protocolController {
-    for (final component in _components) {
-      component.addListener(_notifyChanged);
-    }
+    _subscriptions = [
+      for (final component in _components)
+        component.changes.listen((_) => publishChange()),
+    ];
   }
 
   final MobileRelayOperationGate _operationGate;
@@ -67,8 +69,9 @@ final class SecureMeshController extends ChangeNotifier {
   final SecureMeshFileTransferController _fileController;
   final SecureMeshApprovalController _approvalController;
   final SecureMeshProtocolController _protocolController;
+  late final List<StreamSubscription<ApplicationChange>> _subscriptions;
 
-  List<ChangeNotifier> get _components => [
+  List<ApplicationStateOwner> get _components => [
     _statusController,
     _fileController,
     _approvalController,
@@ -239,12 +242,12 @@ final class SecureMeshController extends ChangeNotifier {
   Future<SecureMeshKtResponse?> executeKt(SecureMeshKtRequest request) =>
       _protocolController.executeKt(request);
 
-  void _notifyChanged() => notifyListeners();
-
   @override
   void dispose() {
+    for (final subscription in _subscriptions) {
+      unawaited(subscription.cancel());
+    }
     for (final component in _components) {
-      component.removeListener(_notifyChanged);
       component.dispose();
     }
     super.dispose();

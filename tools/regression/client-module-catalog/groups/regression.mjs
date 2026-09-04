@@ -436,7 +436,7 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.client-architecture-modules",
       kind: "regression-infrastructure",
-      summary: "Thin architecture entry, side-effect-free check modules, and frozen phase ordering",
+      summary: "Terminal Presentation Boundary rules, synthetic violations, thin architecture entry, and frozen phase ordering",
       inputs: [
         "tools/verify-client-boundary.mjs",
         "apps/desktop/scripts/verify-client-architecture.mjs",
@@ -546,7 +546,7 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.layout-boundaries",
       kind: "regression-infrastructure",
-      summary: "Layout ownership, profile path, and import-boundary static verifier",
+      summary: "Target-state layout ownership, structural shared-renderer policy, profile path, and import-boundary verifier",
       inputs: [
         "apps/desktop/scripts/verify-layout-boundaries.mjs",
         "apps/desktop/scripts/verify-layout-boundaries-self-test.mjs",
@@ -579,7 +579,7 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.layout-boundaries-source-bundle",
       kind: "regression-infrastructure",
-      summary: "Layout boundary leaf ownership, thin facade, and self-test dry-run contract",
+      summary: "Layout boundary leaf ownership, structural dependency policy, thin facade, and synthetic self-test contract",
       inputs: [
         "tests/contract/client/layout-boundaries-source-bundle.test.mjs",
         "apps/desktop/scripts/verify-layout-boundaries.mjs",
@@ -1150,9 +1150,9 @@ export const REGRESSION_MODULES = Object.freeze([
         "apps/desktop/lib/src/contracts/agent_usage_models.dart",
         "apps/desktop/lib/src/application/features/agents/controller/agent_usage_daily_cache.dart",
         "apps/desktop/lib/src/backend/features/agents/services/agent_usage_service.dart",
-        "apps/desktop/lib/src/composition/m2_legacy_shell_renderer_transition_adapter.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart",
+        "apps/desktop/lib/src/composition/binding_shell_renderer.dart",
         "apps/desktop/lib/src/frontend/shell/client_shell.dart",
         "apps/desktop/lib/src/frontend/l10n/lico_strings_labels.dart",
         "apps/desktop/test/agent_usage_workflow_test.dart",

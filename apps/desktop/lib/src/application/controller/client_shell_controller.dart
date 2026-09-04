@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
@@ -6,7 +6,7 @@ import 'package:licoup/src/contracts/locale_preferences.dart';
 
 /// Owns global presentation and localized status state. Feature controllers
 /// report stable codes and messages; they do not mutate shell fields directly.
-final class ClientShellController extends ChangeNotifier {
+final class ClientShellController extends ApplicationStateOwner {
   ClientShellController({
     String appearancePresetId = AppearancePresetIds.licoSoda,
     List<AppearancePresetConfig> appearancePresetConfigs =
@@ -27,7 +27,6 @@ final class ClientShellController extends ChangeNotifier {
     r'^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$',
   );
 
-  final ValueNotifier<int> _presentationRevision = ValueNotifier<int>(0);
   String _appearancePresetId;
   List<AppearancePresetConfig> _appearancePresetConfigs;
   String _appearancePresetDirectoryPath = '';
@@ -40,7 +39,6 @@ final class ClientShellController extends ChangeNotifier {
   String _lastError = '';
   String _lastErrorCode = '';
 
-  ValueListenable<int> get presentationListenable => _presentationRevision;
   String get appearancePresetId => _appearancePresetId;
   List<AppearancePresetConfig> get appearancePresetConfigs =>
       _appearancePresetConfigs;
@@ -75,22 +73,22 @@ final class ClientShellController extends ChangeNotifier {
 
   String get displayStatusCaption => strings.statusCaptionLabel(_statusCaption);
 
-  bool replaceAppearancePreset(String value) {
+  bool replaceAppearancePreset(String value, {ApplicationCause? cause}) {
     final normalized =
         hasAppearancePresetConfig(value, _appearancePresetConfigs)
         ? value
         : AppearancePresetIds.licoSoda;
     if (_appearancePresetId == normalized) return false;
     _appearancePresetId = normalized;
-    _notifyPresentationChanged();
+    _notifyPresentationChanged(cause);
     return true;
   }
 
-  bool replaceLocalePreference(String value) {
+  bool replaceLocalePreference(String value, {ApplicationCause? cause}) {
     final normalized = LocalePreference.normalize(value);
     if (_localePreference == normalized) return false;
     _localePreference = normalized;
-    _notifyPresentationChanged();
+    _notifyPresentationChanged(cause);
     return true;
   }
 
@@ -132,42 +130,36 @@ final class ClientShellController extends ChangeNotifier {
       _lastError = errorCode;
       _lastErrorCode = _safeCode(errorCode);
     }
-    notifyListeners();
+    publishChange();
   }
 
   void replaceStatusMessage(String value) {
     _statusMessageSource = value;
     _statusMessageChinese = value;
     _statusMessageEnglish = value;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceStatusCaption(String value) {
     _statusCaption = value;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceLastError(String value) {
     _lastError = value;
     _lastErrorCode = _safeCode(value);
-    notifyListeners();
+    publishChange();
   }
 
-  void notifyPresentationChanged() => _notifyPresentationChanged();
+  void notifyPresentationChanged([ApplicationCause? cause]) =>
+      _notifyPresentationChanged(cause);
 
-  void _notifyPresentationChanged() {
-    _presentationRevision.value += 1;
-    notifyListeners();
+  void _notifyPresentationChanged([ApplicationCause? cause]) {
+    publishChange(cause);
   }
 
   static String _safeCode(String value) {
     final normalized = value.trim().toLowerCase();
     return _stableCode.hasMatch(normalized) ? normalized : '';
-  }
-
-  @override
-  void dispose() {
-    _presentationRevision.dispose();
-    super.dispose();
   }
 }

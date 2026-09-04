@@ -378,7 +378,7 @@ void main() {
       addTearDown(controller.dispose);
 
       final observed = <List<String>>[];
-      controller.addListener(() {
+      controller.targetController.changes.listen((_) {
         observed.add(
           controller.scannedTargets.map((target) => target.target).toList()
             ..sort(),

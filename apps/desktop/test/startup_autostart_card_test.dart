@@ -1,21 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
-import 'fixtures/client_controller/support/fake_agent_service.dart';
+import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
   testWidgets('startup card toggles desktop silent gateway and mcp', (
     tester,
   ) async {
-    final agent = _AutostartAgentService();
-    final controller = ClientController(agentService: agent);
-    addTearDown(controller.dispose);
+    final source = SettingsValueProjectionFixture(
+      const SettingsAutostartProjection(
+        phase: SettingsAutostartPhase.ready,
+        supported: true,
+        desktopEnabled: false,
+        desktopSilent: false,
+        gatewayEnabled: false,
+        mcpEnabled: false,
+      ),
+    );
+    late final RecordingSettingsIntents intents;
+    intents = RecordingSettingsIntents(
+      onSend: (intent) {
+        if (intent case SetSettingsAutostart(
+          :final component,
+          :final enabled,
+          :final silent,
+        )) {
+          final current = source.current;
+          source.publish(
+            SettingsAutostartProjection(
+              phase: SettingsAutostartPhase.ready,
+              supported: true,
+              desktopEnabled: component == SettingsAutostartComponent.desktop
+                  ? enabled
+                  : current.desktopEnabled,
+              desktopSilent: component == SettingsAutostartComponent.desktop
+                  ? (silent ?? current.desktopSilent)
+                  : current.desktopSilent,
+              gatewayEnabled: component == SettingsAutostartComponent.gateway
+                  ? enabled
+                  : current.gatewayEnabled,
+              mcpEnabled: component == SettingsAutostartComponent.mcp
+                  ? enabled
+                  : current.mcpEnabled,
+              result: SettingsAutostartResult.saved,
+            ),
+          );
+        }
+      },
+    );
+    final binding = settingsBindingFixture(autostart: source, intents: intents);
+    addTearDown(source.dispose);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -33,7 +74,7 @@ void main() {
         ).copyWith(platform: TargetPlatform.macOS),
         home: Scaffold(
           body: SingleChildScrollView(
-            child: StartupAutostartCard(controller: controller),
+            child: StartupAutostartCard(binding: binding),
           ),
         ),
       ),
@@ -49,118 +90,29 @@ void main() {
 
     await tester.tap(find.byKey(const Key('startup-desktop-autostart')));
     await tester.pumpAndSettle();
-    expect(
-      agent.cliCalls,
-      contains(
-        equals([
-          'autostart',
-          'set',
-          '--component',
-          'desktop',
-          '--enabled',
-          'true',
-          '--silent',
-          'false',
-        ]),
-      ),
-    );
+    var changes = intents.values.whereType<SetSettingsAutostart>().toList();
+    expect(changes.last.component, SettingsAutostartComponent.desktop);
+    expect(changes.last.enabled, isTrue);
+    expect(changes.last.silent, isFalse);
 
     await tester.tap(find.byKey(const Key('startup-desktop-silent')));
     await tester.pumpAndSettle();
-    expect(
-      agent.cliCalls,
-      contains(
-        equals([
-          'autostart',
-          'set',
-          '--component',
-          'desktop',
-          '--enabled',
-          'true',
-          '--silent',
-          'true',
-        ]),
-      ),
-    );
+    changes = intents.values.whereType<SetSettingsAutostart>().toList();
+    expect(changes.last.component, SettingsAutostartComponent.desktop);
+    expect(changes.last.enabled, isTrue);
+    expect(changes.last.silent, isTrue);
 
     await tester.tap(find.byKey(const Key('startup-gateway-autostart')));
     await tester.pumpAndSettle();
-    expect(
-      agent.cliCalls.lastWhere((args) => args.contains('gateway')),
-      equals([
-        'autostart',
-        'set',
-        '--component',
-        'gateway',
-        '--enabled',
-        'true',
-        '--port',
-        '15722',
-      ]),
-    );
+    changes = intents.values.whereType<SetSettingsAutostart>().toList();
+    expect(changes.last.component, SettingsAutostartComponent.gateway);
+    expect(changes.last.enabled, isTrue);
 
     await tester.tap(find.byKey(const Key('startup-mcp-autostart')));
     await tester.pumpAndSettle();
-    expect(
-      agent.cliCalls.lastWhere((args) => args.contains('mcp')),
-      equals(['autostart', 'set', '--component', 'mcp', '--enabled', 'true']),
-    );
+    changes = intents.values.whereType<SetSettingsAutostart>().toList();
+    expect(changes.last.component, SettingsAutostartComponent.mcp);
+    expect(changes.last.enabled, isTrue);
     expect(find.text('自启动设置已保存。'), findsOneWidget);
   });
-}
-
-final class _AutostartAgentService extends FakeAgentService {
-  bool desktopEnabled = false;
-  bool desktopSilent = false;
-  bool gatewayEnabled = false;
-  bool mcpEnabled = false;
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) async {
-    if (args.length >= 2 && args[0] == 'autostart') {
-      cliCalls = [...cliCalls, List<String>.from(args)];
-      if (args[1] == 'status') {
-        return _status();
-      }
-      if (args[1] == 'set') {
-        final component = _option(args, '--component');
-        final enabled = _option(args, '--enabled') == 'true';
-        final silent = _option(args, '--silent') == 'true';
-        if (component == 'desktop') {
-          desktopEnabled = enabled;
-          desktopSilent = enabled && silent;
-        } else if (component == 'gateway') {
-          gatewayEnabled = enabled;
-        } else if (component == 'mcp') {
-          mcpEnabled = enabled;
-        }
-        return _status();
-      }
-    }
-    return super.runCli(args);
-  }
-
-  Map<String, dynamic> _status() => {
-    'ok': true,
-    'schemaVersion': 'licoup.client-autostart.v1',
-    'supported': true,
-    'desktop': {
-      'enabled': desktopEnabled,
-      'silent': desktopSilent,
-      'installed': desktopEnabled,
-    },
-    'gateway': {
-      'ok': true,
-      'supported': true,
-      'enabled': gatewayEnabled,
-      'installed': gatewayEnabled,
-    },
-    'mcp': {'enabled': mcpEnabled, 'installed': mcpEnabled},
-  };
-
-  String? _option(List<String> args, String name) {
-    final index = args.indexOf(name);
-    if (index < 0 || index + 1 >= args.length) return null;
-    return args[index + 1];
-  }
 }

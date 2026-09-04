@@ -1,78 +1,17 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/layout/layout_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-
-sealed class LayoutPresentationStateValue {
-  const LayoutPresentationStateValue();
-
-  LayoutStateValueKind get kind;
-}
-
-final class LayoutScrollState extends LayoutPresentationStateValue {
-  factory LayoutScrollState(double offset) {
-    if (!offset.isFinite || offset < 0) {
-      throw const FormatException('layout_state_scroll_invalid');
-    }
-    return LayoutScrollState._(offset);
-  }
-
-  const LayoutScrollState._(this.offset);
-
-  final double offset;
-
-  @override
-  LayoutStateValueKind get kind => LayoutStateValueKind.scroll;
-}
-
-final class LayoutPaneExtentState extends LayoutPresentationStateValue {
-  factory LayoutPaneExtentState(double extent) {
-    if (!extent.isFinite || extent < 0) {
-      throw const FormatException('layout_state_pane_extent_invalid');
-    }
-    return LayoutPaneExtentState._(extent);
-  }
-
-  const LayoutPaneExtentState._(this.extent);
-
-  final double extent;
-
-  @override
-  LayoutStateValueKind get kind => LayoutStateValueKind.paneExtent;
-}
-
-final class LayoutExpansionState extends LayoutPresentationStateValue {
-  const LayoutExpansionState(this.expanded);
-
-  final bool expanded;
-
-  @override
-  LayoutStateValueKind get kind => LayoutStateValueKind.expansion;
-}
-
-final class LayoutTabState extends LayoutPresentationStateValue {
-  factory LayoutTabState(int index) {
-    if (index < 0) {
-      throw const FormatException('layout_state_tab_invalid');
-    }
-    return LayoutTabState._(index);
-  }
-
-  const LayoutTabState._(this.index);
-
-  final int index;
-
-  @override
-  LayoutStateValueKind get kind => LayoutStateValueKind.tab;
-}
 
 /// Bounded, presentation-only state keyed exclusively by catalog declarations.
 ///
 /// Listeners are notified after every mutation so shell chrome and destination
 /// content sharing one channel (for example the settings section tab) stay in
 /// sync without a direct widget link.
-final class LayoutStateStore extends ChangeNotifier {
+final class LayoutStateStore extends ApplicationStateOwner
+    implements LayoutStatePort {
   LayoutStateStore(this.catalog);
 
   final LayoutCatalog catalog;
@@ -80,14 +19,20 @@ final class LayoutStateStore extends ChangeNotifier {
 
   int get length => _values.length;
 
+  @override
+  Object get catalogIdentity => catalog;
+
+  @override
   bool declares(LayoutStateNamespace namespace) =>
       catalog.declaresStateNamespace(namespace);
 
+  @override
   LayoutPresentationStateValue? read(LayoutStateNamespace namespace) {
     _requireDeclared(namespace);
     return _values[namespace];
   }
 
+  @override
   void write(
     LayoutStateNamespace namespace,
     LayoutPresentationStateValue value,
@@ -96,25 +41,30 @@ final class LayoutStateStore extends ChangeNotifier {
     if (namespace.valueKind != value.kind) {
       throw const FormatException('layout_state_value_kind_mismatch');
     }
+    if (_values[namespace] == value) return;
     _values[namespace] = value;
-    notifyListeners();
+    publishChange();
   }
 
+  @override
   void remove(LayoutStateNamespace namespace) {
     _requireDeclared(namespace);
     if (_values.remove(namespace) != null) {
-      notifyListeners();
+      publishChange();
     }
   }
 
   void resetProfile(LayoutProfileId profileId) {
+    final before = _values.length;
     _values.removeWhere((namespace, _) => namespace.profileId == profileId);
-    notifyListeners();
+    if (_values.length == before) return;
+    publishChange();
   }
 
   void resetAll() {
+    if (_values.isEmpty) return;
     _values.clear();
-    notifyListeners();
+    publishChange();
   }
 
   void _requireDeclared(LayoutStateNamespace namespace) {

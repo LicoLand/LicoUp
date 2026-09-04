@@ -3,21 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
-import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
-import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
-import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
-import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
-import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
-import 'package:licoup/src/contracts/generated/conversation.g.dart';
-import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
-import 'package:licoup/src/contracts/provider_quota_models.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/header.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/projection.dart';
@@ -25,62 +12,53 @@ import 'package:licoup/src/display/conversation/canonical_group_conversation_pan
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/roster.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/display/conversation/canonical_group_conversation_pane/support.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
-import 'package:licoup/src/shared/l10n/lico_strings_catalog.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/presentation/agents/agents_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
+/// Canonical Conversation renderer. Durable Events and Parts stay distinct
+/// from native catalog sessions; the live Membership turns only contribute
+/// their transient messages to the shared visual timeline.
 class CanonicalGroupConversationPane extends StatefulWidget {
   const CanonicalGroupConversationPane({
     super.key,
-    required this.controller,
-    required this.targets,
-    required this.onCopyText,
+    required this.conversation,
+    required this.agents,
+    required this.canonical,
+    required this.turns,
+    required this.composer,
+    required this.attachments,
     this.onOpenAgentConversations,
-    this.framed = true,
-    this.flywheelGateway,
-    this.persistentGateway,
     this.onOpenAdaptiveFlywheel,
-    this.composerAttachments = const <ConversationAttachment>[],
     this.onPickComposerImages,
     this.onClearComposerImages,
-    this.assistantSupportsImageAttachments = false,
-    this.providerQuotaController,
+    this.framed = true,
   });
 
-  final ClientConversationController controller;
-  final List<TargetCandidate> targets;
-  final Future<void> Function(String) onCopyText;
+  final ConversationBinding conversation;
+  final AgentsBinding agents;
+  final CanonicalConversationProjection canonical;
+  final PersistentTurnProjection turns;
+  final ComposerProjection composer;
+  final ConversationAttachmentsProjection attachments;
   final ValueChanged<String>? onOpenAgentConversations;
-  final bool framed;
-  final AdaptiveFlywheelGateway? flywheelGateway;
-  final PersistentAgentConversationGateway? persistentGateway;
-  final Future<void> Function(String? revisionDigest)? onOpenAdaptiveFlywheel;
-
-  /// Images currently staged in the group composer scope (shared
-  /// presentation-signals store), rendered as a pending draft message and
-  /// carried on the next post.
-  final List<ConversationAttachment> composerAttachments;
-
-  /// Opens the image picker and stages selections into the group scope.
+  final Future<void> Function(String? revision)? onOpenAdaptiveFlywheel;
   final VoidCallback? onPickComposerImages;
-
-  /// Clears the group attachment scope (also releases the picked files).
   final VoidCallback? onClearComposerImages;
-
-  /// Whether the assistant agent's target transports images end to end. When
-  /// false, a send with staged images fails closed with
-  /// `attachment_transport_unsupported` and keeps draft plus images.
-  final bool assistantSupportsImageAttachments;
-
-  /// Provider-quota projection polled while this pane is attached; the roster
-  /// receives its immutable snapshot map as plain state.
-  final ProviderQuotaController? providerQuotaController;
+  final bool framed;
 
   @override
   State<CanonicalGroupConversationPane> createState() =>
@@ -91,37 +69,7 @@ class _CanonicalGroupConversationPaneState
     extends State<CanonicalGroupConversationPane> {
   bool _rosterVisible = true;
   final ScrollController _messageScrollController = ScrollController();
-  List<AdaptiveFlywheelDefinition> _authorizedStrategies = const [];
-  String? _strategyRevision;
-  Map<String, AgentParticipantRuntimeProfile> _strategyRuntimeProfiles =
-      const {};
-  final Map<String, bool> _assistantActiveByConversation = {};
-  String _strategyProjectionConversationId = '';
-  String _strategyProjectionRevision = '';
-  int _strategyProjectionGeneration = 0;
-  final Map<String, StreamSubscription<AgentDispatchEvent>> _turnSubscriptions =
-      {};
-  final Set<String> _visibleTurnHandles = <String>{};
-  final Map<String, int> _turnCursorByHandle = <String, int>{};
-  final Map<String, String> _participantAgentIdByHandle = {};
-  final Map<String, String> _participantRoleByHandle = {};
-  final Set<String> _finishingHandles = {};
-  String _attachedConversationId = '';
-  bool _cancelPending = false;
-
-  /// Assistant Profile intent keyed by Membership id. The membership rotation
-  /// lands a new id, which queues a clean reload behind the generation guard.
-  Map<String, dynamic>? _assistantProfileIntent;
-  String _assistantProfileMembershipId = '';
-  int _assistantProfileGeneration = 0;
-
-  /// Shared 32 ms-coalesced turn projection channel, identical to the 1:1
-  /// live path: every PersistentTurn event becomes a generated
-  /// [ConversationDeltaEvent] and lands in this holder, which publishes at most
-  /// once per display interval. The pane renders from its projections and keeps
-  /// no per-chunk projection state of its own.
-  final ConversationStateHolder _turnStates = ConversationStateHolder();
-
+  final Map<String, bool> _assistantActiveByConversation = <String, bool>{};
   AgentConversationSession? _cachedSession;
   ClientConversation? _cachedSessionConversation;
   List<ClientConversationEvent>? _cachedSessionEvents;
@@ -129,303 +77,46 @@ class _CanonicalGroupConversationPaneState
   List<AgentConversationMessage>? _cachedLiveMessages;
   List<List<AgentConversationMessage>>? _cachedLiveParts;
 
-  /// Polling owner keeping the provider-quota projection fresh while this
-  /// pane is attached; released on detach so polling stops with the UI.
-  final Object _quotaPollingOwner = Object();
-
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_onConversationChanged);
-    _turnStates.addListener(_onTurnProjectionChanged);
-    _attachQuotaController(widget.providerQuotaController);
-    unawaited(_loadAuthorizedStrategies());
-    final selected = widget.controller.selectedConversation;
-    if (selected != null) {
-      _queueAssistantProfileLoad(selected);
-      unawaited(_ensureConversationHost());
-      unawaited(_attachLiveTurns());
-    }
+    widget.conversation.intents.send(
+      const SetCanonicalConversationSurfaceAttached(true),
+    );
+    widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
   }
 
   @override
   void didUpdateWidget(covariant CanonicalGroupConversationPane oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_onConversationChanged);
-      widget.controller.addListener(_onConversationChanged);
-      _assistantProfileMembershipId = '';
-      _assistantProfileIntent = null;
-      final selected = widget.controller.selectedConversation;
-      if (selected != null) _queueAssistantProfileLoad(selected);
-      unawaited(_syncStrategyFromConversation(force: true));
+    if (!identical(oldWidget.conversation, widget.conversation)) {
+      oldWidget.conversation.intents.send(
+        const SetCanonicalConversationSurfaceAttached(false),
+      );
+      widget.conversation.intents.send(
+        const SetCanonicalConversationSurfaceAttached(true),
+      );
     }
-    if (oldWidget.providerQuotaController != widget.providerQuotaController) {
-      _detachQuotaController(oldWidget.providerQuotaController);
-      _attachQuotaController(widget.providerQuotaController);
-    }
-    if (oldWidget.flywheelGateway != widget.flywheelGateway) {
-      unawaited(_loadAuthorizedStrategies());
-    }
-    if ((oldWidget.persistentGateway != widget.persistentGateway ||
-            oldWidget.controller != widget.controller) &&
-        widget.controller.selectedConversation != null) {
-      unawaited(_ensureConversationHost());
-      unawaited(_attachLiveTurns());
+    if (oldWidget.canonical.conversation?.assistantMembershipId !=
+        widget.canonical.conversation?.assistantMembershipId) {
+      widget.conversation.intents.send(
+        const RefreshCanonicalAssistantProfile(),
+      );
     }
   }
 
   @override
   void dispose() {
-    _detachQuotaController(widget.providerQuotaController);
-    widget.controller.removeListener(_onConversationChanged);
-    _turnStates.removeListener(_onTurnProjectionChanged);
-    _detachLiveTurns();
-    _turnStates.dispose();
+    widget.conversation.intents.send(
+      const SetCanonicalConversationSurfaceAttached(false),
+    );
     _messageScrollController.dispose();
     super.dispose();
-  }
-
-  void _attachQuotaController(ProviderQuotaController? controller) {
-    if (controller == null) return;
-    controller.addListener(_onQuotaProjectionChanged);
-    controller.acquirePollingOwner(_quotaPollingOwner);
-  }
-
-  void _detachQuotaController(ProviderQuotaController? controller) {
-    if (controller == null) return;
-    controller.releasePollingOwner(_quotaPollingOwner);
-    controller.removeListener(_onQuotaProjectionChanged);
-  }
-
-  void _onQuotaProjectionChanged() {
-    if (mounted) setState(() {});
-  }
-
-  Map<String, ProviderQuotaSnapshot> get _quotaSnapshots =>
-      widget.providerQuotaController?.snapshots ??
-      const <String, ProviderQuotaSnapshot>{};
-
-  /// One holder publish per 32 ms window (or an immediate terminal publish)
-  /// drives exactly one pane rebuild; streamed chunks no longer repaint at
-  /// frame rate.
-  void _onTurnProjectionChanged() {
-    if (mounted) setState(() {});
-  }
-
-  String _scopeKeyFor(String handle) => '$_attachedConversationId\u0000$handle';
-
-  void _onConversationChanged() {
-    if (!mounted) return;
-    _pruneDurablySettledLiveTurns();
-    setState(() {});
-    unawaited(_syncStrategyFromConversation());
-    final conversationId = widget.controller.selectedConversationId;
-    final conversation = widget.controller.selectedConversation;
-    if (conversation == null) {
-      return;
-    }
-    _queueAssistantProfileLoad(conversation);
-    if (conversationId != _attachedConversationId) {
-      unawaited(_ensureConversationHost());
-      unawaited(_attachLiveTurns());
-    }
-  }
-
-  /// Loads the assistant Membership's persistent Profile intent, keyed by
-  /// Membership id so the rotation's new Membership reloads cleanly and a
-  /// superseded load can never overwrite a newer one.
-  void _queueAssistantProfileLoad(
-    ClientConversation conversation, {
-    bool force = false,
-  }) {
-    final membershipId = conversation.assistantMembership?.id.trim() ?? '';
-    if (!force && membershipId == _assistantProfileMembershipId) return;
-    _assistantProfileMembershipId = membershipId;
-    _assistantProfileIntent = null;
-    if (membershipId.isEmpty) return;
-    unawaited(_loadAssistantProfile(membershipId));
-  }
-
-  Future<void> _loadAssistantProfile(String membershipId) async {
-    final generation = ++_assistantProfileGeneration;
-    try {
-      final profile = await widget.controller.membershipProfile(membershipId);
-      if (!mounted ||
-          generation != _assistantProfileGeneration ||
-          _assistantProfileMembershipId != membershipId) {
-        return;
-      }
-      setState(() => _assistantProfileIntent = profile);
-    } on Object {
-      if (!mounted || generation != _assistantProfileGeneration) return;
-      setState(() => _assistantProfileIntent = null);
-    }
-  }
-
-  Future<void> _loadAuthorizedStrategies() async {
-    final gateway = widget.flywheelGateway;
-    if (gateway == null) {
-      if (!mounted) return;
-      setState(() {
-        _authorizedStrategies = const [];
-        _clearStrategyFields();
-      });
-      return;
-    }
-    try {
-      final definitions =
-          adaptiveFlywheelMaps(
-                await gateway.execute({'action': 'strategy.definition.list'}),
-              )
-              .map(AdaptiveFlywheelDefinition.fromJson)
-              .where((definition) {
-                return definition.authorized &&
-                    definition.revisionDigest.isNotEmpty;
-              })
-              .toList(growable: false);
-      if (!mounted) return;
-      setState(() => _authorizedStrategies = definitions);
-      await _syncStrategyFromConversation(force: true);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _authorizedStrategies = const []);
-    }
-  }
-
-  void _clearStrategyFields() {
-    _strategyRevision = null;
-    _strategyRuntimeProfiles = const {};
-  }
-
-  Future<void> _openAdaptiveFlywheel(String? revisionDigest) async {
-    final open = widget.onOpenAdaptiveFlywheel;
-    if (open == null) return;
-    await open(revisionDigest);
-    if (!mounted) return;
-    final selected = widget.controller.selectedConversation;
-    if (selected != null) {
-      _queueAssistantProfileLoad(selected, force: true);
-    }
-    await _loadAuthorizedStrategies();
-  }
-
-  Future<void> _syncStrategyFromConversation({bool force = false}) async {
-    final conversation = widget.controller.selectedConversation;
-    final conversationId = conversation?.id ?? '';
-    final revision = conversation?.strategyRevision.trim() ?? '';
-    if (!force &&
-        conversationId == _strategyProjectionConversationId &&
-        revision == _strategyProjectionRevision) {
-      return;
-    }
-    final generation = ++_strategyProjectionGeneration;
-    if (conversation == null || !conversation.group || revision.isEmpty) {
-      if (!mounted) return;
-      _strategyProjectionConversationId = conversationId;
-      _strategyProjectionRevision = revision;
-      setState(_clearStrategyFields);
-      return;
-    }
-    _applyPersistedStrategySelection(revision);
-    try {
-      final projection = await _inspectStrategy(revision);
-      if (!mounted ||
-          generation != _strategyProjectionGeneration ||
-          widget.controller.selectedConversationId != conversationId ||
-          widget.controller.selectedConversation?.strategyRevision.trim() !=
-              revision) {
-        return;
-      }
-      _strategyProjectionConversationId = conversationId;
-      _strategyProjectionRevision = revision;
-      if (projection == null) {
-        return;
-      }
-      _applyStrategyProjection(projection);
-    } on AdaptiveFlywheelFailure {
-      return;
-    }
-  }
-
-  void _applyPersistedStrategySelection(String revision) {
-    setState(() {
-      if (_strategyRevision != revision) {
-        _strategyRuntimeProfiles = const {};
-      }
-      _strategyRevision = revision;
-    });
-  }
-
-  Future<GroupStrategyProjection?> _inspectStrategy(
-    String revisionDigest, {
-    AdaptiveFlywheelGateway? gatewayOverride,
-    List<AdaptiveFlywheelDefinition>? strategiesOverride,
-  }) async {
-    final gateway = gatewayOverride ?? widget.flywheelGateway;
-    if (gateway == null) return null;
-    final strategies = strategiesOverride ?? _authorizedStrategies;
-    AdaptiveFlywheelDefinition? selected;
-    for (final definition in strategies) {
-      if (definition.revisionDigest == revisionDigest) {
-        selected = definition;
-        break;
-      }
-    }
-    if (selected == null) return null;
-    final inspection = AdaptiveFlywheelInspection.fromJson(
-      adaptiveFlywheelStringMap(
-        await gateway.execute({
-          'action': 'strategy.definition.inspect',
-          'revisionDigest': revisionDigest,
-        }),
-      ),
-    );
-    if (!inspection.authorized) return null;
-    final agentIds = <String>{};
-    final runtimeProfiles = <String, AgentParticipantRuntimeProfile>{};
-    for (final slot in inspection.slots.where((slot) => slot.kind == 'actor')) {
-      for (final binding in inspection.bindings[slot.id] ?? const []) {
-        final agentId = binding.valueId.trim();
-        if (agentId.isEmpty) continue;
-        agentIds.add(agentId);
-        runtimeProfiles[agentId] = AgentParticipantRuntimeProfile(
-          model: binding.model,
-          reasoningEffort: binding.reasoningEffort,
-        );
-      }
-    }
-    return GroupStrategyProjection(
-      revision: revisionDigest,
-      agentIds: Set<String>.unmodifiable(agentIds),
-      runtimeProfiles: Map<String, AgentParticipantRuntimeProfile>.unmodifiable(
-        runtimeProfiles,
-      ),
-    );
-  }
-
-  void _applyStrategyProjection(GroupStrategyProjection projection) {
-    setState(() {
-      _strategyRevision = projection.revision;
-      _strategyRuntimeProfiles = projection.runtimeProfiles;
-    });
   }
 
   bool _assistantActive(ClientConversation conversation) =>
       _assistantActiveByConversation[conversation.id] ??
       conversation.assistantMembership != null;
-
-  /// The assistant's brand target for the composer's in-field control; null
-  /// while no assistant is designated or the target is unknown.
-  TargetCandidate? _assistantBrandTarget(ClientConversation conversation) {
-    final agentId =
-        conversation.assistantMembership?.principal.agentId.trim() ?? '';
-    if (agentId.isEmpty) return null;
-    for (final target in widget.targets) {
-      if (target.target == agentId || target.id == agentId) return target;
-    }
-    return null;
-  }
 
   void _toggleAssistant(ClientConversation conversation) {
     setState(() {
@@ -435,32 +126,36 @@ class _CanonicalGroupConversationPaneState
     });
   }
 
-  bool get _assistantWorkingTurn =>
-      _turnSubscriptions.keys.any(
-        (handle) => _participantRoleByHandle[handle]?.trim() == 'assistant',
-      ) ||
-      widget.controller.dispatchPending;
+  TargetCandidate? _assistantTarget(
+    ClientConversation conversation,
+    List<TargetCandidate> targets,
+  ) {
+    final agentId =
+        conversation.assistantMembership?.principal.agentId.trim() ?? '';
+    if (agentId.isEmpty) return null;
+    for (final target in targets) {
+      if (target.target == agentId || target.id == agentId) return target;
+    }
+    return null;
+  }
 
-  /// A live turn waiting on the human (waitingForHuman projection: approval,
-  /// permission retry, or explicit input request).
-  bool get _assistantWaiting => _visibleTurnHandles.any(
-    (handle) =>
-        _turnStates.projectionFor(_scopeKeyFor(handle)).turnState.phase ==
-        ConversationTurnState.waitingForHuman,
-  );
+  Map<String, AgentParticipantRuntimeProfile> get _runtimeProfiles => {
+    for (final profile in widget.canonical.participantRuntimeProfiles)
+      profile.agentId: AgentParticipantRuntimeProfile(
+        model: profile.model,
+        reasoningEffort: profile.reasoningEffort,
+      ),
+  };
 
-  /// Composed assistant identity: the real agent name, then model and
-  /// reasoning-effort segments from the assistant Membership's persistent
-  /// Profile. A strategy binding is not the Assistant configuration authority
-  /// and must never replace the model the user actually selected. While the
-  /// Profile is loading or intentionally leaves either field empty, the
-  /// capsule omits that segment instead of projecting a plausible default.
-  String _assistantIdentityLabel(ClientConversation conversation) {
+  String _assistantIdentityLabel(
+    ClientConversation conversation,
+    List<TargetCandidate> targets,
+  ) {
     final membership = conversation.assistantMembership;
     if (membership == null) return '';
-    final agentId = membership.principal.agentId.trim();
+    final target = _assistantTarget(conversation, targets);
     final displayName = membership.principal.displayName.trim();
-    final target = _assistantBrandTarget(conversation);
+    final agentId = membership.principal.agentId.trim();
     final agentLabel = displayName.isNotEmpty
         ? displayName
         : target != null
@@ -468,13 +163,10 @@ class _CanonicalGroupConversationPaneState
         : agentId.isNotEmpty
         ? agentId
         : membership.id;
-    final intent = _assistantProfileIntent;
-    final model = (intent?['preferredModel'] ?? '').toString();
-    final effort = (intent?['preferredReasoningEffort'] ?? '').toString();
     return composeOrchestrationAssignmentCapsuleLabel(
       agentLabel: agentLabel,
-      modelName: model,
-      reasoningEffort: effort,
+      modelName: widget.canonical.assistantModel,
+      reasoningEffort: widget.canonical.assistantReasoningEffort,
       effortLabel: formatComposerReasoningEffortLabel,
       modelDisplayName: target == null
           ? null
@@ -482,13 +174,10 @@ class _CanonicalGroupConversationPaneState
     );
   }
 
-  /// Capsule projection: the five-state light and its label. Unconfigured and
-  /// paused keep their existing strings; working keeps the working-alone or
-  /// coordinating-N strings; waiting and failure keep the identity label and
-  /// let the light plus the existing failure banner carry the state.
   ({GroupAssistantStatusLight light, String label}) _assistantStatus(
     LicoStrings strings,
     ClientConversation conversation,
+    List<TargetCandidate> targets,
   ) {
     if (conversation.assistantMembership == null) {
       return (
@@ -502,26 +191,30 @@ class _CanonicalGroupConversationPaneState
         label: strings.assistantPausedStatus,
       );
     }
-    final identity = _assistantIdentityLabel(conversation);
-    if (widget.controller.failureCode.isNotEmpty) {
+    final identity = _assistantIdentityLabel(conversation, targets);
+    if ((widget.canonical.notice?.reasonCode ?? '').isNotEmpty) {
       return (light: GroupAssistantStatusLight.failure, label: identity);
     }
-    if (_assistantWaiting) {
+    if (widget.turns.memberships.any(
+      (turn) => turn.phase == PersistentTurnPhase.waiting,
+    )) {
       return (light: GroupAssistantStatusLight.waiting, label: identity);
     }
-    final subagents = _participantRoleByHandle.entries
-        .where((entry) => _turnSubscriptions.containsKey(entry.key))
-        .where((entry) => entry.value.trim() != 'assistant')
-        .map((entry) => _participantAgentIdByHandle[entry.key]?.trim() ?? '')
+    final coordinating = widget.turns.memberships
+        .where((turn) => turn.participantRole.trim() != 'assistant')
+        .map((turn) => turn.participantAgentId.trim())
         .where((agentId) => agentId.isNotEmpty)
         .toSet();
-    if (subagents.isNotEmpty) {
+    if (coordinating.isNotEmpty) {
       return (
         light: GroupAssistantStatusLight.working,
-        label: strings.assistantCoordinatingStatus(subagents.length),
+        label: strings.assistantCoordinatingStatus(coordinating.length),
       );
     }
-    if (_assistantWorkingTurn) {
+    if (widget.canonical.dispatchPending ||
+        widget.turns.memberships.any(
+          (turn) => turn.phase == PersistentTurnPhase.running,
+        )) {
       return (
         light: GroupAssistantStatusLight.working,
         label: strings.assistantWorkingAloneStatus,
@@ -530,497 +223,160 @@ class _CanonicalGroupConversationPaneState
     return (light: GroupAssistantStatusLight.ready, label: identity);
   }
 
-  /// Live turn projections in attach order. Each scope's list is memoized by
-  /// the shared holder, so unchanged turns keep identical lists and the
-  /// message-list timeline cache only ever sees one changed entry.
-  List<AgentConversationMessage> get _liveMessages {
-    if (_visibleTurnHandles.isEmpty) {
-      _cachedLiveParts = null;
-      _cachedLiveMessages = List<AgentConversationMessage>.empty(
-        growable: false,
-      );
-      return _cachedLiveMessages!;
-    }
-    final parts = <List<AgentConversationMessage>>[
-      for (final handle in _visibleTurnHandles)
-        _turnStates.projectionFor(_scopeKeyFor(handle)).messages,
-    ];
-    final previousParts = _cachedLiveParts;
-    final previousMerged = _cachedLiveMessages;
-    if (previousParts != null &&
-        previousMerged != null &&
-        previousParts.length == parts.length) {
-      var unchanged = true;
-      for (var index = 0; index < parts.length; index += 1) {
-        if (!identical(previousParts[index], parts[index])) {
-          unchanged = false;
-          break;
-        }
-      }
-      if (unchanged) return previousMerged;
-    }
-    final merged = List<AgentConversationMessage>.unmodifiable([
-      for (final part in parts) ...part,
-    ]);
-    _cachedLiveParts = parts;
-    _cachedLiveMessages = merged;
-    return merged;
-  }
-
-  /// Canonical projection with identity caching. Only event references and the
-  /// conversation identity enter the cache key: a rebuild that republishes the
-  /// same event list reuses the session and every message object, so the
-  /// message-list timeline cache keeps its in-place tail-swap fast path instead
-  /// of rebuilding the timeline on every streamed chunk.
-  AgentConversationSession _canonicalSession(
-    ClientConversation conversation,
-    LicoStrings strings,
-  ) {
-    final events = widget.controller.events;
-    final cached = _cachedSession;
-    if (cached != null &&
-        identical(_cachedSessionConversation, conversation) &&
-        identical(_cachedSessionEvents, events) &&
-        _cachedSessionLocale == strings.locale.languageCode) {
-      return cached;
-    }
-    final session = canonicalGroupConversationSession(
-      conversation,
-      events,
-      strings,
-    );
-    _cachedSession = session;
-    _cachedSessionConversation = conversation;
-    _cachedSessionEvents = events;
-    _cachedSessionLocale = strings.locale.languageCode;
-    return session;
-  }
-
-  Widget _groupFailureCapsule(ClientConversationController controller) {
-    return CanonicalGroupFailureCapsule(
-      code: controller.failureCode,
-      failureRef: controller.failureRef,
-      recovery: controller.failureRecovery,
-      copyBlob: controller.failureCopyBlob,
-      onCopy: widget.onCopyText,
-    );
-  }
-
-  bool get _turnActive =>
-      _turnSubscriptions.isNotEmpty || widget.controller.dispatchPending;
-
-  Future<void> _ensureConversationHost() async {
-    final gateway = widget.persistentGateway;
-    final conversationId = widget.controller.selectedConversationId;
-    if (gateway == null || conversationId.isEmpty) {
-      return;
-    }
-    try {
-      await gateway.ensureRuntime(conversationId: conversationId);
-    } on Object {
-      // Persist does not depend on the host; dispatch will surface a code.
-    }
-  }
-
-  void _detachLiveTurns() {
-    for (final subscription in _turnSubscriptions.values) {
-      unawaited(subscription.cancel());
-    }
-    for (final handle in _visibleTurnHandles) {
-      _turnStates.removeScope(_scopeKeyFor(handle));
-    }
-    _turnSubscriptions.clear();
-    _visibleTurnHandles.clear();
-    _turnCursorByHandle.clear();
-    _participantAgentIdByHandle.clear();
-    _participantRoleByHandle.clear();
-    _finishingHandles.clear();
-    _attachedConversationId = '';
-    _cancelPending = false;
-  }
-
-  Future<void> _attachLiveTurns({
-    bool waitForChange = false,
-    List<Map<String, dynamic>> postedTurns = const [],
-  }) async {
-    final gateway = widget.persistentGateway;
-    final conversationId = widget.controller.selectedConversationId;
-    if (gateway == null || conversationId.isEmpty) {
-      _detachLiveTurns();
-      if (mounted) setState(() {});
-      return;
-    }
-    if (_attachedConversationId != conversationId) {
-      _detachLiveTurns();
-      _attachedConversationId = conversationId;
-    }
-    List<Map<String, dynamic>> turns = List<Map<String, dynamic>>.from(
-      postedTurns,
-    );
-    try {
-      final discovered = await gateway.activeTurns(
-        agentId: '',
-        conversationId: conversationId,
-        waitForChange: waitForChange && turns.isEmpty
-            ? const Duration(seconds: 2)
-            : Duration.zero,
-      );
-      if (discovered.isNotEmpty) {
-        turns = _mergeLiveTurns(turns, discovered);
-      }
-    } on Object {
-      // Keep returned handles and existing observers when discovery is down.
-    }
-    if (!mounted ||
-        widget.controller.selectedConversationId != conversationId) {
-      return;
-    }
-    for (final turn in turns) {
-      final handle = (turn['turnHandle'] ?? '').toString().trim();
-      if (handle.isEmpty) continue;
-      if (_turnSubscriptions.containsKey(handle)) continue;
-      final participant = _activeTurnParticipant(turn);
-      if (participant == null) continue;
-      _listenTurn(
-        gateway,
-        handle: handle,
-        conversationId: (turn['conversationId'] ?? conversationId)
-            .toString()
-            .trim(),
-        agentId: participant.agentId,
-        participantLabel: participant.label,
-        participantRole: participant.role,
-        // New panes replay from zero. A detached observer resumes after the
-        // last frame already applied to its retained live projection.
-        afterCursor: _turnCursorByHandle[handle] ?? 0,
-      );
-    }
-    // Discovery is additive. Only the attached stream's terminal/error owns
-    // detachment; a transient active-turn snapshot must never cancel work.
-    if (mounted) setState(() {});
-  }
-
-  void _listenTurn(
-    PersistentAgentConversationGateway gateway, {
-    required String handle,
-    required String conversationId,
-    required String agentId,
-    required String participantLabel,
-    required String participantRole,
-    required int afterCursor,
-  }) {
-    _visibleTurnHandles.add(handle);
-    _participantAgentIdByHandle[handle] = agentId;
-    _participantRoleByHandle[handle] = participantRole;
-    final scopeKey = _scopeKeyFor(handle);
-    _turnSubscriptions[handle] = gateway
-        .attachActiveTurn(
-          turnHandle: handle,
-          conversationId: conversationId,
-          afterCursor: afterCursor,
-        )
-        .listen(
-          (event) {
-            if (!mounted ||
-                widget.controller.selectedConversationId != conversationId) {
-              return;
-            }
-            final terminal = persistentTurnEventIsTerminal(event);
-            final cursor = event.payload['cursor'];
-            if (cursor is int && cursor > (_turnCursorByHandle[handle] ?? 0)) {
-              _turnCursorByHandle[handle] = cursor;
-            }
-            // One generated delta enters the shared holder; the holder owns
-            // the blackboard mutation, the 32 ms publish coalescing, and the
-            // immediate terminal publish. The scope's turn id is pinned to the
-            // dispatch handle because one attach stream always serves one turn,
-            // and individual frames may carry heterogeneous native turn ids.
-            _turnStates.applyDelta(
-              ConversationDeltaEvent(<String, dynamic>{
-                'event': event.kind,
-                'sessionId': event.sessionId,
-                'turnId': 'live-$handle',
-                'turnHandle': handle,
-                'payload': event.payload,
-              }),
-              scopeKey: scopeKey,
-              participantAgentId: agentId,
-              participantLabel: participantLabel,
-              participantRole: participantRole,
-            );
-            if (terminal) {
-              unawaited(_finishTurn(handle));
-            }
-          },
-          onDone: () => unawaited(_finishTurn(handle)),
-          onError: (Object _) => unawaited(_handleTurnObserverFailure(handle)),
-          cancelOnError: false,
-        );
-  }
-
-  void _removeLiveTurn(String handle) {
-    _visibleTurnHandles.remove(handle);
-    _turnCursorByHandle.remove(handle);
-    _turnStates.removeScope(_scopeKeyFor(handle));
-    _participantAgentIdByHandle.remove(handle);
-    _participantRoleByHandle.remove(handle);
-  }
-
-  Future<void> _handleTurnObserverFailure(String handle) async {
-    if (!_finishingHandles.add(handle)) return;
-    final conversationId = widget.controller.selectedConversationId;
-    final subscription = _turnSubscriptions.remove(handle);
-    if (subscription != null) unawaited(subscription.cancel());
-    try {
-      // Reload the durable Conversation before changing its live projection.
-      // Observer loss is detach and carries no lifecycle or failure authority.
-      final reloaded = await widget.controller.reloadSelected();
-      if (!mounted ||
-          widget.controller.selectedConversationId != conversationId) {
-        return;
-      }
-      if (reloaded) _pruneDurablySettledLiveTurns();
-      await _attachLiveTurns(waitForChange: true);
-      if (!mounted) return;
-      if (reloaded) _surfacePersistedDispatchFailure();
-      if (_turnSubscriptions.isEmpty) {
-        widget.controller.settleLiveDispatch();
-      }
-      if (mounted) setState(() {});
-    } finally {
-      _finishingHandles.remove(handle);
-    }
-  }
-
-  Future<void> _finishTurn(String handle) async {
-    if (!_finishingHandles.add(handle)) return;
-    final subscription = _turnSubscriptions.remove(handle);
-    if (subscription != null) unawaited(subscription.cancel());
-    try {
-      final reloaded = await _reloadSelectedForHandoff(handle);
-      if (!mounted) return;
-      if (reloaded) _removeLiveTurn(handle);
-      if (widget.controller.dispatchPending) {
-        await _attachLiveTurns(waitForChange: true);
-        if (!mounted) return;
-        if (_turnSubscriptions.isNotEmpty) {
-          return;
-        }
-      }
-      if (reloaded) _surfacePersistedDispatchFailure();
-      widget.controller.settleLiveDispatch();
-      if (mounted) setState(() {});
-    } finally {
-      _finishingHandles.remove(handle);
-    }
-  }
-
-  Future<bool> _reloadSelectedForHandoff(String handle) async {
-    final conversationId = widget.controller.selectedConversationId;
-    for (final delay in const <Duration>[
-      Duration.zero,
-      Duration(milliseconds: 200),
-      Duration(milliseconds: 400),
-      Duration(milliseconds: 800),
-    ]) {
-      if (delay != Duration.zero) await Future<void>.delayed(delay);
-      if (!mounted ||
-          widget.controller.selectedConversationId != conversationId) {
-        return false;
-      }
-      final reloaded = await widget.controller.reloadSelected();
-      if (!mounted ||
-          widget.controller.selectedConversationId != conversationId) {
-        return false;
-      }
-      if (reloaded && _durablySettled(handle)) return true;
-    }
-    return false;
-  }
-
-  void _pruneDurablySettledLiveTurns() {
-    if (_visibleTurnHandles.isEmpty) return;
-    final settledHandles = widget.controller.events
-        .where(
-          (event) => event.finalized && event.correlationId.trim().isNotEmpty,
-        )
-        .map((event) => event.correlationId.trim())
-        .toSet();
-    if (settledHandles.isEmpty) return;
-    final settledLiveHandles = _visibleTurnHandles
-        .where(
-          (handle) =>
-              !_turnSubscriptions.containsKey(handle) &&
-              settledHandles.contains(handle),
-        )
-        .toList(growable: false);
-    for (final handle in settledLiveHandles) {
-      _removeLiveTurn(handle);
-    }
-  }
-
-  bool _durablySettled(String handle) => widget.controller.events.any(
-    (event) => event.finalized && event.correlationId.trim() == handle,
-  );
-
-  void _surfacePersistedDispatchFailure() {
-    if (widget.controller.failureCode.isNotEmpty) return;
-    if (widget.controller.events.isEmpty) return;
-    final event = widget.controller.events.last;
-    for (final part in event.parts.reversed) {
-      if (part.kind != ConversationEventPartKind.diagnostic) continue;
-      final failure = persistentTurnDiagnosticFailure(part.content);
-      if (failure == null) continue;
-      widget.controller.surfaceFailure(
-        failure.stage.isEmpty ? 'turn' : failure.stage,
-        failure.code,
-        component: failure.component,
-        retryable: failure.retryable,
-        recovery: failure.recovery,
-      );
-      return;
-    }
-  }
-
-  /// Live turn projections plus, while images are staged in the group composer
-  /// scope, the synthetic pending-images draft message (the same shape the 1:1
-  /// lane renders): the current draft text and the ordered pending images.
   List<AgentConversationMessage> get _timelineMessages {
-    final live = _liveMessages;
-    final attachments = widget.composerAttachments;
-    if (attachments.isEmpty) return live;
-    final conversationId = widget.controller.selectedConversationId;
-    final identity = 'draft:$conversationId:attachments';
+    final parts = <List<AgentConversationMessage>>[
+      for (final membership in widget.turns.memberships) membership.messages,
+    ];
+    final cachedParts = _cachedLiveParts;
+    final cachedMessages = _cachedLiveMessages;
+    var unchanged =
+        cachedParts != null &&
+        cachedMessages != null &&
+        cachedParts.length == parts.length;
+    if (unchanged) {
+      for (var index = 0; index < parts.length; index += 1) {
+        if (identical(cachedParts[index], parts[index])) continue;
+        unchanged = false;
+        break;
+      }
+    }
+    final live = unchanged
+        ? cachedMessages!
+        : List<AgentConversationMessage>.unmodifiable([
+            for (final part in parts) ...part,
+          ]);
+    if (!unchanged) {
+      _cachedLiveParts = List<List<AgentConversationMessage>>.unmodifiable(
+        parts,
+      );
+      _cachedLiveMessages = live;
+    }
+    if (widget.attachments.attachments.isEmpty) return live;
+    final identity = 'draft:${widget.canonical.conversationId}:attachments';
     return List<AgentConversationMessage>.unmodifiable([
       ...live,
       AgentConversationMessage(
         id: identity,
         role: 'user',
-        text: widget.controller.draft,
+        text: widget.composer.draft,
         createdAt: DateTime.now().toUtc().toIso8601String(),
         stableIdentity: identity,
         images: [
-          for (final attachment in attachments)
+          for (final attachment in widget.attachments.attachments)
             AgentConversationImageAttachment(
-              mediaType: attachment.mediaType,
-              filePath: attachment.path,
-              name: attachment.name,
+              mediaType: attachment.mediaKind,
+              dataBase64: attachment.dataBase64,
+              name: attachment.displayName,
             ),
         ],
       ),
     ]);
   }
 
-  /// Idle-gated assistant thread refresh shared by the plus menu's
-  /// new-conversation action and the composer's slash-new command (both reach
-  /// this through `AgentConversationPaneActions.onNewConversation`). A live
-  /// turn or an in-flight send refuses with `assistant_turn_active` on the
-  /// failure banner; the controller re-checks its own send/dispatch state.
-  void _refreshAssistantThread() {
-    final controller = widget.controller;
-    if (_turnActive || controller.sending) {
-      controller.surfaceFailure('assistant-refresh', 'assistant_turn_active');
-      return;
+  bool get _turnActive =>
+      widget.canonical.dispatchPending ||
+      widget.turns.memberships.any(
+        (turn) =>
+            turn.phase == PersistentTurnPhase.running ||
+            turn.phase == PersistentTurnPhase.waiting,
+      );
+
+  Future<void> _openAdaptiveFlywheel(String? revision) async {
+    final override = widget.onOpenAdaptiveFlywheel;
+    if (override != null) {
+      await override(revision);
+    } else {
+      await showAdaptiveFlywheelDialog(
+        context,
+        conversation: widget.conversation,
+        agents: widget.agents,
+        initialRevision: revision ?? '',
+      );
     }
-    unawaited(controller.refreshSelectedAssistantThread());
+    if (!mounted) return;
+    widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
   }
 
-  Future<bool> _sendComposerMessage(String text) async {
-    final conversation = widget.controller.selectedConversation;
-    final attachments = widget.composerAttachments;
-    // Fail closed while staged images cannot reach the lane: the composer
-    // restores the text and the scope keeps the images, so nothing is dropped
-    // silently.
-    if (attachments.isNotEmpty && !widget.assistantSupportsImageAttachments) {
-      widget.controller.surfaceFailure(
-        'send',
-        'attachment_transport_unsupported',
+  void _refreshAssistantThread() {
+    if (_turnActive || widget.canonical.sending) {
+      widget.conversation.intents.send(
+        const SurfaceConversationFailure(
+          stage: 'assistant-refresh',
+          reasonCode: 'assistant_turn_active',
+        ),
+      );
+      return;
+    }
+    widget.conversation.intents.send(const RefreshCanonicalAssistantThread());
+  }
+
+  Future<bool> _sendComposerMessage(
+    ClientConversation conversation,
+    String text,
+  ) async {
+    if (widget.attachments.attachments.isNotEmpty &&
+        !widget.attachments.acceptsImages) {
+      widget.conversation.intents.send(
+        const SurfaceConversationFailure(
+          stage: 'send',
+          reasonCode: 'attachment_transport_unsupported',
+        ),
       );
       return false;
     }
-    final posted = await widget.controller.postMessage(
-      text,
-      dispatch:
-          conversation != null &&
-          conversation.assistantMembership != null &&
-          _assistantActive(conversation),
-      attachments: attachments,
+    widget.conversation.intents.send(
+      PostConversationMessage(
+        conversationId: widget.composer.conversationId,
+        content: text,
+        addressedMembershipIds: [
+          for (final membership in conversation.activeAgentMemberships)
+            membership.id,
+        ],
+        dispatchCanonical:
+            conversation.assistantMembership != null &&
+            _assistantActive(conversation),
+      ),
     );
-    if (!posted) return false;
-    if (attachments.isNotEmpty) widget.onClearComposerImages?.call();
-    if (mounted) setState(() {});
-    unawaited(_attachLiveTurns(postedTurns: widget.controller.liveTurns));
     return true;
   }
 
   Future<void> _cancelVisibleTurn() async {
-    final gateway = widget.persistentGateway;
-    final conversationId = widget.controller.selectedConversationId;
-    if (gateway == null ||
-        conversationId.isEmpty ||
-        _turnSubscriptions.length != 1 ||
-        _cancelPending) {
-      return;
-    }
-    final handle = _turnSubscriptions.keys.single;
-    setState(() => _cancelPending = true);
-    final result = await gateway.cancelActiveTurn(
-      turnHandle: handle,
-      conversationId: conversationId,
+    final cancellable = widget.turns.memberships
+        .where((membership) => membership.cancelEnabled)
+        .toList(growable: false);
+    if (cancellable.length != 1) return;
+    widget.conversation.intents.send(
+      InterruptConversationTurn(
+        widget.canonical.conversationId,
+        cancellable.single.membershipId,
+      ),
     );
-    if (!mounted) {
-      return;
-    }
-    setState(() => _cancelPending = false);
-    if (widget.controller.selectedConversationId != conversationId) return;
-    if (!result.ok) {
-      final code = result.failureCode.trim();
-      widget.controller.surfaceFailure(
-        'turn/cancel',
-        code.isEmpty ? 'dispatch_cancel_failed' : code,
-      );
-    }
   }
 
-  List<Map<String, dynamic>> _mergeLiveTurns(
-    List<Map<String, dynamic>> posted,
-    List<Map<String, dynamic>> discovered,
-  ) {
-    final merged = <String, Map<String, dynamic>>{};
-    for (final turn in [...posted, ...discovered]) {
-      final handle = (turn['turnHandle'] ?? '').toString().trim();
-      if (handle.isEmpty) continue;
-      merged[handle] = turn;
-    }
-    return merged.values.toList(growable: false);
-  }
-
-  ({String agentId, String label, String role})? _activeTurnParticipant(
-    Map<String, dynamic> turn,
-  ) {
-    final membershipId = (turn['membershipId'] ?? '').toString().trim();
-    final projectedAgent = (turn['agent'] ?? turn['agentId'] ?? '')
-        .toString()
-        .trim();
-    final conversation = widget.controller.selectedConversation;
-    if (conversation == null || membershipId.isEmpty) return null;
-    for (final membership in conversation.activeAgentMemberships) {
-      if (membership.id != membershipId) continue;
-      final agentId = membership.principal.agentId.trim();
-      if (agentId.isEmpty ||
-          (projectedAgent.isNotEmpty && projectedAgent != agentId)) {
-        return null;
-      }
-      final label = membership.principal.displayName.trim();
-      return (
-        agentId: agentId,
-        label: label.isEmpty ? agentId : label,
-        role: membership.id == conversation.assistantMembershipId
-            ? 'assistant'
-            : 'member',
+  void _mentionAgent(ClientConversation conversation, TargetCandidate target) {
+    var membership = canonicalGroupAgentMembership(conversation, target);
+    if (membership == null) {
+      widget.conversation.intents.send(
+        EnsureCanonicalAgentMembership(
+          agentId: target.target,
+          displayName: agentConversationTargetDisplayName(target),
+        ),
       );
     }
-    return null;
+    final label = membership?.principal.displayName.trim().isNotEmpty == true
+        ? membership!.principal.displayName.trim()
+        : agentConversationTargetDisplayName(target);
+    final separator =
+        widget.composer.draft.isEmpty ||
+            RegExp(r'\\s$').hasMatch(widget.composer.draft)
+        ? ''
+        : ' ';
+    widget.conversation.intents.send(
+      UpdateConversationDraft(
+        widget.composer.conversationId,
+        '${widget.composer.draft}$separator@$label ',
+      ),
+    );
   }
 
   void _continueConversationScroll(double overscroll) {
@@ -1034,82 +390,78 @@ class _CanonicalGroupConversationPaneState
     );
   }
 
-  Future<void> _mentionAgent(
-    ClientConversation conversation,
-    TargetCandidate target,
-  ) async {
-    var membership = canonicalGroupAgentMembership(conversation, target);
-    if (membership == null) {
-      final joined = await widget.controller.ensureSelectedAgentMembership(
-        agentId: target.target,
-        displayName: agentConversationTargetDisplayName(target),
-      );
-      if (!mounted || !joined) return;
-      final refreshed = widget.controller.selectedConversation;
-      if (refreshed == null) return;
-      membership = canonicalGroupAgentMembership(refreshed, target);
-      if (membership == null) return;
-    }
-    final label = membership.principal.displayName.trim().isEmpty
-        ? agentConversationTargetDisplayName(target)
-        : membership.principal.displayName.trim();
-    final draft = widget.controller.draft;
-    final separator = draft.isEmpty || RegExp(r'\s$').hasMatch(draft)
-        ? ''
-        : ' ';
-    widget.controller.updateDraft('$draft$separator@$label ');
+  Future<void> _copyText(String text) async {
+    widget.conversation.intents.send(CopyConversationText(text));
   }
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    final controller = widget.controller;
-    final conversation = controller.selectedConversation;
+    final canonical = widget.canonical;
+    final conversation = canonical.conversation;
     if (conversation == null) {
       return Stack(
         fit: StackFit.expand,
         children: [
-          CanonicalGroupLoadingOrEmpty(loading: controller.loading),
-          if (controller.failureCode.isNotEmpty)
+          CanonicalGroupLoadingOrEmpty(
+            loading: canonical.phase == PresentationPhase.loading,
+          ),
+          if ((canonical.notice?.reasonCode ?? '').isNotEmpty)
             Align(
               alignment: Alignment.topCenter,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 32, 16, 0),
-                child: _groupFailureCapsule(controller),
+                child: _failureCapsule(),
               ),
             ),
         ],
       );
     }
+
+    final allTargets = widget.agents.projection.current.targetDetails;
     final participantTargets = resolveCanonicalGroupParticipantTargets(
       conversation,
-      widget.targets,
+      allTargets,
     );
     if (participantTargets.isEmpty) {
-      return CanonicalGroupLoadingOrEmpty(loading: controller.loading);
+      return CanonicalGroupLoadingOrEmpty(
+        loading: canonical.phase == PresentationPhase.loading,
+      );
     }
-    final rosterTargets = resolveCanonicalGroupOrderedParticipantTargets(
+    final ordered = resolveCanonicalGroupOrderedParticipantTargets(
       conversation,
-      [...participantTargets, ...widget.targets],
-      controller.recentParticipantAgentIds,
+      [...participantTargets, ...allTargets],
+      canonical.recentParticipantAgentIds,
     );
-    final session = _canonicalSession(conversation, strings);
-    final primaryTarget = participantTargets.first;
-    final assistantStatus = _assistantStatus(strings, conversation);
+    final rosterTargets = ordered.isEmpty ? participantTargets : ordered;
+    final session = _canonicalSession(
+      conversation,
+      canonical.canonicalEvents,
+      strings,
+    );
+    final assistantStatus = _assistantStatus(strings, conversation, allTargets);
+    final assistantTarget = _assistantTarget(conversation, allTargets);
     final state = AgentConversationPaneState(
-      target: primaryTarget,
+      target: participantTargets.first,
       session: session,
       liveMessages: _timelineMessages,
       recentSessions: const [],
-      loading: controller.loading,
+      loading: canonical.phase == PresentationPhase.loading,
       turnActive: _turnActive,
-      composerBusy: controller.sending || _turnActive,
-      cancelEnabled: _turnSubscriptions.length == 1 && !_cancelPending,
+      composerBusy: canonical.sending || _turnActive,
+      inputEnabled: widget.turns.memberships.every(
+        (membership) => membership.inputEnabled,
+      ),
+      cancelEnabled:
+          widget.turns.memberships
+              .where((membership) => membership.cancelEnabled)
+              .length ==
+          1,
       preparingNewConversation: false,
       composerEnabled: conversation.localOwnerMembership != null,
       sendGateReasonCode: '',
-      composerDraft: controller.draft,
-      hasAttachments: widget.composerAttachments.isNotEmpty,
+      composerDraft: widget.composer.draft,
+      hasAttachments: widget.attachments.attachments.isNotEmpty,
       conversationLabel: conversation.title.trim().isEmpty
           ? strings.groupConversation
           : conversation.title.trim(),
@@ -1125,7 +477,9 @@ class _CanonicalGroupConversationPaneState
               membership.principal.displayName.trim().isEmpty
               ? agentConversationTargetDisplayName(
                   participantTargets.firstWhere(
-                    (target) => target.target == membership.principal.agentId,
+                    (target) =>
+                        target.target == membership.principal.agentId ||
+                        target.id == membership.principal.agentId,
                   ),
                 )
               : membership.principal.displayName.trim(),
@@ -1134,47 +488,59 @@ class _CanonicalGroupConversationPaneState
         for (final membership in conversation.activeAgentMemberships)
           membership.principal.agentId: conversation.id,
       },
-      participantRuntimeProfiles: _strategyRuntimeProfiles,
+      participantRuntimeProfiles: _runtimeProfiles,
       assistantActive: _assistantActive(conversation),
       composerFlywheel: GroupStrategyPickerCapsule(
         label: assistantStatus.label,
         statusLight: assistantStatus.light,
-        selectedRevision: _strategyRevision,
-        onOpen: widget.onOpenAdaptiveFlywheel == null
+        selectedRevision: conversation.strategyRevision.trim().isEmpty
             ? null
-            : (revision) => unawaited(_openAdaptiveFlywheel(revision)),
+            : conversation.strategyRevision.trim(),
+        onOpen: (revision) => unawaited(_openAdaptiveFlywheel(revision)),
       ),
       composerFieldLeading: AssistantToggleButton(
         active: _assistantActive(conversation),
         configured: conversation.assistantMembership != null,
-        assistantTarget: _assistantBrandTarget(conversation),
+        assistantTarget: assistantTarget,
         onTap: conversation.assistantMembership == null
-            ? () => unawaited(_openAdaptiveFlywheel(_strategyRevision))
+            ? () => unawaited(
+                _openAdaptiveFlywheel(conversation.strategyRevision),
+              )
             : () => _toggleAssistant(conversation),
       ),
       composerLeading: CanonicalGroupAssistantActions(
-        onPickAttachments: widget.onPickComposerImages,
+        onPickAttachments:
+            widget.onPickComposerImages ??
+            () => widget.conversation.intents.send(
+              AddConversationAttachment(widget.composer.conversationId),
+            ),
         onNewConversation: conversation.assistantMembership == null
             ? null
             : _refreshAssistantThread,
-        onDiscardImages: widget.onClearComposerImages,
-        showDiscardImages: widget.composerAttachments.isNotEmpty,
+        onDiscardImages:
+            widget.onClearComposerImages ??
+            () => widget.conversation.intents.send(
+              ClearConversationAttachments(widget.composer.conversationId),
+            ),
+        showDiscardImages: widget.attachments.attachments.isNotEmpty,
       ),
     );
     final actions = AgentConversationPaneActions(
       onModelChanged: (_) {},
       onReasoningEffortChanged: (_) {},
-      onDraftChanged: controller.updateDraft,
-      onSend: _sendComposerMessage,
+      onDraftChanged: (draft) => widget.conversation.intents.send(
+        UpdateConversationDraft(widget.composer.conversationId, draft),
+      ),
+      onSend: (text) => _sendComposerMessage(conversation, text),
       onCancel: _cancelVisibleTurn,
       onSelectSession: (_) {},
-      onCopyText: widget.onCopyText,
-      onRetryMessage: (eventId) async {
-        await controller.retryMessage(eventId);
-      },
-      onDeleteMessage: (eventId) async {
-        await controller.deleteMessage(eventId);
-      },
+      onCopyText: _copyText,
+      onRetryMessage: (eventId) async => widget.conversation.intents.send(
+        RetryCanonicalConversationMessage(eventId),
+      ),
+      onDeleteMessage: (eventId) async => widget.conversation.intents.send(
+        DeleteCanonicalConversationMessage(eventId),
+      ),
       onNewConversation: _refreshAssistantThread,
     );
     final pane = AgentConversationActivePane(
@@ -1189,6 +555,7 @@ class _CanonicalGroupConversationPaneState
       framed: false,
       messageScrollController: _messageScrollController,
     );
+
     final strategy = LayoutAgentsStrategyScope.maybeOf(context);
     final rosterFloats =
         !isMobileClientPlatform(context) &&
@@ -1232,9 +599,9 @@ class _CanonicalGroupConversationPaneState
                           child: CanonicalGroupRoster(
                             conversation: conversation,
                             targets: rosterTargets,
-                            quotaSnapshots: _quotaSnapshots,
+                            quotaSnapshots: canonical.quotaSnapshots,
                             onMentionAgent: (target) =>
-                                unawaited(_mentionAgent(conversation, target)),
+                                _mentionAgent(conversation, target),
                             onOpenAgentConversations:
                                 widget.onOpenAgentConversations == null
                                 ? null
@@ -1259,9 +626,9 @@ class _CanonicalGroupConversationPaneState
                 CanonicalGroupRoster(
                   conversation: conversation,
                   targets: rosterTargets,
-                  quotaSnapshots: _quotaSnapshots,
+                  quotaSnapshots: canonical.quotaSnapshots,
                   onMentionAgent: (target) =>
-                      unawaited(_mentionAgent(conversation, target)),
+                      _mentionAgent(conversation, target),
                   onOpenAgentConversations:
                       widget.onOpenAgentConversations == null
                       ? null
@@ -1270,11 +637,12 @@ class _CanonicalGroupConversationPaneState
                 ),
             ],
           );
+
     final body = Stack(
       fit: StackFit.expand,
       children: [
         conversationBody,
-        if (controller.failureCode.isNotEmpty)
+        if ((canonical.notice?.reasonCode ?? '').isNotEmpty)
           Align(
             alignment: Alignment.topCenter,
             child: Padding(
@@ -1285,11 +653,54 @@ class _CanonicalGroupConversationPaneState
                 left: MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
                 right: MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
               ),
-              child: _groupFailureCapsule(controller),
+              child: _failureCapsule(),
             ),
           ),
       ],
     );
     return widget.framed ? PanelFrame(child: body) : body;
   }
+
+  AgentConversationSession _canonicalSession(
+    ClientConversation conversation,
+    List<ClientConversationEvent> events,
+    LicoStrings strings,
+  ) {
+    final cached = _cachedSession;
+    if (cached != null &&
+        identical(_cachedSessionConversation, conversation) &&
+        _sameEventObjects(_cachedSessionEvents, events) &&
+        _cachedSessionLocale == strings.locale.languageCode) {
+      return cached;
+    }
+    final session = canonicalGroupConversationSession(
+      conversation,
+      events,
+      strings,
+    );
+    _cachedSession = session;
+    _cachedSessionConversation = conversation;
+    _cachedSessionEvents = events;
+    _cachedSessionLocale = strings.locale.languageCode;
+    return session;
+  }
+
+  bool _sameEventObjects(
+    List<ClientConversationEvent>? previous,
+    List<ClientConversationEvent> next,
+  ) {
+    if (previous == null || previous.length != next.length) return false;
+    for (var index = 0; index < next.length; index += 1) {
+      if (!identical(previous[index], next[index])) return false;
+    }
+    return true;
+  }
+
+  Widget _failureCapsule() => CanonicalGroupFailureCapsule(
+    code: widget.canonical.notice?.reasonCode ?? '',
+    failureRef: widget.canonical.failureRef,
+    recovery: widget.canonical.failureRecovery,
+    copyBlob: widget.canonical.failureCopyBlob,
+    onCopy: _copyText,
+  );
 }

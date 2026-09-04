@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
+import 'package:licoup/src/contracts/user_home_directory.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -1096,13 +1096,14 @@ String formatComposerReasoningEffortLabel(String effort) {
 
 /// Shortens an absolute workspace path for the composer capsule.
 String shortenComposerWorkspacePath(String path) {
+  final normalized = path.trim();
   final home = userHomeDirectory();
-  var display = path;
+  var display = normalized;
   if (home.isNotEmpty) {
-    if (path == home) {
+    if (normalized == home) {
       display = '~';
-    } else if (path.startsWith('$home/')) {
-      display = '~${path.substring(home.length)}';
+    } else if (normalized.startsWith('$home/')) {
+      display = '~${normalized.substring(home.length)}';
     }
   }
   final segments = display.split('/')..removeWhere((s) => s.isEmpty);

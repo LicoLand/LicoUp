@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'dart:async';
 
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/controller/client_conversation_facade.dart';
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -58,8 +59,8 @@ mixin ClientPresentationFacade
     shellController.replaceLastError(value);
   }
 
-  ValueListenable<int> get appPresentationListenable =>
-      shellController.presentationListenable;
+  Stream<ApplicationChange> get appPresentationChanges =>
+      shellController.changes;
   String get appearancePresetLabel => shellController.appearancePresetLabel;
   String get displayStatusMessage => shellController.displayStatusMessage;
   String get displayStatusCaption => shellController.displayStatusCaption;
@@ -84,19 +85,25 @@ mixin ClientPresentationFacade
     );
   }
 
-  Future<void> setAppearancePreset(String presetId) async {
+  Future<void> setAppearancePreset(
+    String presetId, {
+    ApplicationCause? cause,
+  }) async {
     if (!hasAppearancePresetConfig(presetId, appearancePresetConfigs)) {
       presetId = AppearancePresetIds.licoSoda;
     }
-    if (await layoutManager.setAppearancePreset(presetId)) {
-      appearancePresetId = presetId;
+    if (await layoutManager.setAppearancePreset(presetId, cause: cause)) {
+      shellController.replaceAppearancePreset(presetId, cause: cause);
     }
   }
 
-  Future<void> setLocalePreference(String value) async {
+  Future<void> setLocalePreference(
+    String value, {
+    ApplicationCause? cause,
+  }) async {
     final normalized = LocalePreference.normalize(value);
-    if (await layoutManager.setLocalePreference(normalized)) {
-      localePreference = normalized;
+    if (await layoutManager.setLocalePreference(normalized, cause: cause)) {
+      shellController.replaceLocalePreference(normalized, cause: cause);
     }
   }
 

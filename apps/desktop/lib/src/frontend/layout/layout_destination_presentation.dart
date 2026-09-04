@@ -111,3 +111,13 @@ final class LayoutDestinationPresentationScope extends InheritedWidget {
       !identical(oldWidget.agents, agents) ||
       !identical(oldWidget.settings, settings);
 }
+
+LayoutAgentsPresentation layoutAgentsPresentationOf(BuildContext context) =>
+    LayoutDestinationPresentationScope.agentsOf(context);
+
+LayoutAgentsPresentation? maybeLayoutAgentsPresentationOf(
+  BuildContext context,
+) => LayoutDestinationPresentationScope.maybeOf(context)?.agents;
+
+LayoutSettingsPresentation layoutSettingsPresentationOf(BuildContext context) =>
+    LayoutDestinationPresentationScope.settingsOf(context);

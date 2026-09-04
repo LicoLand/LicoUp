@@ -2,7 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
 
 /// Layered positions and non-overlapping routes for a strategy Graph.
 final class AdaptiveFlywheelWorkflowLayout {
@@ -26,8 +26,8 @@ final class AdaptiveFlywheelWorkflowLayout {
   final List<AdaptiveFlywheelWorkflowRoute> routes;
 
   static AdaptiveFlywheelWorkflowLayout build({
-    required List<AdaptiveFlywheelGraphState> states,
-    required List<AdaptiveFlywheelGraphEdge> edges,
+    required List<AdaptiveFlywheelGraphStateProjection> states,
+    required List<AdaptiveFlywheelGraphEdgeProjection> edges,
     required String initialState,
   }) {
     if (states.isEmpty) {
@@ -218,7 +218,7 @@ Map<String, int> _longestPathRanks({
   required Set<String> mainIds,
   required Map<String, List<String>> outgoing,
   required Set<(String, String)> backKeys,
-  required List<AdaptiveFlywheelGraphState> states,
+  required List<AdaptiveFlywheelGraphStateProjection> states,
 }) {
   final ranks = <String, int>{};
   if (mainIds.isEmpty) {
@@ -274,7 +274,7 @@ void _orderColumns(
   SplayTreeMap<int, List<String>> columns,
   Map<String, List<String>> outgoing,
   Map<String, int> ranks,
-  List<AdaptiveFlywheelGraphState> states,
+  List<AdaptiveFlywheelGraphStateProjection> states,
 ) {
   final order = {for (var i = 0; i < states.length; i++) states[i].id: i};
   final predecessors = <String, List<String>>{
@@ -313,10 +313,11 @@ void _orderColumns(
 }
 
 List<_BundledEdge> _bundleEdges(
-  List<AdaptiveFlywheelGraphEdge> edges,
+  List<AdaptiveFlywheelGraphEdgeProjection> edges,
   Set<String> ids,
 ) {
-  final groups = <(String, String), List<AdaptiveFlywheelGraphEdge>>{};
+  final groups =
+      <(String, String), List<AdaptiveFlywheelGraphEdgeProjection>>{};
   for (final edge in edges) {
     if (!ids.contains(edge.from) || !ids.contains(edge.to)) continue;
     groups.putIfAbsent((edge.from, edge.to), () => []).add(edge);
@@ -331,7 +332,7 @@ List<_BundledEdge> _bundleEdges(
   ];
 }
 
-String _bundleLabel(List<AdaptiveFlywheelGraphEdge> edges) {
+String _bundleLabel(List<AdaptiveFlywheelGraphEdgeProjection> edges) {
   final parts = <String>[];
   for (final edge in edges) {
     final caption = edge.guardLabel.isEmpty

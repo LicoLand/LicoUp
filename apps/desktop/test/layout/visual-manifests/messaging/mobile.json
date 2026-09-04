@@ -12,15 +12,15 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:243d51d4b37b68a61456bf40b61afecd85161f15411a8c6ad8845d1a443d2a71"
+      "digest": "sha256:2509bb50c2a9372fe2ef1b9d061fc10b00930e63d7be300dc3105383d058ea9f"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:412ab16812a6d75a196c2b97bc9a0b3bb7bf76ce1cbb20e63c3bb7d68355bfa9"
+      "digest": "sha256:76bea3ce2f1bb813fa8bf45cfc415e1c852767240f2a3d29843414d07b597d76"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:bfc78cef3248aaefef0ac110fa1e07a5141d42d66b878faf00468e821a2812fd"
+      "digest": "sha256:e8a5779ba989967ef7a77929393513e6ce825b986c6177b807698ab975bf9e3b"
     }
   ],
   "entries": [
@@ -38,7 +38,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_bundle.dart",
-      "digest": "sha256:1ff02dfca1ad33715397f2729f18e0be5c2083818e787e6b9f161dcbe9481d12"
+      "digest": "sha256:b0d11611a9239de2eca16849da196da1bcab6e998d5aebe5681b8952c33ff506"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_components.dart",
@@ -78,8 +78,8 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_test_harness.dart",
-      "digest": "sha256:ccc1d93ad6bfd51ec8456e4f4d976f32ee8a8f94fc680536e0c1f88b9037035a"
+      "digest": "sha256:1c528e4c5dae5704fb9964133b89e63e9e80cea0cc9a7b1feaaff3931136f3e1"
     }
   ],
-  "manifestDigest": "sha256:accbbc3ec81ff72ac8c9c444e7cf1f13c89047969e564e893d89d51e218818d2"
+  "manifestDigest": "sha256:4e2aa6ed35cd99909379c4e4d91e8bedf84b33af1dee678421446219f49f3e0f"
 }

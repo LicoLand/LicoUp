@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 
 import 'package:licoup/app.dart';
-import 'package:licoup/src/application/product_acceptance/agent_conversation_release_live.dart';
+import 'package:licoup/src/composition/product_acceptance/agent_conversation_release_live.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/storage/single_instance_guard.dart';
 

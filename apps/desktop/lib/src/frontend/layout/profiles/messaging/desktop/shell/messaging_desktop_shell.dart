@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/presentation/messaging_desktop_destination_presentations.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_content_region.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_main_content_card.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_profile_page.dart';
@@ -162,6 +163,7 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
       return data.destination;
     }
     return MessagingSidebarColumn(
+      presentation: messagingDesktopAgentsPresentation,
       sidebar: MessagingDesktopNavSidebar(
         destination: destination,
         onSelectDestination: _selectDestination,

@@ -225,7 +225,7 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
           body: SizedBox(
             width: 820,
             height: 800,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -389,7 +389,7 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
           body: SizedBox(
             width: 820,
             height: 800,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,

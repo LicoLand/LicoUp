@@ -6,7 +6,8 @@ final class _Projection implements ProjectionSource<int> {
   int current = 7;
 
   @override
-  Stream<int> get changes => const Stream<int>.empty();
+  Stream<ProjectionUpdate<int>> get changes =>
+      const Stream<ProjectionUpdate<int>>.empty();
 }
 
 final class _Effects implements EffectSource<String> {
@@ -43,6 +44,18 @@ void main() {
     expect(
       const TraceContext(traceId: 'trace-a'),
       isNot(const TraceContext(traceId: 'trace-b')),
+    );
+  });
+
+  test('projection update carries only value and optional trace', () {
+    const trace = TraceContext(traceId: 'trace-a');
+    expect(
+      const ProjectionUpdate<int>(7, trace: trace),
+      const ProjectionUpdate<int>(7, trace: trace),
+    );
+    expect(
+      const ProjectionUpdate<int>(7),
+      isNot(const ProjectionUpdate<int>(8)),
     );
   });
 }

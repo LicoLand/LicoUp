@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'usage_agent_service_fakes.dart';
+import 'monitoring_binding_fixture.dart';
 import 'usage_panel_fixtures.dart';
 
 void registerAgentUsageModelShareScenarios() {
@@ -15,7 +16,11 @@ void registerAgentUsageModelShareScenarios() {
     controller
       ..scannedTargets = testTargets(['codex'])
       ..agentUsageReport = equalModelUsageReport();
-    addTearDown(controller.dispose);
+    final monitoring = MonitoringBindingFixture(controller);
+    addTearDown(() async {
+      await monitoring.close();
+      controller.dispose();
+    });
 
     await tester.pumpWidget(
       usageTestApp(
@@ -25,7 +30,11 @@ void registerAgentUsageModelShareScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(controller: controller, autoLoad: false),
+          child: AgentUsagePanel(
+            binding: monitoring.binding,
+            onExit: () {},
+            autoLoad: false,
+          ),
         ),
       ),
     );
@@ -69,7 +78,11 @@ void registerAgentUsageModelShareScenarios() {
       final controller = ClientController(agentService: UsageAgentService())
         ..scannedTargets = testTargets(['code', 'codex', 'cursor', 'kimi-code'])
         ..agentUsageReport = formalNamingUsageReport();
-      addTearDown(controller.dispose);
+      final monitoring = MonitoringBindingFixture(controller);
+      addTearDown(() async {
+        await monitoring.close();
+        controller.dispose();
+      });
 
       await tester.pumpWidget(
         usageTestApp(
@@ -79,7 +92,11 @@ void registerAgentUsageModelShareScenarios() {
           home: SizedBox(
             width: 980,
             height: 720,
-            child: AgentUsagePanel(controller: controller, autoLoad: false),
+            child: AgentUsagePanel(
+              binding: monitoring.binding,
+              onExit: () {},
+              autoLoad: false,
+            ),
           ),
         ),
       );
@@ -132,7 +149,11 @@ void registerAgentUsageModelShareScenarios() {
       final controller = ClientController(agentService: UsageAgentService())
         ..scannedTargets = testTargets(['codex', 'claude-code'])
         ..agentUsageReport = shareFractionUsageReport();
-      addTearDown(controller.dispose);
+      final monitoring = MonitoringBindingFixture(controller);
+      addTearDown(() async {
+        await monitoring.close();
+        controller.dispose();
+      });
 
       await tester.pumpWidget(
         usageTestApp(
@@ -142,7 +163,11 @@ void registerAgentUsageModelShareScenarios() {
           home: SizedBox(
             width: 1200,
             height: 720,
-            child: AgentUsagePanel(controller: controller, autoLoad: false),
+            child: AgentUsagePanel(
+              binding: monitoring.binding,
+              onExit: () {},
+              autoLoad: false,
+            ),
           ),
         ),
       );
