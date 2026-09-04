@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_local_assembly_actions.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_mcp_actions.dart';
@@ -18,7 +18,8 @@ typedef OptionalCollaborationWorkflowStatusSink =
 
 /// Inert façade over local assembly, signed-runner deployment, and MCP action
 /// controllers. Construction never issues a command.
-final class OptionalCollaborationWorkflowController extends ChangeNotifier
+final class OptionalCollaborationWorkflowController
+    extends ApplicationStateOwner
     implements OptionalCollaborationWorkflowActionContext {
   OptionalCollaborationWorkflowController({
     required OptionalCollaborationGateway gateway,
@@ -90,7 +91,7 @@ final class OptionalCollaborationWorkflowController extends ChangeNotifier
     _mcpInstallPlan = null;
     _lastApplyResult = null;
     _errorCode = '';
-    notifyListeners();
+    publishChange();
   }
 
   Future<bool> planLocalDeployment({
@@ -162,21 +163,21 @@ final class OptionalCollaborationWorkflowController extends ChangeNotifier
     if (_busy) return false;
     _busy = true;
     _errorCode = '';
-    notifyListeners();
+    publishChange();
     return true;
   }
 
   @override
   void endAction() {
     _busy = false;
-    notifyListeners();
+    publishChange();
   }
 
   @override
   bool rejectAction(String errorCode, String chinese, String english) {
     _errorCode = errorCode;
     reportAction(chinese, english, errorCode: errorCode);
-    notifyListeners();
+    publishChange();
     return false;
   }
 

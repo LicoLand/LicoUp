@@ -1,10 +1,10 @@
 import 'package:flutter/services.dart';
 
-import 'package:licoup/src/application/features/agents/conversation/agent_render_adapter_asset_source.dart';
+import 'package:licoup/src/frontend/features/agents/data/agent_render_adapter_asset_source.dart';
 import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
 
-export 'package:licoup/src/application/features/agents/conversation/agent_render_adapter_asset_source.dart'
+export 'package:licoup/src/frontend/features/agents/data/agent_render_adapter_asset_source.dart'
     show AssetAgentRenderAdapterJsonSource;
 
 enum AgentAssistantLayout { document, bubble }

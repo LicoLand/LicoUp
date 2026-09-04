@@ -44,7 +44,7 @@ void main() {
     );
     expect(
       controller,
-      contains('notifyStateChanged: notifyClientStateChanged'),
+      isNot(contains('notifyStateChanged: notifyClientStateChanged')),
     );
     expect(controller, isNot(contains('Future<void> _initializeCore()')));
     expect(controller, isNot(contains('void _selectDefaultConversationAgent')));

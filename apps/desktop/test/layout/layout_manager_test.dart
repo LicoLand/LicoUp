@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -358,23 +357,26 @@ void main() {
         FakePreferencesRepository(preferences: preferences()),
       );
       await manager.initialize();
-      final reported = <FlutterErrorDetails>[];
-      final previousHandler = FlutterError.onError;
-      FlutterError.onError = reported.add;
-      addTearDown(() => FlutterError.onError = previousHandler);
+      final reported = <Object>[];
       var trailingNotifications = 0;
       Future<bool>? reentrantSelection;
 
-      manager.addListener((_) => throw StateError('listener_failed'));
-      manager.addListener((state) {
-        if (state.status == LayoutSelectionStatus.stable &&
+      manager.changes.listen((_) {
+        try {
+          throw StateError('listener_failed');
+        } catch (error) {
+          reported.add(error);
+        }
+      });
+      manager.changes.listen((_) {
+        if (manager.state.status == LayoutSelectionStatus.stable &&
             reentrantSelection == null) {
           reentrantSelection = manager.selectLayout(
             LayoutProfileId.parse('dashboard'),
           );
         }
       });
-      manager.addListener((_) => trailingNotifications += 1);
+      manager.changes.listen((_) => trailingNotifications += 1);
 
       expect(
         await manager.selectLayout(LayoutProfileId.parse('atlas')),
@@ -426,7 +428,7 @@ void main() {
     );
     await manager.initialize();
     var notifications = 0;
-    manager.addListener((_) => notifications += 1);
+    manager.changes.listen((_) => notifications += 1);
 
     expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isFalse);
     expect(notifications, 0);

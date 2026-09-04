@@ -13,153 +13,29 @@ import {
   testOwnerFor,
 } from "./ownership.mjs";
 
-const destinationPresentationScopeOwners = new Set([
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agents_canvas.dart",
-  "apps/desktop/lib/src/frontend/features/settings/ui/archived_conversations_settings_section.dart",
-  "apps/desktop/lib/src/frontend/features/settings/ui/client_update_settings_card.dart",
-  "apps/desktop/lib/src/frontend/features/settings/ui/layout_profile_selector.dart",
-  "apps/desktop/lib/src/frontend/features/settings/ui/settings_panel.dart",
-  "apps/desktop/lib/src/frontend/features/settings/ui/settings_panel_widgets.dart",
-  "apps/desktop/lib/src/frontend/features/settings/ui/startup_autostart_card.dart",
-  "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/agents_destination.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/settings_destination.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_agents_destination.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_settings_destination.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/agents_destination.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/single_pane_destinations.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/destinations/messaging_agents_destination.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/destinations/messaging_settings_destination.dart",
-]);
+const destinationPresentationDefinitionPath =
+  "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart";
+const sharedRendererRoot = "apps/desktop/lib/src/frontend/shared/";
 
-const legacySharedDependencies = new Set([
-  "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/apple_buttons.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/apple_control_metrics.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/apple_glass.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/theme.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/lico_icon_button.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/lico_motion.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/lico_search_capsule.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/lico_radius.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/lico_typography.dart",
-  "apps/desktop/lib/src/frontend/shared/ui/theme_colors.dart",
-]);
-
-const legacySharedUiImports = new Set([
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_destination_frame.dart|apps/desktop/lib/src/frontend/shared/ui/theme.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_settings_presentation.dart|apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart|apps/desktop/lib/src/frontend/shared/ui/lico_motion.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_mobile_settings_presentation.dart|apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/components/messaging_search_capsule.dart|apps/desktop/lib/src/frontend/shared/ui/lico_search_capsule.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/presentation/messaging_desktop_destination_presentations.dart|apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_foundation.dart|apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart|apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart|apps/desktop/lib/src/frontend/shared/ui/lico_motion.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart|apps/desktop/lib/src/frontend/shared/ui/lico_radius.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_top_strip.dart|apps/desktop/lib/src/frontend/shared/ui/lico_motion.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/presentation/messaging_mobile_destination_presentations.dart|apps/desktop/lib/src/frontend/shared/ui/lico_content_spacing.dart",
-]);
-
-const legacyLayoutStateImports = new Set([
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_shell.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_column.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart",
-]);
-
-const layoutStateStorePath =
-  "apps/desktop/lib/src/application/features/layout/layout_state_store.dart";
-const settingsSectionCatalogPath =
-  "apps/desktop/lib/src/frontend/features/settings/ui/settings_section_catalog.dart";
-const legacySettingsCatalogImporters = new Set([
-  "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart",
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart",
-]);
-const layoutPaletteProjectionPath =
-  "apps/desktop/lib/src/frontend/shell/layout_palette_projection.dart";
-const builtInLayoutCompositionPath =
-  "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart";
-const legacyLayoutTestImports = new Set([
-  `apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_test_harness.dart|${layoutPaletteProjectionPath}`,
-  `apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_folder_sidebar_test.dart|${layoutPaletteProjectionPath}`,
-  `apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_test_harness.dart|${layoutPaletteProjectionPath}`,
-  `apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_test_harness.dart|${layoutPaletteProjectionPath}`,
-  `apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_bundle_test.dart|${builtInLayoutCompositionPath}`,
-]);
-const messagingTokenPath =
-  "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart";
-const legacyMessagingTokenImporters = [
-  "apps/desktop/lib/src/display/conversation/canonical_group_conversation_pane/header.dart",
-  "apps/desktop/lib/src/display/conversation/canonical_group_conversation_pane/pane.dart",
-  "apps/desktop/lib/src/display/conversation/canonical_group_conversation_pane/roster.dart",
-  "apps/desktop/lib/src/display/conversation/canonical_group_conversation_pane/strategy.dart",
-  "apps/desktop/lib/src/display/conversation/canonical_group_conversation_pane/support.dart",
-  "apps/desktop/lib/src/frontend/features/agent_hub/ui/agent_hub_panel.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_composer.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane/composition.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_chrome_tabs.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_message_group.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_notification_bell.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_quota_ring.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_quota_usage_card.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart",
-  "apps/desktop/lib/src/frontend/features/models/ui/models_panel.dart",
-  "apps/desktop/test/agent_conversation_composer_capsules_test.dart",
-  "apps/desktop/test/agent_conversation_composer_test.dart",
-  "apps/desktop/test/canonical_group_conversation_projection_test.dart",
-  "apps/desktop/test/canonical_group_strategy_mode_test.dart",
-  "apps/desktop/test/messaging/messaging_contact_list_test.dart",
-  "apps/desktop/test/messaging/messaging_conversation_overlay_glass_test.dart",
-  "apps/desktop/test/messaging/messaging_participant_flow_test.dart",
-  "apps/desktop/test/messaging/messaging_roster_quota_test.dart",
-  "apps/desktop/test/messaging/messaging_sidebar_surface_test.dart",
-  "apps/desktop/test/messaging/messaging_user_bubble_glass_test.dart",
-  "apps/desktop/test/messaging/messaging_workspace_selection_test.dart",
-];
-const legacyProfilePrivateImports = new Set([
-  ...legacyMessagingTokenImporters.map(
-    (relativePath) => `${relativePath}|${messagingTokenPath}`,
-  ),
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart|apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_column.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart|apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_foundation.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart|apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart",
-  "apps/desktop/test/dashboard_desktop_search_interaction_test.dart|apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
-]);
-
-export function isAllowedLegacyProfilePrivateImport(importer, imported) {
-  return legacyProfilePrivateImports.has(`${importer}|${imported}`);
+export function isSharedRendererDependency(relativePath) {
+  return relativePath.startsWith(sharedRendererRoot);
 }
 
-export function isAllowedLegacyLayoutDependency(relativePath) {
+export function isDestinationPresentationScopePath(relativePath) {
   return (
-    legacySharedDependencies.has(relativePath) ||
-    relativePath === settingsSectionCatalogPath
+    relativePath === destinationPresentationDefinitionPath ||
+    (
+      relativePath.startsWith("apps/desktop/lib/src/frontend/layout/profiles/") &&
+      relativePath.includes("/destinations/")
+    )
   );
-}
-
-export function isAllowedDestinationPresentationScopePath(relativePath) {
-  return destinationPresentationScopeOwners.has(relativePath);
 }
 
 export function isDirectNeutralDependency(relativePath) {
   return (
     relativePath.startsWith("apps/desktop/lib/src/contracts/presentation/") ||
     relativePath.startsWith("apps/desktop/lib/src/frontend/l10n/") ||
+    isSharedRendererDependency(relativePath) ||
     NEUTRAL_LAYOUT_CONTRACTS.has(relativePath)
   );
 }
@@ -168,25 +44,13 @@ export function isNeutralClosureDependency(relativePath) {
   return (
     relativePath.startsWith("apps/desktop/lib/src/contracts/") ||
     relativePath.startsWith("apps/desktop/lib/src/frontend/l10n/") ||
-    NEUTRAL_LAYOUT_CONTRACTS.has(relativePath) ||
-    relativePath ===
-      "apps/desktop/lib/src/application/features/layout/layout_state_store.dart" ||
-    relativePath ===
-      "apps/desktop/lib/src/application/features/layout/layout_catalog.dart" ||
-    relativePath ===
-      "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart"
+    isSharedRendererDependency(relativePath) ||
+    NEUTRAL_LAYOUT_CONTRACTS.has(relativePath)
   );
 }
 
 export function forbiddenDependencyCode(relativePath) {
-  if (relativePath === settingsSectionCatalogPath) {
-    return null;
-  }
-  if (
-    relativePath === layoutStateStorePath ||
-    relativePath === "apps/desktop/lib/src/application/features/layout/layout_catalog.dart" ||
-    relativePath === "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart"
-  ) {
+  if (isSharedRendererDependency(relativePath)) {
     return null;
   }
   if (
@@ -329,7 +193,7 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
   if (
     sourceOwner != null &&
     containsDestinationPresentationScope(source) &&
-    !isAllowedDestinationPresentationScopePath(relativePath)
+    !isDestinationPresentationScopePath(relativePath)
   ) {
     fail("layout_destination_presentation_scope_forbidden", relativePath);
   }
@@ -362,17 +226,8 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     }
     if (
       isDirectNeutralDependency(resolved) ||
-      legacySharedUiImports.has(`${relativePath}|${resolved}`) ||
-      (resolved === layoutStateStorePath &&
-        legacyLayoutStateImports.has(relativePath)) ||
-      (resolved === settingsSectionCatalogPath &&
-        legacySettingsCatalogImporters.has(relativePath)) ||
       (testOwner != null &&
-        legacyLayoutTestImports.has(`${relativePath}|${resolved}`)) ||
-      (testOwner != null &&
-        (resolved.startsWith(`${catalog.config.profileTestFixtureRoot}/`) ||
-          resolved ===
-            "apps/desktop/lib/src/frontend/shared/ui/theme.dart"))
+        resolved.startsWith(`${catalog.config.profileTestFixtureRoot}/`))
     ) {
       continue;
     }
@@ -383,7 +238,7 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     if (resolved.includes("/application/")) {
       fail("layout_application_import_forbidden", relativePath);
     }
-    fail("layout_import_not_allowlisted", relativePath);
+    fail("layout_dependency_outside_contract", relativePath);
   }
   for (const token of [
     "LayoutRegistry(",
@@ -391,13 +246,6 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     "registerLayoutProfile(",
     "built_in_layout_composition",
   ]) {
-    if (
-      token === "built_in_layout_composition" &&
-      relativePath ===
-        "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_bundle_test.dart"
-    ) {
-      continue;
-    }
     if (source.includes(token)) {
       fail("layout_mutable_registration_forbidden", relativePath);
     }

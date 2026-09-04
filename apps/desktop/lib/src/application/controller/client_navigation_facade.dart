@@ -1,8 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
-
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/controller/client_conversation_facade.dart';
 import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_presentation_facade.dart';
@@ -52,8 +51,8 @@ mixin ClientNavigationFacade
     navigationController.replaceCurrentSection(value);
   }
 
-  void selectSection(ClientSection section) {
-    navigationController.select(section);
+  void selectSection(ClientSection section, {ApplicationCause? cause}) {
+    navigationController.select(section, cause: cause);
     if (!mobileClientRuntimePlatform) {
       interfaceEntryHookController.requestEntry(section);
     }
@@ -189,18 +188,10 @@ mixin ClientNavigationFacade
   }
 
   void updateConversationAttention({
-    AppLifecycleState? lifecycleState,
+    ConversationLifecyclePhase? lifecycleState,
     bool? viewFocused,
   }) => updateConversationAttentionState(
-    lifecycleState: lifecycleState == null
-        ? null
-        : switch (lifecycleState) {
-            AppLifecycleState.resumed => ConversationLifecyclePhase.resumed,
-            AppLifecycleState.inactive => ConversationLifecyclePhase.inactive,
-            AppLifecycleState.hidden => ConversationLifecyclePhase.hidden,
-            AppLifecycleState.paused => ConversationLifecyclePhase.paused,
-            AppLifecycleState.detached => ConversationLifecyclePhase.detached,
-          },
+    lifecycleState: lifecycleState,
     viewFocused: viewFocused,
   );
 

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
@@ -107,7 +107,7 @@ final class ConversationScopeProjection {
 /// decoding or sequence binding. Notifications are coalesced so token-sized
 /// deltas update at most once per display interval while terminal transitions
 /// remain immediate.
-final class ConversationStateHolder extends ChangeNotifier {
+final class ConversationStateHolder extends ApplicationStateOwner {
   static const Duration _streamPublishInterval = Duration(milliseconds: 32);
 
   final Map<String, _ConversationScopeState> _scopes =
@@ -144,7 +144,7 @@ final class ConversationStateHolder extends ChangeNotifier {
     if (_scopes.remove(scopeKey.trim()) == null) return;
     _publishTimer?.cancel();
     _publishTimer = null;
-    notifyListeners();
+    publishChange();
   }
 
   /// Applies one generated, sequence-bound delta to one conversation scope.
@@ -266,12 +266,12 @@ final class ConversationStateHolder extends ChangeNotifier {
     if (immediate) {
       _publishTimer?.cancel();
       _publishTimer = null;
-      notifyListeners();
+      publishChange();
       return;
     }
     _publishTimer ??= Timer(_streamPublishInterval, () {
       _publishTimer = null;
-      if (!_disposed) notifyListeners();
+      if (!_disposed) publishChange();
     });
   }
 

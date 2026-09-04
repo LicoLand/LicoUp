@@ -4,7 +4,25 @@ library;
 abstract interface class ProjectionSource<T> {
   T get current;
 
-  Stream<T> get changes;
+  Stream<ProjectionUpdate<T>> get changes;
+}
+
+/// One immutable projected value and its optional renderer-local cause.
+final class ProjectionUpdate<T> {
+  const ProjectionUpdate(this.value, {this.trace});
+
+  final T value;
+  final TraceContext? trace;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProjectionUpdate<T> &&
+          other.value == value &&
+          other.trace == trace;
+
+  @override
+  int get hashCode => Object.hash(value, trace);
 }
 
 /// Non-replayed, one-shot effects exposed to a renderer.

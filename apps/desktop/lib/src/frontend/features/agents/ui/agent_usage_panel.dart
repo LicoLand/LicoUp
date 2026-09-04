@@ -1,19 +1,21 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
 
 class AgentUsagePanel extends StatefulWidget {
   const AgentUsagePanel({
     super.key,
-    required this.controller,
+    required this.binding,
+    required this.onExit,
     this.autoLoad = true,
   });
 
-  final ClientController controller;
+  final MonitoringBinding binding;
+  final VoidCallback onExit;
   final bool autoLoad;
 
   @override
@@ -22,8 +24,6 @@ class AgentUsagePanel extends StatefulWidget {
 
 class _AgentUsagePanelState extends State<AgentUsagePanel>
     with WidgetsBindingObserver {
-  ClientController get controller => widget.controller;
-
   @override
   void initState() {
     super.initState();
@@ -37,13 +37,13 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
   void didUpdateWidget(covariant AgentUsagePanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     final pollingOwnerChanged =
-        oldWidget.controller != widget.controller ||
+        !identical(oldWidget.binding, widget.binding) ||
         oldWidget.autoLoad != widget.autoLoad;
     if (!pollingOwnerChanged) {
       return;
     }
     if (oldWidget.autoLoad) {
-      oldWidget.controller.stopAgentUsagePolling();
+      oldWidget.binding.intents.send(const StopAutomaticMonitoring());
     }
     if (widget.autoLoad) {
       _startAutomaticRefresh();
@@ -58,7 +58,7 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
     if (state == AppLifecycleState.resumed) {
       _startAutomaticRefresh();
     } else {
-      controller.stopAgentUsagePolling();
+      widget.binding.intents.send(const StopAutomaticMonitoring());
     }
   }
 
@@ -66,7 +66,7 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (widget.autoLoad) {
-      controller.stopAgentUsagePolling();
+      widget.binding.intents.send(const StopAutomaticMonitoring());
     }
     super.dispose();
   }
@@ -75,8 +75,7 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
     if (!_appIsActive) {
       return;
     }
-    _requestUsageScan();
-    controller.startAgentUsagePolling();
+    widget.binding.intents.send(const StartAutomaticMonitoring());
   }
 
   bool get _appIsActive {
@@ -85,34 +84,26 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
         lifecycleState == AppLifecycleState.resumed;
   }
 
-  void _requestUsageScan() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_appIsActive || controller.agentUsageReport != null) {
-        return;
-      }
-      unawaited(controller.ensureAgentUsageLoadedAndFresh(limit: 20));
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final report = controller.agentUsageReport;
-    return SingleChildScrollView(
-      primary: false,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      child: AgentUsageCharts(
-        report: report,
-        detectedAgentIds: {
-          for (final target in controller.orderedConversationTargets(
-            controller.scannedTargets,
-          ))
-            if (target.status != 'not-detected') target.target,
-        },
-        windowDays: controller.agentUsageHistoryDays,
-        windowBusy: controller.isScanningAgentUsage,
-        onWindowChanged: (days) =>
-            unawaited(controller.setAgentUsageHistoryDays(days)),
-        onExit: () => controller.selectSection(ClientSection.agents),
+    return ProjectionBuilder<MonitoringProjection, MonitoringProjection>(
+      source: widget.binding.projection,
+      select: (projection) => projection,
+      builder: (context, projection) => SingleChildScrollView(
+        primary: false,
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        child: AgentUsageCharts(
+          report: projection.report,
+          detectedAgentIds: {
+            for (final target in projection.detectedTargets)
+              if (target.status != 'not-detected') target.target,
+          },
+          windowDays: projection.historyDays,
+          windowBusy: projection.refreshing,
+          onWindowChanged: (days) =>
+              widget.binding.intents.send(SetMonitoringHistoryDays(days)),
+          onExit: widget.onExit,
+        ),
       ),
     );
   }

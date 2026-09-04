@@ -4,7 +4,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isAllowedLegacyLayoutDependency } from "../../../apps/desktop/scripts/verify-layout-boundaries/dependency-policy.mjs";
+import {
+  isDestinationPresentationScopePath,
+  isSharedRendererDependency,
+} from "../../../apps/desktop/scripts/verify-layout-boundaries/dependency-policy.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -173,19 +176,32 @@ test("verify, bundle-product, errors, and cli each have one authority", async ()
   assert.deepEqual(declarationOwners(source, "main"), ["cli.mjs"]);
 });
 
-test("legacy shared layout debt is an exact shrink-only path set", () => {
-  assert.equal(isAllowedLegacyLayoutDependency(
+test("layout dependencies use structural target-state classifications", async () => {
+  assert.equal(isSharedRendererDependency(
     "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
   ), true);
-  assert.equal(isAllowedLegacyLayoutDependency(
+  assert.equal(isSharedRendererDependency(
     "apps/desktop/lib/src/frontend/shared/ui/theme.dart",
   ), true);
-  assert.equal(isAllowedLegacyLayoutDependency(
-    "apps/desktop/lib/src/frontend/shared/new_shared_dependency.dart",
+  assert.equal(isSharedRendererDependency(
+    "apps/desktop/lib/src/frontend/features/new_shared_dependency.dart",
   ), false);
-  assert.equal(isAllowedLegacyLayoutDependency(
-    "apps/desktop/lib/src/frontend/shared/ui/new_shared_widget.dart",
+  assert.equal(isDestinationPresentationScopePath(
+    "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart",
+  ), true);
+  assert.equal(isDestinationPresentationScopePath(
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/destinations/agents_destination.dart",
+  ), true);
+  assert.equal(isDestinationPresentationScopePath(
+    "apps/desktop/lib/src/frontend/features/agents/ui/agents_canvas.dart",
   ), false);
+
+  const policy = await read(`${moduleRoot}/dependency-policy.mjs`);
+  assert.doesNotMatch(policy, /\b(?:legacy|shrink-only|isAllowedLegacy)\b/iu);
+  assert.doesNotMatch(
+    policy,
+    /new Set\(\[\s*["']apps\/desktop\/lib\/src\/frontend\//u,
+  );
 });
 
 test("self-test dry-run preserves fail-closed layout boundary contracts", () => {

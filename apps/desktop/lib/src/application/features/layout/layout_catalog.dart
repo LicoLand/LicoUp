@@ -2,12 +2,13 @@ import 'dart:collection';
 
 import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_catalog_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 
 /// Immutable profile metadata and exact surface/viewport/destination product.
-final class LayoutCatalog {
+final class LayoutCatalog implements LayoutCatalogView {
   factory LayoutCatalog({
     required int revision,
     required Iterable<LayoutProfileDescriptor> profiles,
@@ -137,12 +138,21 @@ final class LayoutCatalog {
   final List<LayoutProfileDescriptor> profiles;
   final Map<LayoutProfileId, LayoutProfileDescriptor> profileById;
   final Map<LayoutVariantKey, LayoutVariantCoverage> variantByKey;
+  @override
   final Set<LayoutStateNamespace> stateNamespaces;
+
+  @override
+  Iterable<LayoutProfileId> get profileIds => profileById.keys;
+
+  @override
+  Iterable<LayoutVariantKey> get variantKeys => variantByKey.keys;
 
   bool containsProfile(LayoutProfileId id) => profileById.containsKey(id);
 
+  @override
   LayoutProfileDescriptor? profile(LayoutProfileId id) => profileById[id];
 
+  @override
   LayoutVariantCoverage coverage(LayoutVariantKey key) {
     final coverage = variantByKey[key];
     if (coverage == null) {
@@ -151,6 +161,7 @@ final class LayoutCatalog {
     return coverage;
   }
 
+  @override
   bool declaresStateNamespace(LayoutStateNamespace namespace) =>
       stateNamespaces.contains(namespace);
 

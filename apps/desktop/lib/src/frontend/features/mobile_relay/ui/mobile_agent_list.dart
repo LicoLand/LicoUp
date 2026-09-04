@@ -1,66 +1,66 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_intent.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 export 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_desktop_agent_list.dart';
 
-final class MobileAgentList extends StatefulWidget {
+final class MobileAgentList extends StatelessWidget {
   const MobileAgentList({
     super.key,
-    required this.controller,
-    required this.targets,
-    required this.devices,
-    required this.onRefresh,
+    required this.agents,
+    required this.relay,
+    required this.agentIntents,
+    required this.relayIntents,
     required this.onSelect,
     required this.onSelectDevice,
     required this.onAddAgent,
+    this.iconBuilder,
   });
 
-  final ClientController controller;
-  final List<TargetCandidate> targets;
-  final List<MobileRelayPairedDevice> devices;
-  final Future<void> Function() onRefresh;
-  final ValueChanged<TargetCandidate> onSelect;
-  final ValueChanged<MobileRelayPairedDevice> onSelectDevice;
+  final AgentsProjection agents;
+  final MobileRelayProjection relay;
+  final IntentSink<AgentsIntent> agentIntents;
+  final IntentSink<MobileRelayIntent> relayIntents;
+  final ValueChanged<AgentTargetProjection> onSelect;
+  final ValueChanged<RelayPeerProjection> onSelectDevice;
   final VoidCallback onAddAgent;
+  final MobileAgentIconBuilder? iconBuilder;
 
-  @override
-  State<MobileAgentList> createState() => _MobileAgentListState();
-}
-
-final class _MobileAgentListState extends State<MobileAgentList> {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final rootTargets =
-        widget.controller.mobileClientRuntimePlatform &&
-            widget.devices.isNotEmpty
-        ? const <TargetCandidate>[]
-        : widget.targets;
+    final rootTargets = relay.mobileRuntime && relay.peers.isNotEmpty
+        ? const <AgentTargetProjection>[]
+        : agents.targets;
     final unordered = [
-      for (final device in widget.devices) _pairedDeviceEntry(device),
+      for (final device in relay.peers) _pairedDeviceEntry(device),
       for (final target in rootTargets) _localAgentEntry(context, target),
     ];
     final byId = {for (final entry in unordered) entry.id: entry};
-    final entries = [
-      for (final id in orderMobileHomeEntryIds([
-        for (final entry in unordered) entry.orderItem,
-      ], widget.controller.mobileHomeLayout))
-        byId[id]!,
-    ];
+    final orderedIds = orderMobileHomeEntryIds([
+      for (final entry in unordered) entry.orderItem,
+    ], persistedOrder: relay.homeEntryOrder);
+    final entries = [for (final id in orderedIds) byId[id]!];
     final pinnedCount = entries.where((entry) => entry.pinned).length;
+    final scanning =
+        agents.phase == PresentationPhase.loading ||
+        agents.phase == PresentationPhase.applying;
     return RefreshIndicator(
-      onRefresh: widget.onRefresh,
+      onRefresh: () {
+        agentIntents.send(const ScanAgents());
+        return Future<void>.value();
+      },
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -84,7 +84,7 @@ final class _MobileAgentListState extends State<MobileAgentList> {
                   IconButton(
                     key: const Key('mobile-add-agent-button'),
                     tooltip: strings.addAgent,
-                    onPressed: widget.onAddAgent,
+                    onPressed: onAddAgent,
                     icon: const Icon(Icons.add_rounded),
                   ),
                 ],
@@ -97,14 +97,14 @@ final class _MobileAgentListState extends State<MobileAgentList> {
               child: LicoEmptyState(
                 icon: Icons.psychology_outlined,
                 iconSize: 34,
-                title: widget.controller.isScanningTargets
+                title: scanning
                     ? strings.scanningLocalAgents
                     : strings.noLocalAgentsFound,
-                action: widget.controller.isScanningTargets
+                action: scanning
                     ? null
                     : OutlinedButton.icon(
                         key: const Key('mobile-empty-add-agent-button'),
-                        onPressed: widget.onAddAgent,
+                        onPressed: onAddAgent,
                         icon: const Icon(Icons.add_rounded, size: 18),
                         label: Text(strings.addAgent),
                       ),
@@ -119,15 +119,14 @@ final class _MobileAgentListState extends State<MobileAgentList> {
                     _mobileHomeEntryIndexForKey(entries, key),
                 onReorderItem: (oldIndex, newIndex) {
                   if (oldIndex >= pinnedCount) return;
-                  final pinnedIds = [
-                    for (final entry in entries)
-                      if (entry.pinned) entry.id,
-                  ];
-                  unawaited(
-                    widget.controller.reorderMobileHomePinnedEntries(
-                      pinnedIds,
-                      oldIndex,
-                      newIndex.clamp(0, pinnedCount).toInt(),
+                  relayIntents.send(
+                    ReorderRelayHomePinnedEntries(
+                      pinnedEntryIds: [
+                        for (final entry in entries)
+                          if (entry.pinned) entry.id,
+                      ],
+                      oldIndex: oldIndex,
+                      newIndex: newIndex.clamp(0, pinnedCount).toInt(),
                     ),
                   );
                 },
@@ -155,53 +154,51 @@ final class _MobileAgentListState extends State<MobileAgentList> {
     );
   }
 
-  _RenderedMobileHomeEntry _pairedDeviceEntry(MobileRelayPairedDevice device) {
+  _RenderedMobileHomeEntry _pairedDeviceEntry(RelayPeerProjection device) {
     final id = 'device:${device.id}';
-    final pinned = widget.controller.mobileHomeLayout.isPinned(id);
+    final pinned = relay.pinnedHomeEntryIds.contains(id);
     return _RenderedMobileHomeEntry(
       id: id,
       pinned: pinned,
       sortTimeMillis: 0,
       child: MobilePairedDeviceListItem(
         device: device,
-        active:
-            device.pairingId == widget.controller.mobileRelayConfig.pairingId,
         entryId: id,
         pinned: pinned,
-        onTogglePinned: () =>
-            unawaited(widget.controller.toggleMobileHomeEntryPinned(id)),
-        onTap: () => widget.onSelectDevice(device),
+        onTogglePinned: () => relayIntents.send(ToggleRelayHomeEntryPinned(id)),
+        onTap: () => onSelectDevice(device),
       ),
     );
   }
 
   _RenderedMobileHomeEntry _localAgentEntry(
     BuildContext context,
-    TargetCandidate target,
+    AgentTargetProjection target,
   ) {
-    final id = 'target:${target.target}';
-    final pinned = widget.controller.mobileHomeLayout.isPinned(id);
-    final latestSession = latestMobileHomeSession(
-      widget.controller.conversationSessionsByAgent[target.target] ?? const [],
-    );
-    final preview = mobileHomePreviewText(latestSession?.preview);
-    final subtitle = preview.isNotEmpty
-        ? preview
-        : _localAgentFallbackSubtitle(context, target);
+    final id = 'target:${target.id}';
+    final pinned = relay.pinnedHomeEntryIds.contains(id);
+    final strings = LicoStrings.of(context);
+    final availability = target.available
+        ? strings.active
+        : strings.unavailable;
+    final capability = target.capabilityLabel.trim();
+    final preview = target.latestConversationPreview.trim();
     return _RenderedMobileHomeEntry(
       id: id,
       pinned: pinned,
-      sortTimeMillis: latestSession == null
-          ? 0
-          : mobileConversationSortTime(latestSession),
+      sortTimeMillis: target.latestConversationSortTimeMillis,
       child: MobileLocalAgentListItem(
         target: target,
         entryId: id,
-        subtitle: subtitle,
+        subtitle: preview.isNotEmpty
+            ? preview
+            : capability.isEmpty
+            ? availability
+            : '$availability · $capability',
         pinned: pinned,
-        onTogglePinned: () =>
-            unawaited(widget.controller.toggleMobileHomeEntryPinned(id)),
-        onTap: () => widget.onSelect(target),
+        onTogglePinned: () => relayIntents.send(ToggleRelayHomeEntryPinned(id)),
+        onTap: () => onSelect(target),
+        iconBuilder: iconBuilder,
       ),
     );
   }
@@ -237,15 +234,4 @@ int? _mobileHomeEntryIndexForKey(
   final entryId = key.value.substring(prefix.length);
   final index = entries.indexWhere((entry) => entry.id == entryId);
   return index < 0 ? null : index;
-}
-
-String _localAgentFallbackSubtitle(
-  BuildContext context,
-  TargetCandidate target,
-) {
-  final strings = LicoStrings.of(context);
-  return [
-    target.configured ? strings.configured : strings.notConfigured,
-    if (target.kind.trim().isNotEmpty) target.kind.trim(),
-  ].join(' · ');
 }

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/agent_hub.dart';
 
@@ -10,7 +10,7 @@ import 'package:licoup/src/contracts/agent_hub.dart';
 /// their own engine, so rebuilds and remounts cannot duplicate a native
 /// catalog request. Refreshes are single-flight; a settled failure keeps the
 /// last valid projection while exposing a stable failed flag.
-final class AgentHubCatalogController extends ChangeNotifier {
+final class AgentHubCatalogController extends ApplicationStateOwner {
   AgentHubCatalogController({required AgentHubEnginePort engine})
     : _engine = engine,
       _catalog = engine.cachedCatalog;
@@ -58,20 +58,20 @@ final class AgentHubCatalogController extends ChangeNotifier {
       return _snapshotForRecipe(snapshot, id);
     }
     _resolvingRecipeIds.add(id);
-    notifyListeners();
+    publishChange();
     try {
       final snapshot = await _engine.catalog(recipeId: id);
       final live = _recipeFrom(snapshot, id);
       if (live != null) {
         _replaceRecipe(live);
-        notifyListeners();
+        publishChange();
       }
       return snapshot;
     } on Object {
       return const AgentHubCatalogSnapshot(recipes: [], ok: false);
     } finally {
       _resolvingRecipeIds.remove(id);
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -119,7 +119,7 @@ final class AgentHubCatalogController extends ChangeNotifier {
     _resolvingRecipeIds.addAll(
       _catalog?.recipes.map((recipe) => recipe.id) ?? const <String>[],
     );
-    notifyListeners();
+    publishChange();
     try {
       final root = await _engine.catalog();
       if (root.ok || root.recipes.isNotEmpty) {
@@ -128,7 +128,7 @@ final class AgentHubCatalogController extends ChangeNotifier {
         _resolvingRecipeIds
           ..clear()
           ..addAll(root.recipes.map((recipe) => recipe.id));
-        notifyListeners();
+        publishChange();
 
         final recipes = await Future.wait([
           for (final recipe in root.recipes) _resolveRecipe(recipe),
@@ -150,7 +150,7 @@ final class AgentHubCatalogController extends ChangeNotifier {
     } finally {
       _busy = false;
       _resolvingRecipeIds.clear();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -164,7 +164,7 @@ final class AgentHubCatalogController extends ChangeNotifier {
       // One failed probe must not discard the warehouse card or block peers.
     } finally {
       _resolvingRecipeIds.remove(fallback.id);
-      notifyListeners();
+      publishChange();
     }
     return resolved;
   }

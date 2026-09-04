@@ -1,8 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
 import 'package:licoup/src/application/controller/client_component_assembly.dart';
 import 'package:licoup/src/application/controller/client_conversation_archive_bindings.dart';
@@ -31,6 +30,8 @@ import 'package:licoup/src/application/features/agents/conversation/agent_conver
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
@@ -87,11 +88,6 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Stable application facade. Feature behavior and component construction live
 /// in focused facade and assembly leaves.
-@Deprecated(
-  'Migrate gestures to events/EventSender and render domain streams from '
-  'projections/*ProjectionConsumer. This compatibility composition root '
-  'remains usable until its dependent displays migrate.',
-)
 class ClientController extends AgentConversationController
     with
         ConversationRefreshController,
@@ -134,7 +130,8 @@ class ClientController extends AgentConversationController
     ClientCurrentViewTracker? currentViewTracker,
     AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
-    BuiltInLayoutComposition? layoutComposition,
+    LayoutCatalog? layoutCatalog,
+    LayoutStateStore? layoutStateStore,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
     ClientLogExportService? clientLogExportService,
@@ -149,6 +146,7 @@ class ClientController extends AgentConversationController
     Duration llmGatewayMonitorInterval = const Duration(seconds: 5),
     Duration llmGatewayRecoveryRetryDelay = const Duration(milliseconds: 500),
     LlmGatewayDiagnosticSink? llmGatewayDiagnosticSink,
+    ApplicationDiagnosticSink? applicationDiagnosticSink,
   }) : portableData = portableData ?? PortableDataRoot(),
        agentService =
            agentService ??
@@ -202,6 +200,7 @@ class ClientController extends AgentConversationController
            runtimePlatformBridge ?? const RuntimePlatformBridge(),
        _mobileClientRuntimePlatformOverride =
            mobileClientRuntimePlatformOverride,
+       diagnosticSink = applicationDiagnosticSink ?? _discardDiagnostic,
        _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
     llmGatewayLifecycleController = LlmGatewayLifecycleController(
@@ -212,7 +211,7 @@ class ClientController extends AgentConversationController
       diagnosticSink:
           llmGatewayDiagnosticSink ??
           LlmGatewayDiagnosticLog(portableData: this.portableData),
-    )..addListener(notifyClientStateChanged);
+    );
     _components = ClientComponentAssembly(
       portableData: this.portableData,
       agentService: this.agentService,
@@ -244,7 +243,6 @@ class ClientController extends AgentConversationController
       selectDefaultConversationAgent: selectDefaultConversationAgent,
       onEnterMonitoring: clientEnterMonitoringSection,
       onExitMonitoring: clientExitMonitoringSection,
-      notifyStateChanged: notifyClientStateChanged,
       entryHookTasks: resolveInterfaceEntryHookTasks(),
       mobileHomeLayoutRepository: mobileHomeLayoutRepository,
       skillHubGateway: skillHubGateway,
@@ -252,20 +250,17 @@ class ClientController extends AgentConversationController
       skillUsageGateway: skillUsageGateway,
       skillHubLocalCatalogSource: skillHubLocalCatalogSource,
       optionalCollaborationGateway: optionalCollaborationGateway,
-      layoutComposition: layoutComposition,
+      layoutCatalog: layoutCatalog,
+      layoutStateStore: layoutStateStore,
       layoutManager: layoutManager,
       presentationPreferencesRepository: presentationPreferencesRepository,
       catalogConvergenceGateway: catalogConvergenceGateway,
     );
-    bootstrapController.addListener(notifyClientStateChanged);
-    archiveQueryController.addListener(notifyClientStateChanged);
-    archiveDestinationController.addListener(notifyClientStateChanged);
-    messagingNotificationCenter = MessagingNotificationCenter()
-      ..addListener(notifyClientStateChanged);
+    messagingNotificationCenter = MessagingNotificationCenter();
     clientConversationController = ClientConversationController(
       runner: this.agentService,
       onSelectionChanged: recordCurrentGroupConversationView,
-    )..addListener(notifyClientStateChanged);
+    );
     _clientConversationControllerReady = true;
     clientConversationController.syncAvailableConversationAgents(
       scannedTargets,
@@ -319,16 +314,9 @@ class ClientController extends AgentConversationController
   final bool? _mobileClientRuntimePlatformOverride;
   final bool _ownsClientClipboardService;
   final bool _ownsAgentService;
+  @override
+  final ApplicationDiagnosticSink diagnosticSink;
   late final ClientComponentAssembly _components;
-
-  final TextEditingController bootstrapController = TextEditingController();
-  @override
-  final TextEditingController snapshotRootController = TextEditingController();
-  @override
-  final TextEditingController archiveQueryController = TextEditingController();
-  @override
-  final TextEditingController archiveDestinationController =
-      TextEditingController();
 
   ClientComponentAssembly get componentAssembly => _components;
   @override
@@ -400,8 +388,8 @@ class ClientController extends AgentConversationController
   @override
   ClientInterfaceEntryHookController get interfaceEntryHookController =>
       _components.interfaceEntryHookController;
-  BuiltInLayoutComposition get layoutComposition =>
-      _components.layoutComposition;
+  LayoutCatalog get layoutCatalog => _components.layoutCatalog;
+  LayoutStateStore get layoutStateStore => _components.layoutStateStore;
   @override
   LayoutManager get layoutManager => _components.layoutManager;
 
@@ -426,35 +414,33 @@ class ClientController extends AgentConversationController
   }) => openDirectoryPath(path, caption: caption);
 
   Future<void> _disposeRuntimeServices() async {
-    if (_ownsClientClipboardService) {
-      await clientClipboardService.dispose();
-    }
-    if (_ownsAgentService) {
-      await agentService.dispose();
-    }
+    await Future.wait<void>([
+      if (_ownsClientClipboardService) clientClipboardService.dispose(),
+      if (_ownsAgentService) agentService.dispose(),
+    ]);
+  }
+
+  Future<void>? _closing;
+
+  /// Deterministically closes the owned graph and asynchronous runtime ports.
+  Future<void> close() => _closing ??= _closeOnce();
+
+  Future<void> _closeOnce() async {
+    lifecycleController.dispose();
+    disposeAgentWorkspace();
+    llmGatewayLifecycleController.dispose();
+    messagingNotificationCenter.dispose();
+    clientConversationController.dispose();
+    llmVaultAuthorization.dispose();
+    _components.dispose();
+    super.dispose();
+    await _disposeRuntimeServices();
   }
 
   @override
   void dispose() {
-    if (lifecycleProjection.disposed) return;
-    lifecycleController.dispose();
-    disposeAgentWorkspace();
-    unawaited(_disposeRuntimeServices());
-    llmGatewayLifecycleController
-      ..removeListener(notifyClientStateChanged)
-      ..dispose();
-    messagingNotificationCenter
-      ..removeListener(notifyClientStateChanged)
-      ..dispose();
-    clientConversationController
-      ..removeListener(notifyClientStateChanged)
-      ..dispose();
-    llmVaultAuthorization.dispose();
-    _components.dispose();
-    bootstrapController.dispose();
-    snapshotRootController.dispose();
-    archiveQueryController.dispose();
-    archiveDestinationController.dispose();
-    super.dispose();
+    unawaited(close());
   }
 }
+
+void _discardDiagnostic(String code) {}

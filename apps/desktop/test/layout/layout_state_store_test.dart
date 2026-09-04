@@ -2,6 +2,7 @@ import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -54,5 +55,22 @@ void main() {
       ),
       throwsFormatException,
     );
+  });
+
+  test('equal writes and empty resets publish no change', () {
+    final store = LayoutStateStore(fixtureLayoutCatalog());
+    addTearDown(store.dispose);
+    var changes = 0;
+    store.changes.listen((_) => changes += 1);
+    final namespace = fixtureStateNamespaces().first;
+
+    store.write(namespace, LayoutScrollState(8));
+    store.write(namespace, LayoutScrollState(8));
+    store.resetProfile(LayoutProfileId.parse('missing'));
+    expect(changes, 1);
+
+    store.resetAll();
+    store.resetAll();
+    expect(changes, 2);
   });
 }

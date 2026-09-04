@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
 
 typedef AgentHubInstallSelection = ({String channelId, String version});
 
 Future<AgentHubInstallSelection?> showAgentHubInstallFlow(
   BuildContext context, {
-  required AgentHubRecipe recipe,
+  required AgentHubEntryProjection recipe,
 }) async {
   final picked = await showDialog<AgentHubInstallSelection>(
     context: context,
@@ -30,7 +30,7 @@ Future<AgentHubInstallSelection?> showAgentHubInstallFlow(
 final class _AgentHubInstallPickerDialog extends StatefulWidget {
   const _AgentHubInstallPickerDialog({required this.recipe});
 
-  final AgentHubRecipe recipe;
+  final AgentHubEntryProjection recipe;
 
   @override
   State<_AgentHubInstallPickerDialog> createState() =>
@@ -50,7 +50,7 @@ final class _AgentHubInstallPickerDialogState
     _version = 'latest';
   }
 
-  AgentHubInstallChannel? get _selectedChannel {
+  AgentHubChannelProjection? get _selectedChannel {
     final channels = widget.recipe.pickerChannels;
     for (final channel in channels) {
       if (channel.id == _channelId) {

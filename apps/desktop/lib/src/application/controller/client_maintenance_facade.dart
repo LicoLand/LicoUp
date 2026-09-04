@@ -1,5 +1,4 @@
-import 'package:flutter/foundation.dart' show debugPrint;
-
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
@@ -7,6 +6,7 @@ import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 mixin ClientMaintenanceFacade {
+  ApplicationDiagnosticSink get diagnosticSink;
   AgentService get agentService;
   ClientLogExportController get clientLogExportController;
   ClientUpdateController get clientUpdateController;
@@ -84,7 +84,7 @@ mixin ClientMaintenanceFacade {
     try {
       opencodeServeState = await agentService.ensureOpencodeServe();
       if (opencodeServeState?['ok'] != true) {
-        debugPrint('OpenCode serve bootstrap unavailable.');
+        diagnosticSink('opencode_serve_bootstrap_unavailable');
       }
     } catch (_) {
       opencodeServeState = <String, dynamic>{
@@ -92,7 +92,7 @@ mixin ClientMaintenanceFacade {
         'status': 'unavailable',
         'errorCode': 'opencode_serve_unavailable',
       };
-      debugPrint('OpenCode serve bootstrap failed.');
+      diagnosticSink('opencode_serve_bootstrap_failed');
     }
   }
 

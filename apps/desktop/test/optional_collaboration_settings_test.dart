@@ -5,10 +5,13 @@ import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
 import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fixtures/plugin_management_renderer_binding_fixture.dart';
 import 'support/optional_collaboration_test_fixtures.dart';
 
 const _digest =
@@ -446,7 +449,9 @@ Future<void> _loadCatalog(WidgetTester tester) async {
 Future<void> _pumpSettings(
   WidgetTester tester,
   OptionalCollaborationController controller,
-) {
+) async {
+  final feature = PluginManagementRendererBindingFixture(controller);
+  addTearDown(feature.dispose);
   return tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -460,7 +465,19 @@ Future<void> _pumpSettings(
         body: SingleChildScrollView(
           child: SizedBox(
             width: 900,
-            child: OptionalCollaborationSettings(controller: controller),
+            child:
+                ProjectionBuilder<
+                  PluginManagementProjection,
+                  PluginManagementProjection
+                >(
+                  source: feature.binding.projection,
+                  select: (projection) => projection,
+                  builder: (context, projection) =>
+                      OptionalCollaborationSettings(
+                        binding: feature.binding,
+                        projection: projection.collaboration,
+                      ),
+                ),
           ),
         ),
       ),

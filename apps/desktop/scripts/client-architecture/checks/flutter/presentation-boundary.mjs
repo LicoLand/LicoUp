@@ -1,85 +1,495 @@
+import path from "node:path";
+
 const appRoot = "apps/desktop/lib";
 const srcRoot = `${appRoot}/src`;
-const transitionPath =
-  `${srcRoot}/composition/m2_legacy_shell_renderer_transition_adapter.dart`;
+const applicationRoot = `${srcRoot}/application/`;
+const presentationRoot = `${srcRoot}/presentation/`;
+const frontendRoot = `${srcRoot}/frontend/`;
+const compositionRoot = `${srcRoot}/composition/`;
+
+export const PRESENTATION_STATE_PLANES = Object.freeze([
+  "appearance",
+  "locale",
+  "layout",
+  "environment",
+  "navigation",
+  "status",
+]);
+
+export const PRESENTATION_BINDING_NAMES = Object.freeze([
+  "ShellBinding",
+  "AgentsBinding",
+  "MonitoringBinding",
+  "SkillHubBinding",
+  "PluginManagementBinding",
+  "MobileRelayBinding",
+  "ModelsBinding",
+  "SettingsBinding",
+  "AgentHubBinding",
+  "ConversationBinding",
+  "TargetsBinding",
+  "SearchBinding",
+  "ChromeBinding",
+]);
+
+export const RETIRED_PRESENTATION_PATHS = Object.freeze([
+  `${srcRoot}/composition/m2_legacy_shell_renderer_transition_adapter.dart`,
+  `${srcRoot}/projections/listenable_projection_consumer.dart`,
+  `${srcRoot}/projections/adapters/legacy_projection_consumer_source_adapter.dart`,
+]);
 
 const requiredDirectories = Object.freeze([
   "packages/presentation_contract/lib",
-  `${srcRoot}/presentation/shell`,
-  `${srcRoot}/projections/adapters`,
-  `${srcRoot}/projections/shell`,
+  `${srcRoot}/application/state`,
+  `${srcRoot}/presentation`,
+  `${srcRoot}/projections`,
   `${srcRoot}/frontend/binding`,
-  `${srcRoot}/frontend/shell`,
   `${srcRoot}/composition`,
 ]);
 
-const legacyFrontendControllerImporters = new Set([
-  `${srcRoot}/frontend/features/agents/ui/adaptive_flywheel_dialog.dart`,
-  `${srcRoot}/frontend/features/agents/ui/agent_conversation_search_palette.dart`,
-  `${srcRoot}/frontend/features/agents/ui/agent_conversation_workspace.dart`,
-  `${srcRoot}/frontend/features/agents/ui/agent_usage_panel.dart`,
-  `${srcRoot}/frontend/features/agents/ui/agents_canvas.dart`,
-  `${srcRoot}/frontend/features/agents/ui/conversation_archive_dialog.dart`,
-  `${srcRoot}/frontend/features/agents/ui/messaging/messaging_chrome_tabs.dart`,
-  `${srcRoot}/frontend/features/agents/ui/messaging/messaging_notification_bell.dart`,
-  `${srcRoot}/frontend/features/agents/ui/mobile_widgets_page.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/mobile_agent_list.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/mobile_agents_home.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/mobile_desktop_agent_list.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/mobile_local_agent.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/mobile_relay_panel/composition.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/mobile_relay_panel/pairing.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart`,
-  `${srcRoot}/frontend/features/mobile_relay/ui/secure_mesh_file_sync_card.dart`,
-  `${srcRoot}/frontend/features/models/ui/models_panel.dart`,
-  `${srcRoot}/frontend/features/plugin_management/ui/adapter_plugin_panel.dart`,
-  `${srcRoot}/frontend/features/settings/ui/client_update_settings_card.dart`,
-  `${srcRoot}/frontend/features/settings/ui/settings_log_export_tile.dart`,
-  `${srcRoot}/frontend/features/settings/ui/settings_panel.dart`,
-  `${srcRoot}/frontend/features/settings/ui/startup_autostart_card.dart`,
-  `${srcRoot}/frontend/features/skill_hub/ui/skill_hub_panel.dart`,
-  `${srcRoot}/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart`,
-  `${srcRoot}/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart`,
-  `${srcRoot}/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart`,
+const implementationRoots = Object.freeze([
+  `${srcRoot}/application/`,
+  `${srcRoot}/backend/`,
+  `${srcRoot}/platform/`,
+  `${srcRoot}/projections/`,
+  `${srcRoot}/composition/`,
+  `${srcRoot}/frontend/`,
 ]);
 
-function importsClientController(source) {
-  return /\bimport\s+['"][^'"]*client_controller\.dart['"]/u.test(source);
+const applicationFrameworkTokens = Object.freeze([
+  "ChangeNotifier",
+  "ValueNotifier",
+  "ValueListenable",
+  "ListenableBuilder",
+  "AnimatedBuilder",
+  "Widget",
+  "BuildContext",
+  "AppLifecycleState",
+  "WidgetsBinding",
+  "WidgetsBindingObserver",
+  "SchedulerBinding",
+  "debugPrint",
+  "kDebugMode",
+]);
+
+const retiredPresentationSymbols = Object.freeze([
+  "M2LegacyShellRendererTransitionAdapter",
+  "LegacyProjectionConsumerSourceAdapter",
+  "ListenableProjectionConsumer",
+]);
+
+function stripDartComments(source) {
+  let result = "";
+  let quote = null;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (lineComment) {
+      if (character === "\n") {
+        lineComment = false;
+        result += "\n";
+      } else {
+        result += " ";
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        result += "  ";
+        blockComment = false;
+        index += 1;
+      } else {
+        result += character === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+    if (quote != null) {
+      if (quote.length === 3 && source.startsWith(quote, index)) {
+        result += quote;
+        quote = null;
+        index += 2;
+        continue;
+      }
+      result += character;
+      if (quote.length === 3) {
+        continue;
+      } else if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      result += "  ";
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      result += "  ";
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = source.startsWith(character.repeat(3), index)
+        ? character.repeat(3)
+        : character;
+      if (quote.length === 3) {
+        result += character.repeat(2);
+        index += 2;
+      }
+    }
+    result += character;
+  }
+  return result;
+}
+
+function maskDartNonCode(source) {
+  const uncommented = stripDartComments(source);
+  let result = "";
+  let quote = null;
+  let escaped = false;
+  for (let index = 0; index < uncommented.length; index += 1) {
+    const character = uncommented[index];
+    if (quote != null) {
+      if (quote.length === 3 && uncommented.startsWith(quote, index)) {
+        result += "   ";
+        quote = null;
+        index += 2;
+        continue;
+      }
+      if (quote.length === 3) {
+        result += character === "\n" ? "\n" : " ";
+        continue;
+      } else if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = null;
+      }
+      result += character === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = uncommented.startsWith(character.repeat(3), index)
+        ? character.repeat(3)
+        : character;
+      result += quote.length === 3 ? "   " : " ";
+      if (quote.length === 3) index += 2;
+      continue;
+    }
+    result += character;
+  }
+  return result;
+}
+
+function importsFrom(source) {
+  const imports = [];
+  const directive = /^\s*(?:import|export|part)(?!\s+of\b)\s+([\s\S]*?);/gmu;
+  for (const match of stripDartComments(source).matchAll(directive)) {
+    for (const uri of match[1].matchAll(/['"]([^'"\r\n]+)['"]/gu)) {
+      imports.push(uri[1]);
+    }
+  }
+  return imports;
+}
+
+function resolveLicoupImport(importer, specifier) {
+  if (specifier.startsWith("package:licoup/")) {
+    return `${appRoot}/${specifier.slice("package:licoup/".length)}`;
+  }
+  if (specifier.startsWith(".")) {
+    return path.posix.normalize(path.posix.join(path.posix.dirname(importer), specifier));
+  }
+  return null;
+}
+
+function implementationImports(relativePath, source) {
+  return importsFrom(source)
+    .map((specifier) => resolveLicoupImport(relativePath, specifier))
+    .filter((candidate) =>
+      candidate != null && implementationRoots.some((root) => candidate.startsWith(root)));
+}
+
+function classBody(source, className) {
+  const masked = maskDartNonCode(source);
+  const declaration = new RegExp(
+    `\\b(?:abstract\\s+interface\\s+|abstract\\s+|base\\s+|final\\s+|interface\\s+|sealed\\s+)?class\\s+${className}\\b`,
+    "u",
+  ).exec(masked);
+  if (declaration == null) return null;
+  const open = masked.indexOf("{", declaration.index + declaration[0].length);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let index = open; index < masked.length; index += 1) {
+    if (masked[index] === "{") depth += 1;
+    if (masked[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return masked.slice(open + 1, index);
+    }
+  }
+  return null;
+}
+
+function declaredTypes(source) {
+  const masked = maskDartNonCode(source);
+  return [...masked.matchAll(
+    /\b(?:class|enum|mixin|typedef)\s+([A-Z][A-Za-z0-9_]*)\b/gu,
+  )].map((match) => match[1]);
+}
+
+function hasToken(source, token) {
+  return new RegExp(`\\b${token}\\b`, "u").test(maskDartNonCode(source));
+}
+
+function pushFailure(failures, rule, relativePath, detail) {
+  failures.push([rule, relativePath, detail].filter((value) => value != null));
 }
 
 export function inspectPresentationBoundarySources(sourceByPath) {
   const failures = [];
-  const stablePaths = [...sourceByPath.keys()].filter((relativePath) =>
-    relativePath === `${appRoot}/app.dart` ||
-    relativePath.startsWith(`${srcRoot}/presentation/`) ||
-    relativePath.startsWith(`${srcRoot}/projections/adapters/`) ||
-    relativePath.startsWith(`${srcRoot}/projections/shell/`) ||
-    relativePath.startsWith(`${srcRoot}/frontend/binding/`) ||
-    relativePath.startsWith(`${srcRoot}/frontend/shell/`));
-  for (const relativePath of stablePaths) {
-    const source = sourceByPath.get(relativePath) ?? "";
-    if (/\bClientController\b/u.test(source)) {
-      failures.push(["presentation_boundary_complete_controller_forbidden", relativePath]);
+  const typeOwners = new Map();
+  const compositionEntries = [];
+
+  for (const [relativePath, source] of sourceByPath) {
+    const masked = maskDartNonCode(source);
+    const types = declaredTypes(source);
+    for (const type of types) {
+      const owners = typeOwners.get(type) ?? [];
+      owners.push(relativePath);
+      typeOwners.set(type, owners);
     }
-    if (source.includes("m2_legacy_shell_renderer_transition_adapter.dart")) {
-      failures.push(["presentation_boundary_transition_import_forbidden", relativePath]);
+
+    if (relativePath.startsWith(applicationRoot)) {
+      if (importsFrom(source).some((specifier) => specifier.startsWith("package:flutter/"))) {
+        pushFailure(failures, "presentation_boundary_application_flutter", relativePath);
+      }
+      if (implementationImports(relativePath, source).some(
+        (candidate) => candidate.startsWith(frontendRoot),
+      )) {
+        pushFailure(failures, "presentation_boundary_application_direction", relativePath);
+      }
+      for (const token of applicationFrameworkTokens) {
+        if (new RegExp(`\\b${token}\\b`, "u").test(masked)) {
+          pushFailure(
+            failures,
+            "presentation_boundary_application_framework_type",
+            relativePath,
+            token,
+          );
+        }
+      }
+      if (/\b(?:notifyListeners|addListener|removeListener)\s*\(/u.test(masked)) {
+        pushFailure(failures, "presentation_boundary_application_listener", relativePath);
+      }
+      if (
+        relativePath.endsWith("/client_controller.dart") &&
+        /@Deprecated\s*\(/u.test(masked) &&
+        /\bClientController\b/u.test(masked)
+      ) {
+        pushFailure(
+          failures,
+          "presentation_boundary_deprecated_controller_annotation",
+          relativePath,
+        );
+      }
+    }
+
+    if (relativePath.startsWith(presentationRoot)) {
+      if (importsFrom(source).some((specifier) => specifier.startsWith("package:flutter/"))) {
+        pushFailure(failures, "presentation_boundary_stable_flutter", relativePath);
+      }
+      if (implementationImports(relativePath, source).length > 0) {
+        pushFailure(failures, "presentation_boundary_stable_direction", relativePath);
+      }
+      if (/\bClientController\b/u.test(masked)) {
+        pushFailure(failures, "presentation_boundary_stable_controller", relativePath);
+      }
+    }
+
+    if (relativePath.startsWith(frontendRoot)) {
+      if (implementationImports(relativePath, source).some(
+        (candidate) => !candidate.startsWith(frontendRoot),
+      )) {
+        pushFailure(failures, "presentation_boundary_frontend_direction", relativePath);
+      }
+      if (/\bClientController\b/u.test(masked)) {
+        pushFailure(failures, "presentation_boundary_frontend_controller", relativePath);
+      }
+    }
+
+    const imports = implementationImports(relativePath, source);
+    const importsApplication = imports.some((candidate) => candidate.startsWith(applicationRoot));
+    const importsFrontend = imports.some((candidate) => candidate.startsWith(frontendRoot));
+    if (!relativePath.startsWith(compositionRoot) && importsApplication && importsFrontend) {
+      pushFailure(failures, "presentation_boundary_wiring_outside_composition", relativePath);
+    }
+
+    if (relativePath.startsWith(compositionRoot)) {
+      compositionEntries.push([relativePath, source]);
+    } else if (!relativePath.startsWith(presentationRoot)) {
+      for (const bindingName of PRESENTATION_BINDING_NAMES) {
+        if (new RegExp(`\\b${bindingName}\\s*\\(`, "u").test(masked)) {
+          pushFailure(
+            failures,
+            "presentation_boundary_wiring_outside_composition",
+            relativePath,
+            bindingName,
+          );
+        }
+      }
+    }
+
+    for (const symbol of retiredPresentationSymbols) {
+      if (new RegExp(`\\b${symbol}\\b`, "u").test(masked)) {
+        pushFailure(failures, "presentation_boundary_retired_symbol", relativePath, symbol);
+      }
     }
   }
-  for (const [relativePath, source] of sourceByPath) {
-    if (!relativePath.startsWith(`${srcRoot}/presentation/`)) continue;
-    if (/package:licoup\/src\/(?:application|backend|platform|composition|frontend|projections)\//u.test(source)) {
-      failures.push(["presentation_boundary_stable_direction", relativePath]);
-    }
-    if (/\bStreamController\b|\b(?:void|Future<void>)\s+dispose\s*\(/u.test(source)) {
-      failures.push(["presentation_boundary_producer_lifecycle_forbidden", relativePath]);
+
+  for (const retiredPath of RETIRED_PRESENTATION_PATHS) {
+    if (sourceByPath.has(retiredPath)) {
+      pushFailure(failures, "presentation_boundary_retired_path", retiredPath);
     }
   }
-  for (const [relativePath, source] of sourceByPath) {
-    if (!relativePath.startsWith(`${srcRoot}/frontend/`) || !importsClientController(source)) {
+
+  const expectedBindingSet = new Set(PRESENTATION_BINDING_NAMES);
+  for (const bindingName of PRESENTATION_BINDING_NAMES) {
+    const owners = typeOwners.get(bindingName) ?? [];
+    if (owners.length !== 1 || !owners[0]?.startsWith(presentationRoot)) {
+      pushFailure(
+        failures,
+        "presentation_boundary_binding_coverage",
+        owners[0] ?? presentationRoot,
+        bindingName,
+      );
       continue;
     }
-    if (!legacyFrontendControllerImporters.has(relativePath)) {
-      failures.push(["presentation_boundary_new_controller_debt", relativePath]);
+    const source = sourceByPath.get(owners[0]);
+    const body = classBody(source, bindingName);
+    if (body == null) {
+      pushFailure(failures, "presentation_boundary_binding_surface", owners[0], bindingName);
+      continue;
+    }
+    if (/\b(?:StreamController|dispose|close|initialize|Producer)\b/u.test(body)) {
+      pushFailure(failures, "presentation_boundary_binding_lifecycle", owners[0], bindingName);
+    }
+    if (/\b(?:List|Map|Set)\s*</u.test(body)) {
+      pushFailure(failures, "presentation_boundary_binding_mutable_collection", owners[0], bindingName);
+    }
+  }
+  for (const [type, owners] of typeOwners) {
+    if (
+      type.endsWith("Binding") &&
+      owners.some((owner) => owner.startsWith(presentationRoot)) &&
+      !expectedBindingSet.has(type)
+    ) {
+      pushFailure(failures, "presentation_boundary_binding_unexpected", owners[0], type);
+    }
+  }
+
+  for (const bindingName of PRESENTATION_BINDING_NAMES.filter((name) => name !== "ShellBinding")) {
+    const prefix = bindingName.slice(0, -"Binding".length);
+    for (const suffix of ["Projection", "Intent", "Effect"]) {
+      const typeName = `${prefix}${suffix}`;
+      const owners = typeOwners.get(typeName) ?? [];
+      if (owners.length !== 1 || !owners[0]?.startsWith(presentationRoot)) {
+        pushFailure(
+          failures,
+          "presentation_boundary_binding_semantics",
+          owners[0] ?? presentationRoot,
+          typeName,
+        );
+      }
+    }
+  }
+
+  const shellOwner = (typeOwners.get("ShellBinding") ?? [])[0];
+  const shellBody = shellOwner == null
+    ? null
+    : classBody(sourceByPath.get(shellOwner), "ShellBinding");
+  if (shellBody != null) {
+    for (const plane of PRESENTATION_STATE_PLANES) {
+      const fieldPattern = "\\bProjectionSource" +
+        "\\s*<[^;>]+>\\s+" + plane + "\\s*;";
+      const matches = [...shellBody.matchAll(
+        new RegExp(fieldPattern, "gu"),
+      )];
+      if (matches.length !== 1) {
+        pushFailure(
+          failures,
+          "presentation_boundary_state_plane_coverage",
+          shellOwner,
+          plane,
+        );
+      }
+    }
+    if (
+      /\bShellProjection\b|\b(?:app|presentation|shell)Revision\b|\brootNotifier\b|\bnotifyListeners\b/u.test(shellBody)
+    ) {
+      pushFailure(failures, "presentation_boundary_state_planes_combined", shellOwner);
+    }
+  }
+
+  const compositionSource = compositionEntries.map(([, source]) => source).join("\n");
+  const compositionImports = compositionEntries.flatMap(([relativePath, source]) =>
+    importsFrom(source).map((specifier) => resolveLicoupImport(relativePath, specifier)));
+  const compositionImportsApplication = compositionImports.some((candidate) =>
+    candidate?.startsWith(applicationRoot));
+  const compositionImportsFrontend = compositionImports.some((candidate) =>
+    candidate?.startsWith(frontendRoot));
+  if (!compositionImportsApplication || !compositionImportsFrontend) {
+    pushFailure(
+      failures,
+      "presentation_boundary_composition_concrete_edges",
+      `${compositionRoot}client_app_composition.dart`,
+    );
+  }
+  for (const bindingName of PRESENTATION_BINDING_NAMES) {
+    if (!hasToken(compositionSource, bindingName)) {
+      pushFailure(
+        failures,
+        "presentation_boundary_composition_binding_coverage",
+        `${compositionRoot}client_app_composition.dart`,
+        bindingName,
+      );
+    }
+  }
+
+  return failures;
+}
+
+export function inspectPresentationContractSources(sourceByPath) {
+  const failures = [];
+  for (const [relativePath, source] of sourceByPath) {
+    const masked = maskDartNonCode(source);
+    if (importsFrom(source).some((specifier) => specifier.startsWith("package:"))) {
+      pushFailure(failures, "presentation_boundary_package_purity", relativePath);
+    }
+    if (
+      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|dispose|close|revision)\b/u.test(masked)
+    ) {
+      pushFailure(failures, "presentation_boundary_package_surface", relativePath);
+    }
+  }
+  return failures;
+}
+
+export function inspectPresentationBoundaryPolicySources(sourceByPath) {
+  const failures = [];
+  const stalePolicy =
+    /\b(?:const|let|var)\s+[A-Za-z0-9_]*(?:legacy|debt|allowlist)[A-Za-z0-9_]*\s*=\s*new\s+(?:Set|Map)\b|\bfunction\s+isAllowedLegacy[A-Za-z0-9_]*\s*\(/iu;
+  for (const [relativePath, source] of sourceByPath) {
+    if (stalePolicy.test(source)) {
+      pushFailure(failures, "presentation_boundary_stale_allowlist", relativePath);
     }
   }
   return failures;
@@ -100,20 +510,12 @@ export async function checkPresentationBoundary(context) {
     );
   }
 
-  const packageSources = await collectSourceFiles(
-    "packages/presentation_contract/lib",
-    ".dart",
+  const packagePaths = await collectSourceFiles("packages/presentation_contract/lib", ".dart");
+  const packageSourceByPath = new Map(
+    await Promise.all(packagePaths.map(async (relativePath) => [relativePath, await readText(relativePath)])),
   );
-  for (const relativePath of packageSources) {
-    const source = await readText(relativePath);
-    assert(
-      !/\b(?:import|export)\s+['"]package:/u.test(source),
-      `[presentation_boundary_package_purity] ${relativePath} must remain SDK-only`,
-    );
-    assert(
-      !/\b(?:Widget|BuildContext|ClientController|dispose|close|revision)\b/u.test(source),
-      `[presentation_boundary_package_surface] ${relativePath} leaks renderer, lifecycle, implementation, or revision API`,
-    );
+  for (const [rule, relativePath, detail] of inspectPresentationContractSources(packageSourceByPath)) {
+    assert(false, `[${rule}] ${relativePath}${detail == null ? "" : `: ${detail}`}`);
   }
   const contractPubspecPath = "packages/presentation_contract/pubspec.yaml";
   const contractPubspec = await readText(contractPubspecPath);
@@ -123,51 +525,23 @@ export async function checkPresentationBoundary(context) {
 
   const dartPaths = await context.collectDartSourceFiles();
   const sourceByPath = new Map(
-    await Promise.all(
-      dartPaths.map(async (relativePath) => [relativePath, await readText(relativePath)]),
-    ),
+    await Promise.all(dartPaths.map(async (relativePath) => [relativePath, await readText(relativePath)])),
   );
-  for (const [rule, relativePath] of inspectPresentationBoundarySources(sourceByPath)) {
+  for (const [rule, relativePath, detail] of inspectPresentationBoundarySources(sourceByPath)) {
+    assert(false, `[${rule}] ${relativePath}${detail == null ? "" : `: ${detail}`}`);
+  }
+
+  const policyRoots = [
+    "apps/desktop/scripts/client-architecture/checks/flutter",
+    "apps/desktop/scripts/verify-layout-boundaries",
+  ];
+  const policyPaths = (await Promise.all(
+    policyRoots.map((relativeRoot) => collectSourceFiles(relativeRoot, ".mjs")),
+  )).flat();
+  const policySourceByPath = new Map(
+    await Promise.all(policyPaths.map(async (relativePath) => [relativePath, await readText(relativePath)])),
+  );
+  for (const [rule, relativePath] of inspectPresentationBoundaryPolicySources(policySourceByPath)) {
     assert(false, `[${rule}] ${relativePath}`);
   }
-
-  assert(
-    await exists(transitionPath),
-    `[presentation_boundary_transition_missing] ${transitionPath} must exist`,
-  );
-  const transitionSource = await readText(transitionPath);
-  for (const destination of [
-    "agents",
-    "monitoring",
-    "skillHub",
-    "pluginManagement",
-    "mobileRelay",
-    "models",
-    "settings",
-    "agentHub",
-  ]) {
-    assert(
-      transitionSource.includes(`ClientSection.${destination} =>`),
-      `[presentation_boundary_transition_destination] ${transitionPath} must cover ClientSection.${destination}`,
-    );
-  }
-  assert(
-    transitionSource.includes("OpenShellAgent(agentId)") &&
-      !transitionSource.includes("selectConversationAgent("),
-    `[presentation_boundary_open_agent_intent] ${transitionPath} must route Agent Hub selection through ShellIntent`,
-  );
-  assert(
-    !transitionSource.includes("_controller.addListener"),
-    `[presentation_boundary_root_controller_listener] ${transitionPath} must consume focused shell projections instead of the root controller notifier`,
-  );
-
-  const shellSource = await readText(`${srcRoot}/frontend/shell/client_shell.dart`);
-  assert(
-    /required this\.binding/u.test(shellSource) && /final ShellBinding binding;/u.test(shellSource),
-    `[presentation_boundary_shell_binding] ClientShell must accept ShellBinding`,
-  );
-  assert(
-    !/\bAnimatedBuilder\b/u.test(shellSource),
-    `[presentation_boundary_root_rebuild] ClientShell must not restore a root AnimatedBuilder`,
-  );
 }

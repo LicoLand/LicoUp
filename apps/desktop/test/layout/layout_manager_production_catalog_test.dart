@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -70,7 +70,7 @@ void main() {
         ),
       );
       final transitions = <LayoutSelectionStatus>[];
-      manager.addListener((state) => transitions.add(state.status));
+      manager.changes.listen((_) => transitions.add(manager.state.status));
 
       await manager.initialize();
       expect(manager.state.status, LayoutSelectionStatus.stable);

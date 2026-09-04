@@ -56,7 +56,7 @@ void registerAgentsWorkspaceStateScenarios() {
           body: SizedBox(
             width: 720,
             height: 420,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -129,7 +129,7 @@ void registerAgentsWorkspaceStateScenarios() {
             body: SizedBox(
               width: 720,
               height: 420,
-              child: AgentConversationWorkspace(
+              child: AgentConversationWorkspaceFixture(
                 controller: controller,
                 targets: controller.scannedTargets,
                 scanning: false,
@@ -190,7 +190,7 @@ void registerAgentsWorkspaceStateScenarios() {
           body: SizedBox(
             width: 720,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
