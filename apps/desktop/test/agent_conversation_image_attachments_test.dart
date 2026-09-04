@@ -108,8 +108,14 @@ void main() {
 
 Widget _app(ConversationImageByteReader reader) => MaterialApp(
   theme: buildLicoTheme(platformBrightness: Brightness.dark),
-  home: ConversationImageByteReaderScope(
-    reader: reader,
+  home: ConversationImageLoaderScope(
+    loader: ({required String localPath, required String mediaType}) async {
+      final result = await reader.read(
+        localPath: localPath,
+        mediaType: mediaType,
+      );
+      return result.bytes;
+    },
     child: const Scaffold(
       body: ConversationImageAttachmentFrame(
         attachment: AgentConversationImageAttachment(

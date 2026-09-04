@@ -11,6 +11,7 @@ import 'package:licoup/src/application/features/agents/policy/conversation_refre
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/conversation_attachment_release.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';

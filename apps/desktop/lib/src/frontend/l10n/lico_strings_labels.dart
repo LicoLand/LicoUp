@@ -1,4 +1,4 @@
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings_base.dart';
 
 extension LicoStringsLabels on LicoStrings {

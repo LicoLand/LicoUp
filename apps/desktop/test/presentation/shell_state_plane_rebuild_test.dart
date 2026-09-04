@@ -5,7 +5,7 @@ import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 
 void main() {
   testWidgets('shell state planes rebuild only their owning app adapter', (

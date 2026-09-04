@@ -346,8 +346,14 @@ void registerClientSecureMeshScenarios() {
         SecureMeshFileSyncStatus.awaitingConfirmation,
       );
       expect(controller.secureMeshFileSyncTransfers, hasLength(1));
-      expect(controller.displayStatusMessage, isNot(contains(directory.path)));
-      expect(controller.displayStatusMessage, contains('report.pdf'));
+      expect(
+        controller.functionalStatusRuntime.messageEnglish,
+        isNot(contains(directory.path)),
+      );
+      expect(
+        controller.functionalStatusRuntime.messageEnglish,
+        contains('report.pdf'),
+      );
 
       await controller.confirmSecureMeshFileSyncReceive(userConfirmed: true);
 

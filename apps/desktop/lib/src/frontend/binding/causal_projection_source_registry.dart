@@ -89,7 +89,6 @@ final class _TracedProjectionSource<T>
     if (_disposed) return;
     _disposed = true;
     await _subscription.cancel();
-    if (!_changes.hasListener) _changes.stream.listen(null);
     await _changes.close();
   }
 }

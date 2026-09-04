@@ -1,36 +1,48 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/controller/functional_status_runtime.dart';
+import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
-import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
+import 'package:licoup/src/projections/environment/environment_projection_source.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
 
 import '../layout/layout_host_test_fixtures.dart';
 
 void main() {
   test('shell state planes publish independently', () async {
-    final shell = ClientShellController();
+    final appearanceOwner = AppearancePreferenceOwner();
+    final localeOwner = LocalePreferenceOwner();
+    final statusRuntime = FunctionalStatusRuntime();
     final navigation = ClientNavigationController(isMobileRuntime: () => true);
     final runtime = buildFixtureLayoutRuntime();
     final manager = LayoutManager(
       catalog: runtime.catalog,
       preferencesRepository: _MemoryPreferencesRepository(),
       canonicalFallback: _preferences(),
-      initialEnvironment: _environment(width: 390),
+    );
+    final environmentSource = EnvironmentProjectionSource(
+      EnvironmentState(
+        environment: _environment(width: 390),
+        runtimeSurface: LayoutRuntimeSurface.mobile,
+      ),
     );
     final producer = ShellProjectionProducer(
-      shell: shell,
+      appearance: appearanceOwner,
+      locale: localeOwner,
+      status: statusRuntime,
       navigation: navigation,
       layoutManager: manager,
-      readRuntimeSurface: () => LayoutRuntimeSurface.mobile,
+      environment: environmentSource,
     );
     final appearance = <ProjectionUpdate<Object?>>[];
     final locale = <ProjectionUpdate<Object?>>[];
@@ -57,37 +69,40 @@ void main() {
       LayoutRuntimeSurface.mobile,
     );
 
-    shell.replaceStatusMessage('Focused status');
+    statusRuntime.replaceMessage('Focused status');
     expect(
       _counts(appearance, locale, layout, environment, destinations, status),
       [0, 0, 0, 0, 0, 1],
     );
 
-    shell.replaceLocalePreference(LocalePreference.chinese);
+    localeOwner.replace(LocalePreference.chinese);
     expect(
       _counts(appearance, locale, layout, environment, destinations, status),
-      [0, 1, 0, 0, 0, 2],
+      [0, 1, 0, 0, 0, 1],
     );
 
-    shell.replaceAppearancePreset(AppearancePresetIds.licoSodaLight);
+    appearanceOwner.replacePreset(AppearancePresetIds.licoSodaLight);
     expect(
       _counts(appearance, locale, layout, environment, destinations, status),
-      [1, 1, 0, 0, 0, 2],
+      [1, 1, 0, 0, 0, 1],
     );
 
     navigation.select(ClientSection.settings);
     expect(
       _counts(appearance, locale, layout, environment, destinations, status),
-      [1, 1, 0, 0, 1, 2],
+      [1, 1, 0, 0, 1, 1],
     );
 
-    manager.updateEnvironment(
-      _environment(width: 420),
-      cause: const ApplicationCause(traceId: 'environment-trace'),
+    environmentSource.replace(
+      EnvironmentState(
+        environment: _environment(width: 900),
+        runtimeSurface: LayoutRuntimeSurface.mobile,
+      ),
+      trace: const TraceContext(traceId: 'environment-trace'),
     );
     expect(
       _counts(appearance, locale, layout, environment, destinations, status),
-      [1, 1, 0, 1, 1, 2],
+      [1, 1, 1, 1, 1, 1],
     );
     expect(
       environment.single.trace,
@@ -99,9 +114,12 @@ void main() {
     }
     await producer.dispose();
     await producer.dispose();
+    await environmentSource.dispose();
     manager.dispose();
     navigation.dispose();
-    shell.dispose();
+    statusRuntime.dispose();
+    localeOwner.dispose();
+    appearanceOwner.dispose();
   });
 }
 

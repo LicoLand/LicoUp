@@ -1,5 +1,8 @@
 import 'package:presentation_contract/presentation_contract.dart';
 
+import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
+import 'package:licoup/src/presentation/layout/layout_projection.dart';
 import 'package:licoup/src/presentation/shell/shell_effect.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';

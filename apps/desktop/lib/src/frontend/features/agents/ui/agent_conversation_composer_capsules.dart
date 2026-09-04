@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/user_home_directory.dart';
+import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -131,7 +131,10 @@ class ComposerWorkspaceCapsule extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final fullPath = workingDirectory.trim();
-    final display = shortenComposerWorkspacePath(fullPath);
+    final display = shortenComposerWorkspacePath(
+      fullPath,
+      homeDirectory: WorkspaceHomeDirectoryScope.maybeOf(context),
+    );
     final canChoose = selectable && onChoose != null;
     final splitAt = display.lastIndexOf('/');
     final head = splitAt <= 0 ? '' : display.substring(0, splitAt + 1);
@@ -1095,9 +1098,9 @@ String formatComposerReasoningEffortLabel(String effort) {
 }
 
 /// Shortens an absolute workspace path for the composer capsule.
-String shortenComposerWorkspacePath(String path) {
+String shortenComposerWorkspacePath(String path, {String homeDirectory = ''}) {
   final normalized = path.trim();
-  final home = userHomeDirectory();
+  final home = homeDirectory.trim();
   var display = normalized;
   if (home.isNotEmpty) {
     if (normalized == home) {

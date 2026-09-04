@@ -27,6 +27,23 @@ Future<void> _tapRuntimeSelectorRow(WidgetTester tester, Key rowKey) async {
 }
 
 void main() {
+  test('workspace path shortening uses the injected environment home only', () {
+    expect(
+      shortenComposerWorkspacePath(
+        '/workspace/alice/projects/licoup',
+        homeDirectory: '/workspace/alice',
+      ),
+      '~/projects/licoup',
+    );
+    expect(
+      shortenComposerWorkspacePath(
+        '/workspace/bob/projects/licoup',
+        homeDirectory: '/workspace/alice',
+      ),
+      '/workspace/bob/projects/licoup',
+    );
+  });
+
   test('shortenComposerModelName keeps short ids intact', () {
     expect(shortenComposerModelName('gpt-5.4-mini'), 'gpt-5.4-mini');
   });

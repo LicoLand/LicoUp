@@ -6,7 +6,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
-import 'package:licoup/src/contracts/agent_product_identity.dart';
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';

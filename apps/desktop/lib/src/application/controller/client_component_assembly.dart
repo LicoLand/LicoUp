@@ -14,8 +14,10 @@ import 'package:licoup/src/application/controller/assembly/client_settings_compo
 import 'package:licoup/src/application/controller/assembly/client_skill_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_target_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_usage_component_assembly.dart';
+import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
-import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
@@ -23,9 +25,8 @@ import 'package:licoup/src/application/features/catalog_convergence/controller/c
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/application/features/layout/layout_catalog.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
@@ -39,6 +40,7 @@ import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_c
 import 'package:licoup/src/application/features/skill_hub/controller/skill_delete_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_usage_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
+import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/backend/features/agents/services/adaptive_flywheel_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
@@ -48,7 +50,6 @@ import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_prefere
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
-import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
@@ -97,16 +98,14 @@ final class ClientComponentAssembly {
     required ApplicationCallback onEnterMonitoring,
     required ApplicationCallback onExitMonitoring,
     required ClientInterfaceEntryHookTaskMap entryHookTasks,
+    required LayoutCatalog layoutCatalog,
+    required LayoutManager layoutManager,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
     SkillDeleteGateway? skillDeleteGateway,
     SkillUsageGateway? skillUsageGateway,
     SkillHubLocalCatalogSource? skillHubLocalCatalogSource,
     OptionalCollaborationGateway? optionalCollaborationGateway,
-    LayoutCatalog? layoutCatalog,
-    LayoutStateStore? layoutStateStore,
-    LayoutManager? layoutManager,
-    PresentationPreferencesRepository? presentationPreferencesRepository,
     CatalogConvergenceGateway? catalogConvergenceGateway,
   }) {
     adaptiveFlywheelGateway = AdaptiveFlywheelGatewayAdapter(
@@ -114,11 +113,8 @@ final class ClientComponentAssembly {
       runner: agentService,
     );
     presentation = ClientPresentationComponentAssembly(
-      portableData: portableData,
       layoutCatalog: layoutCatalog,
-      layoutStateStore: layoutStateStore,
       layoutManager: layoutManager,
-      presentationPreferencesRepository: presentationPreferencesRepository,
     );
     lifecycle = ClientLifecycleComponentAssembly(reportStatus: _reportStatus);
     catalogConvergence = ClientCatalogConvergenceComponentAssembly(
@@ -161,7 +157,9 @@ final class ClientComponentAssembly {
       clientUpdateService: clientUpdateService,
       clientLogExportService: clientLogExportService,
       runtimePlatformBridge: runtimePlatformBridge,
-      directoryCaption: () => shellController.strings.directory,
+      directoryCaption: () => ClientApplicationStrings.forPreference(
+        localePreferenceOwner.preference,
+      ).directory,
       reportStatus: _reportStatus,
       optionalCollaborationGateway: optionalCollaborationGateway,
       onCatalogPurge: catalogConvergenceController.disable,
@@ -205,7 +203,7 @@ final class ClientComponentAssembly {
       onExitMonitoring: onExitMonitoring,
       entryHookTasks: entryHookTasks,
       onEntryHookReport: (report) =>
-          shellController.replaceLastError(report.code),
+          functionalStatusRuntime.replaceLastError(report.code),
     );
   }
 
@@ -224,7 +222,12 @@ final class ClientComponentAssembly {
   late final ClientAgentHubComponentAssembly agentHub;
   late final ClientNavigationComponentAssembly navigation;
 
-  ClientShellController get shellController => presentation.shellController;
+  AppearancePreferenceOwner get appearancePreferenceOwner =>
+      presentation.appearancePreferenceOwner;
+  LocalePreferenceOwner get localePreferenceOwner =>
+      presentation.localePreferenceOwner;
+  FunctionalStatusRuntime get functionalStatusRuntime =>
+      presentation.functionalStatusRuntime;
   ClientLifecycleCoordinator get lifecycleController => lifecycle.controller;
   CatalogConvergenceController get catalogConvergenceController =>
       catalogConvergence.controller;
@@ -253,7 +256,6 @@ final class ClientComponentAssembly {
   MobileRelayController get mobileRelayController => mobile.relayController;
   SecureMeshController get secureMeshController => mobile.secureMeshController;
   LayoutCatalog get layoutCatalog => presentation.layoutCatalog;
-  LayoutStateStore get layoutStateStore => presentation.layoutStateStore;
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
   ProviderQuotaController get providerQuotaController =>
@@ -270,15 +272,15 @@ final class ClientComponentAssembly {
     required String caption,
     String errorCode = '',
   }) {
-    shellController.replaceLastError(errorCode);
+    functionalStatusRuntime.replaceLastError(errorCode);
     if (chinese.isNotEmpty || english.isNotEmpty) {
-      shellController.setLocalizedStatus(
+      functionalStatusRuntime.setLocalized(
         chinese,
         english,
-        caption: shellController.statusCaption,
+        caption: functionalStatusRuntime.caption,
       );
     }
-    shellController.replaceStatusCaption(caption);
+    functionalStatusRuntime.replaceCaption(caption);
   }
 
   void dispose() {

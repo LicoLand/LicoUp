@@ -8,9 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
@@ -22,7 +21,7 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dial
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
-import 'package:licoup/src/display/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
@@ -39,9 +38,12 @@ import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+
+const _conversationAttachmentMediaUnsupported = 'attachment_media_unsupported';
 
 class AgentConversationWorkspace extends StatefulWidget {
   const AgentConversationWorkspace({
@@ -295,7 +297,7 @@ class _AgentConversationWorkspaceState
           widget.conversation.intents.send(
             SetConversationAttachmentStatus(
               conversationId,
-              conversationAttachmentFailureMediaUnsupported,
+              _conversationAttachmentMediaUnsupported,
             ),
           );
           return;

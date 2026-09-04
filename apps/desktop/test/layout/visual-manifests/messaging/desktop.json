@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:2509bb50c2a9372fe2ef1b9d061fc10b00930e63d7be300dc3105383d058ea9f"
+      "digest": "sha256:3fa6299268214ef4789a9d410487657c42ebd38078e330b8dd21d1168d79f8e8"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -20,7 +20,7 @@
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:e8a5779ba989967ef7a77929393513e6ce825b986c6177b807698ab975bf9e3b"
+      "digest": "sha256:09f96781d68e6389e4c177515df096855609c6934f9fedba673481f45cb8724c"
     }
   ],
   "entries": [
@@ -121,5 +121,5 @@
       "digest": "sha256:3685a19fc58129ac8356cd183e6736d68182c482faf656e72363efc4fe072fa5"
     }
   ],
-  "manifestDigest": "sha256:084c8885c6f7cb068a4c3ed2ad9a216d57701af86d472ebe40c1baaf87cc9307"
+  "manifestDigest": "sha256:2d9a1a3e7661193a4b0d1a778e5d5b95919f1f4d1a95f0b3f93ef0857904695e"
 }

@@ -46,6 +46,11 @@ internal implementation is owned by its respective code module.
    PersistentTurns remain distinct projection sources inside `ConversationBinding`; sharing a
    renderer does not merge their ownership.
 
+9. **Conversation rendering is frontend-owned** — the shared Canonical Group pane lives under
+   `frontend/features/agents/ui/conversation/` and consumes only Conversation semantic values,
+   intents, effects, and renderer-local adapters. It does not import Application or behavior
+   reader/source contracts.
+
 ---
 
 ## Reactive State Binding Model

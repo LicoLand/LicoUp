@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';

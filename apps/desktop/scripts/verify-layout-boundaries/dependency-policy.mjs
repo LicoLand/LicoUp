@@ -16,6 +16,8 @@ import {
 const destinationPresentationDefinitionPath =
   "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart";
 const sharedRendererRoot = "apps/desktop/lib/src/frontend/shared/";
+const appearanceRendererRoot = "apps/desktop/lib/src/frontend/appearance/";
+const presentationRoot = "apps/desktop/lib/src/presentation/";
 
 export function isSharedRendererDependency(relativePath) {
   return relativePath.startsWith(sharedRendererRoot);
@@ -43,6 +45,8 @@ export function isDirectNeutralDependency(relativePath) {
 export function isNeutralClosureDependency(relativePath) {
   return (
     relativePath.startsWith("apps/desktop/lib/src/contracts/") ||
+    relativePath.startsWith(appearanceRendererRoot) ||
+    relativePath.startsWith(presentationRoot) ||
     relativePath.startsWith("apps/desktop/lib/src/frontend/l10n/") ||
     isSharedRendererDependency(relativePath) ||
     NEUTRAL_LAYOUT_CONTRACTS.has(relativePath)
