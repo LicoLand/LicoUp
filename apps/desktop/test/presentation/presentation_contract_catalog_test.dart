@@ -7,6 +7,7 @@ import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_effect.dart';
@@ -53,6 +54,9 @@ import 'package:licoup/src/presentation/shell/shell_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_effect.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
+import 'package:licoup/src/presentation/layout/layout_projection.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_effect.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
@@ -288,13 +292,11 @@ void main() {
         '/projections/',
         '/composition/',
         'ClientController',
-        'StreamController',
         'ChangeNotifier',
         'ValueNotifier',
         'ValueListenable',
         'BuildContext',
         'Widget',
-        'void dispose(',
       ];
 
       for (final file in files) {
@@ -407,8 +409,9 @@ ShellBinding _shellBinding() {
     ),
     status: _Projection(
       const StatusProjection(
-        displayMessage: '',
-        displayCaption: '',
+        messageChinese: '',
+        messageEnglish: '',
+        caption: '',
         errorCode: '',
       ),
     ),

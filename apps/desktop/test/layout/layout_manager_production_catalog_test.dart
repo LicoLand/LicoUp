@@ -1,12 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
@@ -32,9 +30,7 @@ void main() {
       final composition = BuiltInLayoutComposition();
       final catalog = composition.catalog;
       // Mirror client_presentation_component_assembly.dart exactly.
-      final preferredLayout = LayoutProfileDefaults.preferredForPlatform(
-        defaultTargetPlatform,
-      );
+      final preferredLayout = LayoutProfileId.parse('messaging');
       expect(preferredLayout, LayoutProfileId.parse('messaging'));
       expect(
         catalog.containsProfile(LayoutProfileId.parse('dashboard')),
@@ -60,14 +56,6 @@ void main() {
         preferencesRepository: repository,
         canonicalFallback: fallback,
         preferredDefaultId: preferredLayout,
-        initialEnvironment: LayoutEnvironment.fromConstraints(
-          surface: LayoutRuntimeSurface.desktop,
-          width: 1280,
-          height: 800,
-          textScale: 1,
-          hasPointer: true,
-          hasKeyboard: true,
-        ),
       );
       final transitions = <LayoutSelectionStatus>[];
       manager.changes.listen((_) => transitions.add(manager.state.status));

@@ -6,7 +6,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/agent_conversation_search_index.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_product_identity.dart';
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/search/search_projection.dart';

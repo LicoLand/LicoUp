@@ -2,11 +2,11 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/contracts/locale_preferences.dart';
-import 'package:licoup/src/frontend/locale/locale_projection_adapter.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
+import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
 
 void main() {
   test('app sections are the LicoUp client modules', () {

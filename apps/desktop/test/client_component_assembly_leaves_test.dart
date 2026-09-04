@@ -46,7 +46,7 @@ void main() {
       forbidden: 'TargetController(',
     ),
     'client_presentation_component_assembly.dart': (
-      owner: 'LayoutManager(',
+      owner: 'FunctionalStatusRuntime(',
       forbidden: 'AgentConversationGatewayAdapter(',
     ),
   };

@@ -212,6 +212,9 @@ void registerClientTargetScenarios() {
     );
     expect(controller.statusMessage, contains('已读取 1 条 codex 原生历史'));
     controller.localePreference = 'en';
-    expect(controller.displayStatusMessage, 'Read 1 native codex session.');
+    expect(
+      controller.functionalStatusRuntime.messageEnglish,
+      'Read 1 native codex session.',
+    );
   });
 }

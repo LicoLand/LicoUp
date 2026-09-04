@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/state/application_signal.dart';
-import 'package:licoup/src/application/features/layout/layout_catalog.dart';
-import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
+import 'package:licoup/src/application/features/layout/layout_preference_state.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 
 /// Owns the single transactional selection state independently of widgets.
@@ -13,7 +13,6 @@ final class LayoutManager {
     required LayoutCatalog catalog,
     required PresentationPreferencesRepository preferencesRepository,
     required PresentationPreferences canonicalFallback,
-    required LayoutEnvironment initialEnvironment,
     LayoutProfileId? preferredDefaultId,
     this.persistenceTimeout = const Duration(seconds: 5),
   }) : _catalog = catalog,
@@ -22,13 +21,10 @@ final class LayoutManager {
        _canonicalFallback = canonicalFallback.copyWith(
          layoutProfileId: preferredDefaultId ?? catalog.defaultProfile.id,
        ),
-       _environment = initialEnvironment,
-       _state = LayoutSelectionState(
+       _state = LayoutPreferenceState(
          committedId: preferredDefaultId ?? catalog.defaultProfile.id,
          effectiveId: preferredDefaultId ?? catalog.defaultProfile.id,
          status: LayoutSelectionStatus.loading,
-         surface: initialEnvironment.surface,
-         viewport: initialEnvironment.viewport,
          operationEpoch: 0,
        ) {
     if (!catalog.containsProfile(_preferredDefaultId)) {
@@ -48,9 +44,10 @@ final class LayoutManager {
   final Duration persistenceTimeout;
   final StreamController<ApplicationChange> _changes =
       StreamController<ApplicationChange>.broadcast(sync: true);
+  final StreamController<ApplicationChange> _selectionChanges =
+      StreamController<ApplicationChange>.broadcast(sync: true);
 
-  LayoutEnvironment _environment;
-  LayoutSelectionState _state;
+  LayoutPreferenceState _state;
   PresentationPreferences? _preferences;
   int _epoch = 0;
   bool _needsCanonicalPersistence = false;
@@ -64,15 +61,14 @@ final class LayoutManager {
   /// Platform-preferred default used for first run, recovery, and reset.
   LayoutProfileId get preferredDefaultId => _preferredDefaultId;
 
-  LayoutSelectionState get state => _state;
-
-  LayoutEnvironment get environment => _environment;
+  LayoutPreferenceState get state => _state;
 
   PresentationPreferences? get preferences => _preferences;
 
   bool get initialized => _preferences != null;
 
   Stream<ApplicationChange> get changes => _changes.stream;
+  Stream<ApplicationChange> get selectionChanges => _selectionChanges.stream;
 
   Future<void> initialize() =>
       _initialization ??= _enqueuePreferenceOperation(_initialize);
@@ -83,12 +79,10 @@ final class LayoutManager {
     }
     final epoch = _beginOperation();
     _emit(
-      LayoutSelectionState(
+      LayoutPreferenceState(
         committedId: _state.committedId,
         effectiveId: _state.committedId,
         status: LayoutSelectionStatus.loading,
-        surface: _environment.surface,
-        viewport: _environment.viewport,
         operationEpoch: epoch,
       ),
     );
@@ -113,14 +107,12 @@ final class LayoutManager {
         _preferences = loaded.preferences.copyWith(layoutProfileId: committed);
       }
       _emit(
-        LayoutSelectionState(
+        LayoutPreferenceState(
           committedId: committed,
           effectiveId: committed,
           status: error == null
               ? LayoutSelectionStatus.stable
               : LayoutSelectionStatus.error,
-          surface: _environment.surface,
-          viewport: _environment.viewport,
           operationEpoch: epoch,
           errorCode: error,
         ),
@@ -130,12 +122,10 @@ final class LayoutManager {
         _preferences = _canonicalFallback;
         _needsCanonicalPersistence = true;
         _emit(
-          LayoutSelectionState(
+          LayoutPreferenceState(
             committedId: _preferredDefaultId,
             effectiveId: _preferredDefaultId,
             status: LayoutSelectionStatus.error,
-            surface: _environment.surface,
-            viewport: _environment.viewport,
             operationEpoch: epoch,
             errorCode: LayoutSelectionErrorCode.persistenceFailed,
           ),
@@ -183,33 +173,6 @@ final class LayoutManager {
       return true;
     }
     return _commit(candidate);
-  }
-
-  bool updateEnvironment(
-    LayoutEnvironment environment, {
-    bool notify = true,
-    ApplicationCause? cause,
-  }) {
-    _requireActive();
-    if (_environment == environment) {
-      return false;
-    }
-    _environment = environment;
-    final next = LayoutSelectionState(
-      committedId: _state.committedId,
-      effectiveId: _state.effectiveId,
-      status: _state.status,
-      surface: environment.surface,
-      viewport: environment.viewport,
-      operationEpoch: _state.operationEpoch,
-      errorCode: _state.errorCode,
-    );
-    if (notify) {
-      _emit(next, cause: cause);
-    } else {
-      _state = next;
-    }
-    return true;
   }
 
   /// Persists appearance through the same serialized repository as layout.
@@ -290,12 +253,10 @@ final class LayoutManager {
     final previousCommitted = _state.committedId;
     final epoch = _beginOperation();
     _emit(
-      LayoutSelectionState(
+      LayoutPreferenceState(
         committedId: previousCommitted,
         effectiveId: candidate,
         status: LayoutSelectionStatus.committing,
-        surface: _environment.surface,
-        viewport: _environment.viewport,
         operationEpoch: epoch,
       ),
       cause: cause,
@@ -312,12 +273,10 @@ final class LayoutManager {
       _preferences = saved;
       _needsCanonicalPersistence = false;
       _emit(
-        LayoutSelectionState(
+        LayoutPreferenceState(
           committedId: candidate,
           effectiveId: candidate,
           status: LayoutSelectionStatus.stable,
-          surface: _environment.surface,
-          viewport: _environment.viewport,
           operationEpoch: epoch,
         ),
         cause: cause,
@@ -348,12 +307,10 @@ final class LayoutManager {
 
   void _emitStable({required int epoch, ApplicationCause? cause}) {
     _emit(
-      LayoutSelectionState(
+      LayoutPreferenceState(
         committedId: _state.committedId,
         effectiveId: _state.committedId,
         status: LayoutSelectionStatus.stable,
-        surface: _environment.surface,
-        viewport: _environment.viewport,
         operationEpoch: epoch,
       ),
       cause: cause,
@@ -366,12 +323,10 @@ final class LayoutManager {
     ApplicationCause? cause,
   }) {
     _emit(
-      LayoutSelectionState(
+      LayoutPreferenceState(
         committedId: _state.committedId,
         effectiveId: _state.committedId,
         status: LayoutSelectionStatus.error,
-        surface: _environment.surface,
-        viewport: _environment.viewport,
         operationEpoch: epoch,
         errorCode: code,
       ),
@@ -379,14 +334,18 @@ final class LayoutManager {
     );
   }
 
-  void _emit(LayoutSelectionState next, {ApplicationCause? cause}) {
+  void _emit(LayoutPreferenceState next, {ApplicationCause? cause}) {
     if (_disposed) {
       return;
     }
+    final selectionChanged = next.effectiveId != _state.effectiveId;
     _state = next;
     _publishing = true;
     try {
       _changes.add(ApplicationChange(cause: cause));
+      if (selectionChanged) {
+        _selectionChanges.add(ApplicationChange(cause: cause));
+      }
     } finally {
       _publishing = false;
     }
@@ -426,5 +385,6 @@ final class LayoutManager {
     _epoch += 1;
     _disposed = true;
     unawaited(_changes.close());
+    unawaited(_selectionChanges.close());
   }
 }

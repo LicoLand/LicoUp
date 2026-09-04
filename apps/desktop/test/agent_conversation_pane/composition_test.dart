@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 
 import 'pane_test_harness.dart';
@@ -418,15 +419,18 @@ void main() {
       paneTestApp(
         LayoutAgentsStrategyScope(
           strategy: const AgentsPresentationStrategy.messaging(),
-          child: AgentConversationActivePane(
-            state: paneTestState(
-              preparingNewConversation: true,
-              showWorkingDirectory: true,
-              workingDirectory: home,
-              workingDirectorySelectable: true,
+          child: WorkspaceHomeDirectoryScope(
+            path: home,
+            child: AgentConversationActivePane(
+              state: paneTestState(
+                preparingNewConversation: true,
+                showWorkingDirectory: true,
+                workingDirectory: home,
+                workingDirectorySelectable: true,
+              ),
+              actions: paneTestActions(onChooseWorkingDirectory: () {}),
+              header: paneTestHeader(),
             ),
-            actions: paneTestActions(onChooseWorkingDirectory: () {}),
-            header: paneTestHeader(),
           ),
         ),
       ),
@@ -452,17 +456,20 @@ void main() {
         paneTestApp(
           LayoutAgentsStrategyScope(
             strategy: const AgentsPresentationStrategy.messaging(),
-            child: AgentConversationActivePane(
-              state: paneTestState(
-                preparingNewConversation: true,
-                showWorkingDirectory: true,
-                workingDirectory: home,
-                workingDirectorySelectable: true,
+            child: WorkspaceHomeDirectoryScope(
+              path: home,
+              child: AgentConversationActivePane(
+                state: paneTestState(
+                  preparingNewConversation: true,
+                  showWorkingDirectory: true,
+                  workingDirectory: home,
+                  workingDirectorySelectable: true,
+                ),
+                actions: paneTestActions(
+                  onChooseWorkingDirectory: () => chooserOpened = true,
+                ),
+                header: paneTestHeader(),
               ),
-              actions: paneTestActions(
-                onChooseWorkingDirectory: () => chooserOpened = true,
-              ),
-              header: paneTestHeader(),
             ),
           ),
         ),
@@ -479,15 +486,18 @@ void main() {
         paneTestApp(
           LayoutAgentsStrategyScope(
             strategy: const AgentsPresentationStrategy.messaging(),
-            child: AgentConversationActivePane(
-              state: paneTestState(
-                preparingNewConversation: true,
-                showWorkingDirectory: true,
-                workingDirectory: selected,
-                workingDirectorySelectable: true,
+            child: WorkspaceHomeDirectoryScope(
+              path: home,
+              child: AgentConversationActivePane(
+                state: paneTestState(
+                  preparingNewConversation: true,
+                  showWorkingDirectory: true,
+                  workingDirectory: selected,
+                  workingDirectorySelectable: true,
+                ),
+                actions: paneTestActions(onChooseWorkingDirectory: () {}),
+                header: paneTestHeader(),
               ),
-              actions: paneTestActions(onChooseWorkingDirectory: () {}),
-              header: paneTestHeader(),
             ),
           ),
         ),

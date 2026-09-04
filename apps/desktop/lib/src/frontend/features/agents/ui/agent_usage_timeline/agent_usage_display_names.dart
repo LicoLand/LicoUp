@@ -1,4 +1,4 @@
-import 'package:licoup/src/contracts/agent_product_identity.dart';
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 import 'agent_usage_source_parser.dart';

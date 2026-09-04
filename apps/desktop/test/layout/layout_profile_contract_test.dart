@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,21 +38,6 @@ void main() {
       expect(failure, isA<FormatException>());
       expect('$failure', isNot(contains(invalid)));
     }
-  });
-
-  test('platform preferred defaults map Default vs Dashboard fallback', () {
-    expect(
-      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.macOS),
-      LayoutProfileId.parse('messaging'),
-    );
-    expect(
-      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.windows),
-      LayoutProfileId.parse('messaging'),
-    );
-    expect(
-      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.linux),
-      LayoutProfileId.parse('dashboard'),
-    );
   });
 
   test('profile descriptor owns validated localized copy', () {

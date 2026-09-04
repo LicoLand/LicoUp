@@ -465,9 +465,9 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   const retiredConversationFacade =
     `${flutterSrcRoot}/frontend/features/conversations/canonical_group_conversation_pane.dart`;
   const migratedConversationRoot =
-    `${flutterSrcRoot}/display/conversation/canonical_group_conversation_pane.dart`;
+    `${flutterSrcRoot}/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart`;
   const migratedConversationLeafRoot =
-    `${flutterSrcRoot}/display/conversation/canonical_group_conversation_pane`;
+    `${flutterSrcRoot}/frontend/features/agents/ui/conversation/canonical_group_conversation_pane`;
   const migratedConversationLeaves = [
     "create_dialog.dart",
     "header.dart",

@@ -7,16 +7,15 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'src/composition/client_app_composition.dart';
 import 'src/frontend/binding/projection_builder.dart';
 import 'src/frontend/binding/projection_telemetry_scope.dart';
-import 'src/frontend/locale/locale_projection_adapter.dart';
+import 'src/frontend/environment/environment_projection_adapter.dart';
 import 'src/frontend/l10n/lico_strings.dart';
-import 'src/frontend/features/agents/ui/agent_render_adapter.dart';
-import 'src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'src/frontend/appearance/appearance_preset_config.dart';
 import 'src/frontend/appearance/appearance_projection_adapter.dart';
 import 'src/frontend/shared/ui/theme.dart';
 import 'src/frontend/shell/client_shell.dart';
 import 'src/frontend/binding/shell_renderer_port.dart';
-import 'src/platform/agent_render_adapter/agent_render_adapter_service.dart';
-import 'src/presentation/shell/shell_projection.dart';
+import 'src/presentation/appearance/appearance_projection.dart';
+import 'src/presentation/environment/environment_projection.dart';
 import 'src/presentation/shell/shell_binding.dart';
 
 class LicoApp extends StatefulWidget {
@@ -56,9 +55,6 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
-      jsonSource: DefaultAgentRenderAdapterJsonSource(),
-    );
     _composition = widget.compositionFactory?.call() ?? ClientAppComposition();
     _composition.attachFlutterObservation(WidgetsBinding.instance);
     WidgetsBinding.instance.addObserver(this);

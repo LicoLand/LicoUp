@@ -1,8 +1,6 @@
 import 'dart:collection';
 
-import 'package:licoup/src/application/features/layout/layout_catalog.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
-import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/frontend/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
@@ -12,8 +10,10 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/messaging_
 import 'package:licoup/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_bundle.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
+import 'package:licoup/src/presentation/layout/semantic_destination_catalog.dart';
 
-/// Application composition root for the immutable built-in layout product.
+/// Composition root for the immutable built-in layout product.
 ///
 /// This is the only application file allowed to assemble renderer-owned
 /// surface bundles. This is the only production composition root allowed to
@@ -24,15 +24,9 @@ final class BuiltInLayoutComposition {
   factory BuiltInLayoutComposition() =>
       BuiltInLayoutComposition.fromDefinitions(_builtInDefinitions());
 
-  /// Attaches Flutter renderers to an already-created pure Application layout
-  /// catalog and state owner. Composition remains the sole concrete join.
-  factory BuiltInLayoutComposition.attach({
-    required LayoutCatalog catalog,
-    required LayoutStateStore stateStore,
-  }) {
-    if (!identical(stateStore.catalog, catalog)) {
-      throw const FormatException('layout_state_catalog_identity_mismatch');
-    }
+  /// Attaches Flutter renderers to an already-created semantic catalog while
+  /// keeping renderer-local state owned by this composition.
+  factory BuiltInLayoutComposition.attach({required LayoutCatalog catalog}) {
     final definitions = List<LayoutDefinition>.unmodifiable(
       _builtInDefinitions(),
     );
@@ -40,7 +34,7 @@ final class BuiltInLayoutComposition {
       definitions: UnmodifiableListView(definitions),
       catalog: catalog,
       registry: LayoutRegistry(catalog: catalog, definitions: definitions),
-      stateStore: stateStore,
+      stateStore: LayoutStateStore(catalog),
     );
   }
 
@@ -108,7 +102,7 @@ final class BuiltInLayoutComposition {
     );
   }
 
-  const BuiltInLayoutComposition._({
+  BuiltInLayoutComposition._({
     required this.definitions,
     required this.catalog,
     required this.registry,
@@ -119,6 +113,7 @@ final class BuiltInLayoutComposition {
   final LayoutCatalog catalog;
   final LayoutRegistry registry;
   final LayoutStateStore stateStore;
+  bool _disposed = false;
 
   /// Settings consumes this catalog-owned ordering directly; there is no
   /// second profile list or profile-specific branch outside registration.
@@ -128,6 +123,12 @@ final class BuiltInLayoutComposition {
     LayoutProfileId profileId,
     LayoutRuntimeSurface surface,
   ) => registry.definition(profileId).bundles[surface]!;
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    stateStore.dispose();
+  }
 
   static List<LayoutDefinition> _builtInDefinitions() => <LayoutDefinition>[
     LayoutDefinition([messagingDesktopBundle, messagingMobileBundle]),

@@ -8,12 +8,12 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
+import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/shell/client_platform.dart';
 import 'package:licoup/src/frontend/shell/projected_layout_chrome_port.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -21,6 +21,8 @@ import 'package:licoup/src/presentation/shell/shell_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_effect.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
+import 'package:licoup/src/presentation/layout/layout_projection.dart';
 
 class ClientShell extends StatefulWidget {
   const ClientShell({super.key, required this.binding, required this.renderer});
@@ -61,7 +63,8 @@ class _ClientShellState extends State<ClientShell>
       );
     }
     if (rendererChanged ||
-        !identical(oldWidget.binding.status, widget.binding.status)) {
+        !identical(oldWidget.binding.status, widget.binding.status) ||
+        !identical(oldWidget.binding.locale, widget.binding.locale)) {
       final previous = _layoutChrome;
       _layoutChrome = _createLayoutChrome();
       unawaited(previous.dispose());
@@ -71,6 +74,7 @@ class _ClientShellState extends State<ClientShell>
   ProjectedLayoutChromePort _createLayoutChrome() => ProjectedLayoutChromePort(
     actions: widget.renderer.chrome,
     status: widget.binding.status,
+    locale: widget.binding.locale,
   );
 
   @override
@@ -92,7 +96,7 @@ class _ClientShellState extends State<ClientShell>
           select: _environmentProjection,
           builder: (context, projectedEnvironment) => LayoutBuilder(
             builder: (context, constraints) {
-              final environment = _environmentFor(
+              final environment = collectLayoutEnvironment(
                 context,
                 constraints,
                 projectedEnvironment.runtimeSurface,
@@ -153,36 +157,6 @@ class _ClientShellState extends State<ClientShell>
         palette: layoutPaletteFromColors(colors),
         chrome: _layoutChrome,
       ),
-    );
-  }
-
-  LayoutEnvironment _environmentFor(
-    BuildContext context,
-    BoxConstraints constraints,
-    LayoutRuntimeSurface projectedSurface,
-  ) {
-    final media = MediaQuery.of(context);
-    final mobile =
-        projectedSurface == LayoutRuntimeSurface.mobile ||
-        isMobileClientPlatform(context);
-    return LayoutEnvironment.fromConstraints(
-      surface: mobile
-          ? LayoutRuntimeSurface.mobile
-          : LayoutRuntimeSurface.desktop,
-      width: constraints.maxWidth,
-      height: constraints.maxHeight,
-      textScale: media.textScaler.scale(1),
-      safeInsets: LayoutInsets(
-        left: media.padding.left,
-        top: media.padding.top,
-        right: media.padding.right,
-        bottom: media.padding.bottom,
-      ),
-      keyboardInset: media.viewInsets.bottom,
-      hasPointer: !mobile,
-      hasKeyboard: !mobile,
-      hasTouch: mobile,
-      reducedMotion: media.disableAnimations,
     );
   }
 

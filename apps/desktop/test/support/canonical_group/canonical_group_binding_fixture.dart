@@ -17,7 +17,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/display/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';

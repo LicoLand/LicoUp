@@ -2,13 +2,19 @@ import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/controller/functional_status_runtime.dart';
+import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
+import 'package:licoup/src/presentation/layout/layout_projection.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 import 'package:licoup/src/projections/application_projection_source.dart';
@@ -17,55 +23,58 @@ import 'package:licoup/src/projections/application_projection_source.dart';
 /// shared lifetime, while renderers subscribe only to the plane they consume.
 final class ShellProjectionProducer {
   ShellProjectionProducer({
-    required ClientShellController shell,
+    required AppearancePreferenceOwner appearance,
+    required LocalePreferenceOwner locale,
+    required FunctionalStatusRuntime status,
     required ClientNavigationController navigation,
     required LayoutManager layoutManager,
-    required LayoutRuntimeSurface Function() readRuntimeSurface,
+    required ProjectionSource<EnvironmentProjection> environment,
+    AppearanceProjection Function(AppearancePreferenceOwner owner)?
+    appearanceResolver,
+    LocaleProjection Function(LocalePreferenceOwner owner)? localeResolver,
+    LayoutProjection Function(
+      LayoutManager manager,
+      EnvironmentProjection environment,
+    )?
+    layoutResolver,
+    StatusProjection Function(FunctionalStatusRuntime runtime)? statusResolver,
   }) {
-    appearance = ApplicationProjectionSource<AppearanceProjection>(
-      changes: shell.changes,
-      read: () => _readAppearance(shell),
+    final resolveAppearance = appearanceResolver ?? resolveAppearanceProjection;
+    final resolveLocale = localeResolver ?? resolveLocaleProjection;
+    final resolveLayout = layoutResolver ?? resolveLayoutProjection;
+    final resolveStatus = statusResolver ?? resolveStatusProjection;
+    this.appearance = ApplicationProjectionSource<AppearanceProjection>(
+      changes: appearance.changes,
+      read: () => resolveAppearance(appearance),
     );
-    locale = ApplicationProjectionSource<LocaleProjection>(
-      changes: shell.changes,
-      read: () => LocaleProjection(shell.localePreference),
+    this.locale = ApplicationProjectionSource<LocaleProjection>(
+      changes: locale.changes,
+      read: () => resolveLocale(locale),
     );
     _layout = _LayoutProjectionSource<LayoutProjection>(
-      changes: layoutManager.changes,
-      read: () => LayoutProjection(layoutManager.state),
+      changes: [layoutManager.selectionChanges, environment.changes],
+      read: () => resolveLayout(layoutManager, environment.current),
     );
-    _environment = _LayoutProjectionSource<EnvironmentProjection>(
-      changes: layoutManager.changes,
-      read: () => EnvironmentProjection(
-        environment: layoutManager.environment,
-        runtimeSurface: readRuntimeSurface(),
-      ),
-    );
+    this.environment = environment;
     this.navigation = ApplicationProjectionSource<NavigationProjection>(
       changes: navigation.changes,
       read: () => _readNavigation(navigation),
     );
-    status = ApplicationProjectionSource<StatusProjection>(
-      changes: shell.changes,
-      read: () => StatusProjection(
-        displayMessage: shell.displayStatusMessage,
-        displayCaption: shell.displayStatusCaption,
-        errorCode: shell.lastErrorCode,
-      ),
+    this.status = ApplicationProjectionSource<StatusProjection>(
+      changes: status.changes,
+      read: () => resolveStatus(status),
     );
   }
 
   late final ApplicationProjectionSource<AppearanceProjection> appearance;
   late final ApplicationProjectionSource<LocaleProjection> locale;
   late final _LayoutProjectionSource<LayoutProjection> _layout;
-  late final _LayoutProjectionSource<EnvironmentProjection> _environment;
+  late final ProjectionSource<EnvironmentProjection> environment;
   late final ApplicationProjectionSource<NavigationProjection> navigation;
   late final ApplicationProjectionSource<StatusProjection> status;
   bool _disposed = false;
 
   ProjectionSource<LayoutProjection> get layout => _layout;
-
-  ProjectionSource<EnvironmentProjection> get environment => _environment;
 
   Future<void> dispose() async {
     if (_disposed) return;
@@ -74,17 +83,10 @@ final class ShellProjectionProducer {
       appearance.dispose(),
       locale.dispose(),
       _layout.dispose(),
-      _environment.dispose(),
       navigation.dispose(),
       status.dispose(),
     ]);
   }
-
-  static AppearanceProjection _readAppearance(ClientShellController shell) =>
-      AppearanceProjection(
-        presetId: shell.appearancePresetId,
-        presets: shell.appearancePresetConfigs.map(_projectAppearancePreset),
-      );
 
   static AppearancePresetProjection _projectAppearancePreset(
     AppearancePresetConfig config,
@@ -111,23 +113,68 @@ final class ShellProjectionProducer {
   );
 }
 
+AppearanceProjection resolveAppearanceProjection(
+  AppearancePreferenceOwner appearance,
+) => AppearanceProjection(
+  presetId: appearance.presetId,
+  fontPreference: appearance.fontPreference,
+  presets: appearance.presets.map(
+    ShellProjectionProducer._projectAppearancePreset,
+  ),
+);
+
+LocaleProjection resolveLocaleProjection(LocalePreferenceOwner locale) =>
+    LocaleProjection(locale.preference);
+
+StatusProjection resolveStatusProjection(FunctionalStatusRuntime status) =>
+    StatusProjection(
+      messageChinese: status.messageChinese,
+      messageEnglish: status.messageEnglish,
+      caption: status.caption,
+      errorCode: status.lastErrorCode,
+    );
+
+LayoutProjection resolveLayoutProjection(
+  LayoutManager manager,
+  EnvironmentProjection environment,
+) {
+  final state = manager.state;
+  final measured = environment.environment;
+  final loading = state.status == LayoutSelectionStatus.loading;
+  return LayoutProjection(
+    LayoutSelectionState(
+      committedId: loading ? state.committedId : state.effectiveId,
+      effectiveId: state.effectiveId,
+      status: loading
+          ? LayoutSelectionStatus.loading
+          : LayoutSelectionStatus.stable,
+      surface: measured.surface,
+      viewport: measured.viewport,
+      operationEpoch: 0,
+    ),
+  );
+}
+
 typedef _LayoutProjectionReader<T> = T Function();
 
 /// Equality-suppressing projection over the framework-independent layout
 /// change stream.
 final class _LayoutProjectionSource<T> implements ProjectionSource<T> {
   _LayoutProjectionSource({
-    required Stream<ApplicationChange> changes,
+    required Iterable<Stream<Object?>> changes,
     required _LayoutProjectionReader<T> read,
   }) : _read = read,
        _current = read() {
-    _subscription = changes.listen(_handleChange);
+    _subscriptions = [
+      for (final changesForOwner in changes)
+        changesForOwner.listen(_handleChange),
+    ];
   }
 
   final _LayoutProjectionReader<T> _read;
   final StreamController<ProjectionUpdate<T>> _updates =
       StreamController<ProjectionUpdate<T>>.broadcast(sync: true);
-  late final StreamSubscription<ApplicationChange> _subscription;
+  late final List<StreamSubscription<Object?>> _subscriptions;
   T _current;
   bool _disposed = false;
 
@@ -137,7 +184,7 @@ final class _LayoutProjectionSource<T> implements ProjectionSource<T> {
   @override
   Stream<ProjectionUpdate<T>> get changes => _updates.stream;
 
-  void _handleChange(ApplicationChange change) {
+  void _handleChange(Object? change) {
     if (_disposed) return;
     final next = _read();
     if (next == _current) return;
@@ -145,7 +192,7 @@ final class _LayoutProjectionSource<T> implements ProjectionSource<T> {
     _updates.add(
       ProjectionUpdate(
         next,
-        trace: change.cause?.traceId == null
+        trace: change is! ApplicationChange || change.cause?.traceId == null
             ? null
             : TraceContext(traceId: change.cause!.traceId),
       ),
@@ -155,7 +202,9 @@ final class _LayoutProjectionSource<T> implements ProjectionSource<T> {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    await _subscription.cancel();
+    for (final subscription in _subscriptions.reversed) {
+      await subscription.cancel();
+    }
     await closeBroadcastController(_updates);
   }
 }

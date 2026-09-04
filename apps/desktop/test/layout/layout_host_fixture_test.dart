@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
-import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/frontend/layout/layout_state_store.dart';
+import 'package:licoup/src/presentation/layout/semantic_destination_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
@@ -198,13 +198,15 @@ void main() {
       catalog: runtime.catalog,
       preferencesRepository: repository,
       canonicalFallback: fixturePreferences(),
-      initialEnvironment: desktopEnvironment(800),
     );
     await manager.initialize();
+    final environment = desktopEnvironment(800);
     final parentBuilds = ValueNotifier<int>(0);
-    final selectionValue = ValueNotifier<LayoutSelectionState>(manager.state);
+    final selectionValue = ValueNotifier<LayoutSelectionState>(
+      selectionFor(manager, environment),
+    );
     final selectionSubscription = manager.changes.listen(
-      (_) => selectionValue.value = manager.state,
+      (_) => selectionValue.value = selectionFor(manager, environment),
     );
     final stateStore = LayoutStateStore(runtime.catalog);
     addTearDown(() async {
@@ -222,7 +224,7 @@ void main() {
               selection: selection,
               registry: runtime.registry,
               stateStore: stateStore,
-              environment: desktopEnvironment(800),
+              environment: environment,
               destination: ClientSection.agents,
               availableDestinations: ClientSection.values,
               onSelectDestination: (_) {},
@@ -275,7 +277,6 @@ void main() {
       catalog: runtime.catalog,
       preferencesRepository: MemoryPreferencesRepository(),
       canonicalFallback: fixturePreferences(),
-      initialEnvironment: desktopEnvironment(800),
     );
     await manager.initialize();
     final stateStore = LayoutStateStore(runtime.catalog);
@@ -283,7 +284,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          selection: manager.state,
+          selection: selectionFor(manager, desktopEnvironment(800)),
           registry: runtime.registry,
           stateStore: stateStore,
           environment: desktopEnvironment(800),
@@ -332,7 +333,6 @@ void main() {
       catalog: runtime.catalog,
       preferencesRepository: MemoryPreferencesRepository(),
       canonicalFallback: fixturePreferences(),
-      initialEnvironment: desktopEnvironment(800),
     );
     await manager.initialize();
     LayoutPalette? observed;
@@ -340,7 +340,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          selection: manager.state,
+          selection: selectionFor(manager, desktopEnvironment(800)),
           registry: runtime.registry,
           stateStore: LayoutStateStore(runtime.catalog),
           environment: desktopEnvironment(800),
@@ -362,7 +362,7 @@ void main() {
     manager.dispose();
   });
 
-  testWidgets('host waits for the application environment projection', (
+  testWidgets('host waits for the Presentation environment projection', (
     tester,
   ) async {
     final runtime = buildFixtureLayoutRuntime();
@@ -370,12 +370,13 @@ void main() {
       catalog: runtime.catalog,
       preferencesRepository: MemoryPreferencesRepository(),
       canonicalFallback: fixturePreferences(),
-      initialEnvironment: desktopEnvironment(800),
     );
-    final expanded = desktopEnvironment(1400);
-    final selectionValue = ValueNotifier<LayoutSelectionState>(manager.state);
+    var environment = desktopEnvironment(800);
+    final selectionValue = ValueNotifier<LayoutSelectionState>(
+      selectionFor(manager, environment),
+    );
     final selectionSubscription = manager.changes.listen(
-      (_) => selectionValue.value = manager.state,
+      (_) => selectionValue.value = selectionFor(manager, environment),
     );
     addTearDown(() async {
       await selectionSubscription.cancel();
@@ -390,7 +391,7 @@ void main() {
             selection: selection,
             registry: runtime.registry,
             stateStore: LayoutStateStore(runtime.catalog),
-            environment: expanded,
+            environment: environment,
             destination: ClientSection.agents,
             availableDestinations: ClientSection.values,
             onSelectDestination: (_) {},
@@ -406,11 +407,12 @@ void main() {
       ),
     );
 
-    expect(manager.state.viewport, LayoutViewportClass.medium);
+    expect(selectionValue.value.viewport, LayoutViewportClass.medium);
     expect(find.byKey(const Key('loading')), findsOneWidget);
-    manager.updateEnvironment(expanded);
+    environment = desktopEnvironment(1400);
+    selectionValue.value = selectionFor(manager, environment);
     await tester.pump();
-    expect(manager.state.viewport, LayoutViewportClass.expanded);
+    expect(selectionValue.value.viewport, LayoutViewportClass.expanded);
     await manager.initialize();
     await tester.pump();
     expect(
@@ -429,13 +431,12 @@ void main() {
       catalog: managerRuntime.catalog,
       preferencesRepository: MemoryPreferencesRepository(),
       canonicalFallback: fixturePreferences(),
-      initialEnvironment: desktopEnvironment(800),
     );
 
     await tester.pumpWidget(
       MaterialApp(
         home: LayoutHost(
-          selection: manager.state,
+          selection: selectionFor(manager, desktopEnvironment(800)),
           registry: hostRuntime.registry,
           stateStore: LayoutStateStore(managerRuntime.catalog),
           environment: desktopEnvironment(800),
@@ -467,6 +468,22 @@ LayoutEnvironment desktopEnvironment(double width) =>
       hasKeyboard: true,
       hasPointer: true,
     );
+
+LayoutSelectionState selectionFor(
+  LayoutManager manager,
+  LayoutEnvironment environment,
+) {
+  final state = manager.state;
+  return LayoutSelectionState(
+    committedId: state.committedId,
+    effectiveId: state.effectiveId,
+    status: state.status,
+    surface: environment.surface,
+    viewport: environment.viewport,
+    operationEpoch: state.operationEpoch,
+    errorCode: state.errorCode,
+  );
+}
 
 PresentationPreferences fixturePreferences() => PresentationPreferences(
   layoutProfileId: LayoutProfileId.parse('dashboard'),

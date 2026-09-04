@@ -4,7 +4,6 @@ import 'package:licoup/src/application/controller/client_agent_usage_facade.dart
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/controller/client_conversation_facade.dart';
 import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
-import 'package:licoup/src/application/controller/client_presentation_facade.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -28,7 +27,6 @@ mixin ClientNavigationFacade
         AgentConversationSessionController,
         ConversationRefreshController,
         ClientConversationFacade,
-        ClientPresentationFacade,
         ClientAgentUsageFacade,
         ClientMobileRelayFacade,
         ClientSkillHubFacade,

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/agent_product_identity.dart';
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';

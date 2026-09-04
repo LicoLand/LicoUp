@@ -6,14 +6,32 @@ const applicationRoot = `${srcRoot}/application/`;
 const presentationRoot = `${srcRoot}/presentation/`;
 const frontendRoot = `${srcRoot}/frontend/`;
 const compositionRoot = `${srcRoot}/composition/`;
+const contractsRoot = `${srcRoot}/contracts/`;
+const rendererSemanticContractRoots = Object.freeze([
+  `${contractsRoot}presentation/`,
+  `${contractsRoot}appearance/`,
+  `${contractsRoot}generated/`,
+]);
 
 export const PRESENTATION_STATE_PLANES = Object.freeze([
-  "appearance",
-  "locale",
+  "functional",
   "layout",
+  "appearance",
   "environment",
-  "navigation",
-  "status",
+  "locale",
+]);
+
+const shellStateSources = Object.freeze([
+  "appearance", "locale", "layout", "environment", "navigation", "status",
+]);
+
+export const PRESENTATION_PLANE_DIRECTORIES = Object.freeze([
+  [`${presentationRoot}layout/`, "LayoutProjection", false],
+  [`${presentationRoot}appearance/`, "AppearanceProjection", false],
+  [`${presentationRoot}environment/`, "EnvironmentProjection", false],
+  [`${frontendRoot}layout/`, "", true],
+  [`${frontendRoot}appearance/`, "", true],
+  [`${frontendRoot}environment/`, "", true],
 ]);
 
 export const PRESENTATION_BINDING_NAMES = Object.freeze([
@@ -34,6 +52,10 @@ export const PRESENTATION_BINDING_NAMES = Object.freeze([
 
 export const RETIRED_PRESENTATION_PATHS = Object.freeze([
   `${srcRoot}/composition/m2_legacy_shell_renderer_transition_adapter.dart`,
+  `${srcRoot}/application/controller/client_shell_controller.dart`,
+  "apps/desktop/test/client_shell_controller_test.dart",
+  `${srcRoot}/frontend/locale/locale_projection_adapter.dart`,
+  `${srcRoot}/frontend/shared/appearance/appearance_preset_config.dart`,
   `${srcRoot}/projections/listenable_projection_consumer.dart`,
   `${srcRoot}/projections/adapters/legacy_projection_consumer_source_adapter.dart`,
 ]);
@@ -56,6 +78,12 @@ const implementationRoots = Object.freeze([
   `${srcRoot}/frontend/`,
 ]);
 
+const internalRoots = Object.freeze([
+  "application", "backend", "composition", "contracts", "display",
+  "events", "frontend", "platform", "presentation", "projections",
+  "protocol", "shared",
+].map((root) => `${srcRoot}/${root}/`));
+
 const applicationFrameworkTokens = Object.freeze([
   "ChangeNotifier",
   "ValueNotifier",
@@ -76,6 +104,7 @@ const retiredPresentationSymbols = Object.freeze([
   "M2LegacyShellRendererTransitionAdapter",
   "LegacyProjectionConsumerSourceAdapter",
   "ListenableProjectionConsumer",
+  "ClientShellController",
 ]);
 
 function stripDartComments(source) {
@@ -206,7 +235,7 @@ function resolveLicoupImport(importer, specifier) {
   if (specifier.startsWith("package:licoup/")) {
     return `${appRoot}/${specifier.slice("package:licoup/".length)}`;
   }
-  if (specifier.startsWith(".")) {
+  if (!specifier.includes(":")) {
     return path.posix.normalize(path.posix.join(path.posix.dirname(importer), specifier));
   }
   return null;
@@ -217,6 +246,95 @@ function implementationImports(relativePath, source) {
     .map((specifier) => resolveLicoupImport(relativePath, specifier))
     .filter((candidate) =>
       candidate != null && implementationRoots.some((root) => candidate.startsWith(root)));
+}
+
+function internalImports(relativePath, source) {
+  return importsFrom(source)
+    .map((specifier) => resolveLicoupImport(relativePath, specifier))
+    .filter((candidate) => candidate != null && candidate.startsWith(`${srcRoot}/`));
+}
+
+function withoutDartDirectives(source) {
+  return stripDartComments(source).replace(
+    /^\s*(?:import|export|part)(?!\s+of\b)\s+[\s\S]*?;/gmu,
+    "",
+  );
+}
+
+function isSemanticValueContract(source) {
+  const masked = maskDartNonCode(source);
+  return !importsFrom(source).some((specifier) =>
+    specifier === "dart:io" || specifier.startsWith("dart:io ")) &&
+    !/\b(?:Future|Stream)(?:Or)?\s*</u.test(masked) &&
+    !/\b(?:abstract\s+interface\s+class|abstract\s+class)\b/u.test(masked) &&
+    !/\b[A-Z][A-Za-z0-9_]*(?:Reader|Source|Port|Gateway|Repository|Service)\b/u.test(masked);
+}
+
+function rendererPublicSemanticContracts(sourceByPath) {
+  const publicTargets = new Set();
+  const pending = [];
+  const publicTypes = (candidate, visited = new Set()) => {
+    if (visited.has(candidate)) return [];
+    visited.add(candidate);
+    const source = sourceByPath.get(candidate);
+    if (source == null || !isSemanticValueContract(source)) return [];
+    return [
+      ...declaredTypes(source),
+      ...internalImports(candidate, source)
+        .filter((dependency) => dependency.startsWith(contractsRoot))
+        .flatMap((dependency) => publicTypes(dependency, visited)),
+    ];
+  };
+  for (const [relativePath, source] of sourceByPath) {
+    if (!relativePath.startsWith(presentationRoot)) continue;
+    const signatureSource = withoutDartDirectives(source);
+    for (const candidate of internalImports(relativePath, source)) {
+      if (!candidate.startsWith(contractsRoot)) continue;
+      const contractSource = sourceByPath.get(candidate);
+      if (contractSource == null || !isSemanticValueContract(contractSource)) continue;
+      if (publicTypes(candidate).some((type) => hasToken(signatureSource, type))) {
+        pending.push(candidate);
+      }
+    }
+  }
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (publicTargets.has(candidate)) continue;
+    publicTargets.add(candidate);
+    const source = sourceByPath.get(candidate);
+    if (source == null) continue;
+    for (const dependency of internalImports(candidate, source)) {
+      const dependencySource = sourceByPath.get(dependency);
+      if (
+        dependency.startsWith(contractsRoot) &&
+        dependencySource != null &&
+        isSemanticValueContract(dependencySource)
+      ) {
+        pending.push(dependency);
+      }
+    }
+  }
+  return publicTargets;
+}
+
+export function inspectPresentationPlaneDirectories(sourceByPath) {
+  const failures = [];
+  for (const [root, semanticType, requiresFlutter] of PRESENTATION_PLANE_DIRECTORIES) {
+    const entries = [...sourceByPath].filter(([relativePath]) =>
+      relativePath.startsWith(root));
+    if (entries.length === 0) {
+      pushFailure(failures, "presentation_boundary_plane_directory_empty", root);
+      continue;
+    }
+    if (semanticType && !entries.some(([, source]) => hasToken(source, semanticType))) {
+      pushFailure(failures, "presentation_boundary_plane_role", root, semanticType);
+    }
+    if (requiresFlutter && !entries.some(([, source]) =>
+      importsFrom(source).some((specifier) => specifier.startsWith("package:flutter/")))) {
+      pushFailure(failures, "presentation_boundary_plane_role", root, "Flutter");
+    }
+  }
+  return failures;
 }
 
 function classBody(source, className) {
@@ -258,6 +376,7 @@ export function inspectPresentationBoundarySources(sourceByPath) {
   const failures = [];
   const typeOwners = new Map();
   const compositionEntries = [];
+  const rendererPublicContracts = rendererPublicSemanticContracts(sourceByPath);
 
   for (const [relativePath, source] of sourceByPath) {
     const masked = maskDartNonCode(source);
@@ -291,6 +410,16 @@ export function inspectPresentationBoundarySources(sourceByPath) {
         pushFailure(failures, "presentation_boundary_application_listener", relativePath);
       }
       if (
+        internalImports(relativePath, source).some((candidate) =>
+          candidate.endsWith("/presentation/environment/environment_projection.dart") ||
+          candidate.endsWith("/contracts/presentation/layout_environment.dart") ||
+          candidate.endsWith("/contracts/presentation/layout_variant.dart") ||
+          candidate.endsWith("/contracts/presentation/built_in_layout_spec.dart")) ||
+        /\b(?:EnvironmentState|EnvironmentProjection|LayoutEnvironment|LayoutRuntimeSurface|LayoutViewportClass|LayoutViewportPolicy|LayoutVariantKey|LayoutVariantCoverage)\b/u.test(masked)
+      ) {
+        pushFailure(failures, "presentation_boundary_application_environment_state", relativePath);
+      }
+      if (
         relativePath.endsWith("/client_controller.dart") &&
         /@Deprecated\s*\(/u.test(masked) &&
         /\bClientController\b/u.test(masked)
@@ -313,13 +442,31 @@ export function inspectPresentationBoundarySources(sourceByPath) {
       if (/\bClientController\b/u.test(masked)) {
         pushFailure(failures, "presentation_boundary_stable_controller", relativePath);
       }
+      if (
+        /\b(?:StreamController|ApplicationStateOwner|ApplicationSignalOwner|PresentationPreferencesRepository)\b|\bpublishChange\s*\(|\bdispose\s*\(/u.test(masked)
+      ) {
+        pushFailure(failures, "presentation_boundary_stable_runtime_owner", relativePath);
+      }
     }
 
     if (relativePath.startsWith(frontendRoot)) {
-      if (implementationImports(relativePath, source).some(
-        (candidate) => !candidate.startsWith(frontendRoot),
-      )) {
-        pushFailure(failures, "presentation_boundary_frontend_direction", relativePath);
+      for (const candidate of internalImports(relativePath, source)) {
+        const candidateSource = sourceByPath.get(candidate);
+        const isStaticSemanticContract =
+          rendererSemanticContractRoots.some((root) => candidate.startsWith(root)) &&
+          candidateSource != null &&
+          isSemanticValueContract(candidateSource);
+        if (
+          !candidate.startsWith(frontendRoot) &&
+          !candidate.startsWith(presentationRoot) &&
+          !isStaticSemanticContract &&
+          !rendererPublicContracts.has(candidate)
+        ) {
+          pushFailure(failures, "presentation_boundary_frontend_direction", relativePath, candidate);
+        }
+        if (!internalRoots.some((root) => candidate.startsWith(root))) {
+          pushFailure(failures, "presentation_boundary_frontend_unknown_internal", relativePath, candidate);
+        }
       }
       if (/\bClientController\b/u.test(masked)) {
         pushFailure(failures, "presentation_boundary_frontend_controller", relativePath);
@@ -417,7 +564,7 @@ export function inspectPresentationBoundarySources(sourceByPath) {
     ? null
     : classBody(sourceByPath.get(shellOwner), "ShellBinding");
   if (shellBody != null) {
-    for (const plane of PRESENTATION_STATE_PLANES) {
+    for (const plane of shellStateSources) {
       const fieldPattern = "\\bProjectionSource" +
         "\\s*<[^;>]+>\\s+" + plane + "\\s*;";
       const matches = [...shellBody.matchAll(
@@ -527,6 +674,9 @@ export async function checkPresentationBoundary(context) {
   const sourceByPath = new Map(
     await Promise.all(dartPaths.map(async (relativePath) => [relativePath, await readText(relativePath)])),
   );
+  for (const [rule, relativePath, detail] of inspectPresentationPlaneDirectories(sourceByPath)) {
+    assert(false, `[${rule}] ${relativePath}${detail == null ? "" : `: ${detail}`}`);
+  }
   for (const [rule, relativePath, detail] of inspectPresentationBoundarySources(sourceByPath)) {
     assert(false, `[${rule}] ${relativePath}${detail == null ? "" : `: ${detail}`}`);
   }

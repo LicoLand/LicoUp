@@ -1,5 +1,5 @@
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/presentation/shell/shell_projection.dart';
+import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
 
 /// Adapts renderer-independent appearance values to the existing Flutter
 /// theme model without exposing Application-owned configuration objects.

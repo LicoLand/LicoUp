@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -408,38 +408,15 @@ void main() {
     },
   );
 
-  test('resize updates only the surface-local variant state', () async {
+  test('layout preference state owns no viewport or surface fields', () async {
     final repository = FakePreferencesRepository(
       preferences: preferences(layout: LayoutProfileId.parse('atlas')),
     );
     final manager = createManager(repository);
     await manager.initialize();
 
-    manager.updateEnvironment(desktopEnvironment(width: 1400));
     expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
-    expect(manager.state.viewport, LayoutViewportClass.expanded);
     expect(repository.layoutWriteCount, 0);
-    manager.dispose();
-  });
-
-  test('equivalent and silent environment updates do not notify', () async {
-    final manager = createManager(
-      FakePreferencesRepository(preferences: preferences()),
-    );
-    await manager.initialize();
-    var notifications = 0;
-    manager.changes.listen((_) => notifications += 1);
-
-    expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isFalse);
-    expect(notifications, 0);
-    expect(
-      manager.updateEnvironment(desktopEnvironment(width: 1400), notify: false),
-      isTrue,
-    );
-    expect(manager.state.viewport, LayoutViewportClass.expanded);
-    expect(notifications, 0);
-    expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isTrue);
-    expect(notifications, 1);
     manager.dispose();
   });
 }
@@ -454,7 +431,6 @@ LayoutManager createManager(
   canonicalFallback: preferences(),
   preferredDefaultId: preferredDefaultId,
   persistenceTimeout: persistenceTimeout ?? const Duration(seconds: 5),
-  initialEnvironment: desktopEnvironment(width: 800),
 );
 
 PresentationPreferences preferences({
