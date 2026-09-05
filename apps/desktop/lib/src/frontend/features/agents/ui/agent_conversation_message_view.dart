@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -111,6 +112,11 @@ class AgentConversationMessageListState
   bool _pageRequestInFlight = false;
   String _activeProcessStorageKey = '';
   bool _hasMessages = false;
+
+  /// While the transcript scrolls, decorative animations (process spinners,
+  /// shimmer text, the earlier-page indicator) pause under a muted
+  /// [TickerMode]; data keeps updating because only tickers are gated.
+  bool _scrollActive = false;
 
   @override
   void initState() {
@@ -346,45 +352,49 @@ class AgentConversationMessageListState
           final primaryConversationId = session == null
               ? ''
               : messagingDetailsConversationId(session);
-          return SelectionArea(
-            child: MessagingParticipantFlow(
-              scrollController: widget.scrollController,
-              items: _timelineItems,
-              adapter: adapter,
-              target: widget.target,
-              activeProcessStorageKey: _activeProcessStorageKey,
-              sessionKey: _timelineSessionKey,
-              participantTargets: widget.participantTargets,
-              participantConversationIds: widget.participantConversationIds,
-              participantRuntimeProfiles: widget.participantRuntimeProfiles,
-              assistantActive: widget.assistantActive,
-              primaryConversationId: primaryConversationId,
-              preferPeerAgents: false,
-              topOverlayInset: widget.topOverlayInset,
-              bottomOverlayInset: widget.bottomOverlayInset,
-              messagePageLoading: widget.messagePageLoading,
-              messagePageError: widget.messagePageError,
-              hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
-              onLoadEarlier: widget.onLoadEarlier,
-              onCopyText: widget.onCopyText,
-              onRetryMessage: widget.onRetryMessage,
-              onDeleteMessage: widget.onDeleteMessage,
-            ),
+          // Text selection is hosted once at the pane level
+          // (AgentConversationActivePane); nested SelectionAreas would
+          // register every visible RichText twice and fan selection geometry
+          // updates out on every scroll frame.
+          return MessagingParticipantFlow(
+            scrollController: widget.scrollController,
+            items: _timelineItems,
+            adapter: adapter,
+            target: widget.target,
+            activeProcessStorageKey: _activeProcessStorageKey,
+            sessionKey: _timelineSessionKey,
+            participantTargets: widget.participantTargets,
+            participantConversationIds: widget.participantConversationIds,
+            participantRuntimeProfiles: widget.participantRuntimeProfiles,
+            assistantActive: widget.assistantActive,
+            primaryConversationId: primaryConversationId,
+            preferPeerAgents: false,
+            topOverlayInset: widget.topOverlayInset,
+            bottomOverlayInset: widget.bottomOverlayInset,
+            messagePageLoading: widget.messagePageLoading,
+            messagePageError: widget.messagePageError,
+            hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
+            onLoadEarlier: widget.onLoadEarlier,
+            onCopyText: widget.onCopyText,
+            onRetryMessage: widget.onRetryMessage,
+            onDeleteMessage: widget.onDeleteMessage,
           );
         }
         final showPageRow =
             (widget.session?.messagePage.hasEarlier ?? false) ||
             widget.messagePageLoading ||
             widget.messagePageError.isNotEmpty;
-        return SelectionArea(
-          child: NotificationListener<ScrollNotification>(
-            onNotification: _loadEarlierOnScroll,
+        return NotificationListener<ScrollNotification>(
+          onNotification: _handleScrollNotification,
+          child: TickerMode(
+            enabled: !_scrollActive,
             child: ListView.builder(
               controller: widget.scrollController,
               key: PageStorageKey<String>(
                 'agent-conversation-message-list-$_timelineSessionKey',
               ),
               reverse: true,
+              scrollCacheExtent: const ScrollCacheExtent.pixels(600),
               padding: EdgeInsets.fromLTRB(
                 LicoContentSpacing.item,
                 LicoContentSpacing.item + widget.topOverlayInset,
@@ -415,6 +425,37 @@ class AgentConversationMessageListState
         );
       },
     );
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    _syncScrollActiveFromNotification(notification);
+    return _loadEarlierOnScroll(notification);
+  }
+
+  /// Scroll notifications can be dispatched mid-frame (a scroll activity
+  /// going idle during layout fires [ScrollEndNotification] synchronously),
+  /// so the ticker gate always applies on the next frame instead of calling
+  /// setState inside the notification.
+  void _syncScrollActiveFromNotification(ScrollNotification notification) {
+    if (notification.depth != 0) {
+      return;
+    }
+    if (notification is ScrollStartNotification) {
+      _setScrollActive(true);
+    } else if (notification is ScrollEndNotification) {
+      _setScrollActive(false);
+    }
+  }
+
+  void _setScrollActive(bool active) {
+    if (_scrollActive == active) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scrollActive != active) {
+        setState(() => _scrollActive = active);
+      }
+    });
   }
 
   bool _loadEarlierOnScroll(ScrollNotification notification) {

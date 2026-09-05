@@ -92,6 +92,93 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     },
   );
 
+  testWidgets(
+    'streaming process card sizes instantly and animates manual toggles',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      List<AgentConversationMessage> events(int count) => [
+        for (var index = 0; index < count; index += 1)
+          AgentConversationMessage(
+            id: index == 0 ? 'stream-process' : 'stream-event-$index',
+            role: 'tool_call',
+            cardType: 'tool-call',
+            cardTitle: 'Stream operation ${index + 1}',
+            text: 'Stream operation details ${index + 1}',
+            createdAt: '2026-08-13T00:00:${index.toString().padLeft(2, '0')}Z',
+          ),
+      ];
+
+      Widget app(
+        List<AgentConversationMessage> current, {
+        required bool active,
+      }) {
+        return MaterialApp(
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: ConversationProcessCard(
+                events: current,
+                adapter: AgentRenderAdapter.fallback(),
+                detailsBuilder: buildAgentConversationEventDetails,
+                active: active,
+              ),
+            ),
+          ),
+        );
+      }
+
+      const toggleKey = ValueKey('conversation-process-toggle-stream-process');
+      const scrollKey = ValueKey(
+        'conversation-process-operation-scroll-stream-process',
+      );
+      // The card-level AnimatedSize is the one above the operation viewport;
+      // operation rows carry their own for per-row detail expansion.
+      Finder cardSizeAnimation() => find.ancestor(
+        of: find.byKey(scrollKey),
+        matching: find.byType(AnimatedSize),
+      );
+
+      // Streaming with a manual expansion: the toggle animates…
+      await tester.pumpWidget(app(events(4), active: true));
+      await tester.pump();
+      await tester.tap(find.byKey(toggleKey));
+      await tester.pump();
+      expect(
+        tester.widget<AnimatedSize>(cardSizeAnimation()).duration,
+        const Duration(milliseconds: 200),
+      );
+      // Active cards run looping shimmer/spinner decorations, so settle on a
+      // fixed duration that outlasts the 200ms size animation instead.
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.byKey(scrollKey), findsOneWidget);
+
+      // …but a streamed delta re-layouts the expanded body instantly.
+      await tester.pumpWidget(app(events(6), active: true));
+      await tester.pump();
+      expect(
+        tester.widget<AnimatedSize>(cardSizeAnimation()).duration,
+        const Duration(milliseconds: 1),
+      );
+      expect(find.byKey(scrollKey), findsOneWidget);
+
+      // A completed card animates expansion again.
+      await tester.pumpWidget(app(events(6), active: false));
+      await tester.pump();
+      expect(
+        tester.widget<AnimatedSize>(cardSizeAnimation()).duration,
+        const Duration(milliseconds: 200),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('semantic artifacts and diagnostics stay behind default thread', (
     tester,
   ) async {

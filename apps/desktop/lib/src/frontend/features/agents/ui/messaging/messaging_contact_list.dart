@@ -123,6 +123,8 @@ class MessagingContactList extends StatefulWidget {
 class _MessagingContactListState extends State<MessagingContactList> {
   final _createMenuAnchorKey = GlobalKey();
   final Set<String> _prefetchedTargetIds = <String>{};
+  final SidebarConversationFlattenMemo _conversationListFlattenMemo =
+      SidebarConversationFlattenMemo();
   bool _earlierExpanded = false;
   bool _otherConversationsExpanded = false;
 
@@ -389,7 +391,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
     }
     if (widget.showConversationList) {
       return SidebarConversationListView(
-        entries: flattenSidebarConversations(
+        entries: _conversationListFlattenMemo.flatten(
           targets: widget.conversationListTargets,
           sessionsByAgent: widget.sessionsByAgent,
           activityFor: widget.activityFor,
@@ -601,9 +603,10 @@ class _MessagingCanonicalGroupRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final title = conversation.title.trim().isEmpty
-        ? strings.groupConversation
-        : conversation.title.trim();
+    final title = historySessionDisplayTitle(
+      conversation.title,
+      fallback: strings.groupConversation,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
@@ -884,7 +887,10 @@ class _MessagingContactRow extends StatelessWidget {
           ? preview
           : '$preview · $project';
       if (subtitle.isEmpty) {
-        subtitle = latest.title.trim().isEmpty ? latest.id : latest.title;
+        subtitle = historySessionDisplayTitle(
+          latest.title.trim().isEmpty ? latest.id : latest.title,
+          fallback: '',
+        );
       }
     }
     return Padding(

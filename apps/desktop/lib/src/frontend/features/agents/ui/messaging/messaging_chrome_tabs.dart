@@ -5,6 +5,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -284,9 +285,10 @@ class _MessagingChromeTabState extends State<_MessagingChromeTab> {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final session = widget.entry.session;
-    final title = session.title.trim().isEmpty
-        ? conversationSessionRelativeUpdatedAtLabel(session)
-        : session.title;
+    final title = historySessionDisplayTitle(
+      session.title,
+      fallback: conversationSessionRelativeUpdatedAtLabel(session),
+    );
     return Tooltip(
       message: title,
       waitDuration: LicoMotion.tooltipWait,

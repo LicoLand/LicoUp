@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
@@ -73,6 +74,8 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
 class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
   bool _prefetched = false;
   bool _earlierExpanded = false;
+  final SidebarConversationFlattenMemo _flattenMemo =
+      SidebarConversationFlattenMemo();
 
   @override
   void initState() {
@@ -108,7 +111,7 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final entries = flattenSidebarConversations(
+    final entries = _flattenMemo.flatten(
       targets: widget.targets,
       sessionsByAgent: widget.sessionsByAgent,
       activityFor: widget.activityFor,
@@ -318,12 +321,116 @@ List<SidebarConversationEntry> flattenSidebarConversations({
       }
     }
   }
+  // Precompute one sort key per entry: parsing timestamps inside the
+  // comparator would cost O(N log N) date parses on every rebuild.
+  final sortTimeByEntry = <SidebarConversationEntry, int>{
+    for (final entry in entries)
+      entry: conversationSessionSortTime(entry.session),
+  };
   entries.sort(
-    (left, right) => conversationSessionSortTime(
-      right.session,
-    ).compareTo(conversationSessionSortTime(left.session)),
+    (left, right) => sortTimeByEntry[right]!.compareTo(sortTimeByEntry[left]!),
   );
   return List<SidebarConversationEntry>.unmodifiable(entries);
+}
+
+/// Identity-keyed memo for [flattenSidebarConversations].
+///
+/// Workspace rebuilds re-run on every projection publish while a turn streams,
+/// but the flatten inputs — the target list elements, each per-agent session
+/// list, and each agent's activity signal — keep their identity when nothing
+/// changed. Reusing the sorted entries then skips the O(N log N) sort and the
+/// per-session timestamp parsing on every rebuild that changes nothing the
+/// sidebar shows. The activity signature covers the closure-based [activityFor]
+/// input, whose identity changes on every build even when its results do not.
+final class SidebarConversationFlattenMemo {
+  List<TargetCandidate>? _targets;
+  Map<String, List<AgentConversationSession>>? _sessionsByAgent;
+  String _activitySignature = '';
+  List<SidebarConversationEntry> _entries = const [];
+
+  List<SidebarConversationEntry> flatten({
+    required List<TargetCandidate> targets,
+    required Map<String, List<AgentConversationSession>> sessionsByAgent,
+    required AgentConversationTabActivity Function(String agentId) activityFor,
+  }) {
+    final activitySignature = sidebarActivitySignature(targets, activityFor);
+    final cachedTargets = _targets;
+    final cachedSessions = _sessionsByAgent;
+    if (cachedTargets != null &&
+        cachedSessions != null &&
+        _activitySignature == activitySignature &&
+        _targetListsEquivalent(cachedTargets, targets) &&
+        _sessionMapsEquivalent(cachedSessions, sessionsByAgent)) {
+      return _entries;
+    }
+    final entries = flattenSidebarConversations(
+      targets: targets,
+      sessionsByAgent: sessionsByAgent,
+      activityFor: activityFor,
+    );
+    _targets = targets;
+    _sessionsByAgent = sessionsByAgent;
+    _activitySignature = activitySignature;
+    _entries = entries;
+    return entries;
+  }
+}
+
+/// The per-agent activity values [flattenSidebarConversations] would observe,
+/// serialized so a rebuild with fresh closures but unchanged signals still
+/// hits the memo.
+String sidebarActivitySignature(
+  List<TargetCandidate> targets,
+  AgentConversationTabActivity Function(String agentId) activityFor,
+) {
+  final signature = StringBuffer();
+  for (final target in targets) {
+    if (!target.isConversationAgent) {
+      continue;
+    }
+    signature
+      ..write(target.id)
+      ..write('=')
+      ..write(activityFor(target.id).name)
+      ..write(';');
+  }
+  return signature.toString();
+}
+
+bool _targetListsEquivalent(
+  List<TargetCandidate> cached,
+  List<TargetCandidate> next,
+) {
+  if (identical(cached, next)) {
+    return true;
+  }
+  if (cached.length != next.length) {
+    return false;
+  }
+  for (var index = 0; index < cached.length; index += 1) {
+    if (!identical(cached[index], next[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _sessionMapsEquivalent(
+  Map<String, List<AgentConversationSession>> cached,
+  Map<String, List<AgentConversationSession>> next,
+) {
+  if (identical(cached, next)) {
+    return true;
+  }
+  if (cached.length != next.length) {
+    return false;
+  }
+  for (final entry in cached.entries) {
+    if (!identical(next[entry.key], entry.value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// The time bucket a conversation update falls into. [weekday] covers the
@@ -350,7 +457,212 @@ SidebarTimeGroup sidebarTimeGroupFor(DateTime updatedLocal, DateTime nowLocal) {
   return SidebarTimeGroup.earlier;
 }
 
-class SidebarConversationListView extends StatelessWidget {
+/// One item in the sidebar's lazy conversation list: a section header or a
+/// conversation row. The item model carries resolved structure only — labels
+/// and callbacks attach at build time so the memoized list stays valid across
+/// locale and closure identity changes.
+sealed class SidebarListItem {
+  const SidebarListItem();
+}
+
+/// The section headers the sidebar list renders, in encounter order.
+enum SidebarSectionHeaderKind {
+  priority,
+  today,
+  yesterday,
+  weekday,
+  earlier,
+  otherConversations,
+}
+
+/// A section header in the sidebar list.
+final class SidebarSectionHeaderItem extends SidebarListItem {
+  const SidebarSectionHeaderItem(this.kind, {this.weekday = 0, this.count})
+    : expanded = null;
+
+  /// Collapsible headers (Earlier, Other conversations) also carry the
+  /// current expansion state for their chevron.
+  const SidebarSectionHeaderItem.collapsible(
+    this.kind, {
+    required bool this.expanded,
+    required this.count,
+  }) : weekday = 0;
+
+  final SidebarSectionHeaderKind kind;
+
+  /// `DateTime.weekday` (1-7) backing a [SidebarSectionHeaderKind.weekday]
+  /// label; zero for every other kind.
+  final int weekday;
+
+  /// Trailing tally for the collapsible sections (Earlier, Other
+  /// conversations); null elsewhere.
+  final int? count;
+
+  /// Chevron state for the collapsible sections; null for plain labels.
+  final bool? expanded;
+}
+
+/// A conversation row in the sidebar list.
+final class SidebarConversationRowItem extends SidebarListItem {
+  const SidebarConversationRowItem(this.entry);
+
+  final SidebarConversationEntry entry;
+}
+
+/// Builds the flat item model [SidebarConversationListView] renders: the
+/// priority section (pinned group-assistant thread plus running rows), the
+/// time-bucket groups with the collapsible Earlier section, and the optional
+/// collapsed "Other conversations" section for unrelated agents. This is the
+/// exact structural pass the eager list performed per build, kept as a pure
+/// function so the widget can memoize it on its inputs' identity.
+List<SidebarListItem> buildSidebarListItems({
+  required List<SidebarConversationEntry> entries,
+  required String selectedSessionId,
+  required bool earlierExpanded,
+  required bool Function(AgentConversationSession session)? runningFor,
+  required String priorityAgentId,
+  required Set<String>? relatedAgentIds,
+  required bool otherConversationsExpanded,
+  required DateTime now,
+}) {
+  bool isRelated(SidebarConversationEntry entry) {
+    if (relatedAgentIds == null) return true;
+    return relatedAgentIds.contains(entry.owner.id) ||
+        relatedAgentIds.contains(entry.owner.target) ||
+        relatedAgentIds.contains(entry.brandTarget.id) ||
+        relatedAgentIds.contains(entry.brandTarget.target);
+  }
+
+  final primaryEntries = entries.where(isRelated).toList(growable: false);
+  final otherEntries = relatedAgentIds == null
+      ? const <SidebarConversationEntry>[]
+      : entries.where((entry) => !isRelated(entry)).toList(growable: false);
+  final items = <SidebarListItem>[];
+  final runningSessionIds = <String>{};
+  // The assistant's latest thread pins above everything else by default:
+  // entries arrive newest-first, so the first match is that conversation.
+  final priorityAgent = priorityAgentId.trim();
+  SidebarConversationEntry? pinnedEntry;
+  if (priorityAgent.isNotEmpty) {
+    for (final entry in primaryEntries) {
+      if (entry.owner.target == priorityAgent ||
+          entry.owner.id == priorityAgent) {
+        pinnedEntry = entry;
+        break;
+      }
+    }
+    if (pinnedEntry != null) {
+      runningSessionIds.add(pinnedEntry.session.id);
+    }
+  }
+  final runningEntries = primaryEntries
+      .where((entry) {
+        if (entry.session.id == pinnedEntry?.session.id) return false;
+        final running = runningFor?.call(entry.session) ?? false;
+        if (running) runningSessionIds.add(entry.session.id);
+        return running;
+      })
+      .toList(growable: false);
+  if (pinnedEntry != null || runningEntries.isNotEmpty) {
+    items.add(
+      const SidebarSectionHeaderItem(SidebarSectionHeaderKind.priority),
+    );
+    if (pinnedEntry != null) {
+      items.add(SidebarConversationRowItem(pinnedEntry));
+    }
+    for (final entry in runningEntries) {
+      items.add(SidebarConversationRowItem(entry));
+    }
+  }
+  var currentHeader = '';
+  var earlierCount = 0;
+  var earlierHeaderIndex = -1;
+  // A selected conversation stays visible: when it lives in Earlier, the
+  // group renders expanded even before the user opens it.
+  var earlierContainsSelected = false;
+  for (final entry in primaryEntries) {
+    if (runningSessionIds.contains(entry.session.id)) {
+      continue;
+    }
+    final updated =
+        DateTime.tryParse(entry.session.updatedAt.trim())?.toLocal() ?? now;
+    final group = sidebarTimeGroupFor(updated, now);
+    final header = switch (group) {
+      SidebarTimeGroup.today => 'today',
+      SidebarTimeGroup.yesterday => 'yesterday',
+      SidebarTimeGroup.weekday => 'weekday:${updated.weekday}',
+      SidebarTimeGroup.earlier => 'earlier',
+    };
+    if (group == SidebarTimeGroup.earlier) {
+      // The Earlier section starts collapsed: its rows only appear after
+      // the user expands the header, keeping the list focused on the week.
+      earlierCount += 1;
+      if (entry.session.id == selectedSessionId) {
+        earlierContainsSelected = true;
+      }
+      if (currentHeader != header) {
+        currentHeader = header;
+        earlierHeaderIndex = items.length;
+        items.add(
+          const SidebarSectionHeaderItem.collapsible(
+            SidebarSectionHeaderKind.earlier,
+            expanded: false,
+            count: 0,
+          ),
+        );
+      }
+      if (earlierExpanded || earlierContainsSelected) {
+        items.add(SidebarConversationRowItem(entry));
+      }
+      continue;
+    }
+    if (header != currentHeader) {
+      currentHeader = header;
+      items.add(switch (group) {
+        SidebarTimeGroup.today => const SidebarSectionHeaderItem(
+          SidebarSectionHeaderKind.today,
+        ),
+        SidebarTimeGroup.yesterday => const SidebarSectionHeaderItem(
+          SidebarSectionHeaderKind.yesterday,
+        ),
+        SidebarTimeGroup.weekday => SidebarSectionHeaderItem(
+          SidebarSectionHeaderKind.weekday,
+          weekday: updated.weekday,
+        ),
+        SidebarTimeGroup.earlier => throw StateError('earlier handled above'),
+      });
+    }
+    items.add(SidebarConversationRowItem(entry));
+  }
+  if (earlierHeaderIndex >= 0) {
+    items[earlierHeaderIndex] = SidebarSectionHeaderItem.collapsible(
+      SidebarSectionHeaderKind.earlier,
+      expanded: earlierExpanded || earlierContainsSelected,
+      count: earlierCount,
+    );
+  }
+  if (otherEntries.isNotEmpty) {
+    final containsSelected = otherEntries.any(
+      (entry) => entry.session.id == selectedSessionId,
+    );
+    final expanded = otherConversationsExpanded || containsSelected;
+    items.add(
+      SidebarSectionHeaderItem.collapsible(
+        SidebarSectionHeaderKind.otherConversations,
+        expanded: expanded,
+        count: otherEntries.length,
+      ),
+    );
+    if (expanded) {
+      for (final entry in otherEntries) {
+        items.add(SidebarConversationRowItem(entry));
+      }
+    }
+  }
+  return List<SidebarListItem>.unmodifiable(items);
+}
+
+class SidebarConversationListView extends StatefulWidget {
   const SidebarConversationListView({
     super.key,
     required this.entries,
@@ -386,11 +698,142 @@ class SidebarConversationListView extends StatelessWidget {
   final bool showAgentIcons;
 
   @override
+  State<SidebarConversationListView> createState() =>
+      _SidebarConversationListViewState();
+}
+
+class _SidebarConversationListViewState
+    extends State<SidebarConversationListView> {
+  /// Memoized item model: workspace rebuilds republish identical inputs on
+  /// every streaming frame, and the grouping pass costs one timestamp parse
+  /// per entry, so it re-runs only when an input actually changes. The day
+  /// boundary is part of the key because time buckets follow the calendar.
+  List<SidebarListItem> _items = const [];
+  List<SidebarConversationEntry>? _memoEntries;
+  String _memoSelectedSessionId = '';
+  bool _memoEarlierExpanded = false;
+  bool _memoOtherConversationsExpanded = false;
+  Set<String>? _memoRelatedAgentIds;
+  String _memoPriorityAgentId = '';
+  String _memoRunningSignature = '';
+  DateTime? _memoBucketDay;
+
+  /// Decorative row animations (pulse dots, running spinners) pause while the
+  /// list scrolls; data keeps flowing because this only gates tickers.
+  bool _scrollActive = false;
+
+  List<SidebarListItem> _resolveItems() {
+    final now = DateTime.now();
+    final bucketDay = DateTime(now.year, now.month, now.day);
+    final runningSignature = _runningSignature(
+      widget.entries,
+      widget.runningFor,
+    );
+    final memoEntries = _memoEntries;
+    if (memoEntries != null &&
+        identical(memoEntries, widget.entries) &&
+        _memoSelectedSessionId == widget.selectedSessionId &&
+        _memoEarlierExpanded == widget.earlierExpanded &&
+        _memoOtherConversationsExpanded == widget.otherConversationsExpanded &&
+        _memoPriorityAgentId == widget.priorityAgentId &&
+        _memoRunningSignature == runningSignature &&
+        _memoBucketDay == bucketDay &&
+        _relatedAgentIdsEquivalent(
+          _memoRelatedAgentIds,
+          widget.relatedAgentIds,
+        )) {
+      return _items;
+    }
+    final items = buildSidebarListItems(
+      entries: widget.entries,
+      selectedSessionId: widget.selectedSessionId,
+      earlierExpanded: widget.earlierExpanded,
+      runningFor: widget.runningFor,
+      priorityAgentId: widget.priorityAgentId,
+      relatedAgentIds: widget.relatedAgentIds,
+      otherConversationsExpanded: widget.otherConversationsExpanded,
+      now: now,
+    );
+    _memoEntries = widget.entries;
+    _memoSelectedSessionId = widget.selectedSessionId;
+    _memoEarlierExpanded = widget.earlierExpanded;
+    _memoOtherConversationsExpanded = widget.otherConversationsExpanded;
+    _memoRelatedAgentIds = widget.relatedAgentIds;
+    _memoPriorityAgentId = widget.priorityAgentId;
+    _memoRunningSignature = runningSignature;
+    _memoBucketDay = bucketDay;
+    _items = items;
+    return items;
+  }
+
+  static String _runningSignature(
+    List<SidebarConversationEntry> entries,
+    bool Function(AgentConversationSession session)? runningFor,
+  ) {
+    if (runningFor == null) {
+      return '';
+    }
+    final signature = StringBuffer();
+    for (final entry in entries) {
+      signature.write(runningFor(entry.session) ? '1' : '0');
+    }
+    return signature.toString();
+  }
+
+  static bool _relatedAgentIdsEquivalent(
+    Set<String>? cached,
+    Set<String>? next,
+  ) {
+    if (identical(cached, next)) {
+      return true;
+    }
+    if (cached == null || next == null || cached.length != next.length) {
+      return false;
+    }
+    for (final id in cached) {
+      if (!next.contains(id)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    _syncScrollActiveFromNotification(notification);
+    return false;
+  }
+
+  /// Scroll notifications can be dispatched mid-frame (a scroll activity
+  /// going idle during layout fires [ScrollEndNotification] synchronously),
+  /// so the ticker gate always applies on the next frame instead of calling
+  /// setState inside the notification.
+  void _syncScrollActiveFromNotification(ScrollNotification notification) {
+    if (notification.depth != 0) {
+      return;
+    }
+    if (notification is ScrollStartNotification) {
+      _setScrollActive(true);
+    } else if (notification is ScrollEndNotification) {
+      _setScrollActive(false);
+    }
+  }
+
+  void _setScrollActive(bool active) {
+    if (_scrollActive == active) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scrollActive != active) {
+        setState(() => _scrollActive = active);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final now = DateTime.now();
-    if (entries.isEmpty) {
+    if (widget.entries.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
         child: Text(
@@ -399,188 +842,76 @@ class SidebarConversationListView extends StatelessWidget {
         ),
       );
     }
-    final relatedAgentIds = this.relatedAgentIds;
-    bool isRelated(SidebarConversationEntry entry) {
-      if (relatedAgentIds == null) return true;
-      return relatedAgentIds.contains(entry.owner.id) ||
-          relatedAgentIds.contains(entry.owner.target) ||
-          relatedAgentIds.contains(entry.brandTarget.id) ||
-          relatedAgentIds.contains(entry.brandTarget.target);
-    }
+    final items = _resolveItems();
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: TickerMode(
+        enabled: !_scrollActive,
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(400),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return switch (item) {
+              SidebarConversationRowItem() => _buildRow(item),
+              SidebarSectionHeaderItem() => _buildHeader(item),
+            };
+          },
+        ),
+      ),
+    );
+  }
 
-    final primaryEntries = entries.where(isRelated).toList(growable: false);
-    final otherEntries = relatedAgentIds == null
-        ? const <SidebarConversationEntry>[]
-        : entries.where((entry) => !isRelated(entry)).toList(growable: false);
-    final items = <Widget>[];
-    final runningSessionIds = <String>{};
-    // The assistant's latest thread pins above everything else by default:
-    // entries arrive newest-first, so the first match is that conversation.
-    final priorityAgent = priorityAgentId.trim();
-    SidebarConversationEntry? pinnedEntry;
-    if (priorityAgent.isNotEmpty) {
-      for (final entry in primaryEntries) {
-        if (entry.owner.target == priorityAgent ||
-            entry.owner.id == priorityAgent) {
-          pinnedEntry = entry;
-          break;
-        }
-      }
-      if (pinnedEntry != null) {
-        runningSessionIds.add(pinnedEntry.session.id);
-      }
-    }
-    final runningEntries = primaryEntries
-        .where((entry) {
-          if (entry.session.id == pinnedEntry?.session.id) return false;
-          final running = runningFor?.call(entry.session) ?? false;
-          if (running) runningSessionIds.add(entry.session.id);
-          return running;
-        })
-        .toList(growable: false);
-    if (pinnedEntry != null || runningEntries.isNotEmpty) {
-      items.add(
-        LicoGroupHeader(
-          label: strings.priority,
-          padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
+  Widget _buildRow(SidebarConversationRowItem item) {
+    final entry = item.entry;
+    return _SidebarConversationRow(
+      key: Key('agents-sidebar-conversation-${entry.session.id}'),
+      entry: entry,
+      selected: entry.session.id == widget.selectedSessionId,
+      running: widget.runningFor?.call(entry.session) ?? false,
+      showAgentIcon: widget.showAgentIcons,
+      onTap: () => widget.onSelectSession(entry.owner.id, entry.session.id),
+    );
+  }
+
+  Widget _buildHeader(SidebarSectionHeaderItem item) {
+    final strings = LicoStrings.of(context);
+    final label = switch (item.kind) {
+      SidebarSectionHeaderKind.priority => strings.priority,
+      SidebarSectionHeaderKind.today => strings.today,
+      SidebarSectionHeaderKind.yesterday => strings.yesterday,
+      SidebarSectionHeaderKind.weekday => strings.conversationWeekdayLabel(
+        item.weekday,
+      ),
+      SidebarSectionHeaderKind.earlier => strings.earlier,
+      SidebarSectionHeaderKind.otherConversations => strings.otherConversations,
+    };
+    final collapsible =
+        item.kind == SidebarSectionHeaderKind.earlier ||
+        item.kind == SidebarSectionHeaderKind.otherConversations;
+    return LicoGroupHeader(
+      label: label,
+      count: item.count,
+      expanded: collapsible ? item.expanded : null,
+      onToggle: switch (item.kind) {
+        SidebarSectionHeaderKind.earlier => widget.onToggleEarlier,
+        SidebarSectionHeaderKind.otherConversations =>
+          widget.onToggleOtherConversations,
+        _ => null,
+      },
+      toggleKey: switch (item.kind) {
+        SidebarSectionHeaderKind.earlier => const Key(
+          'agents-sidebar-earlier-toggle',
         ),
-      );
-      if (pinnedEntry != null) {
-        final pinned = pinnedEntry;
-        items.add(
-          _SidebarConversationRow(
-            key: Key('agents-sidebar-conversation-${pinned.session.id}'),
-            entry: pinned,
-            selected: pinned.session.id == selectedSessionId,
-            running: runningFor?.call(pinned.session) ?? false,
-            showAgentIcon: showAgentIcons,
-            onTap: () => onSelectSession(pinned.owner.id, pinned.session.id),
-          ),
-        );
-      }
-      for (final entry in runningEntries) {
-        items.add(
-          _SidebarConversationRow(
-            key: Key('agents-sidebar-conversation-${entry.session.id}'),
-            entry: entry,
-            selected: entry.session.id == selectedSessionId,
-            running: true,
-            showAgentIcon: showAgentIcons,
-            onTap: () => onSelectSession(entry.owner.id, entry.session.id),
-          ),
-        );
-      }
-    }
-    var currentHeader = '';
-    var earlierCount = 0;
-    var earlierHeaderIndex = -1;
-    // A selected conversation stays visible: when it lives in Earlier, the
-    // group renders expanded even before the user opens it.
-    var earlierContainsSelected = false;
-    for (final entry in primaryEntries) {
-      if (runningSessionIds.contains(entry.session.id)) {
-        continue;
-      }
-      final updated =
-          DateTime.tryParse(entry.session.updatedAt.trim())?.toLocal() ?? now;
-      final group = sidebarTimeGroupFor(updated, now);
-      final header = switch (group) {
-        SidebarTimeGroup.today => strings.today,
-        SidebarTimeGroup.yesterday => strings.yesterday,
-        SidebarTimeGroup.weekday => strings.conversationWeekdayLabel(
-          updated.weekday,
+        SidebarSectionHeaderKind.otherConversations => const Key(
+          'agents-sidebar-other-conversations-toggle',
         ),
-        SidebarTimeGroup.earlier => strings.earlier,
-      };
-      if (group == SidebarTimeGroup.earlier) {
-        // The Earlier section starts collapsed: its rows only appear after
-        // the user expands the header, keeping the list focused on the week.
-        earlierCount += 1;
-        if (entry.session.id == selectedSessionId) {
-          earlierContainsSelected = true;
-        }
-        if (currentHeader != header) {
-          currentHeader = header;
-          earlierHeaderIndex = items.length;
-          items.add(const SizedBox.shrink());
-        }
-        if (earlierExpanded || earlierContainsSelected) {
-          items.add(
-            _SidebarConversationRow(
-              key: Key('agents-sidebar-conversation-${entry.session.id}'),
-              entry: entry,
-              selected: entry.session.id == selectedSessionId,
-              running: runningFor?.call(entry.session) ?? false,
-              showAgentIcon: showAgentIcons,
-              onTap: () => onSelectSession(entry.owner.id, entry.session.id),
-            ),
-          );
-        }
-        continue;
-      }
-      if (header != currentHeader) {
-        currentHeader = header;
-        items.add(
-          LicoGroupHeader(
-            label: header,
-            padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
-          ),
-        );
-      }
-      items.add(
-        _SidebarConversationRow(
-          key: Key('agents-sidebar-conversation-${entry.session.id}'),
-          entry: entry,
-          selected: entry.session.id == selectedSessionId,
-          running: runningFor?.call(entry.session) ?? false,
-          showAgentIcon: showAgentIcons,
-          onTap: () => onSelectSession(entry.owner.id, entry.session.id),
-        ),
-      );
-    }
-    if (earlierHeaderIndex >= 0) {
-      items[earlierHeaderIndex] = LicoGroupHeader(
-        label: strings.earlier,
-        count: earlierCount,
-        expanded: earlierExpanded || earlierContainsSelected,
-        onToggle: onToggleEarlier,
-        toggleKey: const Key('agents-sidebar-earlier-toggle'),
-        padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
-      );
-    }
-    if (otherEntries.isNotEmpty) {
-      final containsSelected = otherEntries.any(
-        (entry) => entry.session.id == selectedSessionId,
-      );
-      final expanded = otherConversationsExpanded || containsSelected;
-      items.add(
-        LicoGroupHeader(
-          label: strings.otherConversations,
-          count: otherEntries.length,
-          expanded: expanded,
-          onToggle: onToggleOtherConversations,
-          toggleKey: const Key('agents-sidebar-other-conversations-toggle'),
-          padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
-        ),
-      );
-      if (expanded) {
-        for (final entry in otherEntries) {
-          items.add(
-            _SidebarConversationRow(
-              key: Key('agents-sidebar-conversation-${entry.session.id}'),
-              entry: entry,
-              selected: entry.session.id == selectedSessionId,
-              running: runningFor?.call(entry.session) ?? false,
-              showAgentIcon: showAgentIcons,
-              onTap: () => onSelectSession(entry.owner.id, entry.session.id),
-            ),
-          );
-        }
-      }
-    }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-      children: items,
+        _ => null,
+      },
+      padding: collapsible
+          ? const EdgeInsets.fromLTRB(4, 14, 4, 2)
+          : const EdgeInsets.fromLTRB(10, 14, 10, 4),
     );
   }
 }
@@ -606,7 +937,10 @@ class _SidebarConversationRow extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final session = entry.session;
-    final title = session.title.trim().isEmpty ? session.id : session.title;
+    final title = historySessionDisplayTitle(
+      session.title.trim().isEmpty ? session.id : session.title,
+      fallback: strings.untitledConversation,
+    );
     final project = historySessionProjectLabel(
       session.workingDirectory,
       fallback: strings.ungroupedConversationProject,
@@ -792,9 +1126,13 @@ class _SidebarPulsingActivityDotState extends State<_SidebarPulsingActivityDot>
   @override
   Widget build(BuildContext context) {
     if (MediaQuery.disableAnimationsOf(context)) return widget.child;
-    return FadeTransition(
-      opacity: _opacity,
-      child: ScaleTransition(scale: _scale, child: widget.child),
+    // The pulse loops forever; its own repaint boundary keeps the repeating
+    // repaint from invalidating the whole sidebar layer.
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _opacity,
+        child: ScaleTransition(scale: _scale, child: widget.child),
+      ),
     );
   }
 }

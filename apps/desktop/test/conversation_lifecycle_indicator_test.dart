@@ -162,7 +162,7 @@ void main() {
     );
 
     expect(find.text('Agent is working'), findsOneWidget);
-    expect(find.text('3 of 5 stages observed'), findsOneWidget);
+    expect(find.text('3 of 5 stages observed'), findsNothing);
     expect(
       find.byKey(const Key('conversation-lifecycle-rail')),
       findsOneWidget,
@@ -185,7 +185,7 @@ void main() {
     expect(_stepColor(tester, 'Sent'), colors.line);
     expect(_stepColor(tester, 'Received'), colors.line);
     expect(_stepColor(tester, 'Working'), colors.text);
-    expect(find.text('1 of 5 stages observed'), findsOneWidget);
+    expect(find.text('1 of 5 stages observed'), findsNothing);
   });
 
   testWidgets('completed process card collapses the lifecycle rail', (
@@ -199,6 +199,7 @@ void main() {
     );
 
     expect(find.text('Response complete'), findsOneWidget);
+    expect(find.text('Under 1s'), findsOneWidget);
     expect(find.byKey(const Key('conversation-lifecycle-rail')), findsNothing);
     expect(find.text('0 of 5 stages observed'), findsNothing);
     expect(find.text('1 of 5 stages observed'), findsNothing);
@@ -248,7 +249,7 @@ void main() {
         participantRole: 'assistant',
       );
 
-      expect(find.textContaining('4 of 5 stages observed'), findsOneWidget);
+      expect(find.textContaining('4 of 5 stages observed'), findsNothing);
       expect(find.text('0 of 5 stages observed'), findsNothing);
       expect(find.text('1 of 5 stages observed'), findsNothing);
       final colors = tester
@@ -274,7 +275,7 @@ void main() {
         ],
       );
 
-      expect(find.textContaining('4 of 5 stages observed'), findsOneWidget);
+      expect(find.textContaining('4 of 5 stages observed'), findsNothing);
       expect(_stepColor(tester, 'Replying'), colors.error);
       expect(_stepColor(tester, 'Done'), colors.line);
     },

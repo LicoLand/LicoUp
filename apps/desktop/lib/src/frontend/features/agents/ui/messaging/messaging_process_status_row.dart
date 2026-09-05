@@ -50,6 +50,12 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
   bool _expanded = false;
   bool _userCollapsed = false;
 
+  /// Arms one height animation for a manual expand/collapse (or the single
+  /// auto-expand when a turn starts) while the run is working. Delta-driven
+  /// size changes during streaming never animate — animating every publish
+  /// would stack a layout animation on the scroll surface per streamed frame.
+  bool _sizeAnimationArmed = false;
+
   bool get _working =>
       widget.active &&
       projectConversationTurnLifecycle(widget.events)?.terminal != true;
@@ -58,6 +64,7 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
   void initState() {
     super.initState();
     _expanded = widget.active;
+    _sizeAnimationArmed = widget.active;
   }
 
   @override
@@ -66,6 +73,10 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
     if (widget.active && !oldWidget.active) {
       _userCollapsed = false;
       _expanded = true;
+      _sizeAnimationArmed = true;
+    }
+    if (!_working) {
+      _sizeAnimationArmed = false;
     }
     if (!widget.active) {
       _userCollapsed = false;
@@ -80,6 +91,7 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
 
   void _toggleExpanded() {
     final expanding = !_expanded;
+    _sizeAnimationArmed = true;
     setState(() {
       _expanded = expanding;
       if (_working && !_expanded) {
@@ -103,6 +115,11 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
     });
   }
 
+  void _onSizeAnimationEnd() {
+    _sizeAnimationArmed = false;
+    _pinHeaderBelowOverlay();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
@@ -123,8 +140,8 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
     final summary = lifecycle == null
         ? '${_working ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, false, strings)}'
         : lifecycle.terminal
-        ? '$durationTitle · ${strings.lifecycleObserved(lifecycle.observedStages.length, 5)}'
-        : strings.lifecycleObserved(lifecycle.observedStages.length, 5);
+        ? durationTitle
+        : '';
     final latestStep = operations.isEmpty
         ? null
         : conversationProcessOperationHeadline(
@@ -146,6 +163,11 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
     final sizeDuration = motionDisabled
         ? Duration.zero
         : const Duration(milliseconds: 200);
+    // While the run streams, each delta republishes the row; the expanded
+    // body's height then applies instantly (zero-duration size change)
+    // instead of running a layout animation per publish. Manual
+    // expand/collapse keeps its animation through the armed flag.
+    final animateSizeChanges = !_working || _sizeAnimationArmed;
     final operationList = ConversationProcessOperationList(
       operations: operations,
       adapter: widget.adapter,
@@ -217,17 +239,19 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
                           letterSpacing: -0.06,
                         ),
                       ),
-                      const SizedBox(height: 1),
-                      LicoShimmerText(
-                        text: summary,
-                        enabled: _working,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.04,
+                      if (summary.isNotEmpty) ...[
+                        const SizedBox(height: 1),
+                        LicoShimmerText(
+                          text: summary,
+                          enabled: _working,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: -0.04,
+                          ),
                         ),
-                      ),
+                      ],
                       if (_working &&
                           latestStepLine != null &&
                           (!_expanded || _userCollapsed)) ...[
@@ -281,10 +305,18 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
           _expanded ? expandedBody : const SizedBox.shrink()
         else
           AnimatedSize(
-            duration: sizeDuration,
+            // While the run streams, each delta republishes the row; a
+            // near-zero duration applies the new height on the same frame
+            // instead of stacking a layout animation per publish. (Exactly
+            // zero would complete the controller synchronously inside
+            // performLayout, which RenderAnimatedSize forbids.) Manual
+            // expand/collapse keeps its animation through the armed flag.
+            duration: animateSizeChanges
+                ? sizeDuration
+                : const Duration(milliseconds: 1),
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
-            onEnd: _pinHeaderBelowOverlay,
+            onEnd: _onSizeAnimationEnd,
             child: _expanded ? expandedBody : const SizedBox.shrink(),
           ),
       ],

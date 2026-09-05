@@ -93,6 +93,14 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(Image), findsWidgets);
+    // The inline frame decodes at a bounded size…
+    final inlineImage = tester.widget<Image>(
+      find.descendant(
+        of: find.byKey(const Key('conversation-image-attachment-frame')),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(inlineImage.image, isA<ResizeImage>());
     expect(
       find.byKey(const Key('conversation-image-unavailable')),
       findsNothing,
@@ -188,6 +196,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byKey(const Key('conversation-image-viewer')), findsOneWidget);
+    // …while the full-screen viewer keeps the unbounded provider.
+    final viewerImage = tester.widget<Image>(
+      find.descendant(
+        of: find.byKey(const Key('conversation-image-viewer')),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(viewerImage.image, isA<MemoryImage>());
 
     await tester.tap(
       find.byKey(const Key('conversation-image-viewer-dismiss')),

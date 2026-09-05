@@ -198,52 +198,57 @@ class AgentConversationActivePane extends StatelessWidget {
         state.planDocumentPath.trim().isNotEmpty;
     final messagingHeader = header;
     if (mobileClient) {
-      return Column(
-        children: [
-          // Console mobile surfaces the parity and VM chips above the
-          // transcript; messaging keeps them inside the details sheet.
-          if (!messagingFlow)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    ConversationParityDisclosurePanel(
-                      target: state.target,
-                      compact: true,
-                    ),
-                    if (state.target.hasValidVirtualMachineConnection)
-                      ConversationVirtualMachineDestinationChip(
-                        destination: state.target.virtualMachineDestination,
+      // Every text in the conversation pane is selectable for copy; the
+      // mobile path hosts the same single pane-level SelectionArea as the
+      // desktop return below.
+      return SelectionArea(
+        child: Column(
+          children: [
+            // Console mobile surfaces the parity and VM chips above the
+            // transcript; messaging keeps them inside the details sheet.
+            if (!messagingFlow)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ConversationParityDisclosurePanel(
+                        target: state.target,
+                        compact: true,
                       ),
-                  ],
+                      if (state.target.hasValidVirtualMachineConnection)
+                        ConversationVirtualMachineDestinationChip(
+                          destination: state.target.virtualMachineDestination,
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          Expanded(child: messages),
-          ?sendUnavailable,
-          ?sendFailure,
-          ?permissionRetry,
-          if (showComposerCapsuleRow)
-            ComposerCapsuleRow(
-              modelOptions: state.modelOptions,
-              selectedModel: state.selectedModel,
-              defaultModel: state.defaultModel,
-              modelSelectionEnabled: state.composerEnabled,
-              onModelChanged: actions.onModelChanged,
-              reasoningEffortOptions: state.reasoningEffortOptions,
-              selectedReasoningEffort: state.selectedReasoningEffort,
-              defaultReasoningEffort: state.defaultReasoningEffort,
-              onReasoningEffortChanged: actions.onReasoningEffortChanged,
-              licoProfileCapsule: licoProfileCapsule,
-              flywheel: state.composerFlywheel,
-            ),
-          MobileComposerSurface(child: composer),
-        ],
+            Expanded(child: messages),
+            ?sendUnavailable,
+            ?sendFailure,
+            ?permissionRetry,
+            if (showComposerCapsuleRow)
+              ComposerCapsuleRow(
+                modelOptions: state.modelOptions,
+                selectedModel: state.selectedModel,
+                defaultModel: state.defaultModel,
+                modelSelectionEnabled: state.composerEnabled,
+                onModelChanged: actions.onModelChanged,
+                reasoningEffortOptions: state.reasoningEffortOptions,
+                selectedReasoningEffort: state.selectedReasoningEffort,
+                defaultReasoningEffort: state.defaultReasoningEffort,
+                onReasoningEffortChanged: actions.onReasoningEffortChanged,
+                licoProfileCapsule: licoProfileCapsule,
+                flywheel: state.composerFlywheel,
+              ),
+            MobileComposerSurface(child: composer),
+          ],
+        ),
       );
     }
     final colors = context.licoColors;
