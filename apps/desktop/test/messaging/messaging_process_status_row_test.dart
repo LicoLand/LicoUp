@@ -232,7 +232,7 @@ void main() {
     );
 
     expect(find.text('Agent is working'), findsOneWidget);
-    expect(find.text('3 of 5 stages observed'), findsOneWidget);
+    expect(find.text('3 of 5 stages observed'), findsNothing);
     expect(
       find.byKey(const Key('conversation-lifecycle-rail')),
       findsOneWidget,

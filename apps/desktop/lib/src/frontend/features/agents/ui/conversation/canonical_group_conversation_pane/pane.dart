@@ -18,6 +18,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_compos
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
@@ -462,9 +463,10 @@ class _CanonicalGroupConversationPaneState
       sendGateReasonCode: '',
       composerDraft: widget.composer.draft,
       hasAttachments: widget.attachments.attachments.isNotEmpty,
-      conversationLabel: conversation.title.trim().isEmpty
-          ? strings.groupConversation
-          : conversation.title.trim(),
+      conversationLabel: historySessionDisplayTitle(
+        conversation.title,
+        fallback: strings.groupConversation,
+      ),
       modelOptions: const [],
       selectedModel: '',
       defaultModel: '',
