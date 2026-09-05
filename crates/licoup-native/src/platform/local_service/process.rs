@@ -35,6 +35,7 @@ impl ServeRunner for CommandServeRunner {
         configure: fn(&mut Command, &str, u16),
     ) -> Result<u32, SpawnFailure> {
         let mut command = Command::new(executable);
+        super::super::user_shell_environment::apply_to_command(&mut command);
         configure(&mut command, host, port);
         spawn_detached(&mut command)
     }
