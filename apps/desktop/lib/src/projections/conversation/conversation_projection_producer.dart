@@ -126,6 +126,12 @@ final class ConversationProjectionProducer {
 
   void publishLocalChange({TraceContext? trace}) => _publishAll(trace);
 
+  /// Publishes only the composer channel. Draft edits arrive at keystroke
+  /// rate; recomputing and equality-scanning the whole projection set per
+  /// keystroke is wasted work because only the draft can differ.
+  void publishComposerDraft({TraceContext? trace}) =>
+      composer.publish(_readComposer(_controller), trace: trace);
+
   void _publishAll(TraceContext? trace) {
     projection.publish(_readRoot(_controller), trace: trace);
     nativeCatalog.publish(_readNativeCatalog(_controller), trace: trace);

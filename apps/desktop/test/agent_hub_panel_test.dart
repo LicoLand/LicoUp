@@ -193,6 +193,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.seedCache,
     this.warehouseSnapshot,
     this.catalogFuture,
+    this.lifecycleGate,
     Map<String, Completer<AgentHubCatalogSnapshot>>? inspectDelays,
   }) : inspectDelays = inspectDelays ?? {};
 
@@ -207,6 +208,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final AgentHubCatalogSnapshot? seedCache;
   final AgentHubCatalogSnapshot? warehouseSnapshot;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
+
+  /// When set, the install lifecycle step waits on this completer so tests
+  /// can observe the in-progress UI before the operation effect arrives.
+  final Completer<void>? lifecycleGate;
   final Map<String, Completer<AgentHubCatalogSnapshot>> inspectDelays;
   final List<AgentHubLifecycleAction> actions = [];
   final List<String> catalogRecipeIds = [];
@@ -274,6 +279,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   ) async {
     lastChannelId = request.channelId;
     lastVersion = request.version;
+    final gate = lifecycleGate;
+    if (gate != null) {
+      await gate.future;
+    }
     return _record(
       AgentHubLifecycleAction.install,
       request.recipeId,
@@ -1415,10 +1424,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('install picker defaults to latest then confirms before apply', (
+  testWidgets('install picker installs directly and shows progress in place', (
     tester,
   ) async {
-    final engine = _FakeHubEngine();
+    final gate = Completer<void>();
+    final engine = _FakeHubEngine(lifecycleGate: gate);
     await _pumpHub(tester, _harness(engine));
 
     await tester.tap(find.byKey(const Key('agent-hub-install-codex')));
@@ -1432,14 +1442,16 @@ void main() {
       find.byKey(const Key('agent-hub-install-version')),
     );
     expect(versionField.initialValue, 'latest');
-    await tester.tap(find.byKey(const Key('agent-hub-install-continue')));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('agent-hub-install-start')));
+    await tester.pump();
+    // No second confirmation: the same dialog morphs into its progress state.
     expect(
       find.byKey(const Key('agent-hub-install-confirm-dialog')),
-      findsOneWidget,
+      findsNothing,
     );
-    await tester.tap(find.byKey(const Key('agent-hub-install-confirm')));
-    await tester.pump();
+    expect(find.byKey(const Key('agent-hub-install-progress')), findsOneWidget);
+    gate.complete();
+    await tester.pumpAndSettle();
     expect(engine.actions, [
       AgentHubLifecycleAction.plan,
       AgentHubLifecycleAction.confirm,
@@ -1448,6 +1460,8 @@ void main() {
     expect(engine.lastRecipeId, 'codex');
     expect(engine.lastChannelId, 'homebrew');
     expect(engine.lastVersion, 'latest');
+    // The completed install closes the dialog on its own.
+    expect(find.byKey(const Key('agent-hub-install-dialog')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
