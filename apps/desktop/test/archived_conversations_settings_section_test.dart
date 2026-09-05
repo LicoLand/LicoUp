@@ -1,24 +1,40 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_effect.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
+import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
-  testWidgets('searches and restores an archived canonical conversation', (
+  testWidgets('searches and dispatches restore for an archived conversation', (
     tester,
   ) async {
-    final runner = _ArchivedConversationRunner();
-    final controller = ClientConversationController(runner: runner);
-    addTearDown(controller.dispose);
+    final archived = const ArchivedConversationProjection(
+      id: 'conversation:archived-group',
+      title: '设计评审群',
+      isGroup: true,
+      membershipCount: 3,
+      updatedAtUnixMs: 1767234600000,
+    );
+    final source = SettingsProjectionFixture(
+      settingsProjectionFixture(archived: [archived]),
+    );
+    final intents = RecordingSettingsIntents();
+    final effects = RecordingSettingsEffects();
+    final binding = settingsBindingFixture(
+      source: source,
+      intents: intents,
+      effects: effects,
+    );
+    addTearDown(source.dispose);
+    addTearDown(effects.dispose);
 
     await tester.binding.setSurfaceSize(const Size(900, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -38,16 +54,15 @@ void main() {
         ).copyWith(platform: TargetPlatform.macOS),
         home: Scaffold(
           body: SingleChildScrollView(
-            child: ArchivedConversationsSettingsSection(controller: controller),
+            child: ArchivedConversationsSettingsSection(binding: binding),
           ),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.text('已归档对话'), findsOneWidget);
     expect(find.text('设计评审群'), findsOneWidget);
-    expect(find.byKey(const Key('archived-conversation-list')), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -55,7 +70,11 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.widgetWithText(FilledButton, '恢复'), findsOneWidget);
+    expect(find.byIcon(Icons.forum_outlined), findsOneWidget);
+    expect(
+      intents.values.whereType<RefreshArchivedConversations>(),
+      hasLength(1),
+    );
 
     await tester.enterText(
       find.byKey(const Key('archived-conversation-search')),
@@ -70,77 +89,21 @@ void main() {
     );
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '恢复'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    final restore = intents.values
+        .whereType<RestoreArchivedConversation>()
+        .single;
+    expect(restore.conversationId, archived.id);
 
-    final restore = runner.requests.singleWhere(
-      (request) => request['action'] == 'conversation.archive',
+    source.publish(settingsProjectionFixture());
+    effects.emit(
+      ArchivedConversationRestoreCompleted(
+        conversationId: archived.id,
+        restored: true,
+      ),
     );
-    expect(restore['conversationId'], 'conversation:archived-group');
-    expect(restore['archived'], isFalse);
-    expect(controller.archivedConversations, isEmpty);
-    expect(
-      controller.groupConversations.single.id,
-      'conversation:archived-group',
-    );
+    await tester.pump();
     expect(find.byKey(const Key('archived-conversation-list')), findsNothing);
-    expect(find.text('没有匹配的已归档对话'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(find.textContaining('设计评审群'), findsOneWidget);
   });
-}
-
-final class _ArchivedConversationRunner implements AgentCommandRunner {
-  final requests = <Map<String, dynamic>>[];
-  bool archived = true;
-
-  @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
-  ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
-    requests.add(request);
-    if (request['action'] == 'conversation.archive') {
-      archived = request['archived'] == true;
-    }
-    return {
-      'ok': true,
-      'result': switch (request['action']) {
-        'conversation.list' => [
-          if (!archived || request['includeArchived'] == true)
-            {
-              'id': 'conversation:archived-group',
-              'title': '设计评审群',
-              'archived': archived,
-              'pinned': false,
-              'isGroup': true,
-              'revision': 2,
-              'updatedAtUnixMs': DateTime(
-                2026,
-                1,
-                1,
-                10,
-                30,
-              ).millisecondsSinceEpoch,
-              'membershipCount': 3,
-              'eventCount': 8,
-            },
-        ],
-        _ => <String, dynamic>{},
-      },
-    };
-  }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }

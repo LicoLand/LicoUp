@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/mobile_relay/policy/mobile_pairing_invite_codec.dart';
 import 'package:licoup/src/application/features/mobile_relay/policy/mobile_pairing_policy.dart';
@@ -15,7 +15,7 @@ typedef MobileRelayTargetDiscovery =
     Future<void> Function(Map<String, dynamic>? pairingStatus);
 
 /// Owns Mobile Relay configuration, pairing, polling, and command projection.
-final class MobileRelayController extends ChangeNotifier {
+final class MobileRelayController extends ApplicationStateOwner {
   MobileRelayController({
     required MobileRelayClient client,
     required MobileRelayOperationGate operationGate,
@@ -70,18 +70,18 @@ final class MobileRelayController extends ChangeNotifier {
     _replaceHydratedConfig(
       await _client.loadConfig(authorizeSecrets: authorizeSecrets),
     );
-    notifyListeners();
+    publishChange();
   }
 
   void replaceConfig(MobileRelayConfig value) {
     _replaceHydratedConfig(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceActionResult(Map<String, dynamic>? value) {
     _actionResult = MobilePairingPolicy.actionProjection(value);
     _pairingPresentation = null;
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> configureStation({required String stationBaseUrl}) async {
@@ -92,12 +92,12 @@ final class MobileRelayController extends ChangeNotifier {
         'Configure a valid mobile relay station first.',
         errorCode: 'mobile_relay_station_required',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
     _report('正在保存移动中转站配置。', 'Saving the mobile relay station configuration.');
-    notifyListeners();
+    publishChange();
     try {
       _replaceHydratedConfig(
         await _client.configureStation(stationBaseUrl: station),
@@ -111,7 +111,7 @@ final class MobileRelayController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -121,7 +121,7 @@ final class MobileRelayController extends ChangeNotifier {
         '手机端不能创建桌面配对码。',
         'A desktop pairing code cannot be created on mobile.',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_requireConfiguredStation()) return;
@@ -130,7 +130,7 @@ final class MobileRelayController extends ChangeNotifier {
     _pairingPresentation = null;
     _config = _config.copyWith(lastPairingCode: '', lastPairingExpiresAt: '');
     _report('正在创建手机配对码。', 'Creating a phone pairing code.');
-    notifyListeners();
+    publishChange();
     try {
       final rawResult = await _client.createPairing();
       _pairingPresentation = MobilePairingPolicy.presentation(rawResult);
@@ -147,7 +147,7 @@ final class MobileRelayController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -160,7 +160,7 @@ final class MobileRelayController extends ChangeNotifier {
     _pairingPresentation = null;
     _actionResult = null;
     _config = _config.copyWith(lastPairingCode: '', lastPairingExpiresAt: '');
-    if (changed) notifyListeners();
+    if (changed) publishChange();
   }
 
   Future<bool> copyPairingCode(String code) async {
@@ -178,7 +178,7 @@ final class MobileRelayController extends ChangeNotifier {
       );
       return false;
     } finally {
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -189,7 +189,7 @@ final class MobileRelayController extends ChangeNotifier {
       return;
     }
     _report('正在刷新手机配对状态。', 'Refreshing phone pairing status.');
-    notifyListeners();
+    publishChange();
     try {
       final rawResult = await _client.refreshPairingStatus();
       if (_pairingPresentation == null) {
@@ -208,7 +208,7 @@ final class MobileRelayController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -224,7 +224,7 @@ final class MobileRelayController extends ChangeNotifier {
         'The device pairing invite is invalid.',
         errorCode: 'mobile_relay_pairing_invite_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     final station = canonicalMobileRelayStationOrigin(
@@ -236,12 +236,12 @@ final class MobileRelayController extends ChangeNotifier {
         'The pairing invite does not contain a valid mobile relay station.',
         errorCode: 'mobile_relay_station_required',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
     _report('正在配对设备。', 'Pairing the device.');
-    notifyListeners();
+    publishChange();
     try {
       final rawResult = await _client.claimPairing({
         ...invite,
@@ -261,7 +261,7 @@ final class MobileRelayController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -289,11 +289,11 @@ final class MobileRelayController extends ChangeNotifier {
         'The paired device does not have a valid mobile relay station.',
         errorCode: 'mobile_relay_station_required',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     _report('正在切换到 ${selected.label}。', 'Switching to ${selected.label}.');
-    notifyListeners();
+    publishChange();
     try {
       _config = _config.copyWith(
         pcClientId: selected.id,
@@ -316,7 +316,7 @@ final class MobileRelayController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -330,7 +330,7 @@ final class MobileRelayController extends ChangeNotifier {
     if (!_config.hasPairing || !_hasConfiguredStation) return null;
     final status = await _client.refreshPairingStatus();
     _replaceHydratedConfig(await _client.loadConfig());
-    notifyListeners();
+    publishChange();
     return status;
   }
 
@@ -340,7 +340,7 @@ final class MobileRelayController extends ChangeNotifier {
     _timer = null;
     if (_isIos()) {
       _config = _config.copyWith(relayEnabled: false);
-      notifyListeners();
+      publishChange();
       return;
     }
     _config = _config.copyWith(relayEnabled: true);
@@ -351,7 +351,7 @@ final class MobileRelayController extends ChangeNotifier {
       _timer = Timer.periodic(interval, (_) => unawaited(pollOnce()));
     }
     unawaited(_saveConfigSilently());
-    notifyListeners();
+    publishChange();
   }
 
   void stopPolling() {
@@ -359,7 +359,7 @@ final class MobileRelayController extends ChangeNotifier {
     _timer = null;
     _config = _config.copyWith(relayEnabled: false);
     unawaited(_saveConfigSilently());
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> pollOnce({bool showProgress = false}) async {
@@ -379,7 +379,7 @@ final class MobileRelayController extends ChangeNotifier {
     var shouldNotify = showProgress;
     if (showProgress) {
       _report('正在同步手机中转命令。', 'Syncing mobile relay commands.');
-      notifyListeners();
+      publishChange();
     }
     try {
       final rawResult = await _client.syncCommands(
@@ -427,7 +427,7 @@ final class MobileRelayController extends ChangeNotifier {
     } finally {
       _polling = false;
       _operationGate.release();
-      if (shouldNotify) notifyListeners();
+      if (shouldNotify) publishChange();
     }
   }
 
@@ -509,7 +509,7 @@ final class MobileRelayController extends ChangeNotifier {
       'Configure the mobile relay station first.',
       errorCode: 'mobile_relay_station_required',
     );
-    notifyListeners();
+    publishChange();
     return false;
   }
 

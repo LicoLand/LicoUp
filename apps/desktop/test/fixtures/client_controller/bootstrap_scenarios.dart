@@ -422,6 +422,8 @@ void registerClientBootstrapScenarios() {
 
     expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
     expect(controller.appearancePresetLoadErrors, isNotEmpty);
+    expect(controller.statusMessage, '外观预设已重新加载，部分配置无效。');
+    expect(controller.statusCaption, 'Appearance');
   });
 
   test(

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/platform/client_resource_usage_probe.dart';
 import 'package:licoup/src/platform/system_memory_capacity.dart';
@@ -34,7 +34,7 @@ final class ClientResourceUsageSample {
 /// Samples process-level resource usage while a diagnostic surface is open.
 ///
 /// All history stays in memory; nothing is written to disk.
-final class ClientResourceUsageController extends ChangeNotifier {
+final class ClientResourceUsageController extends ApplicationStateOwner {
   ClientResourceUsageController({
     required ClientResourceUsageProbe? probe,
     DateTime Function()? now,
@@ -122,7 +122,7 @@ final class ClientResourceUsageController extends ChangeNotifier {
     if (_samples.length > clientResourceUsageMaxSamples) {
       _samples.removeRange(0, _samples.length - clientResourceUsageMaxSamples);
     }
-    notifyListeners();
+    publishChange();
   }
 
   int _nonNegativeDelta(int current, int previous) {

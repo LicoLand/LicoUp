@@ -1,10 +1,70 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_block_view.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('inline span parsing is content-addressed and cached', () {
+    const accent = Color(0xFF0000FF);
+    const codeBackground = Color(0xFFEEEEEE);
+    final first = messageMarkdownInlineSpans(
+      'hello **world** and `code`',
+      const TextStyle(fontSize: 14),
+      accent: accent,
+      codeBackground: codeBackground,
+    );
+    // A rebuild with equal-but-fresh inputs hits the cache.
+    final second = messageMarkdownInlineSpans(
+      'hello **world** and `code`',
+      const TextStyle(fontSize: 14),
+      accent: accent,
+      codeBackground: codeBackground,
+    );
+    expect(identical(first, second), isTrue);
+    expect(first, hasLength(4));
+
+    final otherText = messageMarkdownInlineSpans(
+      'hello world',
+      const TextStyle(fontSize: 14),
+      accent: accent,
+      codeBackground: codeBackground,
+    );
+    expect(identical(first, otherText), isFalse);
+
+    // Cached span trees are shared across widgets, so they are immutable.
+    expect(() => first.add(const TextSpan()), throwsUnsupportedError);
+  });
+
+  test('table intrinsic width measurement is cached per content and style', () {
+    const accent = Color(0xFF0000FF);
+    const codeBackground = Color(0xFFEEEEEE);
+    const data = '| A | B |\n|---|---|\n| long cell content | x |\n';
+    // The block-parse cache keeps the rows list identity per content.
+    final firstRows = parseMessageMarkdownBlocks(data).single.rows;
+    final secondRows = parseMessageMarkdownBlocks(data).single.rows;
+    expect(identical(firstRows, secondRows), isTrue);
+
+    final first = messageMarkdownTableIntrinsicColumnWidths(
+      firstRows,
+      const TextStyle(fontSize: 14),
+      accent: accent,
+      codeBackground: codeBackground,
+    );
+    final second = messageMarkdownTableIntrinsicColumnWidths(
+      secondRows,
+      const TextStyle(fontSize: 14),
+      accent: accent,
+      codeBackground: codeBackground,
+    );
+    expect(identical(first, second), isTrue);
+    expect(first, hasLength(2));
+    expect(first[0], greaterThan(first[1]));
+    expect(first[1], greaterThan(0));
+  });
+
   test('parseMessageMarkdownBlocks recognizes common message markdown', () {
     final blocks = parseMessageMarkdownBlocks('''
 # Heading

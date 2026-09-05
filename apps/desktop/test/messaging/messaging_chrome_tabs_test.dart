@@ -3,6 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
+import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_chrome_tabs.dart';
@@ -79,7 +81,7 @@ void main() {
 
     controller.isSendingConversationMessage = true;
     controller.sendingConversationSessionId = 's1';
-    controller.agentWorkspaceNotifyStateChanged();
+    controller.agentWorkspaceNotifyActiveConversationChanged();
     await tester.pump();
 
     expect(_titleStyle(tester, 'Alpha session').fontStyle, FontStyle.normal);
@@ -128,7 +130,7 @@ void main() {
     await tester.pump();
     controller.isSendingConversationMessage = true;
     controller.sendingConversationSessionId = 's1';
-    controller.agentWorkspaceNotifyStateChanged();
+    controller.agentWorkspaceNotifyActiveConversationChanged();
     await tester.pump();
     expect(find.byKey(const Key('messaging-chrome-tab-s1')), findsOneWidget);
 
@@ -138,14 +140,14 @@ void main() {
 
     // Another controller notification while the send is still in flight must
     // not re-add the user-closed tab.
-    controller.agentWorkspaceNotifyStateChanged();
+    controller.agentWorkspaceNotifyActiveConversationChanged();
     await tester.pump();
     expect(find.byKey(const Key('messaging-chrome-tab-s1')), findsNothing);
 
     // The tab stays closed after the send completes.
     controller.isSendingConversationMessage = false;
     controller.sendingConversationSessionId = '';
-    controller.agentWorkspaceNotifyStateChanged();
+    controller.agentWorkspaceNotifyActiveConversationChanged();
     await tester.pump();
     expect(find.byKey(const Key('messaging-chrome-tab-s1')), findsNothing);
 
@@ -165,11 +167,11 @@ void main() {
     await tester.pump();
     controller.isSendingConversationMessage = true;
     controller.sendingConversationSessionId = 's1';
-    controller.agentWorkspaceNotifyStateChanged();
+    controller.agentWorkspaceNotifyActiveConversationChanged();
     await tester.pump();
     controller.isSendingConversationMessage = false;
     controller.sendingConversationSessionId = '';
-    controller.agentWorkspaceNotifyStateChanged();
+    controller.agentWorkspaceNotifyActiveConversationChanged();
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('messaging-chrome-tab-close')));
@@ -222,7 +224,7 @@ void main() {
 void _select(ClientController controller, String sessionId) {
   controller.selectedConversationAgentId = 'codex';
   controller.selectedConversationSessionId = sessionId;
-  controller.agentWorkspaceNotifyStateChanged();
+  controller.notifyConversationStructureChanged();
 }
 
 TextStyle _titleStyle(WidgetTester tester, String title) {
@@ -277,8 +279,17 @@ AgentConversationSession _session(
   messages: const [],
 );
 
-Future<void> _pumpStrip(WidgetTester tester, ClientController controller) {
-  return tester.pumpWidget(
+Future<void> _pumpStrip(
+  WidgetTester tester,
+  ClientController controller,
+) async {
+  final agents = AgentsFeatureComposition(controller);
+  final conversation = ConversationFeatureComposition(controller);
+  addTearDown(() async {
+    await conversation.close();
+    await agents.close();
+  });
+  await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
       supportedLocales: LicoStrings.supportedLocales,
@@ -292,7 +303,10 @@ Future<void> _pumpStrip(WidgetTester tester, ClientController controller) {
         body: SizedBox(
           width: 900,
           height: 80,
-          child: MessagingConversationTabStrip(controller: controller),
+          child: MessagingConversationTabStrip(
+            agents: agents.binding,
+            conversation: conversation.binding,
+          ),
         ),
       ),
     ),

@@ -757,6 +757,244 @@ void main() {
     expect(prefetched, ['cursor']);
     expect(tester.takeException(), isNull);
   });
+
+  test('flatten memo reuses entries while inputs keep identity', () {
+    final memo = SidebarConversationFlattenMemo();
+    final targets = [_target('codex', 'Codex')];
+    final sessions = [
+      _session('a', 'codex', 'A', updatedHoursAgo: 1),
+      _session('b', 'codex', 'B', updatedHoursAgo: 2),
+    ];
+    final first = memo.flatten(
+      targets: targets,
+      sessionsByAgent: {'codex': sessions},
+      activityFor: (_) => AgentConversationTabActivity.none,
+    );
+    // A rebuild with fresh wrappers but identical elements hits the memo.
+    final second = memo.flatten(
+      targets: List.of(targets),
+      sessionsByAgent: {'codex': sessions},
+      activityFor: (_) => AgentConversationTabActivity.none,
+    );
+    expect(identical(first, second), isTrue);
+
+    // A changed activity signature re-derives.
+    final third = memo.flatten(
+      targets: targets,
+      sessionsByAgent: {'codex': sessions},
+      activityFor: (_) => AgentConversationTabActivity.workFinished,
+    );
+    expect(identical(first, third), isFalse);
+    expect(
+      third.singleWhere((entry) => entry.session.id == 'a').activity,
+      AgentConversationTabActivity.workFinished,
+    );
+
+    // A replaced session list re-derives even with equal content.
+    final fourth = memo.flatten(
+      targets: targets,
+      sessionsByAgent: {'codex': List.of(sessions)},
+      activityFor: (_) => AgentConversationTabActivity.workFinished,
+    );
+    expect(identical(third, fourth), isFalse);
+  });
+
+  test('sidebar list items model groups, collapse state, and priority', () {
+    final now = DateTime.now();
+    String atNoon(int dayOffset) => DateTime(
+      now.year,
+      now.month,
+      now.day - dayOffset,
+      12,
+    ).toUtc().toIso8601String();
+    final entries = flattenSidebarConversations(
+      targets: [_target('codex', 'Codex'), _target('kimi-code', 'Kimi Code')],
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'assistant',
+            'codex',
+            'Assistant thread',
+            updatedAt: atNoon(2),
+          ),
+        ],
+        'kimi-code': [
+          _session('k-today', 'kimi-code', 'Kimi today', updatedAt: atNoon(0)),
+          _session('k-old', 'kimi-code', 'Kimi old', updatedAt: atNoon(40)),
+        ],
+      },
+      activityFor: (_) => AgentConversationTabActivity.none,
+    );
+
+    List<String> rowIds(List<SidebarListItem> items) => items
+        .whereType<SidebarConversationRowItem>()
+        .map((row) => row.entry.session.id)
+        .toList();
+
+    final collapsed = buildSidebarListItems(
+      entries: entries,
+      selectedSessionId: '',
+      earlierExpanded: false,
+      runningFor: null,
+      priorityAgentId: 'codex',
+      relatedAgentIds: null,
+      otherConversationsExpanded: false,
+      now: now,
+    );
+    // The pinned assistant thread leads under the priority header; the
+    // 40-day-old row stays behind the collapsed Earlier header.
+    expect(
+      (collapsed[0] as SidebarSectionHeaderItem).kind,
+      SidebarSectionHeaderKind.priority,
+    );
+    expect(
+      (collapsed[1] as SidebarConversationRowItem).entry.session.id,
+      'assistant',
+    );
+    final earlierHeader = collapsed
+        .whereType<SidebarSectionHeaderItem>()
+        .singleWhere((item) => item.kind == SidebarSectionHeaderKind.earlier);
+    expect(earlierHeader.count, 1);
+    expect(earlierHeader.expanded, isFalse);
+    expect(rowIds(collapsed), ['assistant', 'k-today']);
+
+    final expanded = buildSidebarListItems(
+      entries: entries,
+      selectedSessionId: '',
+      earlierExpanded: true,
+      runningFor: null,
+      priorityAgentId: 'codex',
+      relatedAgentIds: null,
+      otherConversationsExpanded: false,
+      now: now,
+    );
+    expect(rowIds(expanded), ['assistant', 'k-today', 'k-old']);
+    final expandedEarlier = expanded
+        .whereType<SidebarSectionHeaderItem>()
+        .singleWhere((item) => item.kind == SidebarSectionHeaderKind.earlier);
+    expect(expandedEarlier.expanded, isTrue);
+    // The Earlier header sits directly above its rows.
+    final earlierIndex = expanded.indexOf(expandedEarlier);
+    expect(
+      (expanded[earlierIndex + 1] as SidebarConversationRowItem)
+          .entry
+          .session
+          .id,
+      'k-old',
+    );
+
+    // A selected conversation inside Earlier force-expands the section.
+    final selectedInsideEarlier = buildSidebarListItems(
+      entries: entries,
+      selectedSessionId: 'k-old',
+      earlierExpanded: false,
+      runningFor: null,
+      priorityAgentId: 'codex',
+      relatedAgentIds: null,
+      otherConversationsExpanded: false,
+      now: now,
+    );
+    expect(rowIds(selectedInsideEarlier), contains('k-old'));
+  });
+
+  testWidgets('sidebar list builds rows lazily and scrolls them in', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final sessions = [
+      for (var index = 0; index < 60; index += 1)
+        _session(
+          'session-$index',
+          'codex',
+          'Session number $index',
+          updatedAt: now
+              .subtract(Duration(minutes: index))
+              .toUtc()
+              .toIso8601String(),
+        ),
+    ];
+    await _pumpSidebar(
+      tester,
+      targets: [_target('codex', 'Codex')],
+      sessionsByAgent: {'codex': sessions},
+      onSelectSession: (_, _) {},
+    );
+
+    // Sixty rows overflow the 640px viewport; the tail stays unbuilt.
+    expect(find.text('Session number 0'), findsOneWidget);
+    expect(find.text('Session number 59'), findsNothing);
+
+    await tester.dragUntilVisible(
+      find.text('Session number 59'),
+      find.byType(ListView),
+      const Offset(0, -240),
+    );
+    await tester.pump();
+    expect(find.text('Session number 59'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('scrolling the sidebar pauses decorative row animations', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final sessions = [
+      _session(
+        'running',
+        'codex',
+        'Running session',
+        updatedAt: now.toUtc().toIso8601String(),
+      ),
+      for (var index = 0; index < 40; index += 1)
+        _session(
+          'idle-$index',
+          'codex',
+          'Idle session $index',
+          updatedAt: now
+              .subtract(Duration(minutes: index + 1))
+              .toUtc()
+              .toIso8601String(),
+        ),
+    ];
+    await _pumpSidebar(
+      tester,
+      targets: [_target('codex', 'Codex')],
+      sessionsByAgent: {'codex': sessions},
+      runningFor: (session) => session.id == 'running',
+      onSelectSession: (_, _) {},
+    );
+
+    final running = find.byKey(const Key('agents-sidebar-running-running'));
+    expect(running, findsOneWidget);
+    final rotation = tester.widget<RotationTransition>(
+      find.descendant(of: running, matching: find.byType(RotationTransition)),
+    );
+    final atRest = rotation.turns.value;
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(rotation.turns.value, isNot(atRest));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(ListView)),
+    );
+    await gesture.moveBy(const Offset(0, -120));
+    await tester.pump();
+    await tester.pump();
+    final frozenAt = rotation.turns.value;
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(rotation.turns.value, frozenAt);
+
+    // The scroll-end notification may land only after the ballistic settles;
+    // the gate releases on the frame after it.
+    await gesture.up();
+    var resumed = false;
+    for (var attempt = 0; attempt < 20 && !resumed; attempt += 1) {
+      final value = rotation.turns.value;
+      await tester.pump(const Duration(milliseconds: 100));
+      resumed = rotation.turns.value != value;
+    }
+    expect(resumed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 TargetCandidate _target(String target, String label) {

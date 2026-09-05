@@ -5,6 +5,7 @@ import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_diagram.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_layout.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
 
 void main() {
   test('keeps the happy path on one row and drops blocked below it', () {
@@ -37,10 +38,11 @@ void main() {
         states: _collaborationStates,
         edges: [
           ..._collaborationEdges,
-          const AdaptiveFlywheelGraphEdge(
+          const AdaptiveFlywheelGraphEdgeProjection(
             from: 'authorize',
             to: 'schedule',
             event: 'success',
+            guardLabel: '',
           ),
         ],
         initialState: 'authorize',
@@ -101,24 +103,34 @@ void main() {
   test('keeps sibling exception nodes from overlapping', () {
     final layout = AdaptiveFlywheelWorkflowLayout.build(
       states: const [
-        AdaptiveFlywheelGraphState(id: 'start', kind: 'actor', label: 'Start'),
-        AdaptiveFlywheelGraphState(id: 'failed', kind: 'fail', label: 'Failed'),
-        AdaptiveFlywheelGraphState(
+        AdaptiveFlywheelGraphStateProjection(
+          id: 'start',
+          kind: 'actor',
+          label: 'Start',
+        ),
+        AdaptiveFlywheelGraphStateProjection(
+          id: 'failed',
+          kind: 'fail',
+          label: 'Failed',
+        ),
+        AdaptiveFlywheelGraphStateProjection(
           id: 'blocked',
           kind: 'blocked',
           label: 'Blocked',
         ),
       ],
       edges: const [
-        AdaptiveFlywheelGraphEdge(
+        AdaptiveFlywheelGraphEdgeProjection(
           from: 'start',
           to: 'failed',
           event: 'failure',
+          guardLabel: '',
         ),
-        AdaptiveFlywheelGraphEdge(
+        AdaptiveFlywheelGraphEdgeProjection(
           from: 'start',
           to: 'blocked',
           event: 'blocked',
+          guardLabel: '',
         ),
       ],
       initialState: 'start',
@@ -159,12 +171,12 @@ void main() {
             width: 1100,
             height: 420,
             child: AdaptiveFlywheelWorkflowDiagram(
-              inspection: AdaptiveFlywheelInspection(
+              inspection: AdaptiveFlywheelInspectionProjection(
                 status: 'pending',
                 currentStates: const [],
                 neighborStates: const [],
                 allowedOperations: const [],
-                bindings: const {},
+                assignments: const [],
                 slots: const [],
                 states: _collaborationStates,
                 edges: _collaborationEdges,
@@ -189,71 +201,153 @@ void main() {
 }
 
 const _collaborationStates = [
-  AdaptiveFlywheelGraphState(
+  AdaptiveFlywheelGraphStateProjection(
     id: 'authorize',
     kind: 'authorization',
     label: 'Authorize exact semantics',
   ),
-  AdaptiveFlywheelGraphState(
+  AdaptiveFlywheelGraphStateProjection(
     id: 'schedule',
     kind: 'actor',
     label: 'Schedule collaboration',
   ),
-  AdaptiveFlywheelGraphState(
+  AdaptiveFlywheelGraphStateProjection(
     id: 'design',
     kind: 'actor',
     label: 'Design the work',
   ),
-  AdaptiveFlywheelGraphState(id: 'route', kind: 'choice', label: 'Route'),
-  AdaptiveFlywheelGraphState(
+  AdaptiveFlywheelGraphStateProjection(
+    id: 'route',
+    kind: 'choice',
+    label: 'Route',
+  ),
+  AdaptiveFlywheelGraphStateProjection(
     id: 'specialist',
     kind: 'actor',
     label: 'Specialist',
   ),
-  AdaptiveFlywheelGraphState(id: 'tasks', kind: 'workset', label: 'Tasks'),
-  AdaptiveFlywheelGraphState(id: 'review', kind: 'actor', label: 'Review'),
-  AdaptiveFlywheelGraphState(id: 'again', kind: 'choice', label: 'Again'),
-  AdaptiveFlywheelGraphState(
+  AdaptiveFlywheelGraphStateProjection(
+    id: 'tasks',
+    kind: 'workset',
+    label: 'Tasks',
+  ),
+  AdaptiveFlywheelGraphStateProjection(
+    id: 'review',
+    kind: 'actor',
+    label: 'Review',
+  ),
+  AdaptiveFlywheelGraphStateProjection(
+    id: 'again',
+    kind: 'choice',
+    label: 'Again',
+  ),
+  AdaptiveFlywheelGraphStateProjection(
     id: 'complete',
     kind: 'succeed',
     label: 'Complete',
   ),
-  AdaptiveFlywheelGraphState(id: 'blocked', kind: 'blocked', label: 'Blocked'),
+  AdaptiveFlywheelGraphStateProjection(
+    id: 'blocked',
+    kind: 'blocked',
+    label: 'Blocked',
+  ),
 ];
 
 const _collaborationEdges = [
-  AdaptiveFlywheelGraphEdge(
+  AdaptiveFlywheelGraphEdgeProjection(
     from: 'authorize',
     to: 'schedule',
     event: 'success',
+    guardLabel: '',
   ),
-  AdaptiveFlywheelGraphEdge(from: 'authorize', to: 'blocked', event: 'failure'),
-  AdaptiveFlywheelGraphEdge(from: 'schedule', to: 'design', event: 'success'),
-  AdaptiveFlywheelGraphEdge(from: 'schedule', to: 'blocked', event: 'failure'),
-  AdaptiveFlywheelGraphEdge(from: 'design', to: 'route', event: 'success'),
-  AdaptiveFlywheelGraphEdge(from: 'design', to: 'blocked', event: 'failure'),
-  AdaptiveFlywheelGraphEdge(
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'authorize',
+    to: 'blocked',
+    event: 'failure',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'schedule',
+    to: 'design',
+    event: 'success',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'schedule',
+    to: 'blocked',
+    event: 'failure',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'design',
+    to: 'route',
+    event: 'success',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'design',
+    to: 'blocked',
+    event: 'failure',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
     from: 'route',
     to: 'specialist',
     event: 'success',
     guardLabel: 'route=complex',
   ),
-  AdaptiveFlywheelGraphEdge(from: 'route', to: 'tasks', event: 'success'),
-  AdaptiveFlywheelGraphEdge(from: 'specialist', to: 'review', event: 'success'),
-  AdaptiveFlywheelGraphEdge(
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'route',
+    to: 'tasks',
+    event: 'success',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'specialist',
+    to: 'review',
+    event: 'success',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
     from: 'specialist',
     to: 'blocked',
     event: 'failure',
+    guardLabel: '',
   ),
-  AdaptiveFlywheelGraphEdge(from: 'tasks', to: 'review', event: 'success'),
-  AdaptiveFlywheelGraphEdge(from: 'tasks', to: 'blocked', event: 'failure'),
-  AdaptiveFlywheelGraphEdge(from: 'review', to: 'again', event: 'success'),
-  AdaptiveFlywheelGraphEdge(from: 'review', to: 'blocked', event: 'failure'),
-  AdaptiveFlywheelGraphEdge(
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'tasks',
+    to: 'review',
+    event: 'success',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'tasks',
+    to: 'blocked',
+    event: 'failure',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'review',
+    to: 'again',
+    event: 'success',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'review',
+    to: 'blocked',
+    event: 'failure',
+    guardLabel: '',
+  ),
+  AdaptiveFlywheelGraphEdgeProjection(
     from: 'again',
     to: 'schedule',
     event: 'success',
     guardLabel: 'again=true',
   ),
-  AdaptiveFlywheelGraphEdge(from: 'again', to: 'complete', event: 'success'),
+  AdaptiveFlywheelGraphEdgeProjection(
+    from: 'again',
+    to: 'complete',
+    event: 'success',
+    guardLabel: '',
+  ),
 ];

@@ -169,7 +169,7 @@ void main() {
       final controller = AgentResourceUsageController(gateway: gateway);
       addTearDown(controller.dispose);
       var notifications = 0;
-      controller.addListener(() => notifications += 1);
+      controller.changes.listen((_) => notifications += 1);
 
       await controller.refresh();
       expect(notifications, 1);

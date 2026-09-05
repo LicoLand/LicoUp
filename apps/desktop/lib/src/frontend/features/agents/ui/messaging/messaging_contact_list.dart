@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -9,15 +8,16 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_foundation.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_navigation.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_foundation.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -123,19 +123,25 @@ class MessagingContactList extends StatefulWidget {
 class _MessagingContactListState extends State<MessagingContactList> {
   final _createMenuAnchorKey = GlobalKey();
   final Set<String> _prefetchedTargetIds = <String>{};
+  final SidebarConversationFlattenMemo _conversationListFlattenMemo =
+      SidebarConversationFlattenMemo();
   bool _earlierExpanded = false;
   bool _otherConversationsExpanded = false;
 
   @override
   void initState() {
     super.initState();
-    _prefetchUnloadedSessions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _prefetchUnloadedSessions();
+    });
   }
 
   @override
   void didUpdateWidget(covariant MessagingContactList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _prefetchUnloadedSessions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _prefetchUnloadedSessions();
+    });
   }
 
   void _prefetchUnloadedSessions() {
@@ -385,7 +391,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
     }
     if (widget.showConversationList) {
       return SidebarConversationListView(
-        entries: flattenSidebarConversations(
+        entries: _conversationListFlattenMemo.flatten(
           targets: widget.conversationListTargets,
           sessionsByAgent: widget.sessionsByAgent,
           activityFor: widget.activityFor,
@@ -597,9 +603,10 @@ class _MessagingCanonicalGroupRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final title = conversation.title.trim().isEmpty
-        ? strings.groupConversation
-        : conversation.title.trim();
+    final title = historySessionDisplayTitle(
+      conversation.title,
+      fallback: strings.groupConversation,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
@@ -880,7 +887,10 @@ class _MessagingContactRow extends StatelessWidget {
           ? preview
           : '$preview · $project';
       if (subtitle.isEmpty) {
-        subtitle = latest.title.trim().isEmpty ? latest.id : latest.title;
+        subtitle = historySessionDisplayTitle(
+          latest.title.trim().isEmpty ? latest.id : latest.title,
+          fallback: '',
+        );
       }
     }
     return Padding(

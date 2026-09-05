@@ -1,21 +1,23 @@
-import 'package:flutter/foundation.dart';
-
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 
 /// Renderer-facing conversation signals kept separate from conversation data
 /// and transport state.
 final class ConversationPresentationSignals {
-  final ValueNotifier<int> _structureRevision = ValueNotifier<int>(0);
-  final ValueNotifier<int> _activeRevision = ValueNotifier<int>(0);
-  final ValueNotifier<int> _liveRevision = ValueNotifier<int>(0);
+  final ApplicationSignalOwner _structure = ApplicationSignalOwner();
+  final ApplicationSignalOwner _active = ApplicationSignalOwner();
+  final ApplicationSignalOwner _live = ApplicationSignalOwner();
+  final ApplicationSignalOwner _tabActivity = ApplicationSignalOwner();
   Map<String, String> _composerDrafts = const {};
   Map<String, List<ConversationAttachment>> _composerAttachments = const {};
   Map<String, String> _composerAttachmentStatuses = const {};
   bool _disposed = false;
 
-  ValueListenable<int> get structureListenable => _structureRevision;
-  ValueListenable<int> get activeListenable => _activeRevision;
-  ValueListenable<int> get liveListenable => _liveRevision;
+  Stream<ApplicationChange> get structureChanges => _structure.signal.changes;
+  Stream<ApplicationChange> get activeChanges => _active.signal.changes;
+  Stream<ApplicationChange> get liveChanges => _live.signal.changes;
+  Stream<ApplicationChange> get tabActivityChanges =>
+      _tabActivity.signal.changes;
 
   /// Draft text for one conversation scope. Every selected conversation (and
   /// every new-conversation draft) keeps its own composer text; switching
@@ -33,6 +35,7 @@ final class ConversationPresentationSignals {
     final previous = _composerDrafts[normalized] ?? '';
     if (next == previous) return;
     _composerDrafts = {..._composerDrafts, normalized: next};
+    _active.publish();
   }
 
   /// Pending image attachments for one conversation scope, beside the text
@@ -63,6 +66,7 @@ final class ConversationPresentationSignals {
     final previous = _composerAttachments[normalized] ?? const [];
     if (_sameAttachmentList(previous, next)) return;
     _composerAttachments = {..._composerAttachments, normalized: next};
+    _active.publish();
   }
 
   void replaceComposerAttachmentStatus(String scopeKey, String code) {
@@ -76,6 +80,7 @@ final class ConversationPresentationSignals {
       ..._composerAttachmentStatuses,
       normalized: next,
     };
+    _active.publish();
   }
 
   bool _sameAttachmentList(
@@ -99,25 +104,31 @@ final class ConversationPresentationSignals {
 
   void notifyStructureChanged({bool activeChanged = true}) {
     if (_disposed) return;
-    _structureRevision.value += 1;
-    if (activeChanged) _activeRevision.value += 1;
+    _structure.publish();
+    if (activeChanged) _active.publish();
   }
 
   void notifyActiveChanged() {
     if (_disposed) return;
-    _activeRevision.value += 1;
+    _active.publish();
   }
 
   void notifyLiveChanged() {
     if (_disposed) return;
-    _liveRevision.value += 1;
+    _live.publish();
+  }
+
+  void notifyTabActivityChanged() {
+    if (_disposed) return;
+    _tabActivity.publish();
   }
 
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    _structureRevision.dispose();
-    _activeRevision.dispose();
-    _liveRevision.dispose();
+    _structure.close();
+    _active.close();
+    _live.close();
+    _tabActivity.close();
   }
 }

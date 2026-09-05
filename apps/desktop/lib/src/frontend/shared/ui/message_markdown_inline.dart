@@ -1,8 +1,47 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 
+/// Bounded content-addressed cache for inline span parses, mirroring the
+/// block-parse cache in message_markdown_parser.dart. Every visible message
+/// row re-runs this scan on every workspace rebuild; keying on the full input
+/// (text, style, colors) makes unchanged rows cache hits. Spans are immutable
+/// value objects, so sharing one parsed result across widgets is safe.
+final LinkedHashMap<(String, TextStyle, Color, Color), List<InlineSpan>>
+_inlineSpanCache = LinkedHashMap();
+const int _inlineSpanCacheLimit = 512;
+
 List<InlineSpan> messageMarkdownInlineSpans(
+  String text,
+  TextStyle style, {
+  required Color accent,
+  required Color codeBackground,
+}) {
+  final key = (text, style, accent, codeBackground);
+  final cached = _inlineSpanCache.remove(key);
+  if (cached != null) {
+    // Refresh recency: LRU eviction drops the least recently used entry.
+    _inlineSpanCache[key] = cached;
+    return cached;
+  }
+  final spans = List<InlineSpan>.unmodifiable(
+    _scanMessageMarkdownInlineSpans(
+      text,
+      style,
+      accent: accent,
+      codeBackground: codeBackground,
+    ),
+  );
+  if (_inlineSpanCache.length >= _inlineSpanCacheLimit) {
+    _inlineSpanCache.remove(_inlineSpanCache.keys.first);
+  }
+  _inlineSpanCache[key] = spans;
+  return spans;
+}
+
+List<InlineSpan> _scanMessageMarkdownInlineSpans(
   String text,
   TextStyle style, {
   required Color accent,

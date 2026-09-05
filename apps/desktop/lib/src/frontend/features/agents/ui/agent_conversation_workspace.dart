@@ -5,60 +5,63 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
-import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_sidebar_column.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
-import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_image_attachments.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
-import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_column.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_binding.dart';
+import 'package:licoup/src/presentation/agents/agents_intent.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
+import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+
+const _conversationAttachmentMediaUnsupported = 'attachment_media_unsupported';
 
 class AgentConversationWorkspace extends StatefulWidget {
   const AgentConversationWorkspace({
     super.key,
-    required this.controller,
-    required this.targets,
-    required this.scanning,
-    required this.adding,
+    required this.agents,
+    required this.conversation,
+    required this.relay,
     required this.onAddTarget,
+    this.onSelectDestination,
     this.onSearch,
     this.allowManualTargetActions = true,
   });
 
-  final ClientController controller;
-  final List<TargetCandidate> targets;
-  final bool scanning;
-  final bool adding;
+  final AgentsBinding agents;
+  final ConversationBinding conversation;
+  final MobileRelayBinding relay;
   final VoidCallback onAddTarget;
+  final ValueChanged<ClientSection>? onSelectDestination;
   final VoidCallback? onSearch;
   final bool allowManualTargetActions;
 
@@ -69,127 +72,13 @@ class AgentConversationWorkspace extends StatefulWidget {
 
 class _AgentConversationWorkspaceState
     extends State<AgentConversationWorkspace> {
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_handleControllerChanged);
-    widget.controller.conversationStructureListenable.addListener(
-      _handleControllerChanged,
-    );
-    widget.controller.activeConversationListenable.addListener(
-      _handleControllerChanged,
-    );
-    widget.controller.conversationStateHolder.addListener(
-      _handleControllerChanged,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant AgentConversationWorkspace oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller == widget.controller) {
-      return;
-    }
-    oldWidget.controller.removeListener(_handleControllerChanged);
-    oldWidget.controller.conversationStructureListenable.removeListener(
-      _handleControllerChanged,
-    );
-    oldWidget.controller.activeConversationListenable.removeListener(
-      _handleControllerChanged,
-    );
-    oldWidget.controller.conversationStateHolder.removeListener(
-      _handleControllerChanged,
-    );
-    widget.controller.addListener(_handleControllerChanged);
-    widget.controller.conversationStructureListenable.addListener(
-      _handleControllerChanged,
-    );
-    widget.controller.activeConversationListenable.addListener(
-      _handleControllerChanged,
-    );
-    widget.controller.conversationStateHolder.addListener(
-      _handleControllerChanged,
-    );
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_handleControllerChanged);
-    widget.controller.conversationStructureListenable.removeListener(
-      _handleControllerChanged,
-    );
-    widget.controller.activeConversationListenable.removeListener(
-      _handleControllerChanged,
-    );
-    widget.controller.conversationStateHolder.removeListener(
-      _handleControllerChanged,
-    );
-    super.dispose();
-  }
-
-  void _handleControllerChanged() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final mobileClient =
-        widget.controller.mobileClientRuntimePlatform ||
-        isMobileClientPlatform(context);
-    final targets = widget.controller.orderedConversationTargets(
-      widget.targets,
-    );
-    // Desktop owns agent navigation in the sidebar tree; mobile owns it in the
-    // phone shell. The workspace itself stays independent of layout profiles.
-    return _ConversationWorkspaceBody(
-      controller: widget.controller,
-      targets: targets,
-      scanning: widget.scanning,
-      adding: widget.adding,
-      onAddTarget: widget.onAddTarget,
-      onSearch: widget.onSearch,
-      allowManualTargetActions: widget.allowManualTargetActions,
-      useFloatingShell: !mobileClient,
-    );
-  }
-}
-
-class _ConversationWorkspaceBody extends StatefulWidget {
-  const _ConversationWorkspaceBody({
-    required this.controller,
-    required this.targets,
-    required this.scanning,
-    required this.adding,
-    required this.onAddTarget,
-    this.onSearch,
-    required this.allowManualTargetActions,
-    this.useFloatingShell = false,
-  });
-
-  final ClientController controller;
-  final List<TargetCandidate> targets;
-  final bool scanning;
-  final bool adding;
-  final VoidCallback onAddTarget;
-  final VoidCallback? onSearch;
-  final bool allowManualTargetActions;
-  final bool useFloatingShell;
-
-  @override
-  State<_ConversationWorkspaceBody> createState() =>
-      _ConversationWorkspaceBodyState();
-}
-
-class _ConversationWorkspaceBodyState
-    extends State<_ConversationWorkspaceBody> {
-  bool _historyCollapsed = false;
-  bool _pickingConversationAttachments = false;
-  // Default to the narrowest usable rail; users can drag wider.
+  bool _sidebarCollapsed = false;
   double _sidebarWidth = agentsSidebarMinWidth;
   LayoutScopedState? _layoutState;
   String? _layoutStateIdentity;
+  StreamSubscription<ConversationEffect>? _conversationEffects;
+  bool _pickingConversationAttachments = false;
+  bool _showWelcome = false;
   String _conversationListAgentId = '';
   String _conversationListGroupId = '';
   bool _showAgentDetailInsideGroupList = false;
@@ -199,117 +88,22 @@ class _ConversationWorkspaceBodyState
   ({String agentId, String groupId}) get _conversationListLocation =>
       (agentId: _conversationListAgentId, groupId: _conversationListGroupId);
 
-  void _applyConversationListLocation(
-    ({String agentId, String groupId}) location,
-  ) {
-    _conversationListAgentId = location.agentId;
-    _conversationListGroupId = location.groupId;
+  @override
+  void initState() {
+    super.initState();
+    _listenForConversationEffects();
   }
 
-  void _syncConversationListWithSelection(ClientController controller) {
-    final groupId = controller
-        .clientConversationController
-        .selectedConversationId
-        .trim();
-    final agentId = controller.selectedConversationAgentId.trim();
-    final sessionId = controller.selectedConversationSessionId.trim();
-    final selection = groupId.isNotEmpty
-        ? 'group:$groupId'
-        : agentId.isNotEmpty
-        ? 'agent:$agentId:$sessionId'
-        : '';
-    if (_observedConversationSelection == selection) return;
-    _observedConversationSelection = selection;
-    if (groupId.isNotEmpty) {
-      final hasBody =
-          controller.clientConversationController.selectedConversation != null;
-      if (hasBody) {
-        _applyConversationListLocation((agentId: '', groupId: groupId));
-      }
-    } else if (agentId.isNotEmpty && sessionId.isNotEmpty) {
-      _applyConversationListLocation((agentId: agentId, groupId: ''));
-    } else if (agentId.isEmpty) {
-      _applyConversationListLocation((agentId: '', groupId: ''));
+  @override
+  void didUpdateWidget(covariant AgentConversationWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(
+      oldWidget.conversation.effects,
+      widget.conversation.effects,
+    )) {
+      unawaited(_conversationEffects?.cancel());
+      _listenForConversationEffects();
     }
-  }
-
-  void _showAgentConversationList(String agentId) {
-    final next = (agentId: agentId, groupId: '');
-    if (_conversationListLocation == next) return;
-    setState(() {
-      _showAgentDetailInsideGroupList = false;
-      _conversationListHistory.add(_conversationListLocation);
-      _applyConversationListLocation(next);
-    });
-  }
-
-  void _showGroupConversationList(String conversationId) {
-    final next = (agentId: '', groupId: conversationId);
-    if (_conversationListLocation == next) return;
-    setState(() {
-      _showAgentDetailInsideGroupList = false;
-      _conversationListHistory.add(_conversationListLocation);
-      _applyConversationListLocation(next);
-    });
-  }
-
-  void _returnToPreviousConversationList() {
-    if (_showAgentDetailInsideGroupList &&
-        _conversationListGroupId.isNotEmpty) {
-      final groupId = _conversationListGroupId;
-      setState(() => _showAgentDetailInsideGroupList = false);
-      unawaited(
-        widget.controller.clientConversationController.selectConversation(
-          groupId,
-        ),
-      );
-      return;
-    }
-    final previous = _conversationListHistory.isEmpty
-        ? (agentId: '', groupId: '')
-        : _conversationListHistory.removeLast();
-    setState(() {
-      _showAgentDetailInsideGroupList = false;
-      _applyConversationListLocation(previous);
-    });
-
-    final controller = widget.controller;
-    if (previous.groupId.isNotEmpty) {
-      unawaited(
-        controller.clientConversationController.selectConversation(
-          previous.groupId,
-        ),
-      );
-    } else if (previous.agentId.isNotEmpty) {
-      controller.clientConversationController.clearSelection();
-      unawaited(controller.selectConversationAgent(previous.agentId));
-    }
-  }
-
-  void _showWelcome(ClientController controller) {
-    setState(() {
-      _showAgentDetailInsideGroupList = false;
-      _conversationListHistory.clear();
-      _applyConversationListLocation((agentId: '', groupId: ''));
-    });
-    controller.showConversationWelcomePage();
-  }
-
-  bool _isConversationSessionRunning(
-    ClientController controller,
-    AgentConversationSession session,
-  ) {
-    if (session.running) return true;
-    if (!controller.isSendingConversationMessage) return false;
-    final nativeSessionId = session.nativeSessionId.trim();
-    final selectedSessionId = controller.selectedConversationSession?.id ?? '';
-    return (controller.sendingConversationSessionId.isNotEmpty &&
-            session.id == controller.sendingConversationSessionId) ||
-        (controller.sendingConversationNativeSessionId.isNotEmpty &&
-            nativeSessionId == controller.sendingConversationNativeSessionId) ||
-        (controller.sendingConversationSessionId.isEmpty &&
-            controller.sendingConversationNativeSessionId.isEmpty &&
-            session.id == selectedSessionId);
   }
 
   @override
@@ -323,9 +117,7 @@ class _ConversationWorkspaceBodyState
     }
     final identity =
         '${scope.profileId.value}/${scope.environment.surface.name}';
-    if (_layoutStateIdentity == identity) {
-      return;
-    }
+    if (_layoutStateIdentity == identity) return;
     _layoutStateIdentity = identity;
     _layoutState = scope.state;
 
@@ -335,12 +127,126 @@ class _ConversationWorkspaceBodyState
     final sidebar = scope.state.readIfDeclared(
       LayoutStateChannels.agentsSidebar,
     );
-    _historyCollapsed = history is LayoutExpansionState
+    _sidebarCollapsed = history is LayoutExpansionState
         ? !history.expanded
         : false;
     _sidebarWidth = sidebar is LayoutPaneExtentState
         ? sidebar.extent.clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
         : agentsSidebarMinWidth;
+  }
+
+  @override
+  void dispose() {
+    unawaited(_conversationEffects?.cancel());
+    super.dispose();
+  }
+
+  void _listenForConversationEffects() {
+    _conversationEffects = widget.conversation.effects.effects.listen((effect) {
+      if (effect case ConversationAttachmentSelectionRequested(
+        :final conversationId,
+      )) {
+        unawaited(_pickConversationAttachments(conversationId));
+      }
+    });
+  }
+
+  void _applyConversationListLocation(
+    ({String agentId, String groupId}) location,
+  ) {
+    _conversationListAgentId = location.agentId;
+    _conversationListGroupId = location.groupId;
+  }
+
+  void _syncConversationListWithSelection(
+    AgentsProjection agents,
+    ConversationProjection root,
+    NativeConversationCatalogProjection native,
+    CanonicalConversationProjection canonical,
+  ) {
+    final groupId =
+        root.authority == ConversationAuthority.canonicalConversation
+        ? canonical.conversationId.trim()
+        : '';
+    final agentId = agents.selectedAgentId.trim();
+    final sessionId = _selectedSession(native)?.id.trim() ?? '';
+    final selection = groupId.isNotEmpty
+        ? 'group:$groupId'
+        : agentId.isNotEmpty
+        ? 'agent:$agentId:$sessionId'
+        : '';
+    if (_observedConversationSelection == selection) return;
+    _observedConversationSelection = selection;
+    if (groupId.isNotEmpty) {
+      if (canonical.conversation != null) {
+        _showWelcome = false;
+        _applyConversationListLocation((agentId: '', groupId: groupId));
+      }
+    } else if (agentId.isNotEmpty && sessionId.isNotEmpty) {
+      _showWelcome = false;
+      _applyConversationListLocation((agentId: agentId, groupId: ''));
+    } else if (agentId.isEmpty) {
+      _applyConversationListLocation((agentId: '', groupId: ''));
+    }
+  }
+
+  void _showAgentConversationList(String agentId) {
+    final next = (agentId: agentId, groupId: '');
+    if (_conversationListLocation == next) return;
+    setState(() {
+      _showWelcome = false;
+      _showAgentDetailInsideGroupList = false;
+      _conversationListHistory.add(_conversationListLocation);
+      _applyConversationListLocation(next);
+    });
+  }
+
+  void _showGroupConversationList(String conversationId) {
+    final next = (agentId: '', groupId: conversationId);
+    if (_conversationListLocation == next) return;
+    setState(() {
+      _showWelcome = false;
+      _showAgentDetailInsideGroupList = false;
+      _conversationListHistory.add(_conversationListLocation);
+      _applyConversationListLocation(next);
+    });
+  }
+
+  void _returnToPreviousConversationList() {
+    if (_showAgentDetailInsideGroupList &&
+        _conversationListGroupId.isNotEmpty) {
+      final groupId = _conversationListGroupId;
+      setState(() => _showAgentDetailInsideGroupList = false);
+      widget.conversation.intents.send(SelectCanonicalConversation(groupId));
+      return;
+    }
+    final previous = _conversationListHistory.isEmpty
+        ? (agentId: '', groupId: '')
+        : _conversationListHistory.removeLast();
+    setState(() {
+      _showAgentDetailInsideGroupList = false;
+      _applyConversationListLocation(previous);
+    });
+    if (previous.groupId.isNotEmpty) {
+      widget.conversation.intents.send(
+        SelectCanonicalConversation(previous.groupId),
+      );
+    } else if (previous.agentId.isNotEmpty) {
+      widget.conversation.intents.send(
+        const ClearCanonicalConversationSelection(),
+      );
+      widget.agents.intents.send(SelectAgent(previous.agentId));
+    }
+  }
+
+  void _showWelcomePage() {
+    setState(() {
+      _showWelcome = true;
+      _showAgentDetailInsideGroupList = false;
+      _conversationListHistory.clear();
+      _applyConversationListLocation((agentId: '', groupId: ''));
+    });
+    widget.agents.intents.send(const ShowAgentsWelcome());
   }
 
   void _writeLayoutState(
@@ -350,599 +256,367 @@ class _ConversationWorkspaceBodyState
     _layoutState?.writeIfDeclared(channel, value);
   }
 
-  void _toggleHistoryCollapsed() {
-    setState(() => _historyCollapsed = !_historyCollapsed);
+  void _toggleSidebarCollapsed() {
+    setState(() => _sidebarCollapsed = !_sidebarCollapsed);
     _writeLayoutState(
       LayoutStateChannels.agentsHistory,
-      LayoutExpansionState(!_historyCollapsed),
+      LayoutExpansionState(!_sidebarCollapsed),
     );
   }
 
-  Future<void> _chooseWorkingDirectory({
-    required ClientController controller,
-    required String agentId,
-    required String draftToken,
-    required String currentDirectory,
-  }) async {
-    final selected = await getDirectoryPath(
-      initialDirectory: currentDirectory.trim().isEmpty
-          ? null
-          : currentDirectory.trim(),
-    );
-    if (!mounted ||
-        selected == null ||
-        selected.trim().isEmpty ||
-        controller.selectedConversationAgentId != agentId ||
-        controller.newConversationDraftTokenFor(agentId) != draftToken) {
+  Future<void> _pickConversationAttachments(String conversationId) async {
+    if (conversationId.trim().isEmpty || _pickingConversationAttachments) {
       return;
     }
-    controller.selectNewConversationWorkingDirectory(selected);
-  }
-
-  Future<void> _pickConversationAttachments(ClientController controller) async {
-    await _pickConversationAttachmentsForScope(
-      controller,
-      controller.conversationComposerScopeKey,
-    );
-  }
-
-  /// Composer scope key for the selected canonical group conversation, beside
-  /// the per-agent session scopes. Empty while no group is selected.
-  String _groupComposerScopeKey(ClientController controller) {
-    final conversationId = controller
-        .clientConversationController
-        .selectedConversationId
-        .trim();
-    return conversationId.isEmpty ? '' : 'group:$conversationId';
-  }
-
-  bool _scopeKeyIsCurrent(ClientController controller, String scopeKey) {
-    return scopeKey == controller.conversationComposerScopeKey ||
-        scopeKey == _groupComposerScopeKey(controller);
-  }
-
-  void _replaceScopeAttachments(
-    ClientController controller,
-    String scopeKey,
-    List<ConversationAttachment> attachments, {
-    String statusCode = '',
-  }) {
-    if (scopeKey == controller.conversationComposerScopeKey) {
-      controller.replaceConversationComposerAttachments(
-        attachments,
-        statusCode: statusCode,
-      );
-      return;
-    }
-    final signals = controller.conversationPresentationSignals;
-    signals.replaceComposerAttachments(scopeKey, attachments);
-    signals.replaceComposerAttachmentStatus(scopeKey, statusCode);
-    controller.agentWorkspaceNotifyStateChanged();
-  }
-
-  Future<void> _pickConversationAttachmentsForScope(
-    ClientController controller,
-    String scopeKey,
-  ) async {
-    if (scopeKey.trim().isEmpty || _pickingConversationAttachments) return;
     _pickingConversationAttachments = true;
-    bool scopeIsCurrent() =>
-        mounted &&
-        identical(controller, widget.controller) &&
-        _scopeKeyIsCurrent(controller, scopeKey);
     try {
-      const imageTypes = XTypeGroup(
+      const images = XTypeGroup(
         label: 'Images',
-        extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+        extensions: <String>['png', 'jpg', 'jpeg', 'gif', 'webp'],
       );
-      final List<XFile> picked;
-      try {
-        picked = await openFiles(acceptedTypeGroups: [imageTypes]);
-      } on Object {
-        if (scopeIsCurrent()) {
-          _replaceScopeAttachments(
-            controller,
-            scopeKey,
-            _attachmentsForScope(controller, scopeKey),
-            statusCode: conversationAttachmentStatusFailed,
-          );
-        }
-        return;
-      }
-      if (!scopeIsCurrent()) return;
-      final current = _attachmentsForScope(controller, scopeKey);
-      if (picked.isEmpty) {
-        _replaceScopeAttachments(
-          controller,
-          scopeKey,
-          current,
-          statusCode: conversationAttachmentStatusCancelled,
+      final files = await openFiles(acceptedTypeGroups: const [images]);
+      if (!mounted) return;
+      if (files.isEmpty) {
+        widget.conversation.intents.send(
+          SetConversationAttachmentStatus(
+            conversationId,
+            conversationAttachmentStatusCancelled,
+          ),
         );
         return;
       }
-      final sequence = DateTime.now().toUtc().microsecondsSinceEpoch;
-      final additions = <ConversationAttachment>[];
-      for (var index = 0; index < picked.length; index += 1) {
-        final file = picked[index];
+      final selectionId = DateTime.now().microsecondsSinceEpoch;
+      final attachments = <ConversationAttachment>[];
+      for (var index = 0; index < files.length; index += 1) {
+        final file = files[index];
+        final extension = p.extension(file.name).replaceFirst('.', '');
         final mediaType = conversationAttachmentMediaTypeForExtension(
-          p.extension(file.name).replaceFirst('.', ''),
+          extension,
         );
         if (mediaType.isEmpty) {
-          _replaceScopeAttachments(
-            controller,
-            scopeKey,
-            current,
-            statusCode: conversationAttachmentFailureMediaUnsupported,
+          widget.conversation.intents.send(
+            SetConversationAttachmentStatus(
+              conversationId,
+              _conversationAttachmentMediaUnsupported,
+            ),
           );
           return;
         }
-        additions.add(
+        attachments.add(
           ConversationAttachment(
-            id: 'selection-$sequence-$index',
+            id: 'attachment-$selectionId-$index',
             name: file.name,
             mediaType: mediaType,
             path: file.path,
           ),
         );
       }
-      await _appendConversationAttachments(
-        controller: controller,
-        scopeKey: scopeKey,
-        scopeIsCurrent: scopeIsCurrent,
-        current: current,
-        additions: additions,
+      widget.conversation.intents.send(
+        StageConversationAttachments(conversationId, attachments),
       );
-    } finally {
-      _pickingConversationAttachments = false;
-    }
-  }
-
-  List<ConversationAttachment> _attachmentsForScope(
-    ClientController controller,
-    String scopeKey,
-  ) => controller.conversationPresentationSignals.composerAttachmentsFor(
-    scopeKey,
-  );
-
-  Future<bool> _pasteConversationImage(ClientController controller) async {
-    if (_pickingConversationAttachments) return true;
-    _pickingConversationAttachments = true;
-    final scopeKey = controller.conversationComposerScopeKey;
-    bool scopeIsCurrent() =>
-        mounted &&
-        identical(controller, widget.controller) &&
-        controller.conversationComposerScopeKey == scopeKey;
-    try {
-      final current = controller.conversationComposerAttachments;
-      if (current.length >= maxConversationImageAttachments) {
-        controller.replaceConversationComposerAttachments(
-          current,
-          statusCode: conversationAttachmentStatusLimit,
-        );
-        return true;
-      }
-      final result = await controller.clientClipboardService
-          .readImageAttachment();
-      if (!result.consumed) return false;
-      final attachment = result.attachment;
-      if (!scopeIsCurrent()) {
-        if (attachment != null) {
-          await controller.conversationAttachmentRelease.releaseAttachments([
-            attachment,
-          ]);
-        }
-        return true;
-      }
-      if (!result.succeeded || attachment == null) {
-        controller.replaceConversationComposerAttachments(
-          current,
-          statusCode: result.failureCode,
-        );
-        return true;
-      }
-      await _appendConversationAttachments(
-        controller: controller,
-        scopeKey: scopeKey,
-        scopeIsCurrent: scopeIsCurrent,
-        current: current,
-        additions: [attachment],
-      );
-      return true;
-    } finally {
-      _pickingConversationAttachments = false;
-    }
-  }
-
-  Future<bool> _appendConversationAttachments({
-    required ClientController controller,
-    required String scopeKey,
-    required bool Function() scopeIsCurrent,
-    required List<ConversationAttachment> current,
-    required List<ConversationAttachment> additions,
-  }) async {
-    Future<bool> reject(String statusCode) async {
-      await controller.conversationAttachmentRelease.releaseAttachments(
-        additions,
-      );
-      if (scopeIsCurrent()) {
-        _replaceScopeAttachments(
-          controller,
-          scopeKey,
-          current,
-          statusCode: statusCode,
-        );
-      }
-      return false;
-    }
-
-    if (current.length + additions.length > maxConversationImageAttachments) {
-      return reject(conversationAttachmentStatusLimit);
-    }
-    var totalBytes = 0;
-    for (final attachment in [...current, ...additions]) {
-      final read = await controller.conversationImageByteReader.read(
-        localPath: attachment.path,
-        mediaType: attachment.mediaType,
-      );
-      if (!scopeIsCurrent()) {
-        await controller.conversationAttachmentRelease.releaseAttachments(
-          additions,
-        );
-        return false;
-      }
-      if (!read.succeeded) return reject(read.failureCode);
-      totalBytes += read.bytes!.length;
-      if (totalBytes > maxConversationImageBytesTotal) {
-        return reject(conversationAttachmentFailureSizeLimit);
-      }
-    }
-    _replaceScopeAttachments(controller, scopeKey, [...current, ...additions]);
-    return true;
-  }
-
-  /// Stages picked images into the selected group's composer scope.
-  Future<void> _pickGroupComposerImages(ClientController controller) async {
-    await _pickConversationAttachmentsForScope(
-      controller,
-      _groupComposerScopeKey(controller),
-    );
-  }
-
-  /// Abandons the selected group's staged images: the scope clear also
-  /// releases the picked files.
-  void _clearGroupComposerImages(ClientController controller) {
-    final scopeKey = _groupComposerScopeKey(controller);
-    if (scopeKey.isEmpty) return;
-    controller.clearConversationComposerAttachmentsForScope(scopeKey);
-  }
-
-  /// Whether the selected group's assistant agent target transports images
-  /// end to end: the packaged `multimodal` capability truth intersected with
-  /// desktop, direct-local, non-VM transport, same as the 1:1 predicate.
-  bool _groupAssistantSupportsImageAttachments(ClientController controller) {
-    if (controller.mobileClientRuntimePlatform) return false;
-    final conversation =
-        controller.clientConversationController.selectedConversation;
-    final agentId =
-        conversation?.assistantMembership?.principal.agentId.trim() ?? '';
-    if (agentId.isEmpty) return false;
-    for (final target in widget.targets) {
-      if (target.target != agentId && target.id != agentId) continue;
-      if (target.conversationCapabilityMatrix['multimodal'] != true) {
-        return false;
-      }
-      return target.location == 'local' &&
-          !target.hasValidVirtualMachineConnection;
-    }
-    return false;
-  }
-
-  /// The canonical group pane with its composer attachment scope wired to the
-  /// shared presentation-signals store (`group:<conversationId>`) and the
-  /// platform image byte reader scoped above it.
-  Widget _canonicalGroupPane(
-    ClientController controller,
-    ClientConversationController groupController, {
-    bool framed = true,
-    ValueChanged<String>? onOpenAgentConversations,
-  }) {
-    final scopeKey = _groupComposerScopeKey(controller);
-    final signals = controller.conversationPresentationSignals;
-    return ConversationImageByteReaderScope(
-      reader: controller.conversationImageByteReader,
-      child: CanonicalGroupConversationPane(
-        controller: groupController,
-        targets: widget.targets,
-        onCopyText: controller.clientClipboardService.writeText,
-        onOpenAgentConversations: onOpenAgentConversations,
-        framed: framed,
-        flywheelGateway: controller.adaptiveFlywheelGateway,
-        persistentGateway:
-            controller.conversationGateway is PersistentAgentConversationGateway
-            ? controller.conversationGateway
-                  as PersistentAgentConversationGateway
-            : null,
-        onOpenAdaptiveFlywheel: (revision) => showAdaptiveFlywheelDialog(
-          context,
-          controller,
-          initialRevision: revision ?? '',
+    } on Object {
+      if (!mounted) return;
+      widget.conversation.intents.send(
+        SetConversationAttachmentStatus(
+          conversationId,
+          conversationAttachmentStatusFailed,
         ),
-        composerAttachments: scopeKey.isEmpty
-            ? const <ConversationAttachment>[]
-            : signals.composerAttachmentsFor(scopeKey),
-        onPickComposerImages: () =>
-            unawaited(_pickGroupComposerImages(controller)),
-        onClearComposerImages: () => _clearGroupComposerImages(controller),
-        assistantSupportsImageAttachments:
-            _groupAssistantSupportsImageAttachments(controller),
-        providerQuotaController: controller.providerQuotaController,
+      );
+    } finally {
+      _pickingConversationAttachments = false;
+    }
+  }
+
+  Future<void> _chooseWorkingDirectory(String currentDirectory) async {
+    final selected = await getDirectoryPath(
+      initialDirectory: currentDirectory.trim().isEmpty
+          ? null
+          : currentDirectory,
+    );
+    if (!mounted || selected == null || selected.trim().isEmpty) return;
+    widget.agents.intents.send(SelectAgentWorkingDirectory(selected));
+  }
+
+  void _showCreateGroup(AgentsProjection agents) {
+    unawaited(
+      showCreateCanonicalGroupConversationDialog(
+        context: context,
+        intents: widget.conversation.intents,
+        effects: widget.conversation.effects,
+        targets: agents.targetDetails,
       ),
     );
   }
 
-  Widget _activeConversationPane({
-    required ClientController controller,
-    required TargetCandidate target,
-    required LicoStrings strings,
-    bool framed = true,
-    bool showSidebarToggle = true,
-  }) {
-    final strategy = LayoutAgentsStrategyScope.maybeOf(context);
-    final showWorkingDirectory =
-        !controller.mobileClientRuntimePlatform &&
-        !target.hasValidVirtualMachineConnection;
-    final workingDirectorySelectable =
-        showWorkingDirectory &&
-        controller.canSelectNewConversationWorkingDirectory;
-    final projection = controller.conversationProjectionFor(
-      controller.conversationComposerScopeKey,
-    );
-    final projectedInputEnabled = projection.turnState.inputEnabled;
-    final composerEnabled =
-        target.canRelayRuntime && (projectedInputEnabled ?? true);
-    final projectedMessages = projection.messages;
-    final attachmentStatus = controller.conversationAttachmentStatus;
-    final gateReasonCode = composerEnabled
-        ? (attachmentStatus.isNotEmpty
-              ? attachmentStatus
-              : controller.conversationSendErrorFor(target.target))
-        : target.conversationSendGateReason;
-    final session = controller.selectedConversationSession;
-    final opencodeServeState = controller.opencodeServeState;
-    final opencodeServeStatus =
-        switch ((opencodeServeState?['status'] as String?)?.trim()) {
-          'running' => AgentConversationServeStatus.running,
-          'blocked' => AgentConversationServeStatus.blocked,
-          'unavailable' => AgentConversationServeStatus.unavailable,
-          _ => AgentConversationServeStatus.stopped,
-        };
-    final primaryConversationId = session == null
-        ? ''
-        : messagingDetailsConversationId(session);
-    final participantConversationIds = <String, String>{};
-    final agentId = target.target.trim();
-    if (agentId.isNotEmpty && primaryConversationId.isNotEmpty) {
-      participantConversationIds[agentId] = primaryConversationId;
-    }
-    final state = AgentConversationPaneState(
-      target: target,
-      session: session,
-      liveMessages:
-          projectedMessages.isEmpty ||
-              controller.conversationComposerAttachments.isNotEmpty
-          ? controller.selectedConversationTimelineMessages
-          : projectedMessages,
-      recentSessions: controller.selectedConversationSessions,
-      loading: controller.isLoadingConversations,
-      recentSessionsHasMore: controller.selectedConversationSessionsHasMore,
-      recentSessionsLoadingMore:
-          controller.isLoadingMoreSelectedConversationSessions,
-      messagePageLoading:
-          controller.isLoadingEarlierSelectedConversationMessages,
-      messagePageError: controller.selectedConversationMessagePageError,
-      turnActive: projection.turnState.active,
-      inputEnabled: composerEnabled,
-      cancelEnabled: projection.turnState.cancelEnabled ?? false,
-      preparingNewConversation: controller.preparingNewConversation,
-      composerEnabled: composerEnabled,
-      sendGateReasonCode: gateReasonCode,
-      composerDraft: controller.conversationComposerDraft,
-      hasAttachments: controller.conversationComposerAttachments.isNotEmpty,
-      modelOptions: controller.selectedConversationModelOptions,
-      selectedModel: controller.selectedConversationModel,
-      defaultModel: controller.selectedConversationDefaultModel,
-      reasoningEffortOptions:
-          controller.selectedConversationReasoningEffortOptions,
-      selectedReasoningEffort: controller.selectedConversationReasoningEffort,
-      defaultReasoningEffort:
-          controller.selectedConversationDefaultReasoningEffort,
-      showWorkingDirectory: showWorkingDirectory,
-      workingDirectory: showWorkingDirectory
-          ? controller.selectedConversationWorkingDirectory
-          : '',
-      workingDirectorySelectable: workingDirectorySelectable,
-      sendAuthorizeActive: controller.isAuthorizingConversationRuntime,
-      permissionRetryTool: controller.pendingPermissionRetryTool,
-      participantTargets: controller.scannedTargets,
-      showLicoProfileCapsule:
-          controller.selectedConversationSupportsLicoProfile,
-      selectedLicoProfile: controller.selectedConversationLicoProfile,
-      planDocumentPath: _planDocumentPath(controller),
-      planDocumentReader: controller.planDocumentReader,
-      participantConversationIds: participantConversationIds,
-      runningRecentSessionIds: {
-        for (final recentSession in controller.selectedConversationSessions)
-          if (_isConversationSessionRunning(controller, recentSession))
-            recentSession.id,
-      },
-      recentSessionsCached: controller.selectedConversationSessions.isNotEmpty,
-    );
-    final onUnblockSend = switch (gateReasonCode) {
-      'native_agent_executable_not_detected' ||
-      'native_agent_runtime_profile_unavailable' ||
-      'runtime_message_send_unavailable' => () => unawaited(
-        controller.scanTargets(),
-      ),
-      'antigravity_auth_required' => () => unawaited(
-        controller.authorizeSelectedConversationRuntime(),
-      ),
-      _ => null,
-    };
-    final actions = AgentConversationPaneActions(
-      onModelChanged: controller.selectConversationModel,
-      onReasoningEffortChanged: controller.selectConversationReasoningEffort,
-      onDraftChanged: controller.updateConversationComposerDraft,
-      onPermissionRetry: () => controller.retryDeniedConversationTurn(),
-      onPermissionRetryRemember: () =>
-          controller.retryDeniedConversationTurn(remember: true),
-      onPermissionDeny: controller.dismissDeniedConversationTurn,
-      onCopyText: controller.clientClipboardService.writeText,
-      onSend: controller.sendConversationMessage,
-      onCancel: controller.cancelActiveConversationTurn,
-      onSelectSession: (sessionId) {
-        _showAgentConversationList(target.target);
-        controller.selectConversationSession(sessionId);
-      },
-      onNewConversation: controller.startNewConversationSession,
-      onLoadMoreRecentSessions: () =>
-          unawaited(controller.loadMoreConversationSessions(target.target)),
-      onLoadEarlierMessages: controller.loadEarlierConversationMessages,
-      onUnblockSend: onUnblockSend,
-      onChooseWorkingDirectory: workingDirectorySelectable
-          ? () => unawaited(
-              _chooseWorkingDirectory(
-                controller: controller,
-                agentId: target.target,
-                draftToken: controller.selectedNewConversationDraftToken,
-                currentDirectory:
-                    controller.selectedConversationWorkingDirectory,
-              ),
-            )
-          : null,
-      onAttach:
-          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
-              controller.selectedConversationSupportsImageAttachments
-          ? () => unawaited(_pickConversationAttachments(controller))
-          : null,
-      onPasteImage:
-          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
-              controller.selectedConversationSupportsImageAttachments
-          ? () => _pasteConversationImage(controller)
-          : null,
-      onLicoProfileChanged: controller.selectedConversationSupportsLicoProfile
-          ? controller.selectConversationLicoProfile
-          : null,
-    );
-    final headerState = AgentConversationHeaderState(
-      target: target,
-      session: session,
-      historyCollapsed: _historyCollapsed,
-      collapseHistoryTooltip: strings.collapseHistoryConversations,
-      expandHistoryTooltip: strings.expandHistoryConversations,
-      opencodeServeState: opencodeServeState == null
-          ? null
-          : AgentConversationServeState(
-              status: opencodeServeStatus,
-              port: opencodeServeState['port'] is int
-                  ? opencodeServeState['port'] as int
-                  : null,
-              portConflict: opencodeServeState['portConflict'] == true,
+  @override
+  Widget build(BuildContext context) {
+    return ProjectionBuilder<AgentsProjection, AgentsProjection>(
+      source: widget.agents.projection,
+      select: (projection) => projection,
+      builder: (context, agents) => ProjectionBuilder<ConversationProjection, ConversationProjection>(
+        source: widget.conversation.projection,
+        select: (projection) => projection,
+        builder: (context, root) =>
+            ProjectionBuilder<
+              NativeConversationCatalogProjection,
+              NativeConversationCatalogProjection
+            >(
+              source: widget.conversation.nativeCatalog,
+              select: (projection) => projection,
+              builder: (context, native) =>
+                  ProjectionBuilder<
+                    CanonicalConversationProjection,
+                    CanonicalConversationProjection
+                  >(
+                    source: widget.conversation.canonicalEvents,
+                    select: (projection) => projection,
+                    builder: (context, canonical) =>
+                        ProjectionBuilder<
+                          PersistentTurnProjection,
+                          PersistentTurnProjection
+                        >(
+                          source: widget.conversation.persistentTurns,
+                          select: (projection) => projection,
+                          builder: (context, turns) =>
+                              ProjectionBuilder<
+                                ComposerProjection,
+                                ComposerProjection
+                              >(
+                                source: widget.conversation.composer,
+                                select: (projection) => projection,
+                                builder: (context, composer) =>
+                                    ProjectionBuilder<
+                                      ConversationAttachmentsProjection,
+                                      ConversationAttachmentsProjection
+                                    >(
+                                      source: widget.conversation.attachments,
+                                      select: (projection) => projection,
+                                      builder: (context, attachments) =>
+                                          ProjectionBuilder<
+                                            ConversationTabActivityProjection,
+                                            ConversationTabActivityProjection
+                                          >(
+                                            source:
+                                                widget.conversation.tabActivity,
+                                            select: (projection) => projection,
+                                            builder: (context, tabActivity) =>
+                                                ProjectionBuilder<
+                                                  ConversationArchiveProjection,
+                                                  ConversationArchiveProjection
+                                                >(
+                                                  source: widget
+                                                      .conversation
+                                                      .archive,
+                                                  select: (projection) =>
+                                                      projection,
+                                                  builder: (context, archive) =>
+                                                      ProjectionBuilder<
+                                                        MobileRelayProjection,
+                                                        MobileRelayProjection
+                                                      >(
+                                                        source: widget
+                                                            .relay
+                                                            .projection,
+                                                        select: (projection) =>
+                                                            projection,
+                                                        builder:
+                                                            (context, relay) =>
+                                                                _buildWorkspace(
+                                                                  context,
+                                                                  agents,
+                                                                  root,
+                                                                  native,
+                                                                  canonical,
+                                                                  turns,
+                                                                  composer,
+                                                                  attachments,
+                                                                  tabActivity,
+                                                                  archive,
+                                                                  relay,
+                                                                ),
+                                                      ),
+                                                ),
+                                          ),
+                                    ),
+                              ),
+                        ),
+                  ),
             ),
-      showSidebarToggle: showSidebarToggle,
+      ),
     );
-    final messaging =
-        strategy.messageStyle == AgentsMessageStyle.participantFlow;
-    final pane = AgentConversationActivePane(
-      state: state,
-      actions: actions,
-      header: messaging
-          ? MessagingConversationHeader(
-              target: target,
-              session: session,
-              detailsState: state,
-              detailsActions: actions,
-              opencodeServeState: headerState.opencodeServeState,
-              switcherSessions: controller.selectedConversationSessions,
-              switcherSelectedSessionId:
-                  controller.selectedConversationSession?.id ?? '',
-              onSwitchConversation: controller.selectConversationSession,
-              onSwitchNewConversation: controller.startNewConversationSession,
-              switcherRunningFor: (candidate) =>
-                  _isConversationSessionRunning(controller, candidate),
-            )
-          : ConversationPaneHeader(
-              state: headerState,
-              actions: AgentConversationHeaderActions(
-                onToggleHistory: _toggleHistoryCollapsed,
-              ),
-              strategy: strategy,
-            ),
-      framed: framed,
+  }
+
+  Widget _buildWorkspace(
+    BuildContext context,
+    AgentsProjection agents,
+    ConversationProjection root,
+    NativeConversationCatalogProjection native,
+    CanonicalConversationProjection canonical,
+    PersistentTurnProjection turns,
+    ComposerProjection composer,
+    ConversationAttachmentsProjection attachments,
+    ConversationTabActivityProjection tabActivity,
+    ConversationArchiveProjection archive,
+    MobileRelayProjection relay,
+  ) {
+    _syncConversationListWithSelection(agents, root, native, canonical);
+    final presentation = layoutAgentsPresentationOf(context);
+    final selectedTarget = _selectedTarget(agents);
+    final selectedSession = _selectedSession(native);
+    final mobile = agents.mobileRuntime || isMobileClientPlatform(context);
+    final detail =
+        root.authority == ConversationAuthority.canonicalConversation &&
+            !_showAgentDetailInsideGroupList
+        ? CanonicalGroupConversationPane(
+            conversation: widget.conversation,
+            agents: widget.agents,
+            canonical: canonical,
+            turns: turns,
+            composer: composer,
+            attachments: attachments,
+            framed: mobile,
+            onOpenAgentConversations: (agentId) {
+              _showAgentConversationList(agentId);
+              widget.conversation.intents.send(
+                const ClearCanonicalConversationSelection(),
+              );
+              widget.agents.intents.send(SelectAgent(agentId));
+            },
+          )
+        : _showWelcome
+        ? AgentConversationWelcome(
+            onNewConversation: agents.targetDetails.isEmpty
+                ? null
+                : () {
+                    setState(() => _showWelcome = false);
+                    widget.agents.intents.send(
+                      StartAgentConversation(agents.targetDetails.first.id),
+                    );
+                  },
+            onNewGroupConversation: () => _showCreateGroup(agents),
+            onOpenMobilePairing: () =>
+                widget.onSelectDestination?.call(ClientSection.mobileRelay),
+            onOpenSettings: () =>
+                widget.onSelectDestination?.call(ClientSection.settings),
+          )
+        : selectedTarget == null
+        ? _EmptyConversation(
+            onAddTarget: widget.allowManualTargetActions
+                ? widget.onAddTarget
+                : null,
+          )
+        : _nativeConversationPane(
+            context,
+            selectedTarget,
+            selectedSession,
+            native,
+            turns,
+            composer,
+            attachments,
+            mobile: mobile,
+          );
+
+    final pendingApprovals = relay.approvals.where(
+      (approval) => approval.state == RelayApprovalState.pending,
     );
-    final pendingApprovals = controller.secureMeshApprovalInbox
-        .where((item) => item.isPending)
-        .toList(growable: false);
-    final content = pendingApprovals.isEmpty
-        ? pane
+    final decoratedDetail = pendingApprovals.isEmpty
+        ? detail
         : Column(
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                child: SecureMeshApprovalCard(controller: controller),
+                child: SecureMeshApprovalCard(
+                  projection: relay,
+                  intents: widget.relay.intents,
+                ),
               ),
-              Expanded(child: pane),
+              Expanded(child: detail),
             ],
           );
-    return ConversationImageByteReaderScope(
-      reader: controller.conversationImageByteReader,
-      child: content,
+    if (mobile) return decoratedDetail;
+
+    final sidebar = _sidebar(agents, native, canonical, tabActivity, archive);
+    return ColoredBox(
+      key: const Key('agents-workspace-shell'),
+      color: presentation.canvasColor(context.layoutPalette),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = math
+              .max(
+                agentsSidebarMinWidth,
+                constraints.maxWidth -
+                    agentsSidebarDividerWidth -
+                    agentsFloatingMinChatWidth -
+                    presentation.sidebarOuterHorizontalExtent -
+                    presentation.detailOuterHorizontalExtent,
+              )
+              .clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
+              .toDouble();
+          final width = _sidebarWidth
+              .clamp(agentsSidebarMinWidth, maxWidth)
+              .toDouble();
+          final framedDetail = presentation.frameDetail(
+            context,
+            key: const Key('agents-workspace-detail-pane'),
+            sidebarCollapsed: _sidebarCollapsed,
+            child: decoratedDetail,
+          );
+          final hosted = MessagingSidebarGeometryScope.maybeOf(context) != null;
+          return presentation.frameWorkspace(
+            context,
+            key: const Key('agents-workspace-layout'),
+            child: hosted
+                ? MessagingSidebarColumn(
+                    sidebar: sidebar,
+                    detail: framedDetail,
+                    sidebarCollapsed: _sidebarCollapsed,
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!_sidebarCollapsed)
+                        presentation.frameSidebar(
+                          context,
+                          key: const Key('agents-workspace-sidebar-card'),
+                          child: SizedBox(width: width, child: sidebar),
+                        ),
+                      Expanded(
+                        child: PaneEdgeDragHandle(
+                          dragHandleKey: const Key(
+                            'agents-workspace-split-divider',
+                          ),
+                          width: agentsSidebarDividerWidth,
+                          enabled: !_sidebarCollapsed,
+                          onDragDelta: (delta) {
+                            setState(() {
+                              _sidebarWidth = (width + delta)
+                                  .clamp(agentsSidebarMinWidth, maxWidth)
+                                  .toDouble();
+                            });
+                            _writeLayoutState(
+                              LayoutStateChannels.agentsSidebar,
+                              LayoutPaneExtentState(_sidebarWidth),
+                            );
+                          },
+                          child: framedDetail,
+                        ),
+                      ),
+                    ],
+                  ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _detailForSelection({
-    required bool hasSelection,
-    required Widget conversationPane,
-  }) {
-    TargetCandidate? firstConversationTarget;
-    for (final target in widget.targets) {
-      if (target.isConversationAgent) {
-        firstConversationTarget = target;
-        break;
-      }
-    }
-    return !hasSelection
-        ? AgentConversationWelcome(
-            onNewConversation: firstConversationTarget == null
-                ? null
-                : () => unawaited(
-                    widget.controller.selectConversationAgent(
-                      firstConversationTarget!.id,
-                    ),
-                  ),
-            onNewGroupConversation: () => unawaited(
-              showCreateCanonicalGroupConversationDialog(
-                context: context,
-                controller: widget.controller.clientConversationController,
-                targets: widget.targets,
-              ),
-            ),
-            onOpenMobilePairing: () =>
-                widget.controller.selectSection(ClientSection.mobileRelay),
-            onOpenSettings: () =>
-                widget.controller.selectSection(ClientSection.settings),
-          )
-        : conversationPane;
-  }
-
-  Widget _buildFloatingShell({
-    required ClientController controller,
-    required TargetCandidate? target,
-    required bool groupSelected,
-    required Widget conversationPane,
-    required VoidCallback onAddTarget,
-    required bool allowManualTargetActions,
-    required LayoutAgentsPresentation presentation,
-  }) {
+  Widget _sidebar(
+    AgentsProjection agents,
+    NativeConversationCatalogProjection native,
+    CanonicalConversationProjection canonical,
+    ConversationTabActivityProjection tabActivity,
+    ConversationArchiveProjection archive,
+  ) {
+    final selectedId = _selectedSession(native)?.id ?? '';
     var showConversationList = false;
     var conversationListTargets = const <TargetCandidate>[];
     Set<String>? conversationListRelatedAgentIds;
@@ -950,15 +624,14 @@ class _ConversationWorkspaceBodyState
     var showConversationAgentIcons = false;
     if (_conversationListGroupId.isNotEmpty) {
       showConversationList = true;
-      final selectedGroup =
-          controller.clientConversationController.selectedConversation;
+      final selectedGroup = canonical.conversation;
       if (selectedGroup?.id == _conversationListGroupId) {
         final memberProductIds = {
           for (final membership in selectedGroup!.memberships)
             if (membership.principal.agentId.trim().isNotEmpty)
               agentConversationProductId(membership.principal.agentId.trim()),
         };
-        conversationListTargets = widget.targets
+        conversationListTargets = agents.targetDetails
             .where((target) => target.isConversationAgent)
             .toList(growable: false);
         conversationListRelatedAgentIds = <String>{};
@@ -971,15 +644,13 @@ class _ConversationWorkspaceBodyState
               ..add(target.target);
           }
         }
-        // The group's assistant thread pins to the top of the drill-in list
-        // by default.
         conversationListPriorityAgentId =
             selectedGroup.assistantMembership?.principal.agentId.trim() ?? '';
       }
       showConversationAgentIcons = true;
     } else if (_conversationListAgentId.isNotEmpty) {
       TargetCandidate? representative;
-      for (final candidate in widget.targets) {
+      for (final candidate in agents.targetDetails) {
         if (candidate.id == _conversationListAgentId ||
             candidate.target == _conversationListAgentId) {
           representative = candidate;
@@ -989,7 +660,7 @@ class _ConversationWorkspaceBodyState
       if (representative != null) {
         showConversationList = true;
         final productId = agentConversationProductId(representative.target);
-        conversationListTargets = widget.targets
+        conversationListTargets = agents.targetDetails
             .where(
               (candidate) =>
                   candidate.isConversationAgent &&
@@ -998,594 +669,470 @@ class _ConversationWorkspaceBodyState
             .toList(growable: false);
       }
     }
-    return ColoredBox(
-      key: const Key('agents-workspace-shell'),
-      color: presentation.canvasColor(context.layoutPalette),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Never let the upper bound fall below the minimum: a window
-          // narrower than the sidebar minimum would otherwise feed a
-          // lower-than-lower clamp and crash the build.
-          final maxSidebarWidth = math
-              .max(
-                agentsSidebarMinWidth,
-                constraints.maxWidth -
-                    agentsSidebarDividerWidth -
-                    agentsFloatingMinChatWidth -
-                    presentation.sidebarOuterHorizontalExtent -
-                    presentation.detailOuterHorizontalExtent,
-              )
-              .clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
-              .toDouble();
-          final sidebarWidth = _sidebarWidth
-              .clamp(agentsSidebarMinWidth, maxSidebarWidth)
-              .toDouble();
-          final strategy = LayoutAgentsStrategyScope.maybeOf(context);
-          final agentTreeSidebar = AgentsWorkspaceSidebar(
-            targets: widget.targets,
-            sessionsByAgent: controller.conversationSessionsByAgent,
-            selectedSessionId: controller.selectedConversationSession?.id ?? '',
-            activityFor: controller.conversationTabActivityFor,
-            runningFor: (session) =>
-                _isConversationSessionRunning(controller, session),
-            onSelectSession: (agentId, sessionId) async {
-              controller.clientConversationController.clearSelection();
-              await controller.selectConversationAgent(agentId);
-              controller.selectConversationSession(sessionId);
-            },
-            onNewConversation: () {
-              controller.clientConversationController.clearSelection();
-              controller.startNewConversationSession();
-            },
-            onPrefetchSessions: (agentId) =>
-                unawaited(controller.refreshConversationSessions(agentId)),
-            onArchive: () => unawaited(
-              showConversationArchiveDialog(
-                context,
-                controller,
-                sourceAgentId: '',
-              ),
-            ),
-            onAddTarget: onAddTarget,
-            onRefresh: () {
-              for (final target in widget.targets) {
-                if (target.isConversationAgent) {
-                  unawaited(controller.refreshConversationSessions(target.id));
-                }
-              }
-            },
-            refreshing: controller.isLoadingConversations,
-            allowManualTargetActions: allowManualTargetActions,
-            scanning: widget.scanning,
-            adding: widget.adding,
-          );
-          final canonicalGroupSidebar = CanonicalGroupConversationSidebar(
-            conversations:
-                controller.clientConversationController.groupConversations,
-            selectedConversationId:
-                controller.clientConversationController.selectedConversationId,
-            onSelect: (conversationId) => unawaited(
-              controller.clientConversationController.selectConversation(
-                conversationId,
-              ),
-            ),
-            onCreate: () => unawaited(
-              showCreateCanonicalGroupConversationDialog(
-                context: context,
-                controller: controller.clientConversationController,
-                targets: widget.targets,
-              ),
-            ),
-          );
-          final sidebar = switch (strategy.sidebarStyle) {
-            AgentsSidebarStyle.agentTree => Column(
-              children: [
-                canonicalGroupSidebar,
-                Expanded(child: agentTreeSidebar),
-              ],
-            ),
-            AgentsSidebarStyle.flatRecencyList => MessagingContactList(
-              targets: widget.targets,
-              sessionsByAgent: controller.conversationSessionsByAgent,
-              selectedAgentId: controller.selectedConversationAgentId,
-              groupConversations:
-                  controller.clientConversationController.groupConversations,
-              selectedGroupConversationId: controller
-                  .clientConversationController
-                  .selectedConversationId,
-              onSelectGroupConversation: (conversationId) {
-                _showAgentDetailInsideGroupList = false;
-                _showGroupConversationList(conversationId);
-                unawaited(
-                  controller.clientConversationController.selectConversation(
-                    conversationId,
-                  ),
-                );
-              },
-              onSetGroupConversationPinned: (conversationId, pinned) =>
-                  unawaited(
-                    controller.clientConversationController.setPinned(
-                      conversationId,
-                      pinned,
-                    ),
-                  ),
-              onArchiveGroupConversation: (conversationId) {
-                if (controller
-                        .clientConversationController
-                        .selectedConversationId ==
-                    conversationId) {
-                  setState(() {
-                    _showAgentDetailInsideGroupList = false;
-                    _conversationListHistory.clear();
-                    _applyConversationListLocation((agentId: '', groupId: ''));
-                  });
-                }
-                unawaited(
-                  controller.clientConversationController.archiveConversation(
-                    conversationId,
-                  ),
-                );
-              },
-              onNewGroupConversation: () => unawaited(
-                showCreateCanonicalGroupConversationDialog(
-                  context: context,
-                  controller: controller.clientConversationController,
-                  targets: widget.targets,
-                ),
-              ),
-              activityFor: controller.conversationTabActivityFor,
-              runningFor: (session) =>
-                  _isConversationSessionRunning(controller, session),
-              onSelectAgent: (agentId) {
-                unawaited(() async {
-                  controller.clientConversationController.clearSelection();
-                  if (agentId == controller.selectedConversationAgentId) {
-                    // Tapping the active contact returns to its
-                    // new-conversation home.
-                    controller.startNewConversationSession();
-                    return;
-                  }
-                  await controller.selectConversationAgent(agentId);
-                }());
-              },
-              onNewConversation: () {
-                controller.clientConversationController.clearSelection();
-                controller.startNewConversationSession();
-              },
-              onSearch: widget.onSearch,
-              onOpenWelcome: () => _showWelcome(controller),
-              showConversationList: showConversationList,
-              conversationListTargets: conversationListTargets,
-              conversationListRelatedAgentIds: conversationListRelatedAgentIds,
-              priorityAgentId: conversationListPriorityAgentId,
-              selectedSessionId:
-                  controller.selectedConversationSession?.id ?? '',
-              showConversationAgentIcons: showConversationAgentIcons,
-              onSelectSession: (agentId, sessionId) => unawaited(() async {
-                if (_conversationListGroupId.isNotEmpty) {
-                  final groupListId = _conversationListGroupId;
-                  final selection = controller.selectConversationAgent(agentId);
-                  setState(() {
-                    _showAgentDetailInsideGroupList = true;
-                  });
-                  await selection;
-                  if (!mounted || _conversationListGroupId != groupListId) {
-                    return;
-                  }
-                  controller.selectConversationSession(sessionId);
-                  return;
-                }
-                controller.clientConversationController.clearSelection();
-                await controller.selectConversationAgent(agentId);
-                controller.selectConversationSession(sessionId);
-              }()),
-              onBack: _returnToPreviousConversationList,
-              onPrefetchSessions: (agentId) =>
-                  unawaited(controller.refreshConversationSessions(agentId)),
-              isPinned: controller.isConversationTargetPinned,
-              onTogglePinned: (agentId) =>
-                  unawaited(controller.toggleConversationTargetPinned(agentId)),
-              scanning: widget.scanning,
-              loading: controller.isLoadingConversations,
-              activeDestination: controller.currentSection,
-              onSelectDestination: controller.selectSection,
-            ),
-          };
-          final detail = _detailForSelection(
-            hasSelection: groupSelected || target != null,
-            conversationPane: conversationPane,
-          );
-          final sidebarPane = Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [Expanded(child: sidebar)],
-          );
-          void resizeSidebar(double delta) {
-            setState(() {
-              _sidebarWidth = (sidebarWidth + delta)
-                  .clamp(agentsSidebarMinWidth, maxSidebarWidth)
-                  .toDouble();
-            });
-            _writeLayoutState(
-              LayoutStateChannels.agentsSidebar,
-              LayoutPaneExtentState(_sidebarWidth),
-            );
-          }
+    final sessionsByAgent = <String, List<AgentConversationSession>>{
+      for (final catalog in native.agentCatalogs)
+        catalog.agentId: catalog.sessions,
+      if (native.agentCatalogs.isEmpty && agents.selectedAgentId.isNotEmpty)
+        agents.selectedAgentId: native.nativeSessions,
+    };
+    AgentConversationTabActivity activityFor(String agentId) =>
+        _activityFor(tabActivity, agentId);
+    bool runningFor(AgentConversationSession session) =>
+        native.runningSessionIds.contains(session.id);
+    void onSelectSession(String agentId, String sessionId) {
+      setState(() => _showWelcome = false);
+      if (_conversationListGroupId.isNotEmpty) {
+        final groupId = _conversationListGroupId;
+        setState(() => _showAgentDetailInsideGroupList = true);
+        widget.agents.intents.send(
+          SelectGroupAgentConversationSession(
+            groupConversationId: groupId,
+            agentId: agentId,
+            sessionId: sessionId,
+          ),
+        );
+        return;
+      }
+      widget.agents.intents.send(
+        SelectAgentConversationSession(agentId: agentId, sessionId: sessionId),
+      );
+    }
 
-          final framedDetail = presentation.frameDetail(
-            context,
-            key: const Key('agents-workspace-detail-pane'),
-            sidebarCollapsed: _historyCollapsed,
-            child: detail,
-          );
-          final hostedSplit =
-              MessagingSidebarGeometryScope.maybeOf(context) != null;
-          return presentation.frameWorkspace(
-            context,
-            key: const Key('agents-workspace-layout'),
-            child: hostedSplit
-                ? MessagingSidebarColumn(
-                    sidebar: sidebarPane,
-                    detail: framedDetail,
-                    sidebarCollapsed: _historyCollapsed,
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!_historyCollapsed)
-                        presentation.frameSidebar(
-                          context,
-                          key: const Key('agents-workspace-sidebar-card'),
-                          child: SizedBox(
-                            width: sidebarWidth,
-                            child: sidebarPane,
-                          ),
-                        ),
-                      Expanded(
-                        child: PaneEdgeDragHandle(
-                          dragHandleKey: const Key(
-                            'agents-workspace-split-divider',
-                          ),
-                          width: agentsSidebarDividerWidth,
-                          enabled: !_historyCollapsed,
-                          onDragDelta: resizeSidebar,
-                          child: framedDetail,
-                        ),
-                      ),
-                    ],
-                  ),
-          );
-        },
+    void selectGroup(String conversationId) {
+      _showGroupConversationList(conversationId);
+      widget.conversation.intents.send(
+        SelectCanonicalConversation(conversationId),
+      );
+    }
+
+    void createGroup() => unawaited(
+      showCreateCanonicalGroupConversationDialog(
+        context: context,
+        intents: widget.conversation.intents,
+        effects: widget.conversation.effects,
+        targets: agents.targetDetails,
       ),
+    );
+
+    final strategy = LayoutAgentsStrategyScope.maybeOf(context);
+    if (strategy.sidebarStyle == AgentsSidebarStyle.flatRecencyList) {
+      return MessagingContactList(
+        targets: agents.targetDetails,
+        sessionsByAgent: sessionsByAgent,
+        selectedAgentId: agents.selectedAgentId,
+        groupConversations: canonical.groupConversations,
+        selectedGroupConversationId: canonical.conversationId,
+        onSelectGroupConversation: selectGroup,
+        onSetGroupConversationPinned: (conversationId, pinned) => widget
+            .conversation
+            .intents
+            .send(SetCanonicalConversationPinned(conversationId, pinned)),
+        onArchiveGroupConversation: (conversationId) {
+          if (_conversationListGroupId == conversationId) {
+            setState(() {
+              _showAgentDetailInsideGroupList = false;
+              _conversationListHistory.clear();
+              _applyConversationListLocation((agentId: '', groupId: ''));
+            });
+          }
+          widget.conversation.intents.send(ArchiveConversation(conversationId));
+        },
+        onNewGroupConversation: createGroup,
+        activityFor: activityFor,
+        runningFor: runningFor,
+        onSelectAgent: (agentId) {
+          setState(() {
+            _showWelcome = false;
+            _showAgentDetailInsideGroupList = false;
+          });
+          if (agentId == agents.selectedAgentId) {
+            widget.conversation.intents.send(const StartConversationSession());
+          } else {
+            widget.agents.intents.send(StartAgentConversation(agentId));
+          }
+        },
+        onNewConversation: () =>
+            widget.conversation.intents.send(const StartConversationSession()),
+        onSearch: widget.onSearch,
+        onOpenWelcome: _showWelcomePage,
+        showConversationList: showConversationList,
+        conversationListTargets: conversationListTargets,
+        conversationListRelatedAgentIds: conversationListRelatedAgentIds,
+        selectedSessionId: selectedId,
+        showConversationAgentIcons: showConversationAgentIcons,
+        onSelectSession: onSelectSession,
+        onBack: _returnToPreviousConversationList,
+        onPrefetchSessions: (agentId) => widget.conversation.intents.send(
+          RefreshConversationCatalog(agentId: agentId),
+        ),
+        isPinned: (targetId) {
+          for (final target in agents.targets) {
+            if (target.id == targetId) return target.pinned;
+          }
+          return false;
+        },
+        onTogglePinned: (agentId) =>
+            widget.agents.intents.send(ToggleAgentPinned(agentId)),
+        priorityAgentId: conversationListPriorityAgentId,
+        scanning: agents.scanning,
+        loading: native.phase == PresentationPhase.loading,
+        activeDestination: ClientSection.agents,
+        onSelectDestination: widget.onSelectDestination,
+      );
+    }
+    final nativeSidebar = AgentsWorkspaceSidebar(
+      targets: agents.targetDetails,
+      sessionsByAgent: sessionsByAgent,
+      selectedSessionId: selectedId,
+      activityFor: activityFor,
+      runningFor: runningFor,
+      onSelectSession: onSelectSession,
+      onNewConversation: () =>
+          widget.conversation.intents.send(const StartConversationSession()),
+      onPrefetchSessions: (agentId) => widget.conversation.intents.send(
+        RefreshConversationCatalog(agentId: agentId),
+      ),
+      onArchive: () => unawaited(
+        showConversationArchiveDialog(
+          context,
+          actions: _archiveActions(archive),
+          sourceAgentId: '',
+        ),
+      ),
+      onAddTarget: widget.onAddTarget,
+      onRefresh: () =>
+          widget.conversation.intents.send(const RefreshConversationCatalog()),
+      scanning: agents.scanning,
+      adding: agents.adding,
+      refreshing: native.phase == PresentationPhase.loading,
+      allowManualTargetActions: widget.allowManualTargetActions,
+    );
+    return Column(
+      children: [
+        CanonicalGroupConversationSidebar(
+          conversations: canonical.groupConversations,
+          selectedConversationId: canonical.conversationId,
+          onSelect: selectGroup,
+          onCreate: createGroup,
+        ),
+        Expanded(child: nativeSidebar),
+      ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final controller = widget.controller;
-    _syncConversationListWithSelection(controller);
-    final onAddTarget = widget.onAddTarget;
-    final allowManualTargetActions = widget.allowManualTargetActions;
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    final target = controller.selectedConversationAgent;
-    final groupController = controller.clientConversationController;
-    final groupSelected = groupController.selectedConversationId.isNotEmpty;
-    final mobileClient = isMobileClientPlatform(context);
-
-    if (widget.useFloatingShell && !mobileClient) {
-      final presentation = LayoutDestinationPresentationScope.agentsOf(context);
-      final showGroupPane = groupSelected && !_showAgentDetailInsideGroupList;
-      final conversationPane = showGroupPane
-          ? _canonicalGroupPane(
-              controller,
-              groupController,
-              framed: false,
-              onOpenAgentConversations: (agentId) {
-                _showAgentConversationList(agentId);
-                groupController.clearSelection();
-                unawaited(controller.selectConversationAgent(agentId));
-              },
-            )
-          : target == null
-          ? const SizedBox.shrink()
-          : _activeConversationPane(
-              controller: controller,
-              target: target,
-              strings: strings,
-              framed: false,
-              showSidebarToggle: presentation.showConversationSidebarControl,
-            );
-      return _buildFloatingShell(
-        controller: controller,
-        target: target,
-        groupSelected: groupSelected,
-        conversationPane: conversationPane,
-        onAddTarget: onAddTarget,
-        allowManualTargetActions: allowManualTargetActions,
-        presentation: presentation,
-      );
+  AgentConversationTabActivity _activityFor(
+    ConversationTabActivityProjection projection,
+    String agentId,
+  ) {
+    final normalized = agentId.trim();
+    for (final activity in projection.agentActivities) {
+      if (activity.agentId == normalized) return activity.activity;
     }
+    return AgentConversationTabActivity.none;
+  }
 
-    if (groupSelected) {
-      final groupPane = _canonicalGroupPane(controller, groupController);
-      final groupPendingApprovals = controller.secureMeshApprovalInbox
-          .where((item) => item.isPending)
-          .toList(growable: false);
-      if (groupPendingApprovals.isEmpty) {
-        return groupPane;
+  ConversationArchiveActions _archiveActions(
+    ConversationArchiveProjection projection,
+  ) => ConversationArchiveActions(
+    initialQuery: projection.queryDraft,
+    destinationFor: (selectionMode, sourceAgentId) {
+      final normalized = sourceAgentId.trim();
+      ConversationArchiveDestinationProjection? selected;
+      for (final destination in projection.backupDestinations) {
+        if (destination.sourceAgentId == normalized) {
+          selected = destination;
+          break;
+        }
       }
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: SecureMeshApprovalCard(controller: controller),
-          ),
-          Expanded(child: groupPane),
-        ],
-      );
-    }
-
-    if (target == null) {
-      if (mobileClient) {
-        return Column(
-          children: [
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.psychology_outlined,
-                        color: colors.textMuted,
-                        size: 26,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        strings.selectAgentToView,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: colors.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            MobileComposerSurface(
-              child: InactiveRuntimeMessageComposer(targetLabel: strings.agent),
-            ),
-          ],
-        );
-      }
-      return PanelFrame(
-        child: Column(
-          children: [
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.psychology_outlined,
-                        color: colors.textMuted,
-                        size: 28,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        strings.selectAgentToView,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: colors.textMuted),
-                      ),
-                      if (allowManualTargetActions) ...[
-                        const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          onPressed: onAddTarget,
-                          icon: const Icon(Icons.add, size: 18),
-                          label: Text(strings.addTarget),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            if (mobileClient) ...[
-              const Divider(height: 1),
-              InactiveRuntimeMessageComposer(targetLabel: strings.agent),
-            ],
-          ],
+      if (selected == null) return '';
+      return selectionMode == conversationArchiveAllSelection
+          ? selected.allDestination
+          : selected.exactKeywordDestination;
+    },
+    archiveAll: (sourceAgentId, destination) {
+      widget.conversation.intents.send(
+        BackupAllNativeConversations(
+          sourceAgentId: sourceAgentId,
+          destination: destination,
         ),
       );
-    }
-
-    final sessions = controller.selectedConversationSessions;
-    final selectedSession = controller.selectedConversationSession;
-    final selectedSessionId = selectedSession?.id ?? '';
-    final historyItems = sessions
-        .map((session) {
-          final workingDirectory = session.workingDirectory.trim();
-          final nativeId = session.nativeSessionId.trim();
-          final running =
-              session.running ||
-              (controller.isSendingConversationMessage &&
-                  ((controller.sendingConversationSessionId.isNotEmpty &&
-                          session.id ==
-                              controller.sendingConversationSessionId) ||
-                      (controller
-                              .sendingConversationNativeSessionId
-                              .isNotEmpty &&
-                          nativeId ==
-                              controller.sendingConversationNativeSessionId) ||
-                      (controller.sendingConversationSessionId.isEmpty &&
-                          controller
-                              .sendingConversationNativeSessionId
-                              .isEmpty &&
-                          session.id == selectedSessionId)));
-          return HistorySessionPanelItem(
-            id: session.id,
-            title: session.title,
-            meta: conversationSessionRelativeUpdatedAtLabel(session),
-            preview: conversationMessagePreviewText(session.preview),
-            groupKey: workingDirectory,
-            groupLabel: historySessionProjectLabel(
-              workingDirectory,
-              fallback: strings.ungroupedConversationProject,
-            ),
-            active: session.id == selectedSessionId,
-            running: running,
-            canDelete: false,
-            deleteLabel: strings.deleteNativeHistory,
-          );
-        })
-        .toList(growable: false);
-    if (mobileClient) {
-      return _activeConversationPane(
-        controller: controller,
-        target: target,
-        strings: strings,
+    },
+    archiveExactKeyword: (query, sourceAgentId, destination) {
+      widget.conversation.intents.send(
+        BackupNativeConversationsByExactKeyword(
+          query: query,
+          sourceAgentId: sourceAgentId,
+          destination: destination,
+        ),
       );
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 760;
-        final chatPane = _activeConversationPane(
-          controller: controller,
-          target: target,
-          strings: strings,
-        );
-        HistorySessionPanel historyPaneFor(
-          double maxListHeight, {
-          bool framed = true,
-          double? headerHeight,
-        }) {
-          return HistorySessionPanel(
-            title: strings.historyConversations,
-            subtitle: '',
-            loading: controller.isLoadingConversations,
-            items: historyItems,
-            onSelect: controller.selectConversationSession,
-            emptyLabel: strings.noNativeHistories,
-            loadingLabel: strings.loadingNativeHistories,
-            maxListHeight: maxListHeight,
-            framed: framed,
-            showHeaderText: false,
-            collapsible: false,
-            collapsed: _historyCollapsed,
-            collapseTooltip: strings.collapseHistoryConversations,
-            expandTooltip: strings.expandHistoryConversations,
-            headerHeight: headerHeight,
-            hasMore: controller.selectedConversationSessionsHasMore,
-            loadingMore: controller.isLoadingMoreSelectedConversationSessions,
-            groupByProject: true,
-            onLoadMore: () => unawaited(
-              controller.loadMoreConversationSessions(
-                controller.selectedConversationAgentId,
-              ),
-            ),
-            loadMoreLabel: strings.scrollToLoadMoreHistories,
-            loadingMoreLabel: strings.loadingMoreHistories,
-            leading: ArchiveAgentConversationsButton(
-              busy: controller.isCollectingConversationArchive,
-              tooltip: strings.archiveAgentConversations,
-              onPressed: () => unawaited(
-                showConversationArchiveDialog(
-                  context,
-                  controller,
-                  sourceAgentId: controller.selectedConversationAgentId,
-                ),
-              ),
-            ),
-            trailing: NewAgentConversationButton(
-              enabled:
-                  !controller.isLoadingConversations &&
-                  !controller.isSendingConversationMessage,
-              tooltip: strings.newConversation,
-              onPressed: controller.startNewConversationSession,
-            ),
-          );
-        }
+    },
+  );
 
-        if (compact) {
-          if (_historyCollapsed) {
-            return chatPane;
-          }
-          final historyRatio = sessions.length > 1 ? 0.50 : 0.34;
-          final historyMax = sessions.length > 1 ? 300.0 : 228.0;
-          final historyMin = sessions.length > 1 ? 154.0 : 138.0;
-          final historyHeight = (constraints.maxHeight * historyRatio).clamp(
-            historyMin,
-            historyMax,
-          );
-          final historyListHeight = (historyHeight - 58).clamp(72.0, 170.0);
-          // The header, parity gate, and composer consume roughly 180 px. Keep
-          // enough remaining height for the active timeline to render useful
-          // content instead of collapsing to its padding at short window
-          // heights. The existing outer scroll fallback preserves access to
-          // both history and composer when both panes cannot fit at once.
-          const minScrollableChatHeight = 300.0;
-          final compactContentHeight =
-              historyHeight + 8 + minScrollableChatHeight;
-          if (constraints.maxHeight < compactContentHeight) {
-            return SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    height: historyHeight,
-                    child: historyPaneFor(historyListHeight.toDouble()),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(height: minScrollableChatHeight, child: chatPane),
-                ],
-              ),
-            );
-          }
-          return Column(
-            children: [
-              SizedBox(
-                height: historyHeight,
-                child: historyPaneFor(historyListHeight.toDouble()),
-              ),
-              const SizedBox(height: 8),
-              Expanded(child: chatPane),
-            ],
-          );
-        }
-
-        final historyListHeight = (constraints.maxHeight - 58).clamp(
-          180.0,
-          520.0,
-        );
-        final embeddedChatPane = _activeConversationPane(
-          controller: controller,
-          target: target,
-          strings: strings,
-          framed: false,
-        );
-        return ResizableConversationSplit(
-          historyPane: historyPaneFor(
-            historyListHeight.toDouble(),
-            framed: false,
-            headerHeight: conversationHeaderHeight,
-          ),
-          chatPane: embeddedChatPane,
-          initialHistoryWidth: conversationHistoryMinWidth,
-          historyCollapsed: _historyCollapsed,
-        );
-      },
+  Widget _nativeConversationPane(
+    BuildContext context,
+    TargetCandidate target,
+    AgentConversationSession? session,
+    NativeConversationCatalogProjection native,
+    PersistentTurnProjection turns,
+    ComposerProjection composer,
+    ConversationAttachmentsProjection attachments, {
+    required bool mobile,
+  }) {
+    final turn = turns.memberships.isEmpty ? null : turns.memberships.first;
+    final active =
+        turn?.phase == PersistentTurnPhase.running ||
+        turn?.phase == PersistentTurnPhase.waiting;
+    final strings = LicoStrings.of(context);
+    final strategy = LayoutAgentsStrategyScope.maybeOf(context);
+    final showWorkingDirectory =
+        !mobile && !target.hasValidVirtualMachineConnection;
+    final composerEnabled =
+        composer.inputEnabled && (turn?.inputEnabled ?? true);
+    final gateReasonCode = composerEnabled
+        ? (attachments.statusCode.isNotEmpty
+              ? attachments.statusCode
+              : turn?.failureReasonCode ?? native.notice?.reasonCode ?? '')
+        : target.conversationSendGateReason;
+    final unblockSend = switch (gateReasonCode) {
+      'native_agent_executable_not_detected' ||
+      'native_agent_runtime_profile_unavailable' ||
+      'runtime_message_send_unavailable' => () => widget.agents.intents.send(
+        const ScanAgents(),
+      ),
+      'antigravity_auth_required' => () => widget.conversation.intents.send(
+        const AuthorizeConversationRuntime(),
+      ),
+      _ => null,
+    };
+    final state = AgentConversationPaneState(
+      target: target,
+      session: session,
+      liveMessages: turn?.messages ?? const <AgentConversationMessage>[],
+      recentSessions: native.nativeSessions,
+      loading: native.phase == PresentationPhase.loading,
+      recentSessionsHasMore: native.hasMore,
+      recentSessionsLoadingMore: native.loadingMore,
+      messagePageLoading: native.messagePageLoading,
+      messagePageError: native.messagePageError,
+      turnActive: active,
+      inputEnabled: turn?.inputEnabled ?? true,
+      cancelEnabled: turn?.cancelEnabled ?? false,
+      preparingNewConversation: native.preparingNewConversation,
+      composerEnabled: composerEnabled,
+      sendGateReasonCode: gateReasonCode,
+      composerDraft: composer.draft,
+      hasAttachments: attachments.attachments.isNotEmpty,
+      modelOptions: composer.modelOptions,
+      selectedModel: composer.selectedModel,
+      defaultModel: composer.defaultModel,
+      reasoningEffortOptions: composer.reasoningEffortOptions,
+      selectedReasoningEffort: composer.selectedReasoningEffort,
+      defaultReasoningEffort: composer.defaultReasoningEffort,
+      showWorkingDirectory: showWorkingDirectory,
+      workingDirectory: showWorkingDirectory ? composer.workingDirectory : '',
+      workingDirectorySelectable:
+          showWorkingDirectory && composer.workingDirectorySelectable,
+      sendAuthorizeActive: native.authorizingRuntime,
+      permissionRetryTool: native.pendingPermissionRetryTool,
+      participantTargets: widget.agents.projection.current.targetDetails,
+      showLicoProfileCapsule: native.supportsLicoProfile,
+      selectedLicoProfile: native.selectedLicoProfile,
+      runningRecentSessionIds: native.runningSessionIds.toSet(),
+      recentSessionsCached: native.nativeSessions.isNotEmpty,
     );
+    final actions = AgentConversationPaneActions(
+      onModelChanged: (model) =>
+          widget.conversation.intents.send(SelectConversationModel(model)),
+      onReasoningEffortChanged: (reasoningEffort) => widget.conversation.intents
+          .send(SelectConversationReasoningEffort(reasoningEffort)),
+      onDraftChanged: (draft) => widget.conversation.intents.send(
+        UpdateConversationDraft(composer.conversationId, draft),
+      ),
+      onPermissionRetry: () =>
+          widget.conversation.intents.send(const RetryConversationPermission()),
+      onPermissionRetryRemember: () => widget.conversation.intents.send(
+        const RetryConversationPermission(remember: true),
+      ),
+      onPermissionDeny: () => widget.conversation.intents.send(
+        const DismissConversationPermission(),
+      ),
+      onCopyText: (text) async =>
+          widget.conversation.intents.send(CopyConversationText(text)),
+      onSend: (content) async {
+        widget.conversation.intents.send(
+          PostConversationMessage(
+            conversationId: composer.conversationId,
+            content: content,
+            addressedMembershipIds: [
+              if (turn?.membershipId.trim().isNotEmpty == true)
+                turn!.membershipId,
+            ],
+            dispatchCanonical: false,
+          ),
+        );
+        return true;
+      },
+      onCancel: turn?.cancelEnabled == true
+          ? () async => widget.conversation.intents.send(
+              InterruptConversationTurn(
+                composer.conversationId,
+                turn!.membershipId,
+              ),
+            )
+          : null,
+      onSelectSession: (sessionId) => widget.conversation.intents.send(
+        SelectConversationSession(sessionId),
+      ),
+      onNewConversation: () =>
+          widget.conversation.intents.send(const StartConversationSession()),
+      onLoadMoreRecentSessions: native.hasMore
+          ? () => widget.conversation.intents.send(
+              const LoadMoreConversationSessions(),
+            )
+          : null,
+      onLoadEarlierMessages: () async => widget.conversation.intents.send(
+        LoadEarlierConversationEvents(composer.conversationId),
+      ),
+      onUnblockSend: unblockSend,
+      onChooseWorkingDirectory:
+          showWorkingDirectory && composer.workingDirectorySelectable
+          ? () => unawaited(_chooseWorkingDirectory(composer.workingDirectory))
+          : null,
+      onAttach:
+          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
+              attachments.acceptsImages
+          ? () => widget.conversation.intents.send(
+              AddConversationAttachment(composer.conversationId),
+            )
+          : null,
+      onPasteImage:
+          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
+              attachments.acceptsImages
+          ? () async {
+              widget.conversation.intents.send(
+                PasteConversationAttachment(composer.conversationId),
+              );
+              return true;
+            }
+          : null,
+      onLicoProfileChanged: native.supportsLicoProfile
+          ? (profile) => widget.conversation.intents.send(
+              SelectConversationLicoProfile(profile),
+            )
+          : null,
+    );
+    final serveState = native.opencodeServeStatus.trim().isEmpty
+        ? null
+        : AgentConversationServeState(
+            status: switch (native.opencodeServeStatus.trim()) {
+              'running' => AgentConversationServeStatus.running,
+              'blocked' => AgentConversationServeStatus.blocked,
+              'unavailable' => AgentConversationServeStatus.unavailable,
+              _ => AgentConversationServeStatus.stopped,
+            },
+            port: native.opencodeServePort,
+            portConflict: native.opencodeServePortConflict,
+          );
+    final headerState = AgentConversationHeaderState(
+      target: target,
+      session: session,
+      historyCollapsed: _sidebarCollapsed,
+      collapseHistoryTooltip: strings.collapseHistoryConversations,
+      expandHistoryTooltip: strings.expandHistoryConversations,
+      opencodeServeState: serveState,
+    );
+    final headerActions = AgentConversationHeaderActions(
+      onToggleHistory: _toggleSidebarCollapsed,
+    );
+    final header = strategy.messageStyle == AgentsMessageStyle.participantFlow
+        ? MessagingConversationHeader(
+            target: target,
+            session: session,
+            detailsState: state,
+            detailsActions: actions,
+            opencodeServeState: serveState,
+            switcherSessions: native.nativeSessions,
+            switcherSelectedSessionId: session?.id ?? '',
+            onSwitchConversation: (sessionId) => widget.conversation.intents
+                .send(SelectConversationSession(sessionId)),
+            onSwitchNewConversation: () => widget.conversation.intents.send(
+              const StartConversationSession(),
+            ),
+            switcherRunningFor: (candidate) =>
+                native.runningSessionIds.contains(candidate.id),
+          )
+        : ConversationPaneHeader(state: headerState, actions: headerActions);
+    return AgentConversationActivePane(
+      state: state,
+      actions: actions,
+      header: header,
+      framed: mobile,
+    );
+  }
+
+  TargetCandidate? _selectedTarget(AgentsProjection projection) {
+    for (final target in projection.targetDetails) {
+      if (target.id == projection.selectedAgentId ||
+          target.target == projection.selectedAgentId) {
+        return target;
+      }
+    }
+    return null;
+  }
+
+  AgentConversationSession? _selectedSession(
+    NativeConversationCatalogProjection projection,
+  ) {
+    final selected = {
+      for (final item in projection.sessions)
+        if (item.selected) item.id,
+    };
+    for (final session in projection.nativeSessions) {
+      if (selected.contains(session.id)) return session;
+    }
+    return null;
   }
 }
 
-String _planDocumentPath(ClientController controller) {
-  if (!controller.selectedConversationSupportsLicoProfile ||
-      controller.selectedConversationLicoProfile != 'plan') {
-    return '';
+class _EmptyConversation extends StatelessWidget {
+  const _EmptyConversation({this.onAddTarget});
+
+  final VoidCallback? onAddTarget;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
+    return PanelFrame(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.psychology_outlined,
+                color: colors.textMuted,
+                size: 28,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                strings.selectAgentToView,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.textMuted),
+              ),
+              if (onAddTarget != null) ...[
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: onAddTarget,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: Text(strings.addTarget),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
-  final root = controller.portableDataPath.trim();
-  if (root.isEmpty) return '';
-  return p.join(root, 'client-state', 'plans', 'active-plan.md');
 }

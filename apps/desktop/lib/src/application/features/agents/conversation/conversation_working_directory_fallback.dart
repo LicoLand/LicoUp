@@ -1,7 +1,8 @@
-import 'dart:io' as io show Directory, Platform;
+import 'dart:io' as io show Directory;
 
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/user_home_directory.dart';
 import 'package:path/path.dart' as p;
 
 const _clientHomeStateDirectoryName = '.lico-up';
@@ -14,12 +15,6 @@ const clientAgentWorkspaceDirectoryName = 'agent-workspace';
 /// Retired plural tree from the per-agent workspace layout. Still treated as
 /// client-owned so historical session cwd values never bind as projects.
 const _retiredClientAgentWorkspaceDirectoryName = 'agent-workspaces';
-
-/// User home directory, used to render an absolute path as `~/...`.
-String userHomeDirectory({Map<String, String>? environment}) {
-  final resolved = environment ?? io.Platform.environment;
-  return (resolved['HOME'] ?? resolved['USERPROFILE'] ?? '').trim();
-}
 
 /// Most recent usable project path recorded on [sessions], newest first.
 ///

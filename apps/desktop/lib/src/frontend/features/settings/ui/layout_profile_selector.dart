@@ -1,83 +1,60 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 const _eagerProfileOptionLimit = 12;
 const _virtualizedVisibleRows = 3;
 
-final class LayoutProfileSelector extends StatefulWidget {
+final class LayoutProfileSelector extends StatelessWidget {
   const LayoutProfileSelector({
     super.key,
-    required this.manager,
+    required this.binding,
     required this.registry,
     required this.surface,
   });
 
-  final LayoutManager manager;
+  final SettingsBinding binding;
   final LayoutRegistry registry;
   final LayoutRuntimeSurface surface;
 
   @override
-  State<LayoutProfileSelector> createState() => _LayoutProfileSelectorState();
-}
-
-final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
-  @override
-  void initState() {
-    super.initState();
-    widget.manager.addListener(_handleSelection);
-  }
-
-  @override
-  void didUpdateWidget(LayoutProfileSelector oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.manager, widget.manager)) {
-      oldWidget.manager.removeListener(_handleSelection);
-      widget.manager.addListener(_handleSelection);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.manager.removeListener(_handleSelection);
-    super.dispose();
-  }
-
-  void _handleSelection(LayoutSelectionState _) {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!identical(widget.manager.catalog, widget.registry.catalog)) {
-      throw const FormatException('layout_selector_catalog_mismatch');
-    }
+    return ProjectionBuilder<SettingsProjection, SettingsProjection>(
+      source: binding.projection,
+      select: _settingsIdentity,
+      builder: _buildProjection,
+    );
+  }
 
+  Widget _buildProjection(BuildContext context, SettingsProjection settings) {
     final strings = LicoStrings.of(context);
-    final state = widget.manager.state;
     final colors = context.licoColors;
-    final profiles = widget.manager.catalog.profiles;
-    final effectiveProfile = widget.manager.catalog.profile(state.effectiveId);
-    final committedProfile = widget.manager.catalog.profile(state.committedId);
-    final committing = state.status == LayoutSelectionStatus.committing;
-    final loading = state.status == LayoutSelectionStatus.loading;
+    final choices = {
+      for (final choice in settings.layoutChoices) choice.id: choice,
+    };
+    final profiles = registry.definitions.values
+        .map((definition) => definition.profile)
+        .where((profile) => choices.containsKey(profile.id.value))
+        .toList(growable: false);
+    final committing = settings.layoutPhase == PresentationPhase.applying;
+    final loading = settings.layoutPhase == PresentationPhase.loading;
     final reducedMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
 
     return presentation.frameSelector(
       context,
@@ -97,10 +74,11 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                 color: colors.accent,
               )
             else ...[
-              if (state.errorCode case final errorCode?)
+              if (settings.layoutFailureReasonCode case final errorCode
+                  when errorCode.isNotEmpty)
                 _LayoutSelectorStatus(
                   key: const ValueKey<String>('layout-selector-error'),
-                  label: strings.layoutSelectionError(errorCode),
+                  label: _layoutErrorLabel(strings, errorCode, errorCode),
                   progress: false,
                   color: colors.error,
                 ),
@@ -124,31 +102,26 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                         order: NumericFocusOrder(index.toDouble()),
                         child: _LayoutProfileOption(
                           profile: profiles[index],
-                          preview: widget.registry
+                          preview: registry
                               .definition(profiles[index].id)
-                              .bundles[widget.surface]!
+                              .bundles[surface]!
                               .previewBuilder(context),
                           label: profiles[index].label.resolve(
                             strings.locale.languageCode,
                           ),
                           currentLabel: strings.currentLayout,
-                          selected: identical(
-                            profiles[index],
-                            effectiveProfile,
-                          ),
-                          committed: identical(
-                            profiles[index],
-                            committedProfile,
-                          ),
+                          selected: choices[profiles[index].id.value]!.selected,
+                          committed:
+                              choices[profiles[index].id.value]!.selected,
                           // The Dashboard layout is not ready yet: it stays
                           // visible as a preview but cannot be selected.
                           enabled:
                               !committing &&
-                              profiles[index].id.value != 'dashboard',
+                              choices[profiles[index].id.value]!.enabled,
                           reducedMotion: reducedMotion,
                           onPressed: () {
-                            unawaited(
-                              widget.manager.selectLayout(profiles[index].id),
+                            binding.intents.send(
+                              SetLayoutPreference(profiles[index].id.value),
                             );
                           },
                         ),
@@ -192,6 +165,19 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
       ),
     );
   }
+}
+
+SettingsProjection _settingsIdentity(SettingsProjection value) => value;
+
+String _layoutErrorLabel(
+  LicoStrings strings,
+  String reasonCode,
+  String fallback,
+) {
+  for (final code in LayoutSelectionErrorCode.values) {
+    if (code.name == reasonCode) return strings.layoutSelectionError(code);
+  }
+  return fallback;
 }
 
 int _layoutColumnCapacity(double availableWidth) {

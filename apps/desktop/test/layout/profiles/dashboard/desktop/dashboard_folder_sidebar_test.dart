@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
+import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -85,6 +85,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('folder sidebar renders only projected destinations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _sidebarTestApp(
+        section: ClientSection.agents,
+        availableSections: const [ClientSection.agents, ClientSection.settings],
+        onSelectSection: (_) {},
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('dashboard-folder-nav-agents')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('dashboard-folder-nav-settings')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('dashboard-folder-nav-mobileRelay')),
+      findsNothing,
+    );
+  });
+
   testWidgets('global search stays reachable at the sidebar top', (
     tester,
   ) async {
@@ -107,6 +132,7 @@ void main() {
 Widget _sidebarTestApp({
   required ClientSection section,
   required ValueChanged<ClientSection> onSelectSection,
+  List<ClientSection> availableSections = ClientSection.values,
 }) {
   final theme = buildLicoTheme(
     platformBrightness: Brightness.dark,
@@ -128,6 +154,7 @@ Widget _sidebarTestApp({
           child: Scaffold(
             body: DashboardFolderSidebar(
               section: section,
+              availableSections: availableSections,
               onSelectSection: onSelectSection,
               width: 216,
             ),

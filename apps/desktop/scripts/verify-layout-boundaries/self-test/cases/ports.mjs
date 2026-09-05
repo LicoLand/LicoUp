@@ -63,7 +63,7 @@ abstract interface class LayoutPreviewPort {
     await writeCatalogFixture(fixtureRoot, profiles, surfaces);
     await writeRelative(
       fixtureRoot,
-      "apps/desktop/lib/src/frontend/layout/layout_chrome_port.dart",
+      "apps/desktop/lib/src/presentation/shell/shell_layout_contract.dart",
       source,
     );
     await expectViolation(code, () =>
@@ -75,7 +75,7 @@ abstract interface class LayoutPreviewPort {
   await writeCatalogFixture(fixtureRoot, profiles, surfaces);
   await writeRelative(
     fixtureRoot,
-    "apps/desktop/lib/src/frontend/layout/business_surface_contract.dart",
+    "apps/desktop/lib/src/presentation/shell/business_surface_contract.dart",
     `import 'package:flutter/widgets.dart';
 abstract interface class LayoutBusinessPort {
   Widget buildBusinessSurface();
@@ -90,7 +90,7 @@ abstract interface class LayoutBusinessPort {
   await writeCatalogFixture(fixtureRoot, profiles, surfaces);
   await writeRelative(
     fixtureRoot,
-    "apps/desktop/lib/src/frontend/layout/business_preview_api.dart",
+    "apps/desktop/lib/src/presentation/shell/business_preview_api.dart",
     `import 'package:flutter/material.dart';
 abstract interface class BusinessPreviewPort {
   Object buildPreview() => Container();

@@ -6,6 +6,7 @@ import {
   forbiddenDependencyCode,
   forbiddenNeutralPortApiCode,
   importsFlutterWidgetFramework,
+  isDestinationPresentationScopePath,
   isDirectNeutralDependency,
   isNeutralClosureDependency,
 } from "./dependency-policy.mjs";
@@ -33,7 +34,10 @@ export function validatePublicLayoutPortApis(catalog, sourceByPath, graph) {
     if (source == null) {
       continue;
     }
-    if (containsDestinationPresentationScope(source)) {
+    if (
+      containsDestinationPresentationScope(source) &&
+      !isDestinationPresentationScopePath(relativePath)
+    ) {
       fail("layout_destination_presentation_scope_forbidden", relativePath);
     }
     if (
@@ -45,6 +49,28 @@ export function validatePublicLayoutPortApis(catalog, sourceByPath, graph) {
     const forbiddenCode = forbiddenNeutralPortApiCode(source);
     if (forbiddenCode != null) {
       fail(forbiddenCode, relativePath);
+    }
+  }
+}
+
+export function validateSemanticLayoutContracts(sourceByPath) {
+  for (const [relativePath, source] of sourceByPath) {
+    if (
+      !relativePath.startsWith("apps/desktop/lib/src/presentation/shell/") &&
+      !relativePath.startsWith("apps/desktop/lib/src/contracts/presentation/")
+    ) {
+      continue;
+    }
+    const forbiddenCode = forbiddenNeutralPortApiCode(source);
+    if (forbiddenCode != null) {
+      fail(forbiddenCode, relativePath);
+    }
+    if (
+      /package:flutter\//u.test(source) &&
+      relativePath !==
+        "apps/desktop/lib/src/contracts/presentation/layout_profile.dart"
+    ) {
+      fail("layout_widget_producing_port_forbidden", relativePath);
     }
   }
 }
@@ -130,8 +156,12 @@ export function transitiveClosure(graph, starts) {
 
 export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
   const graph = buildImportGraph(sourceByPath);
+  validateSemanticLayoutContracts(sourceByPath);
   for (const [relativePath, source] of sourceByPath) {
-    if (containsDestinationPresentationScope(source)) {
+    if (
+      containsDestinationPresentationScope(source) &&
+      !isDestinationPresentationScopePath(relativePath)
+    ) {
       fail("layout_destination_presentation_scope_forbidden", relativePath);
     }
   }
@@ -171,7 +201,11 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
       if (source != null && containsCompleteControllerReference(source)) {
         fail("layout_complete_controller_reference", bundle.entryPath);
       }
-      if (source != null && containsDestinationPresentationScope(source)) {
+      if (
+        source != null &&
+        containsDestinationPresentationScope(source) &&
+        !isDestinationPresentationScopePath(relativePath)
+      ) {
         fail("layout_destination_presentation_scope_forbidden", bundle.entryPath);
       }
     }
@@ -185,7 +219,11 @@ export function validateTransitiveClosures(catalog, sourceByPath, sourceFiles) {
       const rightOwner = owners[rightIndex];
       const rightClosure = closureByOwner.get(rightOwner);
       for (const relativePath of closureByOwner.get(leftOwner)) {
-        if (rightClosure.has(relativePath) && !neutralClosure.has(relativePath)) {
+        if (
+          rightClosure.has(relativePath) &&
+          !neutralClosure.has(relativePath) &&
+          !isNeutralClosureDependency(relativePath)
+        ) {
           fail(
             "layout_transitive_closure_intersection_forbidden",
             `${leftOwner}:${rightOwner}:${relativePath}`,
