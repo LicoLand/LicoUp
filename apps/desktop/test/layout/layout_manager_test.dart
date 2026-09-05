@@ -26,6 +26,28 @@ void main() {
     manager.dispose();
   });
 
+  test(
+    'selectionChanges publishes status transitions without an id change',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(repository);
+      final events = <Object?>[];
+      final subscription = manager.selectionChanges.listen(events.add);
+
+      await manager.initialize();
+      await subscription.cancel();
+
+      // The stored preference is the default profile, so initialize leaves the
+      // effective id unchanged; the loading → stable transition must still
+      // reach selection-state subscribers or the shell layout projection never
+      // leaves the loading spinner.
+      expect(events, isNotEmpty);
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.effectiveId, LayoutProfileId.parse('dashboard'));
+      manager.dispose();
+    },
+  );
+
   test('selecting the committed profile stays stable without writes', () async {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);

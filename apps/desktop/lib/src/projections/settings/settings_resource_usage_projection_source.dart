@@ -31,6 +31,7 @@ final class SettingsResourceUsageProjectionSource
       >.broadcast(sync: true);
   late final List<StreamSubscription<ApplicationChange>> _subscriptions;
   SettingsResourceUsageProjection _current;
+  int _consumers = 0;
   bool _disposed = false;
 
   @override
@@ -42,11 +43,18 @@ final class SettingsResourceUsageProjectionSource
 
   void start() {
     if (_disposed) return;
+    // A replacement renderer mounts before the previous one is disposed.
+    // Keep the shared samplers alive until the last visible consumer leaves.
+    _consumers += 1;
+    if (_consumers != 1) return;
     _client.start();
     _agents.start();
   }
 
   void stop() {
+    if (_consumers == 0) return;
+    _consumers -= 1;
+    if (_consumers != 0) return;
     _client.stop();
     _agents.stop();
   }
@@ -69,7 +77,9 @@ final class SettingsResourceUsageProjectionSource
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    stop();
+    _consumers = 0;
+    _client.stop();
+    _agents.stop();
     for (final subscription in _subscriptions.reversed) {
       await subscription.cancel();
     }

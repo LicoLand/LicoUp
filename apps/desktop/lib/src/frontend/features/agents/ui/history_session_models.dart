@@ -96,6 +96,24 @@ final RegExp _sessionTitleUuid = RegExp(
   r'^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$',
 );
 
+/// Strips leading agent control tags (`<turn_aborted> …`) and collapses
+/// whitespace so a transcript fragment can render as a single readable line.
+///
+/// Returns an empty string when nothing human-readable remains; callers
+/// decide the localized fallback.
+String sanitizeConversationDisplayText(String raw) {
+  var text = raw.trim();
+  for (var pass = 0; pass < 3; pass++) {
+    final stripped = text
+        .replaceFirst(_sessionTitleControlTags, '')
+        .replaceFirst(_sessionTitleHeadingMarker, '')
+        .trim();
+    if (stripped == text) break;
+    text = stripped;
+  }
+  return text.replaceAll(_sessionTitleWhitespace, ' ').trim();
+}
+
 /// Human-readable conversation title for list surfaces.
 ///
 /// Catalog titles may arrive as rollout file names, agent control-tag
@@ -103,16 +121,7 @@ final RegExp _sessionTitleUuid = RegExp(
 /// Those collapse to a readable fragment; unusable titles fall back to a
 /// localized placeholder instead of leaking raw identifiers.
 String historySessionDisplayTitle(String rawTitle, {required String fallback}) {
-  var title = rawTitle.trim();
-  for (var pass = 0; pass < 3; pass++) {
-    final stripped = title
-        .replaceFirst(_sessionTitleControlTags, '')
-        .replaceFirst(_sessionTitleHeadingMarker, '')
-        .trim();
-    if (stripped == title) break;
-    title = stripped;
-  }
-  title = title.replaceAll(_sessionTitleWhitespace, ' ').trim();
+  final title = sanitizeConversationDisplayText(rawTitle);
   if (title.isEmpty) return fallback;
   if (_sessionTitleRolloutFile.hasMatch(title)) return fallback;
   if (_sessionTitleUuid.hasMatch(title)) return fallback;

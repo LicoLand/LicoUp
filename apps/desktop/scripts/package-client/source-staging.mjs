@@ -146,22 +146,6 @@ export function parseCleanBuildRunOwnerPid(name) {
   return Number.isSafeInteger(pid) ? pid : null;
 }
 
-export function isInsideDirectory(root, candidate) {
-  const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return (
-    Boolean(relative) &&
-    !relative.startsWith("..") &&
-    !path.isAbsolute(relative)
-  );
-}
-
-export function isMacosBuildArtifactCandidate(candidate) {
-  return [
-    packageClientRuntime.workspaceRoot,
-    cleanBuildBaseRoot(),
-  ].some((root) => isInsideDirectory(root, candidate));
-}
-
 function defaultCleanBuildRoot() {
   if (process.platform === "darwin") {
     return path.join(path.sep, "private", "tmp", "licoup-build");
