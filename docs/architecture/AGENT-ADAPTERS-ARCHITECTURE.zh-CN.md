@@ -93,6 +93,7 @@ flowchart TB
 1. **禁止在 Flutter 端解析厂商原始协议**：Flutter 永远只消费 Rust 持久化后的 `ClientConversationEvent` 与 `EventPart`，不感知任何 ACP、SSE 或 App Server 细节。
 2. **禁止驱动擅自判定完成**：严禁 13 个驱动各自猜完成（如依赖 100ms 静默），完成判定必须由 L1 解析器根据协议显式信号或传输 EOF 独占裁决。
 3. **私有协议隔离演进**：Codex 与 OpenCode 等私有协议的变化只影响其对应的 `adapters/<agent>/` 模块，绝对不扩散至统一 Conversation 领域层。
+4. **用户终端环境等价**：LicoUp 调起的 CLI 子智能体，其可见环境必须与用户从自身 ZSH 登录终端启动同一 CLI 时完全一致——代理变量、PATH、登录态、工作目录设置均不缺失、不增加、不筛选。禁止通过全局 shell export 或 `launchctl setenv` 实现该等价；等价本身是铁律，而非注入某个子集。
 
 ---
 

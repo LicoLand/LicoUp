@@ -146,6 +146,9 @@ impl SshRuntimeConnection {
             remote_args,
         );
         let mut command = Command::new("ssh");
+        // The local ssh client observes the user shell environment (proxy,
+        // agent socket, PATH); `SendEnv=-*` keeps it from crossing the wire.
+        super::user_shell_environment::apply_to_command(&mut command);
         command
             .arg("-T")
             .args(["-o", "BatchMode=yes"])
