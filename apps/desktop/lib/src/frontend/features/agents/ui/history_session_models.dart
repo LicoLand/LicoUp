@@ -84,6 +84,41 @@ String historySessionProjectLabel(
   return parts.isEmpty ? fallback : parts.last;
 }
 
+final RegExp _sessionTitleControlTags = RegExp(
+  r'^(<[/a-zA-Z][a-zA-Z0-9_-]*[^>]*>\s*)+',
+);
+final RegExp _sessionTitleHeadingMarker = RegExp(r'^#{1,6}\s+');
+final RegExp _sessionTitleWhitespace = RegExp(r'\s+');
+final RegExp _sessionTitleRolloutFile = RegExp(
+  r'^rollout-\d{4}-\d{2}-\d{2}T\S*$',
+);
+final RegExp _sessionTitleUuid = RegExp(
+  r'^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$',
+);
+
+/// Human-readable conversation title for list surfaces.
+///
+/// Catalog titles may arrive as rollout file names, agent control-tag
+/// fragments (`<turn_aborted> …`), markdown headings, or bare session ids.
+/// Those collapse to a readable fragment; unusable titles fall back to a
+/// localized placeholder instead of leaking raw identifiers.
+String historySessionDisplayTitle(String rawTitle, {required String fallback}) {
+  var title = rawTitle.trim();
+  for (var pass = 0; pass < 3; pass++) {
+    final stripped = title
+        .replaceFirst(_sessionTitleControlTags, '')
+        .replaceFirst(_sessionTitleHeadingMarker, '')
+        .trim();
+    if (stripped == title) break;
+    title = stripped;
+  }
+  title = title.replaceAll(_sessionTitleWhitespace, ' ').trim();
+  if (title.isEmpty) return fallback;
+  if (_sessionTitleRolloutFile.hasMatch(title)) return fallback;
+  if (_sessionTitleUuid.hasMatch(title)) return fallback;
+  return title;
+}
+
 /// Groups newest-first sessions while preserving first-seen project order.
 List<HistorySessionListEntry> historySessionGroupEntries(
   List<HistorySessionPanelItem> items, {

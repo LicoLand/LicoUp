@@ -266,6 +266,7 @@ class _SwitcherConversationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
     final preview = conversationMessagePreviewText(session.preview);
     final project = historySessionProjectLabel(
       session.workingDirectory,
@@ -301,9 +302,12 @@ class _SwitcherConversationRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        session.title.trim().isEmpty
-                            ? session.id
-                            : session.title,
+                        historySessionDisplayTitle(
+                          session.title.trim().isEmpty
+                              ? session.id
+                              : session.title,
+                          fallback: strings.untitledConversation,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
