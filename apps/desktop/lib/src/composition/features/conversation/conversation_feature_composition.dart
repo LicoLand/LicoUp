@@ -181,7 +181,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           conversationId,
           draft,
         );
-        _projection.publishLocalChange(trace: trace);
+        _projection.publishComposerDraft(trace: trace);
       case CopyConversationText(:final text):
         _run(
           () => _controller.clientClipboardService.writeText(text),

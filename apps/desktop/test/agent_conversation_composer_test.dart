@@ -139,6 +139,8 @@ void main() {
 
     await tester.enterText(find.byType(TextField), '  fixture request  ');
     await tester.pump();
+    // The draft-store echo is trailing-debounced; let the flush land.
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
     await tester.pump();
 
@@ -769,6 +771,8 @@ void main() {
       find.byKey(const Key('agent-conversation-mention-claude-code')),
     );
     await tester.pump();
+    // The draft-store echo is trailing-debounced; let the flush land.
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(draft, 'ask @Claude Code ');
     expect(
