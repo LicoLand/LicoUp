@@ -42,11 +42,25 @@ impl CodexLaunchSpec {
 }
 
 /// Membership headers must be present on the plugin MCP child. The portable
-/// data root is inherited from the sidecar: the Codex plugin already lists
-/// `LICOUP_PORTABLE_DIR` in `env_vars`. Re-binding it through
+/// data root arrives through the live LicoUp process environment (the sidecar
+/// channel), never from a captured shell value: the Codex plugin already lists
+/// `LICOUP_PORTABLE_DIR` in `env_vars`, and re-binding it through
 /// `portable_data_dir()` at launch races two app-servers that share one plugin
 /// home.
 pub(super) fn apply_launch_environment(command: &mut Command, params: Option<&Value>) {
+    apply_launch_environment_with_root(command, params, std::env::var_os("LICOUP_PORTABLE_DIR"));
+}
+
+pub(super) fn apply_launch_environment_with_root(
+    command: &mut Command,
+    params: Option<&Value>,
+    portable_root: Option<std::ffi::OsString>,
+) {
+    super::super::user_shell_environment::apply_to_command(command);
+    command.env_remove("LICOUP_PORTABLE_DIR");
+    if let Some(root) = portable_root.filter(|value| !value.is_empty()) {
+        command.env("LICOUP_PORTABLE_DIR", root);
+    }
     if let Some(params) = params {
         crate::platform::runtime_adapters::apply_subagent_caller_context(command, params);
     }

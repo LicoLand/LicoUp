@@ -457,6 +457,7 @@ fn spawn_agent(
         })?
     } else {
         let mut command = Command::new(&exe);
+        super::super::user_shell_environment::apply_to_command(&mut command);
         command.args(&args);
         command
     };
