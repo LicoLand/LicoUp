@@ -2,7 +2,7 @@ import 'panel_test_harness.dart';
 
 void main() {
   testWidgets('trust card renders exact verification evidence', (tester) async {
-    const presentation = MobileRelayTrustPresentation(
+    final presentation = RelayTrustProjection(
       schemaVersion: 'secure-mesh.trust-presentation.v1',
       protocolVersion: 'secure-mesh.device-trust.v2',
       localFingerprint: 'local-fingerprint',

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/plan_document_reader.dart';
+import 'package:licoup/src/frontend/features/agents/data/plan_document_loader.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -10,12 +10,12 @@ class LicoPlanDocumentPanel extends StatefulWidget {
     super.key,
     required this.planPath,
     this.refreshToken = 0,
-    this.reader = const UnavailablePlanDocumentReader(),
+    this.loader = unavailablePlanDocumentLoader,
   });
 
   final String planPath;
   final int refreshToken;
-  final PlanDocumentReader reader;
+  final PlanDocumentLoader loader;
 
   @override
   State<LicoPlanDocumentPanel> createState() => _LicoPlanDocumentPanelState();
@@ -50,7 +50,7 @@ class _LicoPlanDocumentPanelState extends State<LicoPlanDocumentPanel> {
       return;
     }
     try {
-      final text = await widget.reader.read(path);
+      final text = await widget.loader(path);
       if (!mounted) return;
       setState(() {
         _content = text;

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
+import 'package:licoup/src/presentation/targets/targets_projection.dart';
 
 class ManualTargetDraft {
   const ManualTargetDraft({
@@ -26,8 +26,13 @@ class ManualTargetDraft {
 }
 
 class ManualTargetDialog extends StatefulWidget {
-  const ManualTargetDialog({super.key, this.onOpenDirectory});
+  const ManualTargetDialog({
+    super.key,
+    required this.options,
+    this.onOpenDirectory,
+  });
 
+  final List<ManualTargetOptionProjection> options;
   final FutureOr<void> Function(String path)? onOpenDirectory;
 
   @override
@@ -35,20 +40,6 @@ class ManualTargetDialog extends StatefulWidget {
 }
 
 class _ManualTargetDialogState extends State<ManualTargetDialog> {
-  static const _targets = [
-    'antigravity',
-    'claude-code',
-    'codex',
-    'cursor',
-    'copilot',
-    'hermes',
-    'kilo-code',
-    'kimi',
-    'kimi-code',
-    'openclaw',
-    'opencode',
-  ];
-
   final _configPathController = TextEditingController();
   final _binaryPathController = TextEditingController();
   final _historyRootController = TextEditingController();
@@ -58,13 +49,21 @@ class _ManualTargetDialogState extends State<ManualTargetDialog> {
   final _remoteExecutableController = TextEditingController();
   final _remoteWorkingDirectoryController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  String _target = _targets.first;
+  late String _target;
   String _location = 'local';
 
-  bool get _supportsVirtualMachine =>
-      const {'openclaw', 'hermes'}.contains(_target);
+  bool get _supportsVirtualMachine => widget.options.any(
+    (option) => option.id == _target && option.supportsVirtualMachine,
+  );
   bool get _usesVirtualMachine =>
       _supportsVirtualMachine && _location == 'virtual-machine';
+
+  @override
+  void initState() {
+    super.initState();
+    assert(widget.options.isNotEmpty);
+    _target = widget.options.first.id;
+  }
 
   @override
   void dispose() {
@@ -98,10 +97,10 @@ class _ManualTargetDialogState extends State<ManualTargetDialog> {
                   initialValue: _target,
                   decoration: InputDecoration(labelText: strings.target),
                   items: [
-                    for (final target in _targets)
+                    for (final option in widget.options)
                       DropdownMenuItem(
-                        value: target,
-                        child: Text(agentProductLabel(target)),
+                        value: option.id,
+                        child: Text(option.label),
                       ),
                   ],
                   onChanged: (value) {

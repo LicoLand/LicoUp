@@ -1,12 +1,12 @@
 import 'dart:collection';
 
-import 'package:licoup/src/application/features/layout/layout_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 
 final class RegisteredLayoutVariant {
   const RegisteredLayoutVariant({required this.bundle, required this.variant});
@@ -61,19 +61,13 @@ final class LayoutRegistry {
       }
     }
 
-    if (!_sameSet(
-      definitionById.keys.toSet(),
-      catalog.profileById.keys.toSet(),
-    )) {
+    if (!_sameSet(definitionById.keys.toSet(), catalog.profileIds.toSet())) {
       throw const FormatException('layout_registry_profile_product_invalid');
     }
-    if (!_sameSet(
-      variantByKey.keys.toSet(),
-      catalog.variantByKey.keys.toSet(),
-    )) {
+    if (!_sameSet(variantByKey.keys.toSet(), catalog.variantKeys.toSet())) {
       throw const FormatException('layout_registry_variant_product_invalid');
     }
-    if (!_sameSet(declaredNamespaces, catalog.stateNamespaces)) {
+    if (!_sameSet(declaredNamespaces, catalog.stateNamespaces.toSet())) {
       throw const FormatException('layout_registry_state_product_invalid');
     }
 

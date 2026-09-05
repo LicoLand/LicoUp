@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_models.dart';
@@ -19,7 +19,7 @@ enum CatalogConvergencePhase {
 /// Pull credentials stay inside the call-scoped [CatalogAuthenticatedPull]
 /// adapter. This controller retains only opaque partition identifiers and
 /// bounded, privacy-safe status counts.
-final class CatalogConvergenceController extends ChangeNotifier {
+final class CatalogConvergenceController extends ApplicationStateOwner {
   CatalogConvergenceController({required CatalogConvergenceGateway gateway})
     : _gateway = gateway;
 
@@ -173,7 +173,7 @@ final class CatalogConvergenceController extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (!_disposed) publishChange();
   }
 
   @override

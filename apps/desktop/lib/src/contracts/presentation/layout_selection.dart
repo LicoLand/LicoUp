@@ -1,15 +1,7 @@
 import 'layout_environment.dart';
 import 'layout_profile.dart';
+import 'layout_selection_status.dart';
 import 'layout_variant.dart';
-
-enum LayoutSelectionStatus { loading, stable, committing, error }
-
-enum LayoutSelectionErrorCode {
-  invalidProfile,
-  unavailableProfile,
-  invalidStoredPreference,
-  persistenceFailed,
-}
 
 final class LayoutSelectionState {
   factory LayoutSelectionState({

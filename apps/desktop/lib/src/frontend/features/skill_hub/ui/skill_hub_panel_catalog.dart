@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
-import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_search.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -10,6 +8,9 @@ import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 
 class SkillCategoryFilter extends StatelessWidget {
   const SkillCategoryFilter({
@@ -55,7 +56,7 @@ class SkillCategoryFilter extends StatelessWidget {
   }
 }
 
-class _SkillCategoryChip extends StatelessWidget {
+final class _SkillCategoryChip extends StatelessWidget {
   const _SkillCategoryChip({
     required this.label,
     required this.isSelected,
@@ -69,56 +70,52 @@ class _SkillCategoryChip extends StatelessWidget {
   final LicoThemeColors colors;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: LicoMotion.short,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? colors.primary : colors.surfaceLow,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected
-                ? colors.primary
-                : colors.line.withValues(alpha: 0.5),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? colors.textOnPrimary : colors.text,
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: context.motion(LicoMotion.short),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isSelected ? colors.primary : colors.surfaceLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isSelected
+              ? colors.primary
+              : colors.line.withValues(alpha: 0.5),
         ),
       ),
-    );
-  }
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? colors.textOnPrimary : colors.text,
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+    ),
+  );
 }
 
 class SkillCollection extends StatelessWidget {
   const SkillCollection({
     super.key,
-    required this.controller,
+    required this.projection,
+    required this.intents,
     required this.selectedCategory,
-    this.searchQuery = '',
   });
 
-  final ClientController controller;
+  final SkillHubProjection projection;
+  final IntentSink<SkillHubIntent> intents;
   final String selectedCategory;
-  final String searchQuery;
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final skills = filterAndRankSkillHubSkills(
-      skills: controller.skillHubSkills,
+    final skills = filterAndRankSkillProjections(
+      skills: projection.skills,
       category: selectedCategory,
-      query: searchQuery,
+      query: projection.query,
     );
-
-    if (controller.isSkillHubBusy && controller.skillHubSkills.isEmpty) {
+    if (projection.phase == PresentationPhase.loading && skills.isEmpty) {
       return const SliverFillRemaining(
         hasScrollBody: false,
         child: SkillScanningPlaceholder(),
@@ -130,13 +127,12 @@ class SkillCollection extends StatelessWidget {
         child: LicoEmptyState(
           icon: Icons.extension_outlined,
           iconSize: 64,
-          title: strings.noSkillsFound,
-          message: strings.refreshSkillsHint,
+          title: LicoStrings.of(context).noSkillsFound,
+          message: LicoStrings.of(context).refreshSkillsHint,
           padding: const EdgeInsets.all(32),
         ),
       );
     }
-
     return SliverPadding(
       padding: EdgeInsets.zero,
       sliver: SliverGrid(
@@ -146,64 +142,39 @@ class SkillCollection extends StatelessWidget {
           crossAxisSpacing: 12,
           mainAxisExtent: 248,
         ),
-        delegate: SliverChildBuilderDelegate((context, index) {
-          return _SkillCard(controller: controller, skill: skills[index]);
-        }, childCount: skills.length),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => _SkillCard(
+            skill: skills[index],
+            intents: intents,
+            usageAvailable: projection.usageAvailable,
+          ),
+          childCount: skills.length,
+        ),
       ),
     );
   }
 }
 
-class _SkillCard extends StatelessWidget {
-  const _SkillCard({required this.controller, required this.skill});
+final class _SkillCard extends StatelessWidget {
+  const _SkillCard({
+    required this.skill,
+    required this.intents,
+    required this.usageAvailable,
+  });
 
-  final ClientController controller;
-  final Map<String, dynamic> skill;
+  final SkillProjectionItem skill;
+  final IntentSink<SkillHubIntent> intents;
+  final bool usageAvailable;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final title = (skill['title'] ?? skill['skillId'] ?? '').toString();
-    final author = (skill['author'] ?? '').toString().trim();
-    final description = (skill['description'] ?? '').toString();
-    final version = (skill['version'] ?? 'local').toString();
-    final isPublic = skill['isPublic'] == true;
-    final path = (skill['path'] ?? '').toString();
-    final skillId = (skill['skillId'] ?? title).toString();
-    final usedBy = List<String>.from(skill['usedByAgents'] ?? const <String>[]);
-    final detectedAgentIds = controller.scannedTargets
-        .where((target) => target.visibleInClient)
-        .map((target) => target.target);
-    final loaderAgentIds =
-        (usedBy.isEmpty
-                ? skillLoaderAgentIdsForPath(
-                    path: path,
-                    isPublic: isPublic,
-                    detectedAgentIds: detectedAgentIds,
-                  )
-                : usedBy.map(canonicalSkillAgentId))
-            .toSet()
-            .toList(growable: false);
     final strings = LicoStrings.of(context);
-    final invocationCount =
-        skillUsageTotalsBySkill(
-          controller.skillUsageReport,
-        )[normalizeSkillUsageId(skillId)] ??
-        0;
-
     return Card(
+      key: Key('skill-card-${skill.id}'),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _showDetails(
-          context,
-          skillId: skillId,
-          title: title,
-          author: author,
-          version: version,
-          path: path,
-          isPublic: isPublic,
-          description: description,
-        ),
+        onTap: () => _showDetails(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -213,20 +184,13 @@ class _SkillCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SkillCardHeader(
-                      controller: controller,
-                      skillId: skillId,
-                      title: title,
-                      description: description,
-                      isPublic: isPublic,
-                      colors: colors,
-                    ),
+                    SkillCardHeader(skill: skill, intents: intents),
                     const SizedBox(height: 12),
-                    SkillCardTitle(title: title, color: colors.text),
-                    if (author.isNotEmpty) ...[
+                    SkillCardTitle(title: skill.name, color: colors.text),
+                    if (skill.author.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        author,
+                        skill.author,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         softWrap: true,
@@ -239,191 +203,84 @@ class _SkillCard extends StatelessWidget {
                     ],
                     const SizedBox(height: 6),
                     SkillCardDescription(
-                      text: description.isNotEmpty
-                          ? description
-                          : strings.noDescription,
+                      text: skill.description.isEmpty
+                          ? strings.noDescription
+                          : skill.description,
                       color: colors.textMuted,
                     ),
                   ],
                 ),
               ),
             ),
-            SkillCardFooter(
-              controller: controller,
-              loaderAgentIds: loaderAgentIds,
-              version: version,
-              colors: colors,
-              invocationCount: invocationCount,
-            ),
+            SkillCardFooter(skill: skill),
           ],
         ),
       ),
     );
   }
 
-  void _showDetails(
-    BuildContext context, {
-    required String skillId,
-    required String title,
-    required String author,
-    required String version,
-    required String path,
-    required bool isPublic,
-    required String description,
-  }) {
+  Future<void> _showDetails(BuildContext context) async {
     final strings = LicoStrings.of(context);
-    final colors = context.licoColors;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    final report = controller.skillUsageReport;
-    final normalizedId = normalizeSkillUsageId(skillId);
-    final allTimeCount = report == null
-        ? null
-        : skillUsageTotalsBySkill(report)[normalizedId] ?? 0;
-    final windowedCount = report == null
-        ? null
-        : skillUsageWindowedBySkill(report)[normalizedId] ?? 0;
-    var movingToTrash = false;
-    showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text(title),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${strings.skillId}: $skillId'),
-                if (author.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text('${strings.author}: $author'),
-                ],
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('skill-detail-dialog'),
+        title: Text(skill.name),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${strings.skillId}: ${skill.id}'),
+              if (skill.author.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text('${strings.version}: $version'),
-                const SizedBox(height: 8),
-                Text('${strings.path}: $path'),
+                Text('${strings.author}: ${skill.author}'),
+              ],
+              const SizedBox(height: 8),
+              Text('${strings.version}: ${skill.version}'),
+              const SizedBox(height: 8),
+              Text('${strings.path}: ${skill.pathLabel}'),
+              const SizedBox(height: 8),
+              Text(
+                '${strings.type}: '
+                '${skill.public ? strings.publicLabel : strings.privateLabel}',
+              ),
+              if (usageAvailable) ...[
                 const SizedBox(height: 8),
                 Text(
-                  '${strings.type}: '
-                  '${isPublic ? strings.publicLabel : strings.privateLabel}',
+                  key: const Key('skill-detail-all-time-invocations'),
+                  '${strings.allTimeInvocations}: ${skill.usageCount}',
                 ),
-                if (allTimeCount != null && windowedCount != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    key: const Key('skill-detail-all-time-invocations'),
-                    '${strings.allTimeInvocations}: $allTimeCount',
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    key: const Key('skill-detail-windowed-invocations'),
-                    '${strings.lastDays(30)}: $windowedCount',
-                  ),
-                ],
                 const SizedBox(height: 8),
-                Text('${strings.description}: $description'),
+                Text(
+                  key: const Key('skill-detail-windowed-invocations'),
+                  '${strings.lastDays(30)}: ${skill.windowedUsageCount}',
+                ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton.icon(
-              key: const ValueKey('skill-delete-button'),
-              onPressed: movingToTrash || path.trim().isEmpty
-                  ? null
-                  : () async {
-                      final confirmed = await _confirmMoveToTrash(
-                        dialogContext,
-                        strings: strings,
-                        title: title,
-                      );
-                      if (!confirmed || !dialogContext.mounted) return;
-                      setDialogState(() => movingToTrash = true);
-                      final moved = await _moveSkillToTrash(
-                        skillId: skillId,
-                        path: path,
-                      );
-                      if (!dialogContext.mounted) return;
-                      if (!moved) {
-                        setDialogState(() => movingToTrash = false);
-                        _showTrashMessage(messenger, strings.skillTrashFailed);
-                        return;
-                      }
-                      controller.removeSkillHubEntryAtPath(path);
-                      Navigator.of(dialogContext).pop();
-                      _showTrashMessage(
-                        messenger,
-                        strings.skillMovedToSystemTrash(title),
-                      );
-                    },
-              icon: movingToTrash
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.delete_outline),
-              label: Text(strings.delete),
-              style: TextButton.styleFrom(foregroundColor: colors.error),
-            ),
-            TextButton(
-              onPressed: movingToTrash
-                  ? null
-                  : () => Navigator.of(dialogContext).pop(),
-              child: Text(strings.close),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<bool> _confirmMoveToTrash(
-    BuildContext context, {
-    required LicoStrings strings,
-    required String title,
-  }) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (confirmationContext) => AlertDialog(
-            title: Text(strings.deleteSkillTitle),
-            content: Text(strings.trashSkillMessage(title)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(confirmationContext).pop(false),
-                child: Text(strings.cancel),
-              ),
-              FilledButton(
-                key: const ValueKey('skill-move-to-trash-confirm'),
-                onPressed: () => Navigator.of(confirmationContext).pop(true),
-                child: Text(strings.moveToSystemTrash),
-              ),
+              const SizedBox(height: 8),
+              Text('${strings.description}: ${skill.description}'),
             ],
           ),
-        ) ??
-        false;
-  }
-
-  Future<bool> _moveSkillToTrash({
-    required String skillId,
-    required String path,
-  }) async {
-    await controller.previewSkillDelete(skillId: skillId, path: path);
-    final plan = controller.skillDeletePlan;
-    final confirmation = (plan?['confirmation'] ?? '').toString();
-    if (plan?['ok'] != true ||
-        plan?['trashAllowed'] != true ||
-        confirmation.isEmpty) {
-      return false;
-    }
-    await controller.applySkillDelete(
-      skillId: skillId,
-      path: path,
-      confirmation: confirmation,
+        ),
+        actions: [
+          TextButton.icon(
+            key: const Key('skill-delete-button'),
+            onPressed: skill.pathLabel.isEmpty
+                ? null
+                : () {
+                    Navigator.pop(dialogContext);
+                    intents.send(
+                      PreviewSkillRemoval(skill.id, skill.pathLabel),
+                    );
+                  },
+            icon: const Icon(Icons.delete_outline),
+            label: Text(LicoStrings.of(dialogContext).delete),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(LicoStrings.of(dialogContext).close),
+          ),
+        ],
+      ),
     );
-    final result = controller.skillDeleteResult;
-    return result?['ok'] == true && result?['status'] == 'trashed';
-  }
-
-  void _showTrashMessage(ScaffoldMessengerState? messenger, String message) {
-    messenger
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }

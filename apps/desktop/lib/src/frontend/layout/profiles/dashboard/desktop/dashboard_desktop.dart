@@ -1,6 +1,5 @@
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
-import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/components/dashboard_desktop_component_kit.dart';
@@ -18,17 +17,7 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/das
 
 /// The sole public artifact of the Dashboard desktop renderer.
 final LayoutSurfaceBundle dashboardDesktopBundle = LayoutSurfaceBundle(
-  profile: LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('dashboard'),
-    label: LayoutProfileCopy(english: 'Dashboard', chinese: '仪表盘'),
-    description: LayoutProfileCopy(
-      english:
-          'Dashboard layout: the cross-platform product shell with a spacious card dashboard.',
-      chinese: 'Dashboard 布局：跨平台产品壳，宽松卡片式工作台。',
-    ),
-    styleIdentity: 'spacious-card-dashboard',
-    isDefault: false,
-  ),
+  profile: BuiltInLayoutSpec.dashboard,
   surface: LayoutRuntimeSurface.desktop,
   variants: {
     LayoutViewportClass.medium: LayoutSurfaceVariant(
@@ -47,32 +36,7 @@ final LayoutSurfaceBundle dashboardDesktopBundle = LayoutSurfaceBundle(
   components: const DashboardDesktopComponentKit(),
   assetNamespace: 'layout-profiles/dashboard/desktop',
   restorationNamespace: 'dashboard.desktop',
-  stateNamespaces: {
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('dashboard'),
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsHistory,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('dashboard'),
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsSidebar,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('dashboard'),
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.settings,
-      channel: LayoutStateChannels.settingsScroll,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('dashboard'),
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.settings,
-      channel: LayoutStateChannels.settingsSection,
-    ),
-  },
+  stateNamespaces: BuiltInLayoutSpec.dashboardDesktopStateNamespaces,
 );
 
 Map<ClientSection, LayoutDestinationBuilder>

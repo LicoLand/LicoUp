@@ -320,7 +320,7 @@ void main() {
       );
       addTearDown(controller.dispose);
       final observations = <List<String>>[];
-      controller.addListener(() {
+      controller.changes.listen((_) {
         observations.add(
           controller.targets.map((target) => target.target).toList(),
         );

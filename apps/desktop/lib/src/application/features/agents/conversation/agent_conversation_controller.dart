@@ -25,6 +25,7 @@ abstract class AgentConversationController extends AgentWorkspaceCoordinator
         AgentConversationMessageController {
   @override
   void dispose() {
+    disposeConversationLiveProjection();
     conversationStateHolder.dispose();
     super.dispose();
   }

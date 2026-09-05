@@ -4,8 +4,9 @@ import 'package:licoup/src/application/features/messaging/messaging_notification
 void main() {
   test('publish replaces the same event identity', () {
     final center = MessagingNotificationCenter();
+    addTearDown(center.dispose);
     var ticks = 0;
-    center.addListener(() => ticks += 1);
+    center.changes.listen((_) => ticks += 1);
 
     center.publish(
       id: 'subagent-mcp-cursor',

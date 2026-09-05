@@ -1,3 +1,7 @@
+import 'dart:collection';
+
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
+
 int recommendedPluginsCount(List<String> blocks) {
   var count = 0;
   for (final block in blocks) {
@@ -23,21 +27,42 @@ class MessageDisplayContent {
   final List<String> recommendedPluginsBlocks;
 }
 
+/// Bounded content-addressed cache for display splits. Every visible message
+/// row re-runs these regex extractions on every workspace rebuild; keyed by
+/// the message text, unchanged rows become cache hits. The result is shared
+/// across widgets, so block lists are stored unmodifiable.
+final LinkedHashMap<String, MessageDisplayContent> _displaySplitCache =
+    LinkedHashMap();
+const int _displaySplitCacheLimit = 512;
+
 MessageDisplayContent splitMessageDisplayBlocks(String data) {
+  final cached = _displaySplitCache.remove(data);
+  if (cached != null) {
+    // Refresh recency: LRU eviction drops the least recently used entry.
+    _displaySplitCache[data] = cached;
+    return cached;
+  }
   final pluginsExtraction = _extractBlocks(data, _recommendedPluginsPattern);
   final metadataExtraction = _extractBlocks(
     pluginsExtraction.body,
     _additionalMetadataPattern,
   );
-  return MessageDisplayContent(
+  final content = MessageDisplayContent(
     body: _compactMessageBody(metadataExtraction.body),
-    metadataBlocks: metadataExtraction.blocks,
-    recommendedPluginsBlocks: pluginsExtraction.blocks,
+    metadataBlocks: List<String>.unmodifiable(metadataExtraction.blocks),
+    recommendedPluginsBlocks: List<String>.unmodifiable(
+      pluginsExtraction.blocks,
+    ),
   );
+  if (_displaySplitCache.length >= _displaySplitCacheLimit) {
+    _displaySplitCache.remove(_displaySplitCache.keys.first);
+  }
+  _displaySplitCache[data] = content;
+  return content;
 }
 
 String conversationMessagePreviewText(String text) {
-  return splitMessageDisplayBlocks(text).body.trim();
+  return sanitizeConversationDisplayText(splitMessageDisplayBlocks(text).body);
 }
 
 ({String body, List<String> blocks}) _extractBlocks(

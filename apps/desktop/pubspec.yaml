@@ -41,6 +41,8 @@ dependencies:
   mime: ^2.0.0
   path: ^1.9.1
   path_provider: ^2.1.5
+  presentation_contract:
+    path: ../../packages/presentation_contract
   super_clipboard: ^0.9.1
   uuid: ^4.5.1
   qr_code_dart_scan: 0.12.0

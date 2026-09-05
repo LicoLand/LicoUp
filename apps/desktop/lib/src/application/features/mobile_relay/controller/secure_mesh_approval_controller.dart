@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
 import 'package:licoup/src/application/features/mobile_relay/policy/secure_mesh_policy.dart';
@@ -6,7 +6,7 @@ import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns the redacted approval inbox and short-lived response secrets.
-final class SecureMeshApprovalController extends ChangeNotifier {
+final class SecureMeshApprovalController extends ApplicationStateOwner {
   SecureMeshApprovalController({
     required SecureMeshGateway gateway,
     required MobileRelayOperationGate operationGate,
@@ -43,21 +43,21 @@ final class SecureMeshApprovalController extends ChangeNotifier {
     }
     _inbox = List<SecureMeshApprovalRequest>.unmodifiable(public);
     _pruneSecrets();
-    notifyListeners();
+    publishChange();
   }
 
   void replaceLastAction(Map<String, dynamic>? value) {
     _lastAction = value == null
         ? null
         : SecureMeshPolicy.approvalActionProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceAdapterCapability(Map<String, dynamic>? value) {
     _adapterCapability = value == null
         ? null
         : SecureMeshPolicy.approvalCapabilityProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> ingest({
@@ -83,12 +83,12 @@ final class SecureMeshApprovalController extends ChangeNotifier {
         'The remote-approval request is invalid.',
         errorCode: 'secure_mesh_approval_request_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
     _report('正在登记远程审批请求。', 'Registering the remote-approval request.');
-    notifyListeners();
+    publishChange();
     final request = SecureMeshApprovalRequest(
       pendingOperationId: id,
       requesterAgentId: requesterAgentId.trim(),
@@ -152,13 +152,13 @@ final class SecureMeshApprovalController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
   Future<void> refreshInbox({bool includeResolved = true}) async {
     if (!_operationGate.tryAcquire()) return;
-    notifyListeners();
+    publishChange();
     try {
       final raw = await _gateway.listApprovalInbox(
         includeResolved: includeResolved,
@@ -198,7 +198,7 @@ final class SecureMeshApprovalController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -222,7 +222,7 @@ final class SecureMeshApprovalController extends ChangeNotifier {
         'The remote-approval response is invalid.',
         errorCode: 'secure_mesh_approval_response_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
@@ -230,7 +230,7 @@ final class SecureMeshApprovalController extends ChangeNotifier {
       allow ? '正在批准远程请求。' : '正在拒绝远程请求。',
       allow ? 'Approving the remote request.' : 'Denying the remote request.',
     );
-    notifyListeners();
+    publishChange();
     try {
       final raw = await _gateway.resolveApproval(
         pendingOperationId: id,
@@ -296,7 +296,7 @@ final class SecureMeshApprovalController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 

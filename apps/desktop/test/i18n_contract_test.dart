@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -145,16 +145,16 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.localePreference = 'zh';
-      expect(controller.displayStatusMessage, '等待扫描目标适配器。');
+      expect(_displayStatusMessage(controller), '等待扫描目标适配器。');
       controller.statusCaption = 'Mobile relay';
-      expect(controller.displayStatusCaption, '移动中转');
+      expect(_displayStatusCaption(controller), '移动中转');
 
       controller.localePreference = 'en';
       expect(
-        controller.displayStatusMessage,
+        _displayStatusMessage(controller),
         'Waiting to scan target adapters.',
       );
-      expect(controller.displayStatusCaption, 'Mobile relay');
+      expect(_displayStatusCaption(controller), 'Mobile relay');
       expect(controller.statusMessage, '等待扫描目标适配器。');
     },
   );
@@ -188,6 +188,17 @@ void main() {
     },
   );
 }
+
+String _displayStatusMessage(ClientController controller) {
+  final strings = LicoStrings.forPreference(controller.localePreference);
+  final runtime = controller.functionalStatusRuntime;
+  return strings.isChinese ? runtime.messageChinese : runtime.messageEnglish;
+}
+
+String _displayStatusCaption(ClientController controller) =>
+    LicoStrings.forPreference(
+      controller.localePreference,
+    ).statusCaptionLabel(controller.statusCaption);
 
 class _LocalizedTestApp extends StatelessWidget {
   const _LocalizedTestApp({required this.child});

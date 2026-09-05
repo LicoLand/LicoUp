@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
+import 'package:licoup/src/presentation/plugin_management/optional_collaboration_presentation_actions.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_card.dart';
@@ -18,7 +18,7 @@ final class OptionalCollaborationDeploymentSection extends StatefulWidget {
   });
 
   final List<OptionalCollaborationWorkflowChoice> choices;
-  final OptionalCollaborationWorkflowController controller;
+  final OptionalCollaborationWorkflowPresentationActions controller;
   final bool isChinese;
 
   @override

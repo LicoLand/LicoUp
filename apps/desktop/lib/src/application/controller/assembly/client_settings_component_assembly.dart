@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
-
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
@@ -22,7 +20,6 @@ final class ClientSettingsComponentAssembly {
     required RuntimePlatformBridge runtimePlatformBridge,
     required String Function() directoryCaption,
     required ClientComponentStatusSink reportStatus,
-    required VoidCallback notifyStateChanged,
     OptionalCollaborationGateway? optionalCollaborationGateway,
     Future<void> Function()? onCatalogPurge,
   }) : logExportController = ClientLogExportController(
@@ -68,7 +65,6 @@ final class ClientSettingsComponentAssembly {
              caption: update.caption,
              errorCode: update.error?.toString() ?? '',
            );
-           notifyStateChanged();
          },
        );
 
@@ -76,12 +72,6 @@ final class ClientSettingsComponentAssembly {
   final ClientUpdateController updateController;
   final OptionalCollaborationController optionalCollaborationController;
   final DirectoryPathController directoryPathController;
-
-  Iterable<ChangeNotifier> get listenables => [
-    logExportController,
-    updateController,
-    optionalCollaborationController,
-  ];
 
   void dispose() {
     optionalCollaborationController.dispose();

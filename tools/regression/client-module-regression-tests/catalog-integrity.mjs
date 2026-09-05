@@ -217,8 +217,28 @@ test("source-bundle contract keeps an independent regression leaf", () => {
   ]);
 });
 
+test("agent-usage routing sources select the dedicated evidence verifier", () => {
+  const module = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.client-agent-usage");
+  assert.ok(module);
+  for (const relativePath of [
+    "apps/desktop/lib/src/composition/binding_shell_renderer.dart",
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
+    "apps/desktop/lib/src/frontend/shell/client_shell.dart",
+  ]) {
+    assert.equal(module.inputs.includes(relativePath), true);
+    assert.equal(
+      ids(selectModulesForChangedPaths([relativePath])).includes(
+        "regression.client-agent-usage",
+      ),
+      true,
+    );
+  }
+});
+
 test("architecture and package facades retain precise source-bundle ownership", () => {
   const architectureSources = [
+    "tools/verify-client-boundary.mjs",
     "apps/desktop/scripts/verify-client-architecture.mjs",
     "apps/desktop/scripts/client-architecture/assertions.mjs",
     "apps/desktop/scripts/client-architecture/context.mjs",
@@ -227,6 +247,7 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "apps/desktop/scripts/client-architecture/checks/flutter.mjs",
     "apps/desktop/scripts/client-architecture/checks/flutter/mobile-relay-bridges.mjs",
     "apps/desktop/scripts/client-architecture/checks/flutter/physical-layers-and-libraries.mjs",
+    "apps/desktop/scripts/client-architecture/checks/flutter/presentation-boundary.mjs",
     "apps/desktop/scripts/client-architecture/checks/flutter/shell-isolation-and-native-stdio.mjs",
     "apps/desktop/scripts/client-architecture/checks/foundations.mjs",
     "apps/desktop/scripts/client-architecture/checks/native.mjs",
@@ -483,7 +504,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
   ]);
 
   const expectedTestCounts = new Map([
-    ["catalog-integrity.mjs", 15],
+    ["catalog-integrity.mjs", 16],
     ["conversation-ownership.mjs", 6],
     ["flutter-selection.mjs", 4],
     ["platform-driver-ownership.mjs", 20],
@@ -509,7 +530,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 87);
+  assert.equal(registeredNames.size, 88);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

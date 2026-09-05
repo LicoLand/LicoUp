@@ -1,20 +1,23 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
 import 'package:licoup/src/application/controller/client_component_assembly.dart';
 import 'package:licoup/src/application/controller/client_conversation_archive_bindings.dart';
 import 'package:licoup/src/application/controller/client_conversation_facade.dart';
+import 'package:licoup/src/application/controller/client_appearance_commands.dart';
+import 'package:licoup/src/application/controller/client_functional_status_commands.dart';
+import 'package:licoup/src/application/controller/client_locale_commands.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_facade.dart';
 import 'package:licoup/src/application/controller/client_maintenance_facade.dart';
 import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_navigation_facade.dart';
-import 'package:licoup/src/application/controller/client_presentation_facade.dart';
 import 'package:licoup/src/application/controller/client_routing_facade.dart';
-import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/controller/functional_status_runtime.dart';
+import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
@@ -31,6 +34,8 @@ import 'package:licoup/src/application/features/agents/conversation/agent_conver
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
@@ -58,10 +63,13 @@ import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/conversation_attachment_release.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
@@ -78,6 +86,7 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
+import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/skill_hub/skill_hub_preferences_store.dart';
@@ -87,11 +96,6 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Stable application facade. Feature behavior and component construction live
 /// in focused facade and assembly leaves.
-@Deprecated(
-  'Migrate gestures to events/EventSender and render domain streams from '
-  'projections/*ProjectionConsumer. This compatibility composition root '
-  'remains usable until its dependent displays migrate.',
-)
 class ClientController extends AgentConversationController
     with
         ConversationRefreshController,
@@ -103,7 +107,9 @@ class ClientController extends AgentConversationController
         ConversationArchiveController,
         ClientConversationArchiveBindings,
         ClientConversationFacade,
-        ClientPresentationFacade,
+        ClientAppearanceCommands,
+        ClientLocaleCommands,
+        ClientFunctionalStatusCommands,
         ClientAgentUsageFacade,
         ClientMobileRelayFacade,
         ClientSkillHubFacade,
@@ -134,7 +140,7 @@ class ClientController extends AgentConversationController
     ClientCurrentViewTracker? currentViewTracker,
     AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
-    BuiltInLayoutComposition? layoutComposition,
+    LayoutCatalog? layoutCatalog,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
     ClientLogExportService? clientLogExportService,
@@ -149,6 +155,7 @@ class ClientController extends AgentConversationController
     Duration llmGatewayMonitorInterval = const Duration(seconds: 5),
     Duration llmGatewayRecoveryRetryDelay = const Duration(milliseconds: 500),
     LlmGatewayDiagnosticSink? llmGatewayDiagnosticSink,
+    ApplicationDiagnosticSink? applicationDiagnosticSink,
   }) : portableData = portableData ?? PortableDataRoot(),
        agentService =
            agentService ??
@@ -202,8 +209,37 @@ class ClientController extends AgentConversationController
            runtimePlatformBridge ?? const RuntimePlatformBridge(),
        _mobileClientRuntimePlatformOverride =
            mobileClientRuntimePlatformOverride,
+       diagnosticSink = applicationDiagnosticSink ?? _discardDiagnostic,
        _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
+    final preferredLayout =
+        this.runtimePlatformBridge.isMacos ||
+            this.runtimePlatformBridge.isWindows ||
+            this.runtimePlatformBridge.isMobileClientRuntime
+        ? LayoutProfileId.parse('messaging')
+        : LayoutProfileId.parse('dashboard');
+    final fallbackPreferences = PresentationPreferences(
+      layoutProfileId: preferredLayout,
+      appearancePresetId: AppearancePresetIds.defaultSystem,
+      localePreference: LocalePreference.system,
+    );
+    final resolvedCatalog = layoutCatalog ?? createBuiltInLayoutCatalog();
+    final resolvedLayoutManager =
+        layoutManager ??
+        LayoutManager(
+          catalog: resolvedCatalog,
+          preferencesRepository:
+              presentationPreferencesRepository ??
+              FilePresentationPreferencesRepository(
+                portableData: this.portableData,
+                fallback: fallbackPreferences,
+              ),
+          canonicalFallback: fallbackPreferences,
+          preferredDefaultId: preferredLayout,
+        );
+    if (!identical(resolvedLayoutManager.catalog, resolvedCatalog)) {
+      throw const FormatException('layout_manager_catalog_identity_mismatch');
+    }
     llmGatewayLifecycleController = LlmGatewayLifecycleController(
       agentService: this.agentService,
       readSettings: agentWorkspaceReadSettingsState,
@@ -212,7 +248,7 @@ class ClientController extends AgentConversationController
       diagnosticSink:
           llmGatewayDiagnosticSink ??
           LlmGatewayDiagnosticLog(portableData: this.portableData),
-    )..addListener(notifyClientStateChanged);
+    );
     _components = ClientComponentAssembly(
       portableData: this.portableData,
       agentService: this.agentService,
@@ -244,28 +280,22 @@ class ClientController extends AgentConversationController
       selectDefaultConversationAgent: selectDefaultConversationAgent,
       onEnterMonitoring: clientEnterMonitoringSection,
       onExitMonitoring: clientExitMonitoringSection,
-      notifyStateChanged: notifyClientStateChanged,
       entryHookTasks: resolveInterfaceEntryHookTasks(),
+      layoutCatalog: resolvedCatalog,
+      layoutManager: resolvedLayoutManager,
       mobileHomeLayoutRepository: mobileHomeLayoutRepository,
       skillHubGateway: skillHubGateway,
       skillDeleteGateway: skillDeleteGateway,
       skillUsageGateway: skillUsageGateway,
       skillHubLocalCatalogSource: skillHubLocalCatalogSource,
       optionalCollaborationGateway: optionalCollaborationGateway,
-      layoutComposition: layoutComposition,
-      layoutManager: layoutManager,
-      presentationPreferencesRepository: presentationPreferencesRepository,
       catalogConvergenceGateway: catalogConvergenceGateway,
     );
-    bootstrapController.addListener(notifyClientStateChanged);
-    archiveQueryController.addListener(notifyClientStateChanged);
-    archiveDestinationController.addListener(notifyClientStateChanged);
-    messagingNotificationCenter = MessagingNotificationCenter()
-      ..addListener(notifyClientStateChanged);
+    messagingNotificationCenter = MessagingNotificationCenter();
     clientConversationController = ClientConversationController(
       runner: this.agentService,
       onSelectionChanged: recordCurrentGroupConversationView,
-    )..addListener(notifyClientStateChanged);
+    );
     _clientConversationControllerReady = true;
     clientConversationController.syncAvailableConversationAgents(
       scannedTargets,
@@ -319,16 +349,9 @@ class ClientController extends AgentConversationController
   final bool? _mobileClientRuntimePlatformOverride;
   final bool _ownsClientClipboardService;
   final bool _ownsAgentService;
+  @override
+  final ApplicationDiagnosticSink diagnosticSink;
   late final ClientComponentAssembly _components;
-
-  final TextEditingController bootstrapController = TextEditingController();
-  @override
-  final TextEditingController snapshotRootController = TextEditingController();
-  @override
-  final TextEditingController archiveQueryController = TextEditingController();
-  @override
-  final TextEditingController archiveDestinationController =
-      TextEditingController();
 
   ClientComponentAssembly get componentAssembly => _components;
   @override
@@ -390,7 +413,14 @@ class ClientController extends AgentConversationController
   CatalogConvergenceController get catalogConvergenceController =>
       _components.catalogConvergenceController;
   @override
-  ClientShellController get shellController => _components.shellController;
+  AppearancePreferenceOwner get appearancePreferenceOwner =>
+      _components.appearancePreferenceOwner;
+  @override
+  LocalePreferenceOwner get localePreferenceOwner =>
+      _components.localePreferenceOwner;
+  @override
+  FunctionalStatusRuntime get functionalStatusRuntime =>
+      _components.functionalStatusRuntime;
   @override
   ClientNavigationController get navigationController =>
       _components.navigationController;
@@ -400,8 +430,7 @@ class ClientController extends AgentConversationController
   @override
   ClientInterfaceEntryHookController get interfaceEntryHookController =>
       _components.interfaceEntryHookController;
-  BuiltInLayoutComposition get layoutComposition =>
-      _components.layoutComposition;
+  LayoutCatalog get layoutCatalog => _components.layoutCatalog;
   @override
   LayoutManager get layoutManager => _components.layoutManager;
 
@@ -426,35 +455,33 @@ class ClientController extends AgentConversationController
   }) => openDirectoryPath(path, caption: caption);
 
   Future<void> _disposeRuntimeServices() async {
-    if (_ownsClientClipboardService) {
-      await clientClipboardService.dispose();
-    }
-    if (_ownsAgentService) {
-      await agentService.dispose();
-    }
+    await Future.wait<void>([
+      if (_ownsClientClipboardService) clientClipboardService.dispose(),
+      if (_ownsAgentService) agentService.dispose(),
+    ]);
+  }
+
+  Future<void>? _closing;
+
+  /// Deterministically closes the owned graph and asynchronous runtime ports.
+  Future<void> close() => _closing ??= _closeOnce();
+
+  Future<void> _closeOnce() async {
+    lifecycleController.dispose();
+    disposeAgentWorkspace();
+    llmGatewayLifecycleController.dispose();
+    messagingNotificationCenter.dispose();
+    clientConversationController.dispose();
+    llmVaultAuthorization.dispose();
+    _components.dispose();
+    super.dispose();
+    await _disposeRuntimeServices();
   }
 
   @override
   void dispose() {
-    if (lifecycleProjection.disposed) return;
-    lifecycleController.dispose();
-    disposeAgentWorkspace();
-    unawaited(_disposeRuntimeServices());
-    llmGatewayLifecycleController
-      ..removeListener(notifyClientStateChanged)
-      ..dispose();
-    messagingNotificationCenter
-      ..removeListener(notifyClientStateChanged)
-      ..dispose();
-    clientConversationController
-      ..removeListener(notifyClientStateChanged)
-      ..dispose();
-    llmVaultAuthorization.dispose();
-    _components.dispose();
-    bootstrapController.dispose();
-    snapshotRootController.dispose();
-    archiveQueryController.dispose();
-    archiveDestinationController.dispose();
-    super.dispose();
+    unawaited(close());
   }
 }
+
+void _discardDiagnostic(String code) {}

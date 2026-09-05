@@ -2,9 +2,11 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
+import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/presentation/environment/environment_projection.dart';
 
 void main() {
   test('app sections are the LicoUp client modules', () {
@@ -49,5 +51,10 @@ void main() {
     expect(LicoStrings.localeForPreference('system'), isNull);
     expect(LicoStrings.localeForPreference('zh')?.languageCode, 'zh');
     expect(LicoStrings.localeForPreference('en')?.languageCode, 'en');
+    expect(localeFromProjection(const LocaleProjection('system')), isNull);
+    expect(
+      localeFromProjection(const LocaleProjection('zh'))?.languageCode,
+      'zh',
+    );
   });
 }

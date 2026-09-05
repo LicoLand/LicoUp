@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 /// Feature-owned chrome content that layout profiles may host in their shell
 /// chrome without importing feature code: the conversation tab strip and the
-/// notification bell. Built by the application host with full controller and
-/// feature-widget access; consumed through [LayoutChromeFeaturesScope].
+/// notification bell. Built by composition from semantic bindings and
+/// feature-widget factories; consumed through [LayoutChromeFeaturesScope].
 abstract interface class LayoutChromeFeatures {
   /// The conversation pill-tab strip for the chrome band. Feature-owned;
   /// reads its own state and handles its own scrolling.

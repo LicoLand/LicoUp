@@ -31,7 +31,7 @@ final class Preferences {
     `final class PortableDataRoot {
   static const String _workspaceManifestFileName = '.licoup-workspace.json';
   Future<Directory> clientDirectory() async {
-    final directory = Directory(p.join(dataDir.path, 'licoup'));
+    final directory = Directory(p.join(dataDir.path, 'client-state'));
     return directory;
   }
 }
@@ -40,7 +40,7 @@ final class Preferences {
   await writeRelative(
     root,
     DEFAULT_LAYOUT_BOUNDARY_CONFIG.workspaceManifestPath,
-    "static const licoUpAppId = 'licoup';\n",
+    "static const fileName = '.licoup-workspace.json';\nstatic const licoUpAppId = 'licoup-client';\n",
   );
 }
 

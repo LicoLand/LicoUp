@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 /// Stable semantic identity for a complete presentation profile.
 final class LayoutProfileId implements Comparable<LayoutProfileId> {
   const LayoutProfileId._(this.value);
@@ -42,29 +40,10 @@ final class LayoutProfileId implements Comparable<LayoutProfileId> {
   String toString() => value;
 }
 
-/// Sole platform policy for choosing the preferred catalog profile.
-///
-/// The catalog remains the source of profile membership and declared default
-/// metadata. This policy selects the current product's platform preference;
-/// callers inject the result into manager, recovery, persistence, and reset.
-abstract final class LayoutProfileDefaults {
-  /// Platform-preferred layout for first run and "restore default".
-  static LayoutProfileId preferredForPlatform(TargetPlatform platform) {
-    return switch (platform) {
-      TargetPlatform.macOS ||
-      TargetPlatform.windows ||
-      TargetPlatform.iOS ||
-      TargetPlatform.android => LayoutProfileId.parse('messaging'),
-      _ => LayoutProfileId.parse('dashboard'),
-    };
-  }
-}
-
 /// Profile-owned copy for the client locales supported by this product.
 ///
 /// Copy travels with the profile registration so adding a profile never adds
 /// an identity branch to shared localization or Settings code.
-@immutable
 final class LayoutProfileCopy {
   factory LayoutProfileCopy({
     required String english,
@@ -112,6 +91,7 @@ final class LayoutProfileDescriptor
     required LayoutProfileCopy description,
     required String styleIdentity,
     required bool isDefault,
+    bool selectable = true,
     int revision = 1,
   }) {
     if (!_styleIdentity.hasMatch(styleIdentity)) {
@@ -126,6 +106,7 @@ final class LayoutProfileDescriptor
       description: description,
       styleIdentity: styleIdentity,
       isDefault: isDefault,
+      selectable: selectable,
       revision: revision,
     );
   }
@@ -136,6 +117,7 @@ final class LayoutProfileDescriptor
     required this.description,
     required this.styleIdentity,
     required this.isDefault,
+    required this.selectable,
     required this.revision,
   });
 
@@ -146,6 +128,7 @@ final class LayoutProfileDescriptor
   final LayoutProfileCopy description;
   final String styleIdentity;
   final bool isDefault;
+  final bool selectable;
   final int revision;
 
   @override
@@ -160,9 +143,17 @@ final class LayoutProfileDescriptor
           other.description == description &&
           other.styleIdentity == styleIdentity &&
           other.isDefault == isDefault &&
+          other.selectable == selectable &&
           other.revision == revision;
 
   @override
-  int get hashCode =>
-      Object.hash(id, label, description, styleIdentity, isDefault, revision);
+  int get hashCode => Object.hash(
+    id,
+    label,
+    description,
+    styleIdentity,
+    isDefault,
+    selectable,
+    revision,
+  );
 }

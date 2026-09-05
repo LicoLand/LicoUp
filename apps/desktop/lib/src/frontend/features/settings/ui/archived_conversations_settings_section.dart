@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -12,14 +11,19 @@ import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_effect.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 class ArchivedConversationsSettingsSection extends StatefulWidget {
   const ArchivedConversationsSettingsSection({
     super.key,
-    required this.controller,
+    required this.binding,
   });
 
-  final ClientConversationController controller;
+  final SettingsBinding binding;
 
   @override
   State<ArchivedConversationsSettingsSection> createState() =>
@@ -30,19 +34,44 @@ class _ArchivedConversationsSettingsSectionState
     extends State<ArchivedConversationsSettingsSection> {
   final _searchController = TextEditingController();
   final _restoringIds = <String>{};
+  final _pendingRestoreTitles = <String, String>{};
+  StreamSubscription<SettingsEffect>? _restoreSubscription;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_handleSearchChanged);
-    unawaited(widget.controller.refreshArchived());
+    _listenForRestoreResults();
+    widget.binding.intents.send(const RefreshArchivedConversations());
   }
 
   @override
   void didUpdateWidget(ArchivedConversationsSettingsSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.controller, widget.controller)) {
-      unawaited(widget.controller.refreshArchived());
+    if (!identical(oldWidget.binding, widget.binding)) {
+      unawaited(_restoreSubscription?.cancel());
+      _listenForRestoreResults();
+      widget.binding.intents.send(const RefreshArchivedConversations());
+    }
+  }
+
+  void _listenForRestoreResults() {
+    _restoreSubscription = widget.binding.effects.effects.listen((effect) {
+      if (effect case ArchivedConversationRestoreCompleted()) {
+        _handleRestoreResult(effect);
+      }
+    });
+  }
+
+  void _handleRestoreResult(ArchivedConversationRestoreCompleted result) {
+    final title = _pendingRestoreTitles.remove(result.conversationId);
+    if (!mounted) return;
+    setState(() => _restoringIds.remove(result.conversationId));
+    if (result.restored && title != null) {
+      final strings = LicoStrings.of(context);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(strings.conversationRestored(title))),
+      );
     }
   }
 
@@ -50,20 +79,13 @@ class _ArchivedConversationsSettingsSectionState
     if (mounted) setState(() {});
   }
 
-  Future<void> _restore(ClientConversationSummary conversation) async {
+  void _restore(ArchivedConversationProjection conversation) {
     if (_restoringIds.contains(conversation.id)) return;
-    setState(() => _restoringIds.add(conversation.id));
-    final restored = await widget.controller.restoreArchived(conversation.id);
-    if (!mounted) return;
-    setState(() => _restoringIds.remove(conversation.id));
-    if (restored) {
-      final strings = LicoStrings.of(context);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(
-          content: Text(strings.conversationRestored(conversation.title)),
-        ),
-      );
-    }
+    setState(() {
+      _restoringIds.add(conversation.id);
+      _pendingRestoreTitles[conversation.id] = conversation.title;
+    });
+    widget.binding.intents.send(RestoreArchivedConversation(conversation.id));
   }
 
   @override
@@ -71,6 +93,7 @@ class _ArchivedConversationsSettingsSectionState
     _searchController
       ..removeListener(_handleSearchChanged)
       ..dispose();
+    unawaited(_restoreSubscription?.cancel());
     super.dispose();
   }
 
@@ -78,11 +101,12 @@ class _ArchivedConversationsSettingsSectionState
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
-    return AnimatedBuilder(
-      animation: widget.controller,
-      builder: (context, _) {
-        final archived = widget.controller.archivedConversations;
+    final presentation = layoutSettingsPresentationOf(context);
+    return ProjectionBuilder<SettingsProjection, SettingsProjection>(
+      source: widget.binding.projection,
+      select: _settingsIdentity,
+      builder: (context, projection) {
+        final archived = projection.archivedConversations;
         final query = _searchController.text.trim().toLowerCase();
         final visible = query.isEmpty
             ? archived
@@ -92,10 +116,15 @@ class _ArchivedConversationsSettingsSectionState
                         conversation.title.toLowerCase().contains(query),
                   )
                   .toList(growable: false);
+        final notice = projection.notice;
+        final failureStage =
+            notice?.id.startsWith('settings-conversation-') == true
+            ? notice!.id.substring('settings-conversation-'.length)
+            : '';
+        final failureCode = notice?.reasonCode ?? '';
         final hasFailure =
-            widget.controller.failureCode.isNotEmpty &&
-            (widget.controller.failureStage == 'archived-list' ||
-                widget.controller.failureStage == 'restore');
+            failureCode.isNotEmpty &&
+            (failureStage == 'archived-list' || failureStage == 'restore');
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -155,17 +184,18 @@ class _ArchivedConversationsSettingsSectionState
                           Expanded(
                             child: Text(
                               strings.archivedConversationFailure(
-                                widget.controller.failureStage,
-                                widget.controller.failureCode,
+                                failureStage,
+                                failureCode,
                               ),
                             ),
                           ),
-                          if (widget.controller.failureStage == 'archived-list')
+                          if (failureStage == 'archived-list')
                             TextButton(
-                              onPressed: widget.controller.loading
+                              onPressed:
+                                  projection.phase == PresentationPhase.applying
                                   ? null
-                                  : () => unawaited(
-                                      widget.controller.refreshArchived(),
+                                  : () => widget.binding.intents.send(
+                                      const RefreshArchivedConversations(),
                                     ),
                               child: Text(strings.retry),
                             ),
@@ -174,7 +204,8 @@ class _ArchivedConversationsSettingsSectionState
                     ),
                     const SizedBox(height: LicoContentSpacing.item),
                   ],
-                  if (widget.controller.loading && archived.isEmpty)
+                  if (projection.phase == PresentationPhase.applying &&
+                      archived.isEmpty)
                     const _ArchivedConversationsLoading()
                   else if (visible.isEmpty)
                     LicoSurface(
@@ -257,7 +288,7 @@ class _ArchivedConversationRow extends StatelessWidget {
     required this.onRestore,
   });
 
-  final ClientConversationSummary conversation;
+  final ArchivedConversationProjection conversation;
   final bool restoring;
   final VoidCallback onRestore;
 
@@ -287,7 +318,7 @@ class _ArchivedConversationRow extends StatelessWidget {
           : const Icon(Icons.unarchive_outlined, size: 17),
       label: Text(strings.restore),
     );
-    final details = Row(
+    final rowContent = Row(
       children: [
         Icon(
           conversation.isGroup
@@ -334,7 +365,7 @@ class _ArchivedConversationRow extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                details,
+                rowContent,
                 const SizedBox(height: LicoContentSpacing.compact),
                 Align(alignment: Alignment.centerRight, child: restoreButton),
               ],
@@ -342,7 +373,7 @@ class _ArchivedConversationRow extends StatelessWidget {
           }
           return Row(
             children: [
-              Expanded(child: details),
+              Expanded(child: rowContent),
               const SizedBox(width: LicoContentSpacing.item),
               restoreButton,
             ],
@@ -352,3 +383,5 @@ class _ArchivedConversationRow extends StatelessWidget {
     );
   }
 }
+
+SettingsProjection _settingsIdentity(SettingsProjection value) => value;

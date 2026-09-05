@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,7 +31,11 @@ void main() {
         ],
         home: Builder(
           builder: (context) => TextButton(
-            onPressed: () => showConversationArchiveDialog(context, controller),
+            onPressed: () => showConversationArchiveDialog(
+              context,
+              actions: _archiveActions(controller),
+              sourceAgentId: 'codex',
+            ),
             child: const Text('open'),
           ),
         ),
@@ -96,7 +102,7 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => showConversationArchiveDialog(
               context,
-              controller,
+              actions: _archiveActions(controller),
               sourceAgentId: '',
             ),
             child: const Text('open all'),
@@ -121,4 +127,33 @@ void main() {
     expect(service.archiveSourceAgentId, isEmpty);
     expect(service.archiveDestinationPath, 'test-data/all-local-conversations');
   });
+}
+
+ConversationArchiveActions _archiveActions(ClientController controller) {
+  return ConversationArchiveActions(
+    initialQuery: controller.archiveQueryDraft,
+    destinationFor: (selectionMode, sourceAgentId) =>
+        controller.conversationArchiveDestinationFor(
+          selectionMode: selectionMode,
+          sourceAgentId: sourceAgentId,
+        ),
+    archiveAll: (sourceAgentId, destination) {
+      unawaited(
+        controller.archiveAllConversations(
+          sourceAgentId: sourceAgentId,
+          path: destination,
+        ),
+      );
+    },
+    archiveExactKeyword: (query, sourceAgentId, destination) {
+      controller.archiveQueryDraft = query;
+      unawaited(
+        controller.archiveConversationExactKeyword(
+          query: query,
+          sourceAgentId: sourceAgentId,
+          path: destination,
+        ),
+      );
+    },
+  );
 }

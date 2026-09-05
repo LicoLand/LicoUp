@@ -1,9 +1,65 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
+
+/// Bounded cache for table intrinsic-width measurements. Measuring runs one
+/// [TextPainter] layout per cell on every build; the parsed rows list keeps
+/// its identity per content through the block-parse cache, so the measured
+/// widths are reusable whenever the table and its style are unchanged.
+final LinkedHashMap<(List<List<String>>, TextStyle, Color, Color), List<double>>
+_tableIntrinsicWidthCache = LinkedHashMap();
+const int _tableIntrinsicWidthCacheLimit = 128;
+
+/// The widest intrinsic cell width per column, measured with the same inline
+/// spans and base style the table renders with, so column choices match the
+/// layout.
+@visibleForTesting
+List<double> messageMarkdownTableIntrinsicColumnWidths(
+  List<List<String>> rows,
+  TextStyle baseStyle, {
+  required Color accent,
+  required Color codeBackground,
+}) {
+  final key = (rows, baseStyle, accent, codeBackground);
+  final cached = _tableIntrinsicWidthCache.remove(key);
+  if (cached != null) {
+    // Refresh recency: LRU eviction drops the least recently used entry.
+    _tableIntrinsicWidthCache[key] = cached;
+    return cached;
+  }
+  final columnCount = rows.isEmpty ? 0 : rows.first.length;
+  final widths = List<double>.filled(columnCount, 0);
+  for (final row in rows) {
+    for (var column = 0; column < columnCount; column += 1) {
+      final painter = TextPainter(
+        text: TextSpan(
+          style: baseStyle,
+          children: messageMarkdownInlineSpans(
+            row[column],
+            baseStyle,
+            accent: accent,
+            codeBackground: codeBackground,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      if (painter.width > widths[column]) {
+        widths[column] = painter.width;
+      }
+    }
+  }
+  final result = List<double>.unmodifiable(widths);
+  if (_tableIntrinsicWidthCache.length >= _tableIntrinsicWidthCacheLimit) {
+    _tableIntrinsicWidthCache.remove(_tableIntrinsicWidthCache.keys.first);
+  }
+  _tableIntrinsicWidthCache[key] = result;
+  return result;
+}
 
 final class MessageMarkdownBlockView extends StatelessWidget {
   const MessageMarkdownBlockView({
@@ -261,11 +317,17 @@ final class _MarkdownTable extends StatelessWidget {
         final tableWidth = constraints.maxWidth;
         final columnWidths = <int, TableColumnWidth>{};
         if (tableWidth.isFinite) {
+          final intrinsicWidths = messageMarkdownTableIntrinsicColumnWidths(
+            rows,
+            baseStyle,
+            accent: accent,
+            codeBackground: codeBackground,
+          );
           final contentWidth =
               tableWidth - 2 - rows.first.length * _cellHorizontalPadding * 2;
           final equalShare = contentWidth / rows.first.length;
           for (var c = 0; c < rows.first.length; c++) {
-            columnWidths[c] = _maxIntrinsicCellWidth(c) <= equalShare
+            columnWidths[c] = intrinsicWidths[c] <= equalShare
                 ? const IntrinsicColumnWidth()
                 : const FlexColumnWidth();
           }
@@ -322,28 +384,6 @@ final class _MarkdownTable extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// The widest cell in [column], measured with the same inline spans and
-  /// base style the table renders with, so column choices match the layout.
-  double _maxIntrinsicCellWidth(int column) {
-    var width = 0.0;
-    for (final row in rows) {
-      final painter = TextPainter(
-        text: TextSpan(
-          style: baseStyle,
-          children: messageMarkdownInlineSpans(
-            row[column],
-            baseStyle,
-            accent: accent,
-            codeBackground: codeBackground,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      width = painter.width > width ? painter.width : width;
-    }
-    return width;
   }
 }
 

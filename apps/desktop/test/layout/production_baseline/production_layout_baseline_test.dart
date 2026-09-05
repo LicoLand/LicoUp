@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
@@ -42,7 +42,7 @@ void main() {
             'production-baseline-repaint-'
             '${profileId.value}-${surface.name}-${destination.name}',
           );
-          addTearDown(fixture.controller.dispose);
+          addTearDown(fixture.dispose);
           await tester.binding.setSurfaceSize(baseline.size);
           addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -51,6 +51,18 @@ void main() {
               semanticsKey: semanticsKey,
               repaintBoundaryKey: repaintBoundaryKey,
             ),
+          );
+          final viewport = LayoutViewportPolicy.classify(
+            surface: surface,
+            width: baseline.size.width,
+          );
+          expect(
+            find.byKey(
+              Key(
+                'layout-host-${profileId.value}/${surface.name}/${viewport.name}',
+              ),
+            ),
+            findsOneWidget,
           );
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 120));

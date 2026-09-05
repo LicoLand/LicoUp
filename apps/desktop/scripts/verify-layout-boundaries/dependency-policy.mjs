@@ -1,4 +1,3 @@
-import path from "node:path";
 import { NEUTRAL_LAYOUT_CONTRACTS } from "./config.mjs";
 import {
   importsFrom,
@@ -14,10 +13,31 @@ import {
   testOwnerFor,
 } from "./ownership.mjs";
 
+const destinationPresentationDefinitionPath =
+  "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart";
+const sharedRendererRoot = "apps/desktop/lib/src/frontend/shared/";
+const appearanceRendererRoot = "apps/desktop/lib/src/frontend/appearance/";
+const presentationRoot = "apps/desktop/lib/src/presentation/";
+
+export function isSharedRendererDependency(relativePath) {
+  return relativePath.startsWith(sharedRendererRoot);
+}
+
+export function isDestinationPresentationScopePath(relativePath) {
+  return (
+    relativePath === destinationPresentationDefinitionPath ||
+    (
+      relativePath.startsWith("apps/desktop/lib/src/frontend/layout/profiles/") &&
+      relativePath.includes("/destinations/")
+    )
+  );
+}
+
 export function isDirectNeutralDependency(relativePath) {
   return (
     relativePath.startsWith("apps/desktop/lib/src/contracts/presentation/") ||
     relativePath.startsWith("apps/desktop/lib/src/frontend/l10n/") ||
+    isSharedRendererDependency(relativePath) ||
     NEUTRAL_LAYOUT_CONTRACTS.has(relativePath)
   );
 }
@@ -25,18 +45,18 @@ export function isDirectNeutralDependency(relativePath) {
 export function isNeutralClosureDependency(relativePath) {
   return (
     relativePath.startsWith("apps/desktop/lib/src/contracts/") ||
+    relativePath.startsWith(appearanceRendererRoot) ||
+    relativePath.startsWith(presentationRoot) ||
     relativePath.startsWith("apps/desktop/lib/src/frontend/l10n/") ||
-    NEUTRAL_LAYOUT_CONTRACTS.has(relativePath) ||
-    relativePath ===
-      "apps/desktop/lib/src/application/features/layout/layout_state_store.dart" ||
-    relativePath ===
-      "apps/desktop/lib/src/application/features/layout/layout_catalog.dart" ||
-    relativePath ===
-      "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart"
+    isSharedRendererDependency(relativePath) ||
+    NEUTRAL_LAYOUT_CONTRACTS.has(relativePath)
   );
 }
 
 export function forbiddenDependencyCode(relativePath) {
+  if (isSharedRendererDependency(relativePath)) {
+    return null;
+  }
   if (
     relativePath.includes("/application/controller/") ||
     relativePath.endsWith("/client_controller.dart") ||
@@ -77,18 +97,11 @@ export function forbiddenDependencyCode(relativePath) {
 
 export function containsPublicBusinessPortDeclaration(catalog, relativePath, source) {
   const masked = maskCommentsAndStrings(source);
-  const sharedLayoutRoot = path.posix.dirname(catalog.config.profileSourceRoot);
-  const isSharedLayoutSource =
-    relativePath.startsWith(`${sharedLayoutRoot}/`) &&
-    !relativePath.startsWith(`${catalog.config.profileSourceRoot}/`);
   const isDestinationContract = relativePath.startsWith(
     "apps/desktop/lib/src/contracts/presentation/destinations/",
   );
-  if (!isSharedLayoutSource && !isDestinationContract) {
+  if (!isDestinationContract) {
     return false;
-  }
-  if (isSharedLayoutSource && /_port\.dart$/u.test(relativePath)) {
-    return true;
   }
   return (
     /\b(?:abstract\s+interface\s+|abstract\s+|base\s+|final\s+|interface\s+|sealed\s+)?class\s+[A-Z][A-Za-z0-9_]*Port\b/u.test(
@@ -181,7 +194,11 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
   if (sourceOwner != null && containsProfileIdentityBranch(source)) {
     fail("layout_profile_identity_branch_forbidden", relativePath);
   }
-  if (sourceOwner != null && containsDestinationPresentationScope(source)) {
+  if (
+    sourceOwner != null &&
+    containsDestinationPresentationScope(source) &&
+    !isDestinationPresentationScopePath(relativePath)
+  ) {
     fail("layout_destination_presentation_scope_forbidden", relativePath);
   }
   if (sourceOwner != null && containsCompleteControllerReference(source)) {
@@ -191,6 +208,8 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     if (
       specifier.startsWith("dart:") ||
       specifier.startsWith("package:flutter/") ||
+      (testOwner != null &&
+        specifier.startsWith("package:flutter_localizations/")) ||
       (testOwner != null && specifier.startsWith("package:flutter_test/"))
     ) {
       continue;
@@ -212,9 +231,7 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     if (
       isDirectNeutralDependency(resolved) ||
       (testOwner != null &&
-        (resolved.startsWith(`${catalog.config.profileTestFixtureRoot}/`) ||
-          resolved ===
-            "apps/desktop/lib/src/frontend/shared/ui/theme.dart"))
+        resolved.startsWith(`${catalog.config.profileTestFixtureRoot}/`))
     ) {
       continue;
     }
@@ -225,7 +242,7 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     if (resolved.includes("/application/")) {
       fail("layout_application_import_forbidden", relativePath);
     }
-    fail("layout_import_not_allowlisted", relativePath);
+    fail("layout_dependency_outside_contract", relativePath);
   }
   for (const token of [
     "LayoutRegistry(",

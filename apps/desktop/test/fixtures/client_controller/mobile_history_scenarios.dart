@@ -129,7 +129,7 @@ void registerClientMobileHistoryScenarios() {
       expect(controller.selectedConversationSessions, hasLength(25));
       expect(controller.selectedConversationSessionsHasMore, isFalse);
       expect(
-        controller.displayStatusMessage,
+        controller.functionalStatusRuntime.messageEnglish,
         contains('Read 25 native codex sessions.'),
       );
     },
