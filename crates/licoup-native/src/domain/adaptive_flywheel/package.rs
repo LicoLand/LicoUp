@@ -223,15 +223,6 @@ impl StrategyPackageImporter {
         );
         Ok(content)
     }
-
-    pub(crate) fn discard_preparation(&self, preparation_id: &str) -> Result<()> {
-        validate_preparation_id(preparation_id)?;
-        let path = self.root.join("prepared").join(preparation_id);
-        if path.exists() {
-            fs::remove_dir_all(path).map_err(|_| anyhow!("preparation_cleanup_failed"))?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

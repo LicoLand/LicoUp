@@ -83,6 +83,7 @@ test("synthetic entry/worker fixture is a typed single-entry workflow", () => {
   assert.equal(new Set(transitionIds).size, transitionIds.length);
   for (const transition of fixture.transitions) {
     assert.equal(TYPED_EVENTS.has(transition.event), true);
+    assert.equal(contract.transitionModes.includes(transition.mode), true);
     assert.equal(stateById.has(transition.from), true);
     assert.equal(stateById.has(transition.to), true);
   }
@@ -139,6 +140,20 @@ test("the bridge stays import-driven with bounded execution surfaces", () => {
   assert.equal(contract.actions.includes("strategy.run.start"), true);
   assert.equal(contract.actions.includes("strategy.authorization.grant"), true);
   assert.equal(contract.failureCodes.includes("workflow_invalid"), true);
+  assert.deepEqual([...contract.transitionModes].sort(), ["callback", "flow"]);
+  assert.deepEqual([...contract.callbackDecisions].sort(), [
+    "advance",
+    "return",
+    "terminate",
+  ]);
+  assert.equal(
+    contract.diagnosticCodes.includes("workflow_flow_target_incomplete"),
+    true,
+  );
+  assert.equal(
+    contract.diagnosticCodes.includes("workflow_transition_mode_invalid"),
+    true,
+  );
   for (const status of ["pending", "running", "blocked", "failed", "completed"]) {
     assert.equal(contract.runStatuses.includes(status), true);
   }
