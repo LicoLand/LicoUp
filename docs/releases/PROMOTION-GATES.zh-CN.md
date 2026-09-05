@@ -27,6 +27,32 @@ npm run client:promotion -- advance --head stable --base release
 错误或检查失败时停止。`nightly` 继续接收下一批普通改动；一份快照切分后，不得把
 更晚的 `nightly` 再并入同一轮正在进行的公开发布。
 
+## macOS 本地安装
+
+构建并安装本地客户端：
+
+```sh
+npm run client:build -- --platform macos
+npm run client:install:macos -- --launch-installed --verify-stable
+```
+
+安装器验证已有 release 产物，准备好新版本后退出运行中的副本，并替换
+`/Applications` 中的 `LicoUp.app`。可通过 `LICO_CLIENT_INSTALL_DIR` 指定其他目录。
+此命令与打包器的 `--install` 使用同一个替换流程，并移除系统、用户及指定应用目录中
+其他 LicoUp 副本。已删除文件和构建副本的 LaunchServices 注册会被注销；安装成功后，
+本工作目录中 runnable、bundle 和 Flutter product 目录下生成的 macOS 应用包也会删除，
+避免 Spotlight 将其列为额外应用。保留已安装应用与包清单；再次安装或执行需要这些
+应用包的打包操作前，应重新构建。安装器不删除编译和依赖缓存。
+
+```sh
+npm run client:uninstall:macos
+```
+
+卸载无需构建，会删除上述已安装与生成的应用副本、已安装包清单和系统注册记录，
+可以重复执行。安装和卸载均保留个人历史、设置、密钥及其他用户数据。即便复用了
+LicoUp 的 bundle identifier，产品名称不同的应用也不会被删除。外部归档、挂载镜像
+以及其他工作目录的构建产物不会被删除。
+
 ## Apple 委托发布
 
 Nightly 与 Stable 是同一 LicoUp 身份的发布轨道。Nightly 从 `nightly` 使用

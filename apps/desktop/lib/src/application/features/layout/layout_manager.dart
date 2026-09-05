@@ -338,7 +338,13 @@ final class LayoutManager {
     if (_disposed) {
       return;
     }
-    final selectionChanged = next.effectiveId != _state.effectiveId;
+    // The selection projection only reads effectiveId and the loading bit, so
+    // subscribers need an event when the id moves or when the state leaves
+    // the initial loading bit — otherwise an unchanged stored preference
+    // would leave the shell on the loading spinner forever.
+    final selectionChanged =
+        next.effectiveId != _state.effectiveId ||
+        _state.status == LayoutSelectionStatus.loading;
     _state = next;
     _publishing = true;
     try {

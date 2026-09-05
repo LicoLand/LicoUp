@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
+
 int recommendedPluginsCount(List<String> blocks) {
   var count = 0;
   for (final block in blocks) {
@@ -60,7 +62,7 @@ MessageDisplayContent splitMessageDisplayBlocks(String data) {
 }
 
 String conversationMessagePreviewText(String text) {
-  return splitMessageDisplayBlocks(text).body.trim();
+  return sanitizeConversationDisplayText(splitMessageDisplayBlocks(text).body);
 }
 
 ({String body, List<String> blocks}) _extractBlocks(

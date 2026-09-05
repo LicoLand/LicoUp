@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 
 void main() {
@@ -79,5 +80,14 @@ void main() {
       ),
       fallback,
     );
+  });
+
+  test('message previews strip leading control tags', () {
+    expect(conversationMessagePreviewText('<turn_aborted>'), '');
+    expect(
+      conversationMessagePreviewText('<turn_aborted> The user interrupted'),
+      'The user interrupted',
+    );
+    expect(conversationMessagePreviewText('正常的会话预览内容'), '正常的会话预览内容');
   });
 }

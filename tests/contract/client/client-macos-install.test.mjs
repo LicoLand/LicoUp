@@ -12,6 +12,10 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   cpSync,
+  existsSync,
+  lstatSync,
+  realpathSync,
+  renameSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -32,12 +36,24 @@ import {
   runMacosInstaller,
 } from "../../../tools/scripts/client-macos-install.mjs";
 
+import {
+  registeredLicoUpApps,
+  uninstallMacosApplication,
+} from "../../../tools/scripts/lib/macos-app-lifecycle.mjs";
+
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const installerPath = path.join(repoRoot, "tools/scripts/client-macos-install.mjs");
 const APP_NAME = "LicoUp.app";
 const CURRENT_DIGEST = `sha256:${"a".repeat(64)}`;
 const STALE_DIGEST = `sha256:${"b".repeat(64)}`;
 const BUNDLE_ID = "land.lico.licoup";
+const temporaryRoots = [];
+function tempRoot(prefix) {
+  const root = mkdtempSync(path.join(os.tmpdir(), prefix));
+  temporaryRoots.push(root);
+  return root;
+}
+test.after(() => { for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true }); });
 
 function makeRunnableTree({
   digest = CURRENT_DIGEST,
@@ -46,7 +62,7 @@ function makeRunnableTree({
   includeApp = true,
   includeManifest = true,
 } = {}) {
-  const root = mkdtempSync(path.join(os.tmpdir(), "lico-install-runnable-"));
+  const root = tempRoot("lico-install-runnable-");
   const appPath = path.join(root, APP_NAME);
   if (includeApp) {
     const executableDir = path.join(appPath, "Contents", "MacOS");
@@ -57,7 +73,7 @@ function makeRunnableTree({
     );
     writeFileSync(
       path.join(appPath, "Contents", "Info.plist"),
-      "<plist><dict/></plist>",
+      JSON.stringify({ CFBundleIdentifier: BUNDLE_ID, CFBundleName: "LicoUp" }),
     );
   }
   if (includeManifest) {
@@ -99,6 +115,20 @@ function recordingPorts({
     mkdir: [],
   };
   const ports = {
+    canonicalPath: (target) => existsSync(target) ? realpathSync(target) : path.resolve(target),
+    bundleInfo: (target) => {
+      try { return JSON.parse(readFileSync(path.join(target, "Contents", "Info.plist"), "utf8")); }
+      catch { return null; }
+    },
+    isSymlink: (target) => lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink() || false,
+    installationRoots: () => [],
+    directoryEntries: (root) => existsSync(root) ? readdirSync(root) : [],
+    registeredApps: () => [],
+    indexedApps: () => [],
+    buildApps: () => [],
+    unregister: () => true,
+    makeTempDirectory: (root) => mkdtempSync(path.join(root, ".licoup-install-")),
+    move: renameSync,
     exists: (filePath) => {
       try {
         statSync(filePath);
@@ -173,7 +203,7 @@ function runCli(environment) {
 
 test("existing current-bound runnable installs byte-for-byte without invoking a build", () => {
   const runnableRoot = makeRunnableTree();
-  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+  const installDir = tempRoot("lico-install-dest-");
   const { calls, ports } = recordingPorts();
 
   const result = runMacosInstaller(
@@ -185,19 +215,20 @@ test("existing current-bound runnable installs byte-for-byte without invoking a 
   assert.deepEqual(result.stages, [
     "macos-install-validate-runnable",
     "macos-install-validate-binding",
+    "macos-install-stage-payload",
     "macos-install-quit-running",
+    "macos-install-unregister",
     "macos-install-replace-destination",
     "macos-install-register",
+    "macos-install-clean-build-apps",
   ]);
   const runnableAppPath = path.join(runnableRoot, APP_NAME);
   const installedAppPath = path.join(installDir, APP_NAME);
-  assert.deepEqual(calls.copy, [
-    { source: runnableAppPath, target: installedAppPath },
-    {
-      source: path.join(runnableRoot, "package-metadata", "licoup"),
-      target: path.join(installDir, "package-metadata", "licoup"),
-    },
-  ]);
+  assert.equal(calls.copy.length, 2);
+  assert.equal(calls.copy[0].source, runnableAppPath);
+  assert.equal(path.basename(calls.copy[0].target), "payload");
+  assert.equal(calls.copy[1].source, path.join(runnableRoot, "package-metadata", "licoup"));
+  assert.deepEqual(readdirSync(installDir).sort(), [APP_NAME, "package-metadata"]);
   assert.deepEqual(calls.register, [installedAppPath]);
   assert.deepEqual(calls.launch, []);
   assert.equal(treeDigest(installedAppPath), treeDigest(runnableAppPath));
@@ -226,7 +257,7 @@ test("stale or mismatched runnable fails before any destination mutation", () =>
     [{ mode: "debug" }, "macos_install_runnable_mismatch"],
   ]) {
     const runnableRoot = makeRunnableTree(fixture);
-    const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+    const installDir = tempRoot("lico-install-dest-");
     const oldMarker = path.join(installDir, APP_NAME, "keep.txt");
     mkdirSync(path.dirname(oldMarker), { recursive: true });
     writeFileSync(oldMarker, "old-content");
@@ -252,7 +283,7 @@ test("missing runnable, missing or invalid manifest fail closed without mutation
     [{ includeManifest: false }, "macos_install_manifest_missing"],
   ]) {
     const runnableRoot = makeRunnableTree(fixture);
-    const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+    const installDir = tempRoot("lico-install-dest-");
     const { calls, ports } = recordingPorts();
 
     assert.throws(
@@ -265,7 +296,7 @@ test("missing runnable, missing or invalid manifest fail closed without mutation
   }
 
   const runnableRoot = makeRunnableTree();
-  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+  const installDir = tempRoot("lico-install-dest-");
   const manifestPath = path.join(
     runnableRoot,
     "package-metadata",
@@ -284,7 +315,7 @@ test("missing runnable, missing or invalid manifest fail closed without mutation
 
 test("launch targets the exact installed bundle path and never a bundle-id selection", () => {
   const runnableRoot = makeRunnableTree();
-  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+  const installDir = tempRoot("lico-install-dest-");
   const { calls, ports } = recordingPorts();
 
   const result = runMacosInstaller(
@@ -302,7 +333,7 @@ test("launch targets the exact installed bundle path and never a bundle-id selec
 
 test("launch retries a bounded transient LaunchServices failure", () => {
   const runnableRoot = makeRunnableTree();
-  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+  const installDir = tempRoot("lico-install-dest-");
   const { calls, ports } = recordingPorts({ launchResults: [false, true] });
 
   const result = runMacosInstaller(
@@ -318,7 +349,7 @@ test("launch retries a bounded transient LaunchServices failure", () => {
 
 test("failed launch and bounded stable survival report only safe state", () => {
   const runnableRoot = makeRunnableTree();
-  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-dest-"));
+  const installDir = tempRoot("lico-install-dest-");
 
   const failingLaunch = recordingPorts({ launchResult: false });
   assert.throws(
@@ -408,7 +439,7 @@ test("public records are stable, named, and free of private paths", () => {
 
 test("CLI failures are redacted and expose only stable named codes", () => {
   const runnableRoot = makeRunnableTree({ digest: STALE_DIGEST });
-  const installDir = mkdtempSync(path.join(os.tmpdir(), "lico-install-cli-dest-"));
+  const installDir = tempRoot("lico-install-cli-dest-");
   const result = runCli({
     LICO_CLIENT_RUNNABLE_ROOT: runnableRoot,
     LICO_CLIENT_INSTALL_DIR: installDir,
@@ -427,4 +458,134 @@ test("CLI failures are redacted and expose only stable named codes", () => {
   for (const privatePath of [runnableRoot, installDir, os.homedir()]) {
     assert.equal(combined.includes(privatePath), false, privatePath);
   }
+});
+
+function copyFixtureApp(runnableRoot, destination) {
+  mkdirSync(path.dirname(destination), { recursive: true });
+  cpSync(path.join(runnableRoot, APP_NAME), destination, { recursive: true });
+  return destination;
+}
+
+test("upgrade replaces all installed copies and unregisters build and deleted entries", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-lifecycle-system-");
+  const userDir = tempRoot("lico-lifecycle-user-");
+  const target = copyFixtureApp(runnableRoot, path.join(installDir, APP_NAME));
+  const duplicate = copyFixtureApp(runnableRoot, path.join(userDir, "LicoUp old.app"));
+  const renamed = copyFixtureApp(runnableRoot, path.join(installDir, ".LicoUp.backup.synthetic"));
+  const buildApp = path.join(runnableRoot, APP_NAME);
+  const missing = path.join(userDir, "removed", APP_NAME);
+  const foreign = copyFixtureApp(runnableRoot, path.join(userDir, "Another.app"));
+  writeFileSync(path.join(foreign, "Contents", "Info.plist"), JSON.stringify({
+    CFBundleIdentifier: BUNDLE_ID, CFBundleName: "Another",
+  }));
+  writeFileSync(path.join(target, "obsolete.txt"), "old");
+  const data = path.join(userDir, "user-data");
+  writeFileSync(data, "keep");
+  const { ports } = recordingPorts();
+  ports.installationRoots = () => [installDir, userDir];
+  ports.registeredApps = () => [target, duplicate, renamed, buildApp, missing];
+  ports.indexedApps = () => [buildApp, foreign];
+  const unregistered = [];
+  ports.unregister = (apps) => { unregistered.push(...apps); return true; };
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    runMacosInstaller({ installDir, runnableRoot }, ports);
+    assert.equal(treeDigest(target), treeDigest(buildApp));
+    assert.equal(existsSync(duplicate), false);
+    assert.equal(existsSync(renamed), false);
+    assert.equal(existsSync(foreign), true);
+    assert.equal(readFileSync(data, "utf8"), "keep");
+    assert.deepEqual(readdirSync(installDir).sort(), [APP_NAME, "package-metadata"]);
+  }
+  for (const app of [target, duplicate, renamed, buildApp, missing]) assert.ok(unregistered.includes(app));
+  assert.equal(unregistered.includes(foreign), false);
+});
+
+test("copy failure preserves installed app and cleans the temporary payload", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-lifecycle-failure-");
+  const target = copyFixtureApp(runnableRoot, path.join(installDir, APP_NAME));
+  const before = treeDigest(target);
+  const { ports, calls } = recordingPorts();
+  ports.copyTree = () => { throw new Error("synthetic-copy-failure"); };
+  assert.throws(() => runMacosInstaller({ installDir, runnableRoot }, ports), /synthetic-copy-failure/);
+  assert.equal(treeDigest(target), before);
+  assert.equal(calls.quit.length, 0);
+  assert.deepEqual(readdirSync(installDir), [APP_NAME]);
+});
+
+test("uninstall removes apps and package metadata without a runnable and is repeatable", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-lifecycle-uninstall-");
+  const target = copyFixtureApp(runnableRoot, path.join(installDir, APP_NAME));
+  const duplicate = copyFixtureApp(runnableRoot, path.join(installDir, "LicoUp 2.app"));
+  const metadata = path.join(installDir, "package-metadata", "licoup");
+  mkdirSync(metadata, { recursive: true });
+  writeFileSync(path.join(metadata, "packaging-modules.json"), "{}");
+  const { ports } = recordingPorts();
+  const unregistered = [];
+  ports.registeredApps = () => [target, duplicate];
+  ports.unregister = (apps) => { unregistered.push(...apps); return true; };
+  rmSync(runnableRoot, { recursive: true });
+  const first = uninstallMacosApplication({ installDir }, ports);
+  assert.equal(first.removedApplications, 2);
+  assert.equal(first.userDataPreserved, true);
+  assert.equal(existsSync(target), false);
+  assert.equal(existsSync(duplicate), false);
+  assert.equal(existsSync(metadata), false);
+  assert.ok(unregistered.includes(target));
+  assert.ok(unregistered.includes(duplicate));
+  assert.equal(uninstallMacosApplication({ installDir }, ports).removedApplications, 0);
+});
+
+test("source overlap, foreign destination and unregister failure never remove an installed app", () => {
+  const runnableRoot = makeRunnableTree();
+  const { ports } = recordingPorts();
+  assert.throws(() => runMacosInstaller({ installDir: runnableRoot, runnableRoot }, ports),
+    { code: "macos_install_source_destination_overlap" });
+  const installDir = tempRoot("lico-lifecycle-conflict-");
+  const target = copyFixtureApp(runnableRoot, path.join(installDir, APP_NAME));
+  const infoPath = path.join(target, "Contents", "Info.plist");
+  writeFileSync(infoPath, JSON.stringify({ CFBundleIdentifier: "example.foreign", CFBundleName: "Another" }));
+  assert.throws(() => runMacosInstaller({ installDir, runnableRoot }, ports),
+    { code: "macos_install_destination_conflict" });
+  rmSync(target, { recursive: true });
+  copyFixtureApp(runnableRoot, target);
+  ports.unregister = () => false;
+  assert.throws(() => runMacosInstaller({ installDir, runnableRoot }, ports),
+    { code: "macos_install_unregister_failed" });
+  assert.equal(existsSync(target), true);
+  assert.deepEqual(readdirSync(installDir), [APP_NAME]);
+});
+
+test("LaunchServices discovery deduplicates exact LicoUp identity including deleted backups", () => {
+  const record = (app, name = "LicoUp", id = BUNDLE_ID) =>
+    `path:                       ${app} (0xabc)\nname:                       ${name}\nidentifier:                 ${id}\n`;
+  const dump = [
+    record("/Applications/LicoUp.app"), record("/Applications/LicoUp.app"),
+    record("/synthetic/build/LicoUp.app"), record("/synthetic/.LicoUp.backup.old"),
+    record("/Applications/Another.app", "Another"),
+    record("/Applications/Foreign.app", "LicoUp", "example.foreign"),
+  ].join(`\n${"-".repeat(80)}\n`);
+  assert.deepEqual(registeredLicoUpApps(dump), [
+    "/Applications/LicoUp.app", "/synthetic/build/LicoUp.app", "/synthetic/.LicoUp.backup.old",
+  ]);
+});
+
+
+test("successful install consumes generated app copies; uninstall retires newly built copies", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-lifecycle-generated-");
+  const generated = path.join(runnableRoot, APP_NAME);
+  const { ports } = recordingPorts();
+  ports.buildApps = () => [generated];
+  const before = treeDigest(generated);
+  runMacosInstaller({ installDir, runnableRoot }, ports);
+  assert.equal(existsSync(generated), false);
+  assert.equal(treeDigest(path.join(installDir, APP_NAME)), before);
+  cpSync(path.join(installDir, APP_NAME), generated, { recursive: true });
+  const result = uninstallMacosApplication({ installDir }, ports);
+  assert.equal(result.removedBuildApplications, 1);
+  assert.equal(existsSync(generated), false);
+  assert.equal(existsSync(path.join(installDir, APP_NAME)), false);
 });

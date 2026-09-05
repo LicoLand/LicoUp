@@ -10,6 +10,7 @@ import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
@@ -121,6 +122,61 @@ void main() {
     localeOwner.dispose();
     appearanceOwner.dispose();
   });
+
+  test(
+    'layout plane escapes loading when initialization keeps the profile',
+    () async {
+      final appearanceOwner = AppearancePreferenceOwner();
+      final localeOwner = LocalePreferenceOwner();
+      final statusRuntime = FunctionalStatusRuntime();
+      final navigation = ClientNavigationController(
+        isMobileRuntime: () => true,
+      );
+      final runtime = buildFixtureLayoutRuntime();
+      final manager = LayoutManager(
+        catalog: runtime.catalog,
+        preferencesRepository: _MemoryPreferencesRepository(),
+        canonicalFallback: _preferences(),
+      );
+      final environmentSource = EnvironmentProjectionSource(
+        EnvironmentState(
+          environment: _environment(width: 390),
+          runtimeSurface: LayoutRuntimeSurface.mobile,
+        ),
+      );
+      final producer = ShellProjectionProducer(
+        appearance: appearanceOwner,
+        locale: localeOwner,
+        status: statusRuntime,
+        navigation: navigation,
+        layoutManager: manager,
+        environment: environmentSource,
+      );
+
+      // Production startup order: the projection subscribes while the manager
+      // is still loading, and the stored preference is the default profile, so
+      // initialization completes without changing the effective id.
+      expect(
+        producer.layout.current.selection.status,
+        LayoutSelectionStatus.loading,
+      );
+
+      await manager.initialize();
+
+      expect(
+        producer.layout.current.selection.status,
+        LayoutSelectionStatus.stable,
+      );
+
+      await producer.dispose();
+      await environmentSource.dispose();
+      manager.dispose();
+      navigation.dispose();
+      statusRuntime.dispose();
+      localeOwner.dispose();
+      appearanceOwner.dispose();
+    },
+  );
 }
 
 List<int> _counts(
