@@ -5,7 +5,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/models/ui/telegram_channel_card.dart';
+import 'package:licoup/src/presentation/models/models_projection.dart';
+
+import 'fixtures/models_renderer_binding_fixture.dart';
 
 const _zhDelegates = [
   GlobalMaterialLocalizations.delegate,
@@ -56,7 +60,7 @@ void main() {
       readSettings: () async => const {},
       monitorInterval: Duration.zero,
     );
-    await _pump(tester, runner, lifecycleController: lifecycle);
+    final feature = await _pump(tester, runner, lifecycleController: lifecycle);
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -64,7 +68,8 @@ void main() {
       '123456:ABC-DEF',
     );
     await tester.tap(find.byKey(const Key('telegram-channel-save-token')));
-    await tester.pumpAndSettle();
+    await feature.settle();
+    await tester.pump();
 
     expect(runner.stdinCalls.single.args, const [
       'gateway',
@@ -106,25 +111,32 @@ void main() {
       ..chats = [
         {'chatId': 99, 'userId': 88, 'username': 'bob', 'paired': true},
       ];
-    await _pump(tester, runner);
+    final feature = await _pump(tester, runner);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('telegram-pairing-ABCD12')), findsOneWidget);
     expect(find.byKey(const Key('telegram-chat-99')), findsOneWidget);
+    expect(find.textContaining('@alice'), findsOneWidget);
+    expect(find.textContaining('user 22 · chat 11'), findsOneWidget);
+    expect(
+      find.byKey(const Key('telegram-pairing-dismiss-11')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('telegram-pairing-approve-ABCD12')));
-    await tester.pumpAndSettle();
+    await feature.settle();
+    await tester.pump();
     expect(
       runner.calls.map((call) => call.join(' ')),
       contains('gateway channel telegram pairing approve ABCD12'),
     );
 
-    await tester.ensureVisible(
-      find.byKey(const Key('telegram-chat-revoke-99')),
-    );
+    final revokeButton = find.byKey(const Key('telegram-chat-revoke-99'));
+    await tester.ensureVisible(revokeButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('telegram-chat-revoke-99')));
-    await tester.pumpAndSettle();
+    await tester.tap(revokeButton);
+    await feature.settle();
+    await tester.pump();
     expect(
       runner.calls.map((call) => call.join(' ')),
       contains('gateway channel telegram pairing revoke 99'),
@@ -135,7 +147,7 @@ void main() {
     tester,
   ) async {
     final runner = _FakeTelegramRunner()..configured = true;
-    await _pump(tester, runner);
+    final feature = await _pump(tester, runner);
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -143,7 +155,8 @@ void main() {
       'xy9k2m',
     );
     await tester.tap(find.byKey(const Key('telegram-channel-approve-code')));
-    await tester.pumpAndSettle();
+    await feature.settle();
+    await tester.pump();
 
     expect(
       runner.calls.map((call) => call.join(' ')),
@@ -152,11 +165,16 @@ void main() {
   });
 }
 
-Future<void> _pump(
+Future<ModelsRendererBindingFixture> _pump(
   WidgetTester tester,
   _FakeTelegramRunner runner, {
   LlmGatewayLifecycleController? lifecycleController,
 }) async {
+  final feature = ModelsRendererBindingFixture(
+    runner: runner,
+    lifecycle: lifecycleController,
+  );
+  addTearDown(feature.dispose);
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('zh'),
@@ -164,14 +182,23 @@ Future<void> _pump(
       localizationsDelegates: _zhDelegates,
       home: Scaffold(
         body: SingleChildScrollView(
-          child: TelegramChannelCard(
-            agentService: runner,
-            lifecycleController: lifecycleController,
+          child: ProjectionBuilder<ModelsProjection, ModelsProjection>(
+            source: feature.binding.projection,
+            select: (projection) => projection,
+            builder: (context, projection) => TelegramChannelCard(
+              projection: projection.telegram,
+              phase: projection.phase,
+              notice: projection.notice,
+              intents: feature.binding.intents,
+            ),
           ),
         ),
       ),
     ),
   );
+  await feature.settle();
+  await tester.pump();
+  return feature;
 }
 
 final class _StdinCall {

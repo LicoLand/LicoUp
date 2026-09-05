@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
@@ -94,17 +94,19 @@ final class _DashboardNotesShellState extends State<_DashboardNotesShell> {
                     child: scopedState == null
                         ? DashboardFolderSidebar(
                             section: data.activeDestination,
+                            availableSections: data.availableDestinations,
                             onSelectSection: data.onSelectDestination,
                             width: _sidebarWidth,
                           )
-                        : ListenableBuilder(
-                            listenable: scopedState.changes,
+                        : StreamBuilder<void>(
+                            stream: scopedState.changes,
                             builder: (context, _) {
                               final tab = scopedState.readIfDeclared(
                                 LayoutStateChannels.settingsSection,
                               );
                               return DashboardFolderSidebar(
                                 section: data.activeDestination,
+                                availableSections: data.availableDestinations,
                                 onSelectSection: data.onSelectDestination,
                                 width: _sidebarWidth,
                                 settingsSectionIndex: tab is LayoutTabState

@@ -1,5 +1,5 @@
-import 'package:licoup/src/application/features/layout/layout_catalog.dart';
-import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
+import 'package:licoup/src/presentation/layout/semantic_destination_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';

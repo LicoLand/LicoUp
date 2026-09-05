@@ -16,12 +16,10 @@ export function validateCurrentStateAuthority({ preferences, dataRoot, manifest,
   const dataRootOwnsOneCurrentWorkspace =
     dataRoot.includes("Future<Directory> clientDirectory() async") &&
     dataRoot.includes(
-      "final directory = Directory(p.join(dataDir.path, 'licoup'));",
+      "final directory = Directory(p.join(dataDir.path, 'client-state'));",
     ) &&
-    dataRoot.includes(
-      "static const String _workspaceManifestFileName = '.licoup-workspace.json';",
-    ) &&
-    manifest.includes("static const licoUpAppId = 'licoup';");
+    manifest.includes("static const fileName = '.licoup-workspace.json';") &&
+    manifest.includes("static const licoUpAppId = 'licoup-client';");
   if (!preferencesUsesCurrentRoot || !dataRootOwnsOneCurrentWorkspace) {
     fail("layout_current_state_authority_invalid", config.preferencesPath);
   }

@@ -2,21 +2,43 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
-import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/features/targets/ui/manual_target_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/mobile_widgets_page.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
+import 'package:licoup/src/frontend/features/targets/ui/manual_target_dialog.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/presentation/agents/agents_binding.dart';
+import 'package:licoup/src/presentation/agents/agents_intent.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
+import 'package:licoup/src/presentation/targets/targets_binding.dart';
 
 class AgentsCanvas extends StatefulWidget {
-  const AgentsCanvas({super.key, required this.controller, this.agentsHomeKey});
+  const AgentsCanvas({
+    super.key,
+    required this.agents,
+    required this.conversation,
+    required this.relay,
+    required this.monitoring,
+    required this.targets,
+    required this.onSelectDestination,
+    this.agentsHomeKey,
+  });
 
-  final ClientController controller;
+  final AgentsBinding agents;
+  final ConversationBinding conversation;
+  final MobileRelayBinding relay;
+  final MonitoringBinding monitoring;
+  final TargetsBinding targets;
+  final ValueChanged<ClientSection> onSelectDestination;
   final GlobalKey<MobileAgentsHomeState>? agentsHomeKey;
 
   @override
@@ -28,12 +50,12 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!widget.controller.mobileClientRuntimePlatform) {
-        // Cache paints immediately; only probe adapters that are still unknown
-        // unless the user explicitly refreshes with progress.
-        unawaited(
-          widget.controller.scanTargets(
-            showProgress: widget.controller.scannedTargets.isEmpty,
+      if (!mounted) return;
+      final projection = widget.agents.projection.current;
+      if (!projection.mobileRuntime && !projection.scanning) {
+        widget.agents.intents.send(
+          ScanAgents(
+            showProgress: projection.targetDetails.isEmpty,
             forceRescanKnown: false,
           ),
         );
@@ -43,48 +65,78 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.controller,
-      builder: (context, _) {
+    return ProjectionBuilder<AgentsProjection, AgentsProjection>(
+      source: widget.agents.projection,
+      select: (projection) => projection,
+      builder: (context, projection) {
         final colors = context.licoColors;
-        final scanning = widget.controller.isScanningTargets;
-        final adding = widget.controller.isAddingTarget;
-        final targets = widget.controller.scannedTargets
-            .where((target) => target.visibleInClient)
-            .toList(growable: false);
         final mobileClient =
-            widget.controller.mobileClientRuntimePlatform ||
-            isMobileClientPlatform(context);
-        final allowManualTargetActions = !mobileClient;
-
+            projection.mobileRuntime || isMobileClientPlatform(context);
         if (mobileClient) {
           return Scaffold(
             backgroundColor: colors.background,
             body: MobileAgentsHome(
               key: widget.agentsHomeKey,
-              controller: widget.controller,
+              agents: widget.agents,
+              relay: widget.relay,
+              conversationContentBuilder: (context, _) =>
+                  AgentConversationWorkspace(
+                    agents: widget.agents,
+                    conversation: widget.conversation,
+                    relay: widget.relay,
+                    onAddTarget: _showAddTargetDialog,
+                    onSelectDestination: widget.onSelectDestination,
+                    allowManualTargetActions: false,
+                  ),
+              configurationContentBuilder: (context, _) =>
+                  MobileWidgetsPage(binding: widget.monitoring),
+              iconBuilder:
+                  (
+                    context,
+                    target, {
+                    required selected,
+                    required size,
+                    required iconSize,
+                  }) {
+                    for (final detail in projection.targetDetails) {
+                      if (detail.id == target.id ||
+                          detail.target == target.id) {
+                        return AgentBrandIcon(
+                          target: detail,
+                          selected: selected,
+                          detected: target.available,
+                          size: size,
+                          iconSize: iconSize,
+                        );
+                      }
+                    }
+                    return Icon(
+                      target.available
+                          ? Icons.smart_toy_outlined
+                          : Icons.extension_outlined,
+                      size: iconSize,
+                    );
+                  },
             ),
           );
         }
 
-        final agentsPresentation = LayoutDestinationPresentationScope.maybeOf(
-          context,
-        )?.agents;
+        final strategy = LayoutAgentsStrategyScope.maybeOf(context);
         final chrome = LayoutChromePortScope.maybeOf(context);
         return Scaffold(
           backgroundColor:
-              agentsPresentation?.canvasColor(context.layoutPalette) ??
-              colors.background,
+              strategy.sidebarStyle == AgentsSidebarStyle.flatRecencyList
+              ? Colors.transparent
+              : colors.background,
           body: AgentConversationWorkspace(
-            controller: widget.controller,
-            targets: targets,
-            scanning: scanning,
-            adding: adding,
+            agents: widget.agents,
+            conversation: widget.conversation,
+            relay: widget.relay,
             onAddTarget: _showAddTargetDialog,
+            onSelectDestination: widget.onSelectDestination,
             onSearch: chrome == null
                 ? null
                 : () => unawaited(chrome.openGlobalSearch(context)),
-            allowManualTargetActions: allowManualTargetActions,
           ),
         );
       },
@@ -92,20 +144,16 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
   }
 
   Future<void> _showAddTargetDialog() async {
-    final strings = LicoStrings.of(context);
     final draft = await showDialog<ManualTargetDraft>(
       context: context,
       builder: (context) => ManualTargetDialog(
-        onOpenDirectory: (path) =>
-            widget.controller.openDirectoryPath(path, caption: strings.manual),
+        options: widget.targets.projection.current.manualTargetOptions,
       ),
     );
-    if (draft == null) {
-      return;
-    }
-    unawaited(
-      widget.controller.addManualTarget(
-        target: draft.target,
+    if (draft == null) return;
+    widget.agents.intents.send(
+      AddManualAgent(
+        command: draft.target,
         configPath: draft.configPath,
         binaryPath: draft.binaryPath,
         historyRoot: draft.historyRoot,

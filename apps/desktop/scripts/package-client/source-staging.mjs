@@ -37,6 +37,10 @@ export function stagedFlutterClientRoot() {
   return path.join(cleanBuildRoot(), "source", "apps", "desktop");
 }
 
+export function stagedPresentationContractRoot() {
+  return path.join(cleanBuildRoot(), "source", "packages", "presentation_contract");
+}
+
 export function stagedPubCacheRoot() {
   return path.join(cleanBuildRoot(), "pub-cache");
 }
@@ -74,12 +78,32 @@ export function copyTree(source, target, options = {}) {
 
 export function prepareStagedFlutterSource() {
   const stagedRoot = stagedFlutterClientRoot();
+  const stagedPresentationContract = stagedPresentationContractRoot();
+  const presentationContractSource = presentationContractSourceRoot();
   assertOutsideWorkspace(stagedRoot, "clean_source_inside_workspace");
+  assertOutsideWorkspace(
+    stagedPresentationContract,
+    "clean_source_inside_workspace",
+  );
   rmSync(stagedRoot, { recursive: true, force: true });
+  rmSync(stagedPresentationContract, { recursive: true, force: true });
   mkdirSync(path.dirname(stagedRoot), { recursive: true });
+  mkdirSync(path.dirname(stagedPresentationContract), { recursive: true });
   copyTree(packageClientRuntime.flutterClientRoot, stagedRoot, {
-    filter: (sourcePath) => !isExcludedFlutterSourcePath(sourcePath),
+    filter: (sourcePath) =>
+      !isExcludedDartSourcePath(
+        sourcePath,
+        packageClientRuntime.flutterClientRoot,
+      ),
   });
+  copyTree(
+    presentationContractSource,
+    stagedPresentationContract,
+    {
+      filter: (sourcePath) =>
+        !isExcludedDartSourcePath(sourcePath, presentationContractSource),
+    },
+  );
   return stagedRoot;
 }
 
@@ -142,9 +166,17 @@ function temporaryCleanupFailure(error, stage) {
   throw error;
 }
 
-function isExcludedFlutterSourcePath(sourcePath) {
+function presentationContractSourceRoot() {
+  return path.join(
+    packageClientRuntime.workspaceRoot,
+    "packages",
+    "presentation_contract",
+  );
+}
+
+function isExcludedDartSourcePath(sourcePath, sourceRoot) {
   const relativePath = path.relative(
-    packageClientRuntime.flutterClientRoot,
+    sourceRoot,
     sourcePath,
   );
   if (

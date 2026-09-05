@@ -53,7 +53,7 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
       );
       controller.localePreference = 'en';
       expect(
-        controller.displayStatusMessage,
+        controller.functionalStatusRuntime.messageEnglish,
         'Sent the message through the Codex runtime adapter.',
       );
     },

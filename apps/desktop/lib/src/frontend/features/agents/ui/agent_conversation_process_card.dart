@@ -41,6 +41,12 @@ final class _ConversationProcessCardState
   bool _expanded = false;
   bool _focused = false;
 
+  /// Arms one height animation for a manual expand/collapse while the turn
+  /// streams. Delta-driven size changes during streaming never animate —
+  /// animating every publish would stack a layout animation on the scroll
+  /// surface on every streamed frame.
+  bool _sizeAnimationArmed = false;
+
   String get _processId => widget.events.first.id;
 
   @override
@@ -52,6 +58,9 @@ final class _ConversationProcessCardState
 
   void _toggleExpanded() {
     final expanding = !_expanded;
+    // A manual toggle keeps its height animation even while streaming; the
+    // flag disarms when that animation ends or when the turn completes.
+    _sizeAnimationArmed = true;
     setState(() => _expanded = expanding);
     if (expanding) _pinHeaderBelowOverlay();
   }
@@ -66,6 +75,19 @@ final class _ConversationProcessCardState
         widget.topOverlayInset,
       );
     });
+  }
+
+  void _onSizeAnimationEnd() {
+    _sizeAnimationArmed = false;
+    _pinHeaderBelowOverlay();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConversationProcessCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active && !widget.active) {
+      _sizeAnimationArmed = false;
+    }
   }
 
   @override
@@ -88,8 +110,8 @@ final class _ConversationProcessCardState
     final summary = lifecycle == null
         ? '${widget.active ? strings.working : durationTitle} · ${conversationProcessSummary(projection.totalOperations, projection.issues, false, strings)}'
         : lifecycle.terminal
-        ? '$durationTitle · ${strings.lifecycleObserved(lifecycle.observedStages.length, 5)}'
-        : strings.lifecycleObserved(lifecycle.observedStages.length, 5);
+        ? durationTitle
+        : '';
     final motionDisabled = MediaQuery.disableAnimationsOf(context);
     final containerDuration = motionDisabled
         ? Duration.zero
@@ -97,6 +119,11 @@ final class _ConversationProcessCardState
     final sizeDuration = motionDisabled
         ? Duration.zero
         : const Duration(milliseconds: 200);
+    // While the turn streams, each delta republishes the card; the expanded
+    // body's height then applies instantly (zero-duration size change)
+    // instead of running a layout animation per publish. Manual
+    // expand/collapse keeps its animation through the armed flag.
+    final animateSizeChanges = !widget.active || _sizeAnimationArmed;
     final actionHint = _expanded
         ? strings.collapseProcessDetails
         : strings.expandProcessDetails;
@@ -148,7 +175,9 @@ final class _ConversationProcessCardState
                   focusable: true,
                   focused: _focused,
                   expanded: _expanded,
-                  label: '${strings.agentProcess}. $title. $summary.',
+                  label: summary.isEmpty
+                      ? '${strings.agentProcess}. $title.'
+                      : '${strings.agentProcess}. $title. $summary.',
                   hint: actionHint,
                   onTap: _toggleExpanded,
                   child: ExcludeSemantics(
@@ -218,19 +247,21 @@ final class _ConversationProcessCardState
                                           letterSpacing: -0.08,
                                         ),
                                       ),
-                                      const SizedBox(height: 1),
-                                      LicoShimmerText(
-                                        text: summary,
-                                        enabled:
-                                            widget.active &&
-                                            lifecycle?.terminal != true,
-                                        style: TextStyle(
-                                          color: colors.textMuted,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w400,
-                                          letterSpacing: -0.04,
+                                      if (summary.isNotEmpty) ...[
+                                        const SizedBox(height: 1),
+                                        LicoShimmerText(
+                                          text: summary,
+                                          enabled:
+                                              widget.active &&
+                                              lifecycle?.terminal != true,
+                                          style: TextStyle(
+                                            color: colors.textMuted,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w400,
+                                            letterSpacing: -0.04,
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                       if (lifecycle != null &&
                                           (!lifecycle.terminal ||
                                               lifecycle.observedStages.length <
@@ -266,10 +297,19 @@ final class _ConversationProcessCardState
                   _expanded ? expandedBody : const SizedBox.shrink()
                 else
                   AnimatedSize(
-                    duration: sizeDuration,
+                    // While the turn streams, each delta republishes the
+                    // card; a near-zero duration then applies the new height
+                    // on the same frame instead of stacking a layout
+                    // animation per publish. (Exactly zero would complete the
+                    // controller synchronously inside performLayout, which
+                    // RenderAnimatedSize forbids.) Manual expand/collapse
+                    // keeps its animation through the armed flag.
+                    duration: animateSizeChanges
+                        ? sizeDuration
+                        : const Duration(milliseconds: 1),
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.topCenter,
-                    onEnd: _pinHeaderBelowOverlay,
+                    onEnd: _onSizeAnimationEnd,
                     child: _expanded ? expandedBody : const SizedBox.shrink(),
                   ),
               ],

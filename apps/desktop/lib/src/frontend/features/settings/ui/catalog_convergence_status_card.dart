@@ -1,23 +1,25 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
-final class CatalogConvergenceStatusCard extends StatelessWidget {
-  const CatalogConvergenceStatusCard({super.key, required this.controller});
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
-  final CatalogConvergenceController controller;
+final class CatalogConvergenceStatusCard extends StatelessWidget {
+  const CatalogConvergenceStatusCard({super.key, required this.binding});
+
+  final SettingsBinding binding;
 
   @override
   Widget build(BuildContext context) {
     final isChinese = LicoStrings.of(context).isChinese;
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final status = controller.status;
+    return ProjectionBuilder<SettingsProjection, SettingsCatalogProjection>(
+      source: binding.projection,
+      select: (projection) => projection.catalog,
+      builder: (context, status) {
         return Card(
           key: const Key('catalog-convergence-status'),
           margin: EdgeInsets.zero,
@@ -40,16 +42,18 @@ final class CatalogConvergenceStatusCard extends StatelessWidget {
                     IconButton(
                       key: const Key('catalog-convergence-refresh-status'),
                       tooltip: isChinese ? '刷新本机状态' : 'Refresh local state',
-                      onPressed: controller.busy
+                      onPressed: status.busy
                           ? null
-                          : () => unawaited(controller.bootstrap()),
+                          : () => binding.intents.send(
+                              const RefreshCatalogStatus(),
+                            ),
                       icon: const Icon(Icons.refresh_outlined),
                     ),
                   ],
                 ),
                 const SizedBox(height: LicoContentSpacing.compact),
                 Text(
-                  _summary(controller.phase, isChinese),
+                  _summary(status.phase, isChinese),
                   key: const Key('catalog-convergence-summary'),
                 ),
                 const SizedBox(height: LicoContentSpacing.compact),
@@ -77,10 +81,10 @@ final class CatalogConvergenceStatusCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (controller.reasonCode != 'catalog_current') ...[
+                if (status.reasonCode != 'catalog_current') ...[
                   const SizedBox(height: LicoContentSpacing.compact),
                   Text(
-                    controller.reasonCode,
+                    status.reasonCode,
                     key: const Key('catalog-convergence-reason'),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -106,24 +110,24 @@ final class _Fact extends StatelessWidget {
   }
 }
 
-String _summary(CatalogConvergencePhase phase, bool isChinese) {
+String _summary(SettingsCatalogPhase phase, bool isChinese) {
   return switch (phase) {
-    CatalogConvergencePhase.disabled =>
+    SettingsCatalogPhase.disabled =>
       isChinese
           ? '未配置目录连接；不会推断或自动连接服务。'
           : 'No catalog connection is configured; no service is inferred or contacted.',
-    CatalogConvergencePhase.idle => isChinese ? '等待同步。' : 'Waiting to sync.',
-    CatalogConvergencePhase.reconciling =>
+    SettingsCatalogPhase.idle => isChinese ? '等待同步。' : 'Waiting to sync.',
+    SettingsCatalogPhase.reconciling =>
       isChinese
           ? '正在拉取授权目录；同步完成前不会提供缓存发现。'
           : 'Pulling the authorized catalog; cached discovery stays blocked until reconciliation completes.',
-    CatalogConvergencePhase.ready =>
+    SettingsCatalogPhase.ready =>
       isChinese ? '授权目录已同步。' : 'The authorized catalog is current.',
-    CatalogConvergencePhase.blocked =>
+    SettingsCatalogPhase.blocked =>
       isChinese
           ? '目录发现已暂停，等待重新同步。'
           : 'Catalog discovery is paused until reconciliation succeeds.',
-    CatalogConvergencePhase.failed =>
+    SettingsCatalogPhase.failed =>
       isChinese
           ? '无法读取本机目录同步状态。'
           : 'The local catalog sync state is unavailable.',

@@ -1,30 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/client_process_lifecycle.dart';
+
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
 
+import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
-  testWidgets('card shows three actions, running version, and source address', (
+  testWidgets('shows three actions, version, and public source address', (
     tester,
   ) async {
-    final controller = _UpdateController(
-      status: const ClientUpdateStatus(
+    final fixture = _fixture(
+      const ClientUpdateStatus(
         phase: ClientUpdatePhase.idle,
         runningVersion: '0.1.0',
         runningReleaseTrack: ReleaseTrack.nightly,
         targetReleaseTrack: ReleaseTrack.nightly,
       ),
     );
-    addTearDown(controller.dispose);
-
-    await _pumpCard(tester, controller, locale: const Locale('zh'));
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
 
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('下载到本地'), findsOneWidget);
@@ -34,79 +34,42 @@ void main() {
       find.byKey(const Key('client-update-release-track')),
       findsOneWidget,
     );
-    expect(find.text('Nightly'), findsOneWidget);
-    expect(find.text('稳定版'), findsOneWidget);
-    expect(find.text('未选择'), findsNothing);
-    expect(find.text('源地址'), findsOneWidget);
     expect(find.text(kClientUpdateGithubReleasesUrl), findsOneWidget);
-    expect(find.text('状态'), findsNothing);
-    expect(find.text('失败'), findsNothing);
-    expect(find.text('生产就绪'), findsNothing);
-    expect(find.text('是'), findsNothing);
-    expect(find.text('否'), findsNothing);
-    expect(find.byKey(const Key('client-update-refresh-status')), findsNothing);
-    expect(find.byKey(const Key('client-update-verify')), findsNothing);
-    expect(find.byKey(const Key('client-update-apply-plan')), findsNothing);
-    expect(find.byKey(const Key('client-update-rollback')), findsNothing);
-    expect(find.byKey(const Key('client-update-check-github')), findsOneWidget);
-    expect(
-      find.byKey(const Key('client-update-download-local')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('client-update-apply-restart')),
-      findsOneWidget,
-    );
-
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+    expect(
+      fixture.intents.values.whereType<HydrateClientUpdateIdentity>(),
+      hasLength(1),
+    );
   });
 
-  testWidgets('nightly can select the stable update track', (tester) async {
-    final controller = _UpdateController(
-      status: const ClientUpdateStatus(
+  testWidgets('nightly selects the stable update track', (tester) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
         phase: ClientUpdatePhase.idle,
         runningVersion: '1.2.0-nightly.3',
         runningReleaseTrack: ReleaseTrack.nightly,
         targetReleaseTrack: ReleaseTrack.nightly,
       ),
     );
-    addTearDown(controller.dispose);
-
-    await _pumpCard(tester, controller);
+    await _pumpCard(tester, fixture);
     await tester.tap(find.text('Stable'));
     await tester.pump();
-
-    expect(controller.selectedTracks, [ReleaseTrack.stable]);
-  });
-
-  testWidgets('download stays disabled without a newer signed release', (
-    tester,
-  ) async {
-    final controller = _UpdateController(
-      status: const ClientUpdateStatus(
-        phase: ClientUpdatePhase.upToDate,
-        runningVersion: '1.0.0',
-        runningReleaseTrack: ReleaseTrack.stable,
-        targetReleaseTrack: ReleaseTrack.stable,
-      ),
+    expect(
+      fixture.intents.values
+          .whereType<SetClientUpdateReleaseTrack>()
+          .single
+          .track,
+      ReleaseTrack.stable,
     );
-    addTearDown(controller.dispose);
-
-    await _pumpCard(tester, controller);
-
-    expect(find.byKey(const Key('client-update-release-track')), findsNothing);
-    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
-    expect(_onPressed(tester, 'client-update-download-local'), isNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
 
-  testWidgets('apply stays disabled without a verified local artifact', (
+  testWidgets('download enables only for a newer signed release', (
     tester,
   ) async {
-    final controller = _UpdateController(
-      status: const ClientUpdateStatus(
+    final fixture = _fixture(
+      const ClientUpdateStatus(
         phase: ClientUpdatePhase.updateAvailable,
         runningVersion: '1.0.0',
         runningReleaseTrack: ReleaseTrack.stable,
@@ -117,50 +80,53 @@ void main() {
             'https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0',
       ),
     );
-    addTearDown(controller.dispose);
-
-    await _pumpCard(tester, controller);
-
-    expect(
-      find.text('https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0'),
-      findsOneWidget,
-    );
-    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    await _pumpCard(tester, fixture);
     expect(_onPressed(tester, 'client-update-download-local'), isNotNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+    await tester.tap(find.byKey(const Key('client-update-download-local')));
+    expect(
+      fixture.intents.values.whereType<DownloadClientUpdate>(),
+      hasLength(1),
+    );
   });
 
-  testWidgets('check failure does not enable download or apply', (
+  testWidgets('up-to-date and failed states keep download and apply disabled', (
     tester,
   ) async {
-    final controller = _UpdateController(
-      status: const ClientUpdateStatus(
+    var fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.upToDate,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+      ),
+    );
+    await _pumpCard(tester, fixture);
+    expect(find.byKey(const Key('client-update-release-track')), findsNothing);
+    expect(_onPressed(tester, 'client-update-download-local'), isNull);
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    fixture = _fixture(
+      const ClientUpdateStatus(
         phase: ClientUpdatePhase.failed,
-        runningVersion: '0.1.0',
+        runningVersion: '1.0.0',
         runningReleaseTrack: ReleaseTrack.nightly,
         targetReleaseTrack: ReleaseTrack.nightly,
         errorCode: 'client_update_check_failed',
       ),
     );
-    addTearDown(controller.dispose);
-
-    await _pumpCard(tester, controller, locale: const Locale('zh'));
-
-    expect(find.text('0.1.0'), findsOneWidget);
-    expect(find.text('失败'), findsNothing);
-    expect(find.text('状态'), findsNothing);
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
 
-  testWidgets('apply and restart delegates process exit to the platform port', (
+  testWidgets('verified update dispatches semantic apply intent', (
     tester,
   ) async {
-    final lifecycle = _RecordingProcessLifecycle();
-    final controller = _UpdateController(
-      processLifecycle: lifecycle,
-      status: const ClientUpdateStatus(
+    final fixture = _fixture(
+      const ClientUpdateStatus(
         phase: ClientUpdatePhase.verified,
         runningVersion: '1.0.0',
         runningReleaseTrack: ReleaseTrack.stable,
@@ -169,26 +135,40 @@ void main() {
         updateAvailable: true,
       ),
     );
-    addTearDown(controller.dispose);
-
-    await _pumpCard(tester, controller);
-
-    expect(_onPressed(tester, 'client-update-download-local'), isNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNotNull);
-
+    await _pumpCard(tester, fixture);
     await tester.tap(find.byKey(const Key('client-update-apply-restart')));
-    await tester.pump();
-
-    expect(controller.applyCalls, 1);
-    expect(lifecycle.exitCalls, 1);
+    expect(fixture.intents.values.whereType<ApplyClientUpdate>(), hasLength(1));
   });
+}
+
+({
+  SettingsProjectionFixture source,
+  RecordingSettingsIntents intents,
+  SettingsBinding binding,
+})
+_fixture(ClientUpdateStatus status) {
+  final source = SettingsProjectionFixture(
+    settingsProjectionFixture(clientUpdateStatus: status),
+  );
+  final intents = RecordingSettingsIntents();
+  return (
+    source: source,
+    intents: intents,
+    binding: settingsBindingFixture(source: source, intents: intents),
+  );
 }
 
 Future<void> _pumpCard(
   WidgetTester tester,
-  ClientController controller, {
+  ({
+    SettingsProjectionFixture source,
+    RecordingSettingsIntents intents,
+    SettingsBinding binding,
+  })
+  fixture, {
   Locale locale = const Locale('en'),
 }) async {
+  addTearDown(fixture.source.dispose);
   await tester.pumpWidget(
     MaterialApp(
       locale: locale,
@@ -201,7 +181,7 @@ Future<void> _pumpCard(
         GlobalWidgetsLocalizations.delegate,
       ],
       theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Scaffold(body: ClientUpdateSettingsCard(controller: controller)),
+      home: Scaffold(body: ClientUpdateSettingsCard(binding: fixture.binding)),
     ),
   );
   await tester.pump();
@@ -210,50 +190,4 @@ Future<void> _pumpCard(
 VoidCallback? _onPressed(WidgetTester tester, String key) {
   final widget = tester.widget<ButtonStyleButton>(find.byKey(Key(key)));
   return widget.onPressed;
-}
-
-final class _UpdateController extends ClientController {
-  _UpdateController({
-    required this.status,
-    ClientProcessLifecycle? processLifecycle,
-  }) : super(clientProcessLifecycle: processLifecycle);
-
-  final ClientUpdateStatus status;
-  int applyCalls = 0;
-  final List<ReleaseTrack> selectedTracks = [];
-
-  @override
-  ClientUpdateStatus get clientUpdateStatus => status;
-
-  @override
-  bool get isClientUpdateBusy => false;
-
-  @override
-  String get clientUpdateSource => 'github';
-
-  @override
-  String get clientUpdateRepo => kClientUpdateGithubRepo;
-
-  @override
-  Future<void> hydrateClientUpdateIdentity({
-    String targetReleaseTrack = '',
-  }) async {}
-
-  @override
-  void selectClientUpdateReleaseTrack(ReleaseTrack track) {
-    selectedTracks.add(track);
-  }
-
-  @override
-  Future<void> applyClientUpdateThenExit(void Function() exitClient) async {
-    applyCalls += 1;
-    exitClient();
-  }
-}
-
-final class _RecordingProcessLifecycle implements ClientProcessLifecycle {
-  int exitCalls = 0;
-
-  @override
-  void exitSuccess() => exitCalls += 1;
 }

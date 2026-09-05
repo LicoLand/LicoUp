@@ -1,3 +1,5 @@
+import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
+
 /// Prefix-first Skill Hub ranking.
 ///
 /// Name fields ([title], [skillId]) outrank content fields ([description],
@@ -19,6 +21,49 @@ int skillHubSearchScore(Map<String, dynamic> skill, String query) {
     (skill['description'] ?? '').toString(),
     (skill['content'] ?? '').toString(),
   ]);
+}
+
+bool skillHubTextMatches({
+  required String query,
+  required Iterable<String> fields,
+}) {
+  final needle = query.trim().toLowerCase();
+  return needle.isEmpty ||
+      fields.any((field) => field.toLowerCase().contains(needle));
+}
+
+int skillProjectionSearchScore(SkillProjectionItem skill, String query) {
+  final needle = query.trim().toLowerCase();
+  if (needle.isEmpty) return 0;
+  final name = _bestFieldMatch(needle, [skill.name, skill.id]);
+  if (name > 0) return name + 2;
+  return _bestFieldMatch(needle, [skill.description, skill.content]);
+}
+
+List<SkillProjectionItem> filterAndRankSkillProjections({
+  required List<SkillProjectionItem> skills,
+  required String category,
+  required String query,
+}) {
+  final filtered = [
+    for (final skill in skills)
+      if ((category != 'public' || skill.public) &&
+          (category != 'private' || !skill.public))
+        skill,
+  ];
+  if (query.trim().isEmpty) return filtered;
+  final ranked = <({int score, int index, SkillProjectionItem skill})>[];
+  for (var index = 0; index < filtered.length; index++) {
+    final score = skillProjectionSearchScore(filtered[index], query);
+    if (score > 0) {
+      ranked.add((score: score, index: index, skill: filtered[index]));
+    }
+  }
+  ranked.sort((left, right) {
+    final byScore = right.score.compareTo(left.score);
+    return byScore != 0 ? byScore : left.index.compareTo(right.index);
+  });
+  return [for (final item in ranked) item.skill];
 }
 
 List<Map<String, dynamic>> filterAndRankSkillHubSkills({

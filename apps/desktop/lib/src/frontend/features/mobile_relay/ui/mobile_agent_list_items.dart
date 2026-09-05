@@ -1,27 +1,33 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_swipe_pin_action.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+
+typedef MobileAgentIconBuilder =
+    Widget Function(
+      BuildContext context,
+      AgentTargetProjection target, {
+      required bool selected,
+      required double size,
+      required double iconSize,
+    });
 
 final class MobilePairedDeviceListItem extends StatelessWidget {
   const MobilePairedDeviceListItem({
     super.key,
     required this.device,
-    required this.active,
     required this.entryId,
     required this.pinned,
     required this.onTogglePinned,
     required this.onTap,
   });
 
-  final MobileRelayPairedDevice device;
-  final bool active;
+  final RelayPeerProjection device;
   final String entryId;
   final bool pinned;
   final VoidCallback onTogglePinned;
@@ -36,10 +42,12 @@ final class MobilePairedDeviceListItem extends StatelessWidget {
       icon: Icon(
         Icons.computer_rounded,
         size: 30,
-        color: active ? colors.accent : colors.text,
+        color: device.selected ? colors.accent : colors.text,
       ),
       title: strings.arcDesktop,
-      subtitle: active ? '${strings.active} · ${device.label}' : device.label,
+      subtitle: device.selected
+          ? '${strings.active} · ${device.displayName}'
+          : device.displayName,
       entryId: entryId,
       pinned: pinned,
       onTogglePinned: onTogglePinned,
@@ -57,27 +65,39 @@ final class MobileLocalAgentListItem extends StatelessWidget {
     required this.pinned,
     required this.onTogglePinned,
     required this.onTap,
+    this.iconBuilder,
   });
 
-  final TargetCandidate target;
+  final AgentTargetProjection target;
   final String entryId;
   final String subtitle;
   final bool pinned;
   final VoidCallback onTogglePinned;
   final VoidCallback onTap;
+  final MobileAgentIconBuilder? iconBuilder;
 
   @override
   Widget build(BuildContext context) {
     return _MobileListTile(
-      key: Key('mobile-agent-list-item-${target.target}'),
-      icon: AgentBrandIcon(
-        target: target,
-        selected: true,
-        detected: target.status != 'not-detected',
-        size: 48,
-        iconSize: 32,
-      ),
-      title: target.label,
+      key: Key('mobile-agent-list-item-${target.id}'),
+      icon:
+          iconBuilder?.call(
+            context,
+            target,
+            selected: true,
+            size: 48,
+            iconSize: 32,
+          ) ??
+          Icon(
+            target.available
+                ? Icons.smart_toy_outlined
+                : Icons.extension_outlined,
+            size: 32,
+            color: target.available
+                ? context.licoColors.text
+                : context.licoColors.textMuted,
+          ),
+      title: target.displayName,
       subtitle: subtitle,
       entryId: entryId,
       pinned: pinned,

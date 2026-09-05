@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
@@ -24,7 +24,7 @@ void main() {
         size: size,
         brightness: Brightness.light,
       );
-      addTearDown(fixture.controller.dispose);
+      addTearDown(fixture.dispose);
       await tester.binding.setSurfaceSize(size);
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -45,8 +45,9 @@ void main() {
 
       await tester.tap(find.byTooltip('Collapse conversation history'));
       await tester.pump();
+      expect(find.byTooltip('Expand conversation history'), findsOneWidget);
       expect(
-        fixture.controller.layoutComposition.stateStore.read(
+        fixture.layoutStateStore.read(
           _agentsHistoryNamespace(dashboard, surface),
         ),
         isA<LayoutExpansionState>().having(
@@ -69,7 +70,7 @@ void main() {
       );
       expect(fixture.controller.conversationComposerDraft, contains('draft'));
       expect(
-        fixture.controller.layoutComposition.stateStore.read(
+        fixture.layoutStateStore.read(
           _agentsHistoryNamespace(messaging, surface),
         ),
         isNull,
@@ -85,6 +86,12 @@ void main() {
       expect(await switchBack, isTrue);
 
       expect(find.byTooltip('Expand conversation history'), findsOneWidget);
+      expect(
+        fixture.layoutStateStore.read(
+          _agentsHistoryNamespace(dashboard, surface),
+        ),
+        const LayoutExpansionState(false),
+      );
       expect(
         tester.widget<TextField>(composer()).controller?.text,
         'draft survives renderer replacement',

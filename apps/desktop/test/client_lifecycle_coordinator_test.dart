@@ -30,7 +30,7 @@ void main() {
       final gate = Completer<void>();
       final controller = ClientLifecycleCoordinator(onReport: (_) {});
       addTearDown(controller.dispose);
-      controller.addListener(() => phases.add(controller.projection.phase));
+      controller.changes.listen((_) => phases.add(controller.projection.phase));
       final steps = [
         ClientBootstrapStep(
           id: 'first',
@@ -292,7 +292,7 @@ void main() {
         final reports = <ClientLifecycleReport>[];
         final controller = ClientLifecycleCoordinator(onReport: reports.add);
         var notifications = 0;
-        controller.addListener(() => notifications += 1);
+        controller.changes.listen((_) => notifications += 1);
         if (edge.from == ClientLifecyclePhase.ready) {
           await controller.initialize(sequentialSteps: const []);
         } else {
@@ -327,7 +327,7 @@ void main() {
     () {
       final controller = ClientLifecycleCoordinator(onReport: (_) {});
       var notifications = 0;
-      controller.addListener(() => notifications += 1);
+      controller.changes.listen((_) => notifications += 1);
 
       controller.dispose();
       final afterFirst = controller.projection;

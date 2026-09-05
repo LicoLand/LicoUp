@@ -1,6 +1,3 @@
-import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/mobile_home_layout.dart';
-
 final class MobileHomeEntryOrderItem {
   const MobileHomeEntryOrderItem({
     required this.id,
@@ -14,12 +11,12 @@ final class MobileHomeEntryOrderItem {
 }
 
 List<String> orderMobileHomeEntryIds(
-  List<MobileHomeEntryOrderItem> entries,
-  MobileHomeLayout layout,
-) {
+  List<MobileHomeEntryOrderItem> entries, {
+  required List<String> persistedOrder,
+}) {
   final orderIndex = <String, int>{
-    for (var index = 0; index < layout.order.length; index++)
-      layout.order[index]: index,
+    for (var index = 0; index < persistedOrder.length; index += 1)
+      persistedOrder[index]: index,
   };
   final indexed = entries.indexed.toList(growable: false);
   indexed.sort((left, right) {
@@ -29,9 +26,9 @@ List<String> orderMobileHomeEntryIds(
     if (pinnedCompare != 0) return pinnedCompare;
     if (left.$2.pinned) {
       final leftOrder =
-          orderIndex[left.$2.id] ?? (layout.order.length + left.$1);
+          orderIndex[left.$2.id] ?? (persistedOrder.length + left.$1);
       final rightOrder =
-          orderIndex[right.$2.id] ?? (layout.order.length + right.$1);
+          orderIndex[right.$2.id] ?? (persistedOrder.length + right.$1);
       return leftOrder.compareTo(rightOrder);
     }
     final timeCompare = right.$2.sortTimeMillis.compareTo(
@@ -39,33 +36,7 @@ List<String> orderMobileHomeEntryIds(
     );
     return timeCompare != 0 ? timeCompare : left.$1.compareTo(right.$1);
   });
-  return List.unmodifiable(indexed.map((item) => item.$2.id));
-}
-
-AgentConversationSession? latestMobileHomeSession(
-  List<AgentConversationSession> sessions,
-) {
-  AgentConversationSession? latest;
-  for (final session in sessions) {
-    if (latest == null ||
-        mobileConversationSortTime(session) >
-            mobileConversationSortTime(latest)) {
-      latest = session;
-    }
-  }
-  return latest;
-}
-
-int mobileConversationSortTime(AgentConversationSession session) {
-  return parseMobileHomeSortTime(session.updatedAt, session.createdAt);
-}
-
-int parseMobileHomeSortTime(String primary, [String fallback = '']) {
-  return (DateTime.tryParse(primary) ??
-          DateTime.tryParse(fallback) ??
-          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true))
-      .toUtc()
-      .millisecondsSinceEpoch;
+  return List<String>.unmodifiable(indexed.map((item) => item.$2.id));
 }
 
 String mobileHomePreviewText(String? value) {

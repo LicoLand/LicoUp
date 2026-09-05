@@ -78,7 +78,7 @@ void main() {
 
   test('registry resolves adapters from injected service source', () async {
     final registry = AgentRenderAdapterRegistry(
-      jsonSource: _MemoryAgentRenderAdapterJsonSource([
+      loadJson: _MemoryAgentRenderAdapterJsonSource([
         const {
           'id': 'mobile-copilot',
           'displayName': 'Mobile Copilot',
@@ -87,7 +87,7 @@ void main() {
           },
           'layout': {'assistant': 'bubble'},
         },
-      ]),
+      ]).loadAdapterJson,
     );
 
     final adapter = await registry.resolve(

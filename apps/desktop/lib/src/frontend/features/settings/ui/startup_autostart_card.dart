@@ -1,129 +1,75 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 /// Settings card: login autostart for the desktop client and background helpers.
 final class StartupAutostartCard extends StatefulWidget {
-  const StartupAutostartCard({super.key, required this.controller});
+  const StartupAutostartCard({super.key, required this.binding});
 
-  final ClientController controller;
+  final SettingsBinding binding;
 
   @override
   State<StartupAutostartCard> createState() => _StartupAutostartCardState();
 }
 
 final class _StartupAutostartCardState extends State<StartupAutostartCard> {
-  bool _loading = true;
-  bool _busy = false;
-  bool _supported = false;
-  bool _desktopEnabled = false;
-  bool _desktopSilent = false;
-  bool _gatewayEnabled = false;
-  bool _mcpEnabled = false;
-  String? _message;
-  bool _messageIsError = false;
-
   @override
   void initState() {
     super.initState();
-    unawaited(_refresh());
+    widget.binding.intents.send(const RefreshSettingsAutostart());
   }
 
-  Future<void> _refresh() async {
-    try {
-      final payload = await widget.controller.agentService.runCli(const [
-        'autostart',
-        'status',
-      ]);
-      if (!mounted) return;
-      final desktop = payload['desktop'];
-      final gateway = payload['gateway'];
-      final mcp = payload['mcp'];
-      setState(() {
-        _supported = payload['supported'] == true;
-        _desktopEnabled = desktop is Map && desktop['enabled'] == true;
-        _desktopSilent = desktop is Map && desktop['silent'] == true;
-        _gatewayEnabled = gateway is Map && gateway['enabled'] == true;
-        _mcpEnabled = mcp is Map && mcp['enabled'] == true;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _supported = false;
-        _loading = false;
-        _messageIsError = true;
-        _message = LicoStrings.of(context).startupAutostartLoadFailed;
-      });
-    }
-  }
-
-  Future<void> _set({
-    required String component,
-    required bool enabled,
-    bool? silent,
-  }) async {
-    if (_busy || !_supported) return;
-    final strings = LicoStrings.of(context);
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
-    try {
-      final args = <String>[
-        'autostart',
-        'set',
-        '--component',
-        component,
-        '--enabled',
-        enabled ? 'true' : 'false',
-      ];
-      if (component == 'desktop' && silent != null) {
-        args.addAll(['--silent', silent ? 'true' : 'false']);
-      }
-      if (component == 'gateway') {
-        final port = widget.controller.llmGatewayLifecycleController.port;
-        args.addAll(['--port', '$port']);
-      }
-      final payload = await widget.controller.agentService.runCli(args);
-      if (!mounted) return;
-      final desktop = payload['desktop'];
-      final gateway = payload['gateway'];
-      final mcp = payload['mcp'];
-      setState(() {
-        _supported = payload['supported'] != false;
-        _desktopEnabled = desktop is Map && desktop['enabled'] == true;
-        _desktopSilent = desktop is Map && desktop['silent'] == true;
-        _gatewayEnabled = gateway is Map && gateway['enabled'] == true;
-        _mcpEnabled = mcp is Map && mcp['enabled'] == true;
-        _messageIsError = false;
-        _message = strings.startupAutostartSaved;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _messageIsError = true;
-        _message = _supported
-            ? strings.startupAutostartSaveFailed
-            : strings.startupAutostartUnsupported;
-      });
-      await _refresh();
-    } finally {
-      if (mounted) setState(() => _busy = false);
+  @override
+  void didUpdateWidget(StartupAutostartCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.binding, widget.binding)) {
+      widget.binding.intents.send(const RefreshSettingsAutostart());
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    return ProjectionBuilder<
+      SettingsAutostartProjection,
+      SettingsAutostartProjection
+    >(
+      source: widget.binding.autostart,
+      select: _autostartIdentity,
+      builder: _buildProjection,
+    );
+  }
+
+  Widget _buildProjection(
+    BuildContext context,
+    SettingsAutostartProjection projection,
+  ) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
+    final loading = projection.phase == SettingsAutostartPhase.loading;
+    final busy = projection.phase == SettingsAutostartPhase.applying;
+    final enabled = projection.supported && !loading && !busy;
+    final (message, messageIsError) = switch (projection.result) {
+      SettingsAutostartResult.saved => (strings.startupAutostartSaved, false),
+      SettingsAutostartResult.loadFailed => (
+        strings.startupAutostartLoadFailed,
+        true,
+      ),
+      SettingsAutostartResult.saveFailed => (
+        projection.supported
+            ? strings.startupAutostartSaveFailed
+            : strings.startupAutostartUnsupported,
+        true,
+      ),
+      SettingsAutostartResult.none => (null, false),
+    };
     return Padding(
       key: const Key('startup-autostart-card'),
       padding: presentation.rowPadding,
@@ -157,23 +103,23 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
                   ],
                 ),
               ),
-              if (_loading || _busy)
+              if (loading || busy)
                 const SizedBox.square(
                   dimension: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
             ],
           ),
-          if (_message != null) ...[
+          if (message != null) ...[
             const SizedBox(height: 10),
             Text(
-              _message!,
+              message,
               style: TextStyle(
-                color: _messageIsError ? colors.error : colors.textMuted,
+                color: messageIsError ? colors.error : colors.textMuted,
                 fontSize: 12,
               ),
             ),
-          ] else if (!_loading && !_supported) ...[
+          ] else if (!loading && !projection.supported) ...[
             const SizedBox(height: 10),
             Text(
               strings.startupAutostartUnsupported,
@@ -187,14 +133,14 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
             contentPadding: EdgeInsets.zero,
             dense: true,
             title: Text(strings.startupDesktopClientAutostart),
-            value: _desktopEnabled,
-            onChanged: !_supported || _busy || _loading
+            value: projection.desktopEnabled,
+            onChanged: !enabled
                 ? null
-                : (value) => unawaited(
-                    _set(
-                      component: 'desktop',
+                : (value) => widget.binding.intents.send(
+                    SetSettingsAutostart(
+                      component: SettingsAutostartComponent.desktop,
                       enabled: value,
-                      silent: _desktopSilent,
+                      silent: projection.desktopSilent,
                     ),
                   ),
           ),
@@ -209,11 +155,15 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
                 strings.startupSilentStartHint,
                 style: TextStyle(color: colors.textMuted, fontSize: 11),
               ),
-              value: _desktopSilent,
-              onChanged: !_supported || !_desktopEnabled || _busy || _loading
+              value: projection.desktopSilent,
+              onChanged: !enabled || !projection.desktopEnabled
                   ? null
-                  : (value) => unawaited(
-                      _set(component: 'desktop', enabled: true, silent: value),
+                  : (value) => widget.binding.intents.send(
+                      SetSettingsAutostart(
+                        component: SettingsAutostartComponent.desktop,
+                        enabled: true,
+                        silent: value,
+                      ),
                     ),
             ),
           ),
@@ -228,11 +178,15 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
               strings.startupGatewayHint,
               style: TextStyle(color: colors.textMuted, fontSize: 11),
             ),
-            value: _gatewayEnabled,
-            onChanged: !_supported || _busy || _loading
+            value: projection.gatewayEnabled,
+            onChanged: !enabled
                 ? null
-                : (value) =>
-                      unawaited(_set(component: 'gateway', enabled: value)),
+                : (value) => widget.binding.intents.send(
+                    SetSettingsAutostart(
+                      component: SettingsAutostartComponent.gateway,
+                      enabled: value,
+                    ),
+                  ),
           ),
           SwitchListTile.adaptive(
             key: const Key('startup-mcp-autostart'),
@@ -243,16 +197,25 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
               strings.startupLocalMcpHint,
               style: TextStyle(color: colors.textMuted, fontSize: 11),
             ),
-            value: _mcpEnabled,
-            onChanged: !_supported || _busy || _loading
+            value: projection.mcpEnabled,
+            onChanged: !enabled
                 ? null
-                : (value) => unawaited(_set(component: 'mcp', enabled: value)),
+                : (value) => widget.binding.intents.send(
+                    SetSettingsAutostart(
+                      component: SettingsAutostartComponent.mcp,
+                      enabled: value,
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 }
+
+SettingsAutostartProjection _autostartIdentity(
+  SettingsAutostartProjection value,
+) => value;
 
 final class _SectionLabel extends StatelessWidget {
   const _SectionLabel({required this.label});

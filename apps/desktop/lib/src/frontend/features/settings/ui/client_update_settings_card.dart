@@ -1,18 +1,19 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 class ClientUpdateSettingsCard extends StatefulWidget {
-  const ClientUpdateSettingsCard({super.key, required this.controller});
+  const ClientUpdateSettingsCard({super.key, required this.binding});
 
-  final ClientController controller;
+  final SettingsBinding binding;
 
   @override
   State<ClientUpdateSettingsCard> createState() =>
@@ -25,36 +26,45 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(widget.controller.hydrateClientUpdateIdentity());
+        widget.binding.intents.send(const HydrateClientUpdateIdentity());
       }
     });
   }
 
   void _checkFromGithub() {
-    unawaited(widget.controller.checkClientUpdateFromGithub());
+    widget.binding.intents.send(const CheckForClientUpdate());
   }
 
   void _downloadFromGithub() {
-    unawaited(widget.controller.downloadClientUpdateFromGithub());
+    widget.binding.intents.send(const DownloadClientUpdate());
   }
 
   void _applyAndRestart() {
-    unawaited(
-      widget.controller.applyClientUpdateThenExit(() {
-        // The detached native update script replaces the installation and
-        // relaunches the new version after this process exits.
-        widget.controller.clientProcessLifecycle.exitSuccess();
-      }),
-    );
+    widget.binding.intents.send(const ApplyClientUpdate());
   }
 
   @override
   Widget build(BuildContext context) {
+    return ProjectionBuilder<
+      SettingsProjection,
+      SettingsClientUpdateProjection
+    >(
+      source: widget.binding.projection,
+      select: (projection) => projection.clientUpdate,
+      builder: _buildCard,
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    SettingsClientUpdateProjection status,
+  ) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final controller = widget.controller;
-    final status = controller.clientUpdateStatus;
-    final busy = controller.isClientUpdateBusy;
+    final busy =
+        status.phase == ClientUpdatePhase.checking ||
+        status.phase == ClientUpdatePhase.downloading ||
+        status.phase == ClientUpdatePhase.verifying;
     final canCheck = !busy;
     final canDownload =
         !busy &&
@@ -65,11 +75,11 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
         (status.phase == ClientUpdatePhase.verified ||
             status.phase == ClientUpdatePhase.applyPlanned);
     final sourceAddress = clientUpdatePublicSourceAddress(
-      repo: controller.clientUpdateRepo,
+      repo: widget.binding.projection.current.clientUpdateRepo,
       githubReleaseUrl: status.githubReleaseUrl,
     );
 
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
     return Padding(
       key: const Key('client-update-settings-card'),
       padding: presentation.rowPadding,
@@ -118,7 +128,9 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
               enabled: !busy,
               nightlyLabel: strings.nightlyChannel,
               stableLabel: strings.stableChannel,
-              onSelected: controller.selectClientUpdateReleaseTrack,
+              onSelected: (track) => widget.binding.intents.send(
+                SetClientUpdateReleaseTrack(track),
+              ),
             )
           else
             _InfoLine(label: strings.channel, value: strings.stableChannel),

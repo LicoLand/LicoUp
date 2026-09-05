@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
@@ -13,10 +14,12 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
-import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
+import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 
 void main() {
   test(
@@ -1056,6 +1059,7 @@ void main() {
   ) async {
     final runner = _DialogConversationRunner();
     final controller = ClientConversationController(runner: runner);
+    final dialog = _DialogConversationBinding(controller);
     final targets = [_target('codex', 'Codex')];
     await tester.pumpWidget(
       MaterialApp(
@@ -1072,7 +1076,8 @@ void main() {
             onPressed: () => unawaited(
               showCreateCanonicalGroupConversationDialog(
                 context: context,
-                controller: controller,
+                intents: dialog,
+                effects: dialog,
                 targets: targets,
               ),
             ),
@@ -1114,6 +1119,7 @@ void main() {
     final controller = ClientConversationController(
       runner: _FailingDialogConversationRunner(),
     );
+    final dialog = _DialogConversationBinding(controller);
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('en'),
@@ -1129,7 +1135,8 @@ void main() {
             onPressed: () => unawaited(
               showCreateCanonicalGroupConversationDialog(
                 context: context,
-                controller: controller,
+                intents: dialog,
+                effects: dialog,
                 targets: [_target('codex', 'Codex')],
               ),
             ),
@@ -1153,6 +1160,55 @@ void main() {
     expect(find.byKey(const Key('canonical-group-create-dialog')), findsOne);
     expect(find.byKey(const Key('canonical-group-create-failure')), findsOne);
   });
+}
+
+final class _DialogConversationBinding
+    implements
+        IntentSink<ConversationIntent>,
+        EffectSource<ConversationEffect> {
+  _DialogConversationBinding(this._controller);
+
+  final ClientConversationController _controller;
+  final StreamController<ConversationEffect> _effects =
+      StreamController<ConversationEffect>.broadcast(sync: true);
+
+  @override
+  Stream<ConversationEffect> get effects => _effects.stream;
+
+  @override
+  void send(ConversationIntent intent) {
+    if (intent case CreateCanonicalConversationGroup(
+      :final title,
+      :final members,
+    )) {
+      unawaited(_create(title, members));
+    }
+  }
+
+  Future<void> _create(
+    String title,
+    List<ClientConversationGroupMemberDraft> members,
+  ) async {
+    final created = await _controller.createGroup(
+      title: title,
+      members: members,
+    );
+    if (created) {
+      _effects.add(
+        CanonicalConversationGroupCreated(_controller.selectedConversationId),
+      );
+    } else {
+      _effects.add(
+        ConversationActionRejected(
+          conversationId: '',
+          stage: 'canonical-create',
+          reasonCode: _controller.failureCode.isEmpty
+              ? 'conversation_operation_failed'
+              : _controller.failureCode,
+        ),
+      );
+    }
+  }
 }
 
 final class _DialogConversationRunner implements AgentCommandRunner {

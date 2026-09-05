@@ -10,7 +10,7 @@ export const scriptRepositoryRoot = path.resolve(
 
 export const DEFAULT_LAYOUT_BOUNDARY_CONFIG = Object.freeze({
   compositionPath:
-    "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart",
+    "apps/desktop/lib/src/composition/built_in_layout_composition.dart",
   surfaceContractPath:
     "apps/desktop/lib/src/contracts/presentation/layout_environment.dart",
   profileSourceRoot:
@@ -37,6 +37,7 @@ export const NEUTRAL_LAYOUT_CONTRACTS = new Set([
   "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart",
   "apps/desktop/lib/src/frontend/layout/layout_palette.dart",
   "apps/desktop/lib/src/frontend/layout/layout_scope.dart",
+  "apps/desktop/lib/src/frontend/layout/layout_state_port.dart",
   "apps/desktop/lib/src/frontend/layout/layout_surface_bundle.dart",
   "apps/desktop/lib/src/frontend/layout/layout_visual_tokens.dart",
 ]);

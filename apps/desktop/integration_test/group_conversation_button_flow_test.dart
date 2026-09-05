@@ -14,10 +14,12 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
-import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+import '../test/support/canonical_group/canonical_group_binding_fixture.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -175,6 +177,7 @@ class _GroupConversationButtonHarness extends StatefulWidget {
 class _GroupConversationButtonHarnessState
     extends State<_GroupConversationButtonHarness> {
   var _newConversationOpen = false;
+  late final CanonicalGroupBindingFixture _dialogFixture;
 
   static final _targets = <TargetCandidate>[
     TargetCandidate(
@@ -202,10 +205,25 @@ class _GroupConversationButtonHarnessState
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _dialogFixture = CanonicalGroupBindingFixture(
+      controller: widget.controller,
+      targets: _targets,
+    );
+  }
+
+  @override
+  void dispose() {
+    unawaited(_dialogFixture.close());
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AnimatedBuilder(
-        animation: widget.controller,
+      body: StreamBuilder<Object?>(
+        stream: _dialogFixture.changes,
         builder: (context, _) => Row(
           children: [
             SizedBox(
@@ -230,7 +248,8 @@ class _GroupConversationButtonHarnessState
                 onNewGroupConversation: () => unawaited(
                   showCreateCanonicalGroupConversationDialog(
                     context: context,
-                    controller: widget.controller,
+                    intents: _dialogFixture.conversation.intents,
+                    effects: _dialogFixture.conversation.effects,
                     targets: _targets,
                   ),
                 ),
@@ -247,7 +266,7 @@ class _GroupConversationButtonHarnessState
                             : null,
                       ),
                     )
-                  : CanonicalGroupConversationPane(
+                  : CanonicalGroupConversationPaneFixture(
                       controller: widget.controller,
                       targets: _targets,
                       onCopyText: (_) async {},

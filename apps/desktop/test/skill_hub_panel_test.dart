@@ -1,30 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/skill_delete.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fixtures/skill_hub_binding_fixture.dart';
 
 void main() {
   testWidgets('Skill Hub shows centered scanning state while busy and empty', (
     tester,
   ) async {
-    final controller = ClientController()
-      ..isSkillHubBusy = true
-      ..skillHubSkills = const [];
-    addTearDown(controller.dispose);
-
-    await _pumpSkillHub(
-      tester,
-      controller: controller,
-      locale: const Locale('zh'),
+    final fixture = SkillHubBindingFixture(
+      skills: const [],
+      phase: PresentationPhase.loading,
     );
+    addTearDown(fixture.dispose);
+
+    await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('zh'));
 
     expect(find.text('扫描中...'), findsOneWidget);
     expect(find.text('未发现技能'), findsNothing);
@@ -34,14 +32,10 @@ void main() {
   testWidgets(
     'English Skill Hub filters cards and infers non-empty loader icons',
     (tester) async {
-      final controller = _skillHubController();
-      addTearDown(controller.dispose);
+      final fixture = _skillHubFixture();
+      addTearDown(fixture.dispose);
 
-      await _pumpSkillHub(
-        tester,
-        controller: controller,
-        locale: const Locale('en'),
-      );
+      await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('en'));
 
       expect(
         find.text('Browse, pair, and install skills loadable by local agents.'),
@@ -101,14 +95,10 @@ void main() {
   testWidgets(
     'Chinese Skill Hub localizes chrome without translating skill content',
     (tester) async {
-      final controller = _skillHubController();
-      addTearDown(controller.dispose);
+      final fixture = _skillHubFixture();
+      addTearDown(fixture.dispose);
 
-      await _pumpSkillHub(
-        tester,
-        controller: controller,
-        locale: const Locale('zh'),
-      );
+      await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('zh'));
 
       expect(find.text('技能中心'), findsOneWidget);
       expect(find.text('搜索技能'), findsNothing);
@@ -152,15 +142,10 @@ void main() {
   testWidgets(
     'skill details move the selected catalog directory to system trash',
     (tester) async {
-      final gateway = _SkillTrashGateway();
-      final controller = _skillHubController(skillDeleteGateway: gateway);
-      addTearDown(controller.dispose);
+      final fixture = _skillHubFixture();
+      addTearDown(fixture.dispose);
 
-      await _pumpSkillHub(
-        tester,
-        controller: controller,
-        locale: const Locale('en'),
-      );
+      await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('en'));
 
       await tester.tap(find.text('Public Reviewer'));
       await tester.pumpAndSettle();
@@ -184,12 +169,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(gateway.plannedSkillId, 'public-reviewer');
+      expect(fixture.plannedSkillId, 'public-reviewer');
       expect(
-        gateway.plannedPath,
+        fixture.plannedPath,
         '<portable-root>/.agents/skills/public-reviewer',
       );
-      expect(gateway.appliedConfirmation, 'trash:public-reviewer:test-plan');
+      expect(fixture.appliedConfirmation, 'trash:public-reviewer:test-plan');
       expect(find.text('Public Reviewer'), findsNothing);
       expect(
         find.text('Moved "Public Reviewer" to the system trash.'),
@@ -201,17 +186,10 @@ void main() {
   testWidgets(
     'skill hub omits the retired installer while preserving the local catalog',
     (tester) async {
-      final controller = _skillHubController()
-        ..skillHubPairings = const [
-          {'agentId': 'codex', 'target': 'manual', 'status': 'approved'},
-        ];
-      addTearDown(controller.dispose);
+      final fixture = _skillHubFixture();
+      addTearDown(fixture.dispose);
 
-      await _pumpSkillHub(
-        tester,
-        controller: controller,
-        locale: const Locale('zh'),
-      );
+      await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('zh'));
 
       // Installation is no longer part of the local Skill Hub. The catalog
       // and its filters remain available without a settings drawer.
@@ -233,14 +211,10 @@ void main() {
   testWidgets(
     'Skill Hub main pane keeps category chips and has no search field',
     (tester) async {
-      final controller = _skillHubController();
-      addTearDown(controller.dispose);
+      final fixture = _skillHubFixture();
+      addTearDown(fixture.dispose);
 
-      await _pumpSkillHub(
-        tester,
-        controller: controller,
-        locale: const Locale('en'),
-      );
+      await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('en'));
 
       expect(find.byKey(const Key('skill-hub-search')), findsNothing);
       expect(find.byType(TextField), findsNothing);
@@ -261,26 +235,22 @@ void main() {
           'romeo sierra tango uniform victor whiskey xray yankee zulu '
           'wrapped line three continues with extra sample words so the '
           'card body must ellipsize after exactly three lines of text';
-      final controller = _skillHubController()
-        ..skillHubSkills = const [
-          {
-            'skillId': 'sample-wrap-skill',
-            'title': 'flutter-implement-json-serialization',
-            'author': 'Sample Author',
-            'description': longDescription,
-            'version': '1.0.0',
-            'isPublic': false,
-            'path': '/skills/sample-wrap-skill',
-            'usedByAgents': <String>[],
-          },
-        ];
-      addTearDown(controller.dispose);
-
-      await _pumpSkillHub(
-        tester,
-        controller: controller,
-        locale: const Locale('en'),
+      final fixture = SkillHubBindingFixture(
+        skills: [
+          skillHubFixtureSkill(
+            id: 'sample-wrap-skill',
+            name: 'flutter-implement-json-serialization',
+            author: 'Sample Author',
+            description: longDescription,
+            version: '1.0.0',
+            isPublic: false,
+            path: '/skills/sample-wrap-skill',
+          ),
+        ],
       );
+      addTearDown(fixture.dispose);
+
+      await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('en'));
 
       final title = tester.widget<Text>(
         find.descendant(
@@ -288,7 +258,7 @@ void main() {
           matching: find.byType(Text),
         ),
       );
-      expect(title.maxLines, SkillCardTitle.maxLines);
+      expect(title.maxLines, 2);
       expect(title.overflow, TextOverflow.ellipsis);
       expect(title.softWrap, isTrue);
 
@@ -308,10 +278,7 @@ void main() {
         TextSelection(baseOffset: 0, extentOffset: longDescription.length),
       );
       expect(_lineCount(boxes), 3);
-      expect(
-        paragraph.size.height,
-        closeTo(SkillCardDescription.reservedHeight, 0.5),
-      );
+      expect(paragraph.size.height, closeTo(49, 0.5));
       for (final box in boxes) {
         expect(box.bottom, lessThanOrEqualTo(paragraph.size.height + 0.5));
       }
@@ -323,26 +290,21 @@ void main() {
     tester,
   ) async {
     const shortDescription = 'Short.';
-    final controller = _skillHubController()
-      ..skillHubSkills = const [
-        {
-          'skillId': 'sample-short-skill',
-          'title': 'Short Skill',
-          'author': 'Sample Author',
-          'description': shortDescription,
-          'version': 'local',
-          'isPublic': false,
-          'path': '/skills/sample-short-skill',
-          'usedByAgents': <String>[],
-        },
-      ];
-    addTearDown(controller.dispose);
-
-    await _pumpSkillHub(
-      tester,
-      controller: controller,
-      locale: const Locale('en'),
+    final fixture = SkillHubBindingFixture(
+      skills: [
+        skillHubFixtureSkill(
+          id: 'sample-short-skill',
+          name: 'Short Skill',
+          author: 'Sample Author',
+          description: shortDescription,
+          isPublic: false,
+          path: '/skills/sample-short-skill',
+        ),
+      ],
     );
+    addTearDown(fixture.dispose);
+
+    await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('en'));
 
     final paragraph = _descriptionParagraph(tester);
     expect(paragraph.didExceedMaxLines, isFalse);
@@ -423,7 +385,7 @@ int _lineCount(List<TextBox> boxes) {
 
 Future<void> _pumpSkillHub(
   WidgetTester tester, {
-  required ClientController controller,
+  required SkillHubBindingFixture fixture,
   required Locale locale,
 }) async {
   await tester.pumpWidget(
@@ -446,7 +408,7 @@ Future<void> _pumpSkillHub(
         body: SizedBox(
           width: 900,
           height: 650,
-          child: SkillHubPanel(controller: controller),
+          child: SkillHubPanel(binding: fixture.binding),
         ),
       ),
     ),
@@ -454,78 +416,37 @@ Future<void> _pumpSkillHub(
   await tester.pump();
 }
 
-ClientController _skillHubController({SkillDeleteGateway? skillDeleteGateway}) {
-  return ClientController(skillDeleteGateway: skillDeleteGateway)
-    ..isSkillHubBusy = true
-    ..scannedTargets = [
-      _target('codex', 'ChatGPT - Desktop'),
-      _target('cursor', 'Cursor - IDE'),
-      _target('claude-code', 'Claude Code - CLI'),
-      _target('opencode', 'OpenCode - CLI'),
-    ]
-    ..skillHubSkills = const [
-      {
-        'skillId': 'public-reviewer',
-        'title': 'Public Reviewer',
-        'author': 'Example Org',
-        'description': 'Reviews changes.',
-        'version': '1.2.3',
-        'isPublic': true,
-        'path': '<portable-root>/.agents/skills/public-reviewer',
-        'usedByAgents': <String>[],
-      },
-      {
-        'skillId': 'private-helper',
-        'title': 'Private Helper',
-        'description': '',
-        'version': 'local',
-        'isPublic': false,
-        'path': '<portable-root>/.claude/skills/private-helper',
-        'usedByAgents': <String>[],
-      },
-    ];
-}
-
-class _SkillTrashGateway implements SkillDeleteGateway {
-  String plannedSkillId = '';
-  String plannedPath = '';
-  String appliedConfirmation = '';
-
-  @override
-  Future<Map<String, dynamic>> planSkillDelete({
-    required String skillId,
-    required String path,
-  }) async {
-    plannedSkillId = skillId;
-    plannedPath = path;
-    return {
-      'ok': true,
-      'status': 'trash_planned',
-      'trashAllowed': true,
-      'confirmation': 'trash:$skillId:test-plan',
-    };
-  }
-
-  @override
-  Future<Map<String, dynamic>> applySkillDelete({
-    required String skillId,
-    required String path,
-    required String confirmation,
-  }) async {
-    appliedConfirmation = confirmation;
-    return {'ok': true, 'status': 'trashed', 'trashedCount': 1};
-  }
-}
-
-TargetCandidate _target(String id, String label) {
-  return TargetCandidate(
-    target: id,
-    label: label,
-    kind: 'cli',
-    status: 'detected',
-    configured: true,
-    confidence: 1,
-    adapterStatus: 'implemented',
+SkillHubBindingFixture _skillHubFixture() {
+  return SkillHubBindingFixture(
+    phase: PresentationPhase.loading,
+    skills: [
+      skillHubFixtureSkill(
+        id: 'public-reviewer',
+        name: 'Public Reviewer',
+        author: 'Example Org',
+        description: 'Reviews changes.',
+        version: '1.2.3',
+        isPublic: true,
+        path: '<portable-root>/.agents/skills/public-reviewer',
+        iconId: 'shield',
+        agents: const [
+          SkillAgentProjection(id: 'codex', label: 'Codex'),
+          SkillAgentProjection(id: 'cursor', label: 'Cursor'),
+          SkillAgentProjection(id: 'claude-code', label: 'Claude Code'),
+          SkillAgentProjection(id: 'opencode', label: 'OpenCode'),
+        ],
+      ),
+      skillHubFixtureSkill(
+        id: 'private-helper',
+        name: 'Private Helper',
+        isPublic: false,
+        path: '<portable-root>/.claude/skills/private-helper',
+        iconId: 'wrench',
+        agents: const [
+          SkillAgentProjection(id: 'claude-code', label: 'Claude Code'),
+        ],
+      ),
+    ],
   );
 }
 

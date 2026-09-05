@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_section_catalog.dart';
+import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart';
@@ -15,6 +15,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
   const DashboardFolderSidebar({
     super.key,
     required this.section,
+    required this.availableSections,
     required this.onSelectSection,
     required this.width,
     this.settingsSectionIndex = -1,
@@ -22,6 +23,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
   });
 
   final ClientSection section;
+  final List<ClientSection> availableSections;
   final ValueChanged<ClientSection> onSelectSection;
   final double width;
 
@@ -72,6 +74,7 @@ final class DashboardFolderSidebar extends StatelessWidget {
               child: DashboardDesktopSearch(
                 width: width - 16,
                 current: section,
+                availableSections: availableSections,
                 onSelect: onSelectSection,
               ),
             ),
@@ -80,34 +83,36 @@ final class DashboardFolderSidebar extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 children: [
-                  for (final entry in _sections) ...[
-                    _DashboardFolderRow(
-                      key: Key('dashboard-folder-nav-${entry.name}'),
-                      section: entry,
-                      label: _folderLabel(strings, entry),
-                      icon: _folderIcon(entry),
-                      selected: entry == section,
-                      onPressed: () => onSelectSection(entry),
-                    ),
-                    // The Settings destination expands in place, Arc-style:
-                    // its sections become sub-items while it is selected.
-                    if (entry == ClientSection.settings &&
-                        section == ClientSection.settings)
-                      for (
-                        var index = 0;
-                        index < settingsSectionIdOrder.length;
-                        index++
-                      )
-                        _DashboardFolderSubRow(
-                          key: Key(
-                            'dashboard-folder-nav-settings-${settingsSectionIdOrder[index]}',
+                  for (final entry in _sections)
+                    if (availableSections.contains(entry)) ...[
+                      _DashboardFolderRow(
+                        key: Key('dashboard-folder-nav-${entry.name}'),
+                        section: entry,
+                        label: _folderLabel(strings, entry),
+                        icon: _folderIcon(entry),
+                        selected: entry == section,
+                        onPressed: () => onSelectSection(entry),
+                      ),
+                      // The Settings destination expands in place, Arc-style:
+                      // its sections become sub-items while it is selected.
+                      if (entry == ClientSection.settings &&
+                          section == ClientSection.settings)
+                        for (
+                          var index = 0;
+                          index < settingsSectionIdOrder.length;
+                          index++
+                        )
+                          _DashboardFolderSubRow(
+                            key: Key(
+                              'dashboard-folder-nav-settings-${settingsSectionIdOrder[index]}',
+                            ),
+                            icon: settingsSubSections[index].icon,
+                            label: settingsSubSections[index].label,
+                            selected: settingsSectionIndex == index,
+                            onPressed: () =>
+                                onSelectSettingsSection?.call(index),
                           ),
-                          icon: settingsSubSections[index].icon,
-                          label: settingsSubSections[index].label,
-                          selected: settingsSectionIndex == index,
-                          onPressed: () => onSelectSettingsSection?.call(index),
-                        ),
-                  ],
+                    ],
                 ],
               ),
             ),

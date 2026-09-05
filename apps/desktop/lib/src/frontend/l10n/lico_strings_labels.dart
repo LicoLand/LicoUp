@@ -1,4 +1,4 @@
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings_base.dart';
 
 extension LicoStringsLabels on LicoStrings {
@@ -334,6 +334,8 @@ extension LicoStringsLabels on LicoStrings {
   String get statsNav => isChinese ? '统计' : 'Stats';
   String get statsPanel => isChinese ? '统计面板' : 'Statistics';
   String get newConversation => isChinese ? '新对话' : 'New Chat';
+  String get untitledConversation =>
+      isChinese ? '未命名对话' : 'Untitled conversation';
   String get createConversation => isChinese ? '新建' : 'New';
   String get newGroupConversation => isChinese ? '新群组' : 'New Group';
   String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
@@ -643,8 +645,6 @@ extension LicoStringsLabels on LicoStrings {
   String get lifecycleProcessingShort => isChinese ? '处理' : 'Working';
   String get lifecycleRespondingShort => isChinese ? '回复中' : 'Replying';
   String get lifecycleCompletedShort => isChinese ? '完成' : 'Done';
-  String lifecycleObserved(int count, int total) =>
-      isChinese ? '已观测 $count/$total 个阶段' : '$count of $total stages observed';
   String get messagingEmptyConversationGuide => isChinese
       ? '选择一个对话，或开始一个新对话'
       : 'Select a conversation or start a new one';

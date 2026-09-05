@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
@@ -13,7 +13,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubbl
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';

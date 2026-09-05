@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
+import 'package:licoup/src/application/controller/client_appearance_commands.dart';
+import 'package:licoup/src/application/controller/client_functional_status_commands.dart';
+import 'package:licoup/src/application/controller/client_locale_commands.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_maintenance_facade.dart';
 import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_navigation_facade.dart';
-import 'package:licoup/src/application/controller/client_presentation_facade.dart';
 import 'package:licoup/src/application/controller/client_routing_facade.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
@@ -19,13 +21,15 @@ import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_c
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 
 mixin ClientLifecycleFacade
     on
         AgentWorkspaceCoordinator,
         ConversationArchiveController,
-        ClientPresentationFacade,
+        ClientAppearanceCommands,
+        ClientLocaleCommands,
+        ClientFunctionalStatusCommands,
         ClientRoutingFacade,
         ClientMaintenanceFacade,
         ClientAgentUsageFacade,
@@ -225,7 +229,6 @@ mixin ClientLifecycleFacade
       );
       statusCaption = 'Ready';
     }
-    notifyAppPresentationChanged();
     notifyClientStateChanged();
   }
 }

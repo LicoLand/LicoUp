@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
@@ -17,11 +17,12 @@ import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 final class LayoutHost extends StatefulWidget {
   const LayoutHost({
     super.key,
-    required this.manager,
+    required this.selection,
     required this.registry,
     required this.stateStore,
     required this.environment,
     required this.destination,
+    required this.availableDestinations,
     required this.onSelectDestination,
     required this.destinationLabel,
     required this.content,
@@ -32,11 +33,12 @@ final class LayoutHost extends StatefulWidget {
     required this.chrome,
   });
 
-  final LayoutManager manager;
+  final LayoutSelectionState selection;
   final LayoutRegistry registry;
-  final LayoutStateStore stateStore;
+  final LayoutStatePort stateStore;
   final LayoutEnvironment environment;
   final ClientSection destination;
+  final List<ClientSection> availableDestinations;
   final ValueChanged<ClientSection> onSelectDestination;
   final LayoutDestinationLabelResolver destinationLabel;
   final LayoutDestinationContentPort content;
@@ -59,55 +61,34 @@ final class _LayoutHostState extends State<LayoutHost> {
   void initState() {
     super.initState();
     _validateCatalogIdentity();
-    widget.manager.updateEnvironment(widget.environment, notify: false);
-    _renderedKey = _keyFor(widget.manager.state);
-    widget.manager.addListener(_handleSelection);
+    _renderedKey = _keyFor(widget.selection, widget.environment);
   }
 
   @override
   void didUpdateWidget(LayoutHost oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.manager, widget.manager)) {
-      oldWidget.manager.removeListener(_handleSelection);
-      _validateCatalogIdentity();
-      widget.manager.updateEnvironment(widget.environment, notify: false);
+    _validateCatalogIdentity();
+    if (oldWidget.selection != widget.selection ||
+        oldWidget.environment != widget.environment) {
       _prepareReplacement(
-        _keyFor(widget.manager.state),
-        captureCoordinator: oldWidget.focusCoordinator,
+        _keyFor(widget.selection, widget.environment),
+        captureCoordinator:
+            identical(oldWidget.focusCoordinator, widget.focusCoordinator)
+            ? null
+            : oldWidget.focusCoordinator,
       );
-      widget.manager.addListener(_handleSelection);
-    } else {
-      _validateCatalogIdentity();
-      if (oldWidget.environment != widget.environment) {
-        final previousKey = _renderedKey;
-        widget.manager.updateEnvironment(widget.environment, notify: false);
-        if (previousKey != _keyFor(widget.manager.state)) {
-          _prepareReplacement(_keyFor(widget.manager.state));
-        }
-      }
     }
   }
 
-  @override
-  void dispose() {
-    widget.manager.removeListener(_handleSelection);
-    super.dispose();
-  }
-
-  void _handleSelection(LayoutSelectionState state) {
-    _prepareReplacement(_keyFor(state));
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  LayoutVariantKey? _keyFor(LayoutSelectionState state) =>
-      state.status == LayoutSelectionStatus.loading
+  LayoutVariantKey? _keyFor(
+    LayoutSelectionState state,
+    LayoutEnvironment environment,
+  ) => state.status == LayoutSelectionStatus.loading
       ? null
       : LayoutVariantKey(
           profileId: state.effectiveId,
-          surface: state.surface,
-          viewport: state.viewport,
+          surface: environment.surface,
+          viewport: environment.viewport,
         );
 
   void _prepareReplacement(
@@ -144,20 +125,22 @@ final class _LayoutHostState extends State<LayoutHost> {
   }
 
   void _validateCatalogIdentity() {
-    if (!identical(widget.manager.catalog, widget.registry.catalog) ||
-        !identical(widget.stateStore.catalog, widget.registry.catalog)) {
+    if (!identical(
+      widget.stateStore.catalogIdentity,
+      widget.registry.catalog,
+    )) {
       throw const FormatException('layout_host_catalog_mismatch');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final selection = widget.manager.state;
+    final selection = widget.selection;
     if (selection.status == LayoutSelectionStatus.loading) {
       return widget.loadingBuilder(context);
     }
 
-    final key = _keyFor(selection)!;
+    final key = _keyFor(selection, widget.environment)!;
     _renderedKey = key;
     final registered = widget.registry.variant(key);
     final destinationBuilder =
@@ -171,8 +154,15 @@ final class _LayoutHostState extends State<LayoutHost> {
       destination: widget.destination,
       store: widget.stateStore,
     );
-    final destinations = registered.variant.destinationBuilders.keys.toList()
-      ..sort((left, right) => left.index.compareTo(right.index));
+    final available = widget.availableDestinations.toSet();
+    final destinations =
+        registered.variant.destinationBuilders.keys
+            .where(available.contains)
+            .toList()
+          ..sort((left, right) => left.index.compareTo(right.index));
+    if (!destinations.contains(widget.destination)) {
+      throw const FormatException('layout_host_destination_unavailable');
+    }
     final initialFocusTarget = widget.focusCoordinator.replacementTarget(
       primaryTarget: widget.primaryFocusTarget,
     );

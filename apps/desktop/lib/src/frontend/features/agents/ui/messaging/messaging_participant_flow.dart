@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -13,7 +14,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_messa
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
@@ -440,6 +441,11 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   List<ConversationTimelineItem>? _cachedItems;
   bool _pageRequestInFlight = false;
 
+  /// While the transcript scrolls, decorative animations (process spinners,
+  /// shimmer titles) pause under a muted [TickerMode]; data keeps updating
+  /// because only tickers are gated.
+  bool _scrollActive = false;
+
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
   /// as still "at latest" so the control does not flicker.
   static const double _atLatestThreshold = 48;
@@ -519,6 +525,37 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     return null;
   }
 
+  bool _handleScrollNotification(ScrollNotification notification) {
+    _syncScrollActiveFromNotification(notification);
+    return _loadEarlierOnScroll(notification);
+  }
+
+  /// Scroll notifications can be dispatched mid-frame (a scroll activity
+  /// going idle during layout fires [ScrollEndNotification] synchronously),
+  /// so the ticker gate always applies on the next frame instead of calling
+  /// setState inside the notification.
+  void _syncScrollActiveFromNotification(ScrollNotification notification) {
+    if (notification.depth != 0) {
+      return;
+    }
+    if (notification is ScrollStartNotification) {
+      _setScrollActive(true);
+    } else if (notification is ScrollEndNotification) {
+      _setScrollActive(false);
+    }
+  }
+
+  void _setScrollActive(bool active) {
+    if (_scrollActive == active) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scrollActive != active) {
+        setState(() => _scrollActive = active);
+      }
+    });
+  }
+
   bool _loadEarlierOnScroll(ScrollNotification notification) {
     if (notification.depth != 0) {
       return false;
@@ -578,23 +615,25 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   Widget build(BuildContext context) {
     final displayEntries = _displayEntries;
-    // Conversation text must be selectable and copyable. Selection is hosted at
-    // the scroll level so a drag can span several messages; it only reaches the
-    // rows the list has built, which is why individual messages also expose an
-    // explicit copy action. Chrome that would pollute a selection — process
-    // rows, log rows — opts out with SelectionContainer.disabled at its own
-    // site.
+    // Conversation text must be selectable and copyable. Selection is hosted
+    // once at the pane level (AgentConversationActivePane) so a drag can span
+    // several messages; a nested SelectionArea here would double-register
+    // every visible RichText and fan selection geometry updates out on every
+    // scroll frame. Chrome that would pollute a selection — process rows, log
+    // rows — opts out with SelectionContainer.disabled at its own site.
     return NotificationListener<ScrollNotification>(
-      onNotification: _loadEarlierOnScroll,
-      child: SelectionArea(
-        child: Stack(
-          children: [
-            ListView.builder(
+      onNotification: _handleScrollNotification,
+      child: Stack(
+        children: [
+          TickerMode(
+            enabled: !_scrollActive,
+            child: ListView.builder(
               controller: _scrollController,
               key: PageStorageKey<String>(
                 'messaging-participant-flow-${widget.sessionKey}',
               ),
               reverse: true,
+              scrollCacheExtent: const ScrollCacheExtent.pixels(600),
               padding: EdgeInsets.fromLTRB(
                 LicoContentSpacing.item,
                 LicoContentSpacing.item + widget.topOverlayInset,
@@ -625,25 +664,25 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
                 return RepaintBoundary(child: _entryContent(context, entry));
               },
             ),
-            if (!_atLatest)
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    bottom:
-                        widget.bottomOverlayInset +
-                        MessagingDesktopMetrics.conversationScrollToLatestGap,
-                  ),
-                  child: SelectionContainer.disabled(
-                    child: MessagingScrollToLatestButton(
-                      key: const Key('conversation-scroll-to-latest'),
-                      onPressed: _jumpToLatest,
-                    ),
+          ),
+          if (!_atLatest)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom:
+                      widget.bottomOverlayInset +
+                      MessagingDesktopMetrics.conversationScrollToLatestGap,
+                ),
+                child: SelectionContainer.disabled(
+                  child: MessagingScrollToLatestButton(
+                    key: const Key('conversation-scroll-to-latest'),
+                    onPressed: _jumpToLatest,
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
