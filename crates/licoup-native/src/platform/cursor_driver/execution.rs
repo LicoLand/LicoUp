@@ -183,6 +183,7 @@ fn create_chat_session(
     max_output: Option<usize>,
 ) -> Result<String, ProtocolFailure> {
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command
         .args(CREATE_CHAT_ARGS)
         .current_dir(workspace)
@@ -294,6 +295,7 @@ fn run_turn(
     started_at: String,
 ) -> RunResult {
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command
         .args(TURN_ARGS)
         .arg("--workspace")

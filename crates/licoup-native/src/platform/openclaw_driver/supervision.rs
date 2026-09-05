@@ -51,6 +51,7 @@ impl LaunchSpec {
                 .map_err(io::Error::other)?,
             None => {
                 let mut command = Command::new(&self.executable);
+                super::super::user_shell_environment::apply_to_command(&mut command);
                 command.args(&self.args).current_dir(&self.cwd);
                 // Keep the optional token out of argv and all projected diagnostics.
                 if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN")

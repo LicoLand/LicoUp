@@ -205,6 +205,9 @@ fn create_chat_receives_the_same_scoped_caller_context_as_the_turn() {
     unsafe {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT", "1");
     }
+    // The launch environment is the user shell snapshot; pin the fixture
+    // steering channel into it explicitly for this thread.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
         &json!({
@@ -320,6 +323,8 @@ fn mismatched_stream_identity_fails_and_never_completes_a_turn() {
     unsafe {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_DRIFT_SESSION_ID", "1");
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
 
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
@@ -422,6 +427,8 @@ fn auto_update_lock_and_staging_are_surfaced_as_runtime_events() {
         std::env::set_var("LICO_CURSOR_AGENT_INSTALL_DIR", &install_root);
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_UPDATE_RELEASE_PATH", &release_path);
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
 
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
@@ -534,6 +541,8 @@ fn create_chat_time_is_charged_against_the_turn_deadline() {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_CREATE_CHAT_DELAY_MS", "2000");
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_TURN_DELAY_MS", "5000");
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let started = std::time::Instant::now();
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
@@ -582,6 +591,8 @@ fn timeout_zero_keeps_the_turn_deadline_free() {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_CREATE_CHAT_DELAY_MS", "300");
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_TURN_DELAY_MS", "300");
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -619,6 +630,8 @@ fn crashed_cli_after_partial_output_is_reported_as_failed() {
     unsafe {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_CRASH_AFTER_CHUNK", "1");
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -758,6 +771,10 @@ fn cancelled_turn_is_reported_as_cancelled_not_completed() {
     let executable = executable.to_string_lossy().into_owned();
     let turn_dir = dir.clone();
     let handle = std::thread::spawn(move || {
+        // The launch snapshot override is thread-local: pin the fixture
+        // steering channel on the executing thread itself.
+        let _pin =
+            crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
         cursor_driver::execute(
             &executable,
             &json!({}),
