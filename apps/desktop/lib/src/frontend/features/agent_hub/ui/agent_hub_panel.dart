@@ -108,6 +108,10 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   String? _detailEntryId;
   final Map<String, List<String>> _events = {};
   final Set<String> _visitFailed = {};
+
+  /// Live install status notifiers keyed by entry id, driving the install
+  /// dialog's in-place progress state until the operation effect arrives.
+  final Map<String, ValueNotifier<AgentHubInstallStatus>> _installStatuses = {};
   int _refreshRevision = -1;
 
   AgentHubEntryProjection? get _detailEntry {
@@ -151,16 +155,27 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
 
   Future<void> _install(AgentHubEntryProjection entry) async {
     if (entry.busy || !entry.installable || entry.installed) return;
-    final selection = await showAgentHubInstallFlow(context, recipe: entry);
-    if (selection == null || !mounted) return;
-    setState(() => _busyEntryId = entry.id);
-    widget.binding.intents.send(
-      InstallAgentHubEntry(
-        entry.id,
-        channelId: selection.channelId,
-        version: selection.version,
-      ),
+    final status = ValueNotifier<AgentHubInstallStatus>(
+      AgentHubInstallStatus.running,
     );
+    await showAgentHubInstallFlow(
+      context,
+      recipe: entry,
+      installStatus: status,
+      onInstall: (selection) {
+        setState(() => _busyEntryId = entry.id);
+        _installStatuses[entry.id] = status;
+        widget.binding.intents.send(
+          InstallAgentHubEntry(
+            entry.id,
+            channelId: selection.channelId,
+            version: selection.version,
+          ),
+        );
+      },
+    );
+    _installStatuses.remove(entry.id);
+    status.dispose();
   }
 
   void _update(String entryId) {
@@ -212,6 +227,8 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         widget.onOpenAgent?.call(effect.entryId);
       case AgentHubOperationCompleted():
         if (!mounted) return;
+        _installStatuses[effect.entryId]?.value =
+            AgentHubInstallStatus.succeeded;
         setState(() {
           _busyEntryId = '';
           _events[effect.entryId] = effect.events
@@ -223,6 +240,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         });
       case AgentHubActionRejected():
         if (!mounted) return;
+        _installStatuses[effect.entryId]?.value = AgentHubInstallStatus.failed;
         setState(() {
           _busyEntryId = '';
           _events[effect.entryId] = const ['failed'];

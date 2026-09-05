@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -15,6 +17,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_proce
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
@@ -258,6 +261,7 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.assistantActive = false,
     this.primaryConversationId = '',
     this.preferPeerAgents = false,
+    this.streamingMessageIds = const <String>{},
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
     this.scrollController,
@@ -270,8 +274,10 @@ class MessagingParticipantFlow extends StatefulWidget {
     this.onLoadEarlier,
   });
 
-  /// Distance from the top of the loaded history that starts loading the
-  /// earlier page, so the request finishes before the user hits the edge.
+  /// Minimum distance from the top of the loaded history that starts loading
+  /// the earlier page. The effective lead-in is one full viewport (see
+  /// [_loadEarlierOnScroll]) so the request lands before a fast fling reaches
+  /// the oldest loaded edge.
   static const double earlierPageLeadIn = 120;
 
   /// Timeline items in the message-list cache order (newest first).
@@ -295,6 +301,13 @@ class MessagingParticipantFlow extends StatefulWidget {
 
   /// Lico group Conversation: render delegated agents as peer bubbles.
   final bool preferPeerAgents;
+
+  /// Ids of messages whose body is a partially written streamed reply. The
+  /// owning pane derives the set from the live turn state; it is never
+  /// inferred from text shape. Streamed ids are message-identity based, so
+  /// the streamed-text patch path keeps working: a revision swaps the message
+  /// object but the id stays in the set.
+  final Set<String> streamingMessageIds;
 
   /// Extra top padding when a floating header overlays the transcript.
   final double topOverlayInset;
@@ -441,11 +454,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   List<ConversationTimelineItem>? _cachedItems;
   bool _pageRequestInFlight = false;
 
-  /// While the transcript scrolls, decorative animations (process spinners,
-  /// shimmer titles) pause under a muted [TickerMode]; data keeps updating
-  /// because only tickers are gated.
-  bool _scrollActive = false;
-
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
   /// as still "at latest" so the control does not flicker.
   static const double _atLatestThreshold = 48;
@@ -457,7 +465,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   void initState() {
     super.initState();
     if (widget.scrollController == null) {
-      _ownedScrollController = ScrollController();
+      _ownedScrollController = ReadingPositionScrollController();
     }
     _scrollController.addListener(_syncAtLatest);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncAtLatest());
@@ -471,6 +479,14 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       _atLatest = true;
       _pageRequestInFlight = false;
     }
+    if (oldWidget.messagePageLoading && !widget.messagePageLoading) {
+      // The incoming history page lands at the far (oldest) end, which is
+      // already position-stable; skip exactly one reading-position hold.
+      final controller = _scrollController;
+      if (controller is ReadingPositionScrollController) {
+        controller.notifyFarEndAppend();
+      }
+    }
     if (oldWidget.activeProcessStorageKey != widget.activeProcessStorageKey ||
         oldWidget.preferPeerAgents != widget.preferPeerAgents) {
       _cachedEntries = null;
@@ -480,7 +496,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         _syncAtLatest,
       );
       if (widget.scrollController == null) {
-        _ownedScrollController ??= ScrollController();
+        _ownedScrollController ??= ReadingPositionScrollController();
       } else {
         _ownedScrollController?.dispose();
         _ownedScrollController = null;
@@ -526,34 +542,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
-    _syncScrollActiveFromNotification(notification);
     return _loadEarlierOnScroll(notification);
-  }
-
-  /// Scroll notifications can be dispatched mid-frame (a scroll activity
-  /// going idle during layout fires [ScrollEndNotification] synchronously),
-  /// so the ticker gate always applies on the next frame instead of calling
-  /// setState inside the notification.
-  void _syncScrollActiveFromNotification(ScrollNotification notification) {
-    if (notification.depth != 0) {
-      return;
-    }
-    if (notification is ScrollStartNotification) {
-      _setScrollActive(true);
-    } else if (notification is ScrollEndNotification) {
-      _setScrollActive(false);
-    }
-  }
-
-  void _setScrollActive(bool active) {
-    if (_scrollActive == active) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scrollActive != active) {
-        setState(() => _scrollActive = active);
-      }
-    });
   }
 
   bool _loadEarlierOnScroll(ScrollNotification notification) {
@@ -566,8 +555,14 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         _pageRequestInFlight) {
       return false;
     }
-    if (metrics.pixels <
-        metrics.maxScrollExtent - MessagingParticipantFlow.earlierPageLeadIn) {
+    // Start the page one full viewport ahead of the oldest loaded edge so the
+    // request lands before a fast fling reaches the wall; reaching the wall
+    // kills the in-flight scroll and forces a second swipe.
+    final leadIn = math.max(
+      MessagingParticipantFlow.earlierPageLeadIn,
+      metrics.viewportDimension,
+    );
+    if (metrics.pixels < metrics.maxScrollExtent - leadIn) {
       return false;
     }
     final request = widget.onLoadEarlier;
@@ -625,45 +620,42 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       onNotification: _handleScrollNotification,
       child: Stack(
         children: [
-          TickerMode(
-            enabled: !_scrollActive,
-            child: ListView.builder(
-              controller: _scrollController,
-              key: PageStorageKey<String>(
-                'messaging-participant-flow-${widget.sessionKey}',
-              ),
-              reverse: true,
-              scrollCacheExtent: const ScrollCacheExtent.pixels(600),
-              padding: EdgeInsets.fromLTRB(
-                LicoContentSpacing.item,
-                LicoContentSpacing.item + widget.topOverlayInset,
-                LicoContentSpacing.item,
-                LicoContentSpacing.item +
-                    widget.adapter.assistantVerticalPadding +
-                    widget.bottomOverlayInset,
-              ),
-              itemCount:
-                  displayEntries.length +
-                  ((widget.hasEarlier ||
-                          widget.messagePageLoading ||
-                          widget.messagePageError.isNotEmpty)
-                      ? 1
-                      : 0),
-              itemBuilder: (context, index) {
-                if (index == displayEntries.length) {
-                  return _MessagingEarlierPageRow(
-                    loading: widget.messagePageLoading,
-                    errorCode: widget.messagePageError,
-                    onRetry: widget.onLoadEarlier,
-                  );
-                }
-                final entry = displayEntries[index];
-                // A streamed reply changes one entry per frame. Without a
-                // repaint boundary per entry the whole visible flow
-                // repaints with it.
-                return RepaintBoundary(child: _entryContent(context, entry));
-              },
+          ListView.builder(
+            controller: _scrollController,
+            key: PageStorageKey<String>(
+              'messaging-participant-flow-${widget.sessionKey}',
             ),
+            reverse: true,
+            scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+            padding: EdgeInsets.fromLTRB(
+              LicoContentSpacing.item,
+              LicoContentSpacing.item + widget.topOverlayInset,
+              LicoContentSpacing.item,
+              LicoContentSpacing.item +
+                  widget.adapter.assistantVerticalPadding +
+                  widget.bottomOverlayInset,
+            ),
+            itemCount:
+                displayEntries.length +
+                ((widget.hasEarlier ||
+                        widget.messagePageLoading ||
+                        widget.messagePageError.isNotEmpty)
+                    ? 1
+                    : 0),
+            itemBuilder: (context, index) {
+              if (index == displayEntries.length) {
+                return _MessagingEarlierPageRow(
+                  loading: widget.messagePageLoading,
+                  errorCode: widget.messagePageError,
+                  onRetry: widget.onLoadEarlier,
+                );
+              }
+              final entry = displayEntries[index];
+              // A streamed reply changes one entry per frame. Without a
+              // repaint boundary per entry the whole visible flow
+              // repaints with it.
+              return RepaintBoundary(child: _entryContent(context, entry));
+            },
           ),
           if (!_atLatest)
             Align(
@@ -707,6 +699,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             assistantActive: widget.assistantActive,
             runtimeProfile:
                 widget.participantRuntimeProfiles[participantAgentId],
+            streamingMessageIds: widget.streamingMessageIds,
             messages: messages,
             target: widget.target,
             adapter: widget.adapter,
@@ -781,27 +774,30 @@ final class _MessagingEarlierPageRow extends StatelessWidget {
   final String errorCode;
   final Future<void> Function()? onRetry;
 
+  /// Fixed extent for the oldest-edge slot. The row sits exactly where the
+  /// reader parks while a page loads; a height swap there would shift
+  /// maxScrollExtent mid-gesture and cancel the in-flight scroll.
+  static const double extent = 48;
+
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 14),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-    if (errorCode.isEmpty) return const SizedBox(height: 1);
-    return Center(
-      child: TextButton.icon(
-        key: const Key('messaging-message-page-retry'),
-        onPressed: onRetry == null ? null : () => onRetry!.call(),
-        icon: const Icon(Icons.refresh_rounded, size: 17),
-        label: Text('History page failed: $errorCode'),
+    return SizedBox(
+      height: extent,
+      child: Center(
+        child: loading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : errorCode.isNotEmpty
+            ? TextButton.icon(
+                key: const Key('messaging-message-page-retry'),
+                onPressed: onRetry == null ? null : () => onRetry!.call(),
+                icon: const Icon(Icons.refresh_rounded, size: 17),
+                label: Text('History page failed: $errorCode'),
+              )
+            : const SizedBox.shrink(),
       ),
     );
   }

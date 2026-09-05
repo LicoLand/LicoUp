@@ -48,6 +48,13 @@ class AgentConversationActivePane extends StatelessWidget {
     final messagingFlow =
         strategy.messageStyle == AgentsMessageStyle.participantFlow;
     final composer = RuntimeMessageComposer(
+      // Keyed per conversation scope: a switch starts a fresh composer state
+      // seeded from that conversation's stored draft instead of relying on
+      // didUpdateWidget restores that can race the debounced draft echo.
+      key: ValueKey<String>(
+        'composer-${state.target.target}-'
+        '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
+      ),
       targetLabel: state.conversationLabel.trim().isNotEmpty
           ? state.conversationLabel.trim()
           : agentConversationTargetDisplayName(state.target),
