@@ -19,10 +19,10 @@ use super::{
     preflight_assistant_graph,
 };
 use super::{
-    BindingCandidate, BindingKind, CommandKind, CommandStatus, CompiledWorkflow, FailureClass,
-    GraphState, GraphStateKind, ReducerEvent, RunCommand, RunSnapshot, StrategyPackageImporter,
-    StrategyRunStatus, StrategyStore, TransitionEvent, WorkflowValidationFailure,
-    compile_persisted_workflow, compile_workflow_value,
+    BindingCandidate, BindingKind, CallbackDecisionKind, CommandKind, CommandStatus,
+    CompiledWorkflow, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
+    RunSnapshot, StrategyPackageImporter, StrategyRunStatus, StrategyStore, TransitionEvent,
+    WorkflowValidationFailure, compile_persisted_workflow, compile_workflow_value,
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
@@ -140,17 +140,9 @@ impl StrategyService {
                 );
                 let bytes = fs::read(source).map_err(|_| anyhow!("package_unavailable"))?;
                 let prepared = self.importer.prepare_bytes(&bytes)?;
-                if let Err(error) = self.validate_import_identity(&prepared) {
-                    let _ = self.importer.discard_preparation(&prepared.preparation_id);
-                    return Err(error);
-                }
                 Ok(serde_json::to_value(prepared)?)
             }
             "strategy.package.commit-import" => {
-                let prepared = self
-                    .importer
-                    .prepared(required_string(object, "preparationId")?)?;
-                self.validate_import_identity(&prepared)?;
                 let committed = self.importer.commit(
                     required_string(object, "preparationId")?,
                     required_string(object, "expectedRevisionDigest")?,
@@ -274,6 +266,7 @@ impl StrategyService {
                     cwd,
                 )?;
                 self.record_graph_usage(&snapshot, None)?;
+                let _ = self.report_master_gates(None, &snapshot);
                 let entry_turn = self.start_drive(&snapshot)?;
                 let mut value =
                     serde_json::to_value(self.store.projection_for_run(&snapshot.run_id)?)?;
@@ -312,34 +305,67 @@ impl StrategyService {
                     self.store
                         .bind_conversation_if_absent(run_id, conversation_id)?;
                 }
-                let snapshot = self.store.run(run_id)?;
-                match snapshot.status {
-                    StrategyRunStatus::AuthorizationRequired => {
-                        let definition = self
-                            .store
-                            .definition_by_revision(&snapshot.definition_digest)?;
-                        let authorization = definition
-                            .authorization
-                            .filter(|authorization| authorization.active)
-                            .ok_or_else(|| anyhow!("authorization_required"))?;
-                        if snapshot.commands.values().any(|command| {
-                            command.kind == CommandKind::Authorization
-                                && command.status == CommandStatus::Pending
-                        }) {
-                            self.store.apply_event(
-                                run_id,
-                                ReducerEvent::AuthorizationGranted {
-                                    semantics_digest: authorization.semantics_digest,
-                                },
-                            )?;
-                        } else {
+                let decision = parse_callback_decision(object)?;
+                let mut snapshot = self.store.run(run_id)?;
+                let mut decided = false;
+                if let Some((state_id, state_visit, kind)) = decision {
+                    ensure!(
+                        !snapshot.pending_callbacks.is_empty(),
+                        "strategy_callback_stale"
+                    );
+                    snapshot = self.apply_run_event(
+                        run_id,
+                        ReducerEvent::CallbackDecision {
+                            state_id,
+                            state_visit,
+                            decision: kind,
+                        },
+                    )?;
+                    decided = true;
+                }
+                if !decided {
+                    match snapshot.status {
+                        StrategyRunStatus::AuthorizationRequired => {
+                            let definition = self
+                                .store
+                                .definition_by_revision(&snapshot.definition_digest)?;
+                            let authorization = definition
+                                .authorization
+                                .filter(|authorization| authorization.active)
+                                .ok_or_else(|| anyhow!("authorization_required"))?;
+                            if snapshot.commands.values().any(|command| {
+                                command.kind == CommandKind::Authorization
+                                    && command.status == CommandStatus::Pending
+                            }) {
+                                self.apply_run_event(
+                                    run_id,
+                                    ReducerEvent::AuthorizationGranted {
+                                        semantics_digest: authorization.semantics_digest,
+                                    },
+                                )?;
+                            } else {
+                                let command = snapshot
+                                    .commands
+                                    .values()
+                                    .find(|command| {
+                                        command.status == CommandStatus::Retryable
+                                            && command.failure_class
+                                                == Some(FailureClass::Authority)
+                                    })
+                                    .ok_or_else(|| anyhow!("run_not_retryable"))?;
+                                self.store.apply_event(
+                                    run_id,
+                                    ReducerEvent::RetryRequested {
+                                        command_id: command.id.clone(),
+                                    },
+                                )?;
+                            }
+                        }
+                        StrategyRunStatus::RuntimeMissing | StrategyRunStatus::Retryable => {
                             let command = snapshot
                                 .commands
                                 .values()
-                                .find(|command| {
-                                    command.status == CommandStatus::Retryable
-                                        && command.failure_class == Some(FailureClass::Authority)
-                                })
+                                .find(|command| command.status == CommandStatus::Retryable)
                                 .ok_or_else(|| anyhow!("run_not_retryable"))?;
                             self.store.apply_event(
                                 run_id,
@@ -348,22 +374,9 @@ impl StrategyService {
                                 },
                             )?;
                         }
+                        StrategyRunStatus::Waiting | StrategyRunStatus::Running => {}
+                        _ => return Err(anyhow!("run_not_retryable")),
                     }
-                    StrategyRunStatus::RuntimeMissing | StrategyRunStatus::Retryable => {
-                        let command = snapshot
-                            .commands
-                            .values()
-                            .find(|command| command.status == CommandStatus::Retryable)
-                            .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                        self.store.apply_event(
-                            run_id,
-                            ReducerEvent::RetryRequested {
-                                command_id: command.id.clone(),
-                            },
-                        )?;
-                    }
-                    StrategyRunStatus::Waiting | StrategyRunStatus::Running => {}
-                    _ => return Err(anyhow!("run_not_retryable")),
                 }
                 let snapshot = self.store.run(run_id)?;
                 let entry_turn = self.start_drive(&snapshot)?;
@@ -438,6 +451,7 @@ impl StrategyService {
                     serde_json::from_value(
                         object.get("filters").cloned().unwrap_or_else(|| json!({})),
                     )?;
+                let decision = parse_callback_decision(object)?;
                 if let Some(run_id) = self.store.run_id_by_idempotency_key(idempotency_key)? {
                     return self.replay_assistant_workflow(
                         &run_id,
@@ -446,8 +460,10 @@ impl StrategyService {
                         &workflow,
                         &bindings,
                         object.get("input").cloned().unwrap_or_else(|| json!({})),
+                        decision,
                     );
                 }
+                ensure!(decision.is_none(), "invalid_request");
                 let admitted = match self.preflight_assistant_workflow(
                     conversation_id,
                     membership_id,
@@ -627,6 +643,7 @@ impl StrategyService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn replay_assistant_workflow(
         &self,
         run_id: &str,
@@ -635,6 +652,7 @@ impl StrategyService {
         workflow: &Value,
         bindings: &[BindingValue],
         input: Value,
+        decision: Option<(String, u64, CallbackDecisionKind)>,
     ) -> Result<Value> {
         let snapshot = self.admit_assistant_run_identity(run_id)?;
         ensure!(
@@ -692,6 +710,20 @@ impl StrategyService {
                     }),
             "strategy_idempotency_conflict"
         );
+        // A replayed execute is the Assistant facade's run-control lane: the
+        // master agent's callback decision arrives with it and the reducer
+        // applies it before the run is driven further.
+        let snapshot = match decision {
+            Some((state_id, state_visit, kind)) => self.store.apply_event(
+                run_id,
+                ReducerEvent::CallbackDecision {
+                    state_id,
+                    state_visit,
+                    decision: kind,
+                },
+            )?,
+            None => snapshot,
+        };
         if !assistant_run_terminal(snapshot.status) {
             self.start_drive(&snapshot)?;
         }
@@ -705,7 +737,10 @@ impl StrategyService {
     ) -> Result<Value> {
         loop {
             let snapshot = self.admit_assistant_run_identity(run_id)?;
-            if assistant_run_terminal(snapshot.status) {
+            // A pending callback returns control exactly like the other
+            // settled wait points: the master agent receives the durable
+            // state and decides the run's next step as a later run input.
+            if assistant_run_terminal(snapshot.status) || !snapshot.pending_callbacks.is_empty() {
                 self.record_graph_usage(&snapshot, None)?;
                 let mut value = self.assistant_run_projection(&snapshot)?;
                 if let Some(receipt) = receipt {
@@ -742,6 +777,10 @@ impl StrategyService {
             "conversationId": snapshot.conversation_id,
             "assistantMembershipId": snapshot.assistant_membership_id,
             "routeReceipt": snapshot.route_receipt,
+            "pendingCallbacks": generic
+                .get("pendingCallbacks")
+                .cloned()
+                .unwrap_or_else(|| json!([])),
         });
         if let Some(code) = generic.pointer("/diagnostic/code").and_then(Value::as_str) {
             value["diagnostic"] = json!({
@@ -752,10 +791,6 @@ impl StrategyService {
             });
         }
         Ok(value)
-    }
-
-    fn validate_import_identity(&self, prepared: &super::PreparedPackage) -> Result<()> {
-        super::store::validate_import_identity(&prepared.definition_id, &prepared.name)
     }
 
     fn refresh_runtime_bindings(&self) -> Result<()> {
@@ -1103,9 +1138,15 @@ impl StrategyService {
     }
 
     fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
+        let drive_entry = self.store.run(run_id)?;
         self.store.reclaim_abandoned_host_commands(run_id)?;
         self.recover_expired_commands(run_id)?;
-        let assistant_owned = self.store.run(run_id)?.assistant_membership_id.is_some();
+        let recovered = self.store.run(run_id)?;
+        // Recovery settles expired leases through the same reducer; any
+        // callback wait or terminal failure it produced still owes the master
+        // agent its report.
+        let _ = self.report_master_gates(Some(&drive_entry), &recovered);
+        let assistant_owned = recovered.assistant_membership_id.is_some();
         let mut executed = 0usize;
         'drive: while executed < MAX_DRIVE_EFFECTS_PER_CALL {
             if !assistant_owned {
@@ -1126,7 +1167,7 @@ impl StrategyService {
                     command.kind == CommandKind::Authorization
                         && command.status == CommandStatus::Pending
                 }) {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::AuthorizationGranted {
                             semantics_digest: authorization.semantics_digest,
@@ -1238,7 +1279,7 @@ impl StrategyService {
                                 ));
                                 continue;
                             }
-                            let updated = self.store.apply_event(
+                            let updated = self.apply_run_event(
                                 run_id,
                                 ReducerEvent::CommandFailed {
                                     command_id: command.id.clone(),
@@ -1251,7 +1292,7 @@ impl StrategyService {
                             self.recover_failed_effect(run_id, &command.id)?;
                             continue;
                         }
-                        let updated = self.store.apply_event(
+                        let updated = self.apply_run_event(
                             run_id,
                             ReducerEvent::CommandSucceeded {
                                 command_id: command.id.clone(),
@@ -1270,7 +1311,7 @@ impl StrategyService {
                             assistant_failures.push((command, class, code.to_owned(), None));
                             continue;
                         }
-                        let updated = self.store.apply_event(
+                        let updated = self.apply_run_event(
                             run_id,
                             ReducerEvent::CommandFailed {
                                 command_id: command.id.clone(),
@@ -1589,6 +1630,134 @@ impl StrategyService {
         }
     }
 
+    /// Apply one run event and then surface the durable master-agent reports
+    /// the reduction produced. The reduction commits first; the report is a
+    /// Membership-scoped projection and never fails the drive.
+    fn apply_run_event(&self, run_id: &str, event: ReducerEvent) -> Result<RunSnapshot> {
+        let before = self.store.run(run_id)?;
+        let updated = self.store.apply_event(run_id, event)?;
+        let _ = self.report_master_gates(Some(&before), &updated);
+        Ok(updated)
+    }
+
+    /// Runs owe the master agent a Membership-scoped event when a
+    /// callback-mode edge parks the run; imported runs additionally report
+    /// any terminal failure outcome the master must decide from (an
+    /// Assistant-owned run returns that outcome on its execute call, so it is
+    /// not double-reported here). The durable run projection stays the
+    /// authority; this event is its conversation surface, so payload facts
+    /// stay identifier-only. The master is the originating Assistant
+    /// Membership for Assistant-owned runs and the bound Conversation's
+    /// designated Assistant Membership for imported runs; the payload names
+    /// the answer channel that actually settles the wait.
+    fn report_master_gates(&self, before: Option<&RunSnapshot>, after: &RunSnapshot) -> Result<()> {
+        let Some(conversation_id) = after
+            .conversation_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(());
+        };
+        let known: BTreeSet<(&str, u64)> = before
+            .map(|snapshot| {
+                snapshot
+                    .pending_callbacks
+                    .iter()
+                    .map(|pending| (pending.state_id.as_str(), pending.state_visit))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let newly_parked: Vec<&super::PendingCallback> = after
+            .pending_callbacks
+            .iter()
+            .filter(|pending| !known.contains(&(pending.state_id.as_str(), pending.state_visit)))
+            .collect();
+        let failure_terminal = after.assistant_membership_id.is_none()
+            && failure_terminal_status(after.status)
+            && !before.is_some_and(|snapshot| failure_terminal_status(snapshot.status));
+        if newly_parked.is_empty() && !failure_terminal {
+            return Ok(());
+        }
+        let store =
+            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+        let conversation = store.get(conversation_id)?;
+        let master_id = after
+            .assistant_membership_id
+            .as_deref()
+            .or(conversation.assistant_membership_id.as_deref());
+        let Some(master) = master_id
+            .and_then(|master_id| {
+                conversation.memberships.iter().find(|membership| {
+                    membership.id == master_id
+                        && membership.status
+                            == crate::domain::client_conversation::MembershipStatus::Active
+                })
+            })
+            .map(|membership| membership.id.clone())
+        else {
+            return Ok(());
+        };
+        // MCP-resident masters answer through the same idempotent execute
+        // call; the desktop surface answers imported runs through
+        // `strategy.run.resume`. Both carry the same decision triple.
+        let answer_channel = if after.assistant_membership_id.is_some() {
+            "lico_assistant_workflow_execute"
+        } else {
+            "strategy.run.resume"
+        };
+        for pending in newly_parked {
+            let part = json!({
+                "kind": "strategy-callback-request",
+                "schema": "licoup.adaptive-flywheel.callback.v1",
+                "runId": after.run_id,
+                "stateId": pending.state_id,
+                "stateVisit": pending.state_visit,
+                "transitionId": pending.transition_id,
+                "event": pending.event.as_str(),
+                "target": pending.target,
+                "decisions": ["advance", "return", "terminate"],
+                "answerChannel": answer_channel,
+                "answerFields": ["decision", "callbackStateId", "callbackStateVisit"],
+            });
+            store.append_event(
+                conversation_id,
+                Some(&master),
+                crate::domain::client_conversation::EventKind::Message,
+                &[crate::domain::client_conversation::NewEventPart {
+                    id: String::new(),
+                    kind: crate::domain::client_conversation::EventPartKind::Metadata,
+                    content: part.to_string(),
+                }],
+                None,
+                Some(&after.run_id),
+                true,
+            )?;
+        }
+        if failure_terminal {
+            let part = json!({
+                "kind": "strategy-terminal-outcome",
+                "schema": "licoup.adaptive-flywheel.callback.v1",
+                "runId": after.run_id,
+                "status": wire_enum(after.status)?,
+                "diagnostic": after.diagnostic_code,
+            });
+            store.append_event(
+                conversation_id,
+                Some(&master),
+                crate::domain::client_conversation::EventKind::Message,
+                &[crate::domain::client_conversation::NewEventPart {
+                    id: String::new(),
+                    kind: crate::domain::client_conversation::EventPartKind::Metadata,
+                    content: part.to_string(),
+                }],
+                None,
+                Some(&after.run_id),
+                true,
+            )?;
+        }
+        Ok(())
+    }
+
     fn project_membership_event(
         &self,
         run_id: &str,
@@ -1744,6 +1913,11 @@ fn entry_state_for_start<'a>(
         let target = workflow
             .transitions(&initial.id, TransitionEvent::Success)
             .next()?;
+        // A callback-mode edge parks the run before the entry state exists;
+        // its turn opens when the master decision arrives, not at start.
+        if target.mode == super::TransitionMode::Callback {
+            return None;
+        }
         let state = workflow.state(&target.to)?;
         if state.binding.as_deref() == Some(slot_id)
             && matches!(state.kind, GraphStateKind::Actor | GraphStateKind::Workset)
@@ -2024,11 +2198,21 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
             "filters",
             "input",
             "idempotencyKey",
+            "decision",
+            "callbackStateId",
+            "callbackStateVisit",
         ],
         "strategy.assistant.workflow.inspect" | "strategy.assistant.workflow.cancel" => {
             &["action", "runId"]
         }
-        "strategy.run.resume" => &["action", "runId", "conversationId"],
+        "strategy.run.resume" => &[
+            "action",
+            "runId",
+            "conversationId",
+            "decision",
+            "callbackStateId",
+            "callbackStateVisit",
+        ],
         _ => return Err(anyhow!("unsupported_action")),
     };
     ensure!(
@@ -2133,6 +2317,39 @@ fn optional_cwd(object: &Map<String, Value>) -> Result<Option<String>> {
         }
         _ => Err(anyhow!("invalid_request")),
     }
+}
+
+/// Parse the optional master-agent decision one run-control call carries for
+/// a callback-parked run. The callback identity (state id + visit) pins the
+/// exact wait being settled so a replayed decision is stale, never doubled.
+fn parse_callback_decision(
+    object: &Map<String, Value>,
+) -> Result<Option<(String, u64, CallbackDecisionKind)>> {
+    let Some(decision) = object.get("decision") else {
+        return Ok(None);
+    };
+    let kind = match decision.as_str() {
+        Some("advance") => CallbackDecisionKind::Advance,
+        Some("return") => CallbackDecisionKind::Return,
+        Some("terminate") => CallbackDecisionKind::Terminate,
+        _ => return Err(anyhow!("invalid_request")),
+    };
+    let state_id = required_string(object, "callbackStateId")?.to_owned();
+    let state_visit = object
+        .get("callbackStateVisit")
+        .and_then(Value::as_u64)
+        .filter(|visit| *visit >= 1)
+        .ok_or_else(|| anyhow!("invalid_request"))?;
+    Ok(Some((state_id, state_visit, kind)))
+}
+
+/// The terminal outcomes that a master agent must decide from: genuine
+/// failures, not deliberate cancellation.
+fn failure_terminal_status(status: StrategyRunStatus) -> bool {
+    matches!(
+        status,
+        StrategyRunStatus::Failed | StrategyRunStatus::Blocked | StrategyRunStatus::CancelInDoubt
+    )
 }
 
 fn parse_binding_candidates(object: &Map<String, Value>) -> Result<Vec<BindingCandidate>> {
@@ -2374,6 +2591,18 @@ fn error_projection(error: &anyhow::Error) -> Value {
                 false,
                 "Select an existing run.",
             )
+        } else if message.contains("callback_stale") || message.contains("callback_conflict") {
+            (
+                if message.contains("callback_conflict") {
+                    "callback_conflict"
+                } else {
+                    "callback_stale"
+                },
+                "run/callback",
+                "strategy_reducer",
+                false,
+                "Inspect the run projection and decide a currently pending callback.",
+            )
         } else if message.contains("not_retryable") {
             (
                 "run_not_retryable",
@@ -2419,6 +2648,19 @@ fn error_projection(error: &anyhow::Error) -> Value {
 
 fn terminal_projection(value: &Value) -> Option<Value> {
     let status = value.get("status").and_then(Value::as_str)?;
+    if value
+        .get("pendingCallbacks")
+        .and_then(Value::as_array)
+        .is_some_and(|callbacks| !callbacks.is_empty())
+    {
+        return Some(json!({
+            "code": "callback_decision_required",
+            "status": status,
+            "stage": "assistant-workflow/terminal",
+            "retryable": true,
+            "recoveryClass": "assistant-callback-decision",
+        }));
+    }
     if !matches!(
         status,
         "authorization-required"
@@ -2581,7 +2823,7 @@ mod tests {
     fn persisted_fallback_recovery_is_resumable_and_idempotent() {
         use crate::domain::adaptive_flywheel::{
             ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
-            WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
+            TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
         };
 
         let root = root();
@@ -2649,6 +2891,7 @@ mod tests {
                     from: "work".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2656,6 +2899,7 @@ mod tests {
                     from: "work".into(),
                     to: "failed".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2842,7 +3086,7 @@ mod tests {
     fn entry_workflow() -> crate::domain::adaptive_flywheel::WorkflowDefinition {
         use crate::domain::adaptive_flywheel::{
             ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
-            WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
+            TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
         };
         let mut slot = ActorSlot::required_actor("entry", "Entry");
         slot.entry = true;
@@ -2907,6 +3151,7 @@ mod tests {
                     from: "greet".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2914,6 +3159,7 @@ mod tests {
                     from: "greet".into(),
                     to: "failed".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -3904,5 +4150,342 @@ mod tests {
         let (handle, _) = guard.into_run();
         assert_eq!(handle, "dispatch:entry-2");
         assert_eq!(abandoned.lock().unwrap().len(), 1);
+    }
+
+    fn callback_entry_workflow() -> crate::domain::adaptive_flywheel::WorkflowDefinition {
+        let mut workflow = entry_workflow();
+        workflow.metadata.id = "entry-review".into();
+        workflow.metadata.name = "Entry review".into();
+        workflow.transitions[0].mode = crate::domain::adaptive_flywheel::TransitionMode::Callback;
+        workflow
+    }
+
+    fn authorized_callback_store(root: &Path, membership_id: &str) -> (StrategyStore, String) {
+        let store = StrategyStore::open(root).unwrap();
+        let revision = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        store
+            .register_definition(revision, revision, &callback_entry_workflow(), 1, 1)
+            .unwrap();
+        store
+            .replace_slot_bindings(
+                revision,
+                "entry",
+                &[BindingCandidate {
+                    value_id: membership_id.to_owned(),
+                    model: String::new(),
+                    reasoning_effort: String::new(),
+                }],
+                None,
+            )
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        (store, revision.to_owned())
+    }
+
+    fn wait_for_status(
+        store: &StrategyStore,
+        run_id: &str,
+        expected: StrategyRunStatus,
+    ) -> RunSnapshot {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let snapshot = store.run(run_id).unwrap();
+            if snapshot.status == expected {
+                return snapshot;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "run did not reach {expected:?}: {:?}",
+                snapshot.status
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    fn wait_for_master_report(
+        conversation_store: &crate::domain::client_conversation::ConversationStore,
+        conversation_id: &str,
+        kind: &str,
+    ) -> crate::domain::client_conversation::ConversationEvent {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let page = conversation_store
+                .page_events(conversation_id, None, 64)
+                .unwrap();
+            if let Some(event) = page.events.iter().find(|event| {
+                event.parts.iter().any(|part| {
+                    part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+                        && serde_json::from_str::<Value>(&part.content)
+                            .is_ok_and(|content| content["kind"] == json!(kind))
+                })
+            }) {
+                return event.clone();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "no `{kind}` master report landed in the conversation"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn imported_callback_edge_reports_the_master_and_waits_for_its_decision() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_callback_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "callback-start-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        // The entry effect completes, then the callback edge parks the run
+        // instead of entering the declared target.
+        let parked = wait_for_status(&store, &run_id, StrategyRunStatus::Waiting);
+        assert_eq!(parked.pending_callbacks.len(), 1);
+        assert_eq!(parked.pending_callbacks[0].state_id, "greet");
+        assert_eq!(parked.pending_callbacks[0].transition_id, "greeted");
+        assert_eq!(parked.pending_callbacks[0].target, "done");
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            2,
+            "one open and one effect run"
+        );
+
+        // The master agent received the Membership-scoped callback report.
+        let report_event = wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-callback-request",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
+        let part = report_event
+            .parts
+            .iter()
+            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .unwrap();
+        let report: Value = serde_json::from_str(&part.content).unwrap();
+        assert_eq!(report["runId"], json!(run_id));
+        assert_eq!(report["stateId"], json!("greet"));
+        assert_eq!(report["target"], json!("done"));
+        assert_eq!(
+            report["decisions"],
+            json!(["advance", "return", "terminate"])
+        );
+        assert_eq!(report["answerChannel"], json!("strategy.run.resume"));
+        assert_eq!(
+            report["answerFields"],
+            json!(["decision", "callbackStateId", "callbackStateVisit"])
+        );
+
+        // A bare resume never advances a callback wait.
+        let resumed = service
+            .execute(json!({"action": "strategy.run.resume", "runId": run_id}))
+            .unwrap();
+        assert_eq!(resumed["ok"], true, "{resumed}");
+        assert_eq!(resumed["result"]["status"], "waiting");
+        assert_eq!(
+            resumed["result"]["pendingCallbacks"][0]["stateId"],
+            json!("greet")
+        );
+        assert_eq!(calls.lock().unwrap().len(), 2);
+
+        // The master agent's decision arrives as a run input.
+        let decided = service
+            .execute(json!({
+                "action": "strategy.run.resume",
+                "runId": run_id,
+                "decision": "advance",
+                "callbackStateId": "greet",
+                "callbackStateVisit": 1,
+            }))
+            .unwrap();
+        assert_eq!(decided["ok"], true, "{decided}");
+        let completed = wait_for_terminal(&store, &run_id);
+        assert_eq!(completed.status, StrategyRunStatus::Completed);
+        assert!(completed.pending_callbacks.is_empty());
+        assert_eq!(calls.lock().unwrap().len(), 2, "no duplicate effect ran");
+
+        // A replayed decision is stale and never double-enters the target.
+        let replay = service
+            .execute(json!({
+                "action": "strategy.run.resume",
+                "runId": run_id,
+                "decision": "advance",
+                "callbackStateId": "greet",
+                "callbackStateVisit": 1,
+            }))
+            .unwrap();
+        assert_eq!(replay["ok"], false);
+        assert_eq!(replay["error"]["code"], "callback_stale");
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn imported_run_terminal_failure_reports_the_master_for_decision() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_entry_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Err(RuntimeAdapterError::ConversationDispatchFailed)
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "failure-report-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        let failed = wait_for_terminal(&store, &run_id);
+        assert_eq!(failed.status, StrategyRunStatus::Failed);
+        let report_event = wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-terminal-outcome",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
+        let part = report_event
+            .parts
+            .iter()
+            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .unwrap();
+        let report: Value = serde_json::from_str(&part.content).unwrap();
+        assert_eq!(report["runId"], json!(run_id));
+        assert_eq!(report["status"], json!("failed"));
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn assistant_callback_edge_returns_to_the_master_and_follows_its_decision() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port)
+        .with_profile_snapshot_authority(fixture_profile_authority(
+            "ready",
+            Arc::new(Mutex::new(BTreeMap::new())),
+        ));
+        let mut workflow = assistant_workflow_json();
+        workflow["transitions"][0]["mode"] = json!("callback");
+        let request = || {
+            json!({
+                "action": "strategy.assistant.workflow.execute",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "workflow": workflow,
+                "bindings": [{
+                    "slotId": "subagent-a",
+                    "ordinal": 0,
+                    "valueId": membership_id,
+                    "model": "model-a",
+                    "reasoningEffort": "",
+                    "revision": 1
+                }],
+                "input": {"message": "hi"},
+                "idempotencyKey": "assistant-callback-1"
+            })
+        };
+
+        let response = service.execute(request()).unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(response["result"]["status"], "waiting");
+        assert_eq!(
+            response["result"]["terminal"]["code"],
+            "callback_decision_required"
+        );
+        let pending = &response["result"]["pendingCallbacks"][0];
+        assert_eq!(pending["stateId"], json!("running"));
+        assert_eq!(pending["transitionId"], json!("succeeded"));
+        assert_eq!(pending["target"], json!("done"));
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        // The conversation surface carries the same callback request and
+        // names the MCP execute replay as the master agent's answer channel.
+        let report_event = wait_for_master_report(
+            &_conversation_store,
+            &conversation_id,
+            "strategy-callback-request",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
+        let part = report_event
+            .parts
+            .iter()
+            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .unwrap();
+        let report: Value = serde_json::from_str(&part.content).unwrap();
+        assert_eq!(report["runId"], json!(run_id));
+        assert_eq!(
+            report["answerChannel"],
+            json!("lico_assistant_workflow_execute")
+        );
+
+        // The master agent's advance decision rides the idempotent replay.
+        let mut decision = request();
+        decision["decision"] = json!("advance");
+        decision["callbackStateId"] = json!("running");
+        decision["callbackStateVisit"] = json!(1);
+        let decided = service.execute(decision).unwrap();
+        assert_eq!(decided["ok"], true, "{decided}");
+        assert_eq!(decided["result"]["runId"], json!(run_id));
+        assert_eq!(decided["result"]["terminal"]["status"], "completed");
+        let snapshot = service.store().run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::Completed);
+        assert!(snapshot.pending_callbacks.is_empty());
+        drop(service);
+        remove_root(root);
     }
 }
