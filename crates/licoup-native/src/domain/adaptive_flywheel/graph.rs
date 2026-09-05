@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use super::{
     BindingKind, GraphState, GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS,
     MAX_BINDING_SLOTS, MAX_GRAPH_STATES, MAX_GRAPH_TRANSITIONS, MAX_RETRY_ATTEMPTS,
-    MAX_RUNTIME_REQUIREMENTS, MAX_WORKSET_ITEMS, Transition, TransitionEvent, WorkflowDefinition,
+    MAX_RUNTIME_REQUIREMENTS, MAX_WORKSET_ITEMS, Transition, TransitionEvent, TransitionMode,
+    WorkflowDefinition,
 };
 
 #[derive(Clone, Debug)]
@@ -222,6 +223,18 @@ fn compile_workflow_inner(
         }
     }
 
+    // A state is flow-entered when the run start or any `flow`-mode edge can
+    // reach it without a master-agent decision. Only flow-entered effect
+    // states must carry every key field in the declaration; a target reached
+    // exclusively through `callback` edges may defer its actor binding to the
+    // master decision.
+    let mut flow_entered: BTreeSet<&str> = definition
+        .transitions
+        .iter()
+        .filter(|transition| transition.mode == TransitionMode::Flow)
+        .map(|transition| transition.to.as_str())
+        .collect();
+    flow_entered.insert(definition.initial.as_str());
     let mut state_indexes = BTreeMap::new();
     for (index, state) in definition.states.iter().enumerate() {
         validate_identifier(&state.id, "workflow_state_id")?;
@@ -239,12 +252,22 @@ fn compile_workflow_inner(
         );
         match state.kind {
             GraphStateKind::Actor => {
-                ensure!(
-                    state.binding.as_ref().is_some_and(|id| binding_slots
-                        .get(id.as_str())
-                        .is_some_and(|slot| { slot.kind == BindingKind::Actor && slot.required })),
-                    "workflow_actor_binding_invalid"
-                );
+                match &state.binding {
+                    Some(slot_id) => ensure!(
+                        binding_slots
+                            .get(slot_id.as_str())
+                            .is_some_and(|slot| slot.kind == BindingKind::Actor && slot.required),
+                        "workflow_actor_binding_invalid"
+                    ),
+                    // A callback-only target may defer its binding to the
+                    // master decision; a flow-entered actor state executes
+                    // without one, so the declaration must carry it.
+                    None => ensure!(
+                        !flow_entered.contains(state.id.as_str()),
+                        "workflow_flow_target_incomplete:{}",
+                        state.id
+                    ),
+                }
                 ensure!(
                     state.runtime.is_none() && state.entry.is_none() && state.workset.is_none(),
                     "workflow_state_field_invalid"
@@ -329,6 +352,13 @@ fn compile_workflow_inner(
             state_indexes.contains_key(&transition.from)
                 && state_indexes.contains_key(&transition.to),
             "workflow_transition_state_unknown"
+        );
+        // Fork fan-out is structural: callback waits belong to single-edge
+        // completions, so a fork branch edge must stay `flow`.
+        ensure!(
+            transition.mode == TransitionMode::Flow
+                || definition.states[state_indexes[&transition.from]].kind != GraphStateKind::Fork,
+            "workflow_transition_mode_invalid"
         );
         if let Some(guard) = &transition.guard {
             validate_guard(guard)?;
@@ -513,6 +543,7 @@ fn normalize_legacy_effect_routing(
             from: state_id,
             to: terminal_id.clone(),
             event: TransitionEvent::Failure,
+            mode: TransitionMode::Flow,
             guard: None,
         });
     }
@@ -1071,6 +1102,7 @@ mod tests {
                 from: "start".into(),
                 to: "done".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             }],
         ))
@@ -1085,6 +1117,162 @@ mod tests {
     }
 
     #[test]
+    fn transition_mode_defaults_to_flow_and_rejects_unknown_values() {
+        let transition = |mode: Option<&str>| {
+            let mut value = serde_json::json!({
+                "id": "next",
+                "from": "start",
+                "to": "done",
+                "event": "complete"
+            });
+            if let Some(mode) = mode {
+                value["mode"] = mode.into();
+            }
+            serde_json::from_value::<Transition>(value)
+        };
+        assert_eq!(transition(None).unwrap().mode, TransitionMode::Flow);
+        assert_eq!(transition(Some("flow")).unwrap().mode, TransitionMode::Flow);
+        assert_eq!(
+            transition(Some("callback")).unwrap().mode,
+            TransitionMode::Callback
+        );
+        assert!(transition(Some("warp")).is_err(), "unknown mode decodes");
+        // Flow is the canonical default: it never lands in the stored bytes.
+        let serialized = serde_json::to_value(transition(None).unwrap()).unwrap();
+        assert!(serialized.get("mode").is_none());
+        let serialized = serde_json::to_value(transition(Some("callback")).unwrap()).unwrap();
+        assert_eq!(serialized["mode"], "callback");
+    }
+
+    #[test]
+    fn flow_mode_targets_may_not_leave_actor_binding_empty() {
+        let build = |entry_mode: TransitionMode| {
+            let mut definition = workflow(
+                vec![
+                    state("start", GraphStateKind::Pass),
+                    state("review", GraphStateKind::Actor),
+                    state("done", GraphStateKind::Succeed),
+                ],
+                vec![
+                    Transition {
+                        id: "begin".into(),
+                        from: "start".into(),
+                        to: "review".into(),
+                        event: TransitionEvent::Complete,
+                        mode: entry_mode,
+                        guard: None,
+                    },
+                    Transition {
+                        id: "reviewed".into(),
+                        from: "review".into(),
+                        to: "done".into(),
+                        event: TransitionEvent::Success,
+                        mode: TransitionMode::Flow,
+                        guard: None,
+                    },
+                    Transition {
+                        id: "review-failed".into(),
+                        from: "review".into(),
+                        to: "done".into(),
+                        event: TransitionEvent::Failure,
+                        mode: TransitionMode::Flow,
+                        guard: None,
+                    },
+                ],
+            );
+            definition.actor_slots =
+                vec![crate::domain::adaptive_flywheel::ActorSlot::required_actor(
+                    "worker", "Worker",
+                )];
+            definition
+        };
+        // A callback-only target may defer its binding to the master decision.
+        assert!(compile_workflow(build(TransitionMode::Callback)).is_ok());
+        // A flow-entered actor state may not leave its binding empty: no
+        // master agent fills parameters on the flow path.
+        let error = compile_workflow(build(TransitionMode::Flow)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workflow_flow_target_incomplete"),
+            "flow target with empty binding rejected with the rule: {error}"
+        );
+        let mut initial_actor = build(TransitionMode::Callback);
+        initial_actor.initial = "review".into();
+        let error = compile_workflow(initial_actor).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workflow_flow_target_incomplete"),
+            "the initial state is flow-entered: {error}"
+        );
+    }
+
+    #[test]
+    fn fork_branch_edges_must_stay_flow_mode() {
+        let mut definition = workflow(
+            vec![
+                state("fork", GraphStateKind::Fork),
+                state("branch-a", GraphStateKind::Pass),
+                state("branch-b", GraphStateKind::Pass),
+                state("join", GraphStateKind::Join),
+                state("done", GraphStateKind::Succeed),
+            ],
+            vec![
+                Transition {
+                    id: "fa".into(),
+                    from: "fork".into(),
+                    to: "branch-a".into(),
+                    event: TransitionEvent::Complete,
+                    mode: TransitionMode::Callback,
+                    guard: None,
+                },
+                Transition {
+                    id: "fb".into(),
+                    from: "fork".into(),
+                    to: "branch-b".into(),
+                    event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "aj".into(),
+                    from: "branch-a".into(),
+                    to: "join".into(),
+                    event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "bj".into(),
+                    from: "branch-b".into(),
+                    to: "join".into(),
+                    event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "jd".into(),
+                    from: "join".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+            ],
+        );
+        let error = compile_workflow(definition.clone()).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workflow_transition_mode_invalid"),
+            "callback fan-out rejected: {error}"
+        );
+        definition.transitions[0].mode = TransitionMode::Flow;
+        assert!(compile_workflow(definition).is_ok());
+    }
+
+    #[test]
     fn actor_graphs_normalize_legacy_entry_and_reject_multiple_entries() {
         let mut definition = workflow(
             vec![
@@ -1096,6 +1284,7 @@ mod tests {
                 from: "start".into(),
                 to: "done".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             }],
         );
@@ -1131,6 +1320,7 @@ mod tests {
                     from: "first".into(),
                     to: "second".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1138,6 +1328,7 @@ mod tests {
                     from: "second".into(),
                     to: "first".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: Some(GuardExpression {
                         path: "loop".into(),
                         equals: Some(true.into()),
@@ -1149,6 +1340,7 @@ mod tests {
                     from: "second".into(),
                     to: "done".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -1222,6 +1414,7 @@ mod tests {
                     from: "pick".into(),
                     to: "done".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: Some(guard),
                 })
                 .collect::<Vec<_>>();
@@ -1230,6 +1423,7 @@ mod tests {
                 from: "pick".into(),
                 to: "done".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             });
             workflow(
@@ -1283,6 +1477,7 @@ mod tests {
                 from: "pick".into(),
                 to: "done".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: Some(guard("mode", Some("fast".into()), false)),
             }],
         );
@@ -1306,6 +1501,7 @@ mod tests {
                 from: "plan".into(),
                 to: "done".into(),
                 event: TransitionEvent::Success,
+                mode: TransitionMode::Flow,
                 guard: None,
             }],
         );
@@ -1324,6 +1520,7 @@ mod tests {
             from: "plan".into(),
             to: "done".into(),
             event: TransitionEvent::Failure,
+            mode: TransitionMode::Flow,
             guard: None,
         });
         assert!(compile_workflow(definition).is_ok());
@@ -1341,6 +1538,7 @@ mod tests {
                 from: "plan".into(),
                 to: "done".into(),
                 event: TransitionEvent::Success,
+                mode: TransitionMode::Flow,
                 guard: None,
             }],
         );
@@ -1376,6 +1574,7 @@ mod tests {
                     from: "plan".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1383,6 +1582,7 @@ mod tests {
                     from: "plan".into(),
                     to: "blocked".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -1426,6 +1626,7 @@ mod tests {
                     from: "plan".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1433,6 +1634,7 @@ mod tests {
                     from: "plan".into(),
                     to: "blocked".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1440,6 +1642,7 @@ mod tests {
                     from: "plan".into(),
                     to: "blocked".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -1485,6 +1688,7 @@ mod tests {
                     from: "fork".into(),
                     to: "branch-a".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1492,6 +1696,7 @@ mod tests {
                     from: "fork".into(),
                     to: "branch-b".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1499,6 +1704,7 @@ mod tests {
                     from: "branch-a".into(),
                     to: "join".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1506,6 +1712,7 @@ mod tests {
                     from: "branch-b".into(),
                     to: "join".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1513,6 +1720,7 @@ mod tests {
                     from: "join".into(),
                     to: "done".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -1538,6 +1746,7 @@ mod tests {
                     from: "fork".into(),
                     to: "branch-a".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1545,6 +1754,7 @@ mod tests {
                     from: "fork".into(),
                     to: "branch-b".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1552,6 +1762,7 @@ mod tests {
                     from: "branch-a".into(),
                     to: "join".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1559,6 +1770,7 @@ mod tests {
                     from: "branch-b".into(),
                     to: "join".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1566,6 +1778,7 @@ mod tests {
                     from: "join".into(),
                     to: "done".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ]
@@ -1590,6 +1803,7 @@ mod tests {
             from: "branch-a".into(),
             to: "done".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         };
         assert_rejected(workflow(missing_join, edges));
@@ -1601,6 +1815,7 @@ mod tests {
             from: "branch-b".into(),
             to: "branch-a".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         };
         assert_rejected(workflow(shared, edges));
@@ -1613,6 +1828,7 @@ mod tests {
             from: "fork".into(),
             to: "nested-fork".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         };
         edges.push(Transition {
@@ -1620,6 +1836,7 @@ mod tests {
             from: "nested-fork".into(),
             to: "join".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         });
         edges.push(Transition {
@@ -1627,6 +1844,7 @@ mod tests {
             from: "nested-fork".into(),
             to: "branch-b".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         });
         assert_rejected(workflow(nested, edges));
@@ -1639,6 +1857,7 @@ mod tests {
             from: "fork".into(),
             to: "branch-terminal".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         };
         edges.remove(3);
@@ -1651,6 +1870,7 @@ mod tests {
             from: "branch-a".into(),
             to: "branch-b".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         };
         edges[3] = Transition {
@@ -1658,6 +1878,7 @@ mod tests {
             from: "branch-b".into(),
             to: "branch-a".into(),
             event: TransitionEvent::Complete,
+            mode: TransitionMode::Flow,
             guard: None,
         };
         assert_rejected(workflow(cyclic, edges));
@@ -1677,6 +1898,7 @@ mod tests {
                 from: "choice".into(),
                 to: "fork".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: Some(GuardExpression {
                     path: "mode".into(),
                     equals: Some("parallel".into()),
@@ -1688,6 +1910,7 @@ mod tests {
                 from: "choice".into(),
                 to: "extra".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
             Transition {
@@ -1695,6 +1918,7 @@ mod tests {
                 from: "fork".into(),
                 to: "branch-a".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
             Transition {
@@ -1702,6 +1926,7 @@ mod tests {
                 from: "fork".into(),
                 to: "branch-b".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
             Transition {
@@ -1709,6 +1934,7 @@ mod tests {
                 from: "branch-a".into(),
                 to: "join".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
             Transition {
@@ -1716,6 +1942,7 @@ mod tests {
                 from: "branch-b".into(),
                 to: "join".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
             Transition {
@@ -1723,6 +1950,7 @@ mod tests {
                 from: "extra".into(),
                 to: "join".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
             Transition {
@@ -1730,6 +1958,7 @@ mod tests {
                 from: "join".into(),
                 to: "done".into(),
                 event: TransitionEvent::Complete,
+                mode: TransitionMode::Flow,
                 guard: None,
             },
         ];
@@ -1747,6 +1976,7 @@ mod tests {
                     from: "fork".into(),
                     to: "branch-a".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1754,6 +1984,7 @@ mod tests {
                     from: "branch-a".into(),
                     to: "done".into(),
                     event: TransitionEvent::Complete,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
