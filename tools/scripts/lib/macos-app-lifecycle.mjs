@@ -228,15 +228,27 @@ function quitRunning(apps) {
   const pids = processes();
   // Address each exact process, not a bundle-id lookup that can select another
   // registered copy or another product. Allow native save/quit handling to finish.
+  // `app.terminate` without parentheses only probes the JXA method reference and
+  // misjudges it as missing; the request must actually be invoked.
   for (const pid of pids) {
-    const result = command("/usr/bin/osascript", ["-l", "JavaScript", "-e",
-      `ObjC.import('AppKit'); const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}); if (app && !app.terminate) throw Error('quit_failed');`,
+    command("/usr/bin/osascript", ["-l", "JavaScript", "-e",
+      `ObjC.import('AppKit'); const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}); if (app) app.terminate();`,
     ]);
-    if (result.status !== 0 && processes().includes(pid)) fail("macos_install_quit_failed", "macos-install-quit-running");
   }
-  while (processes().some((pid) => pids.includes(pid))) {
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
-  }
+  const remaining = () => processes().filter((pid) => pids.includes(pid));
+  const waitUntil = (deadlineMs) => {
+    while (remaining().length > 0 && Date.now() < deadlineMs) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    }
+  };
+  // Daemons without an AppKit event loop never observe terminate(); escalate
+  // with the supervision ladder instead of waiting forever.
+  waitUntil(Date.now() + 10_000);
+  for (const pid of remaining()) process.kill(pid, "SIGTERM");
+  waitUntil(Date.now() + 5_000);
+  for (const pid of remaining()) process.kill(pid, "SIGKILL");
+  waitUntil(Date.now() + 5_000);
+  if (remaining().length > 0) fail("macos_install_quit_failed", "macos-install-quit-running");
 }
 
 export function createMacosAppPorts() {
